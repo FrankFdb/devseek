@@ -43,11 +43,11 @@ test('coding conformance catalog freezes five Codex and Claude Code observable b
   }
 });
 
-test('fixture self-tests prove the adapter contract without claiming complete product wiring or qualification', () => {
+test('fixture self-tests prove the adapter contract without claiming product-route evidence or qualification', () => {
   assert.deepEqual(CODING_CONFORMANCE_PREPARATION, {
-    implementationState: 'cross-surface-development-projection-wired',
+    implementationState: 'cross-surface-product-projection-wired',
     productWiring: true,
-    productAdapterCount: 1,
+    productAdapterCount: 3,
     qualificationEligible: false,
     claimsPermitted: false,
     requiredSurfaces: ['vscode', 'cli', 'headless'],
@@ -341,15 +341,19 @@ test('partial observations fail closed on missing, duplicate, or contradictory u
   assert.ok(invalidEvaluation.violations.some(violation => violation.code === 'missing-unavailability-evidence'));
 });
 
-test('self-declared product-route observations cannot bypass the incomplete adapter preparation boundary', () => {
+test('product-route completion requires product evidence from every configured Surface', () => {
   const fixture = findFixture('verify-repair-reverify');
-  const evaluation = evaluateCodingConformanceFixture(
+  const incomplete = fixture.requiredSurfaces.map((surface, index) => observation(
     fixture,
-    fixture.requiredSurfaces.map(surface => observation(fixture, surface, 'product-route')),
-  );
+    surface,
+    index === 0 ? 'development-route-replay' : 'product-route',
+  ));
+  const complete = fixture.requiredSurfaces.map(surface => observation(fixture, surface, 'product-route'));
 
+  assert.equal(evaluateCodingConformanceFixture(fixture, incomplete).productRouteEvidenceComplete, false);
+  const evaluation = evaluateCodingConformanceFixture(fixture, complete);
   assert.equal(evaluation.contractConformant, true);
-  assert.equal(evaluation.productRouteEvidenceComplete, false);
+  assert.equal(evaluation.productRouteEvidenceComplete, true);
   assert.equal(evaluation.qualificationEligible, false);
   assert.equal(evaluation.claimsPermitted, false);
 });

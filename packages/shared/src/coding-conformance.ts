@@ -1,9 +1,9 @@
 export const CODING_CONFORMANCE_SCHEMA_VERSION = 'devseek.coding-conformance/v1';
 
 export const CODING_CONFORMANCE_PREPARATION = Object.freeze({
-  implementationState: 'cross-surface-development-projection-wired',
+  implementationState: 'cross-surface-product-projection-wired',
   productWiring: true,
-  productAdapterCount: 1,
+  productAdapterCount: 3,
   qualificationEligible: false,
   claimsPermitted: false,
   requiredSurfaces: ['vscode', 'cli', 'headless'] as const,

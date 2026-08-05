@@ -13,11 +13,11 @@ import {
   CODING_VERIFICATION_RECEIPT_VERSION,
   CODING_WORKSPACE_MUTATION_RECEIPT_VERSION,
   CanonicalCodingKernel,
+  bindSettledCodingConformanceObservation,
   buildSecretHarvestingRefusalAcceptanceEvidence,
   buildCodingKernelTaskContract,
   evaluateCodingConformanceFixture,
   isSecretHarvestingRefusalTaskContract,
-  projectSettledCodingConformanceRun,
 } from '../../../shared/dist/index.js';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
@@ -71,7 +71,7 @@ test('VS Code canonical Kernel probe exposes semantically conformant settled pro
     assert.notEqual(routeOutput.result, loopResult, routeCase.fixtureId);
     assert.ok(routeOutput.result.completionDecision, routeCase.fixtureId);
     assert.equal(vscodeResult.contractConformant, true, JSON.stringify(vscodeResult.violations));
-    assert.equal(vscodeResult.evidenceClass, 'development-route-replay', routeCase.fixtureId);
+    assert.equal(vscodeResult.evidenceClass, 'product-route', routeCase.fixtureId);
     assert.deepEqual(vscodeResult.observedDimensions, [
       'taskContract',
       'toolExecutions',
@@ -215,29 +215,17 @@ function routeInput(recovery, fixture) {
 }
 
 function observeVsCodeRouteOutput(fixture, routeOutput) {
-  return {
+  assert.ok(routeOutput.result.codingConformance, 'VS Code route must expose its settled conformance projection');
+  return bindSettledCodingConformanceObservation({
+    fixture,
     surface: 'vscode',
-    adapterId: 'vscode-coding-kernel-execution-development-probe',
-    evidenceClass: 'development-route-replay',
+    adapterId: 'vscode-coding-kernel-execution-product-output',
     sourceRefs: [
       'packages/vscode-extension/src/app/coding-kernel-execution.ts',
-      `development-route:${fixture.fixtureId}:vscode`,
+      `product-route:${fixture.fixtureId}:vscode`,
     ],
-    projection: projectSettledCodingConformanceRun({
-      fixtureId: fixture.fixtureId,
-      taskContract: routeOutput.taskContract,
-      toolExecutions: routeOutput.result.toolExecutionReceipts ?? [],
-      changeReceipts: routeOutput.result.changeReceipts ?? [],
-      verifications: routeOutput.result.verificationReceipts ?? [],
-      completion: requireCompletion(routeOutput.result.completionDecision),
-    }),
-    unavailableDimensions: [],
-  };
-}
-
-function requireCompletion(completion) {
-  assert.ok(completion, 'VS Code route must expose its canonical completion decision');
-  return completion;
+    projection: routeOutput.result.codingConformance,
+  });
 }
 
 function findFixture(fixtureId) {

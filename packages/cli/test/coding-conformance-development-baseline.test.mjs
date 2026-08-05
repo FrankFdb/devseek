@@ -1,7 +1,14 @@
 import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { mkdtempSync, rmSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,262 +17,217 @@ import {
   CODING_KERNEL_REQUEST_VERSION,
   CODING_CONFORMANCE_DEVELOPMENT_FIXTURES,
   CanonicalCodingKernel,
-  buildCodingKernelTaskContract,
+  bindSettledCodingConformanceObservation,
+  buildUnsafeSecretHarvestingRefusalMessage,
   evaluateCodingConformanceFixture,
-  projectSettledCodingConformanceRun,
+  resolveCodingKernelTaskContract,
 } from '../../shared/dist/index.js';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const cliRoot = path.resolve(testDir, '..');
-const bundleRoot = mkdtempSync(path.join(tmpdir(), 'devseek-cli-coding-conformance-'));
-const bundlePath = path.join(bundleRoot, 'coding-kernel-runtime.cjs');
+const bundleRoot = mkdtempSync(path.join(tmpdir(), 'devseek-cli-product-conformance-'));
+const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-cli-product-workspaces-'));
 
 buildSync({
-  entryPoints: [path.join(cliRoot, 'src/cli-coding-kernel-runtime.ts')],
+  entryPoints: {
+    runtime: path.join(cliRoot, 'src/cli-coding-kernel-runtime.ts'),
+    interpreter: path.join(cliRoot, 'src/cli-coding-artifact-interpreter.ts'),
+    mutation: path.join(cliRoot, 'src/cli-workspace-mutation-service.ts'),
+    verification: path.join(cliRoot, 'src/cli-verification-adapter.ts'),
+    verifier: path.join(cliRoot, 'src/cli-verification-service.ts'),
+  },
   bundle: true,
-  outfile: bundlePath,
+  outdir: bundleRoot,
   format: 'cjs',
   platform: 'node',
   logLevel: 'silent',
 });
 
 const require = createRequire(import.meta.url);
-const { CliCodingKernelRuntimeAdapter } = require(bundlePath);
+const { CliCodingKernelRuntimeAdapter } = require(path.join(bundleRoot, 'runtime.js'));
+const { CliCodingArtifactInterpreter } = require(path.join(bundleRoot, 'interpreter.js'));
+const { CliWorkspaceMutationHostAdapter } = require(path.join(bundleRoot, 'mutation.js'));
+const { CliVerificationAdapter } = require(path.join(bundleRoot, 'verification.js'));
+const { CliVerificationHostAdapter } = require(path.join(bundleRoot, 'verifier.js'));
 
-after(() => rmSync(bundleRoot, { recursive: true, force: true }));
-
-test('CLI canonical Kernel probe exposes semantically conformant settled product output', async () => {
-  const cases = [
-    {
-      fixtureId: 'create-and-verify',
-      validations: [{ passed: true, summary: 'passed', evidenceRefs: ['verify:passed'] }],
-      expectedMutationCount: 1,
-    },
-    {
-      fixtureId: 'modify-and-verify',
-      validations: [{ passed: true, summary: 'passed', evidenceRefs: ['verify:passed'] }],
-      expectedMutationCount: 1,
-    },
-    {
-      fixtureId: 'verify-repair-reverify',
-      validations: [
-        { passed: false, summary: 'focused test failed', evidenceRefs: ['verify:failed'] },
-        { passed: true, summary: 'passed after repair', evidenceRefs: ['verify:passed'] },
-      ],
-      expectedMutationCount: 2,
-    },
-    {
-      fixtureId: 'permission-denied-no-effect',
-      validations: [],
-      expectedMutationCount: 0,
-    },
-    {
-      fixtureId: 'policy-refusal-no-mutation',
-      validations: [],
-      expectedMutationCount: 0,
-    },
-  ];
-
-  for (const routeCase of cases) {
-    const fixture = findFixture(routeCase.fixtureId);
-    const routeOutput = await runCliCanonicalRoute(fixture, routeCase.validations);
-    const evaluation = evaluateCodingConformanceFixture(fixture, [
-      observeCliCanonicalRoute(fixture, routeOutput),
-    ]);
-    const cliResult = evaluation.surfaceResults.find(result => result.surface === 'cli');
-
-    assert.equal(routeOutput.mutations.length, routeCase.expectedMutationCount, routeCase.fixtureId);
-    assert.equal(routeOutput.verifications.length, routeCase.validations.length, routeCase.fixtureId);
-    assert.equal(cliResult.contractConformant, true, JSON.stringify(cliResult.violations));
-    assert.equal(cliResult.evidenceClass, 'development-route-replay', routeCase.fixtureId);
-    assert.deepEqual(cliResult.observedDimensions, [
-      'taskContract',
-      'toolExecutions',
-      'changeReceipts',
-      'verifications',
-      'completion',
-    ], routeCase.fixtureId);
-    assert.deepEqual(cliResult.missingDimensions, [], routeCase.fixtureId);
-    assert.deepEqual(cliResult.violations, [], routeCase.fixtureId);
-    assert.equal(cliResult.violations.some(violation => (
-      violation.code === 'unexplained-missing-dimension'
-    )), false, routeCase.fixtureId);
-    assert.equal(evaluation.productRouteEvidenceComplete, false, routeCase.fixtureId);
-    assert.equal(evaluation.qualificationEligible, false, routeCase.fixtureId);
-    assert.equal(evaluation.claimsPermitted, false, routeCase.fixtureId);
-  }
+after(() => {
+  rmSync(bundleRoot, { recursive: true, force: true });
+  rmSync(workspaceRoot, { recursive: true, force: true });
 });
 
-async function runCliCanonicalRoute(fixture, validations) {
-  const evidence = [];
-  const events = [];
-  const mutations = [];
-  const verifications = [];
-  let validationIndex = 0;
-  const targetPath = fixture.expected.taskContract.scope.include[0] || 'src/value.ts';
-  const kernel = new CanonicalCodingKernel(new CliCodingKernelRuntimeAdapter(
-    {
-      interpret: () => developmentArtifactProposal(fixture.fixtureId, targetPath),
-    },
-    {
-      async captureBaseline(plan) {
-        return {
-          baselineRef: `baseline:${plan.actionId}`,
-          state: { actionId: plan.actionId },
-          evidenceRefs: [`baseline:${plan.actionId}:captured`],
-        };
-      },
-      async apply(plan) {
-        mutations.push({ cwd: plan.payload.workspaceRoot, proposal: plan.payload.proposal });
-        return {
-          status: 'applied',
-          applied: {
-            state: { files: [targetPath] },
-            result: [targetPath],
-            evidenceRefs: [`apply:${plan.actionId}`],
-          },
-        };
-      },
-      async readback(plan) {
-        return {
-          matches: true,
-          readbackRef: `readback:${plan.actionId}`,
-          evidenceRefs: [`readback:${plan.actionId}:matched`],
-        };
-      },
-      async rollback(plan) {
-        return {
-          rolledBack: true,
-          rollbackRef: `rollback:${plan.actionId}`,
-          evidenceRefs: [`rollback:${plan.actionId}:completed`],
-        };
-      },
-    },
-    {
-      async verify(request) {
-        verifications.push(request);
-        const result = validations[Math.min(validationIndex++, validations.length - 1)];
-        const status = result.status ?? (result.passed ? 'passed' : 'failed');
-        return {
-          replayed: false,
-          receipt: {
-            version: 'devseek.coding-verification-receipt/v1',
-            runId: request.runId,
-            sequence: request.sequence,
-            actionId: request.actionId,
-            idempotencyKey: `${request.runId}:${request.actionId}`,
-            verifier: 'development-verifier',
-            status,
-            scopePaths: request.files,
-            checks: [{
-              checkId: `check-${request.actionId}`,
-              status,
-              acceptanceIds: request.acceptance.map(criterion => criterion.id),
-              summary: result.summary,
-              evidenceRefs: result.evidenceRefs,
-            }],
-            acceptance: request.acceptance.map(criterion => ({
-              criterionId: criterion.id,
-              status,
-              evidenceRefs: result.evidenceRefs,
-            })),
-            evidenceRefs: result.evidenceRefs,
-          },
-        };
-      },
-    },
-  ));
+test('CLI product route settles five coding fixtures from isolated real workspaces', async () => {
+  const observations = [];
+  for (const scenario of productScenarios()) {
+    const fixture = findFixture(scenario.fixtureId);
+    const cwd = join(workspaceRoot, scenario.fixtureId);
+    seedWorkspace(cwd, scenario.files, scenario.verifier);
+    const before = snapshotUserFiles(cwd, scenario.trackedPaths);
+    const output = await runCliProductRoute(fixture, scenario, cwd);
+    const observation = bindSettledCodingConformanceObservation({
+      fixture,
+      surface: 'cli',
+      adapterId: 'cli-canonical-real-workspace-product-route',
+      sourceRefs: [
+        'packages/cli/src/cli-coding-kernel-runtime.ts',
+        'packages/cli/src/cli-workspace-mutation-service.ts',
+        `cli-real-workspace:${scenario.fixtureId}`,
+      ],
+      projection: output.result.codingConformance,
+    });
+    const evaluation = evaluateCodingConformanceFixture(fixture, [observation]);
+    const surface = evaluation.surfaceResults.find(result => result.surface === 'cli');
 
-  const output = await kernel.execute({
+    assert.equal(surface.contractConformant, true, JSON.stringify(surface.violations));
+    assert.equal(surface.evidenceClass, 'product-route', scenario.fixtureId);
+    assert.deepEqual(output.result.changedPaths, scenario.expectedChangedPaths, scenario.fixtureId);
+    assert.deepEqual(
+      changedUserPaths(before, snapshotUserFiles(cwd, scenario.trackedPaths)),
+      scenario.expectedChangedPaths,
+      scenario.fixtureId,
+    );
+    assert.equal(output.status, fixture.expected.completion.status, scenario.fixtureId);
+    observations.push(observation);
+  }
+
+  writeOptionalProductReport('cli', observations);
+});
+
+async function runCliProductRoute(fixture, scenario, cwd) {
+  const runtime = new CliCodingKernelRuntimeAdapter(
+    new CliCodingArtifactInterpreter(),
+    new CliWorkspaceMutationHostAdapter(),
+    new CliVerificationAdapter(new CliVerificationHostAdapter()),
+  );
+  const kernel = new CanonicalCodingKernel(runtime);
+  return kernel.execute({
     version: CODING_KERNEL_REQUEST_VERSION,
     route: 'canonical',
     surface: 'cli',
-    runId: `conformance-${fixture.fixtureId}`,
+    runId: fixture.fixtureId,
     userPrompt: fixture.prompt,
-    workspaceRoot: '/workspace',
+    workspaceRoot: cwd,
     signal: new AbortController().signal,
-    taskContract: buildCodingKernelTaskContract({
-      goal: fixture.expected.taskContract.goal,
-      mode: fixture.expected.taskContract.mode,
-      include: fixture.expected.taskContract.scope.include,
-      exclude: fixture.expected.taskContract.scope.exclude,
-      deliverables: fixture.expected.taskContract.deliverables,
-      constraints: fixture.expected.taskContract.constraints,
-      acceptance: fixture.expected.taskContract.acceptance,
-      provenanceRefs: fixture.expected.taskContract.provenanceRefs,
-    }),
+    taskContract: resolveCodingKernelTaskContract({ prompt: fixture.prompt, surface: 'cli' }),
     runtimeContext: {
-      response: 'initial development route response',
+      response: scenario.response,
       usesBridge: false,
       async requestRepair() {
-        return 'bounded repair development route response';
+        assert.ok(scenario.repairResponse, `${scenario.fixtureId} requested an unexpected repair`);
+        return scenario.repairResponse;
       },
-      recordOperationEvidence(entry, operationId, boundary) {
-        evidence.push({ entry, operationId, boundary });
-      },
+      recordOperationEvidence() {},
       assertBridgeEvidenceComplete() {},
-      emitEvent(event) {
-        events.push(event);
-      },
+      emitEvent() {},
       formatError(error) {
         return error instanceof Error ? error.message : String(error);
       },
     },
   });
-
-  return { output, evidence, events, mutations, verifications };
 }
 
-function developmentArtifactProposal(fixtureId, targetPath) {
-  if (fixtureId === 'permission-denied-no-effect') {
-    return {
-      candidateCount: 1,
-      fileToolCalls: [],
-      terminalToolCalls: [{
-        name: 'run_terminal',
-        command: 'npm install left-pad',
-      }],
-      unifiedDiffs: [],
-    };
-  }
-  if (fixtureId === 'policy-refusal-no-mutation') {
-    return {
-      candidateCount: 0,
-      fileToolCalls: [],
-      terminalToolCalls: [],
-      unifiedDiffs: [],
-    };
-  }
-  return {
-    candidateCount: 1,
-    fileToolCalls: [{ name: 'replace_file', filePath: targetPath, content: 'updated\n' }],
-    terminalToolCalls: [],
-    unifiedDiffs: [],
-  };
-}
-
-function observeCliCanonicalRoute(fixture, routeOutput) {
-  return {
-    surface: 'cli',
-    adapterId: 'cli-canonical-coding-kernel-development-probe',
-    evidenceClass: 'development-route-replay',
-    sourceRefs: [
-      'packages/shared/src/coding-kernel.ts',
-      'packages/cli/src/cli-coding-kernel-runtime.ts',
-      `development-route:${fixture.fixtureId}:cli`,
-    ],
-    projection: {
-      ...projectSettledCodingConformanceRun({
-        fixtureId: fixture.fixtureId,
-        taskContract: routeOutput.output.taskContract,
-        toolExecutions: routeOutput.output.result.toolExecutions,
-        changeReceipts: routeOutput.output.result.changeReceipts,
-        verifications: routeOutput.output.result.verificationReceipts,
-        completion: routeOutput.output.result.completion,
+function productScenarios() {
+  const createContent = [
+    'import sys',
+    'lines = sys.stdin.read().splitlines()',
+    "print(f\"ERROR={sum('ERROR' in line for line in lines)}\")",
+    "print(f\"WARN={sum('WARN' in line for line in lines)}\")",
+    '',
+  ].join('\n');
+  const mathBroken = 'module.exports = { add: (a, b) => a - b };\n';
+  const mathFixed = 'module.exports = { add: (a, b) => a + b };\n';
+  const parserBroken = 'module.exports = { parse: value => ({ ok: false, value }) };\n';
+  const parserStillBroken = 'module.exports = { parse: value => ({ ok: value === "bad", value }) };\n';
+  const parserFixed = 'module.exports = { parse: value => ({ ok: value === "valid", value }) };\n';
+  return [
+    {
+      fixtureId: 'create-and-verify',
+      files: {},
+      trackedPaths: ['tools/log_summary.py'],
+      response: fileTool('create_file', 'tools/log_summary.py', createContent),
+      verifier: verifierConfig('python3', ['tools/log_summary.py'], {
+        stdin: 'ERROR first\nWARN second\nERROR third\n',
+        expectStdoutIncludes: ['ERROR=2', 'WARN=1'],
       }),
+      expectedChangedPaths: ['tools/log_summary.py'],
     },
-    unavailableDimensions: [],
-  };
+    {
+      fixtureId: 'modify-and-verify',
+      files: { 'src/math.js': mathBroken },
+      trackedPaths: ['src/math.js'],
+      response: fileTool('replace_file', 'src/math.js', mathFixed),
+      verifier: nodeVerifier('const {add}=require("./src/math.js"); if(add(2,3)!==5) process.exit(1);'),
+      expectedChangedPaths: ['src/math.js'],
+    },
+    {
+      fixtureId: 'verify-repair-reverify',
+      files: { 'src/parser.js': parserBroken },
+      trackedPaths: ['src/parser.js'],
+      response: fileTool('replace_file', 'src/parser.js', parserStillBroken),
+      repairResponse: fileTool('replace_file', 'src/parser.js', parserFixed),
+      verifier: nodeVerifier('const {parse}=require("./src/parser.js"); if(!parse("valid").ok) process.exit(1);'),
+      expectedChangedPaths: ['src/parser.js'],
+    },
+    {
+      fixtureId: 'permission-denied-no-effect',
+      files: {
+        'package.json': '{"private":true}\n',
+        'src/index.js': 'module.exports = {};\n',
+      },
+      trackedPaths: ['package.json', 'package-lock.json', 'src/index.js'],
+      response: '[TOOL:run_terminal {"command":"npm install left-pad"}]',
+      expectedChangedPaths: [],
+    },
+    {
+      fixtureId: 'policy-refusal-no-mutation',
+      files: { 'README.md': 'safe workspace\n' },
+      trackedPaths: ['README.md'],
+      response: buildUnsafeSecretHarvestingRefusalMessage(),
+      expectedChangedPaths: [],
+    },
+  ];
+}
+
+function fileTool(name, filePath, content) {
+  return `[TOOL:${name} ${JSON.stringify({ filePath, content })}]`;
+}
+
+function nodeVerifier(script) {
+  return verifierConfig('node', ['-e', script]);
+}
+
+function verifierConfig(cmd, args, extra = {}) {
+  return { commands: [{ cmd, args, ...extra }] };
+}
+
+function seedWorkspace(cwd, files, verifier) {
+  mkdirSync(cwd, { recursive: true });
+  for (const [relativePath, content] of Object.entries(files)) {
+    const absolutePath = join(cwd, relativePath);
+    mkdirSync(dirname(absolutePath), { recursive: true });
+    writeFileSync(absolutePath, content, 'utf8');
+  }
+  if (verifier) writeFileSync(join(cwd, 'devseek.verify.json'), JSON.stringify(verifier), 'utf8');
+}
+
+function snapshotUserFiles(cwd, paths) {
+  return new Map(paths.map(relativePath => {
+    try {
+      return [relativePath, readFileSync(join(cwd, relativePath), 'utf8')];
+    } catch {
+      return [relativePath, undefined];
+    }
+  }));
+}
+
+function changedUserPaths(before, after) {
+  return [...after.keys()].filter(relativePath => before.get(relativePath) !== after.get(relativePath));
+}
+
+function writeOptionalProductReport(surface, observations) {
+  const reportPath = process.env.DEVSEEK_CODING_CONFORMANCE_REPORT_PATH;
+  if (!reportPath) return;
+  mkdirSync(dirname(reportPath), { recursive: true });
+  writeFileSync(reportPath, JSON.stringify({ surface, observations }, null, 2), 'utf8');
 }
 
 function findFixture(fixtureId) {

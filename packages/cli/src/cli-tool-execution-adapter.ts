@@ -3,6 +3,7 @@ import {
   CanonicalWorkspaceMutationTransaction,
   buildCodingToolAction,
   buildCodingWorkspaceMutationPlan,
+  classifyCodingTerminalEffects,
   type CodingToolAuthorityReceipt,
   type CodingToolExecutionOutcome,
   type CodingVerificationOutcome,
@@ -157,7 +158,7 @@ export class CliToolExecutionAdapter {
       sequence: input.sequence,
       actionId: input.actionId,
       tool: 'run_terminal',
-      effects: ['process', 'network', 'workspace-mutation'],
+      effects: classifyCodingTerminalEffects(input.command),
       input: {
         command: input.command,
         ...(input.workdir ? { workdir: input.workdir } : {}),

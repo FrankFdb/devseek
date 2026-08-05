@@ -48,6 +48,9 @@ export function settleAgentLoopResult(
       canonicalCompletionEvidenceRefs: result.completionDecision.evidenceRefs,
       canonicalCompletionResidualRisks: result.completionDecision.residualRisks,
     } : {}),
+    ...(result.codingConformance ? {
+      canonicalCodingConformanceProjection: result.codingConformance,
+    } : {}),
     ...buildArtifactVerificationCompletionMetadata(result),
   });
   const completed = requestedStatus === 'completed' && status === 'completed';

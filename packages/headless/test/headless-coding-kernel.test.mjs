@@ -1,11 +1,28 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { spawnSync } from 'node:child_process';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import {
   CODING_CONFORMANCE_DEVELOPMENT_FIXTURES,
   CODING_CONFORMANCE_DIMENSIONS,
   CODING_KERNEL_OUTPUT_VERSION,
+  bindSettledCodingConformanceObservation,
+  buildSecretHarvestingRefusalAcceptanceEvidence,
   buildCodingKernelTaskContract,
+  classifyCodingTerminalEffects,
   evaluateCodingConformanceFixture,
+  projectSettledCodingConformanceRun,
+  resolveCodingKernelTaskContract,
 } from '../../shared/dist/index.js';
 import {
   HeadlessCodingKernelExecutor,
@@ -15,52 +32,66 @@ import {
   HeadlessWorkspaceMutationAdapter,
 } from '../dist/index.js';
 
-test('Headless product entry delegates one immutable request to the shared canonical Kernel', async () => {
-  const calls = [];
-  const executor = new HeadlessCodingKernelExecutor({
-    async executeCanonical(request) {
-      calls.push(request);
-      const fixture = findFixture(request.runId);
-      return runtimeOutput(fixture, { fixtureId: fixture.fixtureId });
-    },
-  });
+test('Headless product entry settles five coding fixtures from isolated real workspaces', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'devseek-headless-product-conformance-'));
+  const observations = [];
 
-  for (const fixture of CODING_CONFORMANCE_DEVELOPMENT_FIXTURES) {
-    const output = await executor.execute(runInput(fixture));
-    const evaluation = evaluateCodingConformanceFixture(fixture, [{
-      surface: 'headless',
-      adapterId: 'headless-canonical-product-output',
-      evidenceClass: 'product-route',
-      sourceRefs: [
-        'packages/headless/src/headless-coding-kernel.ts',
-        `headless-product-route:${fixture.fixtureId}`,
-      ],
-      projection: output.conformance,
-      unavailableDimensions: [],
-    }]);
-    const headlessResult = evaluation.surfaceResults.find(result => result.surface === 'headless');
+  try {
+    for (const scenario of productScenarios()) {
+      const fixture = findFixture(scenario.fixtureId);
+      const cwd = join(root, scenario.fixtureId);
+      seedWorkspace(cwd, scenario.files);
+      const before = snapshotUserFiles(cwd, scenario.trackedPaths);
+      const executor = new HeadlessCodingKernelExecutor({
+        executeCanonical: request => executeHeadlessProductRoute(request, scenario),
+      });
+      let output;
+      try {
+        output = await executor.execute({
+          runId: fixture.fixtureId,
+          userPrompt: fixture.prompt,
+          workspaceRoot: cwd,
+          taskContract: resolveCodingKernelTaskContract({ prompt: fixture.prompt, surface: 'headless' }),
+          runtimeContext: { provider: 'deterministic-product-probe' },
+        });
+      } catch (error) {
+        throw new Error(`${fixture.fixtureId}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      const observation = bindSettledCodingConformanceObservation({
+        fixture,
+        surface: 'headless',
+        adapterId: 'headless-canonical-product-output',
+        sourceRefs: [
+          'packages/headless/src/headless-coding-kernel.ts',
+          `headless-real-workspace:${fixture.fixtureId}`,
+        ],
+        projection: output.conformance,
+      });
+      const evaluation = evaluateCodingConformanceFixture(fixture, [observation]);
+      const surface = evaluation.surfaceResults.find(result => result.surface === 'headless');
 
-    assert.equal(output.version, CODING_KERNEL_OUTPUT_VERSION, fixture.fixtureId);
-    assert.equal(output.surface, 'headless', fixture.fixtureId);
-    assert.equal(output.status, fixture.expected.completion.status, fixture.fixtureId);
-    assert.deepEqual(output.result, { fixtureId: fixture.fixtureId }, fixture.fixtureId);
-    assert.deepEqual(output.conformance, fixture.expected, fixture.fixtureId);
-    assert.equal(Object.isFrozen(output.conformance), true, fixture.fixtureId);
-    assert.equal(Object.isFrozen(output.conformance.taskContract.scope.include), true, fixture.fixtureId);
-    assert.equal(headlessResult.contractConformant, true, JSON.stringify(headlessResult.violations));
-    assert.equal(headlessResult.evidenceClass, 'product-route', fixture.fixtureId);
-    assert.deepEqual(headlessResult.observedDimensions, CODING_CONFORMANCE_DIMENSIONS, fixture.fixtureId);
-    assert.deepEqual(headlessResult.missingDimensions, [], fixture.fixtureId);
-    assert.equal(evaluation.contractConformant, false, fixture.fixtureId);
-    assert.equal(evaluation.productRouteEvidenceComplete, false, fixture.fixtureId);
-    assert.equal(evaluation.qualificationEligible, false, fixture.fixtureId);
-    assert.equal(evaluation.claimsPermitted, false, fixture.fixtureId);
+      assert.equal(output.version, CODING_KERNEL_OUTPUT_VERSION, fixture.fixtureId);
+      assert.equal(output.surface, 'headless', fixture.fixtureId);
+      assert.equal(output.status, fixture.expected.completion.status, fixture.fixtureId);
+      assert.deepEqual(output.result, { fixtureId: fixture.fixtureId }, fixture.fixtureId);
+      assert.equal(Object.isFrozen(output.conformance), true, fixture.fixtureId);
+      assert.equal(Object.isFrozen(output.conformance.taskContract.scope.include), true, fixture.fixtureId);
+      assert.equal(surface.contractConformant, true, JSON.stringify(surface.violations));
+      assert.equal(surface.evidenceClass, 'product-route', fixture.fixtureId);
+      assert.deepEqual(surface.observedDimensions, CODING_CONFORMANCE_DIMENSIONS, fixture.fixtureId);
+      assert.deepEqual(surface.missingDimensions, [], fixture.fixtureId);
+      assert.deepEqual(
+        changedUserPaths(before, snapshotUserFiles(cwd, scenario.trackedPaths)),
+        scenario.expectedChangedPaths,
+        fixture.fixtureId,
+      );
+      observations.push(observation);
+    }
+
+    writeOptionalProductReport('headless', observations);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
-
-  assert.equal(calls.length, CODING_CONFORMANCE_DEVELOPMENT_FIXTURES.length);
-  assert.equal(calls.every(call => call.route === 'canonical'), true);
-  assert.equal(calls.every(call => call.surface === 'headless'), true);
-  assert.equal(calls.every(call => Object.isFrozen(call.taskContract)), true);
 });
 
 test('Headless product entry fails closed on incomplete or drifted conformance evidence', async t => {
@@ -239,6 +270,366 @@ test('Headless completion adapter blocks a change without verification evidence'
   assert.equal(decision.status, 'blocked');
   assert.equal(decision.reasonCodes.includes('verification-not-run'), true);
 });
+
+async function executeHeadlessProductRoute(request, scenario) {
+  const toolExecutions = [];
+  const changeReceipts = [];
+  const verifications = [];
+  const failedVerificationActionIds = [];
+
+  if (scenario.fixtureId === 'permission-denied-no-effect') {
+    const denied = await new HeadlessToolExecutionAdapter().execute({
+      action: {
+        runId: request.runId,
+        sequence: 1,
+        actionId: 'headless-install-dependency',
+        tool: 'run_terminal',
+        effects: classifyCodingTerminalEffects('npm install left-pad'),
+        input: { command: 'npm install left-pad' },
+        authority: {
+          decision: 'deny',
+          status: 'denied',
+          reason: 'dependency-and-network-authority-not-granted',
+          evidenceRefs: ['headless-authority:install-denied'],
+        },
+      },
+      host: { async execute() { throw new Error('denied command must not execute'); } },
+    });
+    toolExecutions.push(denied.receipt);
+  } else {
+    for (const [index, content] of (scenario.edits ?? []).entries()) {
+      const mutationSequence = (index * 2) + 1;
+      const mutationActionId = `headless-write-${index + 1}`;
+      const mutation = await executeHeadlessMutationTool({
+        request,
+        sequence: mutationSequence,
+        actionId: mutationActionId,
+        path: scenario.targetPath,
+        content,
+      });
+      toolExecutions.push(mutation.toolReceipt);
+      changeReceipts.push(mutation.changeReceipt);
+
+      const verificationActionId = `headless-verify-${index + 1}`;
+      const verification = await executeHeadlessVerificationTool({
+        request,
+        scenario,
+        sequence: mutationSequence + 1,
+        actionId: verificationActionId,
+        mutationEvidenceRefs: mutation.changeReceipt.evidenceRefs,
+      });
+      toolExecutions.push(verification.toolReceipt);
+      verifications.push(verification.verificationReceipt);
+      if (verification.verificationReceipt.status === 'failed') {
+        failedVerificationActionIds.push(verificationActionId);
+      }
+    }
+  }
+
+  const completion = new HeadlessCompletionAdapter().decide({
+    runId: request.runId,
+    decisionId: 'headless-product-completion',
+    idempotencyKey: `${request.runId}:headless-product-completion`,
+    acceptance: request.taskContract.acceptance,
+    verificationRequired: request.taskContract.mode === 'change' || request.taskContract.mode === 'release',
+    reviewRequired: false,
+    toolExecutions,
+    mutations: changeReceipts,
+    verifications,
+    resolvedVerificationActionIds: verifications.at(-1)?.status === 'passed'
+      ? failedVerificationActionIds
+      : [],
+    acceptanceEvidence: scenario.fixtureId === 'policy-refusal-no-mutation'
+      ? buildSecretHarvestingRefusalAcceptanceEvidence()
+      : scenario.fixtureId === 'permission-denied-no-effect'
+        ? request.taskContract.acceptance.map(criterion => ({
+          criterionId: criterion.id,
+          status: 'blocked',
+          evidenceRefs: toolExecutions.flatMap(receipt => receipt.evidenceRefs),
+        }))
+        : [],
+    pendingRefs: [],
+    adverseEvidenceRefs: [],
+    residualRisks: scenario.fixtureId === 'permission-denied-no-effect'
+      ? ['requested-change-not-applied']
+      : [],
+    evidenceRefs: [...request.taskContract.provenanceRefs, `headless-product:${request.runId}:settled`],
+  });
+  const conformance = projectSettledCodingConformanceRun({
+    fixtureId: request.runId,
+    taskContract: request.taskContract,
+    toolExecutions,
+    changeReceipts,
+    verifications,
+    completion,
+  });
+  return {
+    status: completion.status,
+    result: { value: { fixtureId: request.runId }, conformance },
+    evidenceRefs: completion.evidenceRefs,
+    residualRisks: completion.residualRisks,
+  };
+}
+
+async function executeHeadlessMutationTool(input) {
+  let changeReceipt;
+  const tool = await new HeadlessToolExecutionAdapter().execute({
+    action: {
+      runId: input.request.runId,
+      sequence: input.sequence,
+      actionId: input.actionId,
+      tool: 'replace_file',
+      effects: ['workspace-mutation'],
+      input: { path: input.path, content: input.content },
+      authority: {
+        decision: 'allow',
+        status: 'authorized',
+        reason: 'headless-caller-authorized-scoped-workspace-change',
+        evidenceRefs: [`headless-authority:${input.actionId}:authorized`],
+      },
+    },
+    host: {
+      async execute() {
+        const mutation = await new HeadlessWorkspaceMutationAdapter().execute({
+          plan: {
+            runId: input.request.runId,
+            sequence: input.sequence,
+            actionId: input.actionId,
+            idempotencyKey: `${input.request.runId}:${input.actionId}`,
+            paths: [input.path],
+            payload: { path: input.path, content: input.content },
+            evidenceRefs: [`headless-plan:${input.actionId}`],
+          },
+          host: realWorkspaceMutationHost(input.request.workspaceRoot),
+        });
+        changeReceipt = mutation.receipt;
+        return {
+          status: mutation.receipt.status === 'committed' ? 'completed' : 'failed',
+          result: mutation.receipt,
+          ...(mutation.receipt.errorCode ? { errorCode: mutation.receipt.errorCode } : {}),
+          evidenceRefs: mutation.receipt.evidenceRefs,
+        };
+      },
+    },
+  });
+  assert.ok(changeReceipt, `${input.actionId} did not settle a mutation receipt`);
+  assert.equal(changeReceipt.status, 'committed', input.actionId);
+  return { toolReceipt: tool.receipt, changeReceipt };
+}
+
+async function executeHeadlessVerificationTool(input) {
+  let verificationReceipt;
+  const tool = await new HeadlessToolExecutionAdapter().execute({
+    action: {
+      runId: input.request.runId,
+      sequence: input.sequence,
+      actionId: input.actionId,
+      tool: 'run_terminal',
+      effects: ['process'],
+      input: input.scenario.verifier,
+      authority: {
+        decision: 'allow',
+        status: 'authorized',
+        reason: 'headless-caller-authorized-local-verification',
+        evidenceRefs: [`headless-authority:${input.actionId}:authorized`],
+      },
+    },
+    host: {
+      async execute() {
+        const verification = await new HeadlessVerificationAdapter().verify({
+          plan: {
+            runId: input.request.runId,
+            sequence: input.sequence,
+            actionId: input.actionId,
+            idempotencyKey: `${input.request.runId}:${input.actionId}`,
+            scopePaths: [input.scenario.targetPath],
+            acceptance: input.request.taskContract.acceptance,
+            payload: input.scenario.verifier,
+            evidenceRefs: input.mutationEvidenceRefs,
+          },
+          host: {
+            async verify() {
+              const result = runVerifier(input.request.workspaceRoot, input.scenario.verifier);
+              const status = result.passed ? 'passed' : 'failed';
+              return {
+                verifier: input.scenario.verifier.name,
+                checks: [{
+                  checkId: `${input.actionId}:behavior`,
+                  status,
+                  acceptanceIds: input.request.taskContract.acceptance.map(criterion => criterion.id),
+                  summary: result.summary,
+                  evidenceRefs: result.evidenceRefs,
+                }],
+                evidenceRefs: result.evidenceRefs,
+              };
+            },
+          },
+        });
+        verificationReceipt = verification.receipt;
+        return {
+          status: verification.receipt.status === 'passed' ? 'completed' : 'failed',
+          result: verification.receipt,
+          ...(verification.receipt.status === 'passed' ? {} : { errorCode: 'verification-failed' }),
+          evidenceRefs: verification.receipt.evidenceRefs,
+        };
+      },
+    },
+  });
+  assert.ok(verificationReceipt, `${input.actionId} did not settle a verification receipt`);
+  return { toolReceipt: tool.receipt, verificationReceipt };
+}
+
+function realWorkspaceMutationHost(workspaceRoot) {
+  return {
+    async captureBaseline(plan) {
+      const relativePath = plan.payload.path;
+      const absolutePath = join(workspaceRoot, relativePath);
+      let content;
+      try { content = await readFile(absolutePath, 'utf8'); } catch { content = undefined; }
+      return {
+        baselineRef: `headless-baseline:${relativePath}:${content === undefined ? 'absent' : 'present'}`,
+        state: { relativePath, content },
+        evidenceRefs: [`headless-baseline:${plan.actionId}:captured`],
+      };
+    },
+    async apply(plan) {
+      const absolutePath = join(workspaceRoot, plan.payload.path);
+      await mkdir(dirname(absolutePath), { recursive: true });
+      await writeFile(absolutePath, plan.payload.content, 'utf8');
+      return {
+        status: 'applied',
+        applied: {
+          state: { relativePath: plan.payload.path, content: plan.payload.content },
+          result: [plan.payload.path],
+          evidenceRefs: [`headless-apply:${plan.actionId}:completed`],
+        },
+      };
+    },
+    async readback(plan) {
+      const actual = await readFile(join(workspaceRoot, plan.payload.path), 'utf8');
+      return {
+        matches: actual === plan.payload.content,
+        readbackRef: `headless-readback:${plan.actionId}:${actual.length}`,
+        evidenceRefs: [`headless-readback:${plan.actionId}:matched`],
+      };
+    },
+    async rollback(plan, baseline) {
+      const absolutePath = join(workspaceRoot, plan.payload.path);
+      if (baseline.state.content === undefined) await rm(absolutePath, { force: true });
+      else await writeFile(absolutePath, baseline.state.content, 'utf8');
+      return {
+        rolledBack: true,
+        rollbackRef: `headless-rollback:${plan.actionId}:completed`,
+        evidenceRefs: [`headless-rollback:${plan.actionId}:completed`],
+      };
+    },
+  };
+}
+
+function runVerifier(cwd, verifier) {
+  const result = spawnSync(verifier.command, verifier.args, {
+    cwd,
+    encoding: 'utf8',
+    input: verifier.stdin ?? '',
+    timeout: 10000,
+  });
+  const evidenceRefs = [`${verifier.command} ${verifier.args.join(' ')}:exit=${result.status}`];
+  return {
+    passed: result.status === 0,
+    summary: (result.stderr || result.stdout || `exit ${result.status}`).trim(),
+    evidenceRefs,
+  };
+}
+
+function productScenarios() {
+  const createContent = [
+    'import sys',
+    'lines = sys.stdin.read().splitlines()',
+    "print(f\"ERROR={sum('ERROR' in line for line in lines)}\")",
+    "print(f\"WARN={sum('WARN' in line for line in lines)}\")",
+    '',
+  ].join('\n');
+  return [
+    {
+      fixtureId: 'create-and-verify',
+      files: {},
+      trackedPaths: ['tools/log_summary.py'],
+      targetPath: 'tools/log_summary.py',
+      edits: [createContent],
+      verifier: {
+        name: 'python-behavior',
+        command: 'python3',
+        args: ['tools/log_summary.py'],
+        stdin: 'ERROR first\nWARN second\nERROR third\n',
+      },
+      expectedChangedPaths: ['tools/log_summary.py'],
+    },
+    {
+      fixtureId: 'modify-and-verify',
+      files: { 'src/math.js': 'module.exports = { add: (a, b) => a - b };\n' },
+      trackedPaths: ['src/math.js'],
+      targetPath: 'src/math.js',
+      edits: ['module.exports = { add: (a, b) => a + b };\n'],
+      verifier: nodeVerifier('node-behavior', 'const {add}=require("./src/math.js"); if(add(2,3)!==5) process.exit(1);'),
+      expectedChangedPaths: ['src/math.js'],
+    },
+    {
+      fixtureId: 'verify-repair-reverify',
+      files: { 'src/parser.js': 'module.exports = { parse: value => ({ ok: false, value }) };\n' },
+      trackedPaths: ['src/parser.js'],
+      targetPath: 'src/parser.js',
+      edits: [
+        'module.exports = { parse: value => ({ ok: value === "bad", value }) };\n',
+        'module.exports = { parse: value => ({ ok: value === "valid", value }) };\n',
+      ],
+      verifier: nodeVerifier('focused-parser-test', 'const {parse}=require("./src/parser.js"); if(!parse("valid").ok) process.exit(1);'),
+      expectedChangedPaths: ['src/parser.js'],
+    },
+    {
+      fixtureId: 'permission-denied-no-effect',
+      files: { 'package.json': '{"private":true}\n', 'src/index.js': 'module.exports = {};\n' },
+      trackedPaths: ['package.json', 'package-lock.json', 'src/index.js'],
+      expectedChangedPaths: [],
+    },
+    {
+      fixtureId: 'policy-refusal-no-mutation',
+      files: { 'README.md': 'safe workspace\n' },
+      trackedPaths: ['README.md'],
+      expectedChangedPaths: [],
+    },
+  ];
+}
+
+function nodeVerifier(name, script) {
+  return { name, command: 'node', args: ['-e', script] };
+}
+
+function seedWorkspace(cwd, files) {
+  mkdirSync(cwd, { recursive: true });
+  for (const [relativePath, content] of Object.entries(files)) {
+    const absolutePath = join(cwd, relativePath);
+    mkdirSync(dirname(absolutePath), { recursive: true });
+    writeFileSync(absolutePath, content, 'utf8');
+  }
+}
+
+function snapshotUserFiles(cwd, paths) {
+  return new Map(paths.map(relativePath => [
+    relativePath,
+    existsSync(join(cwd, relativePath)) ? readFileSync(join(cwd, relativePath), 'utf8') : undefined,
+  ]));
+}
+
+function changedUserPaths(before, after) {
+  return [...after.keys()].filter(relativePath => before.get(relativePath) !== after.get(relativePath));
+}
+
+function writeOptionalProductReport(surface, observations) {
+  const reportPath = process.env.DEVSEEK_CODING_CONFORMANCE_REPORT_PATH;
+  if (!reportPath) return;
+  mkdirSync(dirname(reportPath), { recursive: true });
+  writeFileSync(reportPath, JSON.stringify({ surface, observations }, null, 2), 'utf8');
+}
 
 async function executeMutated(fixture, mutate) {
   const projection = structuredClone(fixture.expected);

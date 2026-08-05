@@ -183,15 +183,16 @@ test('AgentToolExecutor: registers delete_file as an audited high-risk edit', ()
 test('AgentToolExecutor: delegates terminal settlement to the shared canonical owner', async () => {
   let calls = 0;
   const executor = new AgentToolExecutor();
+  const toolPolicy = {
+    mode: 'edit',
+    allowedToolKinds: ['terminal'],
+    requireConfirmationKinds: ['terminal'],
+    deniedToolKinds: [],
+    requireUserConfirmation: false,
+  };
   const plan = executor.plan(
     { name: 'run_terminal', input: { command: 'npm test' } },
-    {
-      mode: 'edit',
-      allowedToolKinds: ['terminal'],
-      requireConfirmationKinds: ['terminal'],
-      deniedToolKinds: [],
-      requireUserConfirmation: false,
-    },
+    toolPolicy,
   );
   const denied = await executor.executeCanonical(plan, {
     runId: 'vscode-run-1',
@@ -209,6 +210,7 @@ test('AgentToolExecutor: delegates terminal settlement to the shared canonical o
   assert.equal(calls, 0);
   assert.equal(denied.receipt.status, 'denied');
   assert.equal(denied.receipt.permission.decision, 'require-confirmation');
+  assert.deepEqual(denied.receipt.effects, ['process']);
 
   const authorized = await executor.executeCanonical(plan, {
     runId: 'vscode-run-1',
@@ -228,6 +230,19 @@ test('AgentToolExecutor: delegates terminal settlement to the shared canonical o
   assert.equal(authorized.receipt.status, 'completed');
   assert.equal(authorized.receipt.result, 'tests passed');
   assert.equal(authorized.receipt.permission.confirmationRef, 'vscode-confirmation:terminal-2');
+
+  const installPlan = executor.plan(
+    { name: 'run_terminal', input: { command: 'npm install left-pad' } },
+    toolPolicy,
+  );
+  const installDenied = await executor.executeCanonical(installPlan, {
+    runId: 'vscode-run-1',
+    sequence: 3,
+    actionId: 'terminal-install',
+    authorityEvidenceRefs: ['vscode-authority:terminal-install:confirmation-missing'],
+    host: { async execute() { throw new Error('denied install must not execute'); } },
+  });
+  assert.deepEqual(installDenied.receipt.effects, ['process', 'network', 'workspace-mutation']);
 });
 
 console.log('\nTool executor tests passed.\n');

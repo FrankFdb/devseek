@@ -41,7 +41,10 @@ test('Kernel completion and runtime verification share one TaskContract acceptan
   }
   assert.deepEqual(projectTaskContractAcceptance(makeTaskContract([])), [{
     id: 'requested-outcome',
-    statement: 'Complete the requested outcome within the declared scope.',
+    statement: 'The requested workspace outcome is applied.',
+  }, {
+    id: 'verified',
+    statement: 'Applicable verification passes before completion.',
   }]);
 });
 
@@ -50,8 +53,12 @@ test('product Kernel and Agentic validation delegate acceptance projection to it
   const agenticLoop = readFileSync(path.join(rootDir, 'src/agent/agentic-loop.ts'), 'utf8');
   const planning = readFileSync(path.join(rootDir, 'src/agent/agentic-planning.ts'), 'utf8');
 
-  assert.match(kernelProjection, /projectTaskContractAcceptance\(input\.taskContract\)/);
+  assert.match(kernelProjection, /resolveCodingKernelTaskContract\(\{/);
   assert.match(agenticLoop, /projectTaskContractAcceptance\(writeAuthority\.semanticContract\.taskContract\)/);
+  assert.match(
+    readFileSync(path.join(rootDir, 'src/agent/task-contract-acceptance.ts'), 'utf8'),
+    /resolveCodingKernelAcceptance\(\{/,
+  );
   assert.doesNotMatch(planning, /qualityObligations|CodingVerificationCriterion/);
 });
 

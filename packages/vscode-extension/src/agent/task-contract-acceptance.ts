@@ -1,18 +1,22 @@
-import type { CodingCompletionAcceptanceCriterion } from '@devseek-netai/shared';
+import {
+  resolveCodingKernelAcceptance,
+  type CodingCompletionAcceptanceCriterion,
+} from '@devseek-netai/shared';
 import type { TaskContract } from './task-contract';
 
 /** Keeps Kernel completion and runtime verification on one acceptance identity. */
 export function projectTaskContractAcceptance(
-  taskContract: Pick<TaskContract, 'qualityObligations'>,
+  taskContract: Pick<
+    TaskContract,
+    'objectives' | 'inputs' | 'deliverableTargets' | 'deliverables' | 'qualityObligations'
+  >,
 ): CodingCompletionAcceptanceCriterion[] {
-  if (taskContract.qualityObligations.length === 0) {
-    return [{
-      id: 'requested-outcome',
-      statement: 'Complete the requested outcome within the declared scope.',
-    }];
-  }
-  return taskContract.qualityObligations.map((obligation, index) => ({
-    id: `quality-${index + 1}`,
-    statement: `Satisfy the ${obligation} obligation.`,
-  }));
+  return resolveCodingKernelAcceptance({
+    prompt: taskContract.objectives.join('\n'),
+    contextFiles: taskContract.inputs,
+    targetPaths: taskContract.deliverableTargets,
+    modeHint: taskContract.deliverables.some(kind => kind === 'source-change') ? 'change' : undefined,
+    verificationRequired: taskContract.qualityObligations.length > 0
+      || taskContract.deliverables.includes('verification-result'),
+  });
 }

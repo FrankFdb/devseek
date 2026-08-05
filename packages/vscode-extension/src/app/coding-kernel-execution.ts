@@ -1,7 +1,9 @@
-import type {
-  CodingKernelExecutionRequest,
-  CodingKernelRuntimeOutput,
-  CodingKernelRuntimePort,
+import {
+  projectSettledCodingConformanceRun,
+  type CodingConformanceProjection,
+  type CodingKernelExecutionRequest,
+  type CodingKernelRuntimeOutput,
+  type CodingKernelRuntimePort,
 } from '@devseek-netai/shared';
 import type { ExecutionMode } from '../intent/intent-types';
 import type { TaskSemanticContract } from '../task-semantic-contract';
@@ -107,7 +109,15 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
         result,
         cancelled: kernelRequest.signal?.aborted === true,
       });
-      const settledResult: AgentLoopResult = { ...result, completionDecision };
+      const codingConformance: CodingConformanceProjection = projectSettledCodingConformanceRun({
+        fixtureId: kernelRequest.runId,
+        taskContract: kernelRequest.taskContract,
+        toolExecutions: result.toolExecutionReceipts ?? [],
+        changeReceipts: result.changeReceipts ?? [],
+        verifications: result.verificationReceipts ?? [],
+        completion: completionDecision,
+      });
+      const settledResult: AgentLoopResult = { ...result, completionDecision, codingConformance };
       if (request.recovery && originalCheckpoint && !terminalCheckpointEmitted) {
         if (completionDecision.status !== 'completed') {
           await originalCheckpoint(

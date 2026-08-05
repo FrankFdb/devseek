@@ -10,6 +10,8 @@ export * from './build-profile';
 export * from './coding-conformance';
 export * from './coding-conformance-fixtures';
 export * from './coding-conformance-projection';
+export * from './coding-task-contract-resolver';
+export * from './coding-terminal-effects';
 export * from './coding-kernel';
 export * from './coding-safety-policy';
 export * from './coding-tool-execution';

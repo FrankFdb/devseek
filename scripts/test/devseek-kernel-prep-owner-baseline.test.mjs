@@ -50,7 +50,7 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     cross_surface_kernel_routes: 4,
     semantic_domains: 5,
     converged_semantic_domains: 5,
-    source_checks: 60,
+    source_checks: 65,
     failed_source_checks: 0,
   });
   assert.deepEqual(
@@ -64,12 +64,16 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
   );
   assert.deepEqual(
     actual.source_checks
-      .filter(assertion => assertion.check_id.endsWith('coding-conformance-development-probe'))
+      .filter(assertion => assertion.check_id.includes('coding-conformance-product-probe'))
       .map(assertion => assertion.check_id),
     [
-      'cli-coding-conformance-development-probe',
-      'vscode-coding-conformance-development-probe',
+      'cli-coding-conformance-product-probe',
+      'headless-coding-conformance-product-probe',
     ],
+  );
+  assert.equal(
+    actual.source_checks.some(assertion => assertion.check_id === 'vscode-coding-conformance-product-output-probe'),
+    true,
   );
   assert.deepEqual(actual.semantic_domains.map(domain => domain.domain_id), [
     'canonical-task-contract',
@@ -113,11 +117,12 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
   assert.equal(fs.existsSync(path.join(repoRoot, 'packages/cli/test/cli-legacy-coding-loop.test.mjs')), false);
   assert.deepEqual(
     actual.source_checks
-      .filter(assertion => assertion.check_id.startsWith('shared-coding-conformance'))
+      .filter(assertion => assertion.check_id.startsWith('shared-') && assertion.check_id.includes('conformance'))
       .map(assertion => assertion.check_id),
     [
       'shared-coding-conformance-contract',
       'shared-coding-conformance-fixtures',
+      'shared-settled-conformance-projection-owner',
       'shared-coding-conformance-export',
     ],
   );

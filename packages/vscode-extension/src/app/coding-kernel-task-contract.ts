@@ -1,12 +1,9 @@
 import {
-  buildSecretHarvestingRefusalTaskContract,
-  buildCodingKernelTaskContract,
-  isUnsafeSecretHarvestingImplementationRequest,
+  resolveCodingKernelTaskContract,
   type CodingKernelTaskContract,
   type CodingTaskMode,
 } from '@devseek-netai/shared';
 import type { TaskContract } from '../agent/task-contract';
-import { projectTaskContractAcceptance } from '../agent/task-contract-acceptance';
 import type { ExecutionMode } from '../intent/intent-types';
 
 export interface VsCodeCodingKernelTaskContractInput {
@@ -19,31 +16,15 @@ export interface VsCodeCodingKernelTaskContractInput {
 export function projectVsCodeCodingKernelTaskContract(
   input: VsCodeCodingKernelTaskContractInput,
 ): CodingKernelTaskContract {
-  if (isUnsafeSecretHarvestingImplementationRequest(input.userPrompt)) {
-    return buildSecretHarvestingRefusalTaskContract('vscode');
-  }
   const deliverableTargets = uniqueNonEmpty(input.taskContract.deliverableTargets);
-  const deliverables = input.taskContract.deliverables.length > 0
-    ? input.taskContract.deliverables.map((kind, index) => ({
-        id: `deliverable-${index + 1}`,
-        kind,
-        ...(deliverableTargets[index] ? { path: deliverableTargets[index] } : {}),
-      }))
-    : [{ id: 'response', kind: 'report' as const }];
-  const acceptance = projectTaskContractAcceptance(input.taskContract);
-
-  return buildCodingKernelTaskContract({
-    goal: input.taskContract.objectives.join('\n') || input.userPrompt,
-    mode: projectTaskMode(input.workflowMode),
-    include: uniqueNonEmpty([
-      ...input.contextFiles,
-      ...input.taskContract.inputs,
-      ...deliverableTargets,
-    ]),
-    deliverables,
-    constraints: input.taskContract.constraints,
-    acceptance,
-    provenanceRefs: ['task-semantic-contract:v3', 'surface:vscode'],
+  return resolveCodingKernelTaskContract({
+    prompt: input.userPrompt,
+    surface: 'vscode',
+    modeHint: projectTaskMode(input.workflowMode),
+    contextFiles: uniqueNonEmpty([...input.contextFiles, ...input.taskContract.inputs]),
+    targetPaths: deliverableTargets,
+    verificationRequired: input.taskContract.qualityObligations.length > 0
+      || input.taskContract.deliverables.includes('verification-result'),
   });
 }
 

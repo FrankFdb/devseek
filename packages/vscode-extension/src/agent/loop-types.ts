@@ -11,6 +11,7 @@ import type { ValidationCommandRunner } from '../workspace/validation-service';
 import type {
   CodingCompletionAcceptanceDecision,
   CodingCompletionDecision,
+  CodingConformanceProjection,
   CodingToolAuthorityReceipt,
   CodingToolExecutionReceipt,
   CodingToolHostResult,
@@ -239,4 +240,6 @@ export interface AgentLoopResult {
   acceptanceEvidence?: CodingCompletionAcceptanceDecision[];
   /** Shared terminal decision; downstream settlement may project but never recompute it. */
   completionDecision?: CodingCompletionDecision;
+  /** Complete settled projection emitted by the canonical VS Code product route. */
+  codingConformance?: CodingConformanceProjection;
 }

@@ -1,10 +1,15 @@
 import {
   CanonicalCompletionDecisionService,
+  buildSecretHarvestingRefusalAcceptanceEvidence,
+  hasUnsafeSecretHarvestingRefusalEvidence,
+  isSecretHarvestingRefusalTaskContract,
+  projectSettledCodingConformanceRun,
   type CodingKernelExecutionRequest,
   type CodingKernelRuntimeOutput,
   type CodingKernelRuntimePort,
   type CodingCompletionAcceptanceDecision,
   type CodingCompletionDecision,
+  type CodingConformanceProjection,
   type CodingToolAuthorityReceipt,
   type CodingToolExecutionReceipt,
   type CodingVerificationReceipt,
@@ -59,6 +64,8 @@ export interface CliCodingKernelResult {
     readonly evidenceRefs: readonly string[];
   };
   readonly completion: CodingCompletionDecision;
+  /** Full settled product projection; consumers bind run identity to a conformance fixture. */
+  readonly codingConformance: CodingConformanceProjection;
 }
 
 interface CliRecoveryBoundary {
@@ -135,6 +142,14 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
           if (recovery) {
             throw new Error('DevSeek repair response contained no workspace artifacts to validate');
           }
+          const directRefusal = isSecretHarvestingRefusalTaskContract(request.taskContract)
+            && hasUnsafeSecretHarvestingRefusalEvidence(request.userPrompt, response, {
+              workToolUsed: false,
+              changedFileCount: changedPaths.size,
+            });
+          const responseEvidenceRefs = directRefusal
+            ? ['response:explicit-refusal', 'response:safe-alternative', 'workspace:no-mutation']
+            : [`cli-response:${request.runId}:settled`];
           return settleCliResult({
             completion: this.completion,
             request,
@@ -147,15 +162,17 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
             verificationStatus: 'not-run',
             evidenceRefs: request.taskContract.mode === 'change' || request.taskContract.mode === 'release'
               ? []
-              : [`cli-response:${request.runId}:settled`],
+              : responseEvidenceRefs,
             acceptanceEvidence: request.taskContract.mode === 'change'
               || request.taskContract.mode === 'release'
               ? []
-              : request.taskContract.acceptance.map(criterion => ({
-                criterionId: criterion.id,
-                status: 'passed',
-                evidenceRefs: [`cli-response:${request.runId}:settled`],
-              })),
+              : directRefusal
+                ? buildSecretHarvestingRefusalAcceptanceEvidence()
+                : request.taskContract.acceptance.map(criterion => ({
+                  criterionId: criterion.id,
+                  status: 'passed',
+                  evidenceRefs: responseEvidenceRefs,
+                })),
           });
         }
         const sideEffectOperationId = `cli-file-write-${executionAttempt}`;
@@ -603,6 +620,14 @@ function settleCliResult(input: {
     residualRisks: input.residualRisks ?? [],
     evidenceRefs: [...input.request.taskContract.provenanceRefs, ...input.evidenceRefs],
   });
+  const codingConformance = projectSettledCodingConformanceRun({
+    fixtureId: input.request.runId,
+    taskContract: input.request.taskContract,
+    toolExecutions: input.toolExecutions,
+    changeReceipts: input.changeReceipts,
+    verifications: input.verificationReceipts,
+    completion,
+  });
   return {
     status: completion.status,
     result: {
@@ -613,6 +638,7 @@ function settleCliResult(input: {
       verificationReceipts: [...input.verificationReceipts],
       verification: { status: input.verificationStatus, evidenceRefs: [...input.evidenceRefs] },
       completion,
+      codingConformance,
     },
     evidenceRefs: completion.evidenceRefs,
     residualRisks: completion.residualRisks,

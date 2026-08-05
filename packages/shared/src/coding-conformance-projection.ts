@@ -1,8 +1,13 @@
 import type { CodingCompletionDecision } from './coding-completion';
 import {
   CODING_CONFORMANCE_SCHEMA_VERSION,
+  validateCodingConformanceProjection,
+  type CodingConformanceEvidenceClass,
+  type CodingConformanceFixture,
+  type CodingConformanceObservation,
   type CodingChangeReceiptProjection,
   type CodingConformanceProjection,
+  type CodingConformanceSurface,
   type CodingReceiptStatus,
   type CodingVerificationStatus,
 } from './coding-conformance';
@@ -59,6 +64,32 @@ export function projectSettledCodingConformanceRun(
       evidenceRefs: input.completion.evidenceRefs,
     },
   }, 'coding-conformance-projection') as CodingConformanceProjection;
+}
+
+export function bindSettledCodingConformanceObservation(input: {
+  readonly fixture: CodingConformanceFixture;
+  readonly surface: CodingConformanceSurface;
+  readonly adapterId: string;
+  readonly sourceRefs: readonly string[];
+  readonly projection: CodingConformanceProjection;
+  readonly evidenceClass?: CodingConformanceEvidenceClass;
+}): CodingConformanceObservation {
+  const violations = validateCodingConformanceProjection(input.projection, input.surface);
+  if (violations.length > 0) {
+    const codes = violations.map(violation => `${violation.dimension}:${violation.code}`).join(',');
+    throw new Error(`coding-conformance-observation:unsettled-projection:${codes}`);
+  }
+  if (!input.adapterId.trim() || input.sourceRefs.some(ref => !ref.trim()) || input.sourceRefs.length === 0) {
+    throw new Error('coding-conformance-observation:missing-product-source');
+  }
+  return snapshotCodingValue({
+    surface: input.surface,
+    adapterId: input.adapterId,
+    evidenceClass: input.evidenceClass ?? 'product-route',
+    sourceRefs: input.sourceRefs,
+    projection: { ...input.projection, fixtureId: input.fixture.fixtureId },
+    unavailableDimensions: [],
+  }, 'coding-conformance-observation') as CodingConformanceObservation;
 }
 
 function projectToolStatus(

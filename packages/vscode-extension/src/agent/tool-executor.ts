@@ -1,6 +1,7 @@
 import {
   CanonicalToolExecutor,
   buildCodingToolAction,
+  classifyCodingTerminalEffects,
   type CodingToolAuthorityReceipt,
   type CodingToolExecutionOutcome,
   type CodingToolHostResult,
@@ -202,7 +203,10 @@ function projectToolAuthority<TResult>(
 function projectToolEffects(plan: AgentToolExecutionPlan): readonly CodingToolEffect[] {
   if (plan.definition?.mutatesWorkspace) return ['workspace-mutation'];
   switch (plan.kind) {
-    case 'terminal':
+    case 'terminal': {
+      const command = stringField(plan.call.input, 'command', 'cmd');
+      return classifyCodingTerminalEffects(command);
+    }
     case 'vscode':
     case 'vscode-command':
       return ['process'];
