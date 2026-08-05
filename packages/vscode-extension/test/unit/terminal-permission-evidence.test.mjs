@@ -456,7 +456,7 @@ test('Terminal evidence: a failed command is resolved only after an observable r
   assert.equal(owner.settleAndSeal({ status: 'completed', idempotencyKey: 'settlement' }).head.sealed, true);
 });
 
-test('Terminal evidence: captured validation command can resolve a prior failed command', async t => {
+test('Terminal evidence: automatic validation cannot claim an interactive verification recovery', async t => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-terminal-evidence-'));
   t.after(() => rmSync(workspaceRoot, { recursive: true, force: true }));
   const runId = 'terminal-recovery-during-validation';
@@ -510,19 +510,41 @@ test('Terminal evidence: captured validation command can resolve a prior failed 
     workspaceRoot,
     runId,
     traceEvidenceParticipantToken: participantToken,
+  }), false, 'an internal validation command must not resolve an interactive verifier failure');
+
+  const retried = await coordinator.runCommandWithPermissionDetailed({
+    ...commonInput,
+    command: 'echo interactive-verification-recovered',
+  });
+  assert.equal(retried.outcome, 'committed');
+  const postRetryVerificationId = 'interactive-post-retry-validation';
+  record('verification.started', postRetryVerificationId, 'started');
+  record('verification.completed', postRetryVerificationId, 'completed');
+  record('quality_gate.started', postRetryVerificationId, 'started');
+  record('quality_gate.passed', postRetryVerificationId, 'passed');
+  assert.equal(coordinator.resolveCommandFailuresAfterQualityGate({
+    workspaceRoot,
+    runId,
+    traceEvidenceParticipantToken: participantToken,
   }), true);
 
   const events = owner.readEvents();
   const failedIndex = events.findIndex(event => event.type === 'side_effect.failed');
-  const validationCommandIndex = events.findIndex(event => (
+  const recoveryDetectedIndex = events.findIndex(event => event.type === 'recovery.detected');
+  const validationCommand = events.find(event => (
+    event.type === 'side_effect.committed'
+    && event.payload.operation_id === validation.operationId
+  ));
+  const interactiveRetryIndex = events.findIndex(event => (
     event.type === 'side_effect.committed'
     && event.payload.recovery_operation_id
   ));
-  const verificationStartIndex = events.findIndex(event => event.type === 'verification.started');
   const recoveryCompletedIndex = events.findIndex(event => event.type === 'recovery.completed');
-  assert.ok(failedIndex >= 0 && verificationStartIndex >= 0 && validationCommandIndex >= 0 && recoveryCompletedIndex >= 0);
-  assert.ok(verificationStartIndex < validationCommandIndex);
+  assert.ok(failedIndex >= 0 && recoveryDetectedIndex >= 0 && interactiveRetryIndex >= 0 && recoveryCompletedIndex >= 0);
+  assert.equal(validationCommand?.payload.recovery_operation_id, undefined);
+  assert.ok(failedIndex < recoveryDetectedIndex && recoveryDetectedIndex < interactiveRetryIndex);
   assert.ok(events.findIndex(event => event.type === 'quality_gate.passed') < recoveryCompletedIndex);
+  assert.equal(events.find(event => event.type === 'recovery.detected')?.payload.recovery_lane, 'interactive');
   assert.equal(owner.settleAndSeal({ status: 'completed', idempotencyKey: 'settlement' }).head.sealed, true);
 });
 

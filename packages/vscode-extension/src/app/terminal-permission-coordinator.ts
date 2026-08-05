@@ -92,6 +92,7 @@ interface TerminalRunEvidenceContext {
 }
 
 export type TerminalCommandOutcome = 'committed' | 'failed' | 'indeterminate';
+export type TerminalCommandRecoveryLane = 'interactive' | 'validation';
 
 export interface TerminalCommandExecutionResult {
   output: string;
@@ -120,6 +121,7 @@ export interface TerminalCommandRecoveryInput {
   runId: string;
   traceEvidenceParticipantToken: string;
   targetOperationIds: string[];
+  recoveryLane?: TerminalCommandRecoveryLane;
   onTraceEvidenceError?: (error: unknown) => void;
 }
 
@@ -163,10 +165,11 @@ export interface ValidationCommandAuthorityInput {
 export class TerminalPermissionCoordinator {
   private readonly pendingConfirms = new Map<string, TerminalConfirmResolver>();
   private readonly trustedRiskClasses = new Set<TerminalCommandRiskClass>();
-  private readonly adverseCommandOperationsByRun = new Map<string, Set<string>>();
-  private readonly activeCommandRecoveryByRun = new Map<string, {
+  private readonly adverseCommandOperationsByLane = new Map<string, Set<string>>();
+  private readonly activeCommandRecoveryByLane = new Map<string, {
     operationId: string;
     targetOperationIds: string[];
+    lane: TerminalCommandRecoveryLane;
   }>();
 
   requestInlineConfirmation(
@@ -200,6 +203,7 @@ export class TerminalPermissionCoordinator {
     const session = attachTerminalRecoveryEvidence(input);
     if (!session || !recordTerminalRecoveryEvidence(session, input, 'recovery.detected', recoveryOperationId, {
       target_operation_ids: [...new Set(input.targetOperationIds)],
+      recovery_lane: input.recoveryLane ?? 'interactive',
     })) {
       throw new Error('Terminal recovery evidence could not be durably detected');
     }
@@ -213,7 +217,7 @@ export class TerminalPermissionCoordinator {
       const verificationOperationId = input.verificationOperationId?.trim();
       if (!verificationOperationId || !hasStrictRecoveryProof(session, input, verificationOperationId)) {
         reportTerminalEvidenceError(input, new Error(
-          'Terminal recovery completion requires adverse < detected < correlated mutation lifecycle < matching verification < quality gate',
+          'Terminal recovery completion requires adverse < detected < captured retry lifecycle < matching verification < quality gate',
         ));
         return false;
       }
@@ -227,8 +231,12 @@ export class TerminalPermissionCoordinator {
         ? {
             resolves_operation_ids: [...new Set(input.targetOperationIds)],
             verification_operation_id: input.verificationOperationId!,
+            recovery_lane: input.recoveryLane ?? 'interactive',
           }
-        : { reason: input.reason ?? 'terminal-retry-failed' },
+        : {
+            reason: input.reason ?? 'terminal-retry-failed',
+            recovery_lane: input.recoveryLane ?? 'interactive',
+          },
     );
   }
 
@@ -238,11 +246,25 @@ export class TerminalPermissionCoordinator {
    * Merely dispatching a repair command is deliberately insufficient.
    */
   resolveCommandFailuresAfterQualityGate(input: ResolveTerminalCommandRecoveryInput): boolean {
-    const tracked = this.adverseCommandOperationsByRun.get(input.runId);
-    if (!tracked || tracked.size === 0) return false;
-    const activeRecovery = this.activeCommandRecoveryByRun.get(input.runId);
+    const recoveryKeys = terminalCommandRecoveryKeys(input.runId)
+      .filter(key => (this.adverseCommandOperationsByLane.get(key)?.size ?? 0) > 0);
+    if (recoveryKeys.length === 0) return false;
+    return recoveryKeys.every(key => this.resolveCommandRecoveryLane(input, key));
+  }
+
+  private resolveCommandRecoveryLane(
+    input: ResolveTerminalCommandRecoveryInput,
+    recoveryKey: string,
+  ): boolean {
+    const tracked = this.adverseCommandOperationsByLane.get(recoveryKey);
+    if (!tracked || tracked.size === 0) return true;
+    const activeRecovery = this.activeCommandRecoveryByLane.get(recoveryKey);
     if (!activeRecovery) return false;
-    const recoveryInput = { ...input, targetOperationIds: activeRecovery.targetOperationIds };
+    const recoveryInput = {
+      ...input,
+      targetOperationIds: activeRecovery.targetOperationIds,
+      recoveryLane: activeRecovery.lane,
+    };
     const session = attachTerminalRecoveryEvidence(recoveryInput);
     if (!session) return false;
     try {
@@ -260,8 +282,8 @@ export class TerminalPermissionCoordinator {
 
       const targetOperationIds = activeRecovery.targetOperationIds.filter(operationId => !alreadyResolved.has(operationId));
       if (targetOperationIds.length === 0) {
-        this.adverseCommandOperationsByRun.delete(input.runId);
-        this.activeCommandRecoveryByRun.delete(input.runId);
+        this.adverseCommandOperationsByLane.delete(recoveryKey);
+        this.activeCommandRecoveryByLane.delete(recoveryKey);
         return true;
       }
       const verificationOperationIds = events
@@ -286,8 +308,8 @@ export class TerminalPermissionCoordinator {
         verificationOperationId,
         reason: 'captured-terminal-retry-and-quality-gate-passed',
       })) return false;
-      this.adverseCommandOperationsByRun.delete(input.runId);
-      this.activeCommandRecoveryByRun.delete(input.runId);
+      this.adverseCommandOperationsByLane.delete(recoveryKey);
+      this.activeCommandRecoveryByLane.delete(recoveryKey);
       return true;
     } catch (error) {
       reportTerminalEvidenceError(input, error);
@@ -296,12 +318,16 @@ export class TerminalPermissionCoordinator {
   }
 
   forgetRun(runId: string): void {
-    this.adverseCommandOperationsByRun.delete(runId);
-    this.activeCommandRecoveryByRun.delete(runId);
+    for (const key of terminalCommandRecoveryKeys(runId)) {
+      this.adverseCommandOperationsByLane.delete(key);
+      this.activeCommandRecoveryByLane.delete(key);
+    }
   }
 
   hasPendingCommandFailures(runId: string): boolean {
-    return (this.adverseCommandOperationsByRun.get(runId)?.size ?? 0) > 0;
+    return terminalCommandRecoveryKeys(runId).some(
+      key => (this.adverseCommandOperationsByLane.get(key)?.size ?? 0) > 0,
+    );
   }
 
   completeRunContext(
@@ -752,7 +778,9 @@ export class TerminalPermissionCoordinator {
   private trackAdverseCommandOperation(input: RunTerminalWithPermissionInput, operationId: string): void {
     const runId = input.traceRunId?.trim();
     if (!runId || input.manageRecoveryExternally === true) return;
-    const recovery = this.activeCommandRecoveryByRun.get(runId);
+    const lane = terminalCommandRecoveryLane(input);
+    const recoveryKey = terminalCommandRecoveryKey(runId, lane);
+    const recovery = this.activeCommandRecoveryByLane.get(recoveryKey);
     if (recovery && input.recoveryOperationId === recovery.operationId) {
       this.finishCommandRecovery({
         workspaceRoot: input.workspaceRoot ?? '',
@@ -760,40 +788,67 @@ export class TerminalPermissionCoordinator {
         traceEvidenceParticipantToken: input.traceEvidenceParticipantToken ?? '',
         targetOperationIds: recovery.targetOperationIds,
         recoveryOperationId: recovery.operationId,
+        recoveryLane: lane,
         status: 'failed',
         reason: 'terminal-retry-failed-or-indeterminate',
         onTraceEvidenceError: input.onTraceEvidenceError,
       });
-      this.activeCommandRecoveryByRun.delete(runId);
+      this.activeCommandRecoveryByLane.delete(recoveryKey);
     }
-    const operations = this.adverseCommandOperationsByRun.get(runId) ?? new Set<string>();
+    const operations = this.adverseCommandOperationsByLane.get(recoveryKey) ?? new Set<string>();
     operations.add(operationId);
-    this.adverseCommandOperationsByRun.set(runId, operations);
+    this.adverseCommandOperationsByLane.set(recoveryKey, operations);
   }
 
   private attachPendingRecoveryToCommand(input: RunTerminalWithPermissionInput): RunTerminalWithPermissionInput {
     if (input.manageRecoveryExternally === true || input.recoveryOperationId) return input;
     const runId = input.traceRunId?.trim();
     if (!runId) return input;
-    const tracked = this.adverseCommandOperationsByRun.get(runId);
+    const lane = terminalCommandRecoveryLane(input);
+    const recoveryKey = terminalCommandRecoveryKey(runId, lane);
+    const tracked = this.adverseCommandOperationsByLane.get(recoveryKey);
     if (!tracked || tracked.size === 0) return input;
-    let recovery = this.activeCommandRecoveryByRun.get(runId);
+    let recovery = this.activeCommandRecoveryByLane.get(recoveryKey);
     if (!recovery) {
-      const targetOperationIds = [...tracked];
-      recovery = {
-        operationId: this.beginCommandRecovery({
-          workspaceRoot: input.workspaceRoot ?? '',
-          runId,
-          traceEvidenceParticipantToken: input.traceEvidenceParticipantToken ?? '',
-          targetOperationIds,
-          onTraceEvidenceError: input.onTraceEvidenceError,
-        }),
-        targetOperationIds,
-      };
-      this.activeCommandRecoveryByRun.set(runId, recovery);
+      recovery = this.startTrackedCommandRecovery(input, [...tracked], lane);
+      this.activeCommandRecoveryByLane.set(recoveryKey, recovery);
     }
     return { ...input, recoveryOperationId: recovery.operationId };
   }
+
+  private startTrackedCommandRecovery(
+    input: RunTerminalWithPermissionInput,
+    targetOperationIds: string[],
+    lane: TerminalCommandRecoveryLane,
+  ): { operationId: string; targetOperationIds: string[]; lane: TerminalCommandRecoveryLane } {
+    return {
+      operationId: this.beginCommandRecovery({
+        workspaceRoot: input.workspaceRoot ?? '',
+        runId: input.traceRunId?.trim() ?? '',
+        traceEvidenceParticipantToken: input.traceEvidenceParticipantToken ?? '',
+        targetOperationIds,
+        recoveryLane: lane,
+        onTraceEvidenceError: input.onTraceEvidenceError,
+      }),
+      targetOperationIds,
+      lane,
+    };
+  }
+}
+
+function terminalCommandRecoveryLane(input: RunTerminalWithPermissionInput): TerminalCommandRecoveryLane {
+  return input.executionProfile === 'validation' ? 'validation' : 'interactive';
+}
+
+function terminalCommandRecoveryKey(runId: string, lane: TerminalCommandRecoveryLane): string {
+  return `${runId}\u0000${lane}`;
+}
+
+function terminalCommandRecoveryKeys(runId: string): string[] {
+  return [
+    terminalCommandRecoveryKey(runId, 'interactive'),
+    terminalCommandRecoveryKey(runId, 'validation'),
+  ];
 }
 
 function recordTerminalValidationLifecycle(

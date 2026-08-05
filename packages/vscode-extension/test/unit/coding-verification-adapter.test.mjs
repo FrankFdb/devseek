@@ -8,15 +8,22 @@ import test from 'node:test';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
 const bundlePath = path.join(rootDir, 'test/unit/coding-verification-adapter.bundle.cjs');
+const terminalBundlePath = path.join(rootDir, 'test/unit/terminal-verification-receipts.bundle.cjs');
 
 execSync(
   `npx esbuild src/app/coding-verification-adapter.ts --bundle ` +
   `--outfile=${bundlePath} --format=cjs --platform=node --external:vscode`,
   { cwd: rootDir, stdio: 'pipe' },
 );
+execSync(
+  `npx esbuild src/agent/terminal-evidence-settlement.ts --bundle ` +
+  `--outfile=${terminalBundlePath} --format=cjs --platform=node --external:vscode`,
+  { cwd: rootDir, stdio: 'pipe' },
+);
 
 const req = createRequire(import.meta.url);
 const { VsCodeVerificationAdapter } = req(bundlePath);
+const { projectTerminalVerificationReceipts } = req(terminalBundlePath);
 
 function input(overrides = {}) {
   return {
@@ -101,4 +108,67 @@ test('VS Code verification adapter replays one action identity without re-observ
   assert.equal(first.receipt.status, 'failed');
   assert.equal(replay.replayed, true);
   assert.equal(observations, 1);
+});
+
+test('settled terminal validation actions project failed and repaired canonical receipts', async () => {
+  const commonEvidence = {
+    command: 'node --test src/main.test.js',
+    kind: 'test',
+    exitCode: 1,
+  };
+  const receipts = await projectTerminalVerificationReceipts({
+    runId: 'run-terminal-verification',
+    workspaceRoot: '/workspace',
+    writtenFiles: [{
+      path: '/workspace/src/main.ts',
+      basename: 'main.ts',
+      linesAdded: 1,
+      linesRemoved: 1,
+      action: 'modify',
+    }],
+    acceptance: [{ id: 'validated', statement: 'Applicable validation passes.' }],
+    terminalEvidence: [{
+      ...commonEvidence,
+      ok: false,
+      canonicalAction: {
+        actionId: 'terminal-failed',
+        sequence: 3,
+        evidenceRefs: ['terminal:failed'],
+      },
+    }, {
+      ...commonEvidence,
+      ok: true,
+      exitCode: 0,
+      canonicalAction: {
+        actionId: 'terminal-passed',
+        sequence: 5,
+        evidenceRefs: ['terminal:passed'],
+      },
+    }],
+  });
+
+  assert.deepEqual(receipts.map(receipt => ({
+    actionId: receipt.actionId,
+    sequence: receipt.sequence,
+    status: receipt.status,
+    verifier: receipt.verifier,
+    scopePaths: receipt.scopePaths,
+  })), [{
+    actionId: 'terminal-failed',
+    sequence: 3,
+    status: 'failed',
+    verifier: 'vscode-terminal-test',
+    scopePaths: ['src/main.ts'],
+  }, {
+    actionId: 'terminal-passed',
+    sequence: 5,
+    status: 'passed',
+    verifier: 'vscode-terminal-test',
+    scopePaths: ['src/main.ts'],
+  }]);
+  assert.deepEqual(receipts[1].acceptance, [{
+    criterionId: 'validated',
+    status: 'passed',
+    evidenceRefs: ['terminal:passed', 'terminal-verification:terminal-passed'],
+  }]);
 });

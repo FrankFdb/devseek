@@ -2144,8 +2144,8 @@ test('Agentic loop: terminal completion evidence requires successful validation 
   assertContains(executionEvidence, 'findBlockingTerminalFailureEvidence(terminalEvidence)', 'agentic settlement owner must not let failed validation evidence be hidden by provider completion prose');
   assert.match(
     toolLoop,
-    /terminalEvidence\.push\(evidenceResult\.evidence\)/,
-    'terminal evidence must be recorded separately from raw terminal commands',
+    /canonicalAction:\s*\{[\s\S]*?actionId: execution\.receipt\.actionId[\s\S]*?evidenceRefs: execution\.receipt\.evidenceRefs[\s\S]*?terminalEvidence\.push\(canonicalEvidence\)/,
+    'terminal evidence must retain its canonical action receipt and be recorded separately from raw terminal commands',
   );
   assert.match(
     evidence,
@@ -2735,7 +2735,7 @@ test('Agentic evidence: read-only terminal checks are retained as completion evi
   );
   assert.match(
     agentLoop,
-    /evidenceResult\.evidence\.kind !== 'other' \|\| isReadOnlyTerminalEvidenceCommand\(resolvedCommand\)/,
+    /canonicalEvidence\.kind !== 'other' \|\| isReadOnlyTerminalEvidenceCommand\(resolvedCommand\)[\s\S]*?terminalEvidence\.push\(canonicalEvidence\)/,
     'run_terminal evidence collection must retain read-only other-kind commands after capability resolution',
   );
 });

@@ -60,7 +60,6 @@ import {
   buildTaskTerminalFailureDetail,
   withTaskTerminalEvidence,
 } from './task-execution-result';
-import { shouldRequestManualReviewForRun } from './manual-review-validation';
 import type { AgentLoopCallbacks, AgentLoopResult } from './loop-types';
 import type { EvidenceRef } from './tool-executor';
 import { chatWithMessages } from './loop-chat';
@@ -117,6 +116,10 @@ import { tryRunGroundedMarkdownAgenticTask } from './grounded-markdown-agentic-t
 import { buildAgenticSystemPrompt } from './agentic-system-prompt';
 import { createSemanticExecutionWriteAuthority } from './semantic-execution-context';
 import { createAgenticInitialPromptContext, type AgenticLoopExecutionContext } from './agentic-execution-context';
+import {
+  classifyAgenticManualReviewEvidence,
+  projectTerminalVerificationReceipts,
+} from './terminal-evidence-settlement';
 const AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET = 52_000;
 const AGENTIC_TASK_PROMPT_CHAR_BUDGET = 34_000;
 const AGENTIC_TOOL_FEEDBACK_CHAR_BUDGET = 8_000;
@@ -181,35 +184,6 @@ function compactAgenticMessageHistory(messages: ChatMessage[]): number {
   }
   return totalAgenticMessageChars(messages);
 }
-function classifyAgenticManualReviewEvidence(input: {
-  evidence: TerminalEvidence[] | undefined;
-  feedbackForAI: string;
-  userPrompt: string;
-  writtenFiles: WrittenFileEvidence[];
-}): TerminalEvidence[] {
-  if (!input.evidence?.length) return [];
-  const changedPaths = input.writtenFiles.map(file => file.path).filter(Boolean);
-  return input.evidence.map((evidence) => {
-    if (evidence.reviewRequired) return evidence;
-    if (evidence.ok) return evidence;
-    const review = shouldRequestManualReviewForRun({
-      userPrompt: input.userPrompt,
-      command: evidence.command,
-      output: input.feedbackForAI || evidence.detail || '',
-      changedPaths,
-      terminalEvidence: evidence,
-    });
-    return review
-      ? {
-        ...evidence,
-        ok: true,
-        reviewRequired: true,
-        detail: review.detail,
-      }
-      : evidence;
-  });
-}
-
 function normalizeAgenticAutoValidation(input: {
   autoValidation: AgentAutoValidationResult;
   userPrompt: string;
@@ -953,11 +927,19 @@ export async function runAgenticLoop(
       for (const readPath of loopRes.readFiles) allReadEvidencePaths.add(readPath);
     }
     if (loopRes.terminalEvidence?.length) {
-      allTerminalEvidence.push(...classifyAgenticManualReviewEvidence({
+      const classifiedTerminalEvidence = classifyAgenticManualReviewEvidence({
         evidence: loopRes.terminalEvidence,
         feedbackForAI: loopRes.feedbackForAI,
         userPrompt: writeAuthority.currentPrompt,
         writtenFiles: allWrittenFiles,
+      });
+      allTerminalEvidence.push(...classifiedTerminalEvidence);
+      allVerificationReceipts.push(...await projectTerminalVerificationReceipts({
+        runId: callbacks.traceRunId,
+        workspaceRoot,
+        writtenFiles: allWrittenFiles,
+        terminalEvidence: loopRes.terminalEvidence,
+        acceptance: projectTaskContractAcceptance(writeAuthority.semanticContract.taskContract),
       }));
     }
     if (loopRes.evidenceRefs?.length) {

@@ -546,27 +546,35 @@ export async function executeFakeToolsForLoop(
           }
           const evidenceWorkdir = workdir ?? defaultWorkdir ?? workspaceRoot;
           const evidenceResult = analyzeTerminalEvidence(resolvedCommand, output, evidenceWorkdir);
+          const canonicalEvidence: TerminalEvidence = {
+            ...evidenceResult.evidence,
+            canonicalAction: {
+              actionId: execution.receipt.actionId,
+              sequence: execution.receipt.sequence,
+              evidenceRefs: execution.receipt.evidenceRefs,
+            },
+          };
           terminalOutputs.push({ command: resolvedCommand, workdir: evidenceWorkdir, output });
           evidenceRefs.push(readEvidenceRecorder.recordTerminalOutput(
             resolvedCommand,
             output,
             evidenceWorkdir,
-            evidenceResult.evidence.exitCode,
+            canonicalEvidence.exitCode,
           ));
           if (evidenceResult.ran) {
             terminalCommands.push(resolvedCommand);
           }
-          if (evidenceResult.evidence.kind !== 'other' || isReadOnlyTerminalEvidenceCommand(resolvedCommand)) {
-            terminalEvidence.push(evidenceResult.evidence);
+          if (canonicalEvidence.kind !== 'other' || isReadOnlyTerminalEvidenceCommand(resolvedCommand)) {
+            terminalEvidence.push(canonicalEvidence);
           }
           // Silent: output goes to AI context only (shown in Working box via terminalRanNotice)
           parts.push(`[run_terminal: ${resolvedCommand}]\n${output}`);
-          if (evidenceResult.evidence.kind !== 'other' && !evidenceResult.evidence.ok) {
+          if (canonicalEvidence.kind !== 'other' && !canonicalEvidence.ok) {
             parts.push(
               `[terminal_evidence]\n` +
               `验证命令未通过，不能把编译/运行/测试标记为完成。\n` +
-              `kind=${evidenceResult.evidence.kind} exitCode=${evidenceResult.evidence.exitCode ?? 'unknown'}\n` +
-              `${evidenceResult.evidence.detail ?? '请根据终端输出修复后重新验证。'}`,
+              `kind=${canonicalEvidence.kind} exitCode=${canonicalEvidence.exitCode ?? 'unknown'}\n` +
+              `${canonicalEvidence.detail ?? '请根据终端输出修复后重新验证。'}`,
             );
           }
         } catch (err) {

@@ -130,6 +130,26 @@ test('later passed verification supersedes earlier adverse verification only for
   assert.equal(partialRepair.status, 'failed');
 });
 
+test('a repaired terminal verifier resolves its failed process action without erasing history', () => {
+  const decision = decide({
+    changedPaths: ['src/main.ts'],
+    changeReceipts: [mutation()],
+    toolExecutionReceipts: [
+      terminalTool({ status: 'failed', actionId: 'verify-terminal-1', sequence: 3 }),
+      terminalTool({ status: 'completed', actionId: 'verify-terminal-2', sequence: 5 }),
+    ],
+    verificationReceipts: [
+      verification({ status: 'failed', actionId: 'verify-terminal-1', sequence: 3 }),
+      verification({ status: 'passed', actionId: 'verify-terminal-2', sequence: 5 }),
+    ],
+  });
+
+  assert.equal(decision.status, 'completed');
+  assert.equal(decision.reasonCodes.includes('failed-effect'), false);
+  assert.equal(decision.reasonCodes.includes('verification-failed'), false);
+  assert.equal(decision.evidenceRefs.includes('terminal:failed'), true);
+});
+
 test('manual review and evidence-free read-only output remain blocked', () => {
   const manualReview = decide({
     changedPaths: ['src/main.ts'],
@@ -256,5 +276,27 @@ function deniedTool() {
       evidenceRefs: ['permission:install-denied'],
     },
     evidenceRefs: ['permission:install-denied'],
+  };
+}
+
+function terminalTool(overrides = {}) {
+  const actionId = overrides.actionId ?? 'verify-terminal';
+  const status = overrides.status ?? 'completed';
+  return {
+    version: CODING_TOOL_RECEIPT_VERSION,
+    runId: 'vscode-completion-run',
+    sequence: overrides.sequence ?? 1,
+    actionId,
+    tool: 'run_terminal',
+    effects: ['process'],
+    status,
+    permission: {
+      decision: 'allow',
+      status: 'authorized',
+      reason: 'terminal-authorized',
+      evidenceRefs: [`terminal:${actionId}:authorized`],
+    },
+    evidenceRefs: [status === 'failed' ? 'terminal:failed' : 'terminal:passed'],
+    ...overrides,
   };
 }

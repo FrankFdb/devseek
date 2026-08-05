@@ -39,8 +39,12 @@ export function correlateVsCodeCodingConformanceReceipts(input: {
     return { ...receipt, actionId: owner.actionId };
   });
 
+  const directlyOwnedVerifications = input.verifications.filter(receipt => toolActionIds.has(receipt.actionId));
+  const verificationSource = directlyOwnedVerifications.length > 0
+    ? directlyOwnedVerifications
+    : input.verifications;
   const claimedVerificationActions = new Set<string>();
-  const verifications = input.verifications.map(receipt => {
+  const verifications = verificationSource.map(receipt => {
     if (toolActionIds.has(receipt.actionId)) {
       claimedVerificationActions.add(receipt.actionId);
       return receipt;

@@ -45,6 +45,11 @@ export type TerminalEvidence = {
   kind: TerminalEvidenceKind;
   ok: boolean;
   exitCode: number | null;
+  canonicalAction?: {
+    actionId: string;
+    sequence: number;
+    evidenceRefs: readonly string[];
+  };
   outputPath?: string;
   detail?: string;
   reviewRequired?: boolean;

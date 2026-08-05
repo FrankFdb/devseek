@@ -127,6 +127,30 @@ test('VS Code product projection correlates internal host receipt ids to canonic
   assert.equal(vscodeResult.contractConformant, true, JSON.stringify(vscodeResult.violations));
 });
 
+test('VS Code product projection prefers action-owned acceptance receipts over internal quality receipts', async () => {
+  const fixture = findFixture('create-and-verify');
+  const loopResult = buildDevelopmentLoopResult(fixture);
+  const actionOwned = loopResult.verificationReceipts[0];
+  loopResult.verificationReceipts.push({
+    ...actionOwned,
+    sequence: actionOwned.sequence + 100,
+    actionId: 'vscode-auto-validation-internal',
+    idempotencyKey: `${actionOwned.runId}:vscode-auto-validation-internal`,
+    verifier: 'vscode-agent-quality-gate',
+  });
+  const kernel = new CanonicalCodingKernel(new VsCodeCodingKernelRuntimeAdapter({
+    async runCanonical() {
+      return loopResult;
+    },
+  }));
+
+  const output = await kernel.execute(routeInput(false, fixture));
+  assert.deepEqual(
+    output.result.codingConformance.verifications.map(receipt => receipt.actionId),
+    [actionOwned.actionId],
+  );
+});
+
 function buildDevelopmentLoopResult(fixture) {
   const runId = `conformance-${fixture.fixtureId}`;
   const toolExecutionReceipts = fixture.expected.toolExecutions.map(receipt => ({
