@@ -862,14 +862,16 @@
         "export function projectVsCodeCodingKernelTaskContract(",
         "return resolveCodingKernelTaskContract({",
         "surface: 'vscode'",
-        "verificationRequired: input.taskContract.qualityObligations.length > 0"
+        "const explicitlyRequiresVerification = input.taskContract.qualityObligations.length > 0",
+        "...(explicitlyRequiresVerification ? { verificationRequired: true } : {})"
       ],
       "excludes": [
         "export class",
         "runAgenticLoop",
         "WorkspaceEditService",
         "interface CodingKernelTaskContract",
-        "CODING_KERNEL_TASK_CONTRACT_VERSION"
+        "CODING_KERNEL_TASK_CONTRACT_VERSION",
+        "verificationRequired: false"
       ],
       "passed": true
     },
@@ -1212,5 +1214,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "75013a3f6f952a64fd01107fede552d0a810a65bc8939d411c79c2149f886967"
+  "baseline_sha256": "61e01eb1b7d35a7dffe2f147e0a5f0024e9d3bb502c9bb3aa04105a582855906"
 }

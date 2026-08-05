@@ -31,4 +31,4 @@
 | verification | shared-CanonicalVerificationService | - | 1 | converged |
 | completion-decision | shared-CanonicalCompletionDecisionService | - | 1 | converged |
 
-This is a non-qualification architecture convergence baseline. It does not assert a unified cross-Surface Coding Kernel or Gate 0 pass.
+This is a non-qualification local architecture convergence baseline. It records a unified cross-Surface Coding Kernel and does not assert Gate 0 pass or qualification.

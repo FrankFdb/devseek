@@ -6,10 +6,10 @@
 
 - generator: `devseek-doc-governance/v1`
 - active selector sha256: `7a2148a0e46e6305f7ba220749908974b3bf3f6970a19069b1b56f3e8c46f8c9`
-- legacy inventory sha256: `f8460c7576e4c826787c0af6bc3941db242ea2d59e141658e51d0aa376159d70`
-- governed documents: `44`
+- legacy inventory sha256: `6aaa11bc64d6166da5f62ea6727f1f4f64ec76feaecc919589d31f51575ae0cc`
+- governed documents: `43`
 - active baselines: `3`
-- legacy documents: `41`
+- legacy documents: `40`
 - asserts Gate 0 pass: `false`
 
 ## Active Baselines
@@ -25,7 +25,7 @@
 | Decision | Count |
 | --- | ---: |
 | active | 3 |
-| keep | 35 |
+| keep | 34 |
 | revise | 0 |
 | supersede | 2 |
 | archive | 0 |
@@ -65,7 +65,6 @@
 | `docs/requirements/references/02-openai-codex.md` | requirements | reference | not-applicable | external-reference | `docs/requirements/02-顶级编程智能体需求基线.md` |
 | `docs/requirements/references/03-github-copilot.md` | requirements | reference | not-applicable | external-reference | `docs/requirements/02-顶级编程智能体需求基线.md` |
 | `docs/requirements/references/04-other-coding-agents.md` | requirements | reference | not-applicable | external-reference | `docs/requirements/02-顶级编程智能体需求基线.md` |
-| `docs/top-agent-convergence-audit-20260711/01-DevSeek现状与功能回退根因审计.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
 | `docs/top-agent-convergence-audit-20260711/02-Codex-Claude-Code-DevSeek软件架构对比.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
 | `docs/top-agent-convergence-audit-20260711/03-顶级编程智能体目标软件架构.md` | handoff | historical | keep | supporting-ref | `docs/architecture/01-顶级编程智能体总体架构设计.md` |
 | `docs/top-agent-convergence-audit-20260711/04-分能力专项迭代与收敛路线图.md` | handoff | historical | keep | supporting-ref | `docs/requirements/02-顶级编程智能体需求基线.md` |

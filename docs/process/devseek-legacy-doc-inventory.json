@@ -254,13 +254,6 @@
       "rationale": "External capability reference snapshot supporting REQ-02, not a DevSeek backlog or source owner."
     },
     {
-      "path": "docs/top-agent-convergence-audit-20260711/01-DevSeek现状与功能回退根因审计.md",
-      "source_group": "handoff",
-      "decision": "keep",
-      "relationship": "legacy-audit-report",
-      "rationale": "Retained as convergence audit evidence; 14 remains the active process backlog."
-    },
-    {
       "path": "docs/top-agent-convergence-audit-20260711/02-Codex-Claude-Code-DevSeek软件架构对比.md",
       "source_group": "handoff",
       "decision": "keep",
@@ -343,5 +336,5 @@
       "rationale": "G0-01 selector marks this as supporting REQ-02 audit entry and applicability boundary."
     }
   ],
-  "inventory_sha256": "f8460c7576e4c826787c0af6bc3941db242ea2d59e141658e51d0aa376159d70"
+  "inventory_sha256": "6aaa11bc64d6166da5f62ea6727f1f4f64ec76feaecc919589d31f51575ae0cc"
 }

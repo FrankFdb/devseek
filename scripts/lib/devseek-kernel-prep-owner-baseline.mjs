@@ -482,13 +482,15 @@ const SOURCE_CHECKS = Object.freeze([
     'export function projectVsCodeCodingKernelTaskContract(',
     'return resolveCodingKernelTaskContract({',
     "surface: 'vscode'",
-    'verificationRequired: input.taskContract.qualityObligations.length > 0',
+    'const explicitlyRequiresVerification = input.taskContract.qualityObligations.length > 0',
+    '...(explicitlyRequiresVerification ? { verificationRequired: true } : {})',
   ], [
     'export class',
     'runAgenticLoop',
     'WorkspaceEditService',
     'interface CodingKernelTaskContract',
     'CODING_KERNEL_TASK_CONTRACT_VERSION',
+    'verificationRequired: false',
   ]),
   check('vscode-attachment-invariant-route-owner', SOURCE_PATHS.kernelRouteDecision, [
     "CODING_KERNEL_ROUTE_DECISION_VERSION = 'devseek.coding-kernel-route-decision/v1'",
@@ -858,7 +860,7 @@ export function renderKernelPrepOwnerBaselineMarkdown(baseline) {
       `| ${domain.domain_id} | ${domain.current_owners.map(owner => owner.owner_id).join(', ')} | ${domain.missing_surfaces.join(', ') || '-'} | ${domain.target_owner_count} | ${domain.convergence_status} |`
     )),
     '',
-    'This is a non-qualification architecture convergence baseline. It does not assert a unified cross-Surface Coding Kernel or Gate 0 pass.',
+    'This is a non-qualification local architecture convergence baseline. It records a unified cross-Surface Coding Kernel and does not assert Gate 0 pass or qualification.',
     '',
   ];
   return lines.join('\n');

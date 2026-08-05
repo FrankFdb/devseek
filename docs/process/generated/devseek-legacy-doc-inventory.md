@@ -8,12 +8,12 @@
 - schema: `devseek.legacy-doc-inventory/v1`
 - scope: `top-agent-convergence`
 - asserts Gate 0 pass: `false`
-- inventory sha256: `f8460c7576e4c826787c0af6bc3941db242ea2d59e141658e51d0aa376159d70`
+- inventory sha256: `6aaa11bc64d6166da5f62ea6727f1f4f64ec76feaecc919589d31f51575ae0cc`
 - active selector: `docs/process/devseek-active-baseline-selector.json`
 - active selector sha256: `7a2148a0e46e6305f7ba220749908974b3bf3f6970a19069b1b56f3e8c46f8c9`
-- governed markdown documents: `44`
+- governed markdown documents: `43`
 - active baselines excluded from legacy inventory: `3`
-- inventory entries: `41/41`
+- inventory entries: `40/40`
 - missing coverage: `0`
 - unexpected coverage: `0`
 - unresolved decisions: `0`
@@ -32,7 +32,7 @@
 
 | Decision | Count |
 | --- | ---: |
-| keep | 35 |
+| keep | 34 |
 | revise | 0 |
 | supersede | 2 |
 | archive | 0 |
@@ -72,7 +72,6 @@
 | `docs/requirements/references/02-openai-codex.md` | requirements | not-applicable | external-reference | - | External capability reference snapshot supporting REQ-02, not a DevSeek backlog or source owner. |
 | `docs/requirements/references/03-github-copilot.md` | requirements | not-applicable | external-reference | - | External capability reference snapshot supporting REQ-02, not a DevSeek backlog or source owner. |
 | `docs/requirements/references/04-other-coding-agents.md` | requirements | not-applicable | external-reference | - | External capability reference snapshot supporting REQ-02, not a DevSeek backlog or source owner. |
-| `docs/top-agent-convergence-audit-20260711/01-DevSeek现状与功能回退根因审计.md` | handoff | keep | legacy-audit-report | - | Retained as convergence audit evidence; 14 remains the active process backlog. |
 | `docs/top-agent-convergence-audit-20260711/02-Codex-Claude-Code-DevSeek软件架构对比.md` | handoff | keep | legacy-audit-report | - | Retained as comparative architecture evidence; it does not issue current work. |
 | `docs/top-agent-convergence-audit-20260711/03-顶级编程智能体目标软件架构.md` | handoff | keep | supporting-ref | ARCH-01-TOP-AGENT-ARCHITECTURE-BASELINE | G0-01 selector marks this as supporting ARCH-01 target overlay, not a second active architecture owner. |
 | `docs/top-agent-convergence-audit-20260711/04-分能力专项迭代与收敛路线图.md` | handoff | keep | supporting-ref | REQ-02-TOP-AGENT-REQUIREMENT-BASELINE | G0-01 selector marks this as supporting REQ-02 capability route, not an independent backlog. |

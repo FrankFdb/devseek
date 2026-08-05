@@ -135,6 +135,10 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     fs.readFileSync(path.join(repoRoot, 'docs/process/generated/devseek-kernel-prep-owner-baseline.md'), 'utf8'),
     renderKernelPrepOwnerBaselineMarkdown(actual),
   );
+  assert.match(
+    renderKernelPrepOwnerBaselineMarkdown(actual),
+    /records a unified cross-Surface Coding Kernel and does not assert Gate 0 pass or qualification/,
+  );
 });
 
 test('product Surfaces do not use conformance fixtures or evaluators as execution routes', () => {

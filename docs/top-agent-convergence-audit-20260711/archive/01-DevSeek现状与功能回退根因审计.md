@@ -2,7 +2,7 @@
 devseek_governance:
   generator: "devseek-doc-governance/v1"
   status: "historical"
-  path: "docs/top-agent-convergence-audit-20260711/01-DevSeek现状与功能回退根因审计.md"
+  path: "docs/top-agent-convergence-audit-20260711/archive/01-DevSeek现状与功能回退根因审计.md"
   source_group: "handoff"
   decision: "keep"
   relationship: "legacy-audit-report"
@@ -16,8 +16,10 @@ devseek_governance:
 
 <!-- DEVSEEK-GOVERNANCE-BANNER:START -->
 > [!NOTE]
-> DevSeek governance: this document is `historical` with decision `keep` and relationship `legacy-audit-report`. Current authority: `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md`. Machine source: `docs/process/devseek-legacy-doc-inventory.json`.
+> DevSeek governance: this document is archived historical evidence. Current process authority: `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md`. Machine source: `docs/process/devseek-active-baseline-selector.json`.
 <!-- DEVSEEK-GOVERNANCE-BANNER:END -->
+
+> 归档于 2026-08-05。本文保留 2026-07-11 根因审计快照；单一 Coding Kernel 与三 Surface 产品契约责任已完成，当前能力状态和后续任务以 `docs/process` 机器事实与根目录 `PLAN-当前收敛迭代计划.md` 为准。
 
 # DevSeek 现状与功能回退根因审计
 
@@ -58,10 +60,10 @@ devseek_governance:
 
 直接证据：
 
-- [`extension.ts`](../../packages/vscode-extension/src/extension.ts) 中 `runChat` 是 VS Code 总入口；约第 646～655 行根据 `effectiveFiles` 是否包含代码文件决定循环。
+- [`extension.ts`](../../../packages/vscode-extension/src/extension.ts) 中 `runChat` 是 VS Code 总入口；约第 646～655 行根据 `effectiveFiles` 是否包含代码文件决定循环。
 - 无代码附件的“纯代码创建”明确进入 `runAgenticLoop`；有代码附件才进入 `decomposeTask` 与 `runAgentLoop`。
-- [`packages/shared/src/agent-application-service.ts`](../../packages/shared/src/agent-application-service.ts) 主要路由 Provider Chat，`plan.reviewDecision`、`permission.decision`、`task.resume`、`task.cancel` 仍返回 UnsupportedCommand。
-- [`packages/cli/src/index.ts`](../../packages/cli/src/index.ts) 自己实现 `runCodingLoop`、artifact apply、validation 和 repair。
+- [`packages/shared/src/agent-application-service.ts`](../../../packages/shared/src/agent-application-service.ts) 主要路由 Provider Chat，`plan.reviewDecision`、`permission.decision`、`task.resume`、`task.cancel` 仍返回 UnsupportedCommand。
+- [`packages/cli/src/index.ts`](../../../packages/cli/src/index.ts) 自己实现 `runCodingLoop`、artifact apply、validation 和 repair。
 
 因此附件不只是上下文，而在改变任务的计划、工具、写盘、验证、完成和 UI 语义。同一自然语言请求在不同入口通过不同代码，是回退的第一根因。
 
@@ -147,11 +149,11 @@ DevSeek 已有 Intent Router、Workflow Selector、TaskContract、Task Decompose
 
 ### 6.1 Static spec grep 不是行为资格
 
-[`workflow-compliance.test.mjs`](../../packages/vscode-extension/test/unit/workflow-compliance.test.mjs) 在文件开头明确说明自己是 static-analysis/spec grep，不能替代完整 E2E。该文件目前包含约 123 个测试，并在 156 条提交中被修改约 73 次。它能防止符号被删除，但无法证明真实用户路径正确。
+[`workflow-compliance.test.mjs`](../../../packages/vscode-extension/test/unit/workflow-compliance.test.mjs) 在文件开头明确说明自己是 static-analysis/spec grep，不能替代完整 E2E。该文件目前包含约 123 个测试，并在 156 条提交中被修改约 73 次。它能防止符号被删除，但无法证明真实用户路径正确。
 
 ### 6.2 PA benchmark 没有走 VS Code 主链
 
-[`devseek-programming-agent-benchmark.mjs`](../../scripts/devseek-programming-agent-benchmark.mjs) 通过 Fake Bridge 返回预写的正确 `create_file`、`replace_file` 或 diff，再从 CLI 进入独立 `runCodingLoop`。
+[`devseek-programming-agent-benchmark.mjs`](../../../scripts/devseek-programming-agent-benchmark.mjs) 通过 Fake Bridge 返回预写的正确 `create_file`、`replace_file` 或 diff，再从 CLI 进入独立 `runCodingLoop`。
 
 它证明的是：
 
@@ -185,8 +187,8 @@ DevSeek 已有 Intent Router、Workflow Selector、TaskContract、Task Decompose
 
 典型冲突：
 
-- [`requirements/04-Agent优化路线图.md`](../requirements/04-Agent优化路线图.md) 自称主迭代入口，[`architecture/18`](../architecture/18-优秀编程智能体100%收敛与新窗口接管计划.md) 又自称唯一执行入口，而审计前的 [`docs/README.md`](../README.md) 未收录 ARCH-18；本次已修订索引并把旧文档列为待状态迁移。
-- [`requirements/01-当前需求现状.md`](../requirements/01-当前需求现状.md) 仍说 CLI/JSONL 尚未形成，后续文档又把 Phase 10 写成完成。
+- [`requirements/04-Agent优化路线图.md`](../../requirements/04-Agent优化路线图.md) 自称主迭代入口，[`architecture/18`](../../architecture/18-优秀编程智能体100%收敛与新窗口接管计划.md) 又自称唯一执行入口，而审计前的 [`docs/README.md`](../../README.md) 未收录 ARCH-18；本次已修订索引并把旧文档列为待状态迁移。
+- [`requirements/01-当前需求现状.md`](../../requirements/01-当前需求现状.md) 仍说 CLI/JSONL 尚未形成，后续文档又把 Phase 10 写成完成。
 - “接入 source-sanity”被写成“统一写入事实”，而 ARCH-18 又列出相同入口尚未接入完整 baseline/CAS/commit-token。
 - 旧 PRD、历史路线、事故复盘、最终审计和当前计划都留在活跃区。
 
@@ -217,7 +219,7 @@ DevSeek 已有 Intent Router、Workflow Selector、TaskContract、Task Decompose
 
 ## 9. 架构预算的盲点
 
-[`devseek-architecture-budgets.json`](../process/devseek-architecture-budgets.json) 只冻结 7 个旧热点文件，并未覆盖 `markdown-deliverable-task`、`task-contract`、`workspace-applier`、`evidence-grounding` 等新增长到 1000～1600 行的文件。
+[`devseek-architecture-budgets.json`](../../process/devseek-architecture-budgets.json) 只冻结 7 个旧热点文件，并未覆盖 `markdown-deliverable-task`、`task-contract`、`workspace-applier`、`evidence-grounding` 等新增长到 1000～1600 行的文件。
 
 更重要的是，行数预算没有测量：
 
