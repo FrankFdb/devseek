@@ -125,6 +125,20 @@ export function makeExecutionExitError(exitCode: number | null | undefined, comm
   return error;
 }
 
+export function resolveExecutionCloseError(input: {
+  exitCode: number | null;
+  timeoutSignaled: boolean;
+  timeoutMs: number;
+  command: string;
+}): ExecException | null {
+  // The close status is the settled process fact. A delayed JS timeout may run
+  // before libuv delivers an already-queued successful close event.
+  if (input.exitCode === 0) return null;
+  return input.timeoutSignaled
+    ? makeExecutionTimeoutError(input.timeoutMs, input.command)
+    : makeExecutionExitError(input.exitCode, input.command);
+}
+
 export function isExecTimeout(error: ExecException | null | undefined): boolean {
   return !!error && (error.killed || /timed out|timeout/i.test(error.message || ''));
 }

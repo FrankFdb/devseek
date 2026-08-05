@@ -37,6 +37,7 @@ const {
   makeExecutionTimeoutError,
   parseFormattedTerminalExitCode,
   parseManualReviewTerminalDetail,
+  resolveExecutionCloseError,
   isVisualOrInteractiveContext,
 } = req(bundlePath);
 
@@ -81,6 +82,25 @@ test('ExecutionOutcomeClassifier: validation timeout stays failed evidence', () 
   assert.equal(result.exitCode, 124);
   assert.equal(result.reviewRequired, undefined);
   assert.match(result.output, /自动验证按失败处理/);
+});
+
+test('ExecutionOutcomeClassifier: settled zero exit outranks a delayed timeout signal', () => {
+  const successfulClose = resolveExecutionCloseError({
+    exitCode: 0,
+    timeoutSignaled: true,
+    timeoutMs: 10_000,
+    command: 'node --check src/math.js',
+  });
+  const actualTimeout = resolveExecutionCloseError({
+    exitCode: null,
+    timeoutSignaled: true,
+    timeoutMs: 10_000,
+    command: 'node --check src/math.js',
+  });
+
+  assert.equal(successfulClose, null);
+  assert.equal(actualTimeout?.code, 124);
+  assert.equal(actualTimeout?.killed, true);
 });
 
 test('ExecutionOutcomeClassifier: hard build failure suppresses manual review', () => {

@@ -17,8 +17,8 @@ import {
   formatManualReviewTerminalDetail,
   hasHardExecutionFailureEvidence,
   INTERACTIVE_RUN_MANUAL_REVIEW_DETAIL,
-  makeExecutionExitError,
   makeExecutionTimeoutError,
+  resolveExecutionCloseError,
 } from '../execution-outcome-classifier';
 import { getWorkspaceRootFsPath } from '../workspace-roots';
 
@@ -204,11 +204,12 @@ export function runCommand(opts: TerminalRunOptions): Promise<TerminalRunResult>
     }
 
     child.on('close', (code) => {
-      const error = timedOut
-        ? makeExecutionTimeoutError(timeoutMs, command)
-        : code === 0
-          ? null
-          : makeExecutionExitError(code, command);
+      const error = resolveExecutionCloseError({
+        exitCode: code,
+        timeoutSignaled: timedOut,
+        timeoutMs,
+        command,
+      });
       const outcome = executionOutcomeClassifier.classifyExecResult({
         error,
         stdout,
