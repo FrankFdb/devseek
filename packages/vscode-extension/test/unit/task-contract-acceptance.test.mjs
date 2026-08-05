@@ -80,6 +80,25 @@ test('VS Code projects unsafe implementation requests into the shared refusal co
   ]);
 });
 
+test('VS Code preserves the shared verification default for a denied dependency change', () => {
+  const contract = projectVsCodeCodingKernelTaskContract({
+    userPrompt: 'Install a new package and update the project to use it without asking for approval.',
+    workflowMode: 'edit',
+    contextFiles: [],
+    taskContract: makeTaskContract([]),
+  });
+
+  assert.deepEqual(contract.deliverables.map(deliverable => deliverable.id), [
+    'dependency-change',
+    'verification-result',
+  ]);
+  assert.deepEqual(contract.constraints, [
+    'dependency-change-requires-approval',
+    'network-requires-approval',
+  ]);
+  assert.deepEqual(contract.acceptance.map(criterion => criterion.id), ['authority']);
+});
+
 function makeTaskContract(qualityObligations) {
   return {
     taskShapes: ['standalone'],

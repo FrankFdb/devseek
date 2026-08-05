@@ -17,14 +17,15 @@ export function projectVsCodeCodingKernelTaskContract(
   input: VsCodeCodingKernelTaskContractInput,
 ): CodingKernelTaskContract {
   const deliverableTargets = uniqueNonEmpty(input.taskContract.deliverableTargets);
+  const explicitlyRequiresVerification = input.taskContract.qualityObligations.length > 0
+    || input.taskContract.deliverables.includes('verification-result');
   return resolveCodingKernelTaskContract({
     prompt: input.userPrompt,
     surface: 'vscode',
     modeHint: projectTaskMode(input.workflowMode),
     contextFiles: uniqueNonEmpty([...input.contextFiles, ...input.taskContract.inputs]),
     targetPaths: deliverableTargets,
-    verificationRequired: input.taskContract.qualityObligations.length > 0
-      || input.taskContract.deliverables.includes('verification-result'),
+    ...(explicitlyRequiresVerification ? { verificationRequired: true } : {}),
   });
 }
 
