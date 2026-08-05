@@ -12,6 +12,7 @@ import {
   CanonicalCodingKernel,
   buildCodingKernelTaskContract,
   evaluateCodingConformanceFixture,
+  projectCodingKernelTaskContract,
 } from '../../../shared/dist/index.js';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
@@ -135,7 +136,7 @@ function observeVsCodeRouteOutput(fixture, routeOutput) {
     projection: {
       schemaVersion: fixture.schemaVersion,
       fixtureId: fixture.fixtureId,
-      taskContract: projectTaskContract(routeOutput.taskContract),
+      taskContract: projectCodingKernelTaskContract(routeOutput.taskContract),
       completion: projectCompletion(routeOutput),
     },
     unavailableDimensions: [
@@ -144,11 +145,6 @@ function observeVsCodeRouteOutput(fixture, routeOutput) {
       unavailable('verifications', 'route-evidence-incomplete', `agent-loop-result:verification-id-count=${routeOutput.result.verificationIds?.length ?? 0}`),
     ],
   };
-}
-
-function projectTaskContract(taskContract) {
-  const { version: _version, ...projection } = taskContract;
-  return projection;
 }
 
 function projectCompletion(output) {

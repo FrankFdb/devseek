@@ -12,6 +12,7 @@ import {
   CanonicalCodingKernel,
   buildCodingKernelTaskContract,
   evaluateCodingConformanceFixture,
+  projectCodingKernelTaskContract,
 } from '../../shared/dist/index.js';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
@@ -157,7 +158,7 @@ function observeCliCanonicalRoute(fixture, routeOutput) {
     projection: {
       schemaVersion: fixture.schemaVersion,
       fixtureId: fixture.fixtureId,
-      taskContract: projectTaskContract(routeOutput.output.taskContract),
+      taskContract: projectCodingKernelTaskContract(routeOutput.output.taskContract),
       toolExecutions: projectSettledCliActions(routeOutput.evidence),
       verifications: projectCliVerifications(routeOutput.evidence, fixture),
       completion: projectCliCompletion(routeOutput.output),
@@ -166,11 +167,6 @@ function observeCliCanonicalRoute(fixture, routeOutput) {
       unavailable('changeReceipts', 'route-evidence-incomplete', 'cli-change-event-has-paths-without-baseline-readback'),
     ],
   };
-}
-
-function projectTaskContract(taskContract) {
-  const { version: _version, ...projection } = taskContract;
-  return projection;
 }
 
 function projectSettledCliActions(evidence) {

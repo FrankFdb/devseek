@@ -3,8 +3,8 @@ import {
   sha256Object,
 } from './devseek-capability-ledger.mjs';
 
-export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v5';
-export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v5';
+export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v6';
+export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v6';
 
 const SOURCE_PATHS = Object.freeze({
   gate0: 'docs/process/devseek-gate0-decision-report.json',
@@ -80,6 +80,7 @@ const SOURCE_CHECKS = Object.freeze([
     'export interface CodingKernelExecutionOutput<TResult>',
     'export interface CodingKernelRuntimePort<TRuntimeContext, TResult>',
     'export class CanonicalCodingKernel<TRuntimeContext, TResult>',
+    'export function projectCodingKernelTaskContract(',
     "if (request.route !== 'canonical')",
     'coding-kernel-execution:unsupported-route',
   ], ['legacy-planned', 'CliLegacyCodingLoop']),
@@ -134,7 +135,13 @@ const SOURCE_CHECKS = Object.freeze([
     'projectCodingKernelTaskContract(output.taskContract)',
     'terminal-status-mismatch',
     'completion-evidence-mismatch',
-  ], ["from 'vscode'", 'CliCodingKernelRuntimeAdapter', 'runAgenticLoop']),
+  ], [
+    "from 'vscode'",
+    'CliCodingKernelRuntimeAdapter',
+    'runAgenticLoop',
+    'interface CodingKernelTaskContract',
+    'CODING_KERNEL_TASK_CONTRACT_VERSION',
+  ]),
   check('headless-product-route-probe', SOURCE_PATHS.headlessProductProbe, [
     'Headless product entry delegates one immutable request to the shared canonical Kernel',
     "assert.equal(calls.every(call => call.surface === 'headless'), true)",
@@ -147,23 +154,23 @@ const SOURCE_CHECKS = Object.freeze([
     'CLI canonical Kernel probe exposes settled output without inventing mutation readback receipts',
     "adapterId: 'cli-canonical-coding-kernel-development-probe'",
     "evidenceClass: 'development-route-replay'",
-    'taskContract: projectTaskContract(routeOutput.output.taskContract)',
+    'taskContract: projectCodingKernelTaskContract(routeOutput.output.taskContract)',
     "unavailable('changeReceipts'",
     'verifications: projectCliVerifications(routeOutput.evidence, fixture)',
     'completion: projectCliCompletion(routeOutput.output)',
     'evaluation.productRouteEvidenceComplete, false',
-  ], ['CliLegacyCodingLoop', 'cli-legacy-coding-loop']),
+  ], ['CliLegacyCodingLoop', 'cli-legacy-coding-loop', 'function projectTaskContract(']),
   check('vscode-coding-conformance-development-probe', SOURCE_PATHS.vscodeCodingConformanceProbe, [
     'VS Code canonical Kernel probe exposes task and terminal output without inventing tool receipts',
     "adapterId: 'vscode-coding-kernel-execution-development-probe'",
     "evidenceClass: 'development-route-replay'",
-    'taskContract: projectTaskContract(routeOutput.taskContract)',
+    'taskContract: projectCodingKernelTaskContract(routeOutput.taskContract)',
     "unavailable('toolExecutions'",
     "unavailable('changeReceipts'",
     "unavailable('verifications'",
     'completion: projectCompletion(routeOutput)',
     'evaluation.productRouteEvidenceComplete, false',
-  ]),
+  ], ['function projectTaskContract(']),
   check('vscode-kernel-composition', SOURCE_PATHS.extension, [
     'new AgentKernelService(terminalPermissionCoordinator, productCodingKernelExecutor)',
     'new ActiveChatRunCoordinator()',
@@ -275,7 +282,13 @@ const SOURCE_CHECKS = Object.freeze([
     'export function projectVsCodeCodingKernelTaskContract(',
     'return buildCodingKernelTaskContract({',
     "provenanceRefs: ['task-semantic-contract:v3', 'surface:vscode']",
-  ], ['export class', 'runAgenticLoop', 'WorkspaceEditService']),
+  ], [
+    'export class',
+    'runAgenticLoop',
+    'WorkspaceEditService',
+    'interface CodingKernelTaskContract',
+    'CODING_KERNEL_TASK_CONTRACT_VERSION',
+  ]),
   check('vscode-attachment-invariant-route-owner', SOURCE_PATHS.kernelRouteDecision, [
     "CODING_KERNEL_ROUTE_DECISION_VERSION = 'devseek.coding-kernel-route-decision/v1'",
     'export function decideCodingKernelRoute(',
@@ -385,7 +398,13 @@ const SOURCE_CHECKS = Object.freeze([
     'export function buildCliCodingKernelTaskContract(',
     'return buildCodingKernelTaskContract({',
     "provenanceRefs: ['user-prompt', 'surface:cli']",
-  ], ['export class', 'CliWorkspaceMutationService', 'CliVerificationService']),
+  ], [
+    'export class',
+    'CliWorkspaceMutationService',
+    'CliVerificationService',
+    'interface CodingKernelTaskContract',
+    'CODING_KERNEL_TASK_CONTRACT_VERSION',
+  ]),
   check('cli-workspace-mutation', SOURCE_PATHS.cliMutation, [
     'export class CliWorkspaceMutationService',
   ]),
@@ -418,6 +437,7 @@ export function buildKernelPrepOwnerBaseline(sources) {
     ...assertion,
     passed: sourceCheckPassed(assertion, sources.sourceContents[assertion.path] ?? ''),
   }));
+  const semanticDomains = buildSemanticDomains();
   const baseline = {
     schema_version: KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION,
     baseline_id: KERNEL_PREP_OWNER_BASELINE_ID,
@@ -449,7 +469,7 @@ export function buildKernelPrepOwnerBaseline(sources) {
       source_ref: 'docs/top-agent-convergence-audit-20260711/02-Codex-Claude-Code-DevSeek软件架构对比.md',
     },
     product_routes: buildProductRoutes(headlessProductEntrypoints),
-    semantic_domains: buildSemanticDomains(),
+    semantic_domains: semanticDomains,
     counts: {
       product_routes: 4,
       active_product_routes: headlessProductEntrypoints === 1 ? 4 : 3,
@@ -460,7 +480,9 @@ export function buildKernelPrepOwnerBaseline(sources) {
       legacy_execution_owners: 0,
       cross_surface_kernel_routes: headlessProductEntrypoints === 1 ? 4 : 3,
       semantic_domains: 5,
-      converged_semantic_domains: 0,
+      converged_semantic_domains: semanticDomains.filter(domainEntry => (
+        domainEntry.convergence_status === 'converged'
+      )).length,
       source_checks: sourceChecks.length,
       failed_source_checks: sourceChecks.filter(assertion => !assertion.passed).length,
     },
@@ -512,13 +534,18 @@ export function validateKernelPrepOwnerBaseline(baseline, sources) {
   if (baseline.counts?.cross_surface_kernel_routes !== 4) {
     errors.push(`cross-surface-kernel-routes:unexpected-${baseline.counts?.cross_surface_kernel_routes}`);
   }
-  if (baseline.counts?.converged_semantic_domains !== 0) {
+  if (baseline.counts?.converged_semantic_domains !== 1) {
     errors.push(`semantic-domain:unexpected-converged-${baseline.counts?.converged_semantic_domains}`);
   }
   for (const domain of baseline.semantic_domains ?? []) {
     if (domain.target_owner_count !== 1) errors.push(`semantic-domain:${domain.domain_id}:target-owner-count`);
-    if (domain.convergence_status !== 'not-converged') {
+    const expectedStatus = domain.domain_id === 'canonical-task-contract' ? 'converged' : 'not-converged';
+    if (domain.convergence_status !== expectedStatus) {
       errors.push(`semantic-domain:${domain.domain_id}:unexpected-${domain.convergence_status}`);
+    }
+    if (domain.convergence_status === 'converged'
+      && (domain.current_owner_count !== 1 || domain.missing_surfaces.length !== 0)) {
+      errors.push(`semantic-domain:${domain.domain_id}:invalid-converged-owner-set`);
     }
   }
   return {
@@ -628,9 +655,8 @@ function buildProductRoutes(headlessProductEntrypoints) {
 
 function buildSemanticDomains() {
   return [
-    domain('task-contract', 'TaskContractPort', [
+    domain('canonical-task-contract', 'CodingKernelTaskContract', [
       owner('shared-CodingKernelTaskContract', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedCodingKernel),
-      owner('vscode-rich-TaskSemanticContract', ['vscode'], SOURCE_PATHS.taskContract),
     ], []),
     domain('tool-execution', 'ToolExecutorPort', [
       owner('vscode-AgentToolExecutor', ['vscode'], SOURCE_PATHS.toolExecutor),
@@ -653,6 +679,9 @@ function buildSemanticDomains() {
 }
 
 function domain(domainId, targetPort, currentOwners, missingSurfaces) {
+  const convergenceStatus = currentOwners.length === 1 && missingSurfaces.length === 0
+    ? 'converged'
+    : 'not-converged';
   return {
     domain_id: domainId,
     target_port: targetPort,
@@ -660,7 +689,7 @@ function domain(domainId, targetPort, currentOwners, missingSurfaces) {
     current_owner_count: currentOwners.length,
     current_owners: currentOwners,
     missing_surfaces: missingSurfaces,
-    convergence_status: 'not-converged',
+    convergence_status: convergenceStatus,
   };
 }
 

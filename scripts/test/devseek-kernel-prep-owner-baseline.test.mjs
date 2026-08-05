@@ -20,7 +20,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 const sources = loadSources();
 const expected = buildKernelPrepOwnerBaseline(sources);
 
-test('kernel prep owner baseline is source-bound and discloses every unconverged product boundary', () => {
+test('kernel prep owner baseline is source-bound and discloses converged and remaining product boundaries', () => {
   const actual = readJson(path.join(repoRoot, 'docs/process/devseek-kernel-prep-owner-baseline.json'));
 
   assert.equal(canonicalJson(actual), canonicalJson(expected));
@@ -49,7 +49,7 @@ test('kernel prep owner baseline is source-bound and discloses every unconverged
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
     semantic_domains: 5,
-    converged_semantic_domains: 0,
+    converged_semantic_domains: 1,
     source_checks: 47,
     failed_source_checks: 0,
   });
@@ -72,13 +72,20 @@ test('kernel prep owner baseline is source-bound and discloses every unconverged
     ],
   );
   assert.deepEqual(actual.semantic_domains.map(domain => domain.domain_id), [
-    'task-contract',
+    'canonical-task-contract',
     'tool-execution',
     'workspace-mutation',
     'verification',
     'completion-decision',
   ]);
-  assert.equal(actual.semantic_domains.every(domain => domain.convergence_status === 'not-converged'), true);
+  const taskContractDomain = actual.semantic_domains.find(domain => domain.domain_id === 'canonical-task-contract');
+  assert.equal(taskContractDomain.convergence_status, 'converged');
+  assert.equal(taskContractDomain.current_owner_count, 1);
+  assert.deepEqual(taskContractDomain.current_owners[0].surfaces, ['vscode', 'cli', 'headless']);
+  assert.deepEqual(taskContractDomain.missing_surfaces, []);
+  assert.equal(actual.semantic_domains.filter(domain => (
+    domain.domain_id !== 'canonical-task-contract'
+  )).every(domain => domain.convergence_status === 'not-converged'), true);
   assert.equal(actual.source_checks.every(assertion => assertion.passed), true);
   assert.equal(fs.existsSync(path.join(repoRoot, 'packages/cli/src/cli-legacy-coding-loop.ts')), false);
   assert.equal(fs.existsSync(path.join(repoRoot, 'packages/cli/test/cli-legacy-coding-loop.test.mjs')), false);
@@ -114,6 +121,24 @@ test('product Surfaces do not use conformance fixtures or evaluators as executio
     .filter(filePath => (
       /CODING_CONFORMANCE_DEVELOPMENT_FIXTURES|evaluateCodingConformanceFixture|CodingConformanceProjectionAdapter/
         .test(fs.readFileSync(filePath, 'utf8'))
+    ))
+    .map(filePath => path.relative(repoRoot, filePath));
+
+  assert.deepEqual(hits, []);
+});
+
+test('product Surfaces cannot redefine the shared canonical TaskContract', () => {
+  const productRoots = [
+    'packages/vscode-extension/src',
+    'packages/cli/src',
+    'packages/bridge/src',
+    'packages/headless/src',
+  ];
+  const hits = productRoots.flatMap(relativeRoot => collectTypeScriptFiles(path.join(repoRoot, relativeRoot)))
+    .filter(filePath => (
+      /interface CodingKernelTaskContract|CODING_KERNEL_TASK_CONTRACT_VERSION\s*=/.test(
+        fs.readFileSync(filePath, 'utf8'),
+      )
     ))
     .map(filePath => path.relative(repoRoot, filePath));
 
@@ -191,7 +216,7 @@ test('kernel prep owner baseline checker validates the current generated artifac
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    converged_semantic_domains: 0,
+    converged_semantic_domains: 1,
     failed_source_checks: 0,
     qualification_effect: 'NONE',
   });

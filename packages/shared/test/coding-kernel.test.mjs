@@ -5,6 +5,7 @@ import {
   CODING_KERNEL_TASK_CONTRACT_VERSION,
   CanonicalCodingKernel,
   buildCodingKernelTaskContract,
+  projectCodingKernelTaskContract,
 } from '../dist/index.js';
 
 function taskContract() {
@@ -93,4 +94,23 @@ test('task contract rejects missing provenance and ambiguous acceptance ids', ()
     ],
     provenanceRefs: ['user-prompt'],
   }), /invalid-acceptance/u);
+});
+
+test('canonical TaskContract projection has one immutable shared owner', () => {
+  const contract = taskContract();
+  const projection = projectCodingKernelTaskContract(contract);
+
+  assert.equal('version' in projection, false);
+  assert.deepEqual(projection, {
+    goal: contract.goal,
+    mode: contract.mode,
+    scope: contract.scope,
+    deliverables: contract.deliverables,
+    constraints: contract.constraints,
+    acceptance: contract.acceptance,
+    provenanceRefs: contract.provenanceRefs,
+  });
+  assert.equal(Object.isFrozen(projection), true);
+  assert.equal(Object.isFrozen(projection.scope.include), true);
+  assert.throws(() => projection.scope.include.push('surface-owned-path.ts'), TypeError);
 });

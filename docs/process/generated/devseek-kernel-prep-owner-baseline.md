@@ -25,7 +25,7 @@
 
 | Domain | Current owners | Missing surfaces | Target owner count | Status |
 | --- | --- | --- | ---: | --- |
-| task-contract | shared-CodingKernelTaskContract, vscode-rich-TaskSemanticContract | - | 1 | not-converged |
+| canonical-task-contract | shared-CodingKernelTaskContract | - | 1 | converged |
 | tool-execution | vscode-AgentToolExecutor, cli-artifact-interpreter | headless | 1 | not-converged |
 | workspace-mutation | vscode-WorkspaceEditService, cli-CliWorkspaceMutationService | headless | 1 | not-converged |
 | verification | vscode-ValidationService, cli-CliVerificationService | headless | 1 | not-converged |
