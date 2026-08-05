@@ -97,3 +97,22 @@ test('AgentTurnRoutingService: unrelated smalltalk does not inherit task semanti
   assert.equal(loadCount, 0);
   assert.equal(calls[0].semanticContext, undefined);
 });
+
+test('AgentTurnRoutingService: targeted code task does not inherit a prior deliverable contract', () => {
+  const { calls, controller } = createController();
+  let loadCount = 0;
+  decideAgentTurnRoute(controller, {
+    newSession: false,
+    userDisplay: '请修复 src/math.js 中 add(a, b) 的明显错误。要求 add(2, 3) 返回 5。',
+    prompt: '请修复 src/math.js 中 add(a, b) 的明显错误。要求 add(2, 3) 返回 5。',
+    files: [],
+    agentEnabled: true,
+    loadPreviousSemanticContract: () => {
+      loadCount += 1;
+      return { version: 'devseek.task-semantic-contract/v3' };
+    },
+  });
+
+  assert.equal(loadCount, 0);
+  assert.equal(calls[0].semanticContext, undefined);
+});

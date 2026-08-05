@@ -35,6 +35,15 @@ test('Session continuation: detects correction about modifying original code', (
 test('Session continuation: detects explicit same-session follow-up wording', () => {
   assert.equal(isLikelySessionContinuation('在上一轮基础上继续加测试'), true);
   assert.equal(isLikelySessionContinuation('不要重新写，基于已有代码修改'), true);
+  assert.equal(isLikelySessionContinuation('继续修复 src/math.js'), true);
+});
+
+test('Session continuation: explicit target actions start independent task contracts', () => {
+  assert.equal(isLikelySessionContinuation(
+    '请修复 src/math.js 中 add(a, b) 的明显错误。要求 add(2, 3) 返回 5。',
+  ), false);
+  assert.equal(isLikelySessionContinuation('Fix src/math.js and verify add(2, 3).'), false);
+  assert.equal(isLikelySessionContinuation('Please update packages/api/index.ts.'), false);
 });
 
 test('Session continuation: detects explicit checkpoint resume wording', () => {

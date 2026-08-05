@@ -923,6 +923,13 @@ function lastFlattenedPromptSegment(promptText) {
   return separatorIndex >= 0 ? promptText.slice(separatorIndex + 2) : promptText;
 }
 
+function extractMarkedCurrentUserPrompt(promptText) {
+  const marker = '【当前用户消息】\n';
+  const text = String(promptText || '');
+  const markerIndex = text.lastIndexOf(marker);
+  return markerIndex >= 0 ? text.slice(markerIndex + marker.length).trim() : '';
+}
+
 function isControlledArchitectPrompt(promptText) {
   const text = String(promptText || '');
   return text.includes('任务规划器（Architect 角色）')
@@ -990,6 +997,8 @@ function extractEditorOriginalUserPrompt(promptText) {
 function extractControlledCurrentUserPrompt(promptText) {
   if (isControlledArchitectPrompt(promptText)) return extractArchitectUserPrompt(promptText);
   if (isControlledEditorPrompt(promptText)) return extractEditorOriginalUserPrompt(promptText);
+  const markedCurrentUserPrompt = extractMarkedCurrentUserPrompt(promptText);
+  if (markedCurrentUserPrompt) return markedCurrentUserPrompt;
   return lastFlattenedPromptSegment(promptText).trim();
 }
 
@@ -1062,10 +1071,15 @@ function bindControlledPromptContract({
   };
 
   if (ordinal === 1) {
+    const markedCurrentUserPrompt = extractMarkedCurrentUserPrompt(text);
+    const flattenedInitialPromptBound = !markedCurrentUserPrompt
+      && expectedPromptOccurrences === 1
+      && text.endsWith(`\n\n${expectedPrompt}`);
+    const markedInitialPromptBound = markedCurrentUserPrompt === expectedPrompt
+      && text.endsWith(`【当前用户消息】\n${expectedPrompt}`);
     const fullInitialPromptBound = mode === 'full'
-      && text.endsWith(`\n\n${expectedPrompt}`)
       && currentDemandBound
-      && expectedPromptOccurrences === 1;
+      && (flattenedInitialPromptBound || markedInitialPromptBound);
     const editorInitialPromptBound = mode === 'editor-scoped'
       && currentDemandBound
       && expectedPromptOccurrences >= 1;
@@ -1180,6 +1194,7 @@ function runPromptContractSelfTest(expectedPrompt) {
   const validInitialText = `[指令]\nself-test system contract\n\n${expectedPrompt}`;
   const validProductInitialText = `你是一个拥有完整工具访问权限的编程智能体。\n\n[工具协议]\n必须使用受控工具。\n\n${expectedPrompt}`;
   const replacedUserIntent = `self-test replaced user intent ${sha256Text(expectedPrompt).slice(0, 12)}`;
+  const validSessionContinuationText = `你是一个拥有完整工具访问权限的编程智能体。\n\n[工具协议]\n必须使用受控工具。\n\n【同一会话续作上下文】\n当前用户消息：${expectedPrompt}\n上一轮用户目标：${replacedUserIntent}\n\n【当前用户消息】\n${expectedPrompt}`;
   const validPlannerText = [
     '你是一个顶级编程智能体的任务规划器（Architect 角色）。',
     '请严格只为下方【用户需求】制定计划。',
@@ -1273,6 +1288,28 @@ function runPromptContractSelfTest(expectedPrompt) {
       expectedBound: true,
       binding: bindControlledPromptContract({
         promptText: validProductInitialText,
+        ordinal: 1,
+        expectedPrompt,
+        runId,
+        priorRequests: [],
+      }),
+    },
+    {
+      name: 'session-continuation-current-user-demand',
+      expectedBound: true,
+      binding: bindControlledPromptContract({
+        promptText: validSessionContinuationText,
+        ordinal: 1,
+        expectedPrompt,
+        runId,
+        priorRequests: [],
+      }),
+    },
+    {
+      name: 'session-continuation-appended-replacement',
+      expectedBound: false,
+      binding: bindControlledPromptContract({
+        promptText: `${validSessionContinuationText}\n${replacedUserIntent}`,
         ordinal: 1,
         expectedPrompt,
         runId,
@@ -1435,17 +1472,59 @@ function runPromptContractSelfTestForScenarios(scenarios, suiteOptions = resolve
     scenario: candidate.id,
     ...runPromptContractSelfTest(candidate.prompt),
   }));
-  const errors = reports.flatMap(report => report.errors.map(error => `${report.scenario}: ${error}`));
+  const correlationCases = [];
+  if (scenarios.length > 1) {
+    const correlatedScenario = scenarios[1];
+    const runId = 'prompt-contract-scenario-correlation-run';
+    const initialContract = bindControlledPromptContract({
+      promptText: `[指令]\nself-test system contract\n\n${correlatedScenario.prompt}`,
+      ordinal: 1,
+      expectedPrompt: correlatedScenario.prompt,
+      runId,
+      priorRequests: [],
+    });
+    const continuationBinding = bindControlledScenarioPrompt({
+      promptText: `${incrementalPromptPrefix}[助手]\n[DevSeek 已执行工具请求摘要]\n\n[工具结果 Round 1]\nself-test tool result`,
+      runId,
+      scenarios,
+      priorRequests: [{
+        scenarioId: correlatedScenario.id,
+        requestKind: 'agent-execution',
+        runId,
+        bound: initialContract.bound,
+        promptContract: initialContract,
+      }],
+    });
+    correlationCases.push({
+      name: 'incremental-turn-correlates-by-run-id',
+      expectedBound: true,
+      observedBound: continuationBinding.promptContract.bound,
+      expectedScenario: correlatedScenario.id,
+      observedScenario: continuationBinding.scenario?.id || '',
+      reason: continuationBinding.promptContract.reason,
+      passed: continuationBinding.promptContract.bound === true
+        && continuationBinding.scenario?.id === correlatedScenario.id,
+      scenario: 'suite-correlation',
+    });
+  }
+  const errors = [
+    ...reports.flatMap(report => report.errors.map(error => `${report.scenario}: ${error}`)),
+    ...correlationCases.filter(testCase => !testCase.passed)
+      .map(testCase => `${testCase.name}: expected ${testCase.expectedScenario}, observed ${testCase.observedScenario}`),
+  ];
   return {
     ok: errors.length === 0,
     contractVersion: 'devseek.controlled-prompt-binding/v1',
     scenarioCount: scenarios.length,
     sameDevSeekSession: suiteOptions.sameDevSeekSession === true,
     scenarios: reports,
-    cases: reports.flatMap(report => report.cases.map(testCase => ({
-      ...testCase,
-      scenario: report.scenario,
-    }))),
+    cases: [
+      ...reports.flatMap(report => report.cases.map(testCase => ({
+        ...testCase,
+        scenario: report.scenario,
+      }))),
+      ...correlationCases,
+    ],
     errors,
   };
 }
@@ -1455,9 +1534,17 @@ function bindControlledScenarioPrompt({ promptText, runId, scenarios, priorReque
   const currentScenarioCandidates = currentUserPrompt
     ? scenarios.filter(candidate => candidate.prompt === currentUserPrompt)
     : [];
+  const runScenarioIds = new Set(priorRequests
+    .filter(request => request.runId === runId && request.bound === true)
+    .map(request => request.scenarioId));
+  const runScenarioCandidates = runScenarioIds.size > 0
+    ? scenarios.filter(candidate => runScenarioIds.has(candidate.id))
+    : [];
   const candidateScenarios = currentScenarioCandidates.length > 0
     ? currentScenarioCandidates
-    : scenarios;
+    : runScenarioCandidates.length > 0
+      ? runScenarioCandidates
+      : scenarios;
   const attempts = candidateScenarios.map(candidate => {
     const scenarioPriorRequests = priorRequests.filter(request => (
       request.scenarioId === candidate.id
