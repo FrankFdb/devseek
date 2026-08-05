@@ -1,5 +1,7 @@
 import {
+  buildSecretHarvestingRefusalTaskContract,
   buildCodingKernelTaskContract,
+  isUnsafeSecretHarvestingImplementationRequest,
   type CodingKernelTaskContract,
   type CodingTaskMode,
 } from '@devseek-netai/shared';
@@ -17,6 +19,9 @@ export interface VsCodeCodingKernelTaskContractInput {
 export function projectVsCodeCodingKernelTaskContract(
   input: VsCodeCodingKernelTaskContractInput,
 ): CodingKernelTaskContract {
+  if (isUnsafeSecretHarvestingImplementationRequest(input.userPrompt)) {
+    return buildSecretHarvestingRefusalTaskContract('vscode');
+  }
   const deliverableTargets = uniqueNonEmpty(input.taskContract.deliverableTargets);
   const deliverables = input.taskContract.deliverables.length > 0
     ? input.taskContract.deliverables.map((kind, index) => ({

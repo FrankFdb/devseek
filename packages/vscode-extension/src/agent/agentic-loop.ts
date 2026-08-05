@@ -17,7 +17,10 @@ import type { ExecutionMode } from '../intent/intent-types';
 import type { CppValidationPolicy } from '../validation-planner';
 import { routeTaskSemanticContract } from '../task-intent-router';
 import type { TaskSemanticContract } from '../task-semantic-contract';
-import { hasUnsafeSecretHarvestingRefusalEvidence } from '../intent/safety-intent';
+import {
+  buildSecretHarvestingRefusalAcceptanceEvidence,
+  hasUnsafeSecretHarvestingRefusalEvidence,
+} from '../intent/safety-intent';
 import {
   buildTerminalFailureRepairFeedback,
   assessMissingCompletionEvidence,
@@ -1351,6 +1354,9 @@ export async function runAgenticLoop(
     verificationReceipts: allVerificationReceipts,
     toolExecutionReceipts: allToolExecutionReceipts,
     changeReceipts: allChangeReceipts,
+    ...(policyRefusalEvidenceSatisfied ? {
+      acceptanceEvidence: buildSecretHarvestingRefusalAcceptanceEvidence(),
+    } : {}),
     ...(manualReviewReason ? {
       manualReviewRequired: true,
       manualReviewReason,

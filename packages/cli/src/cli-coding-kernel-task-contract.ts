@@ -1,5 +1,7 @@
 import {
+  buildSecretHarvestingRefusalTaskContract,
   buildCodingKernelTaskContract,
+  isUnsafeSecretHarvestingImplementationRequest,
   type CodingKernelTaskContract,
   type CodingTaskMode,
 } from '@devseek-netai/shared';
@@ -11,12 +13,13 @@ const NON_MUTATING_REQUEST_RE = /(?:\breview\b|\baudit\b|\binspect\b|\banaly[sz]
 const MUTATION_VERB_PATTERN = '(release|publish|package|deploy|add|create|write|implement|fix|repair|recover(?:y)?|modify|update|refactor|apply|patch|发布|发版|打包|部署|添加|新增|创建|编写|实现|修复|恢复|修改|更新|重构|应用|打补丁)';
 const EXPLICIT_MUTATION_LEAD_RE = new RegExp(`^\\s*(?:(?:please|kindly)\\s+|(?:can|could|would)\\s+you\\s+|请|麻烦(?:你)?)*${MUTATION_VERB_PATTERN}`, 'iu');
 const EXPLICIT_MUTATION_FOLLOW_UP_RE = new RegExp(`(?:\\band\\b|\\bthen\\b|\\balso\\b|[,;，；]|并(?:且)?|然后|同时)\\s*(?:(?:please|kindly)\\s+|请)?${MUTATION_VERB_PATTERN}`, 'iu');
-const UNSAFE_SECRET_REQUEST_RE = /(?:harvest|steal|exfiltrat|collect).{0,48}(?:secret|credential|token|password)|(?:窃取|收集|导出).{0,32}(?:密钥|凭据|令牌|密码)/iu;
-
 export function buildCliCodingKernelTaskContract(
   prompt: string,
   contextFiles: readonly string[],
 ): CodingKernelTaskContract {
+  if (isUnsafeSecretHarvestingImplementationRequest(prompt)) {
+    return buildSecretHarvestingRefusalTaskContract('cli');
+  }
   const mode = classifyCliTaskMode(prompt);
   const mutating = mode === 'change' || mode === 'release';
   return buildCodingKernelTaskContract({
@@ -43,7 +46,6 @@ export function buildCliCodingKernelTaskContract(
 }
 
 function classifyCliTaskMode(prompt: string): CodingTaskMode {
-  if (UNSAFE_SECRET_REQUEST_RE.test(prompt)) return 'explain';
   if (NON_MUTATING_REQUEST_RE.test(prompt)) {
     const explicitMutation = EXPLICIT_MUTATION_LEAD_RE.exec(prompt)
       ?? EXPLICIT_MUTATION_FOLLOW_UP_RE.exec(prompt);

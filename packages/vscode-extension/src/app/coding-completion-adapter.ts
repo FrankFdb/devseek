@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import {
   CanonicalCompletionDecisionService,
+  isSecretHarvestingRefusalTaskContract,
   type CodingCompletionAcceptanceDecision,
   type CodingCompletionDecision,
   type CodingKernelTaskContract,
@@ -46,6 +47,7 @@ export class VsCodeCompletionAdapter {
       failureRef,
       deniedEffectRefs,
       explicitEvidence: input.result.acceptanceEvidence ?? [],
+      requiresDirectEvidence: isSecretHarvestingRefusalTaskContract(input.taskContract),
     });
     const pendingRefs = uncoveredChangedPaths.map(
       path => `vscode-mutation-receipt-missing:${normalizePath(path)}`,
@@ -93,6 +95,7 @@ function buildDirectAcceptanceEvidence(input: {
   readonly failureRef: string;
   readonly deniedEffectRefs: readonly string[];
   readonly explicitEvidence: readonly CodingCompletionAcceptanceDecision[];
+  readonly requiresDirectEvidence: boolean;
 }): CodingCompletionAcceptanceDecision[] {
   if (input.deniedEffectRefs.length > 0) {
     return input.acceptance.map(criterion => ({
@@ -115,6 +118,7 @@ function buildDirectAcceptanceEvidence(input: {
       evidenceRefs: input.failedArtifactRefs,
     }));
   }
+  if (input.requiresDirectEvidence) return [...input.explicitEvidence];
   if (input.verificationRequired || input.resultEvidenceRefs.length === 0) {
     return [...input.explicitEvidence];
   }

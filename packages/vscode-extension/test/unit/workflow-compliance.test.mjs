@@ -2707,14 +2707,17 @@ test('Run evidence: changed paths are projected from the canonical current run',
 
 test('Safety refusal: no-mutation delivery has one explicit evidence path', () => {
   const safetyIntent = src('src/intent/safety-intent.ts');
+  const safetyPolicy = src('../shared/src/coding-safety-policy.ts');
   const agenticLoop = src('src/agent/agentic-loop.ts');
   const runtimeState = src('src/agent/agent-runtime-state-machine.ts');
-  assertContains(safetyIntent, 'export function hasUnsafeSecretHarvestingRefusalEvidence', 'safety owner must validate refusal receipts');
-  assertContains(safetyIntent, 'isUnsafeSecretHarvestingImplementationRequest(requestText)', 'refusal evidence must consume the canonical safety intent owner');
-  assertContains(safetyIntent, 'runtime.workToolUsed !== true', 'a refusal receipt must reject work-tool side effects');
-  assertContains(safetyIntent, '(runtime.changedFileCount ?? 0) === 0', 'a refusal receipt must reject file mutations');
+  assertContains(safetyIntent, "from '@devseek-netai/shared'", 'VS Code safety intent must delegate to the shared owner');
+  assertContains(safetyPolicy, 'export function hasUnsafeSecretHarvestingRefusalEvidence', 'shared safety owner must validate refusal receipts');
+  assertContains(safetyPolicy, 'isUnsafeSecretHarvestingImplementationRequest(requestText)', 'refusal evidence must consume the canonical safety intent owner');
+  assertContains(safetyPolicy, 'runtime.workToolUsed !== true', 'a refusal receipt must reject work-tool side effects');
+  assertContains(safetyPolicy, '(runtime.changedFileCount ?? 0) === 0', 'a refusal receipt must reject file mutations');
   assertContains(agenticLoop, '{ workToolUsed: sawWorkTool, changedFileCount: allWrittenFiles.length }', 'exploratory completion must project real side-effect facts');
   assertContains(agenticLoop, 'policyRefusalEvidenceSatisfied,', 'Agent runtime settlement must receive explicit refusal evidence');
+  assertContains(agenticLoop, 'buildSecretHarvestingRefusalAcceptanceEvidence()', 'canonical completion must receive direct refusal acceptance evidence');
   assertContains(runtimeState, 'if (input.policyRefusalEvidenceSatisfied && hasDeliverySignal)', 'RuntimeState must own no-mutation refusal delivery');
   assert.match(
     runtimeState,

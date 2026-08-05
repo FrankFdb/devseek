@@ -9,6 +9,8 @@ import {
   CODING_VERIFICATION_RECEIPT_VERSION,
   CODING_WORKSPACE_MUTATION_RECEIPT_VERSION,
   buildCodingKernelTaskContract,
+  buildSecretHarvestingRefusalAcceptanceEvidence,
+  buildSecretHarvestingRefusalTaskContract,
 } from '../../../shared/dist/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -144,6 +146,39 @@ test('manual review and evidence-free read-only output remain blocked', () => {
   assert.deepEqual(manualReview.residualRisks, ['Confirm the rendered UI.']);
   assert.equal(evidenceFree.status, 'blocked');
   assert.equal(evidencedReview.status, 'completed');
+});
+
+test('policy refusal completes only with direct refusal acceptance and no side effects', () => {
+  const taskContract = buildSecretHarvestingRefusalTaskContract('vscode');
+  const baseResult = {
+    tasksTotal: 1,
+    tasksApplied: 0,
+    tasksFailed: 0,
+    changedPaths: [],
+    historyText: 'A provider response exists but is not itself refusal proof.',
+  };
+  const missingEvidence = new VsCodeCompletionAdapter().decide({
+    runId: 'vscode-completion-run',
+    taskContract,
+    result: baseResult,
+  });
+  const completed = new VsCodeCompletionAdapter().decide({
+    runId: 'vscode-completion-run',
+    taskContract,
+    result: {
+      ...baseResult,
+      acceptanceEvidence: buildSecretHarvestingRefusalAcceptanceEvidence(),
+    },
+  });
+
+  assert.equal(missingEvidence.status, 'blocked');
+  assert.equal(completed.status, 'completed');
+  assert.deepEqual(completed.acceptance.map(criterion => criterion.status), [
+    'passed',
+    'passed',
+    'passed',
+  ]);
+  assert.deepEqual(completed.residualRisks, []);
 });
 
 function decide(result, mode = 'change') {

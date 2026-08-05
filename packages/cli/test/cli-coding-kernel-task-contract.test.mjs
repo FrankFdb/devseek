@@ -78,5 +78,10 @@ test('CLI task contract classifies secret harvesting as non-mutating even when p
 
   assert.equal(contract.mode, 'explain');
   assert.deepEqual(contract.deliverables.map(deliverable => deliverable.kind), ['report']);
-  assert.match(contract.constraints[0], /Do not mutate/u);
+  assert.deepEqual(contract.constraints, ['no-work-tools', 'no-workspace-mutation']);
+  assert.deepEqual(contract.acceptance.map(criterion => criterion.id), [
+    'a-refusal',
+    'a-alternative',
+    'a-no-mutation',
+  ]);
 });

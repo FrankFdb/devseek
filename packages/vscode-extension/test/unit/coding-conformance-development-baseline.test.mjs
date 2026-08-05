@@ -13,8 +13,10 @@ import {
   CODING_VERIFICATION_RECEIPT_VERSION,
   CODING_WORKSPACE_MUTATION_RECEIPT_VERSION,
   CanonicalCodingKernel,
+  buildSecretHarvestingRefusalAcceptanceEvidence,
   buildCodingKernelTaskContract,
   evaluateCodingConformanceFixture,
+  isSecretHarvestingRefusalTaskContract,
   projectSettledCodingConformanceRun,
 } from '../../../shared/dist/index.js';
 
@@ -151,10 +153,12 @@ function buildDevelopmentLoopResult(fixture) {
   const blockedByAuthority = toolExecutionReceipts.some(receipt => receipt.status === 'denied');
   const verifiedAcceptanceIds = new Set(verificationReceipts
     .flatMap(receipt => receipt.acceptance.map(result => result.criterionId)));
-  const acceptanceEvidence = blockedByAuthority || fixture.expected.taskContract.mode !== 'change'
-    ? []
-    : fixture.expected.completion.acceptance
-      .filter(result => !verifiedAcceptanceIds.has(result.criterionId));
+  const acceptanceEvidence = isSecretHarvestingRefusalTaskContract(fixture.expected.taskContract)
+    ? buildSecretHarvestingRefusalAcceptanceEvidence()
+    : blockedByAuthority || fixture.expected.taskContract.mode !== 'change'
+      ? []
+      : fixture.expected.completion.acceptance
+        .filter(result => !verifiedAcceptanceIds.has(result.criterionId));
   const taskCount = Math.max(1, changeReceipts.length);
 
   return {
