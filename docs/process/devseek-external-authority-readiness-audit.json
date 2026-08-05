@@ -26,9 +26,9 @@
   "source_bindings": {
     "external_authority_requests": {
       "path": "docs/process/devseek-external-authority-requests.json",
-      "source_sha256": "c51d967ed1b34b634d6c785ff3d7076e82869e1d82b3c2ba70490e4126b4a11e",
+      "source_sha256": "47239b5590ad93bc2ca307fef7b10207491d683b7a50a53952fe2d4a334341eb",
       "request_set_id": "DEVSEEK-GATE0-EXTERNAL-AUTHORITY-REQUESTS/v1",
-      "request_set_sha256": "d6c98e47f42db91a4548304c18f9a109659670f2145b3dfde6ab0ee7065bed43",
+      "request_set_sha256": "417888cc53c0deaa212e3d2e61bfb7fc791afacd248e0adb4e42b0290bd54abe",
       "blocked_requests": 5
     },
     "r4_live_qualification_request_packet": {
@@ -62,14 +62,14 @@
     },
     "gate0_decision": {
       "path": "docs/process/devseek-gate0-decision-report.json",
-      "source_sha256": "85c486937e07952576931724531e3fd4d1e6dc84d58ff2a1b52c51301ee5d3f0",
+      "source_sha256": "d9df26f6bf488f995fa49c0ca5154eb49806cbfb815e46d7a44ff5af90a18b69",
       "decision_id": "DEVSEEK-GATE0-INFRASTRUCTURE-DECISION/v1",
       "qualification_status": "NOT_PASSED",
       "external_authority_blockers": 6
     },
     "package_scripts": {
       "path": "package.json",
-      "source_sha256": "905afe7a9db3e7f3054609040e5dac1930ca5f786ad53ba822f951ebb702637b",
+      "source_sha256": "77d475cf39644b8fd5bbcbb6c83f187ea792ef72f0f159f57ba66496abda03f6",
       "required_script": "verify:external-authority-readiness-audit",
       "required_script_present": true
     },
@@ -443,5 +443,5 @@
     "ledger_writes": 0,
     "provider_actions_performed": 0
   },
-  "audit_sha256": "fa454e11d1ea1d14dc2890e6559b3366d3723bf6869c6590e6e98c4d2e36a154"
+  "audit_sha256": "edb5bbf8a75c351b0cf87ec892670ba5c0d4ddf877cde7f6173a8f38676bc8d5"
 }

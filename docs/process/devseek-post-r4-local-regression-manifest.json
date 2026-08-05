@@ -29,7 +29,7 @@
     },
     "package_scripts": {
       "path": "package.json",
-      "source_sha256": "905afe7a9db3e7f3054609040e5dac1930ca5f786ad53ba822f951ebb702637b",
+      "source_sha256": "77d475cf39644b8fd5bbcbb6c83f187ea792ef72f0f159f57ba66496abda03f6",
       "required_script": "verify:post-r4-local-regression-manifest",
       "required_script_present": true
     },
@@ -414,5 +414,5 @@
     "gate_pass_assertions": 0,
     "bypasses": 0
   },
-  "manifest_sha256": "34b56ce100152f903dc78b23de94aef044ea7bc1309158c488eabdbf3c6b4190"
+  "manifest_sha256": "1b97b29d493c95821f91f7611a9f00c731b0d827b7012141d0c6f33e8dcc8813"
 }

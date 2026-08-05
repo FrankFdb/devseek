@@ -85,4 +85,4 @@
 
 ## Manifest Identity
 
-- Manifest SHA-256: `34b56ce100152f903dc78b23de94aef044ea7bc1309158c488eabdbf3c6b4190`
+- Manifest SHA-256: `1b97b29d493c95821f91f7611a9f00c731b0d827b7012141d0c6f33e8dcc8813`

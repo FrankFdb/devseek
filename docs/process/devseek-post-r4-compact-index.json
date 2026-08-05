@@ -64,8 +64,8 @@
     },
     "post_r4_local_regression_manifest": {
       "path": "docs/process/devseek-post-r4-local-regression-manifest.json",
-      "source_sha256": "e00a00641f45c27a80cd2430ed1cd38620b8765f7f84da11badb85fca7cf810a",
-      "manifest_sha256": "34b56ce100152f903dc78b23de94aef044ea7bc1309158c488eabdbf3c6b4190",
+      "source_sha256": "64ce4604bee8f860424a895ab634ba0c77eb456007ac13600b3fb172a0ca24dd",
+      "manifest_sha256": "1b97b29d493c95821f91f7611a9f00c731b0d827b7012141d0c6f33e8dcc8813",
       "covered_nonpermission_items": [
         "NP-05",
         "NP-06",
@@ -80,8 +80,8 @@
     },
     "external_authority_requests": {
       "path": "docs/process/devseek-external-authority-requests.json",
-      "source_sha256": "c51d967ed1b34b634d6c785ff3d7076e82869e1d82b3c2ba70490e4126b4a11e",
-      "request_set_sha256": "d6c98e47f42db91a4548304c18f9a109659670f2145b3dfde6ab0ee7065bed43",
+      "source_sha256": "47239b5590ad93bc2ca307fef7b10207491d683b7a50a53952fe2d4a334341eb",
+      "request_set_sha256": "417888cc53c0deaa212e3d2e61bfb7fc791afacd248e0adb4e42b0290bd54abe",
       "blocked_requests": 5
     },
     "r4_live_qualification_request_packet": {
@@ -92,7 +92,7 @@
     },
     "package_scripts": {
       "path": "package.json",
-      "source_sha256": "905afe7a9db3e7f3054609040e5dac1930ca5f786ad53ba822f951ebb702637b",
+      "source_sha256": "77d475cf39644b8fd5bbcbb6c83f187ea792ef72f0f159f57ba66496abda03f6",
       "required_script": "verify:post-r4-compact-index",
       "required_script_present": true
     },
@@ -441,5 +441,5 @@
     "gate_pass_assertions": 0,
     "bypasses": 0
   },
-  "index_sha256": "b56be1a5c7c8e6e943567660e22a8194f3f42578c8662ef6b8d4b18fe7b61fda"
+  "index_sha256": "b0d77ada4e86d18dc08fb703e1cddff1a308ebaf8f9fe7b862446d9b87333787"
 }
