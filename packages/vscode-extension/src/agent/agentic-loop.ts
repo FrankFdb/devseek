@@ -68,7 +68,11 @@ import {
   extractPlanningTodoItems,
 } from './agentic-planning';
 import { projectTaskContractAcceptance } from './task-contract-acceptance';
-import { getAgenticBlockingTerminalFailure } from './agentic-execution-evidence';
+import {
+  describeAgenticDeniedToolExecution,
+  getAgenticBlockingTerminalFailure,
+  getAgenticDeniedToolExecution,
+} from './agentic-execution-evidence';
 import {
   analyzeTerminalEvidence,
   describeAgentToolActivity,
@@ -1041,6 +1045,16 @@ export async function runAgenticLoop(
     // should appear in the prose bubble (Copilot/Claude Code pattern).
     if (roundHasWorkTools) {
       callbacks.onDelta('\x00PROSE_CLEAR\x00');
+    }
+
+    const deniedToolAfterTools = getAgenticDeniedToolExecution(allToolExecutionReceipts);
+    if (deniedToolAfterTools
+      && (loopRes.taskComplete || loopRes.allTodosCompleted)
+      && !callbacks.signal?.aborted) {
+      hadTaskComplete = hadTaskComplete || loopRes.taskComplete;
+      completeSummary = loopRes.completeSummary ?? cleanAgentFinalSummaryForUser(stripToolCallBlocks(text));
+      failedReason = describeAgenticDeniedToolExecution(deniedToolAfterTools);
+      break;
     }
 
     const missingAfterTools = promptRequiresTools

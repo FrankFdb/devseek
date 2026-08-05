@@ -2141,6 +2141,11 @@ test('Agentic loop: terminal completion evidence requires successful validation 
   assertContains(code, 'buildTerminalFailureRepairFeedback', 'terminal failure prose must be converted into a repair instruction');
   assertContains(code, 'assessMissingCompletionEvidence', 'agent loop must delegate semantic completion checks to evidence boundary');
   assertContains(code, 'getAgenticBlockingTerminalFailure', 'agentic runtime must use a final settlement gate for terminal failures');
+  assert.match(
+    code,
+    /getAgenticDeniedToolExecution\(allToolExecutionReceipts\)[\s\S]*?if \(deniedToolAfterTools[\s\S]*?loopRes\.taskComplete \|\| loopRes\.allTodosCompleted[\s\S]*?break;[\s\S]*?const missingAfterTools/,
+    'an acknowledged authority denial must settle before missing-deliverable recovery can request another provider round',
+  );
   assertContains(executionEvidence, 'findBlockingTerminalFailureEvidence(terminalEvidence)', 'agentic settlement owner must not let failed validation evidence be hidden by provider completion prose');
   assert.match(
     toolLoop,

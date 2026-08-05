@@ -1,3 +1,4 @@
+import type { CodingToolExecutionReceipt } from '@devseek-netai/shared';
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import {
   findBlockingTerminalFailureEvidence,
@@ -16,4 +17,16 @@ export function getAgenticBlockingTerminalFailure(
 ): TerminalEvidence | undefined {
   return getBlockingTerminalFailure(userPrompt, todos, writtenFiles, terminalEvidence, semanticContract)
     ?? findBlockingTerminalFailureEvidence(terminalEvidence);
+}
+
+export function getAgenticDeniedToolExecution(
+  receipts: readonly CodingToolExecutionReceipt<unknown>[],
+): CodingToolExecutionReceipt<unknown> | undefined {
+  return receipts.find(receipt => receipt.status === 'denied');
+}
+
+export function describeAgenticDeniedToolExecution(
+  receipt: CodingToolExecutionReceipt<unknown>,
+): string {
+  return `工具 ${receipt.tool} 未获授权：${receipt.permission.reason}`;
 }
