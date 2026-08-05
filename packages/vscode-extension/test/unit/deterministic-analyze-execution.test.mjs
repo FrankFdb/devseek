@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import Module from 'node:module';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -68,6 +68,64 @@ test('deterministic analyze execution: advisory plan request never triggers loca
 
     assert.equal(result, undefined);
     assert.deepEqual(statuses, []);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('deterministic analyze execution: local validation uses the canonical prepared terminal path', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-deterministic-run-'));
+  try {
+    fakeVscode.workspace.workspaceFolders = [{ uri: Uri.file(workspaceRoot), name: 'root', index: 0 }];
+    writeFileSync(path.join(workspaceRoot, 'main.cpp'), 'int main() { return 0; }\n', 'utf8');
+    const hostCommands = [];
+    const result = await tryExecuteDeterministicAnalyzeExecution({
+      task: {
+        id: 't1',
+        file: 'main.cpp',
+        action: 'analyze',
+        desc: '编译并运行 main.cpp 验证结果',
+        absPath: path.join(workspaceRoot, 'main.cpp'),
+      },
+      taskIndex: 1,
+      taskTotal: 1,
+      userPrompt: '请编译并运行当前 C++ 程序，确认退出码。',
+      workspaceRoot: Uri.file(workspaceRoot),
+      callbacks: {
+        executionMode: 'run',
+        onPrepareTerminalCommand: async command => ({
+          authority: {
+            decision: 'require-confirmation',
+            status: 'authorized',
+            reason: 'test-confirmed',
+            confirmationRef: 'terminal-confirmation',
+            evidenceRefs: ['terminal-authority'],
+          },
+          execute: async () => {
+            hostCommands.push(command);
+            const outputPath = command.match(/-o\s+'([^']+)'/)?.[1];
+            if (outputPath) {
+              mkdirSync(path.dirname(outputPath), { recursive: true });
+              writeFileSync(outputPath, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+            }
+            return {
+              status: 'completed',
+              result: `[终端命令] ${command}\n[退出码] 0\n[stdout]\nok\n`,
+              evidenceRefs: ['terminal-result'],
+            };
+          },
+        }),
+        onAgentStatus: async () => {},
+        onToolActivity: () => {},
+      },
+      workdir: workspaceRoot,
+    });
+
+    assert.equal(hostCommands.length, 1, JSON.stringify(result));
+    assert.equal(result?.taskComplete, true, JSON.stringify(result));
+    assert.equal(result?.terminalEvidence?.[0]?.ok, true);
+    assert.equal(result?.toolExecutionReceipts?.[0]?.status, 'completed');
+    assert.equal(result?.toolExecutionReceipts?.[0]?.tool, 'run_terminal');
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });
   }

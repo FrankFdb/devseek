@@ -113,6 +113,49 @@ test('Product mutation: accepted tool receipt is explicit that external state is
   });
 });
 
+test('Product mutation: prepare settles authority without dispatch and exposes one idempotent execution', async () => {
+  const harness = createHarness();
+  let invokeCount = 0;
+  const prepared = await harness.coordinator.prepare({
+    ...baseRequest(() => { invokeCount += 1; return 'done'; }),
+    completionEvidence: {
+      kind: 'invocation-receipt',
+      proof: () => ({ receipt: 'resolved' }),
+    },
+  });
+
+  assert.equal(prepared.authorization.allowed, true);
+  assert.equal(invokeCount, 0);
+  assert.deepEqual(harness.events.map(event => event.type), [
+    'side_effect.requested',
+    'side_effect.authorized',
+  ]);
+  assert.equal(await prepared.execute(), 'done');
+  assert.equal(await prepared.execute(), 'done');
+  assert.equal(invokeCount, 1);
+});
+
+test('Product mutation: denied preparation cannot dispatch its host effect', async () => {
+  const harness = createHarness();
+  let invoked = false;
+  const prepared = await harness.coordinator.prepare({
+    ...baseRequest(() => { invoked = true; return 'unreachable'; }),
+    authorize: () => ({ allowed: false, source: 'user-confirmed', reason: 'declined' }),
+    completionEvidence: {
+      kind: 'invocation-receipt',
+      proof: () => ({ receipt: 'unreachable' }),
+    },
+  });
+
+  assert.equal(prepared.authorization.allowed, false);
+  await assert.rejects(prepared.execute(), ProductMutationDeniedError);
+  assert.equal(invoked, false);
+  assert.deepEqual(harness.events.map(event => event.type), [
+    'side_effect.requested',
+    'side_effect.failed',
+  ]);
+});
+
 for (const failingType of [
   'side_effect.requested',
   'side_effect.authorized',

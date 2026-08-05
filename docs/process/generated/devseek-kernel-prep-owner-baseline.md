@@ -26,9 +26,9 @@
 | Domain | Current owners | Missing surfaces | Target owner count | Status |
 | --- | --- | --- | ---: | --- |
 | canonical-task-contract | shared-CodingKernelTaskContract | - | 1 | converged |
-| tool-execution | vscode-AgentToolExecutor, cli-artifact-interpreter | headless | 1 | not-converged |
-| workspace-mutation | vscode-WorkspaceEditService, cli-CliWorkspaceMutationService | headless | 1 | not-converged |
-| verification | vscode-ValidationService, cli-CliVerificationService | headless | 1 | not-converged |
-| completion-decision | shared-CanonicalCodingKernel-output, vscode-TerminalPermissionCoordinator, cli-runPrompt-and-CliRunEvidence | - | 1 | not-converged |
+| tool-execution | shared-CanonicalToolExecutor | - | 1 | converged |
+| workspace-mutation | shared-CanonicalWorkspaceMutationTransaction | - | 1 | converged |
+| verification | shared-CanonicalVerificationService | - | 1 | converged |
+| completion-decision | shared-CanonicalCompletionDecisionService | - | 1 | converged |
 
 This is a non-qualification architecture convergence baseline. It does not assert a unified cross-Surface Coding Kernel or Gate 0 pass.

@@ -8,8 +8,29 @@ import type { ExecutionMode } from '../intent/intent-types';
 import type { AgentFileWriteContext } from '../app/agent-file-write-policy';
 import type { ArtifactClaim, EvidenceRef, VerificationResult } from './evidence-grounding';
 import type { ValidationCommandRunner } from '../workspace/validation-service';
+import type {
+  CodingCompletionAcceptanceDecision,
+  CodingCompletionDecision,
+  CodingToolAuthorityReceipt,
+  CodingToolExecutionReceipt,
+  CodingToolHostResult,
+  CodingVerificationReceipt,
+  CodingWorkspaceMutationReceipt,
+} from '@devseek-netai/shared';
 
 export type AgentStatusMessage = AgentStatusEvent;
+
+export interface AgentPreparedToolExecution<TResult = string> {
+  readonly authority: CodingToolAuthorityReceipt;
+  execute(): Promise<CodingToolHostResult<TResult>>;
+}
+
+export type AgentPreparedTerminalCommand = AgentPreparedToolExecution<string>;
+
+export interface AgentDirectoryCreationResult {
+  readonly message: string;
+  readonly changeReceipt: CodingWorkspaceMutationReceipt<unknown>;
+}
 
 export interface AgentLoopCallbacks {
   /** Current intent/tool-policy mode. Used by the runtime task policy guard. */
@@ -59,18 +80,20 @@ export interface AgentLoopCallbacks {
    * P3-5: AI called an MCP tool (mcp__server__tool) — route to McpManager.
    * Return the tool's text output so it can be injected back into the conversation.
    */
-  onMcpToolCall?: (fakeName: string, args: Record<string, unknown>) => Promise<string>;
+  onPrepareMcpToolCall?: (
+    fakeName: string,
+    args: Record<string, unknown>,
+  ) => Promise<AgentPreparedToolExecution<string>>;
   /**
    * P3-5: Available MCP tools to advertise in the system prompt.
    * Populated from McpManager.toolRefs on activation.
    */
   mcpToolRefs?: McpToolRef[];
-  /**
-   * P4-1: AI called run_terminal — execute a shell command and return output.
-   * Extension must show user confirmation if not in autopilot mode.
-   * Returns the formatted terminal output string.
-   */
-  onTerminalCommand?: (command: string, workdir?: string) => Promise<string>;
+  /** Settles terminal authority before exposing the one-shot host execution capability. */
+  onPrepareTerminalCommand?: (
+    command: string,
+    workdir?: string,
+  ) => Promise<AgentPreparedTerminalCommand>;
   /** Automatic build/test commands must use the product's side-effect authority. */
   /** Evidence-aware authority for every automatic validation process. */
   onValidationCommand: ValidationCommandRunner;
@@ -128,7 +151,16 @@ export interface AgentLoopCallbacks {
    * AI called create_directory — create a directory (and parents) in workspace.
    * Corresponds to Copilot's #edit/createDirectory tool.
    */
-  onCreateDirectory?: (path: string, authorization: { policyPreauthorized: true }) => Promise<string>;
+  onCreateDirectory?: (
+    path: string,
+    authorization: {
+      readonly policyPreauthorized: true;
+      readonly runId: string;
+      readonly sequence: number;
+      readonly actionId: string;
+      readonly evidenceRefs: readonly string[];
+    },
+  ) => Promise<AgentDirectoryCreationResult>;
   /**
    * AI called fetch_webpage — fetch a URL and return text content (truncated).
    * Corresponds to Copilot's #web/fetch tool. Only http/https allowed.
@@ -145,7 +177,10 @@ export interface AgentLoopCallbacks {
    * typed VS Code registry. Workspace-mutating entries require permission;
    * unknown commands and terminal-owned build/test actions fail before dispatch.
    */
-  onRunVscodeCommand?: (command: string, args?: unknown[]) => Promise<string>;
+  onPrepareVscodeCommand?: (
+    command: string,
+    args?: unknown[],
+  ) => Promise<AgentPreparedToolExecution<string>>;
   /**
    * User steering entered while the current agent run is active.
    * Consumed at round boundaries so the next model call treats it as an
@@ -194,4 +229,14 @@ export interface AgentLoopResult {
   evidenceRefs?: EvidenceRef[];
   artifactClaims?: ArtifactClaim[];
   verificationResults?: VerificationResult[];
+  /** Shared immutable verification receipts emitted by product validation paths. */
+  verificationReceipts?: CodingVerificationReceipt[];
+  /** Shared immutable tool receipts emitted by effectful product tool paths. */
+  toolExecutionReceipts?: CodingToolExecutionReceipt<unknown>[];
+  /** Shared immutable workspace mutation receipts emitted by product write paths. */
+  changeReceipts?: CodingWorkspaceMutationReceipt<unknown>[];
+  /** Direct acceptance evidence whose semantic owner is outside a verifier (for example scope containment). */
+  acceptanceEvidence?: CodingCompletionAcceptanceDecision[];
+  /** Shared terminal decision; downstream settlement may project but never recompute it. */
+  completionDecision?: CodingCompletionDecision;
 }

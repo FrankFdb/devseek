@@ -5,11 +5,13 @@ import { resolveCliWorkspacePath } from './cli-workspace-path';
 
 export interface CliValidationResult {
   passed: boolean;
+  status?: 'passed' | 'failed' | 'unverified' | 'indeterminate';
   evidenceRefs: string[];
   summary: string;
 }
 
-export class CliVerificationService {
+/** Executes CLI-local verifier capabilities; shared code owns pass/fail coverage semantics. */
+export class CliVerificationHostAdapter {
   async verify(cwd: string, files: readonly string[], prompt: string): Promise<CliValidationResult> {
     const evidenceRefs: string[] = [];
     const expectedStdout = inferExpectedStdout(prompt);
@@ -39,7 +41,8 @@ export class CliVerificationService {
     const cppFiles = files.filter(file => /\.(cc|cpp|cxx)$/i.test(file));
     if (cppFiles.length === 0) {
       return {
-        passed: true,
+        passed: false,
+        status: 'unverified',
         evidenceRefs: evidenceRefs.length > 0 ? evidenceRefs : ['no verifier configured for changed file types'],
         summary: evidenceRefs.length > 0 ? 'All configured verifiers passed.' : 'No verifier configured for changed file types.',
       };

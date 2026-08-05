@@ -5,8 +5,14 @@ import {
   CODING_CONFORMANCE_DEVELOPMENT_FIXTURES,
   CODING_CONFORMANCE_DIMENSIONS,
   CODING_CONFORMANCE_PREPARATION,
+  CODING_COMPLETION_DECISION_VERSION,
+  CODING_TOOL_RECEIPT_VERSION,
+  CODING_VERIFICATION_RECEIPT_VERSION,
+  CODING_WORKSPACE_MUTATION_RECEIPT_VERSION,
+  buildCodingKernelTaskContract,
   compareCodingConformanceProjection,
   evaluateCodingConformanceFixture,
+  projectSettledCodingConformanceRun,
   validateCodingConformanceProjection,
 } from '../dist/index.js';
 
@@ -39,7 +45,7 @@ test('coding conformance catalog freezes five Codex and Claude Code observable b
 
 test('fixture self-tests prove the adapter contract without claiming complete product wiring or qualification', () => {
   assert.deepEqual(CODING_CONFORMANCE_PREPARATION, {
-    implementationState: 'headless-product-route-wired',
+    implementationState: 'cross-surface-development-projection-wired',
     productWiring: true,
     productAdapterCount: 1,
     qualificationEligible: false,
@@ -57,6 +63,37 @@ test('fixture self-tests prove the adapter contract without claiming complete pr
     assert.equal(evaluation.qualificationEligible, false);
     assert.equal(evaluation.claimsPermitted, false);
   }
+});
+
+test('one settled projection owner keeps all five fixtures equivalent across three Surfaces', () => {
+  for (const fixture of CODING_CONFORMANCE_DEVELOPMENT_FIXTURES) {
+    const projection = projectSettledCodingConformanceRun(settledRun(fixture));
+    const evaluation = evaluateCodingConformanceFixture(fixture, [
+      settledObservation(fixture, projection, 'vscode', 'development-route-replay'),
+      settledObservation(fixture, projection, 'cli', 'development-route-replay'),
+      settledObservation(fixture, projection, 'headless', 'product-route'),
+    ]);
+
+    assert.equal(Object.isFrozen(projection), true, fixture.fixtureId);
+    assert.equal(evaluation.contractConformant, true, JSON.stringify(evaluation.violations));
+    assert.deepEqual(evaluation.surfaceResults.map(result => result.contractConformant), [
+      true,
+      true,
+      true,
+    ], fixture.fixtureId);
+    assert.equal(evaluation.productRouteEvidenceComplete, false, fixture.fixtureId);
+    assert.equal(evaluation.claimsPermitted, false, fixture.fixtureId);
+  }
+});
+
+test('settled projection owner rejects mutation uncertainty instead of hiding it', () => {
+  const run = settledRun(findFixture('create-and-verify'));
+  run.changeReceipts[0] = { ...run.changeReceipts[0], status: 'indeterminate' };
+
+  assert.throws(
+    () => projectSettledCodingConformanceRun(run),
+    /coding-conformance-projection:unsettled-mutation:indeterminate/,
+  );
 });
 
 test('public projection validation fails closed on incomplete and malformed runtime evidence', () => {
@@ -94,6 +131,42 @@ test('projection comparison rejects stale changes and missing verification inste
 
   assert.ok(staleViolations.some(violation => violation.dimension === 'changeReceipts'));
   assert.ok(verificationViolations.some(violation => violation.dimension === 'verifications'));
+});
+
+test('projection comparison treats Surface-local identities as evidence refs, not business semantics', () => {
+  const fixture = findFixture('verify-repair-reverify');
+  const projection = structuredClone(fixture.expected);
+  const actionIds = new Map();
+  projection.taskContract.provenanceRefs = ['surface:vscode:task-contract'];
+  projection.toolExecutions.forEach((receipt, index) => {
+    const actionId = `vscode-action-${index + 11}`;
+    actionIds.set(receipt.actionId, actionId);
+    receipt.sequence = (index + 1) * 10;
+    receipt.actionId = actionId;
+    receipt.tool = receipt.effects.includes('workspace-mutation') ? 'vscode-edit-host' : 'vscode-terminal-host';
+    receipt.evidenceRefs = [`vscode-tool-evidence-${index + 1}`];
+  });
+  projection.changeReceipts.forEach((receipt, index) => {
+    receipt.sequence = (index + 1) * 7;
+    receipt.actionId = actionIds.get(receipt.actionId);
+    receipt.baselineRef = `vscode-baseline-${index + 1}`;
+    receipt.readbackRef = `vscode-readback-${index + 1}`;
+    receipt.rollbackRef = `vscode-rollback-${index + 1}`;
+    receipt.evidenceRefs = [`vscode-mutation-evidence-${index + 1}`];
+  });
+  projection.verifications.forEach((verification, index) => {
+    verification.sequence = (index + 1) * 9;
+    verification.actionId = actionIds.get(verification.actionId);
+    verification.verifier = `vscode-verifier-${index + 1}`;
+    verification.evidenceRefs = [`vscode-verification-evidence-${index + 1}`];
+  });
+  projection.completion.acceptance.forEach(criterion => {
+    criterion.evidenceRefs = [`vscode-acceptance-${criterion.criterionId}`];
+  });
+  projection.completion.evidenceRefs = ['vscode-completion-evidence'];
+
+  const violations = compareCodingConformanceProjection(fixture.expected, projection, 'vscode');
+  assert.deepEqual(violations, []);
 });
 
 test('projection validation rejects ambiguous actions and mutation receipts without a valid owner', () => {
@@ -308,6 +381,89 @@ function observation(fixture, surface, evidenceClass) {
     projection: structuredClone(fixture.expected),
     unavailableDimensions: [],
   };
+}
+
+function settledObservation(fixture, projection, surface, evidenceClass) {
+  return {
+    surface,
+    adapterId: `${surface}-settled-run-projection`,
+    evidenceClass,
+    sourceRefs: [`settled-run:${fixture.fixtureId}:${surface}`],
+    projection,
+    unavailableDimensions: [],
+  };
+}
+
+function settledRun(fixture) {
+  const runId = fixture.fixtureId;
+  const taskContract = buildCodingKernelTaskContract({
+    goal: fixture.expected.taskContract.goal,
+    mode: fixture.expected.taskContract.mode,
+    include: fixture.expected.taskContract.scope.include,
+    exclude: fixture.expected.taskContract.scope.exclude,
+    deliverables: fixture.expected.taskContract.deliverables,
+    constraints: fixture.expected.taskContract.constraints,
+    acceptance: fixture.expected.taskContract.acceptance,
+    provenanceRefs: fixture.expected.taskContract.provenanceRefs,
+  });
+  const toolExecutions = fixture.expected.toolExecutions.map(receipt => ({
+    version: CODING_TOOL_RECEIPT_VERSION,
+    runId,
+    sequence: receipt.sequence,
+    actionId: receipt.actionId,
+    tool: receipt.tool,
+    effects: receipt.effects,
+    permission: {
+      decision: receipt.status === 'denied' ? 'deny' : 'allow',
+      status: receipt.status === 'denied' ? 'denied' : 'authorized',
+      reason: 'settled-conformance-fixture',
+      evidenceRefs: receipt.evidenceRefs,
+    },
+    status: receipt.status,
+    evidenceRefs: receipt.evidenceRefs,
+  }));
+  const changeReceipts = fixture.expected.changeReceipts.map(receipt => ({
+    version: CODING_WORKSPACE_MUTATION_RECEIPT_VERSION,
+    runId,
+    sequence: receipt.sequence,
+    actionId: receipt.actionId,
+    idempotencyKey: `${runId}:${receipt.actionId}`,
+    status: receipt.status,
+    paths: receipt.paths,
+    baselineRef: receipt.baselineRef,
+    ...(receipt.readbackRef ? { readbackRef: receipt.readbackRef } : {}),
+    ...(receipt.rollbackRef ? { rollbackRef: receipt.rollbackRef } : {}),
+    evidenceRefs: receipt.evidenceRefs,
+  }));
+  const verifications = fixture.expected.verifications.map(receipt => ({
+    version: CODING_VERIFICATION_RECEIPT_VERSION,
+    runId,
+    sequence: receipt.sequence,
+    actionId: receipt.actionId,
+    idempotencyKey: `${runId}:${receipt.actionId}`,
+    verifier: receipt.verifier,
+    status: receipt.status === 'blocked' ? 'unverified' : receipt.status,
+    scopePaths: [...new Set(changeReceipts.flatMap(change => change.paths))],
+    checks: [],
+    acceptance: receipt.acceptanceIds.map(criterionId => ({
+      criterionId,
+      status: receipt.status === 'passed' ? 'passed' : receipt.status === 'failed' ? 'failed' : 'unverified',
+      evidenceRefs: receipt.evidenceRefs,
+    })),
+    evidenceRefs: receipt.evidenceRefs,
+  }));
+  const completion = {
+    version: CODING_COMPLETION_DECISION_VERSION,
+    runId,
+    decisionId: 'settled-completion',
+    idempotencyKey: `${runId}:settled-completion`,
+    status: fixture.expected.completion.status,
+    acceptance: fixture.expected.completion.acceptance,
+    reasonCodes: [],
+    residualRisks: fixture.expected.completion.residualRisks,
+    evidenceRefs: fixture.expected.completion.evidenceRefs,
+  };
+  return { fixtureId: fixture.fixtureId, taskContract, toolExecutions, changeReceipts, verifications, completion };
 }
 
 function unavailable(dimension) {

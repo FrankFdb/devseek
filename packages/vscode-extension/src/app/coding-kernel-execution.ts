@@ -11,6 +11,7 @@ import {
   renderCodingKernelRecoveryContext,
   type CodingKernelRecovery,
 } from './coding-kernel-recovery';
+import { VsCodeCompletionAdapter } from './coding-completion-adapter';
 
 type AgentRunMode = 'fast' | 'r1' | undefined;
 
@@ -58,7 +59,10 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
   VsCodeCodingKernelRuntimeContext,
   AgentLoopResult
 > {
-  constructor(private readonly loops: CodingKernelLoopPorts) {}
+  constructor(
+    private readonly loops: CodingKernelLoopPorts,
+    private readonly completion = new VsCodeCompletionAdapter(),
+  ) {}
 
   async executeCanonical(
     kernelRequest: CodingKernelExecutionRequest<VsCodeCodingKernelRuntimeContext>,
@@ -97,8 +101,15 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
         semanticContract: request.semanticContract,
         recoveryContextText,
       });
+      const completionDecision = this.completion.decide({
+        runId: kernelRequest.runId,
+        taskContract: kernelRequest.taskContract,
+        result,
+        cancelled: kernelRequest.signal?.aborted === true,
+      });
+      const settledResult: AgentLoopResult = { ...result, completionDecision };
       if (request.recovery && originalCheckpoint && !terminalCheckpointEmitted) {
-        if (result.tasksFailed > 0) {
+        if (completionDecision.status !== 'completed') {
           await originalCheckpoint(
             request.recovery.startFromIndex,
             pendingRecoveryTasks,
@@ -109,10 +120,10 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
         }
       }
       return {
-        status: result.tasksFailed > 0 ? 'failed' : 'completed',
-        result,
-        evidenceRefs: result.verificationIds ?? [],
-        residualRisks: result.manualReviewReason ? [result.manualReviewReason] : [],
+        status: completionDecision.status,
+        result: settledResult,
+        evidenceRefs: completionDecision.evidenceRefs,
+        residualRisks: completionDecision.residualRisks,
       };
     } catch (error) {
       if (request.recovery && originalCheckpoint && !terminalCheckpointEmitted) {

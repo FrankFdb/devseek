@@ -183,7 +183,8 @@ test('§7 Recovery: checkpoint create facts are executed deterministically', () 
   assertContains(executor, 'authorizeAgentFileWriteContract', 'checkpoint writes must honor the current request at the final boundary');
   assertContains(executor, 'input.semanticContract?.taskContract', 'deterministic recovery consumes the kernel-owned semantic contract');
   assertContains(loop, 'semanticContract: writeAuthority.semanticContract', 'the current semantic revision reaches deterministic recovery');
-  assertContains(executor, 'commitTextFileProposal', 'deterministic create writes through the atomic WorkspaceEditService boundary');
+  assertContains(executor, 'workspaceMutation.executeTextFileWrite', 'deterministic create settles through the canonical mutation boundary');
+  assertContains(executor, 'file-write-authority:', 'deterministic create carries settled write authority into the mutation receipt');
   assertContains(executor, 'readFileContentFull', 'deterministic create verifies content by reading from disk');
 });
 
@@ -271,11 +272,15 @@ test('§8.3 File edits: workspace applier enforces protectedFiles', () => {
 
 test('§8.3 File edits: closed-loop validation failure keeps files for repair', () => {
   const applier = src('src/workspace-applier.ts');
+  const batchMutation = src('src/workspace/coding-workspace-batch-mutation-adapter.ts');
   assertContains(applier, 'rollbackOnValidationFailure', 'workspace applier exposes validation rollback policy');
   assertContains(applier, 'rolledBack?: boolean', 'apply result records rollback state');
   assertContains(applier, 'options?.rollbackOnValidationFailure === true', 'workspace applier must preserve validation-failed edits by default');
-  assertContains(applier, 'collectMissingParentDirs', 'rollback path tracks directories created by this apply');
-  assertContains(applier, 'cleanupCreatedEmptyDirs', 'rollback path removes empty directories created by this apply');
+  assertContains(applier, 'verifyReadback:', 'opted-in validation rollback must execute inside the canonical transaction');
+  assertContains(batchMutation, 'collectMissingParentDirs', 'batch mutation owner tracks directories created by this apply');
+  assertContains(batchMutation, 'cleanupCreatedEmptyDirs', 'batch mutation owner removes empty directories created by this apply');
+  assertDoesNotContain(applier, 'rollbackCommittedChanges', 'obsolete out-of-transaction rollback must stay deleted');
+  assertDoesNotContain(applier, 'cleanupCreatedEmptyDirs', 'workspace orchestration must not regain low-level cleanup ownership');
 
   const extension = src('src/extension.ts');
   const closedLoopRunner = src('src/app/closed-loop-repair-runner.ts');
@@ -392,6 +397,7 @@ test('§8.3 File edits: timeout evidence follows validation vs interactive-run s
   const terminalTool = src('src/tools/terminal.ts');
   const terminalCoordinator = src('src/app/terminal-permission-coordinator.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
+  const terminalEvidence = src('src/agent/tool-loop-terminal-evidence.ts');
   assertContains(classifier, 'timedOut ? 124', 'timed-out local commands must not be reported as exitCode 0');
   assertContains(classifier, 'buildValidationTimeoutFailureDetail', 'workspace validation timeout detail must be centralized');
   assertContains(classifier, 'buildInteractiveTimeoutFailureDetail', 'interactive timeout detail must be centralized');
@@ -413,10 +419,11 @@ test('§8.3 File edits: timeout evidence follows validation vs interactive-run s
   assertContains(terminalCoordinator, "executionProfile: 'validation'", 'validation authority must select strict validation timeout semantics');
   assertContains(manualReview, 'hasHardExecutionFailureEvidence', 'manual review validation must share hard-failure classification');
   assertContains(launchClassifier, 'sourceTextLooksVisualOrInteractive', 'terminal launch mode must share visual-source classification');
-  assertContains(toolLoop, 'classifyFormattedTerminalExecutionEvidence', 'tool loop must use shared formatted terminal execution evidence parser');
-  assertDoesNotContain(toolLoop, 'isIndeterminateExecutionEvidence', 'tool loop must not own indeterminate execution branching');
-  assertDoesNotContain(toolLoop, '[MANUAL_REVIEW_REQUIRED]', 'tool loop must not own a separate manual-review marker');
-  assertDoesNotContain(toolLoop, '[超时\\\\s+\\\\d+ms]', 'tool loop must not own a separate timeout regex');
+  assertContains(toolLoop, "from './tool-loop-terminal-evidence'", 'tool loop must delegate terminal evidence analysis');
+  assertContains(terminalEvidence, 'classifyFormattedTerminalExecutionEvidence', 'terminal evidence adapter must use the shared formatted parser');
+  assertDoesNotContain(terminalEvidence, 'isIndeterminateExecutionEvidence', 'terminal evidence adapter must not own indeterminate execution branching');
+  assertDoesNotContain(terminalEvidence, '[MANUAL_REVIEW_REQUIRED]', 'terminal evidence adapter must not own a separate manual-review marker');
+  assertDoesNotContain(terminalEvidence, '[超时\\\\s+\\\\d+ms]', 'terminal evidence adapter must not own a separate timeout regex');
 });
 
 test('§8.3 File edits: code directory prompts force generated code paths under code/', () => {
@@ -438,12 +445,14 @@ test('§8.3 File edits: code directory prompts force generated code paths under 
 
   const agentLoop = src('src/agent-loop.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
+  const fileWriter = src('src/agent/tool-loop-file-writer.ts');
   const markdownArtifactApplier = src('src/agent/markdown-artifact-applier.ts');
   const extension = src('src/extension.ts');
   const discovery = src('src/app/context-discovery-service.ts');
   assertContains(markdownArtifactApplier, 'promptLooksLikeCppProgram', 'markdown artifact adapter detects C++ prompts separately from C');
   assertContains(markdownArtifactApplier, 'contentLooksLikeCppProgram', 'markdown artifact adapter detects C++ content separately from C');
-  assertContains(toolLoop, 'resolveWorkspaceWritePath', 'tool loop delegates create_file/write_file path decisions to shared resolver');
+  assertContains(toolLoop, 'ToolLoopFileWriter', 'tool loop must delegate create_file/write_file ownership');
+  assertContains(fileWriter, 'resolveWorkspaceWritePath', 'file writer delegates create_file/write_file path decisions to shared resolver');
   assert.match(
     discovery,
     /const PATH_RE = \/\(\(\?:~\\\/\|\\\/\)\?/,
@@ -457,7 +466,7 @@ test('§8.3 File edits: code directory prompts force generated code paths under 
     'agent loop must resolve bare task filenames against the latest prompt/project scope, not only workspace root',
   );
   assert.match(
-    toolLoop,
+    fileWriter,
     /resolveWorkspaceWritePath\(rawPath,\s*\{[\s\S]*?requestPrompt: userPrompt[\s\S]*?content[\s\S]*?workspaceRootFsPath[\s\S]*?defaultWorkdir[\s\S]*?\}\)/,
     'create_file/write_file must resolve against user prompt, workspace root, and task workdir',
   );
@@ -2029,20 +2038,24 @@ test('Agent loop: explicit-content validation conflicts stop autonomous rewrite 
 test('Agent loop: file tools and validation use ground-truth outcomes', () => {
   const code = src('src/agent-loop.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
+  const fileWriter = src('src/agent/tool-loop-file-writer.ts');
+  const validationOutcome = src('src/agent/agent-loop-validation-outcome.ts');
   const registry = src('src/agent/tool-registry.ts');
   const executor = src('src/agent/tool-executor.ts');
   assertContains(registry, 'replace_file', 'replace_file tool calls must be registered as file writes, not prose');
   assertContains(executor, 'isFileWriteTool', 'tool executor must use ToolRegistry file-write classification');
   assertContains(code, 'executeFakeToolsForLoop', 'agent loop must call the tool-loop service boundary');
   assertContains(toolLoop, 'agentToolExecutor.isFileWrite(tool)', 'tool loop must use ToolExecutor file-write classification');
-  assertContains(toolLoop, 'looksLikeRawToolCallText(content)', 'file write tools must block raw tool transcript content');
-  assertContains(toolLoop, "['path', 'filePath', 'filepath', 'filename', 'targetPath']", 'file write tools must accept common path aliases from DeepSeek/Copilot-style schemas');
-  assertContains(toolLoop, "['content', 'contents', 'text', 'body']", 'file write tools must accept common content aliases');
-  assertContains(toolLoop, 'FILE_WRITE_CONTENT_ALIAS_KEYS', 'file write tools must centralize content aliases');
-  assertContains(toolLoop, 'normalizeFileWriteInputs', 'file write tools must normalize single-file and batch payloads before execution');
+  assertContains(toolLoop, 'ToolLoopFileWriter', 'tool loop must delegate file-write execution to its semantic owner');
+  assertContains(fileWriter, 'looksLikeRawToolCallText(content)', 'file write tools must block raw tool transcript content');
+  assertContains(registry, "['path', 'filePath', 'filepath', 'filename', 'targetPath']", 'ToolRegistry must own common path aliases from DeepSeek/Copilot-style schemas');
+  assertContains(registry, "'content', 'contents', 'text', 'body'", 'ToolRegistry must own common content aliases');
+  assertContains(registry, 'FILE_WRITE_CONTENT_KEYS', 'file write tools must centralize content aliases in one schema owner');
+  assertContains(registry, 'normalizeAgentFileWriteInputs', 'ToolRegistry must normalize single-file and batch payloads');
+  assertContains(toolLoop, 'normalizeAgentFileWriteInputs(tool.input)', 'ToolLoop must consume normalized file-write inputs');
   assertContains(toolLoop, 'files:[{path,content}]', 'malformed batch file writes must return actionable feedback');
   assertContains(toolLoop, '缺少 path/filePath', 'malformed file write calls must return explicit feedback instead of silently doing nothing');
-  assertContains(code, 'interface ValidationOutcome', 'compile validation must return structured outcome');
+  assertContains(validationOutcome, 'interface ValidationOutcome', 'compile validation must return a structured boundary outcome');
   assert.match(
     code,
     /validationOutcome[\s\S]*?validationFailed[\s\S]*?callbacks\.onTodoUpdate/,
@@ -2116,17 +2129,19 @@ test('Agentic loop: repeated terminal failures enter root-cause recovery before 
 test('Agentic loop: terminal completion evidence requires successful validation output', () => {
   const code = src('src/agent/agentic-loop.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
+  const terminalAdapter = src('src/agent/tool-loop-terminal-evidence.ts');
+  const executionEvidence = src('src/agent/agentic-execution-evidence.ts');
   const evidence = src('src/agent/completion-evidence.ts');
   assertContains(toolLoop, 'TerminalEvidence', 'terminal evidence model must exist');
-  assertContains(toolLoop, 'classifyFormattedTerminalExecutionEvidence', 'terminal evidence must use shared formatted execution evidence parser');
-  assertDoesNotContain(toolLoop, 'function parseFormattedTerminalExitCode', 'tool loop must not own formatted terminal exit-code parsing');
-  assertContains(toolLoop, 'resolveCompilerOutputPath', 'compiler -o artifact path must be detected');
-  assertContains(toolLoop, 'isExecutableFile', 'compiler output must be checked on disk');
+  assertContains(terminalAdapter, 'classifyFormattedTerminalExecutionEvidence', 'terminal evidence must use shared formatted execution evidence parser');
+  assertDoesNotContain(terminalAdapter, 'function parseFormattedTerminalExitCode', 'terminal evidence adapter must not own formatted terminal exit-code parsing');
+  assertContains(terminalAdapter, 'resolveCompilerOutputPath', 'compiler -o artifact path must be detected');
+  assertContains(terminalAdapter, 'isExecutableFile', 'compiler output must be checked on disk');
   assertContains(toolLoop, '验证命令未通过，不能把编译/运行/测试标记为完成', 'failed validation must be fed back to the agent');
   assertContains(code, 'buildTerminalFailureRepairFeedback', 'terminal failure prose must be converted into a repair instruction');
   assertContains(code, 'assessMissingCompletionEvidence', 'agent loop must delegate semantic completion checks to evidence boundary');
   assertContains(code, 'getAgenticBlockingTerminalFailure', 'agentic runtime must use a final settlement gate for terminal failures');
-  assertContains(code, 'findBlockingTerminalFailureEvidence(terminalEvidence)', 'agentic runtime must not let failed validation evidence be hidden by provider completion prose');
+  assertContains(executionEvidence, 'findBlockingTerminalFailureEvidence(terminalEvidence)', 'agentic settlement owner must not let failed validation evidence be hidden by provider completion prose');
   assert.match(
     toolLoop,
     /terminalEvidence\.push\(evidenceResult\.evidence\)/,
@@ -3299,6 +3314,7 @@ test('Architecture: model-visible webview messages cannot bypass outbound saniti
 test('Architecture: agent loop stays orchestration-only for tool execution details', () => {
   const agentLoop = src('src/agent-loop.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
+  const terminalAdapter = src('src/agent/tool-loop-terminal-evidence.ts');
   const summary = src('src/agent/agentic-summary.ts');
   const markdownArtifactApplier = src('src/agent/markdown-artifact-applier.ts');
   const lineCount = agentLoop.split(/\r?\n/).length;
@@ -3306,7 +3322,8 @@ test('Architecture: agent loop stays orchestration-only for tool execution detai
   assertContains(agentLoop, 'executeFakeToolsForLoop', 'agent loop must call the tool-loop service');
   assertContains(toolLoop, 'export async function executeFakeToolsForLoop', 'tool loop must own fake-tool dispatch');
   assertContains(markdownArtifactApplier, 'export async function applyMarkdownFileArtifactsForLoop', 'markdown artifact adapter must own parsed artifact application');
-  assertContains(toolLoop, 'export function analyzeTerminalEvidence', 'tool loop must expose terminal evidence adapter');
+  assertContains(toolLoop, "export { analyzeTerminalEvidence } from './tool-loop-terminal-evidence'", 'tool loop must preserve its terminal evidence facade');
+  assertContains(terminalAdapter, 'export function analyzeTerminalEvidence', 'terminal evidence adapter must own execution analysis');
   assertContains(src('src/execution-outcome-classifier.ts'), 'classifyFormattedTerminalExecutionEvidence', 'execution outcome owner must parse formatted terminal execution evidence');
   assertContains(summary, 'export function cleanAgentFinalSummaryForUser', 'summary sanitizer must live in agentic summary module');
   assert.doesNotMatch(agentLoop, /function\s+(executeFakeToolsForLoop|applyMarkdownFileArtifactsForLoop|analyzeTerminalEvidence|cleanAgentFinalSummaryForUser)\b/, 'agent loop must not define extracted domain services');
@@ -3358,14 +3375,18 @@ test('Architecture: AgentEvent union lives in agent layer', () => {
   assertContains(agentLoop, "from './agent/loop-types'", 'agent loop must consume agent callback protocol, not event internals');
 });
 
-test('Architecture: WorkspaceEditService owns text file writes', () => {
+test('Architecture: shared mutation transaction owns migrated writes and WorkspaceEditService owns the host commit', () => {
   const service = src('src/workspace/edit-service.ts');
+  const mutationAdapter = src('src/workspace/coding-workspace-mutation-adapter.ts');
+  const batchMutationAdapter = src('src/workspace/coding-workspace-batch-mutation-adapter.ts');
   const agentLoop = src('src/agent-loop.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
+  const fileWriter = src('src/agent/tool-loop-file-writer.ts');
   const applier = src('src/workspace-applier.ts');
   const simpleFileTask = src('src/agent/simple-file-task.ts');
   const deterministicTaskExecutor = src('src/agent/deterministic-task-executor.ts');
   const markdownDeliverableTask = src('src/agent/markdown-deliverable-task.ts');
+  const markdownArtifactApplier = src('src/agent/markdown-artifact-applier.ts');
   assertContains(service, 'class WorkspaceEditService', 'workspace edit service class must exist');
   assertContains(service, 'proposeTextFileWrite', 'workspace edit service must expose edit proposal boundary');
   assertContains(service, 'captureTextFileBaseline', 'workspace edit service must expose the CAS baseline boundary');
@@ -3375,28 +3396,47 @@ test('Architecture: WorkspaceEditService owns text file writes', () => {
   assertDoesNotContain(service, 'writeTextFileSync(', 'unsafe legacy text write API must stay deleted');
   assertDoesNotContain(service, 'snapshotTextFile(', 'unscoped legacy snapshot API must stay deleted');
   assertDoesNotContain(service, 'applyTextFileProposal(', 'unsafe legacy apply API must stay deleted');
+  assertContains(mutationAdapter, 'CanonicalWorkspaceMutationTransaction', 'VS Code writes must compose the shared mutation owner');
+  assertContains(mutationAdapter, 'class VsCodeWorkspaceMutationAdapter', 'VS Code mutation host adapter must exist');
+  assertContains(mutationAdapter, 'workspace-baseline-conflict', 'shared adapter must fail closed on stale authorized baselines');
+  assertContains(mutationAdapter, 'rollbackTextFileCommit', 'shared adapter must compensate failed readback through commit tokens');
+  assertContains(batchMutationAdapter, 'CanonicalWorkspaceMutationTransaction', 'multi-file writes must compose the shared mutation owner');
+  assertContains(batchMutationAdapter, 'class VsCodeWorkspaceBatchMutationAdapter', 'multi-file mutation host adapter must exist');
+  assertContains(batchMutationAdapter, 'commitTextFileProposal', 'multi-file adapter must commit through the atomic CAS boundary');
+  assertContains(batchMutationAdapter, 'rollbackTextFileCommit', 'multi-file adapter must compensate partial commits by token');
   assertContains(agentLoop, 'new WorkspaceEditService()', 'agent loop must construct workspace edit service');
   assertContains(agentLoop, 'workspaceEditService.captureTextFileBaseline', 'agent loop must capture write authority before asynchronous work');
-  assertContains(agentLoop, 'workspaceEditService.commitTextFileProposal', 'agent loop writes must use atomic CAS commit');
+  assertContains(agentLoop, 'workspaceMutation.executeTextFileWrite', 'agent loop writes must use the shared mutation transaction');
+  assertDoesNotContain(agentLoop, 'workspaceEditService.commitTextFileProposal', 'agent loop must not bypass canonical mutation settlement');
   assertContains(toolLoop, 'new WorkspaceEditService()', 'tool loop must construct workspace edit service for tool writes');
   assertContains(toolLoop, 'workspaceEditService.captureTextFileBaseline', 'tool loop must capture write authority before permission callbacks');
-  assertContains(toolLoop, 'workspaceEditService.commitTextFileProposal', 'tool loop writes must use atomic CAS commit');
-  assertContains(applier, 'new WorkspaceEditService()', 'workspace applier must construct workspace edit service');
-  assertContains(applier, 'workspaceEditService.commitTextFileProposal', 'workspace applier must apply files through atomic CAS commit');
-  assertContains(applier, 'rollbackTextFileCommit', 'workspace applier must rollback partial multi-file commits by token');
+  assertContains(toolLoop, 'ToolLoopFileWriter', 'tool loop must delegate file-write mutation ownership');
+  assertContains(fileWriter, 'workspaceMutation.executeTextFileWrite', 'tool-loop file writes must use the shared mutation transaction');
+  assertDoesNotContain(fileWriter, 'workspaceEditService.commitTextFileProposal', 'tool-loop file writer must not bypass the shared mutation transaction');
+  assertContains(simpleFileTask, 'workspaceMutation.executeTextFileWrite', 'simple file writes must use the shared mutation transaction');
+  assertDoesNotContain(simpleFileTask, 'workspaceEditService.commitTextFileProposal', 'simple file task must not bypass the shared mutation transaction');
+  assertContains(markdownArtifactApplier, 'workspaceMutation.executeTextFileWrite', 'Markdown artifact writes must use the shared mutation transaction');
+  assertDoesNotContain(markdownArtifactApplier, 'workspaceEditService.commitTextFileProposal', 'Markdown artifact applier must not bypass the shared mutation transaction');
+  assertContains(applier, 'new VsCodeWorkspaceBatchMutationAdapter()', 'workspace applier must delegate multi-file mutation ownership');
+  assertContains(applier, 'workspaceMutation.execute({', 'workspace applier must settle writes through the canonical batch transaction');
+  assertContains(applier, 'changeReceipts', 'workspace applier must expose mutation receipts to completion settlement');
+  assertDoesNotContain(applier, 'commitTextFileProposal', 'workspace applier must not bypass canonical mutation settlement');
+  assertDoesNotContain(applier, 'rollbackTextFileCommit', 'workspace applier must not retain a second rollback implementation');
   assertContains(agentLoop, 'validateSourceSanity: true', 'agent loop model-driven writes must enable source sanity validation');
-  assertContains(toolLoop, 'validateSourceSanity: true', 'tool loop file writes must enable source sanity validation');
-  assertContains(applier, 'validateSourceSanity: true', 'workspace applier writes must enable source sanity validation');
+  assertContains(fileWriter, 'validateSourceSanity: true', 'tool loop file writes must enable source sanity validation');
+  assertContains(batchMutationAdapter, 'validateSourceSanity: true', 'workspace batch writes must enable source sanity validation');
   assertContains(simpleFileTask, 'validateSourceSanity: true', 'simple file task writes must enable source sanity validation');
   assertContains(deterministicTaskExecutor, 'validateSourceSanity: true', 'deterministic task writes must enable source sanity validation');
   assertContains(service, 'repairGeneratedSourceTransportEscapes', 'workspace edit service must repair provider source transport escapes before validation');
   assertWorkspaceWritesValidateSourceSanity('src/agent-loop.ts', agentLoop);
-  assertWorkspaceWritesValidateSourceSanity('src/agent/tool-loop.ts', toolLoop);
+  assertWorkspaceWritesValidateSourceSanity('src/agent/tool-loop-file-writer.ts', fileWriter);
+  assertWorkspaceWritesValidateSourceSanity('src/workspace/coding-workspace-batch-mutation-adapter.ts', batchMutationAdapter);
   assertWorkspaceWritesValidateSourceSanity('src/agent/simple-file-task.ts', simpleFileTask);
   assertWorkspaceWritesValidateSourceSanity('src/agent/deterministic-task-executor.ts', deterministicTaskExecutor);
   for (const [relPath, content] of [
     ['src/agent-loop.ts', agentLoop],
     ['src/agent/tool-loop.ts', toolLoop],
+    ['src/agent/tool-loop-file-writer.ts', fileWriter],
     ['src/agent/simple-file-task.ts', simpleFileTask],
     ['src/agent/deterministic-task-executor.ts', deterministicTaskExecutor],
     ['src/agent/markdown-deliverable-task.ts', markdownDeliverableTask],
@@ -3405,8 +3445,8 @@ test('Architecture: WorkspaceEditService owns text file writes', () => {
   }
   for (const [relPath, content] of [
     ['src/agent-loop.ts', agentLoop],
-    ['src/agent/tool-loop.ts', toolLoop],
-    ['src/workspace-applier.ts', applier],
+    ['src/agent/tool-loop-file-writer.ts', fileWriter],
+    ['src/workspace/coding-workspace-batch-mutation-adapter.ts', batchMutationAdapter],
     ['src/agent/simple-file-task.ts', simpleFileTask],
     ['src/agent/deterministic-task-executor.ts', deterministicTaskExecutor],
   ]) {
@@ -3983,7 +4023,7 @@ test('Architecture: Markdown deliverables bypass the generic editor tool loop', 
   const finalWriteAuthorizationIndex = loop.indexOf('const targetAuthorization = authorizeAgentFileWriteContract({');
   const fullFileApplyIndex = loop.indexOf('await applyGeneratedArtifactPathWithPrompt(');
   const baselineCaptureIndex = deliverable.indexOf('const initialTargetSnapshot = tryCaptureTextFileBaseline(');
-  const atomicCommitIndex = deliverable.indexOf('workspaceEditService.commitTextFileProposal(');
+  const canonicalMutationIndex = deliverable.indexOf('workspaceMutation.executeTextFileWrite({');
 
   assert.ok(routeIndex >= 0, 'agent-loop must route Markdown deliverables through the dedicated executor');
   assert.ok(editorPromptIndex >= 0, 'agent-loop must still have the generic editor prompt path');
@@ -3995,9 +4035,13 @@ test('Architecture: Markdown deliverables bypass the generic editor tool loop', 
   assertContains(deliverable, 'classifyProviderOutputIntegrity', 'Markdown deliverables must gate provider output completeness');
   assertContains(deliverable, 'Provider 未返回可用的完整报告', 'Markdown deliverables must preserve provider failure facts in fallback artifacts');
   assert.ok(baselineCaptureIndex >= 0, 'Markdown deliverables must capture the target baseline before asynchronous work');
-  assert.ok(atomicCommitIndex >= 0, 'Markdown deliverables must commit the verified artifact through the atomic CAS boundary');
-  assert.ok(baselineCaptureIndex < atomicCommitIndex, 'Markdown deliverables must capture the target baseline before committing');
+  assert.ok(canonicalMutationIndex >= 0, 'Markdown deliverables must commit through the shared mutation transaction');
+  assert.ok(baselineCaptureIndex < canonicalMutationIndex, 'Markdown deliverables must capture the target baseline before committing');
+  assertContains(deliverable, 'verifyReadback:', 'Markdown quality verification must execute inside mutation readback');
+  assertContains(deliverable, 'changeReceipts: [mutation.receipt]', 'Markdown deliverables must expose the terminal mutation receipt');
   assertContains(deliverable, 'isTextFileBaselineCurrent(initialTargetSnapshot)', 'Markdown deliverables must reject target drift before commit');
+  assertDoesNotContain(deliverable, 'workspaceEditService.commitTextFileProposal(', 'Markdown deliverables must not bypass canonical mutation settlement');
+  assertDoesNotContain(deliverable, 'rollbackMarkdownWrite', 'obsolete out-of-transaction Markdown rollback must stay deleted');
   assertDoesNotContain(deliverable, 'workspaceEditService.writeTextFileSync(', 'Markdown deliverables must not bypass the atomic CAS boundary');
   assertWorkspaceWritesValidateSourceSanity('src/agent/markdown-deliverable-task.ts', deliverable);
 });

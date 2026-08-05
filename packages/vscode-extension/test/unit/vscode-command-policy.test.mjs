@@ -87,14 +87,12 @@ function openHarness(t) {
 test('VS Code command registry: terminal-owned and unknown commands fail before dispatch', async t => {
   commandCalls.length = 0;
   const { callbacks, owner } = openHarness(t);
-  await assert.rejects(
-    callbacks.onRunVscodeCommand('workbench.action.tasks.build'),
-    /must use run_terminal/,
-  );
-  await assert.rejects(
-    callbacks.onRunVscodeCommand('evil.extension.arbitraryMutation'),
-    /closed VS Code command registry/,
-  );
+  const terminalOwned = await callbacks.onPrepareVscodeCommand('workbench.action.tasks.build');
+  const unknown = await callbacks.onPrepareVscodeCommand('evil.extension.arbitraryMutation');
+  assert.equal(terminalOwned.authority.status, 'denied');
+  assert.match(terminalOwned.authority.reason, /must use run_terminal/);
+  assert.equal(unknown.authority.status, 'denied');
+  assert.match(unknown.authority.reason, /closed VS Code command registry/);
   assert.deepEqual(commandCalls, []);
   const sideEffects = owner.readEvents().filter(event => event.type.startsWith('side_effect.'));
   assert.deepEqual(sideEffects.map(event => event.type), [
@@ -108,20 +106,24 @@ test('VS Code command registry: terminal-owned and unknown commands fail before 
 test('VS Code command registry: non-empty opaque args are rejected instead of silently ignored', async t => {
   commandCalls.length = 0;
   const { callbacks } = openHarness(t);
-  await assert.rejects(
-    callbacks.onRunVscodeCommand('editor.action.formatDocument', ['unexpected']),
-    /does not accept opaque agent-supplied arguments/,
-  );
+  const prepared = await callbacks.onPrepareVscodeCommand('editor.action.formatDocument', ['unexpected']);
+  assert.equal(prepared.authority.status, 'denied');
+  assert.match(prepared.authority.reason, /does not accept opaque agent-supplied arguments/);
   assert.deepEqual(commandCalls, []);
 });
 
 test('VS Code command registry: supported read-only and mutating actions use honest Promise receipts', async t => {
   commandCalls.length = 0;
   const { callbacks, confirmations, owner } = openHarness(t);
-  const refresh = await callbacks.onRunVscodeCommand('workbench.files.action.refreshFilesExplorer');
-  const format = await callbacks.onRunVscodeCommand('editor.action.formatDocument');
-  assert.match(refresh, /仅证明命令 Promise 已成功返回/);
-  assert.match(format, /仅证明命令 Promise 已成功返回/);
+  const refresh = await callbacks.onPrepareVscodeCommand('workbench.files.action.refreshFilesExplorer');
+  const format = await callbacks.onPrepareVscodeCommand('editor.action.formatDocument');
+  assert.deepEqual(commandCalls, []);
+  assert.equal(refresh.authority.status, 'authorized');
+  assert.equal(format.authority.decision, 'require-confirmation');
+  const refreshResult = await refresh.execute();
+  const formatResult = await format.execute();
+  assert.match(refreshResult.result, /仅证明命令 Promise 已成功返回/);
+  assert.match(formatResult.result, /仅证明命令 Promise 已成功返回/);
   assert.deepEqual(commandCalls, [
     { command: 'workbench.files.action.refreshFilesExplorer', args: [] },
     { command: 'editor.action.formatDocument', args: [] },

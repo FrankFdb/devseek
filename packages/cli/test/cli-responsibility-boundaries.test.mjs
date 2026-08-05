@@ -17,17 +17,20 @@ test('CLI composition root delegates canonical execution to the shared Kernel', 
 
   assert.match(index, /new CliLegacyWorkspaceContextSelector\(\)/);
   assert.match(index, /CliRunEvidence\.open\(/);
-  assert.match(index, /productCliCodingKernelExecutor\.execute\(/);
+  assert.match(index, /assertCompletedCliCodingKernelOutput\(await productCliCodingKernelExecutor\.execute\(/);
+  assert.doesNotMatch(index, /kernelOutput\.status !== 'completed'/);
   assert.match(index, /workspaceContextSelector\.select\(/);
-  assert.doesNotMatch(index, /CliCodingArtifactInterpreter|CliWorkspaceMutationService|CliVerificationService/);
+  assert.doesNotMatch(index, /CliCodingArtifactInterpreter|CliWorkspaceMutationHostAdapter|CliVerificationAdapter|CliVerificationHostAdapter/);
   assert.doesNotMatch(index, /CanonicalCodingKernel|CliCodingKernelRuntimeAdapter/);
 
   assert.match(productKernel, /new CliCodingArtifactInterpreter\(\)/);
-  assert.match(productKernel, /new CliWorkspaceMutationService\(\)/);
-  assert.match(productKernel, /new CliVerificationService\(\)/);
+  assert.match(productKernel, /new CliWorkspaceMutationHostAdapter\(\)/);
+  assert.match(productKernel, /new CliVerificationAdapter\(new CliVerificationHostAdapter\(\)\)/);
   assert.match(productKernel, /new CanonicalCodingKernel\(new CliCodingKernelRuntimeAdapter\(/);
   assert.match(productKernel, /return kernel\.execute\(/);
   assert.match(productKernel, /route: 'canonical'/);
+  assert.match(productKernel, /output\.status === 'completed'/);
+  assert.match(productKernel, /completion\.reasonCodes/);
 
   assert.doesNotMatch(index, /function runCodingLoop\b/);
   assert.doesNotMatch(index, /CliLegacyCodingLoop|legacyCodingLoop|cli-legacy-coding-loop/);
@@ -60,7 +63,7 @@ test('CLI runtime adapter keeps context, interpretation, mutation, and verificat
   assert.match(codingRuntime, /class CliCodingKernelRuntimeAdapter/);
   assert.match(codingRuntime, /implements CodingKernelRuntimePort/);
   assert.match(codingRuntime, /this\.artifactInterpreter\.interpret\(/);
-  assert.match(codingRuntime, /this\.workspaceMutation\.apply\(/);
+  assert.match(codingRuntime, /this\.toolExecution\.executeWorkspaceMutation\(/);
   assert.match(codingRuntime, /this\.verification\.verify\(/);
   assert.match(codingRuntime, /function buildRepairPrompt\b/);
   assert.doesNotMatch(codingRuntime, /(?:AgentApplicationService|CliSurfaceAdapter|bridgeChat)/);
@@ -78,11 +81,14 @@ test('CLI runtime adapter keeps context, interpretation, mutation, and verificat
   assert.match(runEvidence, /type: 'evidence\.degraded'/);
   assert.doesNotMatch(runEvidence, /(?:AgentApplicationService|CliSurfaceAdapter|bridgeChat)/);
 
-  assert.match(mutation, /class CliWorkspaceMutationService/);
+  assert.match(mutation, /class CliWorkspaceMutationHostAdapter/);
+  assert.match(mutation, /implements WorkspaceMutationPort/);
+  assert.match(mutation, /mutationState: 'unchanged'/);
+  assert.match(mutation, /mutationState: 'possibly-changed'/);
   assert.match(mutation, /resolveCliWorkspacePath/);
   assert.doesNotMatch(mutation, /(?:spawnSync|devseek\.verify\.json)/);
 
-  assert.match(verification, /class CliVerificationService/);
+  assert.match(verification, /class CliVerificationHostAdapter/);
   assert.match(verification, /spawnSync/);
   assert.doesNotMatch(verification, /(?:create_file|replace_file|<tool_call>)/);
 });

@@ -266,29 +266,18 @@ export class EvidenceStore {
     lineEnd?: number;
   }): EvidenceRef {
     const content = String(input.content);
-    const contentHash = sha256(content);
-    const captureSequence = ++this.sequence;
-    const operationId = input.operationId || `${input.kind || 'read'}-${captureSequence}`;
-    const evidenceId = `ev-${sha256(`${this.runId}\0${operationId}\0${input.path}\0${contentHash}`).slice(0, 24)}`;
-    const ref = Object.freeze({
+    return this.recordContentEvidence({
       kind: input.kind || 'read',
       label: input.path,
-      ref: evidenceId,
-      evidenceId,
-      operationId,
-      workspaceRoot: this.workspaceRoot,
+      identityParts: [input.path],
+      operationId: input.operationId,
       sourcePath: input.path,
       lineStart: input.lineStart ?? 1,
       lineEnd: input.lineEnd ?? (input.lineStart !== undefined
         ? input.lineStart + Math.max(0, countLines(content) - 1)
         : countLines(content)),
-      contentHash,
-      capturedAt: this.clock().toISOString(),
-      captureSequence,
       content,
-    }) satisfies EvidenceRef;
-    this.refs.set(evidenceId, ref);
-    return ref;
+    });
   }
 
   recordTerminalOutput(input: {
@@ -298,29 +287,34 @@ export class EvidenceStore {
     exitCode?: number | null;
     operationId?: string;
   }): EvidenceRef {
-    const content = String(input.output);
-    const contentHash = sha256(content);
-    const captureSequence = ++this.sequence;
-    const operationId = input.operationId || `terminal-${captureSequence}`;
-    const evidenceId = `ev-${sha256(`${this.runId}\0${operationId}\0${input.command}\0${input.workdir}\0${contentHash}`).slice(0, 24)}`;
-    const ref = Object.freeze({
+    return this.recordContentEvidence({
       kind: 'terminal',
       label: input.command,
-      ref: evidenceId,
-      evidenceId,
-      operationId,
-      workspaceRoot: this.workspaceRoot,
+      identityParts: [input.command, input.workdir],
+      operationId: input.operationId,
       sourcePath: input.workdir,
       workdir: input.workdir,
       command: input.command,
       exitCode: input.exitCode ?? null,
-      contentHash,
-      capturedAt: this.clock().toISOString(),
-      captureSequence,
-      content,
-    }) satisfies EvidenceRef;
-    this.refs.set(evidenceId, ref);
-    return ref;
+      content: String(input.output),
+    });
+  }
+
+  recordObservation(input: {
+    kind: Exclude<EvidenceKind, 'read' | 'terminal' | 'artifact-candidate' | 'artifact-readback'>;
+    label: string;
+    content: string;
+    operationId?: string;
+    sourcePath?: string;
+  }): EvidenceRef {
+    return this.recordContentEvidence({
+      kind: input.kind,
+      label: input.label,
+      identityParts: [input.label],
+      operationId: input.operationId,
+      ...(input.sourcePath ? { sourcePath: input.sourcePath } : {}),
+      content: String(input.content),
+    });
   }
 
   readFile(path: string, kind: 'read' | 'artifact-readback' = 'read'): EvidenceRef {
@@ -333,6 +327,50 @@ export class EvidenceStore {
 
   all(): EvidenceRef[] {
     return [...this.refs.values()];
+  }
+
+  private recordContentEvidence(input: {
+    kind: EvidenceKind;
+    label: string;
+    identityParts: readonly string[];
+    content: string;
+    operationId?: string;
+    sourcePath?: string;
+    workdir?: string;
+    command?: string;
+    exitCode?: number | null;
+    lineStart?: number;
+    lineEnd?: number;
+  }): EvidenceRef {
+    const contentHash = sha256(input.content);
+    const captureSequence = ++this.sequence;
+    const operationId = input.operationId || `${input.kind}-${captureSequence}`;
+    const evidenceId = `ev-${sha256([
+      this.runId,
+      operationId,
+      ...input.identityParts,
+      contentHash,
+    ].join('\0')).slice(0, 24)}`;
+    const ref = Object.freeze({
+      kind: input.kind,
+      label: input.label,
+      ref: evidenceId,
+      evidenceId,
+      operationId,
+      workspaceRoot: this.workspaceRoot,
+      ...(input.sourcePath ? { sourcePath: input.sourcePath } : {}),
+      ...(input.workdir ? { workdir: input.workdir } : {}),
+      ...(input.command ? { command: input.command } : {}),
+      ...(input.exitCode === undefined ? {} : { exitCode: input.exitCode }),
+      ...(input.lineStart === undefined ? {} : { lineStart: input.lineStart }),
+      ...(input.lineEnd === undefined ? {} : { lineEnd: input.lineEnd }),
+      contentHash,
+      capturedAt: this.clock().toISOString(),
+      captureSequence,
+      content: input.content,
+    }) satisfies EvidenceRef;
+    this.refs.set(evidenceId, ref);
+    return ref;
   }
 }
 

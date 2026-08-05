@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as nodePath from 'path';
 import { resolveWorkspaceWritePath } from '../workspace/path-resolver';
 import { WorkspaceEditService } from '../workspace/edit-service';
+import { VsCodeWorkspaceMutationAdapter } from '../workspace/coding-workspace-mutation-adapter';
 import { runAgentAutoValidationForWrites, type AgentAutoValidationOptions } from './auto-validation';
 import {
   buildAgenticHistoryText,
@@ -39,6 +40,7 @@ export interface SimpleFileTaskInput {
 }
 
 const workspaceEditService = new WorkspaceEditService();
+const workspaceMutation = new VsCodeWorkspaceMutationAdapter(workspaceEditService);
 
 export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<AgentLoopResult | undefined> {
   const request = parseSimpleFileWriteRequest(input.userPrompt);
@@ -85,16 +87,22 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
   }
 
   input.callbacks.onToolActivity?.('write', resolved.relPath);
-  let writeResult;
+  let mutationOutcome;
   try {
-    writeResult = workspaceEditService.commitTextFileProposal(
-      workspaceEditService.proposeTextFileWrite(resolved.absPath, request.content),
+    mutationOutcome = await workspaceMutation.executeTextFileWrite({
+      runId: input.callbacks.traceRunId,
+      actionId: `simple-file-write:${resolved.relPath}`,
+      sequence: 1,
+      absPath: resolved.absPath,
+      workspaceRoot: input.workspaceRoot,
+      content: request.content,
       baseline,
-      {
+      applyOptions: {
         validateSourceSanity: true,
         repairSourceTransportEscapes: true,
       },
-    ).result;
+      evidenceRefs: [`file-write-authority:${resolved.relPath}`],
+    });
   } catch (error) {
     return finishSimpleFileTask({
       ...input,
@@ -104,6 +112,21 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
       failedReason: `源码语法护栏阻止写入：${error instanceof Error ? error.message : String(error)}`,
     });
   }
+  const committedEdit = mutationOutcome.receipt.result;
+  if (mutationOutcome.receipt.status !== 'committed' || !committedEdit) {
+    const failure = mutationOutcome.receipt.errorCode === 'workspace-baseline-conflict'
+      ? 'target changed after write authority was captured (workspace-baseline-conflict)'
+      : mutationOutcome.receipt.errorCode ?? mutationOutcome.receipt.status;
+    return finishSimpleFileTask({
+      ...input,
+      todos: failLinearAgentTodo(todos, 0),
+      writtenFiles: [],
+      terminalEvidence: [],
+      failedReason: `工作区写入事务未提交：${failure}`,
+      changeReceipt: mutationOutcome.receipt,
+    });
+  }
+  const writeResult = committedEdit.result;
   await input.callbacks.onAppliedChange({ path: resolved.absPath, ...writeResult });
 
   const persistedContent = writeResult.newContent;
@@ -129,6 +152,7 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
       writtenFiles: [writtenFile],
       terminalEvidence: [],
       failedReason: contentCheck.reason,
+      changeReceipt: mutationOutcome.receipt,
     });
   }
 
@@ -160,6 +184,8 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
       terminalEvidence,
       failedReason,
       qualityGate: validation.qualityGate,
+      verificationReceipt: validation.verificationReceipt,
+      changeReceipt: mutationOutcome.receipt,
     });
   }
 
@@ -170,6 +196,8 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
     terminalEvidence,
     failedReason: '',
     qualityGate: validation.qualityGate,
+    verificationReceipt: validation.verificationReceipt,
+    changeReceipt: mutationOutcome.receipt,
     summary: buildSimpleFileCompletionSummary(resolved.relPath, validation.evidence),
   });
 }
@@ -236,6 +264,8 @@ async function finishSimpleFileTask(input: SimpleFileTaskInput & {
   failedReason: string;
   summary?: string;
   qualityGate?: AgenticHistoryQualityGate;
+  verificationReceipt?: NonNullable<Awaited<ReturnType<typeof runAgentAutoValidationForWrites>>['verificationReceipt']>;
+  changeReceipt?: NonNullable<AgentLoopResult['changeReceipts']>[number];
 }): Promise<AgentLoopResult> {
   const finalWrittenFiles = coalesceWrittenFileEvidence(input.writtenFiles, input.workspaceRoot);
   await input.callbacks.onTodoUpdate?.(input.todos);
@@ -276,6 +306,8 @@ async function finishSimpleFileTask(input: SimpleFileTaskInput & {
     tasksApplied: finalWrittenFiles.length > 0 ? 1 : 0,
     tasksFailed: input.failedReason ? 1 : 0,
     changedPaths: finalWrittenFiles.map(file => file.path),
+    ...(input.verificationReceipt ? { verificationReceipts: [input.verificationReceipt] } : {}),
+    ...(input.changeReceipt ? { changeReceipts: [input.changeReceipt] } : {}),
     historyText,
   };
 }

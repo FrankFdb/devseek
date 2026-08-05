@@ -172,7 +172,8 @@ test('Phase 2: agent tool loop memory_write uses structured proposals only', () 
   assert.doesNotMatch(toolLoop, /\.devseek\/memory\.md|memory\.md/, 'tool-loop must not mention legacy memory file paths');
   assert.doesNotMatch(toolLoop, /appendFileSync|writeFileSync|mkdirSync/, 'tool-loop must not persist memory directly');
   assert.match(loopTypes, /onMemoryWrite\?: \(proposal: MemoryWriteProposal\)/, 'agent callback protocol emits structured memory proposals');
-  assert.match(toolLoop, /callbacks\.onMemoryWrite\(\{[\s\S]*?type: 'verified-experience'/, 'tool-loop sends structured memory proposals through callbacks');
+  assert.match(toolLoop, /const proposal = \{[\s\S]*?type: 'verified-experience' as const/, 'tool-loop creates a typed memory proposal');
+  assert.match(toolLoop, /callbacks\.onMemoryWrite!\(proposal\)/, 'tool-loop sends the structured proposal through the canonical callback host');
 });
 
 test('Phase 7: task recovery services are split from composition roots', () => {

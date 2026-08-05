@@ -13,7 +13,7 @@ import {
 import { bridgeCancel as callBridgeCancel, bridgeChat as callBridgeChat } from './bridge-client';
 import { formatCliError } from './cli-error';
 import { CliLegacyWorkspaceContextSelector } from './cli-legacy-workspace-context-selector';
-import { productCliCodingKernelExecutor } from './cli-product-coding-kernel';
+import { assertCompletedCliCodingKernelOutput, productCliCodingKernelExecutor } from './cli-product-coding-kernel';
 import { CliRunEvidence } from './cli-run-evidence';
 import { CliSurfaceAdapter, createCliRunLifecycleEvent, type CliRunLifecycleStatus, type CliSurfaceKind } from './cli-surface-adapter';
 
@@ -166,7 +166,7 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
       payload: { provider: options.mock ? 'local-api' : 'bridge', attempt: 1, response: summarizeTraceText(response) },
     }, initialProviderOperationId, 'cli-provider-client');
     if (!options.mock) evidence.assertBridgeComplete(initialProviderOperationId, 'completed');
-    await productCliCodingKernelExecutor.execute({
+    assertCompletedCliCodingKernelOutput(await productCliCodingKernelExecutor.execute({
       workspaceRoot: options.cwd,
       userPrompt: prompt,
       contextFiles,
@@ -198,7 +198,7 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
       },
       emitEvent: event => emitSyntheticEvent(surface.kind, renderEvent, event),
       formatError: formatCliError,
-    });
+    }));
     await surface.flush();
     await appendHistory(options.cwd, prompt);
     await renderLifecycle('completed', 0);

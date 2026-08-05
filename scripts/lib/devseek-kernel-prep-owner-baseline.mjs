@@ -3,8 +3,8 @@ import {
   sha256Object,
 } from './devseek-capability-ledger.mjs';
 
-export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v6';
-export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v6';
+export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v10';
+export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v10';
 
 const SOURCE_PATHS = Object.freeze({
   gate0: 'docs/process/devseek-gate0-decision-report.json',
@@ -15,7 +15,12 @@ const SOURCE_PATHS = Object.freeze({
   sharedIndex: 'packages/shared/src/index.ts',
   sharedCodingConformance: 'packages/shared/src/coding-conformance.ts',
   sharedCodingConformanceFixtures: 'packages/shared/src/coding-conformance-fixtures.ts',
+  sharedCodingConformanceProjection: 'packages/shared/src/coding-conformance-projection.ts',
   sharedCodingKernel: 'packages/shared/src/coding-kernel.ts',
+  sharedToolExecution: 'packages/shared/src/coding-tool-execution.ts',
+  sharedWorkspaceMutation: 'packages/shared/src/coding-workspace-mutation.ts',
+  sharedVerification: 'packages/shared/src/coding-verification.ts',
+  sharedCompletion: 'packages/shared/src/coding-completion.ts',
   cliCodingConformanceProbe: 'packages/cli/test/coding-conformance-development-baseline.test.mjs',
   vscodeCodingConformanceProbe: 'packages/vscode-extension/test/unit/coding-conformance-development-baseline.test.mjs',
   extension: 'packages/vscode-extension/src/extension.ts',
@@ -37,19 +42,27 @@ const SOURCE_PATHS = Object.freeze({
   agenticLoop: 'packages/vscode-extension/src/agent/agentic-loop.ts',
   runtimeState: 'packages/vscode-extension/src/agent/agent-runtime-state-machine.ts',
   toolExecutor: 'packages/vscode-extension/src/agent/tool-executor.ts',
-  workspaceMutation: 'packages/vscode-extension/src/workspace/edit-service.ts',
-  verification: 'packages/vscode-extension/src/workspace/validation-service.ts',
-  completion: 'packages/vscode-extension/src/app/terminal-permission-coordinator.ts',
+  workspaceMutation: 'packages/vscode-extension/src/workspace/coding-workspace-mutation-adapter.ts',
+  workspaceBatchMutation: 'packages/vscode-extension/src/workspace/coding-workspace-batch-mutation-adapter.ts',
+  workspaceDirectoryMutation: 'packages/vscode-extension/src/workspace/coding-workspace-directory-mutation-adapter.ts',
+  verification: 'packages/vscode-extension/src/app/coding-verification-adapter.ts',
+  completion: 'packages/vscode-extension/src/app/coding-completion-adapter.ts',
   cliIndex: 'packages/cli/src/index.ts',
   cliProductExecutor: 'packages/cli/src/cli-product-coding-kernel.ts',
   cliKernelRuntime: 'packages/cli/src/cli-coding-kernel-runtime.ts',
   cliKernelTaskContract: 'packages/cli/src/cli-coding-kernel-task-contract.ts',
+  cliToolExecution: 'packages/cli/src/cli-tool-execution-adapter.ts',
   cliMutation: 'packages/cli/src/cli-workspace-mutation-service.ts',
+  cliVerificationAdapter: 'packages/cli/src/cli-verification-adapter.ts',
   cliVerification: 'packages/cli/src/cli-verification-service.ts',
   cliEvidence: 'packages/cli/src/cli-run-evidence.ts',
   headlessPackageJson: 'packages/headless/package.json',
   headlessIndex: 'packages/headless/src/index.ts',
   headlessProductExecutor: 'packages/headless/src/headless-coding-kernel.ts',
+  headlessToolExecution: 'packages/headless/src/headless-tool-execution.ts',
+  headlessWorkspaceMutation: 'packages/headless/src/headless-workspace-mutation.ts',
+  headlessVerification: 'packages/headless/src/headless-verification.ts',
+  headlessCompletion: 'packages/headless/src/headless-completion.ts',
   headlessProductProbe: 'packages/headless/test/headless-coding-kernel.test.mjs',
 });
 
@@ -85,7 +98,7 @@ const SOURCE_CHECKS = Object.freeze([
     'coding-kernel-execution:unsupported-route',
   ], ['legacy-planned', 'CliLegacyCodingLoop']),
   check('shared-coding-conformance-contract', SOURCE_PATHS.sharedCodingConformance, [
-    "implementationState: 'headless-product-route-wired'",
+    "implementationState: 'cross-surface-development-projection-wired'",
     'productWiring: true',
     'productAdapterCount: 1',
     'export interface CodingConformanceProjectionAdapter<TRouteOutput>',
@@ -110,10 +123,83 @@ const SOURCE_CHECKS = Object.freeze([
     "competitors: ['Codex', 'Claude Code']",
     'CODING_CONFORMANCE_BENCHMARK_SOURCE',
   ]),
+  check('shared-settled-conformance-projection-owner', SOURCE_PATHS.sharedCodingConformanceProjection, [
+    'export interface SettledCodingConformanceRun',
+    'export function projectSettledCodingConformanceRun(',
+    'taskContract: projectCodingKernelTaskContract(input.taskContract)',
+    'coding-conformance-projection:indeterminate-tool-execution',
+    'coding-conformance-projection:unsettled-mutation:',
+    'coding-conformance-projection:mutation-baseline-missing',
+  ], [
+    "from 'vscode'",
+    'CliCodingKernelRuntimeAdapter',
+    'VsCodeCodingKernelRuntimeAdapter',
+    'HeadlessCodingKernelExecutor',
+  ]),
   check('shared-coding-conformance-export', SOURCE_PATHS.sharedIndex, [
     "export * from './coding-conformance';",
     "export * from './coding-conformance-fixtures';",
+    "export * from './coding-conformance-projection';",
     "export * from './coding-kernel';",
+    "export * from './coding-tool-execution';",
+    "export * from './coding-workspace-mutation';",
+    "export * from './coding-verification';",
+    "export * from './coding-completion';",
+  ]),
+  check('shared-canonical-tool-execution-owner', SOURCE_PATHS.sharedToolExecution, [
+    'export interface ToolExecutorPort',
+    'export class CanonicalToolExecutor implements ToolExecutorPort',
+    "action.authority.status === 'authorized'",
+    "status: 'denied'",
+    "status: 'indeterminate'",
+    'assertSameAction(existing.canonicalAction, canonicalAction)',
+    'private readonly executions = new Map<string, ActiveExecution>()',
+  ], [
+    "from 'vscode'",
+    'CliToolExecutionAdapter',
+    'HeadlessToolExecutionAdapter',
+    'AgentToolExecutor',
+  ]),
+  check('shared-canonical-workspace-mutation-owner', SOURCE_PATHS.sharedWorkspaceMutation, [
+    'export interface WorkspaceMutationPort',
+    'export class CanonicalWorkspaceMutationTransaction implements WorkspaceMutationTransactionPort',
+    "applyOutcome.mutationState === 'unchanged'",
+    "return rollbackMutation(plan, host, baseline, applyOutcome.applied, 'apply-failed'",
+    "status: 'committed'",
+    "status: 'rolled-back'",
+    "status: 'indeterminate'",
+    'private readonly executions = new Map<string, ActiveMutation>()',
+  ], [
+    "from 'vscode'",
+    'CliWorkspaceMutationHostAdapter',
+    'HeadlessWorkspaceMutationAdapter',
+    'WorkspaceEditService',
+  ]),
+  check('shared-canonical-verification-owner', SOURCE_PATHS.sharedVerification, [
+    'export interface VerificationPort',
+    'export class CanonicalVerificationService implements VerificationPort',
+    "status: 'unverified'",
+    'verification-acceptance-uncovered',
+    'verification-host-failed',
+    'private readonly executions = new Map<string, ActiveVerification>()',
+  ], [
+    "from 'vscode'",
+    'CliVerificationAdapter',
+    'HeadlessVerificationAdapter',
+    'ValidationService',
+  ]),
+  check('shared-canonical-completion-owner', SOURCE_PATHS.sharedCompletion, [
+    'export interface CompletionDecisionPort',
+    'export class CanonicalCompletionDecisionService implements CompletionDecisionPort',
+    'resolvedVerificationActionIds',
+    'verification-not-run',
+    'cancellation-unsettled',
+    'private readonly decisions = new Map<string, { canonicalInput: string; decision: CodingCompletionDecision }>()',
+  ], [
+    "from 'vscode'",
+    'HeadlessCompletionAdapter',
+    'TerminalPermissionCoordinator',
+    'CliRunEvidence',
   ]),
   check('headless-package-entrypoint', SOURCE_PATHS.headlessPackageJson, [
     '"name": "@devseek-netai/headless"',
@@ -123,6 +209,10 @@ const SOURCE_CHECKS = Object.freeze([
   ]),
   check('headless-public-export', SOURCE_PATHS.headlessIndex, [
     "export * from './headless-coding-kernel';",
+    "export * from './headless-tool-execution';",
+    "export * from './headless-workspace-mutation';",
+    "export * from './headless-verification';",
+    "export * from './headless-completion';",
   ]),
   check('headless-canonical-kernel-composition', SOURCE_PATHS.headlessProductExecutor, [
     'export class HeadlessCodingKernelExecutor<TRuntimeContext, TResult>',
@@ -150,27 +240,74 @@ const SOURCE_CHECKS = Object.freeze([
     'Headless product entry fails closed on incomplete or drifted conformance evidence',
     'coding-kernel-execution:cancelled-before-start',
   ]),
+  check('headless-tool-host-composition', SOURCE_PATHS.headlessToolExecution, [
+    'export class HeadlessToolExecutionAdapter',
+    'private readonly executor: ToolExecutorPort = new CanonicalToolExecutor()',
+    'return this.executor.execute(buildCodingToolAction(input.action), input.host)',
+  ], [
+    "from 'vscode'",
+    'CliToolExecutionAdapter',
+    'AgentToolExecutor',
+  ]),
+  check('headless-workspace-mutation-composition', SOURCE_PATHS.headlessWorkspaceMutation, [
+    'export class HeadlessWorkspaceMutationAdapter',
+    'private readonly transaction: WorkspaceMutationTransactionPort = new CanonicalWorkspaceMutationTransaction()',
+    'return this.transaction.execute(buildCodingWorkspaceMutationPlan(input.plan), input.host)',
+  ], [
+    "from 'vscode'",
+    'CliWorkspaceMutationHostAdapter',
+    'WorkspaceEditService',
+  ]),
+  check('headless-verification-composition', SOURCE_PATHS.headlessVerification, [
+    'export class HeadlessVerificationAdapter',
+    'private readonly verification: VerificationPort = new CanonicalVerificationService()',
+    'return this.verification.verify(buildCodingVerificationPlan(input.plan), input.host)',
+  ], [
+    "from 'vscode'",
+    'CliVerificationAdapter',
+    'ValidationService',
+  ]),
+  check('headless-completion-composition', SOURCE_PATHS.headlessCompletion, [
+    'export class HeadlessCompletionAdapter',
+    'private readonly completion: CompletionDecisionPort = new CanonicalCompletionDecisionService()',
+    'return this.completion.decide(input)',
+  ], [
+    "from 'vscode'",
+    'CliRunEvidence',
+    'TerminalPermissionCoordinator',
+  ]),
   check('cli-coding-conformance-development-probe', SOURCE_PATHS.cliCodingConformanceProbe, [
-    'CLI canonical Kernel probe exposes settled output without inventing mutation readback receipts',
+    'CLI canonical Kernel probe exposes semantically conformant settled product output',
     "adapterId: 'cli-canonical-coding-kernel-development-probe'",
     "evidenceClass: 'development-route-replay'",
-    'taskContract: projectCodingKernelTaskContract(routeOutput.output.taskContract)',
-    "unavailable('changeReceipts'",
-    'verifications: projectCliVerifications(routeOutput.evidence, fixture)',
-    'completion: projectCliCompletion(routeOutput.output)',
+    'projectSettledCodingConformanceRun({',
+    'toolExecutions: routeOutput.output.result.toolExecutions',
+    'changeReceipts: routeOutput.output.result.changeReceipts',
+    'verifications: routeOutput.output.result.verificationReceipts',
+    'completion: routeOutput.output.result.completion',
     'evaluation.productRouteEvidenceComplete, false',
-  ], ['CliLegacyCodingLoop', 'cli-legacy-coding-loop', 'function projectTaskContract(']),
+  ], [
+    'CliLegacyCodingLoop',
+    'cli-legacy-coding-loop',
+    'function projectTaskContract(',
+    'function projectCliChangeReceipts(',
+  ]),
   check('vscode-coding-conformance-development-probe', SOURCE_PATHS.vscodeCodingConformanceProbe, [
-    'VS Code canonical Kernel probe exposes task and terminal output without inventing tool receipts',
+    'VS Code canonical Kernel probe exposes semantically conformant settled product output',
     "adapterId: 'vscode-coding-kernel-execution-development-probe'",
     "evidenceClass: 'development-route-replay'",
-    'taskContract: projectCodingKernelTaskContract(routeOutput.taskContract)',
+    'projection: projectSettledCodingConformanceRun({',
+    'toolExecutions: routeOutput.result.toolExecutionReceipts ?? []',
+    'changeReceipts: routeOutput.result.changeReceipts ?? []',
+    'verifications: routeOutput.result.verificationReceipts ?? []',
+    'completion: requireCompletion(routeOutput.result.completionDecision)',
+    'evaluation.productRouteEvidenceComplete, false',
+  ], [
+    'function projectTaskContract(',
     "unavailable('toolExecutions'",
     "unavailable('changeReceipts'",
     "unavailable('verifications'",
-    'completion: projectCompletion(routeOutput)',
-    'evaluation.productRouteEvidenceComplete, false',
-  ], ['function projectTaskContract(']),
+  ]),
   check('vscode-kernel-composition', SOURCE_PATHS.extension, [
     'new AgentKernelService(terminalPermissionCoordinator, productCodingKernelExecutor)',
     'new ActiveChatRunCoordinator()',
@@ -269,7 +406,9 @@ const SOURCE_CHECKS = Object.freeze([
     'getPendingKernelRecoveryTasks(request.recovery)',
     'userPrompt: kernelRequest.userPrompt',
     'workspaceRoot: kernelRequest.workspaceRoot',
-    "status: result.tasksFailed > 0 ? 'failed' : 'completed'",
+    'const completionDecision = this.completion.decide({',
+    'const settledResult: AgentLoopResult = { ...result, completionDecision };',
+    'status: completionDecision.status',
   ], [
     'legacy-planned',
     'legacyReason',
@@ -354,18 +493,42 @@ const SOURCE_CHECKS = Object.freeze([
   ]),
   check('vscode-tool-executor', SOURCE_PATHS.toolExecutor, [
     'export class AgentToolExecutor',
+    'executeCanonical<TResult>(',
+    'const action = buildCodingToolAction({',
+    'return this.canonicalExecutor.execute(action, {',
   ]),
   check('vscode-workspace-mutation', SOURCE_PATHS.workspaceMutation, [
-    'export class WorkspaceEditService',
+    'export class VsCodeWorkspaceMutationAdapter',
+    'private readonly transaction: WorkspaceMutationTransactionPort = new CanonicalWorkspaceMutationTransaction()',
+    'executeTextFileWrite(',
+    'executeTextFileDelete(',
+    'rollbackTextFileCommit(',
+  ]),
+  check('vscode-workspace-batch-mutation', SOURCE_PATHS.workspaceBatchMutation, [
+    'export class VsCodeWorkspaceBatchMutationAdapter',
+    'private readonly transaction: WorkspaceMutationTransactionPort = new CanonicalWorkspaceMutationTransaction()',
+    'return this.transaction.execute(',
+    'rollbackTextFileCommit(',
+  ]),
+  check('vscode-workspace-directory-mutation', SOURCE_PATHS.workspaceDirectoryMutation, [
+    'export class VsCodeWorkspaceDirectoryMutationAdapter',
+    'private readonly transaction: WorkspaceMutationTransactionPort = new CanonicalWorkspaceMutationTransaction()',
+    'return this.transaction.execute(plan, this.createHost(',
+    'rollbackWorkspaceDirectoryCommit(',
   ]),
   check('vscode-verification', SOURCE_PATHS.verification, [
-    'export class ValidationService',
+    'export class VsCodeVerificationAdapter',
+    'private readonly verification: VerificationPort = new CanonicalVerificationService()',
+    'return this.verification.verify(plan, {',
   ]),
   check('vscode-completion', SOURCE_PATHS.completion, [
-    'completeRunContext(',
+    'export class VsCodeCompletionAdapter',
+    'private readonly completion: CompletionDecisionPort = new CanonicalCompletionDecisionService()',
+    'return this.completion.decide({',
   ]),
   check('cli-surface-kernel-boundary', SOURCE_PATHS.cliIndex, [
-    "import { productCliCodingKernelExecutor } from './cli-product-coding-kernel';",
+    "from './cli-product-coding-kernel';",
+    'productCliCodingKernelExecutor',
     'await productCliCodingKernelExecutor.execute({',
     'CliRunEvidence.open({',
   ], [
@@ -373,7 +536,7 @@ const SOURCE_CHECKS = Object.freeze([
     'CanonicalCodingKernel',
     'CliCodingKernelRuntimeAdapter',
     'CliCodingArtifactInterpreter',
-    'CliWorkspaceMutationService',
+    'CliWorkspaceMutationHostAdapter',
     'CliVerificationService',
   ]),
   check('cli-canonical-kernel-composition', SOURCE_PATHS.cliProductExecutor, [
@@ -389,27 +552,58 @@ const SOURCE_CHECKS = Object.freeze([
     'export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<',
     'async executeCanonical(',
     'this.artifactInterpreter.interpret(response)',
-    'this.workspaceMutation.apply(request.workspaceRoot, artifactProposal)',
-    'this.verification.verify(request.workspaceRoot, files, request.userPrompt)',
+    'this.toolExecution.executeWorkspaceMutation({',
+    'toolExecutions.push(toolExecution.outcome.receipt)',
+    'verificationReceipts.push(verificationReceipt)',
+    'private readonly completion = new CanonicalCompletionDecisionService()',
+    'status: completion.status',
     'function buildRepairPrompt(',
-    "status: 'completed'",
+    'function settleCliResult(input:',
   ], ['CliLegacyCodingLoop', 'legacyCodingLoop', 'AgentApplicationService']),
+  check('cli-tool-host-composition', SOURCE_PATHS.cliToolExecution, [
+    'export class CliToolExecutionAdapter',
+    'private readonly executor: ToolExecutorPort = new CanonicalToolExecutor()',
+    'const action = buildCodingToolAction({',
+    'const outcome = await this.executor.execute(action, {',
+    'mutationPlan = buildCodingWorkspaceMutationPlan({',
+    'this.transaction.execute(mutationPlan, this.mutation)',
+    'collectCliWorkspaceMutationPaths(settledAction.input.proposal)',
+    "? 'indeterminate'",
+  ], [
+    'CanonicalCodingKernel',
+    'CliVerificationHostAdapter',
+    'buildCliCodingKernelTaskContract',
+  ]),
   check('cli-shared-kernel-task-contract', SOURCE_PATHS.cliKernelTaskContract, [
     'export function buildCliCodingKernelTaskContract(',
     'return buildCodingKernelTaskContract({',
     "provenanceRefs: ['user-prompt', 'surface:cli']",
   ], [
     'export class',
-    'CliWorkspaceMutationService',
-    'CliVerificationService',
+    'CliWorkspaceMutationHostAdapter',
+    'CliVerificationHostAdapter',
     'interface CodingKernelTaskContract',
     'CODING_KERNEL_TASK_CONTRACT_VERSION',
   ]),
   check('cli-workspace-mutation', SOURCE_PATHS.cliMutation, [
-    'export class CliWorkspaceMutationService',
+    'export class CliWorkspaceMutationHostAdapter implements WorkspaceMutationPort<',
+    "mutationState: 'unchanged'",
+    "mutationState: 'possibly-changed'",
+    'await isBaselineCurrent(baseline)',
   ]),
   check('cli-verification', SOURCE_PATHS.cliVerification, [
-    'export class CliVerificationService',
+    'export class CliVerificationHostAdapter',
+    "status: 'unverified'",
+  ]),
+  check('cli-verification-composition', SOURCE_PATHS.cliVerificationAdapter, [
+    'export class CliVerificationAdapter',
+    'private readonly verification: VerificationPort = new CanonicalVerificationService()',
+    'return this.verification.verify(plan, {',
+    "verifier: status === 'unverified' ? 'none' : 'cli-project-verifier'",
+  ], [
+    "from 'vscode'",
+    'HeadlessVerificationAdapter',
+    'ValidationService',
   ]),
   check('cli-completion-evidence', SOURCE_PATHS.cliEvidence, [
     'export class CliRunEvidence',
@@ -534,13 +728,12 @@ export function validateKernelPrepOwnerBaseline(baseline, sources) {
   if (baseline.counts?.cross_surface_kernel_routes !== 4) {
     errors.push(`cross-surface-kernel-routes:unexpected-${baseline.counts?.cross_surface_kernel_routes}`);
   }
-  if (baseline.counts?.converged_semantic_domains !== 1) {
+  if (baseline.counts?.converged_semantic_domains !== 5) {
     errors.push(`semantic-domain:unexpected-converged-${baseline.counts?.converged_semantic_domains}`);
   }
   for (const domain of baseline.semantic_domains ?? []) {
     if (domain.target_owner_count !== 1) errors.push(`semantic-domain:${domain.domain_id}:target-owner-count`);
-    const expectedStatus = domain.domain_id === 'canonical-task-contract' ? 'converged' : 'not-converged';
-    if (domain.convergence_status !== expectedStatus) {
+    if (domain.convergence_status !== 'converged') {
       errors.push(`semantic-domain:${domain.domain_id}:unexpected-${domain.convergence_status}`);
     }
     if (domain.convergence_status === 'converged'
@@ -659,21 +852,16 @@ function buildSemanticDomains() {
       owner('shared-CodingKernelTaskContract', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedCodingKernel),
     ], []),
     domain('tool-execution', 'ToolExecutorPort', [
-      owner('vscode-AgentToolExecutor', ['vscode'], SOURCE_PATHS.toolExecutor),
-      owner('cli-artifact-interpreter', ['cli'], 'packages/cli/src/cli-coding-artifact-interpreter.ts'),
-    ], ['headless']),
+      owner('shared-CanonicalToolExecutor', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedToolExecution),
+    ], []),
     domain('workspace-mutation', 'WorkspaceMutationPort', [
-      owner('vscode-WorkspaceEditService', ['vscode'], SOURCE_PATHS.workspaceMutation),
-      owner('cli-CliWorkspaceMutationService', ['cli'], SOURCE_PATHS.cliMutation),
-    ], ['headless']),
+      owner('shared-CanonicalWorkspaceMutationTransaction', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedWorkspaceMutation),
+    ], []),
     domain('verification', 'VerificationPort', [
-      owner('vscode-ValidationService', ['vscode'], SOURCE_PATHS.verification),
-      owner('cli-CliVerificationService', ['cli'], SOURCE_PATHS.cliVerification),
-    ], ['headless']),
+      owner('shared-CanonicalVerificationService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedVerification),
+    ], []),
     domain('completion-decision', 'CompletionDecisionPort', [
-      owner('shared-CanonicalCodingKernel-output', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedCodingKernel),
-      owner('vscode-TerminalPermissionCoordinator', ['vscode'], SOURCE_PATHS.completion),
-      owner('cli-runPrompt-and-CliRunEvidence', ['cli'], SOURCE_PATHS.cliIndex),
+      owner('shared-CanonicalCompletionDecisionService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedCompletion),
     ], []),
   ];
 }

@@ -46,6 +46,26 @@ test('CLI artifact interpreter normalizes bracket and XML file tools through one
   assert.deepEqual(proposal.unifiedDiffs, []);
 });
 
+test('CLI artifact interpreter recognizes bracket and XML terminal capability requests', () => {
+  const response = [
+    `[TOOL:run_terminal ${JSON.stringify({ command: 'npm test', workdir: 'packages/cli' })}]`,
+    `<tool_call>${JSON.stringify({
+      name: 'run_terminal',
+      arguments: { command: 'git status --short' },
+    })}</tool_call>`,
+  ].join('\n');
+
+  const proposal = interpreter.interpret(response);
+
+  assert.equal(proposal.candidateCount, 2);
+  assert.deepEqual(proposal.fileToolCalls, []);
+  assert.deepEqual(proposal.terminalToolCalls, [
+    { name: 'run_terminal', command: 'npm test', workdir: 'packages/cli' },
+    { name: 'run_terminal', command: 'git status --short' },
+  ]);
+  assert.deepEqual(proposal.unifiedDiffs, []);
+});
+
 test('CLI artifact interpreter preserves loose Python newline escapes and repairs markdown dunder names', () => {
   const response = '<tool_call>{"name":"create_file","arguments":{"filePath":"src/app.py","content":"print(\'line\\n\')\\nprint(f"HELLO:{name}")\\nif **name** == \\"**main**\\":\\n    print(**file**)\\n"}}</tool_call>';
 
@@ -91,6 +111,7 @@ test('CLI artifact interpreter ignores prose and incomplete tool payloads', () =
 
   assert.deepEqual(proposal, {
     fileToolCalls: [],
+    terminalToolCalls: [],
     unifiedDiffs: [],
     candidateCount: 0,
   });

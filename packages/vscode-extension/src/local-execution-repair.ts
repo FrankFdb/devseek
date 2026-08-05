@@ -46,7 +46,7 @@ export interface LocalExecutionRepairCallbacksDeps {
   sessionRecentFiles: Map<string, string>;
   repairFiles?: string[];
   mcpToolRefs?: AgentLoopCallbacks['mcpToolRefs'];
-  onMcpToolCall?: AgentLoopCallbacks['onMcpToolCall'];
+  onPrepareMcpToolCall?: AgentLoopCallbacks['onPrepareMcpToolCall'];
   signal?: AbortSignal;
   displayPresenter?: AgentDisplayPresenter;
 }
@@ -143,7 +143,7 @@ export function buildLocalExecutionAgentCallbacks(deps: LocalExecutionRepairCall
     sessionRecentFiles,
     repairFiles,
     mcpToolRefs,
-    onMcpToolCall,
+    onPrepareMcpToolCall,
     signal,
   } = deps;
   const displayPresenter = deps.displayPresenter ?? new AgentDisplayPresenter();
@@ -204,7 +204,7 @@ export function buildLocalExecutionAgentCallbacks(deps: LocalExecutionRepairCall
     },
     onTodoUpdate: (items) => { webview.postMessage({ type: 'todoUpdate', items }); },
     onUserSteer: consumeAgentSteer,
-    onTerminalCommand: (command, workdir) => terminalPermissionCoordinator.runCommandWithPermission({
+    onPrepareTerminalCommand: (command, workdir) => terminalPermissionCoordinator.prepareToolExecutionWithPermission({
       webview,
       command,
       workdir: workdir ?? defaultWorkdir,
@@ -321,7 +321,7 @@ export function buildLocalExecutionAgentCallbacks(deps: LocalExecutionRepairCall
       new MemoryService({ workspaceRoot }).acceptWriteProposal(proposal);
     },
     mcpToolRefs,
-    onMcpToolCall,
+    onPrepareMcpToolCall,
     signal,
     autopilot: vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false),
   };

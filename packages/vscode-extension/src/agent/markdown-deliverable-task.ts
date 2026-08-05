@@ -9,8 +9,8 @@ import { roughLineDiff } from '../utils';
 import {
   WorkspaceEditService,
   type WorkspaceTextFileBaseline,
-  type WorkspaceTextFileCommitToken,
 } from '../workspace/edit-service';
+import { VsCodeWorkspaceMutationAdapter } from '../workspace/coding-workspace-mutation-adapter';
 import { isCanonicalPathInsideRoot } from '../workspace/path-containment';
 import {
   isMarkdownDocumentDeliverableRequest,
@@ -95,6 +95,8 @@ interface MarkdownStatusOptions {
 }
 
 const workspaceEditService = new WorkspaceEditService();
+const workspaceMutation = new VsCodeWorkspaceMutationAdapter(workspaceEditService);
+let markdownMutationSequence = 0;
 const MAX_EVIDENCE_FILES = 12;
 const MAX_REQUIREMENT_FILES = 3;
 const MAX_FILE_CHARS = 6_000;
@@ -309,7 +311,7 @@ export async function tryExecuteMarkdownDeliverableTask(
   });
   const verificationResults: VerificationResult[] = [];
   let latestArtifactClaims: VerificationResult['claims'] | undefined;
-  let pendingRollback: WorkspaceTextFileCommitToken | undefined;
+  let changeReceipt: NonNullable<TaskExecutionResult['changeReceipts']>[number] | undefined;
   try {
     let finalContent = '';
     let candidateReady = false;
@@ -487,77 +489,112 @@ export async function tryExecuteMarkdownDeliverableTask(
       }
     }
 
-    const committedEdit = workspaceEditService.commitTextFileProposal(
-      workspaceEditService.proposeTextFileWrite(absPath, finalContent),
-      initialTargetSnapshot,
-      { validateSourceSanity: true, repairSourceTransportEscapes: true },
-    );
-    const writeResult = committedEdit.result;
-    pendingRollback = committedEdit.commitToken;
-    const freshContent = committedEdit.commitToken.after.snapshot.content;
-    const diff = roughLineDiff(writeResult.oldContent, finalContent);
-    if (freshContent !== finalContent) {
-      const rollbackIssue = rollbackMarkdownWrite(absPath, pendingRollback);
-      pendingRollback = undefined;
-      await postMarkdownStatus(input, 'failed', basename, {
-        title: 'Markdown 写入校验失败',
-        detail: `目标：${relPath}\n写入后读回内容不一致，已回滚。${rollbackIssue ? ` ${rollbackIssue}` : ''}`,
-        diff,
-      });
-      return {
-        applied: false,
-        path: absPath,
-        failedReason: rollbackIssue || 'Markdown deliverable verification failed after write',
-        evidenceRefs: evidenceStore.all(),
-        verificationResults,
-      };
-    }
-    const artifactEvidence = evidenceStore.recordFileRead({
-        path: absPath,
-        content: freshContent,
-        kind: 'artifact-readback',
-        operationId: 'artifact-readback-commit',
+    markdownMutationSequence += 1;
+    const mutationSequence = markdownMutationSequence;
+    let committedGrounding: VerificationResult | undefined;
+    let readbackFailureReason: string | undefined;
+    const mutation = await workspaceMutation.executeTextFileWrite({
+      runId: callbacks.traceRunId?.trim() || `vscode-markdown-invocation-${mutationSequence}`,
+      sequence: mutationSequence,
+      actionId: `markdown-deliverable-${task.id || input.taskIndex}-${mutationSequence}`,
+      absPath,
+      workspaceRoot: input.workspaceRoot.fsPath,
+      content: finalContent,
+      baseline: initialTargetSnapshot,
+      applyOptions: { validateSourceSanity: true, repairSourceTransportEscapes: true },
+      evidenceRefs: [`markdown-deliverable:${task.id || input.taskIndex}:authorized`],
+      verifyReadback: async ({ content: freshContent, committed }) => {
+        if (freshContent !== finalContent) {
+          readbackFailureReason = 'Markdown deliverable verification failed after write';
+          return {
+            matches: false,
+            evidenceRefs: [`markdown-readback:${task.id || input.taskIndex}:content-mismatch`],
+          };
+        }
+        const artifactEvidence = evidenceStore.recordFileRead({
+          path: absPath,
+          content: freshContent,
+          kind: 'artifact-readback',
+          operationId: 'artifact-readback-commit',
+        });
+        const finalFormalQuality = taskContract.verificationContract.exactArtifact
+          ? { ok: true, reasons: [] as string[] }
+          : assessFormalProjectDocumentQuality(freshContent, markdownPromptText, input.semanticContract);
+        const sourceReadbacks = claimSpecs.length > 0
+          ? [...new Set(claimSpecs.map(spec => spec.sourcePath))].map((sourcePath, index) => evidenceStore.recordFileRead({
+            path: sourcePath,
+            content: fs.readFileSync(sourcePath, 'utf8'),
+            operationId: `source-readback-commit-${index + 1}`,
+          }))
+          : [];
+        committedGrounding = claimSpecs.length > 0
+          ? verifyArtifactClaims(claimSpecs, artifactEvidence, sourceReadbacks, taskContract.verificationContract)
+          : undefined;
+        if (committedGrounding) {
+          verificationResults.push(committedGrounding);
+          latestArtifactClaims = committedGrounding.claims;
+        }
+        if (!finalFormalQuality.ok || (committedGrounding && !committedGrounding.ok)) {
+          const differences = committedGrounding && !committedGrounding.ok
+            ? committedGrounding.differences
+            : finalFormalQuality.reasons;
+          readbackFailureReason = committedGrounding && !committedGrounding.ok
+            ? `artifact-grounding: ${differences.join('; ')}`
+            : `formal-project-quality: ${differences.join(', ')}`;
+          return {
+            matches: false,
+            evidenceRefs: [`markdown-readback:${task.id || input.taskIndex}:quality-failed`],
+          };
+        }
+        try {
+          await callbacks.onAppliedChange({ path: relPath, ...committed.result });
+        } catch (error) {
+          readbackFailureReason = error instanceof Error ? error.message : String(error);
+          throw error;
+        }
+        if (!workspaceEditService.isTextFileBaselineCurrent(committed.commitToken.after)) {
+          readbackFailureReason = 'Markdown deliverable target changed during final delivery callback';
+          return {
+            matches: false,
+            evidenceRefs: [`markdown-readback:${task.id || input.taskIndex}:delivery-drift`],
+          };
+        }
+        return {
+          matches: true,
+          evidenceRefs: [`markdown-readback:${task.id || input.taskIndex}:quality-passed`],
+        };
+      },
     });
-    const finalFormalQuality = taskContract.verificationContract.exactArtifact
-      ? { ok: true, reasons: [] as string[] }
-      : assessFormalProjectDocumentQuality(freshContent, markdownPromptText, input.semanticContract);
-    const sourceReadbacks = claimSpecs.length > 0
-      ? [...new Set(claimSpecs.map(spec => spec.sourcePath))].map((sourcePath, index) => evidenceStore.recordFileRead({
-        path: sourcePath,
-        content: fs.readFileSync(sourcePath, 'utf8'),
-        operationId: `source-readback-commit-${index + 1}`,
-      }))
-      : [];
-    const grounding = claimSpecs.length > 0
-      ? verifyArtifactClaims(claimSpecs, artifactEvidence, sourceReadbacks, taskContract.verificationContract)
+    changeReceipt = mutation.receipt;
+    const committedEdit = mutation.receipt.status === 'committed'
+      ? mutation.receipt.result
       : undefined;
-    if (grounding) {
-      verificationResults.push(grounding);
-      latestArtifactClaims = grounding.claims;
-    }
-    if (!finalFormalQuality.ok || (grounding && !grounding.ok)) {
-      const differences = grounding && !grounding.ok
-        ? grounding.differences
-        : finalFormalQuality.reasons;
-      const reason = grounding && !grounding.ok
-        ? `artifact-grounding: ${differences.join('; ')}`
-        : `formal-project-quality: ${differences.join(', ')}`;
-      const rollbackIssue = rollbackMarkdownWrite(absPath, pendingRollback);
-      pendingRollback = undefined;
+    if (!committedEdit) {
+      const diff = roughLineDiff(initialTargetSnapshot.snapshot.content, finalContent);
+      const terminalFailure = mutation.receipt.status === 'indeterminate'
+        ? `rollback-aborted: ${mutation.receipt.errorCode ?? 'mutation state is indeterminate'}`
+        : `Markdown mutation ${mutation.receipt.status}: ${mutation.receipt.errorCode ?? 'unknown'}`;
+      const failedReason = [readbackFailureReason, terminalFailure].filter(Boolean).join('; ');
       await postMarkdownStatus(input, 'failed', basename, {
-        title: 'Markdown 提交后复核失败，已回滚',
-        detail: `${relPath} · ${differences.join('；')}${rollbackIssue ? `；${rollbackIssue}` : ''}`,
+        title: mutation.receipt.status === 'rolled-back'
+          ? 'Markdown 提交后复核失败，已回滚'
+          : 'Markdown 写入未提交',
+        detail: `${relPath} · ${failedReason}`,
         diff,
       });
       return {
         applied: false,
         path: absPath,
-        failedReason: rollbackIssue || reason,
+        failedReason,
         evidenceRefs: evidenceStore.all(),
-        artifactClaims: grounding?.claims,
+        artifactClaims: committedGrounding?.claims ?? latestArtifactClaims,
         verificationResults,
+        changeReceipts: [mutation.receipt],
       };
     }
+    const writeResult = committedEdit.result;
+    const diff = roughLineDiff(writeResult.oldContent, writeResult.newContent);
+    const grounding = committedGrounding;
 
     const action = writeResult.existed ? 'modify' : 'create';
     const verb = writeResult.existed ? '已更新' : '已创建';
@@ -573,11 +610,6 @@ export async function tryExecuteMarkdownDeliverableTask(
     if (!workspaceEditService.isTextFileBaselineCurrent(committedEdit.commitToken.after)) {
       throw new Error('Markdown deliverable target changed during final status delivery');
     }
-    await callbacks.onAppliedChange({ path: relPath, ...writeResult });
-    if (!workspaceEditService.isTextFileBaselineCurrent(committedEdit.commitToken.after)) {
-      throw new Error('Markdown deliverable target changed during final delivery callback');
-    }
-    pendingRollback = undefined;
     return {
       applied: true,
       path: absPath,
@@ -589,31 +621,25 @@ export async function tryExecuteMarkdownDeliverableTask(
       evidenceRefs: evidenceStore.all(),
       artifactClaims: grounding?.claims,
       verificationResults,
+      changeReceipts: [mutation.receipt],
     };
   } catch (error) {
-    const rollbackIssue = pendingRollback ? rollbackMarkdownWrite(absPath, pendingRollback) : undefined;
-    pendingRollback = undefined;
     await postMarkdownStatus(input, 'failed', basename, {
-      title: 'Markdown 文档写入失败',
-      detail: `${relPath}\n${(error as Error).message}${rollbackIssue ? `\n${rollbackIssue}` : ''}`,
+      title: changeReceipt?.status === 'committed'
+        ? 'Markdown 文档已写入，但交付结算失败'
+        : 'Markdown 文档写入失败',
+      detail: `${relPath}\n${(error as Error).message}`,
     });
     return {
       applied: false,
       path: absPath,
-      failedReason: rollbackIssue || (error as Error).message,
+      failedReason: (error as Error).message,
       evidenceRefs: evidenceStore.all(),
       artifactClaims: latestArtifactClaims,
       verificationResults,
+      ...(changeReceipt ? { changeReceipts: [changeReceipt] } : {}),
     };
   }
-}
-
-function rollbackMarkdownWrite(
-  _absPath: string,
-  commitToken: WorkspaceTextFileCommitToken,
-): string | undefined {
-  const rollback = workspaceEditService.rollbackTextFileCommit(commitToken);
-  return rollback.rolledBack ? undefined : rollback.reason || 'rollback-aborted: commit identity no longer matches';
 }
 
 function tryCaptureTextFileBaseline(

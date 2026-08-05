@@ -135,6 +135,69 @@ test('agent run settlement preserves automatic validation verification ids', () 
   assert.equal(completionData.artifactVerificationOk, true);
 });
 
+test('agent run settlement projects canonical blocked completion as failed without recomputing it', () => {
+  let completionRequest;
+  const terminalPermissions = {
+    completeRunContext(_runContext, requestedStatus, data) {
+      completionRequest = { requestedStatus, data };
+      return requestedStatus;
+    },
+  };
+  const completionDecision = {
+    version: 'devseek.coding-completion-decision/v1',
+    runId: 'run-4',
+    decisionId: 'vscode-completion',
+    idempotencyKey: 'run-4:vscode-completion',
+    status: 'blocked',
+    acceptance: [{ criterionId: 'done', status: 'blocked', evidenceRefs: [] }],
+    reasonCodes: ['verification-not-run'],
+    residualRisks: ['No applicable verifier ran.'],
+    evidenceRefs: ['task-contract:run-4'],
+  };
+
+  const settlement = settleAgentLoopResult(terminalPermissions, { runId: 'run-4' }, {
+    tasksTotal: 1,
+    tasksApplied: 1,
+    tasksFailed: 0,
+    changedPaths: ['src/main.ts'],
+    completionDecision,
+  });
+
+  assert.equal(settlement.requestedStatus, 'failed');
+  assert.equal(settlement.completed, false);
+  assert.equal(completionRequest.data.canonicalCompletionStatus, 'blocked');
+  assert.deepEqual(completionRequest.data.canonicalCompletionReasonCodes, ['verification-not-run']);
+  assert.deepEqual(completionRequest.data.canonicalCompletionEvidenceRefs, ['task-contract:run-4']);
+});
+
+test('agent run settlement preserves canonical cancellation', () => {
+  const terminalPermissions = {
+    completeRunContext(_runContext, requestedStatus) {
+      return requestedStatus;
+    },
+  };
+  const settlement = settleAgentLoopResult(terminalPermissions, { runId: 'run-5' }, {
+    tasksTotal: 1,
+    tasksApplied: 0,
+    tasksFailed: 1,
+    changedPaths: [],
+    completionDecision: {
+      version: 'devseek.coding-completion-decision/v1',
+      runId: 'run-5',
+      decisionId: 'vscode-completion',
+      idempotencyKey: 'run-5:vscode-completion',
+      status: 'cancelled',
+      acceptance: [],
+      reasonCodes: [],
+      residualRisks: [],
+      evidenceRefs: ['task-contract:run-5'],
+    },
+  });
+
+  assert.equal(settlement.requestedStatus, 'cancelled');
+  assert.equal(settlement.status, 'cancelled');
+});
+
 function assertStrictJsonData(value, seen = new Set()) {
   assert.notEqual(value, undefined, 'strict JSON data must not contain undefined');
   assert.notEqual(typeof value, 'function', 'strict JSON data must not contain functions');

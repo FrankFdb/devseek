@@ -51,19 +51,58 @@ function createHarness({
   const artifactInterpreter = {
     interpret(response) {
       interpreted.push(response);
-      return responses[Math.min(interpreted.length - 1, responses.length - 1)];
+      const index = Math.min(interpreted.length - 1, responses.length - 1);
+      const proposal = responses[index];
+      const files = changedFiles[Math.min(index, changedFiles.length - 1)];
+      return {
+        fileToolCalls: proposal.candidateCount === 0
+          ? []
+          : files.map(filePath => ({ name: 'replace_file', filePath, content: 'updated\n' })),
+        unifiedDiffs: [],
+        ...proposal,
+      };
     },
   };
   const workspaceMutation = {
-    async apply(cwd, proposal) {
-      mutations.push({ cwd, proposal });
-      return changedFiles[Math.min(mutations.length - 1, changedFiles.length - 1)];
+    async captureBaseline(plan) {
+      return {
+        baselineRef: `baseline:${plan.actionId}`,
+        state: { actionId: plan.actionId },
+        evidenceRefs: [`baseline:${plan.actionId}:captured`],
+      };
+    },
+    async apply(plan) {
+      mutations.push({ cwd: plan.payload.workspaceRoot, proposal: plan.payload.proposal });
+      const files = changedFiles[Math.min(mutations.length - 1, changedFiles.length - 1)];
+      return {
+        status: 'applied',
+        applied: {
+          state: { files },
+          result: files,
+          evidenceRefs: [`apply:${plan.actionId}`],
+        },
+      };
+    },
+    async readback(plan) {
+      return {
+        matches: true,
+        readbackRef: `readback:${plan.actionId}`,
+        evidenceRefs: [`readback:${plan.actionId}:matched`],
+      };
+    },
+    async rollback(plan) {
+      return {
+        rolledBack: true,
+        rollbackRef: `rollback:${plan.actionId}`,
+        evidenceRefs: [`rollback:${plan.actionId}:completed`],
+      };
     },
   };
   const verification = {
-    async verify(cwd, files, prompt) {
-      verifications.push({ cwd, files, prompt });
-      return validations[Math.min(verifications.length - 1, validations.length - 1)];
+    async verify(request) {
+      verifications.push(request);
+      const result = validations[Math.min(verifications.length - 1, validations.length - 1)];
+      return verificationOutcome(request, result);
     },
   };
   const prompt = 'Change the value, but intentionally fail the first response.';
@@ -127,7 +166,7 @@ function evidenceTypes(harness) {
   return harness.evidence.map(record => record.entry.type);
 }
 
-test('canonical CLI runtime leaves the workspace untouched when the model proposes no artifact', async () => {
+test('canonical CLI runtime blocks a mutating task when the model proposes no artifact', async () => {
   const harness = createHarness({ responses: [{ candidateCount: 0 }] });
 
   const output = await harness.kernel.execute(harness.request);
@@ -138,12 +177,51 @@ test('canonical CLI runtime leaves the workspace untouched when the model propos
   assert.equal(harness.repairRequests.length, 0);
   assert.deepEqual(harness.evidence, []);
   assert.deepEqual(harness.events, []);
-  assert.equal(output.status, 'completed');
-  assert.deepEqual(output.result, {
-    attempts: 0,
-    changedPaths: [],
-    verification: { status: 'not-run', evidenceRefs: [] },
+  assert.equal(output.status, 'blocked');
+  assert.equal(output.result.attempts, 0);
+  assert.deepEqual(output.result.changedPaths, []);
+  assert.deepEqual(output.result.toolExecutions, []);
+  assert.deepEqual(output.result.changeReceipts, []);
+  assert.deepEqual(output.result.verificationReceipts, []);
+  assert.equal(output.result.verification.status, 'not-run');
+  assert.equal(output.result.completion.status, 'blocked');
+  assert.equal(output.result.completion.reasonCodes.includes('verification-not-run'), true);
+});
+
+test('canonical CLI runtime denies model-requested terminal execution without host effects', async () => {
+  const harness = createHarness({
+    responses: [{
+      candidateCount: 1,
+      fileToolCalls: [],
+      terminalToolCalls: [{
+        name: 'run_terminal',
+        command: 'npm install left-pad',
+        workdir: '/workspace',
+      }],
+    }],
   });
+
+  const output = await harness.kernel.execute(harness.request);
+
+  assert.equal(harness.mutations.length, 0);
+  assert.equal(harness.verifications.length, 0);
+  assert.equal(harness.repairRequests.length, 0);
+  assert.equal(output.status, 'blocked');
+  assert.deepEqual(output.result.changedPaths, []);
+  assert.deepEqual(output.result.changeReceipts, []);
+  assert.deepEqual(output.result.verificationReceipts, []);
+  assert.equal(output.result.toolExecutions.length, 1);
+  assert.equal(output.result.toolExecutions[0].tool, 'run_terminal');
+  assert.equal(output.result.toolExecutions[0].status, 'denied');
+  assert.equal(output.result.toolExecutions[0].permission.status, 'denied');
+  assert.deepEqual(output.result.toolExecutions[0].effects, [
+    'process',
+    'network',
+    'workspace-mutation',
+  ]);
+  assert.equal(output.result.verification.status, 'not-run');
+  assert.equal(output.result.completion.status, 'blocked');
+  assert.deepEqual(output.result.completion.residualRisks, ['requested-change-not-applied']);
 });
 
 test('canonical CLI runtime records one committed and verified edit', async () => {
@@ -170,8 +248,52 @@ test('canonical CLI runtime records one committed and verified edit', async () =
     { type: 'qualityGate.completed', passed: true, evidenceRefs: ['verify:passed'] },
   ]);
   assert.deepEqual(output.result.changedPaths, ['src/value.ts']);
+  assert.equal(output.result.toolExecutions.length, 2);
+  assert.equal(output.result.toolExecutions[0].status, 'completed');
+  assert.equal(output.result.toolExecutions[0].permission.status, 'authorized');
+  assert.equal(output.result.toolExecutions[1].tool, 'run_terminal');
+  assert.equal(output.result.toolExecutions[1].status, 'completed');
+  assert.equal(output.result.toolExecutions[1].result.status, 'passed');
+  assert.equal(output.result.changeReceipts.length, 1);
+  assert.equal(output.result.changeReceipts[0].status, 'committed');
+  assert.ok(output.result.changeReceipts[0].baselineRef);
+  assert.ok(output.result.changeReceipts[0].readbackRef);
   assert.equal(output.result.verification.status, 'passed');
+  assert.equal(output.result.verificationReceipts.length, 1);
+  assert.equal(output.result.verificationReceipts[0].status, 'passed');
+  assert.equal(output.result.completion.status, 'completed');
 });
+
+function verificationOutcome(request, result) {
+  const status = result.status ?? (result.passed ? 'passed' : 'failed');
+  const evidenceRefs = result.evidenceRefs ?? [];
+  return {
+    replayed: false,
+    receipt: {
+      version: 'devseek.coding-verification-receipt/v1',
+      runId: request.runId,
+      sequence: request.sequence,
+      actionId: request.actionId,
+      idempotencyKey: `${request.runId}:${request.actionId}`,
+      verifier: 'test-verifier',
+      status,
+      scopePaths: request.files,
+      checks: status === 'unverified' ? [] : [{
+        checkId: `check-${request.actionId}`,
+        status,
+        acceptanceIds: request.acceptance.map(criterion => criterion.id),
+        summary: result.summary,
+        evidenceRefs,
+      }],
+      acceptance: request.acceptance.map(criterion => ({
+        criterionId: criterion.id,
+        status: status === 'passed' ? 'passed' : status === 'failed' ? 'failed' : 'unverified',
+        evidenceRefs,
+      })),
+      evidenceRefs,
+    },
+  };
+}
 
 test('canonical CLI runtime fails closed when a non-mutating task proposes a workspace write', async () => {
   const harness = createHarness({ mode: 'review' });
@@ -184,6 +306,28 @@ test('canonical CLI runtime fails closed when a non-mutating task proposes a wor
   assert.equal(harness.mutations.length, 0);
   assert.equal(harness.verifications.length, 0);
   assert.deepEqual(evidenceTypes(harness), ['side_effect.requested', 'side_effect.failed']);
+});
+
+test('canonical CLI runtime blocks unverified changes without wasting a repair attempt', async () => {
+  const harness = createHarness({
+    validations: [{
+      passed: false,
+      status: 'unverified',
+      summary: 'No verifier applies.',
+      evidenceRefs: ['verifier:none'],
+    }],
+  });
+
+  const output = await harness.kernel.execute(harness.request);
+
+  assert.equal(output.status, 'blocked');
+  assert.equal(output.result.verification.status, 'unverified');
+  assert.equal(output.result.verificationReceipts[0].status, 'unverified');
+  assert.equal(output.result.toolExecutions.at(-1).status, 'failed');
+  assert.equal(output.result.toolExecutions.at(-1).result.status, 'unverified');
+  assert.equal(output.result.completion.status, 'blocked');
+  assert.equal(output.result.completion.reasonCodes.includes('verification-incomplete'), true);
+  assert.equal(harness.repairRequests.length, 0);
 });
 
 test('canonical CLI runtime repairs a failed first edit and closes its recovery evidence', async () => {

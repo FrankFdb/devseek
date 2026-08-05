@@ -13,7 +13,21 @@ const bundleRoot = mkdtempSync(path.join(tmpdir(), 'devseek-cli-workspace-mutati
 const bundlePath = path.join(bundleRoot, 'mutation-service.cjs');
 
 buildSync({
-  entryPoints: [path.join(cliRoot, 'src/cli-workspace-mutation-service.ts')],
+  stdin: {
+    contents: `
+      export {
+        CliWorkspaceMutationHostAdapter,
+        collectCliWorkspaceMutationPaths,
+      } from './src/cli-workspace-mutation-service';
+      export {
+        CanonicalWorkspaceMutationTransaction,
+        buildCodingWorkspaceMutationPlan,
+      } from '@devseek-netai/shared';
+    `,
+    resolveDir: cliRoot,
+    sourcefile: 'mutation-test-entry.ts',
+    loader: 'ts',
+  },
   bundle: true,
   outfile: bundlePath,
   format: 'cjs',
@@ -22,8 +36,12 @@ buildSync({
 });
 
 const require = createRequire(import.meta.url);
-const { CliWorkspaceMutationService } = require(bundlePath);
-const service = new CliWorkspaceMutationService();
+const {
+  CanonicalWorkspaceMutationTransaction,
+  CliWorkspaceMutationHostAdapter,
+  buildCodingWorkspaceMutationPlan,
+  collectCliWorkspaceMutationPaths,
+} = require(bundlePath);
 
 after(() => rmSync(bundleRoot, { recursive: true, force: true }));
 
@@ -34,10 +52,29 @@ function createWorkspace(name) {
   return { root, workspace };
 }
 
-test('CLI workspace mutation service owns ordered tool and diff application with deduplicated receipts', async () => {
+function plan(workspaceRoot, proposal, actionId) {
+  return buildCodingWorkspaceMutationPlan({
+    runId: `run-${actionId}`,
+    sequence: 1,
+    actionId,
+    idempotencyKey: `run-${actionId}:${actionId}`,
+    paths: collectCliWorkspaceMutationPaths(proposal),
+    payload: { workspaceRoot, proposal },
+    evidenceRefs: [`test-plan:${actionId}`],
+  });
+}
+
+async function execute(workspaceRoot, proposal, actionId, host = new CliWorkspaceMutationHostAdapter()) {
+  return new CanonicalWorkspaceMutationTransaction().execute(
+    plan(workspaceRoot, proposal, actionId),
+    host,
+  );
+}
+
+test('shared transaction commits CLI tool and diff mutations after exact readback', async () => {
   const { root, workspace } = createWorkspace('apply');
   try {
-    const files = await service.apply(workspace, {
+    const outcome = await execute(workspace, {
       fileToolCalls: [{
         name: 'create_file',
         filePath: 'src/value.ts',
@@ -50,24 +87,28 @@ test('CLI workspace mutation service owns ordered tool and diff application with
           lines: ['-export const value = 1;', '+export const value = 2;'],
         }],
       }],
-    });
+    }, 'apply-1');
 
-    assert.deepEqual(files, ['src/value.ts']);
+    assert.equal(outcome.receipt.status, 'committed');
+    assert.deepEqual(outcome.receipt.result, ['src/value.ts']);
+    assert.match(outcome.receipt.baselineRef, /^cli-workspace-baseline:sha256:/);
+    assert.match(outcome.receipt.readbackRef, /^cli-workspace-readback:sha256:/);
     assert.equal(readFileSync(path.join(workspace, 'src/value.ts'), 'utf8'), 'export const value = 2;\n');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-test('CLI workspace mutation service rejects traversal before creating an outside artifact', async () => {
+test('shared mutation plan rejects traversal before creating an outside artifact', () => {
   const { root, workspace } = createWorkspace('traversal');
   try {
-    await assert.rejects(
-      service.apply(workspace, {
-        fileToolCalls: [{ name: 'create_file', filePath: '../outside.txt', content: 'blocked\n' }],
-        unifiedDiffs: [],
-      }),
-      /Refusing to write outside workspace/,
+    const proposal = {
+      fileToolCalls: [{ name: 'create_file', filePath: '../outside.txt', content: 'blocked\n' }],
+      unifiedDiffs: [],
+    };
+    assert.throws(
+      () => plan(workspace, proposal, 'traversal-1'),
+      /coding-workspace-mutation:unsafe-path/,
     );
     assert.equal(existsSync(path.join(root, 'outside.txt')), false);
   } finally {
@@ -75,22 +116,53 @@ test('CLI workspace mutation service rejects traversal before creating an outsid
   }
 });
 
-test('CLI workspace mutation service fails a stale patch without replacing the current file', async () => {
+test('CLI host rejects a stale patch without replacing the current file', async () => {
   const { root, workspace } = createWorkspace('stale-patch');
   const target = path.join(workspace, 'value.txt');
   writeFileSync(target, 'current\n', 'utf8');
   try {
-    await assert.rejects(
-      service.apply(workspace, {
-        fileToolCalls: [],
-        unifiedDiffs: [{
-          filePath: 'value.txt',
-          hunks: [{ oldStart: 1, lines: ['-stale', '+replacement'] }],
-        }],
-      }),
-      /Patch context mismatch/,
-    );
+    const outcome = await execute(workspace, {
+      fileToolCalls: [],
+      unifiedDiffs: [{
+        filePath: 'value.txt',
+        hunks: [{ oldStart: 1, lines: ['-stale', '+replacement'] }],
+      }],
+    }, 'stale-1');
+
+    assert.equal(outcome.receipt.status, 'failed');
+    assert.equal(outcome.receipt.errorCode, 'workspace-patch-context-mismatch');
+    assert.equal(outcome.receipt.rollbackRef, undefined);
     assert.equal(readFileSync(target, 'utf8'), 'current\n');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('CLI baseline CAS preserves a concurrent user edit without rollback', async () => {
+  const { root, workspace } = createWorkspace('concurrent-edit');
+  const target = path.join(workspace, 'value.txt');
+  writeFileSync(target, 'baseline\n', 'utf8');
+  const adapter = new CliWorkspaceMutationHostAdapter();
+  const host = {
+    async captureBaseline(mutationPlan) {
+      const baseline = await adapter.captureBaseline(mutationPlan);
+      writeFileSync(target, 'user edit\n', 'utf8');
+      return baseline;
+    },
+    apply: adapter.apply.bind(adapter),
+    readback: adapter.readback.bind(adapter),
+    rollback: adapter.rollback.bind(adapter),
+  };
+  try {
+    const outcome = await execute(workspace, {
+      fileToolCalls: [{ name: 'create_file', filePath: 'value.txt', content: 'agent edit\n' }],
+      unifiedDiffs: [],
+    }, 'concurrent-1', host);
+
+    assert.equal(outcome.receipt.status, 'failed');
+    assert.equal(outcome.receipt.errorCode, 'workspace-baseline-changed');
+    assert.equal(outcome.receipt.rollbackRef, undefined);
+    assert.equal(readFileSync(target, 'utf8'), 'user edit\n');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

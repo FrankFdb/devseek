@@ -1,5 +1,5 @@
 import * as crypto from 'crypto';
-import type { RunEvidenceJson } from '@devseek-netai/shared';
+import type { CodingWorkspaceMutationReceipt, RunEvidenceJson } from '@devseek-netai/shared';
 import type {
   WorkspaceCommittedEdit,
   WorkspaceDeleteResult,
@@ -22,11 +22,13 @@ export type PendingEditUndoTransaction =
     operation: 'restore-text-file';
     targetPath: string;
     result: WorkspaceCommittedEdit;
+    canonicalReceipt: CodingWorkspaceMutationReceipt<WorkspaceCommittedEdit>;
   }
   | {
     operation: 'delete-created-file';
     targetPath: string;
     result: WorkspaceDeleteResult;
+    canonicalReceipt: CodingWorkspaceMutationReceipt<WorkspaceDeleteResult>;
   };
 
 export interface PendingEditResolutionProofBase {
@@ -78,6 +80,7 @@ export function buildPendingEditResolutionProof(input: PendingEditResolutionProo
       operation: input.transaction.operation,
       postcondition: input.postcondition,
       commit_token: summarizeTextFileCommitToken(mutationCommitToken),
+      canonical_mutation_receipt: summarizeCanonicalMutationReceipt(input.transaction.canonicalReceipt),
     } : {}),
     ...(sourceCommitToken ? { source_commit_token: summarizeTextFileCommitToken(sourceCommitToken) } : {}),
     ...(selectedHunk ? { selected_hunk: selectedHunk } : {}),
@@ -90,6 +93,26 @@ export function buildPendingEditResolutionProof(input: PendingEditResolutionProo
   return {
     ...proof,
     resolution_fingerprint: fingerprintResolution(proof),
+  };
+}
+
+function summarizeCanonicalMutationReceipt(
+  receipt: CodingWorkspaceMutationReceipt<unknown>,
+): RunEvidenceJson {
+  if (receipt.status !== 'committed' || !receipt.baselineRef || !receipt.readbackRef) {
+    throw new Error('Pending edit undo proof requires a committed canonical mutation receipt');
+  }
+  return {
+    version: receipt.version,
+    run_id: receipt.runId,
+    sequence: receipt.sequence,
+    action_id: receipt.actionId,
+    idempotency_key: receipt.idempotencyKey,
+    status: receipt.status,
+    paths: [...receipt.paths],
+    baseline_ref: receipt.baselineRef,
+    readback_ref: receipt.readbackRef,
+    evidence_refs: [...receipt.evidenceRefs],
   };
 }
 

@@ -15,7 +15,7 @@ export interface ProductMutationAuthorizationDecision {
 }
 
 export interface ProductMutationRequest<T> {
-  kind: 'workspace-directory' | 'vscode-command' | 'pending-edit-undo' | 'pending-edit-resolution' | 'mcp-tool';
+  kind: 'vscode-command' | 'pending-edit-undo' | 'pending-edit-resolution' | 'mcp-tool';
   label: string;
   authorize: () => ProductMutationAuthorizationDecision | Promise<ProductMutationAuthorizationDecision>;
   invoke: () => T | Promise<T>;
@@ -37,6 +37,11 @@ export type ProductMutationCompletionEvidence<T> =
     kind: 'invocation-receipt';
     proof: (value: T) => RunEvidenceJson;
   };
+
+export interface PreparedProductMutation<T> {
+  readonly authorization: ProductMutationAuthorizationDecision;
+  execute(): Promise<T>;
+}
 
 export class ProductMutationDeniedError extends Error {
   constructor(message: string) {
@@ -79,12 +84,18 @@ export class ProductMutationCoordinator {
   }
 
   async run<T>(request: ProductMutationRequest<T>): Promise<T> {
+    const prepared = await this.prepare(request);
+    return prepared.execute();
+  }
+
+  async prepare<T>(request: ProductMutationRequest<T>): Promise<PreparedProductMutation<T>> {
     const operationId = `vscode-product-mutation-${crypto.randomUUID()}`;
     const observation = summarizeTraceText(`${request.kind}\n${request.label}`);
     this.recordBeforeMutation('side_effect.requested', operationId, 'requested', observation, {
       mutation_kind: request.kind,
     });
-    if (!request.completionEvidence) {
+    const completionEvidence = request.completionEvidence;
+    if (!completionEvidence) {
       this.recordBeforeMutation('side_effect.failed', operationId, 'failed', observation, {
         failure_phase: 'preflight',
         reason: 'mutation has neither an independent postcondition nor an accepted invocation receipt',
@@ -109,11 +120,33 @@ export class ProductMutationCoordinator {
         failure_phase: 'authorization',
         reason: summarizeTraceText(authorization.reason ?? 'mutation authorization denied'),
       });
-      throw new ProductMutationDeniedError(authorization.reason ?? 'Mutation authorization denied');
+      return {
+        authorization,
+        execute: async () => {
+          throw new ProductMutationDeniedError(authorization.reason ?? 'Mutation authorization denied');
+        },
+      };
     }
     this.recordBeforeMutation('side_effect.authorized', operationId, 'authorized', observation, {
       authorization: authorization.source,
     });
+
+    let execution: Promise<T> | undefined;
+    return {
+      authorization,
+      execute: () => {
+        execution ??= this.executePreparedMutation(request, completionEvidence, operationId, observation);
+        return execution;
+      },
+    };
+  }
+
+  private async executePreparedMutation<T>(
+    request: ProductMutationRequest<T>,
+    completionEvidence: ProductMutationCompletionEvidence<T>,
+    operationId: string,
+    observation: { length: number; sha256: string },
+  ): Promise<T> {
     this.recordBeforeMutation('side_effect.started', operationId, 'started', observation);
 
     let value: T;
@@ -128,10 +161,10 @@ export class ProductMutationCoordinator {
     }
 
     let proof: RunEvidenceJson;
-    if (request.completionEvidence.kind === 'verified-postcondition') {
+    if (completionEvidence.kind === 'verified-postcondition') {
       let verified = false;
       try {
-        verified = await request.completionEvidence.verify(value);
+        verified = await completionEvidence.verify(value);
       } catch (error) {
         this.recordAfterMutation('side_effect.indeterminate', operationId, 'indeterminate', observation, {
           failure_phase: 'postcondition',
@@ -151,14 +184,14 @@ export class ProductMutationCoordinator {
       proof = {
         scope: 'verified-postcondition',
         external_effect_verified: true,
-        evidence: request.completionEvidence.proof?.(value) ?? { kind: 'postcondition-verified' },
+        evidence: completionEvidence.proof?.(value) ?? { kind: 'postcondition-verified' },
       };
     } else {
       try {
         proof = {
           scope: 'invocation-receipt',
           external_effect_verified: false,
-          receipt: request.completionEvidence.proof(value),
+          receipt: completionEvidence.proof(value),
         };
       } catch (error) {
         this.recordAfterMutation('side_effect.indeterminate', operationId, 'indeterminate', observation, {

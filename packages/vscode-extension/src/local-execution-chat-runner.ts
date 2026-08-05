@@ -67,7 +67,7 @@ export interface LocalExecutionChatRunnerInput {
   registerToMemory: (absPath: string) => void;
   sessionRecentFiles: Map<string, string>;
   mcpToolRefs?: AgentLoopCallbacks['mcpToolRefs'];
-  onMcpToolCall?: AgentLoopCallbacks['onMcpToolCall'];
+  onPrepareMcpToolCall?: AgentLoopCallbacks['onPrepareMcpToolCall'];
   signal?: AbortSignal;
   sessionId: string;
   onChangedPaths: (relativePaths: string[]) => void;
@@ -445,7 +445,7 @@ async function runAgentRepairRound(
       sessionRecentFiles: input.sessionRecentFiles,
       repairFiles: repairTasks.map((task) => task.absPath).filter((absPath): absPath is string => Boolean(absPath)),
       mcpToolRefs: input.mcpToolRefs,
-      onMcpToolCall: input.onMcpToolCall,
+      onPrepareMcpToolCall: input.onPrepareMcpToolCall,
       signal: input.signal,
       displayPresenter: repairDisplayPresenter,
     }),

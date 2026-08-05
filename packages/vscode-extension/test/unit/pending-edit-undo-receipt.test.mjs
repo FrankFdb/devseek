@@ -46,6 +46,21 @@ function baseline({ existed, content, inode }) {
   };
 }
 
+function canonicalReceipt(actionId) {
+  return {
+    version: 'devseek.coding-workspace-mutation-receipt/v1',
+    runId: 'pending-run-1',
+    sequence: 1,
+    actionId,
+    idempotencyKey: `pending-run-1:${actionId}`,
+    status: 'committed',
+    paths: ['src/generated.txt'],
+    baselineRef: `vscode-text-baseline:${actionId}`,
+    readbackRef: `vscode-text-readback:${actionId}`,
+    evidenceRefs: [`pending-edit-authority:${actionId}`, `workspace-readback:${actionId}`],
+  };
+}
+
 test('Pending edit undo receipt binds record, operation and commit-token evidence', () => {
   const proof = buildPendingEditUndoProof({
     recordId: 'pending-1',
@@ -64,6 +79,7 @@ test('Pending edit undo receipt binds record, operation and commit-token evidenc
           after: baseline({ existed: false, content: '', inode: undefined }),
         },
       },
+      canonicalReceipt: canonicalReceipt('delete-pending-1'),
     },
   });
 
@@ -78,6 +94,8 @@ test('Pending edit undo receipt binds record, operation and commit-token evidenc
   assert.equal(proof.commit_token.before.leaf_inode, '81');
   assert.equal(proof.commit_token.after.existed, false);
   assert.equal(proof.commit_token.after.content_length, 0);
+  assert.equal(proof.canonical_mutation_receipt.action_id, 'delete-pending-1');
+  assert.match(proof.canonical_mutation_receipt.readback_ref, /^vscode-text-readback:/);
 });
 
 test('R2-09B pending edit receipt binds hunk undo scope to mutation commit evidence', () => {
@@ -114,6 +132,7 @@ test('R2-09B pending edit receipt binds hunk undo scope to mutation commit evide
           after: baseline({ existed: true, content: 'old\n', inode: '83' }),
         },
       },
+      canonicalReceipt: canonicalReceipt('restore-pending-2-h2'),
     },
   });
 
@@ -122,6 +141,7 @@ test('R2-09B pending edit receipt binds hunk undo scope to mutation commit evide
   assert.equal(proof.selected_hunk.id, 'pending-2-h2');
   assert.equal(proof.selected_hunk.resolution, 'undone');
   assert.equal(proof.commit_token.after.content_sha256.length, 64);
+  assert.equal(proof.canonical_mutation_receipt.status, 'committed');
   assert.equal(proof.resolution_fingerprint.length, 64);
 });
 

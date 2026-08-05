@@ -7,7 +7,13 @@ import {
   buildCodingKernelTaskContract,
   evaluateCodingConformanceFixture,
 } from '../../shared/dist/index.js';
-import { HeadlessCodingKernelExecutor } from '../dist/index.js';
+import {
+  HeadlessCodingKernelExecutor,
+  HeadlessCompletionAdapter,
+  HeadlessToolExecutionAdapter,
+  HeadlessVerificationAdapter,
+  HeadlessWorkspaceMutationAdapter,
+} from '../dist/index.js';
 
 test('Headless product entry delegates one immutable request to the shared canonical Kernel', async () => {
   const calls = [];
@@ -102,6 +108,136 @@ test('Headless product entry fails before runtime dispatch when cancellation is 
     /coding-kernel-execution:cancelled-before-start/,
   );
   assert.equal(calls, 0);
+});
+
+test('Headless tool adapter composes host capability without bypassing shared authority', async () => {
+  let calls = 0;
+  const adapter = new HeadlessToolExecutionAdapter();
+  const denied = await adapter.execute({
+    action: {
+      runId: 'headless-tool-run',
+      sequence: 1,
+      actionId: 'network-denied',
+      tool: 'fetch_webpage',
+      effects: ['network'],
+      input: { url: 'https://example.com' },
+      authority: {
+        decision: 'deny',
+        status: 'denied',
+        reason: 'network-not-authorized',
+        evidenceRefs: ['headless-authority:network-denied'],
+      },
+    },
+    host: {
+      async execute() {
+        calls++;
+        return { status: 'completed', result: 'unexpected', evidenceRefs: ['unexpected'] };
+      },
+    },
+  });
+
+  assert.equal(calls, 0);
+  assert.equal(denied.receipt.status, 'denied');
+  assert.equal(denied.receipt.permission.decision, 'deny');
+});
+
+test('Headless mutation adapter commits only caller-host readback evidence', async () => {
+  const calls = [];
+  const outcome = await new HeadlessWorkspaceMutationAdapter().execute({
+    plan: {
+      runId: 'headless-mutation-run',
+      sequence: 1,
+      actionId: 'headless-write-1',
+      idempotencyKey: 'headless-mutation-run:headless-write-1',
+      paths: ['src/value.ts'],
+      payload: { content: 'updated\n' },
+      evidenceRefs: ['headless-plan:write-1'],
+    },
+    host: {
+      async captureBaseline() {
+        calls.push('baseline');
+        return {
+          baselineRef: 'headless-baseline:value:v0',
+          state: { content: 'old\n' },
+          evidenceRefs: ['headless-baseline:captured'],
+        };
+      },
+      async apply() {
+        calls.push('apply');
+        return {
+          status: 'applied',
+          applied: {
+            state: { content: 'updated\n' },
+            result: ['src/value.ts'],
+            evidenceRefs: ['headless-apply:completed'],
+          },
+        };
+      },
+      async readback() {
+        calls.push('readback');
+        return {
+          matches: true,
+          readbackRef: 'headless-readback:value:v1',
+          evidenceRefs: ['headless-readback:matched'],
+        };
+      },
+      async rollback() {
+        calls.push('rollback');
+        return { rolledBack: false, evidenceRefs: ['headless-rollback:unexpected'] };
+      },
+    },
+  });
+
+  assert.deepEqual(calls, ['baseline', 'apply', 'readback']);
+  assert.equal(outcome.receipt.status, 'committed');
+  assert.deepEqual(outcome.receipt.result, ['src/value.ts']);
+  assert.equal(outcome.receipt.readbackRef, 'headless-readback:value:v1');
+});
+
+test('Headless verification adapter keeps missing acceptance evidence unverified', async () => {
+  const outcome = await new HeadlessVerificationAdapter().verify({
+    plan: {
+      runId: 'headless-verify-run',
+      sequence: 1,
+      actionId: 'headless-verify-1',
+      idempotencyKey: 'headless-verify-run:headless-verify-1',
+      scopePaths: ['src/value.ts'],
+      acceptance: [{ id: 'builds', statement: 'Project builds' }],
+      payload: { workspaceRoot: '/workspace' },
+      evidenceRefs: ['headless-mutation:committed'],
+    },
+    host: {
+      async verify() {
+        return { verifier: 'none', checks: [], evidenceRefs: ['headless-verifier:none'] };
+      },
+    },
+  });
+
+  assert.equal(outcome.receipt.status, 'unverified');
+  assert.equal(outcome.receipt.acceptance[0].status, 'unverified');
+});
+
+test('Headless completion adapter blocks a change without verification evidence', () => {
+  const decision = new HeadlessCompletionAdapter().decide({
+    runId: 'headless-completion-run',
+    decisionId: 'completion-1',
+    idempotencyKey: 'headless-completion-run:completion-1',
+    acceptance: [{ id: 'verified', statement: 'The change is verified.' }],
+    verificationRequired: true,
+    reviewRequired: false,
+    toolExecutions: [],
+    mutations: [],
+    verifications: [],
+    resolvedVerificationActionIds: [],
+    acceptanceEvidence: [],
+    pendingRefs: [],
+    adverseEvidenceRefs: [],
+    residualRisks: [],
+    evidenceRefs: ['headless-task-contract:completion-run'],
+  });
+
+  assert.equal(decision.status, 'blocked');
+  assert.equal(decision.reasonCodes.includes('verification-not-run'), true);
 });
 
 async function executeMutated(fixture, mutate) {

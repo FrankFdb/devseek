@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import {
   CODING_KERNEL_REQUEST_VERSION,
+  CODING_VERIFICATION_RECEIPT_VERSION,
+  CODING_WORKSPACE_MUTATION_RECEIPT_VERSION,
   CanonicalCodingKernel,
   buildCodingKernelTaskContract,
 } from '../../../shared/dist/index.js';
@@ -55,7 +57,9 @@ test('canonical Kernel sends VS Code work through its runtime adapter', async ()
     semanticContract,
   });
 
-  assert.equal(output.result, expected);
+  assert.notEqual(output.result, expected);
+  assert.equal(output.result.historyText, expected.historyText);
+  assert.equal(output.result.completionDecision.status, 'completed');
   assert.equal(output.status, 'completed');
   assert.equal(calls.length, 1);
   assert.equal(calls[0].userPrompt, 'inspect the repository');
@@ -146,6 +150,32 @@ test('recovery success clears the durable checkpoint exactly once', async () => 
   assert.deepEqual(checkpoints, [[null, [], 'completed']]);
 });
 
+test('recovery stays paused when loop counters look successful but completion evidence is missing', async () => {
+  const checkpoints = [];
+  const kernel = createKernel({
+    async runCanonical() {
+      return {
+        tasksTotal: 1,
+        tasksApplied: 0,
+        tasksFailed: 0,
+        changedPaths: [],
+      };
+    },
+  });
+
+  const output = await execute(kernel, {
+    ...baseRequest(),
+    recovery: checkpointRecovery(0),
+    callbacks: {
+      executionMode: 'edit',
+      onTaskCheckpoint: async (...args) => { checkpoints.push(args); },
+    },
+  });
+
+  assert.equal(output.status, 'blocked');
+  assert.deepEqual(checkpoints, [[0, [...checkpointRecovery(0).tasks], 'paused']]);
+});
+
 test('recovery exception preserves pending work before propagating the error', async () => {
   const checkpoints = [];
   const recovery = checkpointRecovery(0);
@@ -229,10 +259,43 @@ function checkpointRecovery(startFromIndex) {
 }
 
 function result(route, tasksFailed = 0) {
+  const changedPath = `${route}.txt`;
   return {
     tasksTotal: 1,
     tasksApplied: tasksFailed ? 0 : 1,
     tasksFailed,
-    changedPaths: tasksFailed ? [] : [`${route}.txt`],
+    changedPaths: tasksFailed ? [] : [changedPath],
+    ...(tasksFailed ? {} : {
+      historyText: `Completed ${route}.`,
+      changeReceipts: [{
+        version: CODING_WORKSPACE_MUTATION_RECEIPT_VERSION,
+        runId: 'vscode-test-run',
+        sequence: 1,
+        actionId: `mutation-${route}`,
+        idempotencyKey: `vscode-test-run:mutation-${route}`,
+        status: 'committed',
+        paths: [changedPath],
+        baselineRef: `baseline:${changedPath}`,
+        readbackRef: `readback:${changedPath}`,
+        evidenceRefs: [`mutation:${route}:committed`],
+      }],
+      verificationReceipts: [{
+        version: CODING_VERIFICATION_RECEIPT_VERSION,
+        runId: 'vscode-test-run',
+        sequence: 1,
+        actionId: `verification-${route}`,
+        idempotencyKey: `vscode-test-run:verification-${route}`,
+        verifier: 'vscode-test',
+        status: 'passed',
+        scopePaths: [changedPath],
+        checks: [],
+        acceptance: [{
+          criterionId: 'completed',
+          status: 'passed',
+          evidenceRefs: [`verification:${route}:passed`],
+        }],
+        evidenceRefs: [`verification:${route}:passed`],
+      }],
+    }),
   };
 }

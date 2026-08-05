@@ -180,4 +180,54 @@ test('AgentToolExecutor: registers delete_file as an audited high-risk edit', ()
   assert.deepEqual(plan.plannedRefs, [{ kind: 'edit', label: 'src/obsolete.cpp' }]);
 });
 
+test('AgentToolExecutor: delegates terminal settlement to the shared canonical owner', async () => {
+  let calls = 0;
+  const executor = new AgentToolExecutor();
+  const plan = executor.plan(
+    { name: 'run_terminal', input: { command: 'npm test' } },
+    {
+      mode: 'edit',
+      allowedToolKinds: ['terminal'],
+      requireConfirmationKinds: ['terminal'],
+      deniedToolKinds: [],
+      requireUserConfirmation: false,
+    },
+  );
+  const denied = await executor.executeCanonical(plan, {
+    runId: 'vscode-run-1',
+    sequence: 1,
+    actionId: 'terminal-1',
+    authorityEvidenceRefs: ['vscode-authority:terminal-1:confirmation-missing'],
+    host: {
+      async execute() {
+        calls++;
+        return { status: 'completed', result: 'unexpected', evidenceRefs: ['unexpected'] };
+      },
+    },
+  });
+
+  assert.equal(calls, 0);
+  assert.equal(denied.receipt.status, 'denied');
+  assert.equal(denied.receipt.permission.decision, 'require-confirmation');
+
+  const authorized = await executor.executeCanonical(plan, {
+    runId: 'vscode-run-1',
+    sequence: 2,
+    actionId: 'terminal-2',
+    authorityEvidenceRefs: ['vscode-authority:terminal-2:confirmed'],
+    confirmationRef: 'vscode-confirmation:terminal-2',
+    host: {
+      async execute() {
+        calls++;
+        return { status: 'completed', result: 'tests passed', evidenceRefs: ['terminal:npm-test:passed'] };
+      },
+    },
+  });
+
+  assert.equal(calls, 1);
+  assert.equal(authorized.receipt.status, 'completed');
+  assert.equal(authorized.receipt.result, 'tests passed');
+  assert.equal(authorized.receipt.permission.confirmationRef, 'vscode-confirmation:terminal-2');
+});
+
 console.log('\nTool executor tests passed.\n');

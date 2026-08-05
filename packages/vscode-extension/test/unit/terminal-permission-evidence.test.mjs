@@ -147,7 +147,7 @@ function readTypeScriptSources(dir = path.join(rootDir, 'src'), relativeDir = 's
 test('Terminal evidence: the canonical Agent entry point propagates participant authority and degradation', () => {
   const extensionSource = readFileSync(path.join(rootDir, 'src/extension.ts'), 'utf8');
   const tracedTerminalCalls = [...extensionSource.matchAll(
-    /terminalPermissionCoordinator\.runCommandWithPermission\(\{([\s\S]*?)\n\s*\}\);/g,
+    /terminalPermissionCoordinator\.prepareToolExecutionWithPermission\(\{([\s\S]*?)\n\s*\}\);/g,
   )]
     .map(match => match[1])
     .filter(block => block.includes('traceRunId: agentTraceRunId'));
@@ -193,7 +193,7 @@ test('Terminal evidence: active UI command entry points cannot bypass the owned 
   assert.match(localRunner, /terminalPermissionCoordinator\.runCommandWithPermissionDetailed\s*\(/);
   assert.match(localRunner, /manageRecoveryExternally:\s*true/);
   assert.doesNotMatch(localRepair, /runAgentTerminalCommandForLocalRepair/);
-  assert.match(localRepair, /terminalPermissionCoordinator\.runCommandWithPermission\s*\(/);
+  assert.match(localRepair, /terminalPermissionCoordinator\.prepareToolExecutionWithPermission\s*\(/);
   assert.doesNotMatch(
     extension,
     /if \(localExecutionResult\.handled\) \{\s*chatRunContext\.complete\('completed'/,
@@ -202,6 +202,7 @@ test('Terminal evidence: active UI command entry points cannot bypass the owned 
   assert.doesNotMatch(extension, /(?:agentRunContext|chatRunContext)\??\.complete\s*\(/);
   assert.match(extension, /terminalPermissionCoordinator\.completeRunContext\s*\(/);
   assert.match(coordinator, /resolveCommandFailuresAfterQualityGate\s*\(/);
+  assert.doesNotMatch(coordinator, /async runCommandWithPermission\s*\(/);
   assert.match(coordinator, /runContext\.complete\(status, completionData\)/);
 });
 
@@ -240,7 +241,9 @@ test('Terminal evidence: validation execution has one injected authority and no 
   assert.equal((localRepair.match(/createValidationCommandRunner\s*\(\{/g) ?? []).length, 1);
 
   assert.doesNotMatch(deterministicExecution, /\brunLocalExecution\s*\(/);
-  assert.match(deterministicExecution, /未配置终端副作用授权边界/);
+  assert.match(deterministicExecution, /executeFakeToolsForLoop\s*\(/);
+  assert.match(deterministicExecution, /plannedTerminalValidation/);
+  assert.doesNotMatch(deterministicExecution, /onTerminalCommand/);
   assert.doesNotMatch(executionPlanner, /child_process|\brunLocalExecution\s*\(/);
   assert.doesNotMatch(legacyExecution, /child_process|\brunLocalExecution\s*\(/);
 });
@@ -661,14 +664,14 @@ test('Terminal evidence: policy deny closes the request as failed and vetoes com
   const { owner, participantToken } = openRun(workspaceRoot, runId);
   const evidenceErrors = [];
 
-  const output = await new TerminalPermissionCoordinator().runCommandWithPermission(inputFor({
+  const output = (await new TerminalPermissionCoordinator().runCommandWithPermissionDetailed(inputFor({
     workspaceRoot,
     runId,
     participantToken,
     command: 'echo must-not-run',
     policy: denyTerminalPolicy,
     evidenceErrors,
-  }));
+  }))).output;
 
   assert.match(output, /命令未执行/);
   assert.deepEqual(evidenceErrors, []);
@@ -683,6 +686,80 @@ test('Terminal evidence: policy deny closes the request as failed and vetoes com
   assert.equal(owner.settleAndSeal({ status: 'failed', idempotencyKey: 'settlement:failed' }).head.sealed, true);
 });
 
+test('Terminal evidence: prepared command cannot dispatch before canonical execution starts', async t => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-terminal-evidence-'));
+  t.after(() => rmSync(workspaceRoot, { recursive: true, force: true }));
+  fakeVscode.window.terminals.length = 0;
+  const runId = 'terminal-prepared-authority-first';
+  const { owner, participantToken } = openRun(workspaceRoot, runId);
+  const evidenceErrors = [];
+  const coordinator = new TerminalPermissionCoordinator();
+
+  const prepared = await coordinator.prepareCommandWithPermission({
+    ...inputFor({
+      workspaceRoot,
+      runId,
+      participantToken,
+      command: 'pwd',
+      policy: allowTerminalPolicy,
+      evidenceErrors,
+    }),
+    presentation: 'visible',
+  });
+
+  assert.equal(prepared.authority.status, 'authorized');
+  assert.equal(fakeVscode.window.terminals.length, 0);
+  assert.deepEqual(sideEffectEvents(owner).map(event => event.type), [
+    'side_effect.requested',
+    'side_effect.authorized',
+  ]);
+
+  const result = await prepared.execute();
+  assert.equal(result.executed, true);
+  assert.equal(result.outcome, 'indeterminate');
+  assert.deepEqual(fakeVscode.window.terminals[0]?.commands, ['pwd']);
+  assertOneExactLifecycle(sideEffectEvents(owner), [
+    'side_effect.requested',
+    'side_effect.authorized',
+    'side_effect.started',
+    'side_effect.indeterminate',
+  ]);
+  assert.deepEqual(evidenceErrors, []);
+  assert.equal(owner.settleAndSeal({ status: 'cancelled', idempotencyKey: 'settlement:cancelled' }).head.sealed, true);
+});
+
+test('Terminal evidence: denied prepared command never exposes a process effect', async t => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-terminal-evidence-'));
+  t.after(() => rmSync(workspaceRoot, { recursive: true, force: true }));
+  fakeVscode.window.terminals.length = 0;
+  const runId = 'terminal-prepared-denied';
+  const { owner, participantToken } = openRun(workspaceRoot, runId);
+  const evidenceErrors = [];
+
+  const prepared = await new TerminalPermissionCoordinator().prepareCommandWithPermission({
+    ...inputFor({
+      workspaceRoot,
+      runId,
+      participantToken,
+      command: 'echo must-not-run',
+      policy: denyTerminalPolicy,
+      evidenceErrors,
+    }),
+    presentation: 'visible',
+  });
+  const result = await prepared.execute();
+
+  assert.equal(prepared.authority.status, 'denied');
+  assert.equal(result.executed, false);
+  assert.equal(fakeVscode.window.terminals.length, 0);
+  assertOneExactLifecycle(sideEffectEvents(owner), [
+    'side_effect.requested',
+    'side_effect.failed',
+  ]);
+  assert.deepEqual(evidenceErrors, []);
+  assert.equal(owner.settleAndSeal({ status: 'failed', idempotencyKey: 'settlement:failed' }).head.sealed, true);
+});
+
 test('Terminal evidence: successful execution records authorized, started and committed', async t => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-terminal-evidence-'));
   t.after(() => rmSync(workspaceRoot, { recursive: true, force: true }));
@@ -690,14 +767,14 @@ test('Terminal evidence: successful execution records authorized, started and co
   const { owner, participantToken } = openRun(workspaceRoot, runId);
   const evidenceErrors = [];
 
-  const output = await new TerminalPermissionCoordinator().runCommandWithPermission(inputFor({
+  const output = (await new TerminalPermissionCoordinator().runCommandWithPermissionDetailed(inputFor({
     workspaceRoot,
     runId,
     participantToken,
     command: 'echo terminal-evidence-ok',
     policy: allowTerminalPolicy,
     evidenceErrors,
-  }));
+  }))).output;
 
   assert.match(output, /terminal-evidence-ok/);
   assert.deepEqual(evidenceErrors, []);
@@ -718,7 +795,7 @@ test('Terminal evidence: execution exception is indeterminate, preserves the exc
   const evidenceErrors = [];
 
   await assert.rejects(
-    new TerminalPermissionCoordinator().runCommandWithPermission(inputFor({
+    new TerminalPermissionCoordinator().runCommandWithPermissionDetailed(inputFor({
       workspaceRoot,
       runId,
       participantToken,
@@ -760,7 +837,7 @@ test('Terminal evidence: authorized append failure prevents process dispatch and
   };
   try {
     await assert.rejects(
-      new TerminalPermissionCoordinator().runCommandWithPermission(inputFor({
+      new TerminalPermissionCoordinator().runCommandWithPermissionDetailed(inputFor({
         workspaceRoot,
         runId,
         participantToken,
@@ -795,7 +872,7 @@ test('Terminal evidence: committed append failure records indeterminate degradat
   };
   try {
     await assert.rejects(
-      new TerminalPermissionCoordinator().runCommandWithPermission(inputFor({
+      new TerminalPermissionCoordinator().runCommandWithPermissionDetailed(inputFor({
         workspaceRoot,
         runId,
         participantToken,

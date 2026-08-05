@@ -210,6 +210,8 @@ test('Simple file task: writes markdown and completes with file-check evidence',
     assert.equal(readFileSync(target, 'utf8'), 'phase6 quality gate smoke');
     assert.equal(result.tasksFailed, 0);
     assert.equal(result.tasksApplied, 1);
+    assert.equal(result.verificationReceipts.length, 1);
+    assert.equal(result.verificationReceipts[0].status, 'passed');
     assert.deepEqual(validationInput.changedPaths, ['docs/manual-phase6-quality.md']);
     const executeCompletedIndex = events.statuses.findIndex(status => (
       status.phase === 'execute'

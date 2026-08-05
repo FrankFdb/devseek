@@ -1,14 +1,23 @@
 import {
+  CanonicalCompletionDecisionService,
   type CodingKernelExecutionRequest,
   type CodingKernelRuntimeOutput,
   type CodingKernelRuntimePort,
+  type CodingCompletionAcceptanceDecision,
+  type CodingCompletionDecision,
+  type CodingToolAuthorityReceipt,
+  type CodingToolExecutionReceipt,
+  type CodingVerificationReceipt,
+  type CodingWorkspaceMutationReceipt,
   productRunEvidenceIdempotencyKey,
   summarizeTraceText,
   type ProductRunEvidenceRecordInput,
 } from '@devseek-netai/shared';
 import type { CliCodingArtifactInterpreter } from './cli-coding-artifact-interpreter';
-import type { CliValidationResult, CliVerificationService } from './cli-verification-service';
-import type { CliWorkspaceMutationService } from './cli-workspace-mutation-service';
+import type { CliVerificationAdapter } from './cli-verification-adapter';
+import type { CliValidationResult } from './cli-verification-service';
+import type { CliWorkspaceMutationHostAdapter } from './cli-workspace-mutation-service';
+import { CliToolExecutionAdapter } from './cli-tool-execution-adapter';
 
 export type CliCodingKernelEvent =
   | { type: 'fileChanges.proposed'; files: string[] }
@@ -42,10 +51,14 @@ export interface CliCodingKernelRuntimeContext {
 export interface CliCodingKernelResult {
   readonly attempts: number;
   readonly changedPaths: readonly string[];
+  readonly toolExecutions: readonly CodingToolExecutionReceipt<unknown>[];
+  readonly changeReceipts: readonly CodingWorkspaceMutationReceipt<readonly string[]>[];
+  readonly verificationReceipts: readonly CodingVerificationReceipt[];
   readonly verification: {
-    readonly status: 'passed' | 'not-run';
+    readonly status: 'passed' | 'failed' | 'unverified' | 'indeterminate' | 'not-run';
     readonly evidenceRefs: readonly string[];
   };
+  readonly completion: CodingCompletionDecision;
 }
 
 interface CliRecoveryBoundary {
@@ -59,11 +72,16 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
   CliCodingKernelRuntimeContext,
   CliCodingKernelResult
 > {
+  private readonly toolExecution: CliToolExecutionAdapter;
+  private readonly completion = new CanonicalCompletionDecisionService();
+
   constructor(
     private readonly artifactInterpreter: Pick<CliCodingArtifactInterpreter, 'interpret'>,
-    private readonly workspaceMutation: Pick<CliWorkspaceMutationService, 'apply'>,
-    private readonly verification: Pick<CliVerificationService, 'verify'>,
-  ) {}
+    workspaceMutation: CliWorkspaceMutationHostAdapter,
+    private readonly verification: Pick<CliVerificationAdapter, 'verify'>,
+  ) {
+    this.toolExecution = new CliToolExecutionAdapter(workspaceMutation);
+  }
 
   async executeCanonical(
     request: CodingKernelExecutionRequest<CliCodingKernelRuntimeContext>,
@@ -71,6 +89,9 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
     const input = request.runtimeContext;
     let response = input.response;
     const changedPaths = new Set<string>();
+    const toolExecutions: CodingToolExecutionReceipt<unknown>[] = [];
+    const changeReceipts: CodingWorkspaceMutationReceipt<readonly string[]>[] = [];
+    const verificationReceipts: CodingVerificationReceipt[] = [];
     let recovery: CliRecoveryBoundary | undefined;
     let recoveryExitError: unknown;
     try {
@@ -78,18 +99,82 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
         const executionAttempt = attempt + 1;
         const artifactProposal = this.artifactInterpreter.interpret(response);
         const { candidateCount } = artifactProposal;
+        const terminalToolCalls = artifactProposal.terminalToolCalls ?? [];
+        if (terminalToolCalls.length > 0) {
+          for (let index = 0; index < terminalToolCalls.length; index++) {
+            const terminalCall = terminalToolCalls[index];
+            const terminalOutcome = await this.toolExecution.executeDeniedTerminal({
+              runId: request.runId,
+              sequence: index + 1,
+              actionId: `cli-terminal-${index + 1}`,
+              command: terminalCall.command,
+              workdir: terminalCall.workdir,
+            });
+            toolExecutions.push(terminalOutcome.receipt);
+          }
+          return settleCliResult({
+            completion: this.completion,
+            request,
+            attempts: executionAttempt,
+            changedPaths,
+            toolExecutions,
+            changeReceipts,
+            verificationReceipts,
+            resolvedVerificationActionIds: [],
+            verificationStatus: 'not-run',
+            evidenceRefs: toolExecutions.flatMap(receipt => receipt.evidenceRefs),
+            acceptanceEvidence: request.taskContract.acceptance.map(criterion => ({
+              criterionId: criterion.id,
+              status: 'blocked',
+              evidenceRefs: toolExecutions.flatMap(receipt => receipt.evidenceRefs),
+            })),
+            residualRisks: ['requested-change-not-applied'],
+          });
+        }
         if (candidateCount === 0) {
           if (recovery) {
             throw new Error('DevSeek repair response contained no workspace artifacts to validate');
           }
-          return completedResult(attempt, changedPaths, 'not-run', []);
+          return settleCliResult({
+            completion: this.completion,
+            request,
+            attempts: attempt,
+            changedPaths,
+            toolExecutions,
+            changeReceipts,
+            verificationReceipts,
+            resolvedVerificationActionIds: [],
+            verificationStatus: 'not-run',
+            evidenceRefs: request.taskContract.mode === 'change' || request.taskContract.mode === 'release'
+              ? []
+              : [`cli-response:${request.runId}:settled`],
+            acceptanceEvidence: request.taskContract.mode === 'change'
+              || request.taskContract.mode === 'release'
+              ? []
+              : request.taskContract.acceptance.map(criterion => ({
+                criterionId: criterion.id,
+                status: 'passed',
+                evidenceRefs: [`cli-response:${request.runId}:settled`],
+              })),
+          });
         }
         const sideEffectOperationId = `cli-file-write-${executionAttempt}`;
         const verificationOperationId = `cli-verification-${executionAttempt}`;
+        const sideEffectSequence = ((executionAttempt - 1) * 2) + 1;
+        const verificationSequence = sideEffectSequence + 1;
         const recoveryCorrelation: Record<string, string> = recovery
           ? { recovery_operation_id: recovery.operationId }
           : {};
         if (request.taskContract.mode !== 'change' && request.taskContract.mode !== 'release') {
+          const denied = await this.toolExecution.executeWorkspaceMutation({
+            runId: request.runId,
+            sequence: sideEffectSequence,
+            actionId: sideEffectOperationId,
+            workspaceRoot: request.workspaceRoot,
+            proposal: artifactProposal,
+            authority: cliWorkspaceAuthority(request.taskContract.mode, sideEffectOperationId, false),
+          });
+          toolExecutions.push(denied.outcome.receipt);
           input.recordOperationEvidence({
             type: 'side_effect.requested',
             idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-requested', {
@@ -157,43 +242,42 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
             ...recoveryCorrelation,
           },
         }, sideEffectOperationId);
-        let files: string[];
-        try {
-          files = await this.workspaceMutation.apply(request.workspaceRoot, artifactProposal);
-        } catch (error) {
+        const toolExecution = await this.toolExecution.executeWorkspaceMutation({
+          runId: request.runId,
+          sequence: sideEffectSequence,
+          actionId: sideEffectOperationId,
+          workspaceRoot: request.workspaceRoot,
+          proposal: artifactProposal,
+          authority: cliWorkspaceAuthority(request.taskContract.mode, sideEffectOperationId, true),
+        });
+        toolExecutions.push(toolExecution.outcome.receipt);
+        const toolReceipt = toolExecution.outcome.receipt;
+        if (toolReceipt.status !== 'completed') {
           noteCliRecoveryAdverse(recovery, sideEffectOperationId);
           input.recordOperationEvidence({
-            type: 'side_effect.indeterminate',
-            idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-indeterminate', {
+            type: toolReceipt.status === 'indeterminate' ? 'side_effect.indeterminate' : 'side_effect.failed',
+            idempotencyKey: productRunEvidenceIdempotencyKey(
+              toolReceipt.status === 'indeterminate'
+                ? 'cli-file-write-indeterminate'
+                : 'cli-file-write-failed', {
               runId: request.runId,
               attempt: executionAttempt,
             }),
             payload: {
               kind: 'workspace-file-write',
               attempt: executionAttempt,
-              error: summarizeTraceText(input.formatError(error)),
+              reason: toolReceipt.errorCode ?? 'workspace-tool-execution-failed',
               ...recoveryCorrelation,
             },
           }, sideEffectOperationId);
-          throw error;
+          throw new Error(cliWorkspaceToolFailureMessage(toolReceipt.errorCode));
         }
-        if (files.length === 0) {
-          noteCliRecoveryAdverse(recovery, sideEffectOperationId);
-          input.recordOperationEvidence({
-            type: 'side_effect.failed',
-            idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-failed', {
-              runId: request.runId,
-              attempt: executionAttempt,
-            }),
-            payload: {
-              kind: 'workspace-file-write',
-              attempt: executionAttempt,
-              reason: 'no-applicable-workspace-artifact',
-              ...recoveryCorrelation,
-            },
-          }, sideEffectOperationId);
-          throw new Error('Model returned workspace artifacts, but none could be applied');
+        const changeReceipt = toolReceipt.result;
+        if (!changeReceipt || changeReceipt.status !== 'committed') {
+          throw new Error('Workspace tool completed without a committed mutation receipt');
         }
+        changeReceipts.push(changeReceipt);
+        const files = [...(changeReceipt.result ?? [])];
         input.recordOperationEvidence({
           type: 'side_effect.committed',
           idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-committed', {
@@ -220,7 +304,30 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
         }, verificationOperationId);
         let validation: CliValidationResult;
         try {
-          validation = await this.verification.verify(request.workspaceRoot, files, request.userPrompt);
+          const verificationTool = await this.toolExecution.executeVerification({
+            runId: request.runId,
+            sequence: verificationSequence,
+            actionId: verificationOperationId,
+            files,
+            authority: cliVerificationAuthority(verificationOperationId),
+            verify: () => this.verification.verify({
+              runId: request.runId,
+              sequence: verificationSequence,
+              actionId: verificationOperationId,
+              workspaceRoot: request.workspaceRoot,
+              files,
+              prompt: request.userPrompt,
+              acceptance: request.taskContract.acceptance,
+              evidenceRefs: changeReceipt.evidenceRefs,
+            }),
+          });
+          toolExecutions.push(verificationTool.outcome.receipt);
+          const verificationReceipt = verificationTool.outcome.receipt.result;
+          if (!verificationReceipt) {
+            throw new Error('Verification tool settled without a structured verification receipt');
+          }
+          verificationReceipts.push(verificationReceipt);
+          validation = cliValidationFromReceipt(verificationReceipt);
         } catch (error) {
           noteCliRecoveryAdverse(recovery, verificationOperationId);
           input.recordOperationEvidence({
@@ -296,12 +403,38 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
         const recoveryOperationId = 'cli-recovery-1';
         if (validation.passed) {
           if (recovery) closeCliRecoveryCompleted(request.runId, input, recovery, verificationOperationId);
-          return completedResult(
-            executionAttempt,
+          return settleCliResult({
+            completion: this.completion,
+            request,
+            attempts: executionAttempt,
             changedPaths,
-            'passed',
-            validation.evidenceRefs,
-          );
+            toolExecutions,
+            changeReceipts,
+            verificationReceipts,
+            resolvedVerificationActionIds: recovery
+              ? verificationReceipts.slice(0, -1).map(receipt => receipt.actionId)
+              : [],
+            verificationStatus: 'passed',
+            evidenceRefs: validation.evidenceRefs,
+            acceptanceEvidence: [],
+          });
+        }
+        const latestVerification = verificationReceipts.at(-1);
+        if (latestVerification?.status === 'unverified' || latestVerification?.status === 'indeterminate') {
+          noteCliRecoveryAdverse(recovery, verificationOperationId);
+          return settleCliResult({
+            completion: this.completion,
+            request,
+            attempts: executionAttempt,
+            changedPaths,
+            toolExecutions,
+            changeReceipts,
+            verificationReceipts,
+            resolvedVerificationActionIds: [],
+            verificationStatus: latestVerification.status,
+            evidenceRefs: latestVerification.evidenceRefs,
+            acceptanceEvidence: [],
+          });
         }
         if (attempt === 1) {
           noteCliRecoveryAdverse(recovery, verificationOperationId);
@@ -390,6 +523,13 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
   }
 }
 
+function cliWorkspaceToolFailureMessage(errorCode: string | undefined): string {
+  if (errorCode === 'workspace-path-outside-root') {
+    return 'Refusing to write outside workspace';
+  }
+  return 'Model returned workspace artifacts, but none could be applied';
+}
+
 function noteCliRecoveryAdverse(recovery: CliRecoveryBoundary | undefined, operationId: string): void {
   if (!recovery || recovery.unresolvedOperationIds.includes(operationId)) return;
   recovery.unresolvedOperationIds.push(operationId);
@@ -431,20 +571,86 @@ function closeCliRecoveryFailed(
   recovery.closed = true;
 }
 
-function completedResult(
-  attempts: number,
-  changedPaths: ReadonlySet<string>,
-  status: CliCodingKernelResult['verification']['status'],
-  evidenceRefs: readonly string[],
-): CodingKernelRuntimeOutput<CliCodingKernelResult> {
+function settleCliResult(input: {
+  completion: CanonicalCompletionDecisionService;
+  request: CodingKernelExecutionRequest<CliCodingKernelRuntimeContext>;
+  attempts: number;
+  changedPaths: ReadonlySet<string>;
+  toolExecutions: readonly CodingToolExecutionReceipt<unknown>[];
+  changeReceipts: readonly CodingWorkspaceMutationReceipt<readonly string[]>[];
+  verificationReceipts: readonly CodingVerificationReceipt[];
+  resolvedVerificationActionIds: readonly string[];
+  verificationStatus: CliCodingKernelResult['verification']['status'];
+  evidenceRefs: readonly string[];
+  acceptanceEvidence: readonly CodingCompletionAcceptanceDecision[];
+  residualRisks?: readonly string[];
+}): CodingKernelRuntimeOutput<CliCodingKernelResult> {
+  const completion = input.completion.decide({
+    runId: input.request.runId,
+    decisionId: 'cli-completion',
+    idempotencyKey: `${input.request.runId}:cli-completion`,
+    acceptance: input.request.taskContract.acceptance,
+    verificationRequired: input.request.taskContract.mode === 'change'
+      || input.request.taskContract.mode === 'release',
+    reviewRequired: false,
+    toolExecutions: input.toolExecutions,
+    mutations: input.changeReceipts,
+    verifications: input.verificationReceipts,
+    resolvedVerificationActionIds: input.resolvedVerificationActionIds,
+    acceptanceEvidence: input.acceptanceEvidence,
+    pendingRefs: [],
+    adverseEvidenceRefs: [],
+    residualRisks: input.residualRisks ?? [],
+    evidenceRefs: [...input.request.taskContract.provenanceRefs, ...input.evidenceRefs],
+  });
   return {
-    status: 'completed',
+    status: completion.status,
     result: {
-      attempts,
-      changedPaths: [...changedPaths],
-      verification: { status, evidenceRefs: [...evidenceRefs] },
+      attempts: input.attempts,
+      changedPaths: [...input.changedPaths],
+      toolExecutions: [...input.toolExecutions],
+      changeReceipts: [...input.changeReceipts],
+      verificationReceipts: [...input.verificationReceipts],
+      verification: { status: input.verificationStatus, evidenceRefs: [...input.evidenceRefs] },
+      completion,
     },
-    evidenceRefs,
+    evidenceRefs: completion.evidenceRefs,
+    residualRisks: completion.residualRisks,
+  };
+}
+
+function cliValidationFromReceipt(receipt: CodingVerificationReceipt): CliValidationResult {
+  return {
+    passed: receipt.status === 'passed',
+    status: receipt.status,
+    evidenceRefs: [...receipt.evidenceRefs],
+    summary: receipt.checks.map(check => check.summary).join('\n')
+      || receipt.errorCode
+      || 'Verification produced no executable check evidence.',
+  };
+}
+
+function cliWorkspaceAuthority(
+  mode: CodingKernelExecutionRequest<unknown>['taskContract']['mode'],
+  actionId: string,
+  authorized: boolean,
+): CodingToolAuthorityReceipt {
+  return {
+    decision: authorized ? 'allow' : 'deny',
+    status: authorized ? 'authorized' : 'denied',
+    reason: authorized
+      ? `task-contract-${mode}-authorizes-workspace-mutation`
+      : `task-contract-${mode}-denies-workspace-mutation`,
+    evidenceRefs: [`cli-authority:${actionId}:${authorized ? 'authorized' : 'denied'}`],
+  };
+}
+
+function cliVerificationAuthority(actionId: string): CodingToolAuthorityReceipt {
+  return {
+    decision: 'allow',
+    status: 'authorized',
+    reason: 'cli-exec-authorizes-requested-local-verification',
+    evidenceRefs: [`cli-authority:${actionId}:authorized`],
   };
 }
 

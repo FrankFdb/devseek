@@ -433,6 +433,43 @@ test('WorkspaceEditService: directory creation returns route, absence and inode 
     assert.match(result.commitToken.after.snapshot.device, /^\d+$/);
     assert.match(result.commitToken.after.snapshot.inode, /^\d+$/);
     assert.equal(statSync(target).ino.toString(), result.commitToken.after.snapshot.inode);
+    assert.deepEqual(
+      result.commitToken.createdDirectories.map(directory => path.relative(workspaceRoot, directory.canonicalPath)),
+      ['one', path.join('one', 'two')],
+    );
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('WorkspaceEditService: directory rollback removes the exact target and nested parents created by the commit', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-directory-rollback-'));
+  try {
+    const service = new WorkspaceEditService();
+    const target = path.join(workspaceRoot, 'one', 'two', 'three');
+    const baseline = service.captureWorkspaceDirectoryBaseline(target, workspaceRoot);
+    const result = service.createWorkspaceDirectory(target, workspaceRoot, baseline);
+
+    assert.deepEqual(service.rollbackWorkspaceDirectoryCommit(result.commitToken), { rolledBack: true });
+    assert.equal(existsSync(path.join(workspaceRoot, 'one')), false);
+    assert.equal(service.isWorkspaceDirectoryBaselineCurrent(baseline), true);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('WorkspaceEditService: directory rollback refuses to remove a commit changed by the user', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-directory-rollback-changed-'));
+  try {
+    const service = new WorkspaceEditService();
+    const target = path.join(workspaceRoot, 'one', 'two');
+    const result = service.createWorkspaceDirectory(target, workspaceRoot);
+    writeFileSync(path.join(target, 'user.txt'), 'keep\n');
+
+    const rollback = service.rollbackWorkspaceDirectoryCommit(result.commitToken);
+    assert.equal(rollback.rolledBack, false);
+    assert.match(rollback.reason, /non-empty|changed/);
+    assert.equal(readFileSync(path.join(target, 'user.txt'), 'utf8'), 'keep\n');
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });
   }

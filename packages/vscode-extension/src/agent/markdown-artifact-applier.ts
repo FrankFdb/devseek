@@ -1,7 +1,9 @@
 import * as nodePath from 'path';
+import type { CodingWorkspaceMutationReceipt } from '@devseek-netai/shared';
 import { parseGeneratedArtifacts } from '../generated-file-parser';
 import { resolveGeneratedArtifactPathForPrompt, resolveWorkspaceWritePath } from '../workspace/path-resolver';
 import { WorkspaceEditService } from '../workspace/edit-service';
+import { VsCodeWorkspaceMutationAdapter } from '../workspace/coding-workspace-mutation-adapter';
 import { decideProjectInstructionFileWrite } from '../workspace/instruction-file-safety';
 import type { WrittenFileEvidence } from './completion-evidence';
 import type { AgentLoopCallbacks } from './loop-types';
@@ -11,6 +13,7 @@ import {
 } from './write-guard';
 
 const workspaceEditService = new WorkspaceEditService();
+const workspaceMutation = new VsCodeWorkspaceMutationAdapter(workspaceEditService);
 
 function promptLooksLikeCppProgram(userPrompt: string): boolean {
   return /(?:c\+\+|cpp|\.cpp\b|\.cc\b|\.cxx\b|C\+\+)/i.test(userPrompt);
@@ -64,7 +67,11 @@ export async function applyMarkdownFileArtifactsForLoop(
     requireReadBeforeOverwrite?: boolean;
     readEvidencePaths?: Iterable<string>;
   },
-): Promise<{ feedbackForAI: string; writtenFiles: WrittenFileEvidence[] }> {
+): Promise<{
+  feedbackForAI: string;
+  writtenFiles: WrittenFileEvidence[];
+  changeReceipts: CodingWorkspaceMutationReceipt<unknown>[];
+}> {
   const parsed = parseGeneratedArtifacts(text)
     .filter((artifact): artifact is Extract<ReturnType<typeof parseGeneratedArtifacts>[number], { type: 'file' }> => artifact.type === 'file')
     .map(artifact => ({ path: artifact.path, content: artifact.content }));
@@ -72,6 +79,7 @@ export async function applyMarkdownFileArtifactsForLoop(
   const candidates = parsed.length > 0 ? parsed : inferred;
   const feedback: string[] = [];
   const writtenFiles: WrittenFileEvidence[] = [];
+  const changeReceipts: CodingWorkspaceMutationReceipt<unknown>[] = [];
   const seen = new Set<string>();
 
   for (const artifact of candidates) {
@@ -144,20 +152,34 @@ export async function applyMarkdownFileArtifactsForLoop(
       }
     }
     callbacks.onToolActivity?.('write', resolvedWrite.relPath);
-    let writeResult;
+    let mutationOutcome;
     try {
-      writeResult = workspaceEditService.commitTextFileProposal(
-        workspaceEditService.proposeTextFileWrite(resolvedAbs, artifact.content),
+      mutationOutcome = await workspaceMutation.executeTextFileWrite({
+        runId: callbacks.traceRunId,
+        absPath: resolvedAbs,
+        workspaceRoot,
+        content: artifact.content,
         baseline,
-        {
+        applyOptions: {
           validateSourceSanity: true,
           repairSourceTransportEscapes: true,
         },
-      ).result;
+        evidenceRefs: [`file-write-authority:${resolvedWrite.relPath}`],
+      });
     } catch (error) {
       feedback.push(`[generated_file: ${artifact.path}] 跳过（源码语法护栏）：${error instanceof Error ? error.message : String(error)}`);
       continue;
     }
+    changeReceipts.push(mutationOutcome.receipt);
+    const committedEdit = mutationOutcome.receipt.result;
+    if (mutationOutcome.receipt.status !== 'committed' || !committedEdit) {
+      feedback.push(
+        `[generated_file: ${artifact.path}] 跳过（工作区写入事务未提交）：`
+        + `${mutationOutcome.receipt.errorCode ?? mutationOutcome.receipt.status}`,
+      );
+      continue;
+    }
+    const writeResult = committedEdit.result;
     if (writeResult.normalization) {
       feedback.push(
         `[generated_file: ${artifact.path}] 诊断: 已修复 ${writeResult.normalization.repairCount} 处源码工具协议转义污染。`,
@@ -180,5 +202,5 @@ export async function applyMarkdownFileArtifactsForLoop(
     feedback.push(`[generated_file: ${artifact.path}] 已写入 ${resolvedWrite.relPath} (${newLines} 行)`);
   }
 
-  return { feedbackForAI: feedback.join('\n'), writtenFiles };
+  return { feedbackForAI: feedback.join('\n'), writtenFiles, changeReceipts };
 }

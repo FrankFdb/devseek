@@ -77,7 +77,6 @@ import {
 } from './agent/isolated-artifact-write-scope';
 import {
   buildTaskTerminalFailureDetail,
-  withTaskTerminalEvidence as attachTaskTerminalEvidence,
   type TaskExecutionResult,
 } from './agent/task-execution-result';
 import { createTaskConvergenceGuard } from './agent/task-convergence-guard';
@@ -108,20 +107,37 @@ import { runAgentAutoValidationForWrites, type AgentAutoValidationResult } from 
 import { shouldRequestManualReviewForRun } from './agent/manual-review-validation';
 import { decideAgentRuntimeTurn } from './agent/agent-runtime-turn-policy';
 import { WorkspaceEditService, type WorkspaceTextFileBaseline } from './workspace/edit-service';
+import { VsCodeWorkspaceMutationAdapter } from './workspace/coding-workspace-mutation-adapter';
 import { buildTaskShapeGuidancePrompt } from './agent/task-shape';
 import { routeTaskIntent, routeTaskSemanticContract } from './task-intent-router';
 import type { TaskSemanticContract } from './task-semantic-contract';
 import { createSemanticExecutionWriteAuthority } from './agent/semantic-execution-context';
 import { VerificationPlanner, shouldRunCppValidation } from './app/verification-planner';
+import { VsCodeVerificationAdapter } from './app/coding-verification-adapter';
 import { normalizeRepairRoundBudget } from './app/bounded-repair-policy';
 import { ValidationService } from './workspace/validation-service';
 import { buildAnalyzeTaskPrompt } from './agent/analyze-task-prompt';
 import { ArtifactGroundingCollector } from './agent/artifact-grounding-lifecycle';
 import { buildAgentLoopResult } from './agent/agent-loop-result';
 import {
+  appendTaskExecutionEvidence,
+  appendVerificationReceipt,
+  createAgentLoopExecutionEvidence,
+  TaskExecutionEvidenceCollector,
+} from './agent/agent-loop-execution-evidence';
+import {
+  applySearchReplaceBlocks,
+  parseSearchReplaceBlocks,
+} from './agent/search-replace';
+import {
+  autoValidationResultToValidationOutcome,
+  combineFinalValidationOutcomes,
+  emitLegacyValidationQualityGateStatus,
+  type ValidationOutcome,
+} from './agent/agent-loop-validation-outcome';
+import {
   collectToolReadEvidence,
   ToolReadEvidenceRecorder,
-  withToolReadEvidence,
 } from './agent/tool-read-evidence';
 import { compactAgentMessageHistoryWithFidelity } from './agent/agent-history-compaction';
 import {
@@ -140,6 +156,9 @@ import {
 // ----------------------------------------------------------------
 
 const workspaceEditService = new WorkspaceEditService();
+const workspaceMutation = new VsCodeWorkspaceMutationAdapter(workspaceEditService);
+const legacyVerification = new VsCodeVerificationAdapter();
+let searchReplaceMutationSequence = 0;
 export type { AgentLoopCallbacks, AgentLoopResult, AgentStatusMessage } from './agent/loop-types';
 export { extractAnalysisFindings } from './agent/analysis-findings';
 
@@ -258,79 +277,6 @@ function compactAgentLoopMessageHistory(messages: ChatMessage[]): void {
   }
 }
 
-// ----------------------------------------------------------------
-// SEARCH/REPLACE block parser (Aider/Cursor style targeted edits)
-// ----------------------------------------------------------------
-
-interface SearchReplaceBlock {
-  search: string;
-  replace: string;
-}
-
-/**
- * Parse SEARCH/REPLACE blocks from LLM output.
- *
- * Expected format (one or more per response):
- *   <<<<<<< SEARCH
- *   exact code to find
- *   =======
- *   new code to replace with
- *   >>>>>>> REPLACE
- */
-function parseSearchReplaceBlocks(raw: string): SearchReplaceBlock[] {
-  const blocks: SearchReplaceBlock[] = [];
-  const re = /<<<<<<< SEARCH\n([\s\S]*?)\n=======\n([\s\S]*?)\n>>>>>>> REPLACE/g;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(raw)) !== null) {
-    blocks.push({ search: match[1], replace: match[2] });
-  }
-  return blocks;
-}
-
-interface ApplyBlocksResult {
-  result: string;
-  applied: number;
-  failed: number;
-  errors: string[];
-}
-
-/**
- * Apply SEARCH/REPLACE blocks to file content.
- * Tries exact match first, then normalized line-endings as fallback.
- */
-function applySearchReplaceBlocks(
-  content: string,
-  blocks: SearchReplaceBlock[],
-): ApplyBlocksResult {
-  let result = content;
-  let applied = 0;
-  let failed = 0;
-  const errors: string[] = [];
-
-  for (const block of blocks) {
-    if (result.includes(block.search)) {
-      // Use indexOf+slice rather than String.replace to avoid regex special chars
-      const idx = result.indexOf(block.search);
-      result = result.slice(0, idx) + block.replace + result.slice(idx + block.search.length);
-      applied++;
-    } else {
-      // Normalize line endings and retry
-      const norm = (s: string) => s.replace(/\r\n/g, '\n');
-      const normContent = norm(result);
-      const normSearch = norm(block.search);
-      if (normContent.includes(normSearch)) {
-        const idx2 = normContent.indexOf(normSearch);
-        result = normContent.slice(0, idx2) + block.replace + normContent.slice(idx2 + normSearch.length);
-        applied++;
-      } else {
-        failed++;
-        errors.push(`未找到匹配文本: "${block.search.slice(0, 80).trim()}"`);
-      }
-    }
-  }
-
-  return { result, applied, failed, errors };
-}
 
 // ----------------------------------------------------------------
 // Prompt builders — all include current file content
@@ -479,10 +425,14 @@ async function executeTask(
   let firstCall = true;
   const consumeNewSession = () => { const ns = firstCall && newSession; firstCall = false; return ns; };
   const taskReadEvidence: import('./agent/evidence-grounding').EvidenceRef[] = [];
-  const withTaskTerminalEvidence = <T extends Omit<TaskExecutionResult, 'terminalEvidence'>>(
+  const taskEvidence = new TaskExecutionEvidenceCollector(taskReadEvidence);
+  const withTaskTerminalEvidence = <T extends Omit<
+    TaskExecutionResult,
+    'terminalEvidence' | 'verificationReceipts' | 'toolExecutionReceipts' | 'changeReceipts'
+  >>(
     result: T,
     evidence: TerminalEvidence[],
-  ) => withToolReadEvidence(attachTaskTerminalEvidence(result, evidence), taskReadEvidence);
+  ): TaskExecutionResult => taskEvidence.attach(result, evidence);
 
   await callbacks.onAgentStatus({
     type: 'agentStatus',
@@ -684,6 +634,7 @@ async function executeTask(
     };
     const recordTaskToolResult = (result: ToolLoopResult): ToolLoopResult => {
       const loopResult = collectToolReadEvidence(taskReadEvidence, result);
+      taskEvidence.appendToolLoop(loopResult);
       if (loopResult.terminalEvidence?.length) {
         taskTerminalEvidence.push(...loopResult.terminalEvidence);
       }
@@ -989,7 +940,13 @@ async function executeTask(
     semanticContract: writeAuthority.semanticContract,
     callbacks,
   });
-  if (deterministicCreate) return deterministicCreate;
+  if (deterministicCreate) {
+    const { changeReceipt, ...result } = deterministicCreate;
+    return {
+      ...result,
+      ...(changeReceipt ? { changeReceipts: [changeReceipt] } : {}),
+    };
+  }
 
   const markdownDeliverable = await tryExecuteMarkdownDeliverableTask({
     task,
@@ -1061,6 +1018,7 @@ async function executeTask(
 
   const recordTaskToolResult = (result: ToolLoopResult): ToolLoopResult => {
     const loopResult = collectToolReadEvidence(taskReadEvidence, result);
+    taskEvidence.appendToolLoop(loopResult);
     if (loopResult.terminalEvidence?.length) {
       taskTerminalEvidence.push(...loopResult.terminalEvidence);
     }
@@ -1208,29 +1166,40 @@ ${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbac
           }, taskTerminalEvidence);
         }
       }
-      // Write through the workspace edit service so Agent write paths stay centralized.
-      try {
-        workspaceEditService.commitTextFileProposal(
-          workspaceEditService.proposeTextFileWrite(task.absPath, srResult.result),
-          directWriteBaseline,
-          {
-            validateSourceSanity: true,
-            repairSourceTransportEscapes: true,
-          },
-        );
-        // Update cache so subsequent tasks on the same file see this result
-        contentCache.set(task.absPath, srResult.result);
+      searchReplaceMutationSequence += 1;
+      const mutationSequence = searchReplaceMutationSequence;
+      const mutation = await workspaceMutation.executeTextFileWrite({
+        runId: callbacks.traceRunId?.trim() || `vscode-agent-loop-invocation-${mutationSequence}`,
+        sequence: mutationSequence,
+        actionId: `search-replace-${task.id}-${mutationSequence}`,
+        absPath: task.absPath,
+        workspaceRoot: workspaceRoot.fsPath,
+        content: srResult.result,
+        baseline: directWriteBaseline,
+        applyOptions: {
+          validateSourceSanity: true,
+          repairSourceTransportEscapes: true,
+        },
+        evidenceRefs: [`search-replace:${task.id}:authorized`],
+      });
+      taskEvidence.appendChange(mutation.receipt);
+      const committedEdit = mutation.receipt.status === 'committed'
+        ? mutation.receipt.result
+        : undefined;
+      if (committedEdit) {
+        const writeResult = committedEdit.result;
+        const committedContent = committedEdit.commitToken.after.snapshot.content;
+        // Subsequent tasks must consume the normalized content that actually committed.
+        contentCache.set(task.absPath, committedContent);
         await callbacks.onAppliedChange({
           // Use absPath-relative path for display; fall back to task.file which was
           // already sanitized in parseTaskPlan.
           path: task.absPath
             ? nodePath.relative(workspaceRoot.fsPath, task.absPath).replace(/\\/g, '/')
             : task.file,
-          existed: true,
-          oldContent: currentContent,
-          newContent: srResult.result,
+          ...writeResult,
         });
-        const srDiff = roughLineDiff(currentContent, srResult.result);
+        const srDiff = roughLineDiff(writeResult.oldContent, writeResult.newContent);
         const writtenFiles = buildWrittenFileEvidenceForPaths([task.absPath], task.action, workspaceRoot.fsPath, srDiff);
         return withTaskTerminalEvidence({
           applied: true,
@@ -1241,8 +1210,22 @@ ${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbac
           writtenFiles,
           ...(taskCompleteByAI ? { taskComplete: true } : {}),
         }, taskTerminalEvidence);
-      } catch (writeErr) {
-        // Fall through to full-file parser
+      } else {
+        const failedReason = `SEARCH/REPLACE 写入未提交：${mutation.receipt.errorCode ?? mutation.receipt.status}`;
+        await callbacks.onAgentStatus({
+          type: 'agentStatus',
+          phase: 'execute',
+          taskId: task.id,
+          taskFile: basename,
+          taskAction: task.action,
+          taskDesc: task.desc,
+          taskIndex,
+          taskTotal: allTasks.length,
+          state: 'failed',
+          title: `未能提交 ${basename}`,
+          detail: failedReason,
+        });
+        return withTaskTerminalEvidence({ applied: false, raw, failedReason }, taskTerminalEvidence);
       }
     } else if (srResult.failed > 0) {
       // SEARCH blocks didn't match — fall through to full-file parser with a log
@@ -1321,8 +1304,15 @@ ${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbac
     true,
     async (change) => { await callbacks.onAppliedChange(change); },
     absFiles,
-    { validationCommandRunner: callbacks.onValidationCommand },
+    {
+      validationCommandRunner: callbacks.onValidationCommand,
+      ...(callbacks.traceRunId ? { mutationRunId: callbacks.traceRunId } : {}),
+      mutationSequence: taskIndex * 2 + 1,
+      mutationActionId: `agent-task-${taskIndex + 1}-full-file-primary`,
+    },
   );
+  taskEvidence.appendVerification(applyResult.verificationReceipt);
+  taskEvidence.appendChanges(applyResult.changeReceipts);
 
   // ── Retry once if nothing was applied ─────────────────────────
   if (!applyResult.applied || applyResult.changedPaths.length === 0) {
@@ -1376,8 +1366,15 @@ ${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbac
         true,
         async (change) => { await callbacks.onAppliedChange(change); },
         absFiles,
-        { validationCommandRunner: callbacks.onValidationCommand },
+        {
+          validationCommandRunner: callbacks.onValidationCommand,
+          ...(callbacks.traceRunId ? { mutationRunId: callbacks.traceRunId } : {}),
+          mutationSequence: taskIndex * 2 + 2,
+          mutationActionId: `agent-task-${taskIndex + 1}-full-file-retry`,
+        },
       );
+      taskEvidence.appendVerification(applyResult.verificationReceipt);
+      taskEvidence.appendChanges(applyResult.changeReceipts);
       if (applyResult.applied) raw = retryRaw;
     }
   }
@@ -1440,91 +1437,6 @@ function recordLocalAgentResponsePayload(callbacks: AgentLoopCallbacks, response
 // Compile validation helper
 // ----------------------------------------------------------------
 
-interface ValidationOutcome {
-  ran: boolean;
-  ok: boolean;
-  evidenceOperationId?: string;
-  command?: string;
-  detail?: string;
-  reason?: string;
-  exitCode?: number | null;
-  reviewRequired?: boolean;
-  reviewReason?: string;
-}
-
-function autoValidationResultToValidationOutcome(result: AgentAutoValidationResult): ValidationOutcome | undefined {
-  const qualityGate = result.qualityGate;
-  const evidence = result.evidence;
-  if (!qualityGate && !evidence && !result.feedbackForAI && !result.repairBlockedReason) return undefined;
-  const ok = qualityGate ? qualityGate.status === 'pass' : evidence ? evidence.ok : false;
-  const detail = [
-    evidence?.detail,
-    result.repairBlockedReason,
-    result.feedbackForAI,
-    qualityGate?.summary,
-  ].filter(Boolean).join('\n').slice(0, 1200);
-  return {
-    ran: Boolean(evidence?.command),
-    ok,
-    evidenceOperationId: result.evidenceOperationId,
-    command: evidence?.command,
-    detail,
-    exitCode: evidence?.exitCode,
-    reason: ok
-      ? 'auto-validation-passed'
-      : qualityGate?.status === 'blocked'
-        ? 'quality-gate-blocked'
-        : qualityGate?.status === 'fail'
-          ? 'quality-gate-failed'
-          : result.repairBlockedReason || 'auto-validation-failed',
-  };
-}
-
-function combineFinalValidationOutcomes(
-  nonLegacyOutcome: ValidationOutcome | undefined,
-  legacyOutcome: ValidationOutcome | undefined,
-): ValidationOutcome | undefined {
-  const outcomes = [nonLegacyOutcome, legacyOutcome].filter((outcome): outcome is ValidationOutcome => Boolean(outcome));
-  if (outcomes.length === 0) return undefined;
-  const failed = outcomes.find(outcome => !outcome.ok);
-  if (failed) return failed;
-  const manualReview = outcomes.find(outcome => outcome.reviewRequired);
-  if (manualReview) return manualReview;
-  return outcomes.find(outcome => outcome.ran) ?? outcomes[0];
-}
-
-async function emitLegacyValidationQualityGateStatus(
-  callbacks: AgentLoopCallbacks,
-  evidenceOperationId: string,
-  outcome: ValidationOutcome,
-): Promise<void> {
-  const state = outcome.ok ? 'completed' : outcome.ran === false ? 'skipped' : 'failed';
-  const summary = outcome.ok
-    ? `QualityGate 通过：${outcome.command || outcome.reason || 'legacy validation'} 已通过。`
-    : state === 'skipped'
-      ? `QualityGate 阻塞：${outcome.reason || 'validation-blocked'}。`
-      : `QualityGate 未通过：${outcome.reason || 'validation-failed'}。`;
-  await callbacks.onAgentStatus({
-    type: 'agentStatus',
-    phase: 'quality',
-    state: 'started',
-    evidenceOperationId,
-    title: '评估 legacy 自动验证 QualityGate',
-    detail: summary,
-  });
-  await callbacks.onAgentStatus({
-    type: 'agentStatus',
-    phase: 'quality',
-    state,
-    evidenceOperationId,
-    title: outcome.ok
-      ? 'legacy 自动验证 QualityGate 通过'
-      : state === 'skipped'
-        ? 'legacy 自动验证 QualityGate 阻塞'
-        : 'legacy 自动验证 QualityGate 未通过',
-    detail: summary,
-  });
-}
 
 function getAgentAutoFixRounds(): number {
   const configured = vscode.workspace.getConfiguration('devseek').get<number>('autoFixRounds', 6);
@@ -1611,12 +1523,47 @@ async function runValidation(
     return nodePath.relative(workspaceRootFsPath, absPath).replace(/\\/g, '/');
   });
   const compileEvidenceOperationId = nextLegacyValidationOperationId(workspaceRelativeValidationTargets);
+  const toolExecutionReceipts: NonNullable<ToolLoopResult['toolExecutionReceipts']> = [];
   const finishValidationOutcome = async (
     evidenceOperationId: string,
     outcome: ValidationOutcome,
   ): Promise<ValidationOutcome> => {
     await emitLegacyValidationQualityGateStatus(callbacks, evidenceOperationId, outcome);
-    return { ...outcome, evidenceOperationId };
+    const observationStatus = !outcome.ran
+      ? 'unverified'
+      : outcome.reviewRequired
+        ? 'unverified'
+        : outcome.ok
+          ? 'passed'
+          : 'failed';
+    const verification = await legacyVerification.verify({
+      runId: callbacks.traceRunId?.trim() || 'vscode-legacy-validation',
+      sequence: legacyValidationOperationSequence,
+      actionId: evidenceOperationId,
+      scopePaths: workspaceRelativeValidationTargets,
+      acceptance: [{
+        id: 'workspace-validation',
+        statement: 'Applicable workspace validation and quality checks pass.',
+      }],
+      evidenceRefs: [`legacy-verification:${evidenceOperationId}:planned`],
+      verifier: 'vscode-legacy-validation',
+      observe: async () => ({
+        status: observationStatus,
+        summary: outcome.detail || outcome.reason || (outcome.ok ? 'Legacy validation passed.' : 'Legacy validation failed.'),
+        ...(outcome.command ? { command: outcome.command } : {}),
+        ...(outcome.exitCode === undefined ? {} : { exitCode: outcome.exitCode }),
+        evidenceRefs: uniqueStringValues([
+          `legacy-verification:${evidenceOperationId}:${observationStatus}`,
+          ...(outcome.toolExecutionReceipts ?? []).flatMap(receipt => receipt.evidenceRefs),
+        ]),
+      }),
+    });
+    return {
+      ...outcome,
+      evidenceOperationId,
+      verificationReceipt: verification.receipt,
+      ...(toolExecutionReceipts.length > 0 ? { toolExecutionReceipts: [...toolExecutionReceipts] } : {}),
+    };
   };
   const hasCppTargets = validationTargets.some(p => isCompilableFile(p));
   const effectiveWantRun = wantRun || (hasCppTargets && shouldRunCppValidation(userPrompt));
@@ -1678,7 +1625,7 @@ async function runValidation(
   }
 
   let runCommandForEvidence: string | undefined;
-  if (effectiveWantRun && hasCppTargets && !callbacks.onTerminalCommand) {
+  if (effectiveWantRun && hasCppTargets && !callbacks.onPrepareTerminalCommand) {
     const detail = '当前入口没有可用终端执行能力，已完成编译，但运行效果需要人工确认。';
     return finishValidationOutcome(compileEvidenceOperationId, {
       ran: true,
@@ -1693,7 +1640,7 @@ async function runValidation(
   }
 
   // If compilation succeeded and user wants to run — execute in terminal
-  if (effectiveWantRun && hasCppTargets && callbacks.onTerminalCommand) {
+  if (effectiveWantRun && hasCppTargets && callbacks.onPrepareTerminalCommand) {
     const runEvidenceOperationId = nextLegacyValidationOperationId([...workspaceRelativeValidationTargets, 'run']);
     const runPlan = new VerificationPlanner().planWorkspaceChanges({
       changedPaths: workspaceRelativeValidationTargets,
@@ -1733,8 +1680,34 @@ async function runValidation(
         title: '正在执行程序',
         detail: `终端运行: ${runCmd}`,
       });
-      const output = await callbacks.onTerminalCommand(runCmd, runPlan.cwd);
-      const evidence = analyzeTerminalEvidence(runCmd, output, runPlan.cwd);
+      const toolResult = await executeFakeToolsForLoop(
+        [{ name: 'run_terminal', input: { command: runCmd, workdir: runPlan.cwd } }],
+        callbacks,
+        runPlan.cwd,
+        {
+          currentTaskIndex: 0,
+          taskTotal: 1,
+          userPrompt,
+          workspaceRoot: workspaceRootFsPath,
+          plannedTerminalValidation: { command: runCmd, workdir: runPlan.cwd },
+        },
+      );
+      if (toolResult.toolExecutionReceipts?.length) {
+        toolExecutionReceipts.push(...toolResult.toolExecutionReceipts);
+      }
+      const terminalOutput = toolResult.terminalOutputs?.find(item => item.command === runCmd);
+      if (!terminalOutput) {
+        const detail = toolResult.toolFailures?.[0]?.reason
+          ?? toolResult.feedbackForAI
+          ?? '运行验证未产生已结算的终端输出。';
+        throw new Error(detail.slice(0, 1200));
+      }
+      const output = terminalOutput.output;
+      const evidence = {
+        ran: toolResult.terminalCommands?.includes(runCmd) === true,
+        evidence: toolResult.terminalEvidence?.find(item => item.command === runCmd)
+          ?? analyzeTerminalEvidence(runCmd, output, runPlan.cwd).evidence,
+      };
       // G-4: truncate and feed output back into sessionHistory so LLM sees actual results
       const truncated = output.length > 2000
         ? output.slice(0, 2000) + `\n[输出已截断，共 ${output.length} 字符]`
@@ -1918,7 +1891,11 @@ export async function runAgentLoop(
   const sessionHistory: ChatMessage[] = [];
   // Accumulate analysis text from read-only tasks to return as analysisText (for findings injection)
   const analysisTexts: string[] = [];
-  const allTerminalEvidence: TerminalEvidence[] = [];
+  const executionEvidence = createAgentLoopExecutionEvidence();
+  const allTerminalEvidence = executionEvidence.terminalEvidence;
+  const allVerificationReceipts = executionEvidence.verificationReceipts;
+  const allToolExecutionReceipts = executionEvidence.toolExecutionReceipts;
+  const allChangeReceipts = executionEvidence.changeReceipts;
   const verificationIds: string[] = [];
   const artifactGrounding = new ArtifactGroundingCollector(callbacks, workspaceRoot.fsPath);
   const readEvidenceRecorder = new ToolReadEvidenceRecorder(workspaceRoot.fsPath, callbacks.traceRunId);
@@ -1955,6 +1932,7 @@ export async function runAgentLoop(
       needsNewSession,
       readEvidenceRecorder,
     );
+    appendTaskExecutionEvidence(executionEvidence, result);
     const taskGrounding = artifactGrounding.captureTask(writeAuthority.currentPrompt, result);
     needsNewSession = true;
 
@@ -1986,6 +1964,9 @@ export async function runAgentLoop(
         workspaceRoot: workspaceRoot.fsPath,
         failedReason,
         analysisTexts,
+        verificationReceipts: allVerificationReceipts,
+        toolExecutionReceipts: allToolExecutionReceipts,
+        changeReceipts: allChangeReceipts,
         ...artifactGrounding.resultFields(),
       });
     }
@@ -2011,9 +1992,6 @@ export async function runAgentLoop(
       semanticContract: writeAuthority.semanticContract,
       ...taskGrounding,
     };
-    if (result.terminalEvidence?.length) {
-      allTerminalEvidence.push(...result.terminalEvidence);
-    }
     const resultWrittenFiles = taskSettlementInput.writtenFiles;
     if (result.applied && resultWrittenFiles.length > 0) {
       appendAgentLoopWrittenFiles(changedPaths, editedFileRecords, resultWrittenFiles, workspaceRoot.fsPath);
@@ -2107,6 +2085,7 @@ export async function runAgentLoop(
       { qualityWrittenFiles: editedFileRecords },
     );
     if (autoValidation.evidenceOperationId) verificationIds.push(autoValidation.evidenceOperationId);
+    appendVerificationReceipt(executionEvidence, autoValidation.verificationReceipt);
     if (autoValidation.evidence) allTerminalEvidence.push(autoValidation.evidence);
     if (autoValidation.feedbackForAI) {
       sessionHistory.push({
@@ -2135,6 +2114,10 @@ export async function runAgentLoop(
     );
     legacyValidationOutcome = await runValidation(modifiedPaths, workspaceRoot, callbacks, wantRun, writeAuthority.currentPrompt, sessionHistory);
     if (legacyValidationOutcome.evidenceOperationId) verificationIds.push(legacyValidationOutcome.evidenceOperationId);
+    appendVerificationReceipt(executionEvidence, legacyValidationOutcome.verificationReceipt);
+    if (legacyValidationOutcome.toolExecutionReceipts?.length) {
+      allToolExecutionReceipts.push(...legacyValidationOutcome.toolExecutionReceipts);
+    }
     appendValidationEvidence(allTerminalEvidence, legacyValidationOutcome);
 
     const maxRepairRounds = getAgentAutoFixRounds();
@@ -2184,6 +2167,7 @@ export async function runAgentLoop(
         true,
         readEvidenceRecorder,
       );
+      appendTaskExecutionEvidence(executionEvidence, repairResult);
       artifactGrounding.captureTask(writeAuthority.currentPrompt, repairResult);
 
       if (repairResult.networkError) {
@@ -2212,6 +2196,9 @@ export async function runAgentLoop(
           failedReason,
           verificationIds: uniqueStringValues(verificationIds),
           analysisTexts,
+          verificationReceipts: allVerificationReceipts,
+          toolExecutionReceipts: allToolExecutionReceipts,
+          changeReceipts: allChangeReceipts,
           ...artifactGrounding.resultFields(),
         });
       }
@@ -2248,6 +2235,10 @@ export async function runAgentLoop(
       sessionHistory.push(...writeAuthority.takePendingAndDrain());
       legacyValidationOutcome = await runValidation(modifiedPaths, workspaceRoot, callbacks, wantRun, writeAuthority.currentPrompt, sessionHistory);
       if (legacyValidationOutcome.evidenceOperationId) verificationIds.push(legacyValidationOutcome.evidenceOperationId);
+      appendVerificationReceipt(executionEvidence, legacyValidationOutcome.verificationReceipt);
+      if (legacyValidationOutcome.toolExecutionReceipts?.length) {
+        allToolExecutionReceipts.push(...legacyValidationOutcome.toolExecutionReceipts);
+      }
       appendValidationEvidence(allTerminalEvidence, legacyValidationOutcome);
     }
   }
@@ -2328,6 +2319,9 @@ export async function runAgentLoop(
       : undefined,
     manualReviewReason,
     analysisTexts,
+    verificationReceipts: allVerificationReceipts,
+    toolExecutionReceipts: allToolExecutionReceipts,
+    changeReceipts: allChangeReceipts,
     ...artifactGrounding.resultFields(),
   });
 }

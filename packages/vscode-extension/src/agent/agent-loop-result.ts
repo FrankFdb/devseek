@@ -1,4 +1,10 @@
 import * as nodePath from 'path';
+import type {
+  CodingCompletionAcceptanceDecision,
+  CodingToolExecutionReceipt,
+  CodingVerificationReceipt,
+  CodingWorkspaceMutationReceipt,
+} from '@devseek-netai/shared';
 import type { AgentTask } from '../agent-task-decomposer';
 import {
   buildAgenticHistoryText,
@@ -32,6 +38,10 @@ export interface AgentLoopResultInput extends ArtifactGroundingResultFields {
   manualReviewReason?: string;
   analysisTexts?: string[];
   verificationIds?: string[];
+  verificationReceipts?: CodingVerificationReceipt[];
+  toolExecutionReceipts?: CodingToolExecutionReceipt<unknown>[];
+  changeReceipts?: CodingWorkspaceMutationReceipt<unknown>[];
+  acceptanceEvidence?: CodingCompletionAcceptanceDecision[];
 }
 
 export function buildAgentLoopResult(input: AgentLoopResultInput): AgentLoopResult {
@@ -73,6 +83,10 @@ export function buildAgentLoopResult(input: AgentLoopResultInput): AgentLoopResu
     } : {}),
     ...(input.analysisTexts?.length ? { analysisText: input.analysisTexts.join('\n\n') } : {}),
     ...(input.verificationIds?.length ? { verificationIds: input.verificationIds } : {}),
+    ...(input.verificationReceipts?.length ? { verificationReceipts: input.verificationReceipts } : {}),
+    ...(input.toolExecutionReceipts?.length ? { toolExecutionReceipts: input.toolExecutionReceipts } : {}),
+    ...(input.changeReceipts?.length ? { changeReceipts: input.changeReceipts } : {}),
+    ...(input.acceptanceEvidence?.length ? { acceptanceEvidence: input.acceptanceEvidence } : {}),
     ...selectArtifactGroundingResultFields(input),
     historyText,
   };

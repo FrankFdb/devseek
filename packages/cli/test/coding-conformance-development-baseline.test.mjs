@@ -12,7 +12,7 @@ import {
   CanonicalCodingKernel,
   buildCodingKernelTaskContract,
   evaluateCodingConformanceFixture,
-  projectCodingKernelTaskContract,
+  projectSettledCodingConformanceRun,
 } from '../../shared/dist/index.js';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
@@ -34,8 +34,13 @@ const { CliCodingKernelRuntimeAdapter } = require(bundlePath);
 
 after(() => rmSync(bundleRoot, { recursive: true, force: true }));
 
-test('CLI canonical Kernel probe exposes settled output without inventing mutation readback receipts', async () => {
+test('CLI canonical Kernel probe exposes semantically conformant settled product output', async () => {
   const cases = [
+    {
+      fixtureId: 'create-and-verify',
+      validations: [{ passed: true, summary: 'passed', evidenceRefs: ['verify:passed'] }],
+      expectedMutationCount: 1,
+    },
     {
       fixtureId: 'modify-and-verify',
       validations: [{ passed: true, summary: 'passed', evidenceRefs: ['verify:passed'] }],
@@ -49,6 +54,16 @@ test('CLI canonical Kernel probe exposes settled output without inventing mutati
       ],
       expectedMutationCount: 2,
     },
+    {
+      fixtureId: 'permission-denied-no-effect',
+      validations: [],
+      expectedMutationCount: 0,
+    },
+    {
+      fixtureId: 'policy-refusal-no-mutation',
+      validations: [],
+      expectedMutationCount: 0,
+    },
   ];
 
   for (const routeCase of cases) {
@@ -61,18 +76,17 @@ test('CLI canonical Kernel probe exposes settled output without inventing mutati
 
     assert.equal(routeOutput.mutations.length, routeCase.expectedMutationCount, routeCase.fixtureId);
     assert.equal(routeOutput.verifications.length, routeCase.validations.length, routeCase.fixtureId);
-    assert.equal(cliResult.contractConformant, false, routeCase.fixtureId);
+    assert.equal(cliResult.contractConformant, true, JSON.stringify(cliResult.violations));
     assert.equal(cliResult.evidenceClass, 'development-route-replay', routeCase.fixtureId);
     assert.deepEqual(cliResult.observedDimensions, [
       'taskContract',
       'toolExecutions',
+      'changeReceipts',
       'verifications',
       'completion',
     ], routeCase.fixtureId);
-    assert.deepEqual(cliResult.missingDimensions, ['changeReceipts'], routeCase.fixtureId);
-    assert.ok(cliResult.violations.some(violation => (
-      violation.dimension === 'toolExecutions' && violation.code === 'semantic-mismatch'
-    )), routeCase.fixtureId);
+    assert.deepEqual(cliResult.missingDimensions, [], routeCase.fixtureId);
+    assert.deepEqual(cliResult.violations, [], routeCase.fixtureId);
     assert.equal(cliResult.violations.some(violation => (
       violation.code === 'unexplained-missing-dimension'
     )), false, routeCase.fixtureId);
@@ -90,17 +104,74 @@ async function runCliCanonicalRoute(fixture, validations) {
   let validationIndex = 0;
   const targetPath = fixture.expected.taskContract.scope.include[0] || 'src/value.ts';
   const kernel = new CanonicalCodingKernel(new CliCodingKernelRuntimeAdapter(
-    { interpret: () => ({ candidateCount: 1 }) },
     {
-      async apply(cwd, proposal) {
-        mutations.push({ cwd, proposal });
-        return [targetPath];
+      interpret: () => developmentArtifactProposal(fixture.fixtureId, targetPath),
+    },
+    {
+      async captureBaseline(plan) {
+        return {
+          baselineRef: `baseline:${plan.actionId}`,
+          state: { actionId: plan.actionId },
+          evidenceRefs: [`baseline:${plan.actionId}:captured`],
+        };
+      },
+      async apply(plan) {
+        mutations.push({ cwd: plan.payload.workspaceRoot, proposal: plan.payload.proposal });
+        return {
+          status: 'applied',
+          applied: {
+            state: { files: [targetPath] },
+            result: [targetPath],
+            evidenceRefs: [`apply:${plan.actionId}`],
+          },
+        };
+      },
+      async readback(plan) {
+        return {
+          matches: true,
+          readbackRef: `readback:${plan.actionId}`,
+          evidenceRefs: [`readback:${plan.actionId}:matched`],
+        };
+      },
+      async rollback(plan) {
+        return {
+          rolledBack: true,
+          rollbackRef: `rollback:${plan.actionId}`,
+          evidenceRefs: [`rollback:${plan.actionId}:completed`],
+        };
       },
     },
     {
-      async verify(cwd, files, prompt) {
-        verifications.push({ cwd, files, prompt });
-        return validations[Math.min(validationIndex++, validations.length - 1)];
+      async verify(request) {
+        verifications.push(request);
+        const result = validations[Math.min(validationIndex++, validations.length - 1)];
+        const status = result.status ?? (result.passed ? 'passed' : 'failed');
+        return {
+          replayed: false,
+          receipt: {
+            version: 'devseek.coding-verification-receipt/v1',
+            runId: request.runId,
+            sequence: request.sequence,
+            actionId: request.actionId,
+            idempotencyKey: `${request.runId}:${request.actionId}`,
+            verifier: 'development-verifier',
+            status,
+            scopePaths: request.files,
+            checks: [{
+              checkId: `check-${request.actionId}`,
+              status,
+              acceptanceIds: request.acceptance.map(criterion => criterion.id),
+              summary: result.summary,
+              evidenceRefs: result.evidenceRefs,
+            }],
+            acceptance: request.acceptance.map(criterion => ({
+              criterionId: criterion.id,
+              status,
+              evidenceRefs: result.evidenceRefs,
+            })),
+            evidenceRefs: result.evidenceRefs,
+          },
+        };
       },
     },
   ));
@@ -145,6 +216,34 @@ async function runCliCanonicalRoute(fixture, validations) {
   return { output, evidence, events, mutations, verifications };
 }
 
+function developmentArtifactProposal(fixtureId, targetPath) {
+  if (fixtureId === 'permission-denied-no-effect') {
+    return {
+      candidateCount: 1,
+      fileToolCalls: [],
+      terminalToolCalls: [{
+        name: 'run_terminal',
+        command: 'npm install left-pad',
+      }],
+      unifiedDiffs: [],
+    };
+  }
+  if (fixtureId === 'policy-refusal-no-mutation') {
+    return {
+      candidateCount: 0,
+      fileToolCalls: [],
+      terminalToolCalls: [],
+      unifiedDiffs: [],
+    };
+  }
+  return {
+    candidateCount: 1,
+    fileToolCalls: [{ name: 'replace_file', filePath: targetPath, content: 'updated\n' }],
+    terminalToolCalls: [],
+    unifiedDiffs: [],
+  };
+}
+
 function observeCliCanonicalRoute(fixture, routeOutput) {
   return {
     surface: 'cli',
@@ -156,71 +255,17 @@ function observeCliCanonicalRoute(fixture, routeOutput) {
       `development-route:${fixture.fixtureId}:cli`,
     ],
     projection: {
-      schemaVersion: fixture.schemaVersion,
-      fixtureId: fixture.fixtureId,
-      taskContract: projectCodingKernelTaskContract(routeOutput.output.taskContract),
-      toolExecutions: projectSettledCliActions(routeOutput.evidence),
-      verifications: projectCliVerifications(routeOutput.evidence, fixture),
-      completion: projectCliCompletion(routeOutput.output),
+      ...projectSettledCodingConformanceRun({
+        fixtureId: fixture.fixtureId,
+        taskContract: routeOutput.output.taskContract,
+        toolExecutions: routeOutput.output.result.toolExecutions,
+        changeReceipts: routeOutput.output.result.changeReceipts,
+        verifications: routeOutput.output.result.verificationReceipts,
+        completion: routeOutput.output.result.completion,
+      }),
     },
-    unavailableDimensions: [
-      unavailable('changeReceipts', 'route-evidence-incomplete', 'cli-change-event-has-paths-without-baseline-readback'),
-    ],
+    unavailableDimensions: [],
   };
-}
-
-function projectSettledCliActions(evidence) {
-  const terminalTypes = new Set([
-    'side_effect.committed',
-    'side_effect.indeterminate',
-    'verification.completed',
-    'verification.failed',
-  ]);
-  return evidence
-    .filter(record => terminalTypes.has(record.entry.type))
-    .map((record, index) => ({
-      sequence: index + 1,
-      actionId: record.operationId,
-      tool: record.entry.type.startsWith('side_effect.')
-        ? 'cli-workspace-mutation'
-        : 'cli-verification',
-      effects: record.entry.type.startsWith('side_effect.') ? ['workspace-mutation'] : ['process'],
-      status: record.entry.type.endsWith('.committed') || record.entry.type.endsWith('.completed')
-        ? 'completed'
-        : 'failed',
-      evidenceRefs: [`run-evidence:${record.operationId}:${record.entry.type}`],
-    }));
-}
-
-function projectCliVerifications(evidence, fixture) {
-  return evidence
-    .filter(record => record.entry.type === 'verification.completed' || record.entry.type === 'verification.failed')
-    .map((record, index) => ({
-      sequence: index + 1,
-      actionId: record.operationId,
-      verifier: 'cli-verification',
-      status: record.entry.type === 'verification.completed' ? 'passed' : 'failed',
-      acceptanceIds: fixture.expected.taskContract.acceptance.map(criterion => criterion.id),
-      evidenceRefs: [`run-evidence:${record.operationId}:${record.entry.type}`],
-    }));
-}
-
-function projectCliCompletion(output) {
-  const evidenceRef = `kernel-output:${output.runId}:${output.status}`;
-  return {
-    status: output.status,
-    acceptance: output.taskContract.acceptance.map(criterion => ({
-      criterionId: criterion.id,
-      status: output.status === 'completed' ? 'passed' : 'failed',
-      evidenceRefs: [evidenceRef],
-    })),
-    residualRisks: [...output.residualRisks],
-    evidenceRefs: [evidenceRef],
-  };
-}
-
-function unavailable(dimension, reason, evidenceRef) {
-  return { dimension, reason, evidenceRefs: [evidenceRef] };
 }
 
 function findFixture(fixtureId) {

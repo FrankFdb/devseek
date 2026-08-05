@@ -1,7 +1,7 @@
 export const CODING_CONFORMANCE_SCHEMA_VERSION = 'devseek.coding-conformance/v1';
 
 export const CODING_CONFORMANCE_PREPARATION = Object.freeze({
-  implementationState: 'headless-product-route-wired',
+  implementationState: 'cross-surface-development-projection-wired',
   productWiring: true,
   productAdapterCount: 1,
   qualificationEligible: false,
@@ -230,7 +230,8 @@ export function compareCodingConformanceProjection(
     if (actual[dimension] === undefined) {
       continue;
     }
-    if (canonicalJson(expected[dimension]) !== canonicalJson(actual[dimension])) {
+    if (canonicalJson(projectSemanticDimension(expected, dimension))
+      !== canonicalJson(projectSemanticDimension(actual, dimension))) {
       violations.push({ surface, dimension, code: 'semantic-mismatch' });
     }
   }
@@ -241,6 +242,86 @@ export function compareCodingConformanceProjection(
     violations.push({ surface, dimension: 'observation', code: 'fixture-id-mismatch' });
   }
   return uniqueViolations(violations);
+}
+
+function projectSemanticDimension(
+  projection: CodingConformanceObservedProjection,
+  dimension: CodingConformanceDimension,
+): unknown {
+  switch (dimension) {
+    case 'taskContract': {
+      const taskContract = projection.taskContract;
+      return taskContract && {
+        ...taskContract,
+        provenanceRefs: taskContract.provenanceRefs.length > 0,
+      };
+    }
+    case 'toolExecutions':
+      return semanticToolExecutions(projection.toolExecutions ?? []);
+    case 'changeReceipts': {
+      const actionRoles = semanticActionRoles(projection.toolExecutions ?? []);
+      return (projection.changeReceipts ?? []).map((receipt, index) => ({
+        sequence: index + 1,
+        actionRole: actionRoles.get(receipt.actionId) ?? 'unowned-action',
+        status: receipt.status,
+        paths: receipt.paths,
+        baselineEvidence: Boolean(receipt.baselineRef),
+        readbackEvidence: Boolean(receipt.readbackRef),
+        ...(receipt.status === 'rolled-back' ? { rollbackEvidence: Boolean(receipt.rollbackRef) } : {}),
+        settledEvidence: receipt.evidenceRefs.length > 0,
+      }));
+    }
+    case 'verifications': {
+      const actionRoles = semanticActionRoles(projection.toolExecutions ?? []);
+      return (projection.verifications ?? []).map((verification, index) => ({
+        sequence: index + 1,
+        actionRole: actionRoles.get(verification.actionId) ?? 'unowned-action',
+        status: verification.status,
+        verifierEvidence: Boolean(verification.verifier),
+        settledEvidence: verification.evidenceRefs.length > 0,
+      }));
+    }
+    case 'completion': {
+      const completion = projection.completion;
+      return completion && {
+        status: completion.status,
+        acceptance: completion.acceptance.map(criterion => ({
+          criterionId: criterion.criterionId,
+          status: criterion.status,
+          settledEvidence: criterion.evidenceRefs.length > 0,
+        })),
+        residualRisks: [...completion.residualRisks].sort(),
+        settledEvidence: completion.evidenceRefs.length > 0,
+      };
+    }
+  }
+}
+
+function semanticToolExecutions(
+  receipts: readonly CodingToolExecutionProjection[],
+): unknown[] {
+  return effectfulToolExecutions(receipts).map((receipt, index) => ({
+    sequence: index + 1,
+    actionRole: `effect-${index + 1}`,
+    effects: [...receipt.effects].sort(),
+    status: receipt.status,
+    settledEvidence: receipt.evidenceRefs.length > 0,
+  }));
+}
+
+function semanticActionRoles(
+  receipts: readonly CodingToolExecutionProjection[],
+): Map<string, string> {
+  return new Map(effectfulToolExecutions(receipts).map((receipt, index) => [
+    receipt.actionId,
+    `effect-${index + 1}`,
+  ]));
+}
+
+function effectfulToolExecutions(
+  receipts: readonly CodingToolExecutionProjection[],
+): CodingToolExecutionProjection[] {
+  return receipts.filter(receipt => receipt.effects.some(effect => effect !== 'read'));
 }
 
 export function evaluateCodingConformanceFixture(

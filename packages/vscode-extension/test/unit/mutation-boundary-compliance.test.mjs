@@ -68,8 +68,31 @@ test('Mutation guard: arbitrary VS Code command dispatch cannot bypass the close
   }
 });
 
+test('Tool guard: terminal, VS Code, and MCP effects require prepared canonical execution', () => {
+  for (const file of sources) {
+    assert.doesNotMatch(
+      file.source,
+      /onTerminalCommand|onRunVscodeCommand|onMcpToolCall/,
+      `${file.relativePath} reintroduced a host-effect callback that executes before canonical settlement`,
+    );
+  }
+
+  const agentLoop = source('src/agent-loop.ts');
+  const deterministicAnalyze = source('src/agent/deterministic-analyze-execution.ts');
+  const toolLoop = source('src/agent/tool-loop.ts');
+  const canonicalSession = source('src/agent/tool-loop-canonical-session.ts');
+  assert.match(agentLoop, /executeFakeToolsForLoop\s*\(/);
+  assert.match(agentLoop, /plannedTerminalValidation/);
+  assert.match(deterministicAnalyze, /executeFakeToolsForLoop\s*\(/);
+  assert.match(deterministicAnalyze, /plannedTerminalValidation/);
+  assert.match(toolLoop, /prepared\.execute\(\)/);
+  assert.match(toolLoop, /canonicalTools\.settle\s*\(/);
+  assert.match(canonicalSession, /this\.executor\.executeCanonical\s*\(/);
+  assert.doesNotMatch(toolLoop, /\.executeCanonical\s*\(/);
+});
+
 test('Mutation guard: workspace writes in audited flows route through the writer/mutation owners', () => {
-  const directFsMutation = /fs\.(?:writeFileSync|appendFileSync|mkdirSync|rmSync|unlinkSync|renameSync|copyFileSync|truncateSync)\s*\(/;
+  const directFsMutation = /fs\.(?:writeFileSync|appendFileSync|mkdirSync|rmdirSync|rmSync|unlinkSync|renameSync|copyFileSync|truncateSync)\s*\(/;
   const workspaceFsMutation = /workspace\.fs\.(?:writeFile|delete|rename|copy|createDirectory)\s*\(/;
   const directOwners = sources
     .filter(file => directFsMutation.test(file.source) || workspaceFsMutation.test(file.source))
@@ -79,7 +102,7 @@ test('Mutation guard: workspace writes in audited flows route through the writer
     'src/bridge-client.ts',
     'src/memory/memory-store.ts',
     'src/ui/real-plugin-harness.ts',
-    'src/workspace-applier.ts',
+    'src/workspace/coding-workspace-batch-mutation-adapter.ts',
     'src/workspace/cpp-build-cleanup-service.ts',
     'src/workspace/edit-service.ts',
   ]);
@@ -95,10 +118,16 @@ test('Mutation guard: workspace writes in audited flows route through the writer
     assert.doesNotMatch(text, directFsMutation, `${relativePath} bypasses WorkspaceEditService`);
     assert.doesNotMatch(text, workspaceFsMutation, `${relativePath} bypasses WorkspaceEditService`);
   }
-  assert.match(source('src/agent/agent-host-tools.ts'), /createWorkspaceDirectory\(absPath, workspaceRoot\)/);
-  assert.match(source('src/agent/tool-loop.ts'), /workspaceEditService\.deleteTextFile\(absPath, workspaceRoot\)/);
+  assert.match(source('src/agent/agent-host-tools.ts'), /directoryMutations\.execute\(\{/);
+  assert.match(source('src/agent/tool-loop.ts'), /changeReceipts\.push\(result\.changeReceipt\)/);
+  assert.match(source('src/workspace/coding-workspace-directory-mutation-adapter.ts'), /CanonicalWorkspaceMutationTransaction/);
+  assert.match(source('src/workspace/coding-workspace-directory-mutation-adapter.ts'), /rollbackWorkspaceDirectoryCommit/);
+  assert.doesNotMatch(source('src/app/product-mutation-coordinator.ts'), /workspace-directory/);
+  assert.match(source('src/agent/tool-loop.ts'), /workspaceMutation\.executeTextFileDelete\(\{/);
   assert.match(source('src/pending-edit-coordinator.ts'), /kind:\s*'pending-edit-undo'/);
-  assert.match(source('src/pending-edit-coordinator.ts'), /commitTextFileProposal\(/);
+  assert.match(source('src/pending-edit-coordinator.ts'), /workspaceMutation\.executeTextFileWrite\(\{/);
+  assert.match(source('src/pending-edit-coordinator.ts'), /workspaceMutation\.executeTextFileDelete\(\{/);
+  assert.doesNotMatch(source('src/pending-edit-coordinator.ts'), /commitTextFileProposal\(/);
   assert.match(source('src/pending-edit-coordinator.ts'), /buildPendingEditUndoProof\(/);
   assert.doesNotMatch(source('src/pending-edit-coordinator.ts'), /kind:\s*['"]workspace-text-readback['"]/);
   assert.doesNotMatch(source('src/agent/auto-validation.ts'), /normalizeFormalProjectMarkdown|writeFileSync|workspace\.fs/);
@@ -114,15 +143,36 @@ test('Mutation guard: workspace writes in audited flows route through the writer
     'src/agent-loop.ts',
     'src/agent/deterministic-task-executor.ts',
     'src/agent/markdown-artifact-applier.ts',
+    'src/agent/markdown-deliverable-task.ts',
     'src/agent/simple-file-task.ts',
     'src/agent/tool-loop.ts',
-    'src/agent/markdown-deliverable-task.ts',
-    'src/workspace-applier.ts',
   ]) {
     const text = source(relativePath);
     assert.match(text, /captureTextFileBaseline\(/, `${relativePath} must capture a workspace-rooted baseline`);
-    assert.match(text, /commitTextFileProposal\(/, `${relativePath} must commit through the atomic CAS boundary`);
+    assert.match(text, /workspaceMutation\.executeTextFile(?:Write|Delete)\(\{/, `${relativePath} must use the canonical mutation adapter`);
+    assert.doesNotMatch(text, /commitTextFileProposal\(/, `${relativePath} bypasses canonical mutation settlement`);
   }
+  const workspaceApplier = source('src/workspace-applier.ts');
+  assert.match(workspaceApplier, /captureTextFileBaseline\(/, 'workspace applier must capture workspace-rooted baselines');
+  assert.match(workspaceApplier, /workspaceMutation\.execute\(\{/, 'workspace applier must use the canonical batch mutation adapter');
+  assert.doesNotMatch(workspaceApplier, /commitTextFileProposal\(/, 'workspace applier bypasses canonical mutation settlement');
+  assert.doesNotMatch(workspaceApplier, /rollbackCommittedChanges/, 'workspace applier retained obsolete out-of-transaction rollback');
+
+  const batchMutationAdapter = source('src/workspace/coding-workspace-batch-mutation-adapter.ts');
+  assert.match(batchMutationAdapter, /commitTextFileProposal\(/, 'batch mutation adapter must own atomic host commits');
+  assert.match(batchMutationAdapter, /rollbackTextFileCommit\(/, 'batch mutation adapter must own token compensation');
+});
+
+test('Verification guard: legacy and agentic validation project through the shared receipt owner', () => {
+  const agentLoop = source('src/agent-loop.ts');
+  const autoValidation = source('src/agent/auto-validation.ts');
+  const adapter = source('src/app/coding-verification-adapter.ts');
+
+  assert.match(adapter, /new CanonicalVerificationService\(\)/);
+  assert.match(agentLoop, /legacyVerification\.verify\(\{/);
+  assert.match(agentLoop, /appendVerificationReceipt\(executionEvidence, legacyValidationOutcome\.verificationReceipt\)/);
+  assert.match(autoValidation, /canonicalVerificationAdapter/);
+  assert.match(autoValidation, /verificationReceipt: outcome\.receipt/);
 });
 
 test('Mutation guard: MCP tools have one authorized product boundary and honest receipt semantics', () => {
@@ -164,7 +214,9 @@ test('Mutation guard: durable settlement controls every completed success projec
   assert.doesNotMatch(extension, /from '\.\/app\/agent-run-settlement'/);
   assert.match(agentKernel, /settleAgentLoopResult\(this\.terminalPermissions, this\.runContext/);
   assert.match(agentKernel, /completeRunContext\(this\.runContext,\s*'failed'/);
-  assert.match(agentSettlement, /const requestedStatus = result\.tasksFailed > 0 \? 'failed' : 'completed'/);
+  assert.match(agentSettlement, /const canonicalStatus = result\.completionDecision\?\.status/);
+  assert.match(agentSettlement, /const requestedStatus: RunContextStatus = canonicalStatus === 'completed'/);
+  assert.doesNotMatch(agentSettlement, /const requestedStatus = result\.tasksFailed > 0 \? 'failed' : 'completed'/);
   assert.match(agentSettlement, /const status = terminalPermissions\.completeRunContext[\s\S]*?const completed = requestedStatus === 'completed' && status === 'completed'/);
   assert.match(agentSettlement, /function settleRunContextDirect[\s\S]*?runContext\.complete\(requestedStatus, data\)/);
 

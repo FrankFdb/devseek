@@ -4,6 +4,12 @@ export interface CliFileToolCall {
   content: string;
 }
 
+export interface CliTerminalToolCall {
+  name: 'run_terminal';
+  command: string;
+  workdir?: string;
+}
+
 export interface CliUnifiedDiffArtifact {
   filePath: string;
   hunks: CliDiffHunk[];
@@ -16,6 +22,7 @@ export interface CliDiffHunk {
 
 export interface CliCodingArtifactProposal {
   fileToolCalls: CliFileToolCall[];
+  terminalToolCalls: CliTerminalToolCall[];
   unifiedDiffs: CliUnifiedDiffArtifact[];
   candidateCount: number;
 }
@@ -23,13 +30,68 @@ export interface CliCodingArtifactProposal {
 export class CliCodingArtifactInterpreter {
   interpret(response: string): CliCodingArtifactProposal {
     const fileToolCalls = parseFileToolCalls(response);
+    const terminalToolCalls = parseTerminalToolCalls(response);
     const unifiedDiffs = parseUnifiedDiffs(response);
     return {
       fileToolCalls,
+      terminalToolCalls,
       unifiedDiffs,
-      candidateCount: fileToolCalls.length + unifiedDiffs.length,
+      candidateCount: fileToolCalls.length + terminalToolCalls.length + unifiedDiffs.length,
     };
   }
+}
+
+function parseTerminalToolCalls(response: string): CliTerminalToolCall[] {
+  const calls: CliTerminalToolCall[] = [];
+  let cursor = 0;
+  while (cursor < response.length) {
+    const match = response.slice(cursor).match(/\[TOOL:run_terminal\s+/);
+    if (!match || match.index === undefined) break;
+    const objectStart = cursor + match.index + match[0].length;
+    const parsed = readJsonObject(response, objectStart);
+    if (!parsed) {
+      cursor = objectStart;
+      continue;
+    }
+    try {
+      const input = JSON.parse(parsed.text) as { command?: unknown; workdir?: unknown };
+      if (typeof input.command === 'string' && input.command.trim()) {
+        calls.push({
+          name: 'run_terminal',
+          command: input.command.trim(),
+          ...(typeof input.workdir === 'string' && input.workdir.trim()
+            ? { workdir: input.workdir.trim() }
+            : {}),
+        });
+      }
+    } catch {
+      // Invalid structured terminal calls remain absent and cannot reach a host.
+    }
+    cursor = parsed.end;
+  }
+
+  for (const match of response.matchAll(/<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi)) {
+    try {
+      const parsed = JSON.parse(match[1] ?? '') as {
+        name?: unknown;
+        arguments?: { command?: unknown; workdir?: unknown };
+      };
+      if (parsed.name === 'run_terminal'
+        && typeof parsed.arguments?.command === 'string'
+        && parsed.arguments.command.trim()) {
+        calls.push({
+          name: 'run_terminal',
+          command: parsed.arguments.command.trim(),
+          ...(typeof parsed.arguments.workdir === 'string' && parsed.arguments.workdir.trim()
+            ? { workdir: parsed.arguments.workdir.trim() }
+            : {}),
+        });
+      }
+    } catch {
+      // Invalid XML-wrapped JSON is not a terminal capability request.
+    }
+  }
+  return calls;
 }
 
 function parseFileToolCalls(response: string): CliFileToolCall[] {

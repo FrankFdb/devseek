@@ -123,6 +123,67 @@ export function normalizeAgentToolInput(toolName: string, input: Record<string, 
   return normalized;
 }
 
+export interface AgentFileWriteInput {
+  readonly rawPath: string;
+  readonly content: string;
+}
+
+const FILE_WRITE_PATH_KEYS = ['path', 'filePath', 'filepath', 'filename', 'targetPath'] as const;
+const FILE_WRITE_CONTENT_KEYS = [
+  'content', 'contents', 'text', 'body', 'fileContent', 'file_content',
+  'source', 'code', 'newContent', 'new_content',
+] as const;
+const FILE_WRITE_BATCH_KEYS = ['files', 'artifacts', 'changes', 'edits'] as const;
+
+/** Owns the accepted direct and batch payload shapes advertised by file-write tools. */
+export function normalizeAgentFileWriteInputs(input: Record<string, unknown>): AgentFileWriteInput[] {
+  const batch = FILE_WRITE_BATCH_KEYS.flatMap(key => collectFileWriteBatch(input[key]));
+  if (batch.length > 0) {
+    return batch.map(item => ({ rawPath: item.rawPath, content: item.content ?? '' }));
+  }
+  const rawPath = firstString(input, FILE_WRITE_PATH_KEYS, true);
+  const content = firstString(input, FILE_WRITE_CONTENT_KEYS, false);
+  return rawPath || content !== undefined ? [{ rawPath: rawPath ?? '', content: content ?? '' }] : [];
+}
+
+export function hasCompleteAgentFileWriteBatch(input: Record<string, unknown>): boolean {
+  const presentKeys = FILE_WRITE_BATCH_KEYS.filter(key => input[key] !== undefined);
+  if (presentKeys.length === 0) return false;
+  const items = presentKeys.flatMap(key => collectFileWriteBatch(input[key]));
+  return items.length > 0 && items.every(item => item.rawPath && item.content !== undefined);
+}
+
+function collectFileWriteBatch(value: unknown): Array<{
+  rawPath: string;
+  content: string | undefined;
+}> {
+  const items = Array.isArray(value) ? value : isRecord(value) ? [value] : [];
+  const result: Array<{ rawPath: string; content: string | undefined }> = [];
+  for (const item of items) {
+    if (!isRecord(item)) continue;
+    const rawPath = firstString(item, [...FILE_WRITE_PATH_KEYS, 'file', 'name', 'relativePath'], true);
+    const content = firstString(item, FILE_WRITE_CONTENT_KEYS, false);
+    if (rawPath || content !== undefined) result.push({ rawPath: rawPath ?? '', content });
+  }
+  return result;
+}
+
+function firstString(
+  input: Record<string, unknown>,
+  keys: readonly string[],
+  trim: boolean,
+): string | undefined {
+  for (const key of keys) {
+    const value = input[key];
+    if (typeof value === 'string') return trim ? value.trim() : value;
+  }
+  return undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
 function normalizeReplaceInFileAliases(input: Record<string, unknown>): void {
   if (typeof input.old_str !== 'string') {
     const oldText = input.oldString ?? input.old_string ?? input.oldText ?? input.old_text ?? input.search ?? input.find ?? input.target;

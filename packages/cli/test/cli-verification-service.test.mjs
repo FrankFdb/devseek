@@ -13,7 +13,15 @@ const bundleRoot = mkdtempSync(path.join(tmpdir(), 'devseek-cli-verification-'))
 const bundlePath = path.join(bundleRoot, 'verification-service.cjs');
 
 buildSync({
-  entryPoints: [path.join(cliRoot, 'src/cli-verification-service.ts')],
+  stdin: {
+    contents: `
+      export { CliVerificationHostAdapter } from './src/cli-verification-service';
+      export { CliVerificationAdapter } from './src/cli-verification-adapter';
+    `,
+    resolveDir: cliRoot,
+    sourcefile: 'verification-test-entry.ts',
+    loader: 'ts',
+  },
   bundle: true,
   outfile: bundlePath,
   format: 'cjs',
@@ -22,8 +30,8 @@ buildSync({
 });
 
 const require = createRequire(import.meta.url);
-const { CliVerificationService } = require(bundlePath);
-const service = new CliVerificationService();
+const { CliVerificationAdapter, CliVerificationHostAdapter } = require(bundlePath);
+const service = new CliVerificationHostAdapter();
 
 after(() => rmSync(bundleRoot, { recursive: true, force: true }));
 
@@ -35,14 +43,37 @@ function writeVerifier(workspace, config) {
   writeFileSync(path.join(workspace, 'devseek.verify.json'), JSON.stringify(config), 'utf8');
 }
 
-test('CLI verification service reports the explicit compatibility fallback when no verifier applies', async () => {
+test('CLI verification host reports unverified when no verifier applies', async () => {
   const workspace = createWorkspace('fallback');
   try {
     const result = await service.verify(workspace, ['notes.txt'], 'Update notes.txt');
 
-    assert.equal(result.passed, true);
+    assert.equal(result.passed, false);
+    assert.equal(result.status, 'unverified');
     assert.deepEqual(result.evidenceRefs, ['no verifier configured for changed file types']);
     assert.equal(result.summary, 'No verifier configured for changed file types.');
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('CLI verification adapter emits an unverified shared receipt without acceptance coverage', async () => {
+  const workspace = createWorkspace('shared-receipt');
+  try {
+    const outcome = await new CliVerificationAdapter(service).verify({
+      runId: 'cli-verification-run',
+      sequence: 1,
+      actionId: 'verify-1',
+      workspaceRoot: workspace,
+      files: ['notes.txt'],
+      prompt: 'Update notes.txt',
+      acceptance: [{ id: 'updated', statement: 'The requested update is verified.' }],
+      evidenceRefs: ['mutation:notes:committed'],
+    });
+
+    assert.equal(outcome.receipt.status, 'unverified');
+    assert.equal(outcome.receipt.acceptance[0].status, 'unverified');
+    assert.equal(outcome.receipt.errorCode, 'verification-acceptance-uncovered');
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }

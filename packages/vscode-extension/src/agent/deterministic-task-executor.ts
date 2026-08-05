@@ -1,10 +1,12 @@
 import * as nodePath from 'path';
 import type * as vscode from 'vscode';
+import type { CodingWorkspaceMutationReceipt } from '@devseek-netai/shared';
 import type { AgentTask } from '../agent-task-decomposer';
 import { readFileContentFull } from '../agent-task-decomposer';
 import type { AgentLoopCallbacks } from './loop-types';
 import { roughLineDiff } from '../utils';
 import { WorkspaceEditService } from '../workspace/edit-service';
+import { VsCodeWorkspaceMutationAdapter } from '../workspace/coding-workspace-mutation-adapter';
 import { isCanonicalPathInsideRoot } from '../workspace/path-containment';
 import {
   isTargetExactIsolatedArtifactWriteScope,
@@ -23,9 +25,11 @@ export interface DeterministicTaskResult {
   raw?: string;
   linesAdded?: number;
   linesRemoved?: number;
+  changeReceipt?: CodingWorkspaceMutationReceipt<unknown>;
 }
 
 const workspaceEditService = new WorkspaceEditService();
+const workspaceMutation = new VsCodeWorkspaceMutationAdapter(workspaceEditService);
 
 export async function tryExecuteDeterministicCreateTask(input: {
   task: AgentTask;
@@ -114,14 +118,32 @@ export async function tryExecuteDeterministicCreateTask(input: {
 
   try {
     callbacks.onToolActivity?.('write', task.file);
-    const writeResult = workspaceEditService.commitTextFileProposal(
-      workspaceEditService.proposeTextFileWrite(absPath, task.expectedContent),
+    const mutationOutcome = await workspaceMutation.executeTextFileWrite({
+      runId: callbacks.traceRunId,
+      sequence: input.taskIndex,
+      actionId: `deterministic-create:${task.id}`,
+      absPath,
+      workspaceRoot: input.workspaceRoot.fsPath,
+      content: task.expectedContent,
       baseline,
-      {
+      applyOptions: {
         validateSourceSanity: true,
         repairSourceTransportEscapes: true,
       },
-    ).result;
+      evidenceRefs: [`file-write-authority:${task.file}`],
+    });
+    const committedEdit = mutationOutcome.receipt.result;
+    if (mutationOutcome.receipt.status !== 'committed' || !committedEdit) {
+      const reason = mutationOutcome.receipt.errorCode ?? mutationOutcome.receipt.status;
+      await postDeterministicStatus(input, 'failed', basename, `工作区写入事务未提交：${reason}`);
+      return {
+        applied: false,
+        path: absPath,
+        raw: `deterministic create mutation failed: ${reason}`,
+        changeReceipt: mutationOutcome.receipt,
+      };
+    }
+    const writeResult = committedEdit.result;
     const freshContent = readFileContentFull(absPath);
     const diff = roughLineDiff(writeResult.oldContent, task.expectedContent);
     const relPath = displayPath(input.workspaceRoot, absPath, task.file);
@@ -134,6 +156,7 @@ export async function tryExecuteDeterministicCreateTask(input: {
         raw: `deterministic create verification failed: ${relPath}`,
         linesAdded: diff.added,
         linesRemoved: diff.removed,
+        changeReceipt: mutationOutcome.receipt,
       };
     }
 
@@ -145,6 +168,7 @@ export async function tryExecuteDeterministicCreateTask(input: {
       raw: `deterministic create verified: ${relPath}`,
       linesAdded: diff.added,
       linesRemoved: diff.removed,
+      changeReceipt: mutationOutcome.receipt,
     };
   } catch (error) {
     await postDeterministicStatus(input, 'failed', basename, (error as Error).message);

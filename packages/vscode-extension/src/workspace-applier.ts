@@ -1,7 +1,10 @@
 import * as vscode from 'vscode';
 import * as nodePath from 'path';
-import * as fs from 'fs';
 import * as crypto from 'crypto';
+import type {
+  CodingVerificationReceipt,
+  CodingWorkspaceMutationReceipt,
+} from '@devseek-netai/shared';
 import { ChangeAction, createChangeAction, ResolvedGeneratedArtifact } from './change-plan';
 import { GeneratedArtifact, GeneratedFile, looksLikeRawToolCallText, parseGeneratedArtifacts } from './generated-file-parser';
 import type { CppValidationPolicy } from './validation-planner';
@@ -23,6 +26,7 @@ import {
   type WorkspaceTextFileBaseline,
   type WorkspaceTextFileCommitToken,
 } from './workspace/edit-service';
+import { VsCodeWorkspaceBatchMutationAdapter } from './workspace/coding-workspace-batch-mutation-adapter';
 import { ReviewLedger, type ReviewLedgerSnapshot } from './workspace/review-ledger';
 import {
   ValidationService,
@@ -37,6 +41,7 @@ import {
 import { shouldBlockProjectInstructionFileWrite } from './workspace/instruction-file-safety';
 import { findGeneratedSourceSanityIssue, repairGeneratedSourceTransportEscapes } from './workspace/source-sanity';
 import { createWorkspaceFilePathTokenRegExp } from './workspace/path-patterns';
+import { VsCodeVerificationAdapter } from './app/coding-verification-adapter';
 
 interface ApplyWorkflowStatusBase {
   state: 'started' | 'completed' | 'skipped' | 'passed' | 'failed';
@@ -60,6 +65,8 @@ export interface ApplyWorkflowResult {
   failureDetail?: string;
   blockedChangePaths?: string[];
   validation?: AutoValidationResult;
+  verificationReceipt?: CodingVerificationReceipt;
+  changeReceipts?: CodingWorkspaceMutationReceipt<unknown>[];
   qualityGate?: QualityGateDecision;
   rolledBack?: boolean;
   review?: ReviewLedgerSnapshot;
@@ -84,6 +91,17 @@ export interface ApplyGeneratedArtifactsOptions {
   rollbackOnValidationFailure?: boolean;
   /** Product callers inject the terminal side-effect authority here. */
   validationCommandRunner?: ValidationCommandRunner;
+  /** Optional correlation identity supplied by an owning Agent run. */
+  mutationRunId?: string;
+  mutationSequence?: number;
+  mutationActionId?: string;
+}
+
+interface WorkspaceApplyValidationOutcome {
+  readonly validation?: AutoValidationResult;
+  readonly verificationReceipt: CodingVerificationReceipt;
+  readonly qualityGate: QualityGateDecision;
+  readonly shouldRollback: boolean;
 }
 
 interface PreparedChange {
@@ -209,8 +227,9 @@ async function applyPreparedChanges(
 
   const changeSet = createChangeSetFromPrepared(prepared);
   const ledger = new ReviewLedger();
-  const workspaceEditService = new WorkspaceEditService();
+  const workspaceMutation = new VsCodeWorkspaceBatchMutationAdapter();
   const qualityGateService = new QualityGateService();
+  const canonicalVerification = new VsCodeVerificationAdapter();
   const contractAcceptance = buildRequirementQualityGateAcceptance(requestPrompt);
   ledger.recordChangeSet(changeSet);
   const summary = changeSet.summary();
@@ -347,167 +366,98 @@ async function applyPreparedChanges(
     detail: `共 ${prepared.length} 个变更，新建 ${summary.creates}，覆盖 ${summary.overwrites}，补丁 ${summary.patches}${targetPathForMsg ? `\n目标: ${targetPathForMsg}` : ''}`,
   });
 
-  const createdDirs = new Set<string>();
-  const commitTokens: WorkspaceTextFileCommitToken[] = [];
-  let applyFailure: string | undefined;
-  let applyRollbackComplete = true;
+  const mutationRunId = options?.mutationRunId?.trim() || `vscode-workspace-apply-${crypto.randomUUID()}`;
+  const mutationSequence = options?.mutationSequence ?? 1;
+  const mutationActionId = options?.mutationActionId?.trim() || 'apply-generated-artifacts';
+  const validateWithinTransaction = autoApply && rollbackOnValidationFailure;
+  let transactionalValidation: WorkspaceApplyValidationOutcome | undefined;
+  let mutationOutcome: Awaited<ReturnType<VsCodeWorkspaceBatchMutationAdapter['execute']>> | undefined;
+  let mutationExecutionFailure: string | undefined;
   await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: 'DeepSeek: 正在应用文件变更...', cancellable: false },
     async () => {
       try {
-        for (const change of prepared) {
-          const parentFsPath = nodePath.dirname(change.targetUri.fsPath);
-          for (const dir of collectMissingParentDirs(parentFsPath, root?.fsPath)) {
-            createdDirs.add(dir);
-          }
-          const proposal = workspaceEditService.proposeTextFileWrite(change.targetUri.fsPath, change.newContent);
-          const committed = workspaceEditService.commitTextFileProposal(proposal, change.baseline, {
-            validateSourceSanity: true,
-            repairSourceTransportEscapes: true,
-          });
-          commitTokens.push(committed.commitToken);
-        }
+        mutationOutcome = await workspaceMutation.execute({
+          runId: mutationRunId,
+          sequence: mutationSequence,
+          actionId: mutationActionId,
+          workspaceRoot: root?.fsPath ?? prepared[0].baseline.workspaceRoot,
+          items: prepared.map(change => ({
+            absPath: change.targetUri.fsPath,
+            relPath: change.relPath,
+            content: change.newContent,
+            baseline: change.baseline,
+          })),
+          evidenceRefs: [`workspace-apply:${mutationActionId}:authorized`],
+          ...(validateWithinTransaction ? {
+            verifyReadback: async () => {
+              transactionalValidation = await evaluateWorkspaceApplyValidation({
+                changedPaths: changeSet.changedPaths,
+                root,
+                requestPrompt,
+                validationCommandRunner: options?.validationCommandRunner,
+                reporter,
+                ledger,
+                qualityGateService,
+                contractAcceptance,
+                canonicalVerification,
+              });
+              return {
+                matches: !transactionalValidation.shouldRollback,
+                evidenceRefs: transactionalValidation.verificationReceipt.evidenceRefs,
+              };
+            },
+          } : {}),
+        });
       } catch (error) {
-        const rollbackFailure = await rollbackCommittedChanges(commitTokens, createdDirs, workspaceEditService);
-        applyRollbackComplete = !rollbackFailure;
-        applyFailure = [
-          error instanceof Error ? error.message : String(error),
-          rollbackFailure ? `rollback: ${rollbackFailure}` : '',
-        ].filter(Boolean).join('\n');
+        mutationExecutionFailure = error instanceof Error ? error.message : String(error);
       }
     },
   );
 
-  if (applyFailure) {
+  if (!mutationOutcome) {
+    const detail = mutationExecutionFailure || 'workspace-batch-mutation-unsettled';
     await reportWorkflow(reporter, {
       phase: 'apply',
       state: 'failed',
       title: '文件应用失败（写入冲突）',
-      detail: applyFailure,
+      detail,
     });
-    ledger.addUnfinishedItem(`文件应用失败: ${applyFailure}`);
+    ledger.addUnfinishedItem(`文件应用失败: ${detail}`);
     vscode.window.showErrorMessage('DeepSeek: 文件在确认后发生变化，本轮写入已阻止。');
     return {
-      applied: !applyRollbackComplete,
-      changeCount: applyRollbackComplete ? 0 : commitTokens.length,
-      changedPaths: applyRollbackComplete ? [] : changeSet.changedPaths,
+      applied: false,
+      changeCount: 0,
+      changedPaths: [],
       failureReason: 'write-conflict',
-      failureDetail: applyFailure,
+      failureDetail: detail,
       blockedChangePaths: changeSet.changedPaths,
-      rolledBack: applyRollbackComplete,
+      rolledBack: true,
       review: ledger.snapshot(),
     };
   }
 
-  vscode.window.showInformationMessage(`DeepSeek: 已应用 ${prepared.length} 个文件变更`);
-  await vscode.window.showTextDocument(prepared[0].targetUri, { preview: false });
-
-  await reportWorkflow(reporter, {
-    phase: 'apply',
-    state: 'completed',
-    title: '文件应用完成',
-    detail: prepared.slice(0, 6).map((change) => change.relPath).join('\n'),
-  });
-
-  const validationOperationId = `vscode-workspace-validation-${crypto.randomUUID()}`;
-  await reportWorkflow(reporter, {
-    phase: 'validate',
-    operationId: validationOperationId,
-    state: 'started',
-    title: '正在执行自动编译/验证',
-    detail: '根据变更路径自动选择构建命令',
-  });
-
-  const validation = await runAutoValidation(
-    prepared.map((p) => p.relPath),
-    root,
-    requestPrompt,
-    options?.validationCommandRunner,
-  );
-  if (!validation || validation.status === 'blocked' || validation.ran === false) {
-    if (validation) {
-      ledger.recordValidation(validation);
-    } else {
-      ledger.recordValidationSkipped('no-auto-validation-target');
-    }
-    const qualityGate = qualityGateService.evaluate({
-      changedPaths: changeSet.changedPaths,
-      validation: validation ?? null,
-      contractAcceptance,
-    });
-    ledger.recordQualityGate(qualityGate);
-    ledger.addUnfinishedItem('QualityGate 阻塞：缺少自动验证证据');
-    await reportWorkflow(reporter, {
-      phase: 'validate',
-      operationId: validationOperationId,
-      state: 'skipped',
-      title: '自动验证阻塞',
-      detail: validation
-        ? `原因: ${validation.reason || 'no-auto-validation-target'}\n${validation.output.trim().slice(0, 1200)}`
-        : '未识别到可自动验证的目标（bridge / extension / C++ 目录项目）。',
-    });
-    await reportWorkflow(reporter, {
-      phase: 'quality',
-      operationId: validationOperationId,
-      state: 'failed',
-      title: 'QualityGate 阻塞',
-      detail: renderQualityGateDetail(qualityGate),
-    });
-    await reportAppliedChanges(prepared, commitTokens, onAppliedChange);
-    return {
-      applied: true,
-      changeCount: summary.total,
-      changedPaths: changeSet.changedPaths,
-      ...(validation ? { validation } : {}),
-      qualityGate,
-      review: ledger.snapshot(),
-    };
-  }
-
-  ledger.recordValidation(validation);
-  await reportWorkflow(reporter, {
-    phase: 'validate',
-    operationId: validationOperationId,
-    state: validation.ok ? 'passed' : 'failed',
-    title: validation.ok ? '自动验证通过' : '自动验证失败',
-    detail: `模式: ${validation.mode || 'unknown'}\n原因: ${validation.reason || 'n/a'}\n命令: ${validation.command}\nexitCode: ${validation.exitCode ?? 'null'}\n${validation.output.trim().slice(0, 1200)}`,
-  });
-
-  const qualityGate = qualityGateService.evaluate({
-    changedPaths: changeSet.changedPaths,
-    validation,
-    contractAcceptance,
-  });
-  ledger.recordQualityGate(qualityGate);
-  await reportWorkflow(reporter, {
-    phase: 'quality',
-    operationId: validationOperationId,
-    state: qualityGate.status === 'pass' ? 'passed' : 'failed',
-    title: qualityGate.status === 'pass'
-      ? 'QualityGate 通过'
-      : qualityGate.status === 'fail'
-        ? 'QualityGate 未通过'
-        : 'QualityGate 阻塞',
-    detail: renderQualityGateDetail(qualityGate),
-  });
-
-  if (!validation.ok && autoApply && rollbackOnValidationFailure) {
-    const rollbackFailure = await rollbackCommittedChanges(commitTokens, createdDirs, workspaceEditService);
-    if (rollbackFailure) {
-      ledger.addUnfinishedItem(`自动验证失败且安全回滚未完成: ${rollbackFailure}`);
+  const changeReceipt = mutationOutcome.receipt;
+  const changeReceipts: CodingWorkspaceMutationReceipt<unknown>[] = [changeReceipt];
+  if (transactionalValidation?.shouldRollback) {
+    if (changeReceipt.status === 'indeterminate') {
+      const detail = changeReceipt.errorCode || 'workspace-validation-rollback-indeterminate';
+      ledger.addUnfinishedItem(`自动验证失败且安全回滚未完成: ${detail}`);
       await reportWorkflow(reporter, {
         phase: 'apply',
         state: 'failed',
         title: '自动验证失败，安全回滚未完成',
-        detail: rollbackFailure,
+        detail,
       });
       vscode.window.showErrorMessage('DeepSeek: 自动验证失败，且工作区在回滚前又发生变化；已停止继续覆盖。');
       return {
         applied: true,
         changeCount: summary.total,
         changedPaths: changeSet.changedPaths,
-        validation,
-        qualityGate,
+        ...(transactionalValidation.validation ? { validation: transactionalValidation.validation } : {}),
+        verificationReceipt: transactionalValidation.verificationReceipt,
+        changeReceipts,
+        qualityGate: transactionalValidation.qualityGate,
         rolledBack: false,
         review: ledger.snapshot(),
       };
@@ -524,16 +474,63 @@ async function applyPreparedChanges(
       applied: false,
       changeCount: 0,
       changedPaths: [],
-      validation,
-      qualityGate,
+      ...(transactionalValidation.validation ? { validation: transactionalValidation.validation } : {}),
+      verificationReceipt: transactionalValidation.verificationReceipt,
+      changeReceipts,
+      qualityGate: transactionalValidation.qualityGate,
       rolledBack: true,
       review: ledger.snapshot(),
     };
   }
 
-  if (qualityGate.status === 'fail') {
+  if (changeReceipt.status !== 'committed') {
+    const detail = changeReceipt.errorCode || `workspace-batch-${changeReceipt.status}`;
+    await reportWorkflow(reporter, {
+      phase: 'apply',
+      state: 'failed',
+      title: '文件应用失败（写入冲突）',
+      detail,
+    });
+    ledger.addUnfinishedItem(`文件应用失败: ${detail}`);
+    vscode.window.showErrorMessage('DeepSeek: 文件在确认后发生变化，本轮写入已阻止。');
+    const indeterminate = changeReceipt.status === 'indeterminate';
+    return {
+      applied: indeterminate,
+      changeCount: indeterminate ? summary.total : 0,
+      changedPaths: indeterminate ? changeSet.changedPaths : [],
+      failureReason: 'write-conflict',
+      failureDetail: detail,
+      blockedChangePaths: changeSet.changedPaths,
+      changeReceipts,
+      rolledBack: !indeterminate,
+      review: ledger.snapshot(),
+    };
+  }
+
+  const commitTokens = (changeReceipt.result ?? []).map(change => change.commitToken);
+  vscode.window.showInformationMessage(`DeepSeek: 已应用 ${prepared.length} 个文件变更`);
+  await vscode.window.showTextDocument(prepared[0].targetUri, { preview: false });
+  await reportWorkflow(reporter, {
+    phase: 'apply',
+    state: 'completed',
+    title: '文件应用完成',
+    detail: prepared.slice(0, 6).map((change) => change.relPath).join('\n'),
+  });
+
+  const validationOutcome = transactionalValidation ?? await evaluateWorkspaceApplyValidation({
+    changedPaths: changeSet.changedPaths,
+    root,
+    requestPrompt,
+    validationCommandRunner: options?.validationCommandRunner,
+    reporter,
+    ledger,
+    qualityGateService,
+    contractAcceptance,
+    canonicalVerification,
+  });
+  if (validationOutcome.qualityGate.status === 'fail') {
     ledger.addUnfinishedItem('自动验证失败，需要根据验证输出继续修复');
-  } else if (qualityGate.status === 'blocked') {
+  } else if (validationOutcome.qualityGate.status === 'blocked') {
     ledger.addUnfinishedItem('QualityGate 阻塞：需要补充验证或用户确认风险');
   }
   await reportAppliedChanges(prepared, commitTokens, onAppliedChange);
@@ -542,8 +539,10 @@ async function applyPreparedChanges(
     applied: true,
     changeCount: summary.total,
     changedPaths: changeSet.changedPaths,
-    validation,
-    qualityGate,
+    ...(validationOutcome.validation ? { validation: validationOutcome.validation } : {}),
+    verificationReceipt: validationOutcome.verificationReceipt,
+    changeReceipts,
+    qualityGate: validationOutcome.qualityGate,
     review: ledger.snapshot(),
   };
 }
@@ -572,8 +571,8 @@ function createChangeSetFromPrepared(prepared: PreparedChange[]) {
 }
 
 async function reportAppliedChanges(
-  prepared: PreparedChange[],
-  commitTokens: WorkspaceTextFileCommitToken[],
+  prepared: readonly PreparedChange[],
+  commitTokens: readonly WorkspaceTextFileCommitToken[],
   onAppliedChange?: AppliedChangeReporter,
 ): Promise<void> {
   if (!onAppliedChange) return;
@@ -782,56 +781,6 @@ function buildTruncatingOverwriteDetail(change: PreparedChange): string {
     '当前请求不是明确的整文件重写/删除，已按安全策略阻止写入。',
     '请让模型输出局部 diff，或明确说明要整文件重写后再执行。',
   ].join('\n');
-}
-
-async function rollbackCommittedChanges(
-  commitTokens: WorkspaceTextFileCommitToken[],
-  createdDirs?: Set<string>,
-  workspaceEditService = new WorkspaceEditService(),
-): Promise<string | undefined> {
-  const failures: string[] = [];
-  for (const token of [...commitTokens].reverse()) {
-    const result = workspaceEditService.rollbackTextFileCommit(token);
-    if (!result.rolledBack) {
-      failures.push(`${nodePath.basename(token.absPath)}: ${result.reason ?? 'unknown rollback failure'}`);
-    }
-  }
-
-  await cleanupCreatedEmptyDirs(createdDirs);
-  return failures.length > 0 ? failures.join('; ') : undefined;
-}
-
-function collectMissingParentDirs(parentFsPath: string, rootFsPath?: string): string[] {
-  if (!rootFsPath) return [];
-  const root = nodePath.resolve(rootFsPath);
-  let current = nodePath.resolve(parentFsPath);
-  const dirs: string[] = [];
-
-  while (current && current !== root && current.startsWith(root + nodePath.sep)) {
-    if (!fs.existsSync(current)) {
-      dirs.push(current);
-    }
-    const next = nodePath.dirname(current);
-    if (next === current) break;
-    current = next;
-  }
-
-  return dirs.reverse();
-}
-
-async function cleanupCreatedEmptyDirs(createdDirs?: Set<string>): Promise<void> {
-  if (!createdDirs || createdDirs.size === 0) return;
-  const dirs = [...createdDirs].sort((a, b) => b.length - a.length);
-  for (const dir of dirs) {
-    try {
-      if (!fs.existsSync(dir)) continue;
-      const entries = await vscode.workspace.fs.readDirectory(vscode.Uri.file(dir));
-      if (entries.length > 0) continue;
-      await vscode.workspace.fs.delete(vscode.Uri.file(dir), { useTrash: false });
-    } catch {
-      // Best-effort cleanup: rollback correctness is about file contents first.
-    }
-  }
 }
 
 function inferFallbackArtifacts(raw: string, requestPrompt: string | undefined, root: vscode.Uri): GeneratedArtifact[] {
@@ -1399,6 +1348,125 @@ function applyUnifiedDiff(original: string, diff: string, relPath: string): stri
   }
 
   return ensureFinalNewline(result.join('\n'));
+}
+
+async function settleWorkspaceApplyVerification(input: {
+  adapter: Pick<VsCodeVerificationAdapter, 'verify'>;
+  operationId: string;
+  changedPaths: string[];
+  validation: AutoValidationResult | null;
+  qualityGate: QualityGateDecision;
+}): Promise<CodingVerificationReceipt> {
+  const evidenceRefs = input.qualityGate.evidenceRefs.length > 0
+    ? input.qualityGate.evidenceRefs
+    : [`quality-gate:${input.operationId}:${input.qualityGate.status}`];
+  const outcome = await input.adapter.verify({
+    runId: input.operationId,
+    sequence: 1,
+    actionId: 'workspace-apply-quality-gate',
+    scopePaths: input.changedPaths,
+    acceptance: [{
+      id: 'workspace-apply-quality-gate',
+      statement: 'The applied workspace changes satisfy the selected validation and requirement gates.',
+    }],
+    evidenceRefs,
+    verifier: 'vscode-workspace-applier-quality-gate',
+    observe: async () => ({
+      status: input.qualityGate.status === 'pass'
+        ? 'passed'
+        : input.qualityGate.status === 'fail'
+          ? 'failed'
+          : 'unverified',
+      summary: input.qualityGate.summary,
+      ...(input.validation?.command ? { command: input.validation.command } : {}),
+      ...(input.validation ? { exitCode: input.validation.exitCode } : {}),
+      evidenceRefs,
+    }),
+  });
+  return outcome.receipt;
+}
+
+async function evaluateWorkspaceApplyValidation(input: {
+  changedPaths: string[];
+  root?: vscode.Uri;
+  requestPrompt?: string;
+  validationCommandRunner?: ValidationCommandRunner;
+  reporter?: ApplyWorkflowReporter;
+  ledger: ReviewLedger;
+  qualityGateService: Pick<QualityGateService, 'evaluate'>;
+  contractAcceptance?: QualityGateContractAcceptance;
+  canonicalVerification: Pick<VsCodeVerificationAdapter, 'verify'>;
+}): Promise<WorkspaceApplyValidationOutcome> {
+  const operationId = `vscode-workspace-validation-${crypto.randomUUID()}`;
+  await reportWorkflow(input.reporter, {
+    phase: 'validate',
+    operationId,
+    state: 'started',
+    title: '正在执行自动编译/验证',
+    detail: '根据变更路径自动选择构建命令',
+  });
+
+  const validation = await runAutoValidation(
+    input.changedPaths,
+    input.root,
+    input.requestPrompt,
+    input.validationCommandRunner,
+  );
+  const unavailable = !validation || validation.status === 'blocked' || validation.ran === false;
+  if (validation) input.ledger.recordValidation(validation);
+  else input.ledger.recordValidationSkipped('no-auto-validation-target');
+
+  const qualityGate = input.qualityGateService.evaluate({
+    changedPaths: input.changedPaths,
+    validation: validation ?? null,
+    contractAcceptance: input.contractAcceptance,
+  });
+  input.ledger.recordQualityGate(qualityGate);
+
+  if (unavailable) {
+    await reportWorkflow(input.reporter, {
+      phase: 'validate',
+      operationId,
+      state: 'skipped',
+      title: '自动验证阻塞',
+      detail: validation
+        ? `原因: ${validation.reason || 'no-auto-validation-target'}\n${validation.output.trim().slice(0, 1200)}`
+        : '未识别到可自动验证的目标（bridge / extension / C++ 目录项目）。',
+    });
+  } else {
+    await reportWorkflow(input.reporter, {
+      phase: 'validate',
+      operationId,
+      state: validation.ok ? 'passed' : 'failed',
+      title: validation.ok ? '自动验证通过' : '自动验证失败',
+      detail: `模式: ${validation.mode || 'unknown'}\n原因: ${validation.reason || 'n/a'}\n命令: ${validation.command}\nexitCode: ${validation.exitCode ?? 'null'}\n${validation.output.trim().slice(0, 1200)}`,
+    });
+  }
+
+  await reportWorkflow(input.reporter, {
+    phase: 'quality',
+    operationId,
+    state: qualityGate.status === 'pass' ? 'passed' : 'failed',
+    title: qualityGate.status === 'pass'
+      ? 'QualityGate 通过'
+      : qualityGate.status === 'fail'
+        ? 'QualityGate 未通过'
+        : 'QualityGate 阻塞',
+    detail: renderQualityGateDetail(qualityGate),
+  });
+  const verificationReceipt = await settleWorkspaceApplyVerification({
+    adapter: input.canonicalVerification,
+    operationId,
+    changedPaths: input.changedPaths,
+    validation,
+    qualityGate,
+  });
+  return {
+    ...(validation ? { validation } : {}),
+    verificationReceipt,
+    qualityGate,
+    shouldRollback: Boolean(!unavailable && validation && !validation.ok),
+  };
 }
 
 async function runAutoValidation(

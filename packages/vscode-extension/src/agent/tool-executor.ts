@@ -1,3 +1,12 @@
+import {
+  CanonicalToolExecutor,
+  buildCodingToolAction,
+  type CodingToolAuthorityReceipt,
+  type CodingToolExecutionOutcome,
+  type CodingToolHostResult,
+  type CodingToolEffect,
+  type ToolExecutorPort,
+} from '@devseek-netai/shared';
 import type { ToolPolicy, ToolPermissionDecision } from '../app/permission-service';
 import { decideToolPermission } from '../app/permission-service';
 import type { ToolKind } from '../intent/intent-types';
@@ -9,6 +18,7 @@ import {
   type AgentToolActivity,
   getToolDefinition,
   getToolActivity,
+  hasCompleteAgentFileWriteBatch,
   isFileWriteTool,
 } from './tool-registry';
 import type { EvidenceRef } from './evidence-grounding';
@@ -48,7 +58,21 @@ export interface ToolInputValidationResult {
   error?: string;
 }
 
+export interface AgentToolCanonicalExecutionInput<TResult> {
+  readonly runId: string;
+  readonly sequence: number;
+  readonly actionId: string;
+  readonly authorityEvidenceRefs: readonly string[];
+  readonly confirmationRef?: string;
+  readonly authority?: CodingToolAuthorityReceipt;
+  readonly host: {
+    execute(plan: AgentToolExecutionPlan): Promise<CodingToolHostResult<TResult>>;
+  };
+}
+
 export class AgentToolExecutor {
+  constructor(private readonly canonicalExecutor: ToolExecutorPort = new CanonicalToolExecutor()) {}
+
   plan(tool: FakeTool | ToolCall, policy?: ToolPolicy): AgentToolExecutionPlan {
     const call = isNormalizedToolCall(tool) ? tool : normalizeToolCall(tool, 'fake-tool');
     const definition = call.definition ?? getToolDefinition(call.name);
@@ -91,6 +115,9 @@ export class AgentToolExecutor {
     if (!plan.registered || !plan.definition) {
       return { ok: false, error: `未注册工具: ${plan.call.name || 'unknown'}` };
     }
+    if (isFileWriteTool(plan.tool.name) && hasCompleteAgentFileWriteBatch(plan.call.input)) {
+      return { ok: true };
+    }
     const missing = missingRequiredFields(plan.definition, plan.call.input);
     if (missing.length > 0) {
       return { ok: false, error: `缺少必填参数: ${missing.join(', ')}` };
@@ -115,6 +142,25 @@ export class AgentToolExecutor {
       permission: plan.permission,
     };
   }
+
+  executeCanonical<TResult>(
+    plan: AgentToolExecutionPlan,
+    input: AgentToolCanonicalExecutionInput<TResult>,
+  ): Promise<CodingToolExecutionOutcome<TResult>> {
+    if (!plan.permission) throw new Error('agent-tool-execution:missing-permission-decision');
+    const action = buildCodingToolAction({
+      runId: input.runId,
+      sequence: input.sequence,
+      actionId: input.actionId,
+      tool: plan.tool.name,
+      effects: projectToolEffects(plan),
+      input: plan.call.input,
+      authority: input.authority ?? projectToolAuthority(plan.permission, input),
+    });
+    return this.canonicalExecutor.execute(action, {
+      execute: () => input.host.execute(plan),
+    });
+  }
 }
 
 function missingRequiredFields(definition: AgentToolDefinition, input: Record<string, unknown>): string[] {
@@ -135,6 +181,37 @@ function hasSchemaValue(value: unknown, expectedType?: AgentToolDefinition['sche
 
 export function classifyToolKind(name: string): ToolKind {
   return getToolDefinition(name)?.kind ?? 'plan';
+}
+
+function projectToolAuthority<TResult>(
+  permission: ToolPermissionDecision,
+  input: AgentToolCanonicalExecutionInput<TResult>,
+): CodingToolAuthorityReceipt {
+  const confirmationRef = input.confirmationRef?.trim();
+  const authorized = permission.action === 'allow'
+    || (permission.action === 'requireConfirm' && Boolean(confirmationRef));
+  return {
+    decision: permission.action === 'requireConfirm' ? 'require-confirmation' : permission.action,
+    status: authorized ? 'authorized' : 'denied',
+    reason: permission.reason,
+    ...(confirmationRef ? { confirmationRef } : {}),
+    evidenceRefs: input.authorityEvidenceRefs,
+  };
+}
+
+function projectToolEffects(plan: AgentToolExecutionPlan): readonly CodingToolEffect[] {
+  if (plan.definition?.mutatesWorkspace) return ['workspace-mutation'];
+  switch (plan.kind) {
+    case 'terminal':
+    case 'vscode':
+    case 'vscode-command':
+      return ['process'];
+    case 'network':
+    case 'mcp':
+      return ['network'];
+    default:
+      return ['read'];
+  }
 }
 
 function buildPlannedRefs(call: ToolCall): EvidenceRef[] {

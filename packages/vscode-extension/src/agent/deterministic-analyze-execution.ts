@@ -12,7 +12,7 @@ import {
 import { planLocalExecution, type LocalExecutionPlan } from '../execution-planner';
 import type { AgentLoopCallbacks } from './loop-types';
 import { withTaskTerminalEvidence, type TaskExecutionResult } from './task-execution-result';
-import { analyzeTerminalEvidence } from './tool-loop';
+import { executeFakeToolsForLoop } from './tool-loop';
 import { classifyIntent } from '../intent/intent-classifier';
 
 export { isExistingDirectory } from '../workspace/local-execution-target';
@@ -63,7 +63,8 @@ export async function tryExecuteDeterministicAnalyzeExecution(input: {
     detail: `使用项目目录 ${nodePath.basename(plan.cwd) || plan.cwd} 的标准构建目录 build。`,
   });
 
-  const terminalEvidence = await runPlannedCommand(input.callbacks, plan);
+  const execution = await runPlannedCommand(input, plan);
+  const terminalEvidence = execution.terminalEvidence;
   const latestEvidence = terminalEvidence[terminalEvidence.length - 1];
   if (!latestEvidence?.ok && !latestEvidence?.reviewRequired) {
     const detail = latestEvidence?.detail?.slice(0, 1200) || '本地验证快路径未取得成功证据。';
@@ -84,6 +85,7 @@ export async function tryExecuteDeterministicAnalyzeExecution(input: {
       applied: false,
       raw: detail,
       taskComplete: false,
+      toolExecutionReceipts: execution.toolExecutionReceipts,
     }, terminalEvidence);
   }
 
@@ -108,6 +110,7 @@ export async function tryExecuteDeterministicAnalyzeExecution(input: {
     applied: false,
     raw: detail,
     taskComplete: true,
+    toolExecutionReceipts: execution.toolExecutionReceipts,
   }, terminalEvidence);
 }
 
@@ -170,25 +173,47 @@ function collectLocalExecutionCandidateFiles(workdir: string | undefined): strin
 }
 
 async function runPlannedCommand(
-  callbacks: AgentLoopCallbacks,
+  input: {
+    taskIndex: number;
+    taskTotal: number;
+    userPrompt: string;
+    workspaceRoot: vscode.Uri;
+    callbacks: AgentLoopCallbacks;
+  },
   plan: LocalExecutionPlan,
-): Promise<TerminalEvidence[]> {
+): Promise<{
+  terminalEvidence: TerminalEvidence[];
+  toolExecutionReceipts?: TaskExecutionResult['toolExecutionReceipts'];
+}> {
   try {
-    if (!callbacks.onTerminalCommand) {
-      return [{
+    const result = await executeFakeToolsForLoop(
+      [{ name: 'run_terminal', input: { command: plan.command, workdir: plan.cwd } }],
+      input.callbacks,
+      plan.cwd,
+      {
+        currentTaskIndex: input.taskIndex,
+        taskTotal: input.taskTotal,
+        userPrompt: input.userPrompt,
+        workspaceRoot: input.workspaceRoot.fsPath,
+        plannedTerminalValidation: {
+          command: plan.command,
+          workdir: plan.cwd,
+        },
+      },
+    );
+    return {
+      terminalEvidence: result.terminalEvidence ?? [],
+      toolExecutionReceipts: result.toolExecutionReceipts,
+    };
+  } catch (error) {
+    return {
+      terminalEvidence: [{
         command: plan.command,
         kind: classifyTerminalEvidenceCommand(plan.command),
         ok: false,
         exitCode: null,
-        detail: '未配置终端副作用授权边界，命令未执行。',
-      }];
-    }
-
-    const output = await callbacks.onTerminalCommand(plan.command, plan.cwd);
-    return [{
-      ...analyzeTerminalEvidence(plan.command, output, plan.cwd).evidence,
-    }];
-  } catch {
-    return [];
+        detail: error instanceof Error ? error.message : String(error),
+      }],
+    };
   }
 }

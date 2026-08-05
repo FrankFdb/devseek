@@ -67,6 +67,8 @@ test('Agent auto validation: successful project validation becomes completion ev
   assert.equal(new Set(statuses.map(status => status.evidenceOperationId)).size, 1);
   assert.equal(result.evidenceOperationId, statuses[0].evidenceOperationId);
   assert.match(result.evidenceOperationId, /^auto-validation-\d+-packages\/vscode-extension\/src\/agent-loop\.ts$/);
+  assert.equal(result.verificationReceipt.status, 'passed');
+  assert.equal(result.verificationReceipt.acceptance[0].status, 'passed');
   assert.deepEqual(activities, [{ kind: 'terminal', label: '自动验证: npm run compile' }]);
 });
 
@@ -103,6 +105,7 @@ test('Agent auto validation: passing verifier cannot settle a weak requirement o
 
     assert.equal(result.evidence.ok, true);
     assert.equal(result.qualityGate.status, 'blocked');
+    assert.equal(result.verificationReceipt.status, 'unverified');
     assert.match(result.qualityGate.summary, /acceptance-not-bound-to-executable-oracle/);
     assert.match(result.feedbackForAI, /requirement_contract/);
     assert.deepEqual(statuses.map(status => `${status.phase}:${status.state}`), [
@@ -215,6 +218,7 @@ test('Agent auto validation: failed validation blocks completion evidence', asyn
 
   assert.equal(result.evidence.ok, false);
   assert.equal(result.evidence.exitCode, 2);
+  assert.equal(result.verificationReceipt.status, 'failed');
   assert.match(result.feedbackForAI, /自动验证命令未通过，不能把编译\/运行\/测试标记为完成/);
   assert.match(result.feedbackForAI, /TypeScript error/);
 });

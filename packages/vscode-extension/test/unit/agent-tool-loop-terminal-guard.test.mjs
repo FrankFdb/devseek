@@ -77,6 +77,55 @@ function executeFakeToolsForLoop(tools, callbacks, ...args) {
   );
 }
 
+function committedDirectoryResult(message, authorization, relativePath = 'generated/docs') {
+  return {
+    message,
+    changeReceipt: {
+      version: 'devseek.coding-workspace-mutation-receipt/v1',
+      runId: authorization.runId,
+      sequence: authorization.sequence,
+      actionId: authorization.actionId,
+      idempotencyKey: `${authorization.runId}:${authorization.actionId}`,
+      status: 'committed',
+      paths: [relativePath],
+      baselineRef: `test-directory-baseline:${authorization.actionId}`,
+      readbackRef: `test-directory-readback:${authorization.actionId}`,
+      result: { created: true },
+      evidenceRefs: [`test-directory:${authorization.actionId}:committed`],
+    },
+  };
+}
+
+function preparedTerminalCallbacks(host) {
+  return {
+    onPrepareTerminalCommand: async (command, workdir) => ({
+      authority: {
+        decision: 'require-confirmation',
+        status: 'authorized',
+        reason: 'test-terminal-confirmed',
+        confirmationRef: `test-terminal-confirmation:${command}`,
+        evidenceRefs: [`test-terminal-authority:${command}`],
+      },
+      execute: async () => {
+        try {
+          return {
+            status: 'completed',
+            result: await host(command, workdir),
+            evidenceRefs: [`test-terminal-execution:${command}`],
+          };
+        } catch (error) {
+          return {
+            status: 'failed',
+            result: error instanceof Error ? error.message : String(error),
+            errorCode: 'test-terminal-failed',
+            evidenceRefs: [`test-terminal-execution:${command}:failed`],
+          };
+        }
+      },
+    }),
+  };
+}
+
 test('ToolLoop work-tool classifier keeps meta tools separate from real work', () => {
   assert.equal(isAgentWorkToolName('manage_todo_list'), false);
   assert.equal(isAgentWorkToolName('task_complete'), false);
@@ -112,10 +161,10 @@ test('ToolLoop fails closed when an execution policy is missing', async () => {
   const result = await executeFakeToolsWithoutFixturePolicy(
     [{ name: 'run_terminal', input: { command: 'echo must-not-run' } }],
     {
-      onTerminalCommand: async () => {
+      ...preparedTerminalCallbacks(async () => {
         terminalCalled = true;
         return 'must-not-run';
-      },
+      }),
       onAgentStatus: async () => {},
     },
     '/tmp/project',
@@ -225,6 +274,62 @@ test('ToolLoop records immutable evidence only after a successful read using the
   assert.equal(failed.evidenceRefs, undefined);
 });
 
+test('ToolLoop settles every observation and control tool through canonical receipts', async () => {
+  const projectRoot = mkdtempSync(path.join(tmpdir(), 'devseek-tool-observations-'));
+  try {
+    const tools = [
+      { name: 'read_file', input: { path: 'a.ts' } },
+      { name: 'grep_search', input: { pattern: 'needle' } },
+      { name: 'list_dir', input: { path: '.' } },
+      { name: 'get_errors', input: {} },
+      { name: 'file_search', input: { glob: '**/*.ts' } },
+      { name: 'semantic_search', input: { query: 'find the canonical owner' } },
+      { name: 'get_changed_files', input: {} },
+      { name: 'fetch_webpage', input: { url: 'https://example.test/docs' } },
+      { name: 'vscode_listCodeUsages', input: { symbol: 'Owner' } },
+      { name: 'manage_todo_list', input: { todoList: [{ id: 1, title: 'verify', status: 'in-progress' }] } },
+      { name: 'task_complete', input: { summary: 'candidate only' } },
+      { name: 'memory_write', input: { content: 'Use canonical receipts.' } },
+    ];
+    const result = await executeFakeToolsForLoop(tools, {
+      onReadFile: async () => 'file',
+      onGrepSearch: async () => 'matches',
+      onListDir: async () => 'listing',
+      onGetErrors: async () => 'diagnostics',
+      onFileSearch: async () => 'files',
+      onGetChangedFiles: async () => 'changes',
+      onFetchWebpage: async () => 'webpage',
+      onListCodeUsages: async () => 'usages',
+      onMemoryWrite: async () => {},
+      onAgentStatus: async () => {},
+    }, projectRoot, { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: projectRoot });
+
+    assert.deepEqual(result.toolExecutionReceipts?.map(receipt => receipt.tool), tools.map(tool => tool.name));
+    assert.equal(result.toolExecutionReceipts?.every(receipt => receipt.status === 'completed'), true);
+    assert.equal(result.toolExecutionReceipts?.every(receipt => receipt.evidenceRefs.length > 0), true);
+    assert.deepEqual(
+      result.toolExecutionReceipts?.find(receipt => receipt.tool === 'fetch_webpage')?.effects,
+      ['network'],
+    );
+  } finally {
+    rmSync(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test('ToolLoop records a failed canonical receipt when a registered observation host is missing', async () => {
+  const result = await executeFakeToolsForLoop(
+    [{ name: 'read_file', input: { path: 'missing.ts' } }],
+    { onAgentStatus: async () => {} },
+    '/tmp/project',
+    { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: '/tmp/project' },
+  );
+
+  assert.equal(result.toolExecutionReceipts?.length, 1);
+  assert.equal(result.toolExecutionReceipts?.[0]?.status, 'failed');
+  assert.equal(result.toolExecutionReceipts?.[0]?.errorCode, 'missing-tool-host:read_file');
+  assert.match(result.feedbackForAI, /missing-tool-host:read_file/);
+});
+
 test('ToolLoop shares one read recorder across rounds and task settlement retains both refs', async () => {
   const recorder = new ToolReadEvidenceRecorder('/tmp/project', 'run-shared');
   const collected = [];
@@ -261,10 +366,10 @@ test('ToolLoop terminal guard: raw TOOL_CALL protocol text never reaches shell',
       },
     ],
     {
-      onTerminalCommand: async () => {
+      ...preparedTerminalCallbacks(async () => {
         terminalCalled = true;
         return 'should-not-run';
-      },
+      }),
       onToolActivity: (kind, label) => activities.push({ kind, label }),
       onAgentStatus: async () => {},
     },
@@ -292,10 +397,10 @@ test('ToolLoop terminal guard: raw ReAct Action protocol text never reaches shel
       },
     ],
     {
-      onTerminalCommand: async () => {
+      ...preparedTerminalCallbacks(async () => {
         terminalCalled = true;
         return 'should-not-run';
-      },
+      }),
       onToolActivity: () => {},
       onAgentStatus: async () => {},
     },
@@ -327,10 +432,10 @@ test('ToolLoop terminal guard: stale timestamp artifact directories never reach 
       },
     ],
     {
-      onTerminalCommand: async () => {
+      ...preparedTerminalCallbacks(async () => {
         terminalCalled = true;
         return 'should-not-run';
-      },
+      }),
       onToolActivity: () => {},
       onAgentStatus: async () => {},
     },
@@ -358,10 +463,10 @@ test('ToolLoop terminal guard blocks shell writes to every file class, not only 
   const result = await executeFakeToolsForLoop(
     commands.map(command => ({ name: 'run_terminal', input: { command } })),
     {
-      onTerminalCommand: async () => {
+      ...preparedTerminalCallbacks(async () => {
         terminalCalls += 1;
         return 'should-not-run';
-      },
+      }),
       onToolActivity: () => {},
       onAgentStatus: async () => {},
     },
@@ -392,7 +497,7 @@ test('ToolLoop terminal guard fail-closes destructive, mutating, and unclassifie
   const result = await executeFakeToolsForLoop(
     commands.map(command => ({ name: 'run_terminal', input: { command } })),
     {
-      onTerminalCommand: async () => { terminalCalls += 1; return 'should-not-run'; },
+      ...preparedTerminalCallbacks(async () => { terminalCalls += 1; return 'should-not-run'; }),
       onToolActivity: () => {},
       onAgentStatus: async () => {},
     },
@@ -421,10 +526,10 @@ test('ToolLoop terminal guard allows workspace-local C++ compile-run validation'
     const result = await executeFakeToolsForLoop(
       [{ name: 'run_terminal', input: { command } }],
       {
-        onTerminalCommand: async () => {
+        ...preparedTerminalCallbacks(async () => {
           terminalCalls += 1;
           return '[终端命令] ' + command + '\n[退出码] 0\n[stdout]\nok\n';
-        },
+        }),
         onToolActivity: () => {},
         onAgentStatus: async () => {},
       },
@@ -459,10 +564,10 @@ test('ToolLoop resolves unavailable python runtime to python3 before executing v
     const result = await executeFakeToolsForLoop(
       [{ name: 'run_terminal', input: { command } }],
       {
-        onTerminalCommand: async (cmd) => {
+        ...preparedTerminalCallbacks(async (cmd) => {
           executedCommand = cmd;
           return '[终端命令] ' + cmd + '\n[退出码] 0\n[stdout]\n';
-        },
+        }),
         onToolActivity: () => {},
         onAgentStatus: async () => {},
       },
@@ -491,7 +596,7 @@ test('ToolLoop records terminal raw output as immutable EvidenceRef before settl
     const result = await executeFakeToolsForLoop(
       [{ name: 'run_terminal', input: { command } }],
       {
-        onTerminalCommand: async () => output,
+        ...preparedTerminalCallbacks(async () => output),
         onToolActivity: () => {},
         onAgentStatus: async () => {},
         traceRunId: 'terminal-evidence-run',
@@ -507,6 +612,7 @@ test('ToolLoop records terminal raw output as immutable EvidenceRef before settl
     assert.equal(terminalRef?.workdir, projectRoot);
     assert.equal(terminalRef?.exitCode, 1);
     assert.equal(terminalRef?.content, output);
+    assert.deepEqual(result.terminalOutputs, [{ command, workdir: projectRoot, output }]);
     assert.equal(terminalRef?.contentHash, createHash('sha256').update(output).digest('hex'));
     assert.equal(Object.isFrozen(terminalRef), true);
     assert.match(terminalRef?.evidenceId || '', /^ev-/);
@@ -533,7 +639,7 @@ test('ToolLoop terminal guard never dispatches read-only allowlist commands with
   const result = await executeFakeToolsForLoop(
     commands.map(command => ({ name: 'run_terminal', input: { command } })),
     {
-      onTerminalCommand: async () => { terminalCalls += 1; return 'should-not-run'; },
+      ...preparedTerminalCallbacks(async () => { terminalCalls += 1; return 'should-not-run'; }),
       onToolActivity: () => {},
       onAgentStatus: async () => {},
     },
@@ -569,7 +675,7 @@ test('ToolLoop terminal guard blocks branch mutations, awk command pipes, and wr
   const result = await executeFakeToolsForLoop(
     commands.map(command => ({ name: 'run_terminal', input: { command } })),
     {
-      onTerminalCommand: async () => { terminalCalls += 1; return 'should-not-run'; },
+      ...preparedTerminalCallbacks(async () => { terminalCalls += 1; return 'should-not-run'; }),
       onToolActivity: () => {},
       onAgentStatus: async () => {},
     },
@@ -596,7 +702,7 @@ test('ToolLoop terminal guard still allows classified inspection and validation 
       { name: 'run_terminal', input: { command: 'npm test' } },
     ],
     {
-      onTerminalCommand: async command => { terminalCommands.push(command); return 'ok'; },
+      ...preparedTerminalCallbacks(async command => { terminalCommands.push(command); return 'ok'; }),
       onToolActivity: () => {},
       onAgentStatus: async () => {},
     },
@@ -656,6 +762,9 @@ test('ToolLoop create_directory consults the file-write policy before invoking t
     assert.equal(result.toolFailures?.[0]?.kind, 'write');
     assert.match(result.toolFailures?.[0]?.reason ?? '', /写入权限策略阻止/);
     assert.match(result.feedbackForAI, /create_directory: generated\/docs.*写入权限策略阻止/s);
+    assert.equal(result.toolExecutionReceipts?.length, 1);
+    assert.equal(result.toolExecutionReceipts?.[0]?.status, 'denied');
+    assert.match(result.toolExecutionReceipts?.[0]?.permission.reason ?? '', /写入权限策略阻止/);
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });
   }
@@ -700,11 +809,14 @@ test('ToolLoop create_directory gives policy and host the same resolved absolute
   try {
     const policyPaths = [];
     const hostPaths = [];
-    await executeFakeToolsForLoop(
+    const result = await executeFakeToolsForLoop(
       [{ name: 'create_directory', input: { path: 'generated/docs' } }],
       {
         onBeforeFileWrite: async absPath => { policyPaths.push(absPath); return true; },
-        onCreateDirectory: async absPath => { hostPaths.push(absPath); return 'created'; },
+        onCreateDirectory: async (absPath, authorization) => {
+          hostPaths.push(absPath);
+          return committedDirectoryResult('created', authorization);
+        },
         onToolActivity: () => {},
         onAgentStatus: async () => {},
       },
@@ -715,9 +827,151 @@ test('ToolLoop create_directory gives policy and host the same resolved absolute
     const expected = path.join(defaultWorkdir, 'generated/docs');
     assert.deepEqual(policyPaths, [expected]);
     assert.deepEqual(hostPaths, [expected]);
+    assert.equal(result.toolExecutionReceipts?.length, 1);
+    assert.equal(result.toolExecutionReceipts?.[0]?.status, 'completed');
+    assert.equal(result.toolExecutionReceipts?.[0]?.result, 'created');
+    assert.equal(result.changeReceipts?.length, 1);
+    assert.equal(result.changeReceipts?.[0]?.status, 'committed');
+    assert.equal(result.changeReceipts?.[0]?.actionId, result.toolExecutionReceipts?.[0]?.actionId);
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });
   }
+});
+
+test('ToolLoop propagates a failed directory mutation receipt into canonical tool failure', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-create-directory-failed-receipt-'));
+  try {
+    const result = await executeFakeToolsForLoop(
+      [{ name: 'create_directory', input: { path: 'generated/docs' } }],
+      {
+        onBeforeFileWrite: async () => true,
+        onCreateDirectory: async (_absPath, authorization) => ({
+          message: 'not-created',
+          changeReceipt: {
+            version: 'devseek.coding-workspace-mutation-receipt/v1',
+            runId: authorization.runId,
+            sequence: authorization.sequence,
+            actionId: authorization.actionId,
+            idempotencyKey: `${authorization.runId}:${authorization.actionId}`,
+            status: 'failed',
+            paths: ['generated/docs'],
+            errorCode: 'workspace-directory-baseline-conflict',
+            evidenceRefs: [`test-directory:${authorization.actionId}:failed`],
+          },
+        }),
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      workspaceRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot },
+    );
+
+    assert.equal(result.changeReceipts?.[0]?.status, 'failed');
+    assert.equal(result.toolExecutionReceipts?.[0]?.status, 'failed');
+    assert.equal(result.toolExecutionReceipts?.[0]?.errorCode, 'workspace-directory-baseline-conflict');
+    assert.equal(result.toolFailures?.[0]?.reason, 'workspace-directory-baseline-conflict');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('ToolLoop create_directory fails canonically when the product host is missing', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-create-directory-host-missing-'));
+  try {
+    const result = await executeFakeToolsForLoop(
+      [{ name: 'create_directory', input: { path: 'generated/docs' } }],
+      {
+        onBeforeFileWrite: async () => true,
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      workspaceRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot },
+    );
+
+    assert.equal(result.toolExecutionReceipts?.length, 1);
+    assert.equal(result.toolExecutionReceipts?.[0]?.status, 'failed');
+    assert.equal(result.toolExecutionReceipts?.[0]?.errorCode, 'missing-create-directory-host');
+    assert.equal(result.toolFailures?.[0]?.tool, 'create_directory');
+    assert.match(result.feedbackForAI, /missing-create-directory-host/);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('ToolLoop settles prepared VS Code and MCP effects through canonical tool receipts', async () => {
+  const hostCalls = [];
+  const authorized = label => ({
+    decision: 'require-confirmation',
+    status: 'authorized',
+    reason: `${label}-confirmed`,
+    confirmationRef: `${label}-confirmation`,
+    evidenceRefs: [`${label}-authority`],
+  });
+  const result = await executeFakeToolsForLoop(
+    [
+      { name: 'run_vscode_command', input: { command: 'editor.action.formatDocument' } },
+      { name: 'mcp__docs__lookup', input: { query: 'contract' } },
+    ],
+    {
+      executionMode: 'destructive',
+      onPrepareVscodeCommand: async command => ({
+        authority: authorized('vscode'),
+        execute: async () => {
+          hostCalls.push(`vscode:${command}`);
+          return { status: 'completed', result: 'formatted', evidenceRefs: ['vscode-result'] };
+        },
+      }),
+      onPrepareMcpToolCall: async name => ({
+        authority: authorized('mcp'),
+        execute: async () => {
+          hostCalls.push(`mcp:${name}`);
+          return { status: 'completed', result: 'documentation', evidenceRefs: ['mcp-result'] };
+        },
+      }),
+      onToolActivity: () => {},
+      onAgentStatus: async () => {},
+    },
+    '/workspace',
+    { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: '/workspace' },
+  );
+
+  assert.deepEqual(hostCalls, [
+    'vscode:editor.action.formatDocument',
+    'mcp:mcp__docs__lookup',
+  ]);
+  assert.deepEqual(result.toolExecutionReceipts?.map(receipt => receipt.status), ['completed', 'completed']);
+  assert.deepEqual(result.toolExecutionReceipts?.map(receipt => receipt.result), ['formatted', 'documentation']);
+});
+
+test('ToolLoop never dispatches a product host after prepared authority denies it', async () => {
+  let hostCalls = 0;
+  const result = await executeFakeToolsForLoop(
+    [{ name: 'mcp__docs__lookup', input: { query: 'contract' } }],
+    {
+      executionMode: 'destructive',
+      onPrepareMcpToolCall: async () => ({
+        authority: {
+          decision: 'deny',
+          status: 'denied',
+          reason: 'user-declined-mcp',
+          evidenceRefs: ['mcp-authority-denied'],
+        },
+        execute: async () => {
+          hostCalls += 1;
+          return { status: 'completed', result: 'unreachable', evidenceRefs: ['unreachable'] };
+        },
+      }),
+      onToolActivity: () => {},
+      onAgentStatus: async () => {},
+    },
+    '/workspace',
+    { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: '/workspace' },
+  );
+
+  assert.equal(hostCalls, 0);
+  assert.equal(result.toolExecutionReceipts?.[0]?.status, 'denied');
+  assert.equal(result.toolExecutionReceipts?.[0]?.permission.reason, 'user-declined-mcp');
 });
 
 test('ToolLoop delete_file leaves the file intact when the file-write policy rejects deletion', async () => {
@@ -792,6 +1046,8 @@ test('ToolLoop delete_file records applied change from the delete transaction ev
       newContent: '',
     }]);
     assert.equal(result.writtenFiles?.[0]?.action, 'delete');
+    assert.equal(result.changeReceipts?.[0]?.status, 'committed');
+    assert.match(result.changeReceipts?.[0]?.readbackRef, /^vscode-delete-readback:/);
     assert.match(result.feedbackForAI, /delete_file: obsolete\.txt.*已删除/s);
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });
@@ -818,6 +1074,7 @@ test('ToolLoop replace_in_file edits existing workspace file with write evidence
         },
       ],
       {
+        onBeforeFileWrite: async () => true,
         onAppliedChange: async (change) => {
           applied.push(change);
         },
@@ -833,8 +1090,51 @@ test('ToolLoop replace_in_file edits existing workspace file with write evidence
     assert.equal(readFileSync(filePath, 'utf8'), 'int threshold = 6800;\nint keep = 1;\n');
     assert.equal(applied.length, 1);
     assert.equal(result.writtenFiles?.[0].path, filePath);
+    assert.equal(result.changeReceipts?.[0]?.status, 'committed');
+    assert.deepEqual(result.changeReceipts?.[0]?.paths, ['src/worker.cpp']);
+    assert.equal(result.toolExecutionReceipts?.[0]?.status, 'completed');
+    assert.equal(result.toolExecutionReceipts?.[0]?.result?.actionId, result.changeReceipts?.[0]?.actionId);
     assert.equal(result.readFiles?.[0], filePath);
     assert.match(result.feedbackForAI, /replace_in_file: src\/worker\.cpp.*已写入/s);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('ToolLoop expands a batch file-write payload into independently settled canonical actions', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-batch-write-tool-'));
+  try {
+    const applied = [];
+    const result = await executeFakeToolsForLoop(
+      [{
+        name: 'write_file',
+        input: {
+          files: [
+            { path: 'src/first.txt', content: 'first\n' },
+            { path: 'src/second.txt', content: 'second\n' },
+          ],
+        },
+      }],
+      {
+        onBeforeFileWrite: async () => true,
+        onAppliedChange: async change => applied.push(change),
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      workspaceRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot },
+    );
+
+    assert.equal(readFileSync(path.join(workspaceRoot, 'src/first.txt'), 'utf8'), 'first\n');
+    assert.equal(readFileSync(path.join(workspaceRoot, 'src/second.txt'), 'utf8'), 'second\n');
+    assert.equal(applied.length, 2);
+    assert.deepEqual(result.changeReceipts?.map(receipt => receipt.status), ['committed', 'committed']);
+    assert.deepEqual(result.toolExecutionReceipts?.map(receipt => receipt.status), ['completed', 'completed']);
+    assert.equal(new Set(result.toolExecutionReceipts?.map(receipt => receipt.actionId)).size, 2);
+    assert.deepEqual(
+      result.toolExecutionReceipts?.map(receipt => receipt.result?.actionId),
+      result.changeReceipts?.map(receipt => receipt.actionId),
+    );
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });
   }
@@ -935,6 +1235,7 @@ test('ToolLoop records blocking source sanity failures as structured tool failur
         },
       ],
       {
+        onBeforeFileWrite: async () => true,
         onAppliedChange: async () => {},
         onToolActivity: () => {},
         onAgentStatus: async () => {},
@@ -974,6 +1275,7 @@ test('ToolLoop repairs C++ string newline transport pollution before writing sou
         },
       ],
       {
+        onBeforeFileWrite: async () => true,
         onAppliedChange: async (change) => {
           applied.push(change);
         },
@@ -1014,10 +1316,10 @@ test('R3-01 ToolLoop skips all work tools after user cancellation', async () => 
       ],
       {
         signal: controller.signal,
-        onTerminalCommand: async () => {
+        ...preparedTerminalCallbacks(async () => {
           terminalCalls += 1;
           return 'should-not-run';
-        },
+        }),
         onAppliedChange: async () => {
           appliedChanges += 1;
         },

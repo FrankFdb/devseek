@@ -3,19 +3,22 @@ import * as fs from 'fs';
 import * as vscode from 'vscode';
 import {
   createDevSeekTraceLogger,
+  type CodingToolExecutionReceipt,
+  type CodingWorkspaceMutationReceipt,
   type DevSeekTraceLogger,
 } from '@devseek-netai/shared';
-import { looksLikeRawToolCallText } from '../generated-file-parser';
-import { resolveGeneratedArtifactPathForPrompt, resolveWorkspaceWritePath } from '../workspace/path-resolver';
-import { WorkspaceEditService } from '../workspace/edit-service';
 import {
-  decideProjectInstructionFileWrite,
-} from '../workspace/instruction-file-safety';
-import { AgentToolExecutor, type EvidenceRef } from './tool-executor';
+  WorkspaceEditService,
+  type WorkspaceDeleteResult,
+} from '../workspace/edit-service';
+import { VsCodeWorkspaceMutationAdapter } from '../workspace/coding-workspace-mutation-adapter';
+import {
+  AgentToolExecutor,
+  type EvidenceRef,
+} from './tool-executor';
 import { ToolReadEvidenceRecorder } from './tool-read-evidence';
 import { containsFakeToolCallProtocol, type FakeTool } from './fake-tool-parser';
 import {
-  detectNestedFilePayloadDrift,
   detectShellFileWriteCommand,
   detectShellFileMutationCommand,
   isInsideWorkspacePath,
@@ -23,15 +26,10 @@ import {
   shouldBlockUnverifiedSourceOverwrite,
 } from './write-guard';
 import {
-  classifyTerminalEvidenceCommand,
   isReadOnlyTerminalEvidenceCommand,
-  requiresCodeArtifactForEvidence,
   type TerminalEvidence,
   type WrittenFileEvidence,
 } from './completion-evidence';
-import {
-  classifyFormattedTerminalExecutionEvidence,
-} from '../execution-outcome-classifier';
 import type { TodoItem } from './evidence-recovery';
 import type { AgentLoopCallbacks } from './loop-types';
 import {
@@ -41,8 +39,18 @@ import { resolveTerminalCommandCapabilities } from '../app/environment-capabilit
 import { decideTerminalCommandPermission } from '../app/terminal-command-policy';
 import { buildToolPolicy } from '../app/permission-service';
 import type { ToolKind } from '../intent/intent-types';
+import { normalizeAgentFileWriteInputs } from './tool-registry';
+import {
+  projectFileWriteActionPlan,
+  ToolLoopCanonicalSession,
+} from './tool-loop-canonical-session';
+import { ToolLoopFileWriter } from './tool-loop-file-writer';
+import { analyzeTerminalEvidence } from './tool-loop-terminal-evidence';
+
+export { analyzeTerminalEvidence } from './tool-loop-terminal-evidence';
 
 const workspaceEditService = new WorkspaceEditService();
+const workspaceMutation = new VsCodeWorkspaceMutationAdapter(workspaceEditService);
 const agentToolExecutor = new AgentToolExecutor();
 const NON_WORK_TOOL_NAMES = new Set(['manage_todo_list', 'task_complete', 'memory_write']);
 const TOOL_TRACE_LOGGERS = new Map<string, DevSeekTraceLogger>();
@@ -52,12 +60,12 @@ function hasEvidenceAwareToolAuthority(kind: ToolKind, callbacks: AgentLoopCallb
     case 'edit':
       return typeof callbacks.onBeforeFileWrite === 'function';
     case 'terminal':
-      return typeof callbacks.onTerminalCommand === 'function';
+      return typeof callbacks.onPrepareTerminalCommand === 'function';
     case 'vscode':
     case 'vscode-command':
-      return typeof callbacks.onRunVscodeCommand === 'function';
+      return typeof callbacks.onPrepareVscodeCommand === 'function';
     case 'mcp':
-      return typeof callbacks.onMcpToolCall === 'function';
+      return typeof callbacks.onPrepareMcpToolCall === 'function';
     default:
       return false;
   }
@@ -123,6 +131,8 @@ export interface ToolLoopResult {
   summaryEmitted?: boolean;
   /** Terminal commands that actually ran during this tool loop iteration. */
   terminalCommands?: string[];
+  /** Exact outputs from terminal commands whose canonical host execution settled. */
+  terminalOutputs?: Array<{command: string; workdir: string; output: string}>;
   /** Structured terminal evidence from compile/run/test/read-check commands. */
   terminalEvidence?: TerminalEvidence[];
   /** Files written (created or overwritten) during this tool loop iteration. */
@@ -131,13 +141,17 @@ export interface ToolLoopResult {
   readFiles?: string[];
   /** Unified evidence refs produced from normalized ToolCall plans. */
   evidenceRefs?: EvidenceRef[];
+  /** Shared workspace mutation receipts produced by structured write tools. */
+  changeReceipts?: CodingWorkspaceMutationReceipt<unknown>[];
+  /** Shared terminal receipts produced by canonical tool execution. */
+  toolExecutionReceipts?: CodingToolExecutionReceipt<unknown>[];
   /** Blocking tool failures that should be audited across rounds for no-progress loops. */
   toolFailures?: ToolFailureEvidence[];
 }
 
 export interface ToolFailureEvidence {
   tool: string;
-  kind: 'write' | 'replace' | 'terminal-guard' | 'terminal-capability';
+  kind: 'write' | 'replace' | 'terminal-guard' | 'terminal-capability' | 'tool-host';
   path?: string;
   reason: string;
 }
@@ -162,39 +176,6 @@ function optionalLineNumber(input: Record<string, unknown>, ...keys: string[]): 
   return undefined;
 }
 
-function shellTokenizeSimple(command: string): string[] {
-  const tokens: string[] = [];
-  let current = '';
-  let quote: "'" | '"' | '' = '';
-  for (let i = 0; i < command.length; i++) {
-    const ch = command[i];
-    if (quote) {
-      if (ch === quote) {
-        quote = '';
-      } else if (ch === '\\' && quote === '"' && i + 1 < command.length) {
-        current += command[++i];
-      } else {
-        current += ch;
-      }
-      continue;
-    }
-    if (ch === "'" || ch === '"') {
-      quote = ch;
-      continue;
-    }
-    if (/\s/.test(ch)) {
-      if (current) {
-        tokens.push(current);
-        current = '';
-      }
-      continue;
-    }
-    current += ch;
-  }
-  if (current) tokens.push(current);
-  return tokens;
-}
-
 function hasPollutedReplaceArgument(value: string): boolean {
   return /[\u200B-\u200D\u2060\uFEFF]/.test(value)
     || /<\/?\s*(?:old_?str|new_?str|oldstr|newstr|replace_in_file|TOOL_[A-Za-z0-9_]+)\b/i.test(value);
@@ -215,106 +196,6 @@ function formatReplaceRecoverySnapshot(content: string): string {
   ].join('\n');
 }
 
-function resolveCompilerOutputPath(command: string, workdir: string): string | undefined {
-  const tokens = shellTokenizeSimple(command);
-  const compilerIndex = tokens.findIndex(t => /^(?:g\+\+|gcc|clang\+\+|clang)(?:-\d+)?$/.test(nodePath.basename(t)));
-  if (compilerIndex < 0) return undefined;
-  const compilerArgs = tokens.slice(compilerIndex + 1);
-  if (compilerArgs.some(t => t === '-c' || t === '-S' || t === '-E' || t === '-fsyntax-only')) return undefined;
-
-  let output = '';
-  for (let i = 0; i < compilerArgs.length; i++) {
-    const token = compilerArgs[i];
-    if (token === '-o' && compilerArgs[i + 1]) {
-      output = compilerArgs[i + 1];
-      break;
-    }
-    if (token.startsWith('-o') && token.length > 2) {
-      output = token.slice(2);
-      break;
-    }
-  }
-  if (!output) output = 'a.out';
-  if (!output || output.startsWith('-')) return undefined;
-  return nodePath.isAbsolute(output) ? output : nodePath.resolve(workdir || process.cwd(), output);
-}
-
-function isExecutableFile(filePath: string): boolean {
-  try {
-    const stat = fs.statSync(filePath);
-    if (!stat.isFile()) return false;
-    if (process.platform === 'win32') return true;
-    return (stat.mode & 0o111) !== 0;
-  } catch {
-    return false;
-  }
-}
-
-export function analyzeTerminalEvidence(command: string, formattedOutput: string, workdir: string): { ran: boolean; evidence: TerminalEvidence } {
-  const executionEvidence = classifyFormattedTerminalExecutionEvidence(formattedOutput);
-  const kind = classifyTerminalEvidenceCommand(command);
-  let ok = executionEvidence.ok;
-  let detail = executionEvidence.detail;
-  const outputPath = resolveCompilerOutputPath(command, workdir);
-  if (ok && outputPath && !isExecutableFile(outputPath)) {
-    ok = false;
-    detail = `编译命令退出码为 0，但未找到可执行产物：${outputPath}`;
-  }
-  return {
-    ran: executionEvidence.ran,
-    evidence: {
-      command,
-      kind,
-      ok,
-      exitCode: executionEvidence.exitCode,
-      ...(outputPath ? { outputPath } : {}),
-      ...(detail ? { detail } : {}),
-      ...(executionEvidence.reviewRequired ? { reviewRequired: true } : {}),
-    },
-  };
-}
-
-function normalizeGeneratedArtifactPathForAgent(rawPath: string, userPrompt: string): string {
-  return resolveGeneratedArtifactPathForPrompt(rawPath, userPrompt);
-}
-
-function promptRequestsCodeDirectory(userPrompt: string): boolean {
-  return /(?:code\s*目录|code目录|code\/|code\s+dir|code\s+folder)/i.test(userPrompt);
-}
-
-function contentLooksLikeCProgram(content: string): boolean {
-  return /#include\s*</.test(content) && /\bmain\s*\(/.test(content) && !contentLooksLikeCppProgram(content);
-}
-
-function contentLooksLikeCppProgram(content: string): boolean {
-  return /#include\s*<(?:iostream|vector|string|map|memory|algorithm|GL\/glut|GLFW|SFML)|\bstd::|using\s+namespace\s+std|class\s+\w+/i.test(content);
-}
-
-function normalizeExplicitFileWritePathForAgent(
-  rawPath: string,
-  userPrompt: string,
-  content: string,
-  workspaceRootFsPath?: string,
-  defaultWorkdir?: string,
-): { path: string; absPath?: string; note?: string } {
-  const resolved = resolveWorkspaceWritePath(rawPath, {
-    requestPrompt: userPrompt,
-    content,
-    workspaceRootFsPath,
-    defaultWorkdir,
-  });
-  if (resolved) {
-    return {
-      path: resolved.relPath,
-      absPath: resolved.absPath,
-      ...(resolved.note ? { note: resolved.note } : {}),
-    };
-  }
-
-  const p = normalizeGeneratedArtifactPathForAgent(rawPath, userPrompt);
-  return { path: p };
-}
-
 function inferWorkspaceRootForAgentTool(defaultWorkdir?: string): string {
   if (defaultWorkdir) {
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
@@ -324,62 +205,6 @@ function inferWorkspaceRootForAgentTool(defaultWorkdir?: string): string {
     }
   }
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? defaultWorkdir ?? process.cwd();
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-const FILE_WRITE_PATH_KEYS = ['path', 'filePath', 'filepath', 'filename', 'targetPath'];
-const FILE_WRITE_CONTENT_KEYS = ['content', 'contents', 'text', 'body'];
-const FILE_WRITE_CONTENT_ALIAS_KEYS = [
-  ...FILE_WRITE_CONTENT_KEYS,
-  'fileContent', 'file_content', 'source', 'code', 'newContent', 'new_content',
-];
-const FILE_WRITE_BATCH_KEYS = ['files', 'artifacts', 'changes', 'edits'];
-
-function getStringInput(input: Record<string, unknown>, keys: readonly string[]): string {
-  for (const key of keys) {
-    const value = input[key];
-    if (typeof value === 'string') return value.trim();
-  }
-  return '';
-}
-
-function getFileContentInput(input: Record<string, unknown>): string {
-  for (const key of FILE_WRITE_CONTENT_ALIAS_KEYS) {
-    const value = input[key];
-    if (typeof value === 'string') return value;
-  }
-  return '';
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
-}
-
-function normalizeFileWriteInputs(input: Record<string, unknown>): Array<{rawPath: string; content: string}> {
-  const directRawPath = getStringInput(input, FILE_WRITE_PATH_KEYS);
-  const directContent = getFileContentInput(input);
-  const batch: Array<{rawPath: string; content: string}> = [];
-
-  for (const key of FILE_WRITE_BATCH_KEYS) {
-    const value = input[key];
-    const items = Array.isArray(value) ? value : asRecord(value) ? [value] : [];
-    for (const item of items) {
-      const record = asRecord(item);
-      if (!record) continue;
-      const rawPath = getStringInput(record, [...FILE_WRITE_PATH_KEYS, 'file', 'name', 'relativePath']);
-      const content = getFileContentInput(record);
-      if (rawPath || content) batch.push({ rawPath, content });
-    }
-  }
-
-  if (batch.length > 0) return batch;
-  if (directRawPath || directContent) return [{ rawPath: directRawPath, content: directContent }];
-  return [];
 }
 
 export async function executeFakeToolsForLoop(
@@ -396,6 +221,10 @@ export async function executeFakeToolsForLoop(
     requireReadBeforeOverwrite?: boolean;
     readEvidencePaths?: string[];
     readEvidenceRecorder?: ToolReadEvidenceRecorder;
+    plannedTerminalValidation?: {
+      command: string;
+      workdir: string;
+    };
   },
 ): Promise<ToolLoopResult> {
   let taskComplete = false;
@@ -411,15 +240,17 @@ export async function executeFakeToolsForLoop(
   const writtenFiles: Array<{path: string; basename: string; linesAdded: number; linesRemoved: number; action: string}> = [];
   const readFiles: string[] = [];
   const terminalCommands: string[] = [];
+  const terminalOutputs: Array<{command: string; workdir: string; output: string}> = [];
   const terminalEvidence: TerminalEvidence[] = [];
   const evidenceRefs: EvidenceRef[] = [];
+  const changeReceipts: CodingWorkspaceMutationReceipt<unknown>[] = [];
+  const toolExecutionReceipts: CodingToolExecutionReceipt<unknown>[] = [];
   const toolFailures: ToolFailureEvidence[] = [];
   const replaceMissSnapshots = new Set<string>();
   let cancellationFeedbackEmitted = false;
   let deferredCompletedTodoItems: TodoItem[] | undefined;
   let lastTodoItems: TodoItem[] | undefined;
   let summaryEmitted = false;
-  const createFileFailCounts = new Map<string, number>();
   const cancellationRequested = (): boolean => callbacks.signal?.aborted === true;
   const recordCancellationFeedback = (toolName?: string, rawPath?: string): void => {
     if (cancellationFeedbackEmitted) return;
@@ -440,179 +271,31 @@ export async function executeFakeToolsForLoop(
       reason,
     });
   };
-  const applyWorkspaceFileContent = async (
-    toolName: string,
-    rawPath: string,
-    content: string,
-  ): Promise<boolean> => {
-    if (cancellationRequested()) {
-      recordCancellationFeedback(toolName, rawPath);
-      return false;
-    }
-    if (!callbacks.onAppliedChange) {
-      parts.push(`[${toolName}] 错误: 当前运行环境没有注册文件写入执行器，未写入任何文件。`);
-      return false;
-    }
-    if (!rawPath) {
-      parts.push(`[${toolName}] 错误: 缺少 path/filePath，未写入任何文件。请提供目标文件路径和完整 content。`);
-      return false;
-    }
-    callbacks.onToolActivity?.('write', rawPath);
-    try {
-      const taskPrompt = taskContext?.userPrompt ?? '';
-      const normalized = normalizeExplicitFileWritePathForAgent(rawPath, taskPrompt, content, workspaceRoot, defaultWorkdir);
-      if (normalized.note) parts.push(`[${toolName}: ${rawPath}] 诊断: ${normalized.note}`);
-      if (!content && requiresCodeArtifactForEvidence(taskPrompt)) {
-        parts.push(`[${toolName}: ${rawPath}] 错误: content 为空，不能创建空源码文件。请提供完整文件内容。`);
-        return false;
-      }
-      if (looksLikeRawToolCallText(content)) {
-        parts.push(`[${toolName}: ${rawPath}] 错误: content 是工具调用文本，不是文件内容，已阻止写入。请只把目标文件源码放入 content。`);
-        return false;
-      }
-      const absPath = normalized.absPath;
-      if (!absPath) {
-        parts.push(`[${toolName}: ${rawPath}] 错误: 无法解析为工作区内文件路径，已阻止写入。`);
-        return false;
-      }
-      const instructionDecision = decideProjectInstructionFileWrite({
-        filePath: normalized.path,
-        content,
-        requestPrompt: taskPrompt,
-      });
-      if (!instructionDecision.allowed) {
-        parts.push(`[${toolName}: ${rawPath}] 错误: ${instructionDecision.reason ?? '项目指令文件写入未被允许'}`);
-        return false;
-      }
-      const payloadDrift = detectNestedFilePayloadDrift({
-        targetAbsPath: absPath,
-        content,
-        workspaceRoot,
-        defaultWorkdir,
-      });
-      if (payloadDrift.block) {
-        parts.push(`[${toolName}: ${rawPath}] 错误: ${payloadDrift.reason}`);
-        return false;
-      }
-      let baseline;
-      try {
-        baseline = workspaceEditService.captureTextFileBaseline(absPath, workspaceRoot);
-      } catch (error) {
-        const reason = `工作区写入边界阻止写入：${error instanceof Error ? error.message : String(error)}`;
-        recordToolFailure(toolName, 'write', rawPath, reason);
-        parts.push(`[${toolName}: ${rawPath}] 错误: ${reason}`);
-        return false;
-      }
-      const existed = baseline.snapshot.existed;
-      if (taskContext?.requireReadBeforeOverwrite) {
-        const guard = shouldBlockUnverifiedSourceOverwrite({
-          absPath,
-          existed,
-          readEvidencePaths,
-        });
-        if (guard.block) {
-          parts.push(`[${toolName}: ${rawPath}] 错误: ${guard.reason}`);
-          return false;
-        }
-      }
-      if (callbacks.onBeforeFileWrite) {
-        const allowed = await callbacks.onBeforeFileWrite(absPath, {
-          purpose: 'tool-write',
-          userRequested: false,
-          displayName: rawPath,
-          requestPrompt: taskPrompt,
-        });
-        if (!allowed) {
-          const reason = `写入权限策略阻止：${absPath}`;
-          recordToolFailure(toolName, 'write', rawPath, reason);
-          parts.push(`[${toolName}: ${rawPath}] 跳过（写入权限策略阻止）`);
-          return false;
-        }
-      }
-      if (cancellationRequested()) {
-        recordCancellationFeedback(toolName, rawPath);
-        return false;
-      }
-      let writeResult;
-      try {
-        writeResult = workspaceEditService.commitTextFileProposal(
-          workspaceEditService.proposeTextFileWrite(absPath, content),
-          baseline,
-          {
-            validateSourceSanity: true,
-            repairSourceTransportEscapes: true,
-          },
-        ).result;
-      } catch (error) {
-        const reason = `源码语法护栏阻止写入：${error instanceof Error ? error.message : String(error)}`;
-        recordToolFailure(toolName, 'write', rawPath, reason);
-        parts.push(`[${toolName}: ${rawPath}] 错误: ${reason}`);
-        return false;
-      }
-      const persistedContent = fs.readFileSync(absPath, 'utf8');
-      if (persistedContent !== writeResult.newContent) {
-        const reason = `写入后读回内容不一致：${absPath}`;
-        recordToolFailure(toolName, 'write', rawPath, reason);
-        parts.push(`[${toolName}: ${rawPath}] 错误: ${reason}`);
-        return false;
-      }
-      const stat = fs.statSync(absPath);
-      if (!stat.isFile() || stat.size === 0) {
-        const failN = (createFileFailCounts.get(rawPath) || 0) + 1;
-        createFileFailCounts.set(rawPath, failN);
-        let errMsg = `[${toolName}: ${rawPath}] 错误: 写入后校验失败（不是有效文件或文件为空）：${absPath}`;
-        if (failN >= 2) errMsg += `\n请不要改用 run_terminal 写文件；继续使用 create_file/write_file/replace_in_file，并检查 path 与内容参数是否正确。`;
-        recordToolFailure(toolName, 'write', rawPath, `写入后校验失败（不是有效文件或文件为空）：${absPath}`);
-        parts.push(errMsg);
-        return false;
-      }
-      if (writeResult.normalization) {
-        parts.push(`[${toolName}: ${rawPath}] 诊断: 已修复 ${writeResult.normalization.repairCount} 处源码工具协议转义污染。`);
-      }
-      if (writeResult.existed && writeResult.oldContent === writeResult.newContent) {
-        recordToolFailure(toolName, 'write', rawPath, `未发生内容变化：${normalized.path}`);
-        parts.push(`[${toolName}: ${rawPath}] 未发生内容变化，未计入本轮修改证据：${normalized.path}`);
-        return false;
-      }
-      await callbacks.onAppliedChange({ path: absPath, ...writeResult });
-      const newLines = writeResult.newContent.split('\n').length;
-      const oldLines = writeResult.oldContent ? writeResult.oldContent.split('\n').length : 0;
-      writtenFiles.push({
-        path: absPath,
-        basename: nodePath.basename(absPath),
-        linesAdded: newLines,
-        linesRemoved: oldLines,
-        action: writeResult.existed ? 'modify' : 'create',
-      });
-      evidenceRefs.push(readEvidenceRecorder.recordArtifactReadback(absPath, persistedContent));
-      parts.push(`[${toolName}: ${rawPath}] 已写入 ${normalized.path} (${newLines} 行)`);
-      return true;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      const code = typeof err === 'object' && err && 'code' in err ? String((err as NodeJS.ErrnoException).code) : '';
-      if ((code === 'EACCES' || code === 'EPERM') && callbacks.onTerminalCommand) {
-        const normalized = normalizeExplicitFileWritePathForAgent(rawPath, taskContext?.userPrompt ?? '', content, workspaceRoot, defaultWorkdir);
-        const dir = normalized.absPath ? nodePath.dirname(normalized.absPath) : (defaultWorkdir ?? workspaceRoot);
-        callbacks.onToolActivity?.('terminal', `请求修复写入权限: ${nodePath.basename(dir)}`);
-        const repair = await callbacks.onTerminalCommand(`chmod u+w ${shellQuote(dir)}`, defaultWorkdir);
-        parts.push(`[${toolName}: ${rawPath}] 权限不足: ${msg}\n[permission_repair]\n${repair}`);
-      } else {
-        const failN = (createFileFailCounts.get(rawPath) || 0) + 1;
-        createFileFailCounts.set(rawPath, failN);
-        let errMsg = `[${toolName}: ${rawPath}] 错误: ${msg}`;
-        if (failN >= 2) errMsg += `\n请不要改用 run_terminal 写文件；继续使用 create_file/write_file/replace_in_file，并检查 path、content/old_str/new_str 和目标目录。`;
-        recordToolFailure(toolName, 'write', rawPath, msg);
-        parts.push(errMsg);
-      }
-      return false;
-    }
-  };
 
   const workspaceRoot = taskContext?.workspaceRoot ?? inferWorkspaceRootForAgentTool(defaultWorkdir);
   const readEvidencePaths = new Set(taskContext?.readEvidencePaths ?? []);
   const trace = getToolTraceLogger(callbacks.traceWorkspaceRoot ?? workspaceRoot, callbacks.traceRunId);
   const readEvidenceRecorder = taskContext?.readEvidenceRecorder
     ?? new ToolReadEvidenceRecorder(workspaceRoot, callbacks.traceRunId);
+  const canonicalTools = new ToolLoopCanonicalSession(toolExecutionReceipts, evidenceRefs, agentToolExecutor);
+  const fileWriter = new ToolLoopFileWriter({
+    callbacks,
+    workspaceRoot,
+    defaultWorkdir,
+    userPrompt: taskContext?.userPrompt,
+    requireReadBeforeOverwrite: taskContext?.requireReadBeforeOverwrite,
+    readEvidencePaths,
+    readEvidenceRecorder,
+    canonical: canonicalTools,
+    reporter: {
+      feedback: message => parts.push(message),
+      failure: (toolName, rawPath, reason) => recordToolFailure(toolName, 'write', rawPath, reason),
+      cancellation: (toolName, rawPath) => recordCancellationFeedback(toolName, rawPath),
+      written: file => writtenFiles.push(file),
+      evidence: ref => evidenceRefs.push(ref),
+      change: receipt => changeReceipts.push(receipt),
+    },
+  });
   trace?.debug('tool-loop', 'execute-start', {
     toolCount: tools.length,
     tools: tools.map(t => t.name),
@@ -633,10 +316,18 @@ export async function executeFakeToolsForLoop(
       tools[toolIndex],
       buildToolPolicy(callbacks.executionMode ?? 'inspect'),
     );
+    const canonicalContext = canonicalTools.nextContext(callbacks.traceRunId, toolPlan);
     const tool = toolPlan.tool;
     const inputValidation = agentToolExecutor.validateInput(toolPlan);
     if (!inputValidation.ok) {
       markToolCall(isAgentWorkToolName(tool.name));
+      await canonicalTools.settle(toolPlan, canonicalContext, {
+        execute: async () => ({
+          status: 'failed',
+          errorCode: 'invalid-tool-input',
+          evidenceRefs: [`vscode-tool-input:${canonicalContext.actionId}:invalid`],
+        }),
+      });
       parts.push([
         `[${tool.name || 'unknown'}] 工具调用无效：${inputValidation.error}`,
         `请按工具说明重新调用，并提供完整 JSON 参数；不要省略必填字段。`,
@@ -645,18 +336,23 @@ export async function executeFakeToolsForLoop(
     }
     if (toolPlan.permission?.action === 'deny') {
       markToolCall(isAgentWorkToolName(tool.name));
+      await canonicalTools.settle(toolPlan, canonicalContext, {
+        execute: async () => { throw new Error('denied tool host must not execute'); },
+      });
       parts.push(`[${tool.name}] 工具调用被执行策略拒绝：${toolPlan.permission.reason}`);
       continue;
     }
     if (toolPlan.permission?.action === 'requireConfirm' && !hasEvidenceAwareToolAuthority(toolPlan.kind, callbacks)) {
       markToolCall(isAgentWorkToolName(tool.name));
+      await canonicalTools.settle(toolPlan, canonicalContext, {
+        execute: async () => { throw new Error('unconfirmed tool host must not execute'); },
+      });
       parts.push(`[${tool.name}] 工具调用被拒绝：需要确认，但当前执行面没有证据感知的授权边界。`);
       continue;
     }
     if (tool.name === 'manage_todo_list') {
       let items = normalizeVisibleTodos((tool.input.todoList ?? []) as TodoItem[]);
       if (Array.isArray(items)) {
-        // Planning-only todo updates must keep the loop alive for later work tools.
         markToolCall(false);
         // The orchestrator owns task sequence state; the model cannot complete future tasks.
         if (taskContext) {
@@ -666,6 +362,24 @@ export async function executeFakeToolsForLoop(
               : item,
           );
         }
+        const execution = await canonicalTools.observe(
+          toolPlan,
+          canonicalContext,
+          async () => items,
+          settledItems => readEvidenceRecorder.recordObservation(
+            'plan',
+            'manage_todo_list',
+            JSON.stringify(settledItems),
+            workspaceRoot,
+          ),
+        );
+        if (execution.receipt.status !== 'completed' || !Array.isArray(execution.receipt.result)) {
+          const reason = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+          recordToolFailure(tool.name, 'tool-host', undefined, reason);
+          parts.push(`[manage_todo_list] 错误: ${reason}`);
+          continue;
+        }
+        items = execution.receipt.result;
         const todoUpdateIsAllCompleted = items.length > 0 && items.every(it => it.status === 'completed');
         const hasLaterWorkTools = tools.slice(toolIndex + 1).some(t => isAgentWorkToolName(t.name));
         callbacks.onToolActivity?.('todo', items.map(i => i.title).filter(Boolean).slice(0, 3).join('、') || '更新任务清单');
@@ -683,15 +397,34 @@ export async function executeFakeToolsForLoop(
       }
     } else if (tool.name === 'task_complete') {
       const summary = typeof tool.input.summary === 'string' ? tool.input.summary : '';
-      completeSummary = summary;
-      // task_complete is a model intent only. The orchestrator owns user-visible
-      // completion, checkpoint clearing, and final settlement after host evidence.
-      taskComplete = true;
-    } else if (tool.name === 'run_terminal' && callbacks.onTerminalCommand) {
+      markToolCall(false);
+      const execution = await canonicalTools.observe(
+        toolPlan,
+        canonicalContext,
+        async () => summary,
+        settledSummary => readEvidenceRecorder.recordObservation(
+          'plan',
+          'task_complete',
+          settledSummary,
+          workspaceRoot,
+        ),
+      );
+      if (execution.receipt.status === 'completed' && typeof execution.receipt.result === 'string') {
+        completeSummary = execution.receipt.result;
+        // This receipt records model intent only. Completion remains owned by the orchestrator.
+        taskComplete = true;
+      } else {
+        const reason = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+        recordToolFailure(tool.name, 'tool-host', undefined, reason);
+        parts.push(`[task_complete] 错误: ${reason}`);
+      }
+    } else if (tool.name === 'run_terminal' && callbacks.onPrepareTerminalCommand) {
       const command = typeof tool.input.command === 'string' ? tool.input.command.trim() : '';
       const workdir = typeof tool.input.workdir === 'string' ? tool.input.workdir : defaultWorkdir;
       if (command) {
         markToolCall();
+        const isPlannedTerminalValidation = taskContext?.plannedTerminalValidation?.command === command
+          && nodePath.resolve(taskContext.plannedTerminalValidation.workdir) === nodePath.resolve(workdir ?? workspaceRoot);
         if (containsFakeToolCallProtocol(command)) {
           const msg = [
             `[run_terminal] 已阻止`,
@@ -699,6 +432,7 @@ export async function executeFakeToolsForLoop(
             `请重新发起标准工具调用，只把真实命令放入 run_terminal.command。`,
           ].join('\n');
           callbacks.onToolActivity?.('terminal', '阻止工具协议文本进入终端');
+          await canonicalTools.deny(toolPlan, canonicalContext, 'terminal-tool-protocol-in-command');
           parts.push(msg);
           continue;
         }
@@ -711,12 +445,13 @@ export async function executeFakeToolsForLoop(
             `请改用 create_file 或 write_file，并把完整文件内容放入 content 字段。run_terminal 仅用于编译、运行、测试、查询。`,
           ].join('\n');
           callbacks.onToolActivity?.('terminal', `阻止 shell 写文件: ${nodePath.basename(shellWriteTarget)}`);
+          await canonicalTools.deny(toolPlan, canonicalContext, reason);
           recordToolFailure('run_terminal', 'terminal-guard', shellWriteTarget, reason);
           parts.push(msg);
           continue;
         }
         const shellMutation = detectShellFileMutationCommand(command);
-        if (shellMutation) {
+        if (shellMutation && !isPlannedTerminalValidation) {
           const reason = `检测到终端命令绕过结构化文件工具执行工作区变更：${shellMutation}`;
           const msg = [
             `[run_terminal: ${command}] 已阻止`,
@@ -724,6 +459,7 @@ export async function executeFakeToolsForLoop(
             '请使用 create_directory/create_file/write_file/replace_in_file/delete_file；run_terminal 仅用于查询、编译、运行和测试。',
           ].join('\n');
           callbacks.onToolActivity?.('terminal', `阻止终端文件变更: ${shellMutation}`);
+          await canonicalTools.deny(toolPlan, canonicalContext, reason);
           recordToolFailure('run_terminal', 'terminal-guard', shellMutation, reason);
           parts.push(msg);
           continue;
@@ -741,6 +477,7 @@ export async function executeFakeToolsForLoop(
             `请使用当前用户指定的输出目录重新生成命令；不要复用旧时间戳目录或旧会话路径。`,
           ].join('\n');
           callbacks.onToolActivity?.('terminal', '阻止旧运行目录命令');
+          await canonicalTools.deny(toolPlan, canonicalContext, reason);
           recordToolFailure('run_terminal', 'terminal-guard', command, reason);
           parts.push(msg);
           continue;
@@ -754,6 +491,7 @@ export async function executeFakeToolsForLoop(
             '请改用当前系统可用的运行时，或先征得用户同意后安装缺失工具。',
           ].join('\n');
           callbacks.onToolActivity?.('terminal', '阻止缺失运行环境命令');
+          await canonicalTools.deny(toolPlan, canonicalContext, reason);
           recordToolFailure('run_terminal', 'terminal-capability', command, reason);
           parts.push(msg);
           continue;
@@ -764,19 +502,51 @@ export async function executeFakeToolsForLoop(
           callbacks.onToolActivity?.('terminal', note || '已解析本机运行环境');
           parts.push(`[run_terminal] ${note}\n原命令: ${command}\n执行命令: ${resolvedCommand}`);
         }
-        const terminalPermission = decideTerminalCommandPermission({ command: resolvedCommand, workspaceRoot, workdir });
+        const terminalPermission = isPlannedTerminalValidation
+          ? {
+            risk: 'validation' as const,
+            requiresConfirmation: true,
+            canRememberDecision: true,
+            reason: 'orchestrator-planned-validation',
+          }
+          : decideTerminalCommandPermission({ command: resolvedCommand, workspaceRoot, workdir });
         if (terminalPermission.risk !== 'read-only' && terminalPermission.risk !== 'validation') {
           const reason = `终端命令未通过只读/验证分类：${terminalPermission.reason}`;
           callbacks.onToolActivity?.('terminal', `阻止未分类终端命令: ${terminalPermission.risk}`);
+          await canonicalTools.deny(toolPlan, canonicalContext, reason);
           recordToolFailure('run_terminal', 'terminal-guard', resolvedCommand, reason);
           parts.push(`[run_terminal: ${resolvedCommand}] 已阻止\n${reason}\n请改用结构化文件工具；run_terminal 仅允许只读查询和已分类验证命令。`);
           continue;
         }
         callbacks.onToolActivity?.('terminal', resolvedCommand);
+        let canonicalSettled = false;
         try {
-          const output = await callbacks.onTerminalCommand(resolvedCommand, workdir);
+          const prepared = await callbacks.onPrepareTerminalCommand(resolvedCommand, workdir);
+          let observedOutput = '';
+          const execution = await canonicalTools.settle(toolPlan, canonicalContext, {
+            execute: async () => {
+              const hostResult = await prepared.execute();
+              observedOutput = hostResult.result ?? '';
+              return hostResult;
+            },
+          }, prepared.authority);
+          canonicalSettled = true;
+          const output = execution.receipt.result ?? observedOutput;
+          if (execution.receipt.status === 'denied') {
+            const reason = execution.receipt.permission.reason;
+            recordToolFailure('run_terminal', 'terminal-guard', resolvedCommand, reason);
+            parts.push(`[run_terminal: ${resolvedCommand}] 已拒绝：${reason}`);
+            continue;
+          }
+          if (!output) {
+            const reason = execution.receipt.errorCode ?? execution.receipt.status;
+            recordToolFailure('run_terminal', 'terminal-guard', resolvedCommand, reason);
+            parts.push(`[run_terminal: ${resolvedCommand}] 错误: ${reason}`);
+            continue;
+          }
           const evidenceWorkdir = workdir ?? defaultWorkdir ?? workspaceRoot;
           const evidenceResult = analyzeTerminalEvidence(resolvedCommand, output, evidenceWorkdir);
+          terminalOutputs.push({ command: resolvedCommand, workdir: evidenceWorkdir, output });
           evidenceRefs.push(readEvidenceRecorder.recordTerminalOutput(
             resolvedCommand,
             output,
@@ -801,6 +571,10 @@ export async function executeFakeToolsForLoop(
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
+          if (!canonicalSettled) {
+            await canonicalTools.deny(toolPlan, canonicalContext, `terminal-authority-failed:${msg}`);
+          }
+          recordToolFailure(tool.name, 'tool-host', resolvedCommand, msg);
           parts.push(`[run_terminal: ${resolvedCommand}] 错误: ${msg}`);
         }
       }
@@ -808,25 +582,27 @@ export async function executeFakeToolsForLoop(
       const filePath = typeof tool.input.path === 'string' ? tool.input.path.trim() : '';
       if (filePath) {
         markToolCall();
-        try {
-          // Pass defaultWorkdir so bare filenames like "main.cpp" resolve relative to
-          // the current task's directory first (Copilot/Claude Code: tool calls inherit
-          // task working directory context, not just workspace root).
-          const content = await callbacks.onReadFile(filePath, defaultWorkdir, {
+        const readEvidencePath = resolveAgentToolEvidencePath(filePath, workspaceRoot, defaultWorkdir);
+        const execution = await canonicalTools.observe(
+          toolPlan,
+          canonicalContext,
+          () => callbacks.onReadFile!(filePath, defaultWorkdir, {
             startLine: optionalLineNumber(tool.input, 'startLine', 'start_line', 'lineStart', 'fromLine'),
             endLine: optionalLineNumber(tool.input, 'endLine', 'end_line', 'lineEnd', 'toLine'),
-          });
+          }),
+          content => readEvidenceRecorder.record(content, readEvidencePath || filePath),
+        );
+        if (execution.receipt.status === 'completed' && typeof execution.receipt.result === 'string') {
+          const content = execution.receipt.result;
           callbacks.onToolActivity?.('read', filePath);
-          const readEvidencePath = resolveAgentToolEvidencePath(filePath, workspaceRoot, defaultWorkdir);
           if (readEvidencePath) {
             readFiles.push(readEvidencePath);
             readEvidencePaths.add(readEvidencePath);
           }
-          evidenceRefs.push(readEvidenceRecorder.record(content, readEvidencePath || filePath));
-          // Silent: file content goes to AI context only (shown as chip in Working box)
           parts.push(`[read_file: ${filePath}]\n${content}`);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
+        } else {
+          const msg = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+          recordToolFailure(tool.name, 'tool-host', filePath, msg);
           parts.push(`[read_file: ${filePath}] 错误: ${msg}`);
         }
       }
@@ -836,39 +612,58 @@ export async function executeFakeToolsForLoop(
       const isRegexp = tool.input.isRegexp !== false;
       if (pattern) {
         markToolCall();
-        try {
-          const results = await callbacks.onGrepSearch(pattern, searchPath, isRegexp, defaultWorkdir, {
+        const label = searchPath ? `"${pattern}" in ${searchPath}` : `"${pattern}"`;
+        const execution = await canonicalTools.observe(
+          toolPlan,
+          canonicalContext,
+          () => callbacks.onGrepSearch!(pattern, searchPath, isRegexp, defaultWorkdir, {
             includePattern: typeof tool.input.includePattern === 'string' ? tool.input.includePattern : undefined,
             fileTypes: typeof tool.input.fileTypes === 'string' ? tool.input.fileTypes : undefined,
-          });
-          callbacks.onToolActivity?.('search', searchPath ? `"${pattern}" in ${searchPath}` : `"${pattern}"`);
-          // Silent: search results go to AI context only
+          }),
+          results => readEvidenceRecorder.recordObservation('search', label, results, searchPath ?? workspaceRoot),
+        );
+        if (execution.receipt.status === 'completed' && typeof execution.receipt.result === 'string') {
+          const results = execution.receipt.result;
+          callbacks.onToolActivity?.('search', label);
           parts.push(`[grep_search: "${pattern}"${searchPath ? ` in ${searchPath}` : ''}]\n${results}`);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
+        } else {
+          const msg = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+          recordToolFailure(tool.name, 'tool-host', searchPath, msg);
           parts.push(`[grep_search: "${pattern}"] 错误: ${msg}`);
         }
       }
     } else if (tool.name === 'list_dir' && callbacks.onListDir) {
       const p = typeof tool.input.path === 'string' ? tool.input.path : '.';
       markToolCall();
-      try {
-        const listing = await callbacks.onListDir(p);
+      const execution = await canonicalTools.observe(
+        toolPlan,
+        canonicalContext,
+        () => callbacks.onListDir!(p),
+        listing => readEvidenceRecorder.recordObservation('search', `list:${p}`, listing, p),
+      );
+      if (execution.receipt.status === 'completed' && typeof execution.receipt.result === 'string') {
+        const listing = execution.receipt.result;
         callbacks.onToolActivity?.('list', p);
-        // Silent: directory listing goes to AI context only
         parts.push(`[list_dir: ${p}]\n${listing}`);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+      } else {
+        const msg = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+        recordToolFailure(tool.name, 'tool-host', p, msg);
         parts.push(`[list_dir: ${p}] 错误: ${msg}`);
       }
     } else if (tool.name === 'get_errors' && callbacks.onGetErrors) {
       markToolCall();
-      try {
-        const errors = await callbacks.onGetErrors();
-        // Silent: errors go to AI context only
+      const execution = await canonicalTools.observe(
+        toolPlan,
+        canonicalContext,
+        () => callbacks.onGetErrors!(),
+        errors => readEvidenceRecorder.recordObservation('diagnostics', 'workspace diagnostics', errors, workspaceRoot),
+      );
+      if (execution.receipt.status === 'completed' && typeof execution.receipt.result === 'string') {
+        const errors = execution.receipt.result;
         parts.push(`[get_errors]\n${errors}`);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+      } else {
+        const msg = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+        recordToolFailure(tool.name, 'tool-host', undefined, msg);
         parts.push(`[get_errors] 错误: ${msg}`);
       }
     } else if ((tool.name === 'file_search' || tool.name === 'search_file') && callbacks.onFileSearch) {
@@ -885,15 +680,26 @@ export async function executeFakeToolsForLoop(
       const glob = directGlob || (targetDir && pattern ? nodePath.join(targetDir, pattern) : pattern);
       if (glob) {
         markToolCall();
-        try {
-          const results = await callbacks.onFileSearch(glob);
+        const execution = await canonicalTools.observe(
+          toolPlan,
+          canonicalContext,
+          () => callbacks.onFileSearch!(glob),
+          results => readEvidenceRecorder.recordObservation('search', `glob:${glob}`, results, targetDir || workspaceRoot),
+        );
+        if (execution.receipt.status === 'completed' && typeof execution.receipt.result === 'string') {
+          const results = execution.receipt.result;
           callbacks.onToolActivity?.('search', `glob:${glob}`);
-          // Silent: file list goes to AI context only
           parts.push(`[file_search: "${glob}"]\n${results}`);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
+        } else {
+          const msg = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+          recordToolFailure(tool.name, 'tool-host', targetDir, msg);
           parts.push(`[file_search: "${glob}"] 错误: ${msg}`);
         }
+      } else {
+        const reason = '缺少可执行的 glob/pattern，未搜索工作区。';
+        await canonicalTools.fail(toolPlan, canonicalContext, 'missing-file-search-pattern');
+        recordToolFailure(tool.name, 'tool-host', targetDir, reason);
+        parts.push(`[file_search] 错误: ${reason}`);
       }
     } else if (tool.name === 'semantic_search' && callbacks.onGrepSearch) {
       // Semantic search: no embeddings available, fall back to keyword OR-grep across workspace.
@@ -903,20 +709,25 @@ export async function executeFakeToolsForLoop(
         : '';
       if (query) {
         markToolCall();
-        try {
-          // Build an OR-pattern from significant words (>3 chars) to cast a wide net.
-          const words = query
-            .replace(/[^\w\s]/g, ' ')
-            .split(/\s+/)
-            .filter(w => w.length > 3)
-            .slice(0, 6);
-          const pattern = words.length > 0 ? words.join('|') : query.slice(0, 100);
-          const results = await callbacks.onGrepSearch(pattern, undefined, true, defaultWorkdir);
+        const words = query
+          .replace(/[^\w\s]/g, ' ')
+          .split(/\s+/)
+          .filter(w => w.length > 3)
+          .slice(0, 6);
+        const pattern = words.length > 0 ? words.join('|') : query.slice(0, 100);
+        const execution = await canonicalTools.observe(
+          toolPlan,
+          canonicalContext,
+          () => callbacks.onGrepSearch!(pattern, undefined, true, defaultWorkdir),
+          results => readEvidenceRecorder.recordObservation('search', `semantic:${query}`, results, workspaceRoot),
+        );
+        if (execution.receipt.status === 'completed' && typeof execution.receipt.result === 'string') {
+          const results = execution.receipt.result;
           callbacks.onToolActivity?.('search', `semantic:"${query.slice(0, 50)}"`);
-          // Silent: search results go to AI context only
           parts.push(`[semantic_search: "${query}"]\n${results}`);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
+        } else {
+          const msg = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+          recordToolFailure(tool.name, 'tool-host', undefined, msg);
           parts.push(`[semantic_search: "${query}"] 错误: ${msg}`);
         }
       }
@@ -925,14 +736,37 @@ export async function executeFakeToolsForLoop(
         ? (tool.input as Record<string, string>).content.slice(0, 500)
         : '';
       if (content) {
-        try {
-          await callbacks.onMemoryWrite({
-            type: 'verified-experience', scope: 'repository', content, source: { kind: 'agent' }, reason: 'Agent memory_write tool', tags: ['agent'], requiresUserApproval: true,
-          });
+        markToolCall(false);
+        const proposal = {
+          type: 'verified-experience' as const,
+          scope: 'repository' as const,
+          content,
+          source: { kind: 'agent' as const },
+          reason: 'Agent memory_write tool',
+          tags: ['agent'],
+          requiresUserApproval: true,
+        };
+        const execution = await canonicalTools.observe(
+          toolPlan,
+          canonicalContext,
+          async () => {
+            await callbacks.onMemoryWrite!(proposal);
+            return proposal;
+          },
+          settledProposal => readEvidenceRecorder.recordObservation(
+            'memory',
+            'memory_write',
+            JSON.stringify(settledProposal),
+            workspaceRoot,
+          ),
+        );
+        if (execution.receipt.status === 'completed') {
           parts.push(`[memory_write] 已写入记忆：${content.slice(0, 80)}`);
           callbacks.onToolActivity?.('memory', `记忆已保存: ${content.slice(0, 60)}`);
-        } catch (err) {
-          parts.push(`[memory_write] 失败：${(err as Error).message}`);
+        } else {
+          const reason = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+          recordToolFailure(tool.name, 'tool-host', undefined, reason);
+          parts.push(`[memory_write] 失败：${reason}`);
         }
       }
     } else if (tool.name === 'delete_file') {
@@ -940,30 +774,39 @@ export async function executeFakeToolsForLoop(
       markToolCall();
       if (!rawPath) {
         const reason = '缺少 path，未删除任何文件。';
+        await canonicalTools.fail(toolPlan, canonicalContext, 'missing-delete-path');
         recordToolFailure('delete_file', 'write', undefined, reason);
         parts.push(`[delete_file] 错误: ${reason}`);
         continue;
       }
       const absPath = resolveAgentToolEvidencePath(rawPath, workspaceRoot, defaultWorkdir);
+      let canonicalSettled = false;
       try {
         if (!absPath || (workspaceRoot && !isInsideWorkspacePath(absPath, workspaceRoot))) {
           const reason = '无法解析为工作区内文件路径，已阻止删除。';
+          await canonicalTools.fail(toolPlan, canonicalContext, 'delete-path-outside-workspace');
+          canonicalSettled = true;
           recordToolFailure('delete_file', 'write', rawPath, reason);
           parts.push(`[delete_file: ${rawPath}] 错误: ${reason}`);
           continue;
         }
         if (!fs.existsSync(absPath)) {
           const reason = '目标文件不存在，无法删除。请先 list_dir/read_file 确认当前路径。';
+          await canonicalTools.fail(toolPlan, canonicalContext, 'delete-target-missing');
+          canonicalSettled = true;
           recordToolFailure('delete_file', 'write', rawPath, reason);
           parts.push(`[delete_file: ${rawPath}] 错误: ${reason}`);
           continue;
         }
         if (fs.statSync(absPath).isDirectory()) {
           const reason = '目标是目录；delete_file 只允许删除已确认的单个文件。';
+          await canonicalTools.fail(toolPlan, canonicalContext, 'delete-target-is-directory');
+          canonicalSettled = true;
           recordToolFailure('delete_file', 'write', rawPath, reason);
           parts.push(`[delete_file: ${rawPath}] 错误: ${reason}`);
           continue;
         }
+        const baseline = workspaceEditService.captureTextFileBaseline(absPath, workspaceRoot);
         if (taskContext?.requireReadBeforeOverwrite) {
           const guard = shouldBlockUnverifiedSourceOverwrite({
             absPath,
@@ -972,33 +815,73 @@ export async function executeFakeToolsForLoop(
           });
           if (guard.block) {
             const reason = guard.reason ?? '删除既有源码前必须先读取同一路径。';
+            await canonicalTools.fail(toolPlan, canonicalContext, 'delete-without-read-evidence');
+            canonicalSettled = true;
             recordToolFailure('delete_file', 'write', rawPath, reason);
             parts.push(`[delete_file: ${rawPath}] 错误: ${reason}`);
             continue;
           }
         }
-        if (callbacks.onBeforeFileWrite) {
-          const allowed = await callbacks.onBeforeFileWrite(absPath, {
-            purpose: 'tool-write',
-            userRequested: false,
-            taskAction: 'delete_file',
-            displayName: rawPath,
-            requestPrompt: taskContext?.userPrompt ?? '',
-          });
-          if (!allowed) {
-            const reason = `写入权限策略阻止：${absPath}`;
-            recordToolFailure('delete_file', 'write', rawPath, reason);
-            parts.push(`[delete_file: ${rawPath}] 跳过（写入权限策略阻止）`);
-            continue;
-          }
+        if (!callbacks.onBeforeFileWrite) {
+          const reason = '缺少删除授权边界。';
+          await canonicalTools.deny(toolPlan, canonicalContext, reason);
+          canonicalSettled = true;
+          recordToolFailure('delete_file', 'write', rawPath, reason);
+          parts.push(`[delete_file: ${rawPath}] 跳过（缺少删除授权边界）`);
+          continue;
+        }
+        const allowed = await callbacks.onBeforeFileWrite(absPath, {
+          purpose: 'tool-write',
+          userRequested: false,
+          taskAction: 'delete_file',
+          displayName: rawPath,
+          requestPrompt: taskContext?.userPrompt ?? '',
+        });
+        if (!allowed) {
+          const reason = `写入权限策略阻止：${absPath}`;
+          await canonicalTools.deny(toolPlan, canonicalContext, reason);
+          canonicalSettled = true;
+          recordToolFailure('delete_file', 'write', rawPath, reason);
+          parts.push(`[delete_file: ${rawPath}] 跳过（写入权限策略阻止）`);
+          continue;
         }
         if (cancellationRequested()) {
+          await canonicalTools.fail(toolPlan, canonicalContext, 'tool-cancelled-before-effect');
+          canonicalSettled = true;
           recordCancellationFeedback('delete_file', rawPath);
           continue;
         }
-        const deleteResult = workspaceEditService.deleteTextFile(absPath, workspaceRoot);
-        if (!deleteResult.deleted) {
-          const reason = '目标在授权后已不存在，删除未形成提交证据。请重新 list_dir/read_file 确认当前路径。';
+        let mutationReceipt: CodingWorkspaceMutationReceipt<WorkspaceDeleteResult> | undefined;
+        const toolOutcome = await canonicalTools.settle(toolPlan, canonicalContext, {
+          execute: async () => {
+            const mutationOutcome = await workspaceMutation.executeTextFileDelete({
+              runId: callbacks.traceRunId,
+              absPath,
+              workspaceRoot,
+              baseline,
+              evidenceRefs: [`file-delete-authority:${rawPath}`],
+            });
+            mutationReceipt = mutationOutcome.receipt;
+            changeReceipts.push(mutationOutcome.receipt);
+            return {
+              status: mutationOutcome.receipt.status === 'committed'
+                ? 'completed' as const
+                : mutationOutcome.receipt.status === 'indeterminate'
+                  ? 'indeterminate' as const
+                  : 'failed' as const,
+              result: mutationOutcome.receipt,
+              ...(mutationOutcome.receipt.errorCode ? { errorCode: mutationOutcome.receipt.errorCode } : {}),
+              evidenceRefs: mutationOutcome.receipt.evidenceRefs,
+            };
+          },
+        }, canonicalTools.fileWriteAuthority(toolPlan, canonicalContext));
+        canonicalSettled = true;
+        const deleteResult = mutationReceipt?.result;
+        if (toolOutcome.receipt.status !== 'completed'
+          || mutationReceipt?.status !== 'committed'
+          || !deleteResult?.deleted) {
+          const reason = mutationReceipt?.errorCode ?? toolOutcome.receipt.errorCode
+            ?? '目标在授权后已不存在，删除未形成提交证据。请重新 list_dir/read_file 确认当前路径。';
           recordToolFailure('delete_file', 'write', rawPath, reason);
           parts.push(`[delete_file: ${rawPath}] 错误: ${reason}`);
           continue;
@@ -1021,6 +904,9 @@ export async function executeFakeToolsForLoop(
         parts.push(`[delete_file: ${rawPath}] 已删除 ${absPath}`);
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
+        if (!canonicalSettled) {
+          await canonicalTools.fail(toolPlan, canonicalContext, 'delete-preflight-failed');
+        }
         recordToolFailure('delete_file', 'write', rawPath, reason);
         parts.push(`[delete_file: ${rawPath}] 错误: ${reason}`);
       }
@@ -1033,24 +919,28 @@ export async function executeFakeToolsForLoop(
       markToolCall();
       if (!rawPath) {
         const reason = '缺少 path，未修改任何文件。';
+        await canonicalTools.fail(toolPlan, canonicalContext, 'missing-replace-path');
         recordToolFailure('replace_in_file', 'replace', undefined, reason);
         parts.push(`[replace_in_file] 错误: ${reason}`);
         continue;
       }
       if (!oldStr) {
         const reason = 'old_str 为空，不能执行不确定替换。请先 read_file 后提供精确原文。';
+        await canonicalTools.fail(toolPlan, canonicalContext, 'missing-replace-search-text');
         recordToolFailure('replace_in_file', 'replace', rawPath, reason);
         parts.push(`[replace_in_file: ${rawPath}] 错误: ${reason}`);
         continue;
       }
       if (hasPollutedReplaceArgument(oldStr) || hasPollutedReplaceArgument(newStr)) {
         const reason = 'old_str/new_str 混入工具标签或不可见控制字符，无法作为可信补丁执行。请基于最新文件快照重新生成结构化替换参数。';
+        await canonicalTools.fail(toolPlan, canonicalContext, 'polluted-replace-argument');
         recordToolFailure('replace_in_file', 'replace', rawPath, reason);
         parts.push(`[replace_in_file: ${rawPath}] 错误: ${reason}`);
         continue;
       }
       if (oldStr === newStr) {
         const reason = 'old_str 与 new_str 完全相同，不会产生任何修改。请重新 read_file 后给出真正变化的替换内容。';
+        await canonicalTools.fail(toolPlan, canonicalContext, 'replace-no-op');
         recordToolFailure('replace_in_file', 'replace', rawPath, reason);
         parts.push(`[replace_in_file: ${rawPath}] 错误: ${reason}`);
         continue;
@@ -1059,11 +949,14 @@ export async function executeFakeToolsForLoop(
       try {
         if (!absPath || !fs.existsSync(absPath)) {
           const reason = '目标文件不存在，无法替换。请先 list_dir/read_file 确认路径。';
+          await canonicalTools.fail(toolPlan, canonicalContext, 'replace-target-missing');
           recordToolFailure('replace_in_file', 'replace', rawPath, reason);
           parts.push(`[replace_in_file: ${rawPath}] 错误: ${reason}`);
           continue;
         }
         if (fs.statSync(absPath).isDirectory()) {
+          await canonicalTools.fail(toolPlan, canonicalContext, 'replace-target-is-directory');
+          recordToolFailure('replace_in_file', 'replace', rawPath, `目标是目录，不是文件：${absPath}`);
           parts.push(`[replace_in_file: ${rawPath}] 错误: 目标是目录，不是文件：${absPath}`);
           continue;
         }
@@ -1072,6 +965,7 @@ export async function executeFakeToolsForLoop(
         readEvidencePaths.add(absPath);
         if (!oldContent.includes(oldStr)) {
           const reason = 'old_str 未在当前文件中找到。请重新 read_file 读取最新内容后再精确替换。';
+          await canonicalTools.fail(toolPlan, canonicalContext, 'replace-search-text-stale');
           recordToolFailure('replace_in_file', 'replace', rawPath, reason);
           const snapshotKey = nodePath.normalize(absPath);
           const snapshot = replaceMissSnapshots.has(snapshotKey)
@@ -1084,46 +978,64 @@ export async function executeFakeToolsForLoop(
         const nextContent = replaceAll
           ? oldContent.split(oldStr).join(newStr)
           : oldContent.slice(0, oldContent.indexOf(oldStr)) + newStr + oldContent.slice(oldContent.indexOf(oldStr) + oldStr.length);
-        await applyWorkspaceFileContent('replace_in_file', rawPath, nextContent);
+        await fileWriter.apply(toolPlan, canonicalContext, 'replace_in_file', rawPath, nextContent);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        await canonicalTools.fail(toolPlan, canonicalContext, 'replace-preflight-failed');
         recordToolFailure('replace_in_file', 'replace', rawPath, msg);
         parts.push(`[replace_in_file: ${rawPath}] 错误: ${msg}`);
       }
     } else if (agentToolExecutor.isFileWrite(tool)) {
       // Unified file create/overwrite — works for new files AND full rewrites.
       // Matching Copilot's #edit/editFiles for the agentic free-explore loop.
-      const fileWrites = normalizeFileWriteInputs(tool.input);
+      const fileWrites = normalizeAgentFileWriteInputs(tool.input);
       markToolCall();
       if (fileWrites.length === 0) {
+        await canonicalTools.fail(toolPlan, canonicalContext, 'missing-file-write-payload');
+        recordToolFailure(tool.name, 'write', undefined, '缺少文件写入 payload。');
         parts.push(`[${tool.name}] 错误: 缺少 path/filePath 和 content，未写入任何文件。批量写入请使用 files:[{path,content}]。`);
         continue;
       }
-      for (const fileWrite of fileWrites) {
+      for (let fileIndex = 0; fileIndex < fileWrites.length; fileIndex++) {
+        const fileWrite = fileWrites[fileIndex];
         const { rawPath, content } = fileWrite;
-        await applyWorkspaceFileContent(tool.name, rawPath, content);
+        const filePlan = projectFileWriteActionPlan(toolPlan, fileWrite);
+        const fileContext = fileIndex === 0
+          ? canonicalContext
+          : canonicalTools.nextContext(callbacks.traceRunId, filePlan);
+        await fileWriter.apply(filePlan, fileContext, tool.name, rawPath, content);
       }
     } else if (tool.name === 'get_changed_files' && callbacks.onGetChangedFiles) {
       markToolCall();
-      try {
-        const result = await callbacks.onGetChangedFiles();
+      const execution = await canonicalTools.observe(
+        toolPlan,
+        canonicalContext,
+        () => callbacks.onGetChangedFiles!(),
+        result => readEvidenceRecorder.recordObservation('search', 'git changes', result, workspaceRoot),
+      );
+      if (execution.receipt.status === 'completed' && typeof execution.receipt.result === 'string') {
+        const result = execution.receipt.result;
         callbacks.onToolActivity?.('search', 'git changes');
         parts.push(`[get_changed_files]\n${result}`);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+      } else {
+        const msg = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+        recordToolFailure(tool.name, 'tool-host', undefined, msg);
         parts.push(`[get_changed_files] 错误: ${msg}`);
       }
-    } else if (tool.name === 'create_directory' && callbacks.onCreateDirectory) {
+    } else if (tool.name === 'create_directory') {
       const dirPath = typeof (tool.input as Record<string, unknown>).path === 'string'
         ? (tool.input as Record<string, string>).path.trim()
         : '';
       if (dirPath) {
         markToolCall();
         callbacks.onToolActivity?.('write', `mkdir ${dirPath}`);
+        let canonicalSettled = false;
         try {
           const absPath = resolveAgentToolEvidencePath(dirPath, workspaceRoot, defaultWorkdir);
           if (!callbacks.onBeforeFileWrite) {
             const reason = '缺少写入授权边界。';
+            await canonicalTools.deny(toolPlan, canonicalContext, reason);
+            canonicalSettled = true;
             recordToolFailure('create_directory', 'write', dirPath, reason);
             parts.push(`[create_directory: ${dirPath}] 跳过（缺少写入授权边界）`);
             continue;
@@ -1137,18 +1049,71 @@ export async function executeFakeToolsForLoop(
           });
           if (!allowed) {
             const reason = `写入权限策略阻止：${absPath}`;
+            await canonicalTools.deny(toolPlan, canonicalContext, reason);
+            canonicalSettled = true;
             recordToolFailure('create_directory', 'write', dirPath, reason);
             parts.push(`[create_directory: ${dirPath}] 跳过（写入权限策略阻止）`);
             continue;
           }
           if (cancellationRequested()) {
+            await canonicalTools.fail(toolPlan, canonicalContext, 'tool-cancelled-before-effect');
+            canonicalSettled = true;
             recordCancellationFeedback('create_directory', dirPath);
             continue;
           }
-          const result = await callbacks.onCreateDirectory(absPath, { policyPreauthorized: true });
-          parts.push(`[create_directory: ${dirPath}] ${result}`);
+          const authority = canonicalTools.fileWriteAuthority(toolPlan, canonicalContext);
+          const execution = await canonicalTools.settle(toolPlan, canonicalContext, {
+            execute: async () => {
+              if (!callbacks.onCreateDirectory) {
+                return {
+                  status: 'failed' as const,
+                  errorCode: 'missing-create-directory-host',
+                  evidenceRefs: [`vscode-create-directory:${canonicalContext.actionId}:host-missing`],
+                };
+              }
+              const result = await callbacks.onCreateDirectory(absPath, {
+                policyPreauthorized: true,
+                runId: canonicalContext.runId,
+                sequence: canonicalContext.sequence,
+                actionId: canonicalContext.actionId,
+                evidenceRefs: authority.evidenceRefs,
+              });
+              changeReceipts.push(result.changeReceipt);
+              if (result.changeReceipt.status === 'indeterminate') {
+                return {
+                  status: 'indeterminate' as const,
+                  errorCode: result.changeReceipt.errorCode ?? 'workspace-directory-indeterminate',
+                  evidenceRefs: result.changeReceipt.evidenceRefs,
+                };
+              }
+              if (result.changeReceipt.status !== 'committed') {
+                return {
+                  status: 'failed' as const,
+                  errorCode: result.changeReceipt.errorCode ?? `workspace-directory-${result.changeReceipt.status}`,
+                  evidenceRefs: result.changeReceipt.evidenceRefs,
+                };
+              }
+              return {
+                status: 'completed' as const,
+                result: result.message,
+                evidenceRefs: result.changeReceipt.evidenceRefs,
+              };
+            },
+          }, authority);
+          canonicalSettled = true;
+          if (execution.receipt.status !== 'completed' || typeof execution.receipt.result !== 'string') {
+            const reason = execution.receipt.errorCode ?? execution.receipt.status;
+            recordToolFailure('create_directory', 'write', dirPath, reason);
+            parts.push(`[create_directory: ${dirPath}] 错误: ${reason}`);
+            continue;
+          }
+          parts.push(`[create_directory: ${dirPath}] ${execution.receipt.result}`);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
+          if (!canonicalSettled) {
+            await canonicalTools.fail(toolPlan, canonicalContext, 'create-directory-preflight-failed');
+          }
+          recordToolFailure('create_directory', 'write', dirPath, msg);
           parts.push(`[create_directory: ${dirPath}] 错误: ${msg}`);
         }
       }
@@ -1159,11 +1124,18 @@ export async function executeFakeToolsForLoop(
       if (url) {
         markToolCall();
         callbacks.onToolActivity?.('web', url.replace(/^https?:\/\//, '').slice(0, 60));
-        try {
-          const result = await callbacks.onFetchWebpage(url);
+        const execution = await canonicalTools.observe(
+          toolPlan,
+          canonicalContext,
+          () => callbacks.onFetchWebpage!(url),
+          result => readEvidenceRecorder.recordObservation('network', url, result, url),
+        );
+        if (execution.receipt.status === 'completed' && typeof execution.receipt.result === 'string') {
+          const result = execution.receipt.result;
           parts.push(`[fetch_webpage: ${url}]\n${result}`);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
+        } else {
+          const msg = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+          recordToolFailure(tool.name, 'tool-host', url, msg);
           parts.push(`[fetch_webpage: ${url}] 错误: ${msg}`);
         }
       }
@@ -1177,15 +1149,27 @@ export async function executeFakeToolsForLoop(
       if (symbol) {
         markToolCall();
         callbacks.onToolActivity?.('search', `refs:${symbol}`);
-        try {
-          const result = await callbacks.onListCodeUsages(symbol, filePath);
+        const execution = await canonicalTools.observe(
+          toolPlan,
+          canonicalContext,
+          () => callbacks.onListCodeUsages!(symbol, filePath),
+          result => readEvidenceRecorder.recordObservation(
+            'search',
+            `code-usages:${symbol}`,
+            result,
+            filePath ?? workspaceRoot,
+          ),
+        );
+        if (execution.receipt.status === 'completed' && typeof execution.receipt.result === 'string') {
+          const result = execution.receipt.result;
           parts.push(`[vscode_listCodeUsages: "${symbol}"]\n${result}`);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
+        } else {
+          const msg = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+          recordToolFailure(tool.name, 'tool-host', filePath, msg);
           parts.push(`[vscode_listCodeUsages: "${symbol}"] 错误: ${msg}`);
         }
       }
-    } else if (tool.name === 'run_vscode_command' && callbacks.onRunVscodeCommand) {
+    } else if (tool.name === 'run_vscode_command') {
       const command = typeof (tool.input as Record<string, unknown>).command === 'string'
         ? (tool.input as Record<string, string>).command.trim()
         : '';
@@ -1196,24 +1180,66 @@ export async function executeFakeToolsForLoop(
         markToolCall();
         callbacks.onToolActivity?.('terminal', `⚡ ${command}`);
         try {
-          const result = await callbacks.onRunVscodeCommand(command, args);
-          parts.push(`[run_vscode_command: ${command}]\n${result}`);
+          if (!callbacks.onPrepareVscodeCommand) {
+            const reason = 'missing-vscode-command-authority';
+            await canonicalTools.deny(toolPlan, canonicalContext, reason);
+            recordToolFailure(tool.name, 'tool-host', command, reason);
+            parts.push(`[run_vscode_command: ${command}] 错误: ${reason}`);
+            continue;
+          }
+          const prepared = await callbacks.onPrepareVscodeCommand(command, args);
+          const execution = await canonicalTools.settle(toolPlan, canonicalContext, {
+            execute: () => prepared.execute(),
+          }, prepared.authority);
+          if (execution.receipt.status !== 'completed' || typeof execution.receipt.result !== 'string') {
+            const reason = execution.receipt.errorCode ?? execution.receipt.status;
+            recordToolFailure(tool.name, 'tool-host', command, reason);
+            parts.push(`[run_vscode_command: ${command}] ${execution.receipt.status}: ${reason}`);
+            continue;
+          }
+          parts.push(`[run_vscode_command: ${command}]\n${execution.receipt.result}`);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
+          await canonicalTools.deny(toolPlan, canonicalContext, `vscode-command-authority-failed:${msg}`);
+          recordToolFailure(tool.name, 'tool-host', command, msg);
           parts.push(`[run_vscode_command: ${command}] 错误: ${msg}`);
         }
       }
-    } else if (tool.name.startsWith('mcp__') && callbacks.onMcpToolCall) {
+    } else if (tool.name.startsWith('mcp__')) {
       markToolCall();
       try {
-        const result = await callbacks.onMcpToolCall(tool.name, tool.input as Record<string, unknown>);
+        if (!callbacks.onPrepareMcpToolCall) {
+          const reason = 'missing-mcp-tool-authority';
+          await canonicalTools.deny(toolPlan, canonicalContext, reason);
+          recordToolFailure(tool.name, 'tool-host', undefined, reason);
+          parts.push(`[${tool.name}] 错误: ${reason}`);
+          continue;
+        }
+        const prepared = await callbacks.onPrepareMcpToolCall(tool.name, tool.input as Record<string, unknown>);
+        const execution = await canonicalTools.settle(toolPlan, canonicalContext, {
+          execute: () => prepared.execute(),
+        }, prepared.authority);
+        if (execution.receipt.status !== 'completed' || typeof execution.receipt.result !== 'string') {
+          const reason = execution.receipt.errorCode ?? execution.receipt.status;
+          recordToolFailure(tool.name, 'tool-host', undefined, reason);
+          parts.push(`[${tool.name}] ${execution.receipt.status}: ${reason}`);
+          continue;
+        }
         // Silent: MCP result goes to AI context only
-        parts.push(`[${tool.name}]\n${result}`);
+        parts.push(`[${tool.name}]\n${execution.receipt.result}`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        await canonicalTools.deny(toolPlan, canonicalContext, `mcp-tool-authority-failed:${msg}`);
+        recordToolFailure(tool.name, 'tool-host', undefined, msg);
         parts.push(`[${tool.name}] 错误: ${msg}`);
         callbacks.onToolActivity?.('terminal', `❌ ${tool.name}: ${msg.slice(0, 50)}`);
       }
+    } else {
+      markToolCall(isAgentWorkToolName(tool.name));
+      const reason = `missing-tool-host:${tool.name}`;
+      await canonicalTools.fail(toolPlan, canonicalContext, reason);
+      recordToolFailure(tool.name, 'tool-host', undefined, reason);
+      parts.push(`[${tool.name}] 错误: ${reason}`);
     }
   }
 
@@ -1226,6 +1252,7 @@ export async function executeFakeToolsForLoop(
     workToolCallsMade,
     feedbackLength: parts.join('\n\n').length,
     terminalCommandCount: terminalCommands.length,
+    terminalOutputCount: terminalOutputs.length,
     terminalEvidenceCount: terminalEvidence.length,
     writtenFileCount: writtenFiles.length,
     readFileCount: readFiles.length,
@@ -1242,10 +1269,13 @@ export async function executeFakeToolsForLoop(
     todoItems: lastTodoItems,
     summaryEmitted,
     terminalCommands: terminalCommands.length > 0 ? terminalCommands : undefined,
+    terminalOutputs: terminalOutputs.length > 0 ? terminalOutputs : undefined,
     terminalEvidence: terminalEvidence.length > 0 ? terminalEvidence : undefined,
     writtenFiles: writtenFiles.length > 0 ? writtenFiles : undefined,
     readFiles: readFiles.length > 0 ? readFiles : undefined,
     evidenceRefs: evidenceRefs.length > 0 ? evidenceRefs : undefined,
+    changeReceipts: changeReceipts.length > 0 ? changeReceipts : undefined,
+    toolExecutionReceipts: toolExecutionReceipts.length > 0 ? toolExecutionReceipts : undefined,
     toolFailures: toolFailures.length > 0 ? toolFailures : undefined,
   };
 }

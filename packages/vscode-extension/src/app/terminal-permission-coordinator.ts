@@ -6,6 +6,8 @@ import {
   ProductRunEvidenceSession,
   productRunEvidenceIdempotencyKey,
   summarizeTraceText,
+  type CodingToolAuthorityReceipt,
+  type CodingToolHostResult,
   type RunEvidenceJson,
 } from '@devseek-netai/shared';
 import { decideTerminalCommandPermission, type TerminalCommandRiskClass } from './terminal-command-policy';
@@ -56,6 +58,8 @@ export interface RunTerminalWithPermissionInput {
   manageRecoveryExternally?: boolean;
   /** Correlates this retry side effect with a previously detected recovery. */
   recoveryOperationId?: string;
+  /** Internal split boundary used to pause after authority settles and before execution starts. */
+  onAuthoritySettled?: (authority: CodingToolAuthorityReceipt) => void | Promise<void>;
 }
 
 export interface RunOwnedTerminalWithPermissionInput {
@@ -101,6 +105,16 @@ export interface TerminalCommandExecutionResult {
   reviewRequired?: boolean;
 }
 
+export interface PreparedTerminalCommand {
+  readonly authority: CodingToolAuthorityReceipt;
+  execute(): Promise<TerminalCommandExecutionResult>;
+}
+
+export interface PreparedTerminalToolExecution {
+  readonly authority: CodingToolAuthorityReceipt;
+  execute(): Promise<CodingToolHostResult<string>>;
+}
+
 export interface TerminalCommandRecoveryInput {
   workspaceRoot: string;
   runId: string;
@@ -114,6 +128,24 @@ export interface FinishTerminalCommandRecoveryInput extends TerminalCommandRecov
   status: 'completed' | 'failed';
   verificationOperationId?: string;
   reason?: string;
+}
+
+function terminalAuthorityReceipt(input: {
+  readonly operationId: string;
+  readonly decision: CodingToolAuthorityReceipt['decision'];
+  readonly status: CodingToolAuthorityReceipt['status'];
+  readonly reason: string;
+  readonly confirmationRef?: string;
+}): CodingToolAuthorityReceipt {
+  return {
+    decision: input.decision,
+    status: input.status,
+    reason: input.reason,
+    ...(input.confirmationRef ? { confirmationRef: input.confirmationRef } : {}),
+    evidenceRefs: [
+      `run-evidence:${input.operationId}:authority-${input.status === 'authorized' ? 'authorized' : 'denied'}`,
+    ],
+  };
 }
 
 export type ResolveTerminalCommandRecoveryInput = Omit<TerminalCommandRecoveryInput, 'targetOperationIds'>;
@@ -342,8 +374,71 @@ export class TerminalPermissionCoordinator {
     };
   }
 
-  async runCommandWithPermission(input: RunTerminalWithPermissionInput): Promise<string> {
-    return (await this.runCommandWithPermissionDetailed(input)).output;
+  async prepareCommandWithPermission(
+    input: RunTerminalWithPermissionInput,
+  ): Promise<PreparedTerminalCommand> {
+    let releaseExecution: (() => void) | undefined;
+    const executionGate = new Promise<void>(resolve => { releaseExecution = resolve; });
+    let resolveAuthority: ((authority: CodingToolAuthorityReceipt) => void) | undefined;
+    let rejectAuthority: ((error: unknown) => void) | undefined;
+    const authoritySettled = new Promise<CodingToolAuthorityReceipt>((resolve, reject) => {
+      resolveAuthority = resolve;
+      rejectAuthority = reject;
+    });
+    const execution = this.runCommandWithPermissionDetailed({
+      ...input,
+      onAuthoritySettled: async authority => {
+        resolveAuthority?.(authority);
+        if (authority.status === 'authorized') await executionGate;
+      },
+    });
+    void execution.catch(error => rejectAuthority?.(error));
+    const authority = await authoritySettled;
+    let released = false;
+    return {
+      authority,
+      execute: async () => {
+        if (authority.status === 'authorized' && !released) {
+          released = true;
+          releaseExecution?.();
+        }
+        return execution;
+      },
+    };
+  }
+
+  async prepareToolExecutionWithPermission(
+    input: RunTerminalWithPermissionInput,
+  ): Promise<PreparedTerminalToolExecution> {
+    const prepared = await this.prepareCommandWithPermission(input);
+    return {
+      authority: prepared.authority,
+      execute: async () => {
+        const result = await prepared.execute();
+        const evidenceRefs = [`terminal-operation:${result.operationId}:${result.outcome}`];
+        if (result.outcome === 'indeterminate') {
+          return {
+            status: 'indeterminate',
+            result: result.output,
+            errorCode: 'terminal-observation-indeterminate',
+            evidenceRefs,
+          };
+        }
+        if (!result.executed) {
+          return {
+            status: 'failed',
+            result: result.output,
+            errorCode: 'terminal-command-not-executed',
+            evidenceRefs,
+          };
+        }
+        return {
+          status: 'completed',
+          result: result.output,
+          evidenceRefs,
+        };
+      },
+    };
   }
 
   async runOwnedCommandWithPermission(
@@ -420,6 +515,12 @@ export class TerminalPermissionCoordinator {
         command: summarizeTraceText(normalizedCommand),
         workdir,
       });
+      await input.onAuthoritySettled?.(terminalAuthorityReceipt({
+        operationId: runEvidence.operationId,
+        decision: 'deny',
+        status: 'denied',
+        reason: terminalPermission.reason,
+      }));
       return {
         output: `（命令未执行：当前 ${mode} 模式不允许终端工具：${terminalPermission.reason}）`,
         outcome: 'failed',
@@ -465,6 +566,12 @@ export class TerminalPermissionCoordinator {
           command: summarizeTraceText(normalizedCommand),
           workdir,
         });
+        await input.onAuthoritySettled?.(terminalAuthorityReceipt({
+          operationId: runEvidence.operationId,
+          decision: 'require-confirmation',
+          status: 'denied',
+          reason: confirmResult.reason ?? 'terminal-confirmation-denied',
+        }));
         return {
           output: `（命令未执行：${confirmResult.reason ?? '用户拒绝'}）`,
           outcome: 'failed',
@@ -475,16 +582,28 @@ export class TerminalPermissionCoordinator {
       confirmedByUser = true;
     }
 
-    recordTerminalRunEvidence(runEvidence, input, 'side_effect.authorized', {
-      authorization: confirmedByUser
+    const authorization = confirmedByUser
         ? 'user-confirmed'
         : remembered
           ? 'remembered-user-confirmation'
           : preauthorizedByPolicy
             ? 'execution-policy-preauthorized'
-          : 'tool-policy',
+            : isAutopilot
+              ? 'autopilot-policy'
+              : 'tool-policy';
+    recordTerminalRunEvidence(runEvidence, input, 'side_effect.authorized', {
+      authorization,
       risk: terminalDecision.risk,
     });
+    await input.onAuthoritySettled?.(terminalAuthorityReceipt({
+      operationId: runEvidence.operationId,
+      decision: terminalPermission.action === 'requireConfirm' ? 'require-confirmation' : 'allow',
+      status: 'authorized',
+      reason: `${terminalPermission.reason}:${authorization}`,
+      ...(terminalPermission.action === 'requireConfirm'
+        ? { confirmationRef: `terminal-authorization:${runEvidence.operationId}:${authorization}` }
+        : {}),
+    }));
     recordTerminalRunEvidence(runEvidence, input, 'side_effect.started', {
       risk: terminalDecision.risk,
     });

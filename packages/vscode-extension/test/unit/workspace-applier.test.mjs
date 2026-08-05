@@ -290,6 +290,7 @@ test('workspace-applier: passing file check cannot override missing external att
     assert.equal(result.applied, true);
     assert.equal(result.validation.ok, true);
     assert.equal(result.qualityGate.status, 'blocked');
+    assert.equal(result.verificationReceipt.status, 'unverified');
     assert.equal(result.qualityGate.contractAcceptanceStatus, 'pending');
     assert.match(result.qualityGate.summary, /external-boundary-attribution-required/);
     assert.ok(statuses.some((status) => (
@@ -978,6 +979,9 @@ test('workspace-applier: markdown writes include review ledger file-check valida
     assert.equal(result.review?.validation.ok, true);
     assert.equal(result.review?.validation.mode, 'file-check');
     assert.equal(result.review?.validation.reason, 'non-code-file-validation');
+    assert.equal(result.verificationReceipt?.status, 'passed');
+    assert.equal(result.verificationReceipt?.checks[0]?.status, 'passed');
+    assert.ok((result.verificationReceipt?.evidenceRefs.length ?? 0) > 0);
     assert.match(result.review?.validation.command || '', /test -f/);
     assert.deepEqual(result.review?.unfinishedItems, []);
     assert.match(readFileSync(path.join(root, 'notes', 'review.md'), 'utf8'), /Done\./);
@@ -1113,7 +1117,46 @@ test('workspace-applier: validation failure preserves auto-applied changes by de
     assert.deepEqual(result.changedPaths, ['code/compile_failure_demo/main.cpp']);
     assert.equal(result.rolledBack, undefined);
     assert.equal(result.validation?.ok, false);
+    assert.equal(result.verificationReceipt?.status, 'failed');
     assert.match(readFileSync(path.join(projectDir, 'main.cpp'), 'utf8'), /missing_symbol/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('workspace-applier: opted-in validation rollback settles through the canonical batch transaction', { skip: !hasCommand('g++') && 'g++ is not installed' }, async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-applier-rollback-failed-'));
+  const projectDir = path.join(root, 'code', 'compile_failure_rollback_demo');
+  const target = path.join(projectDir, 'main.cpp');
+  try {
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(target, 'int main() { return 0; }\n');
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+
+    const result = await applyGeneratedArtifactsWithPrompt(
+      [
+        'code/compile_failure_rollback_demo/main.cpp',
+        '```cpp',
+        'int main() {',
+        '  return missing_symbol;',
+        '}',
+        '```',
+      ].join('\n'),
+      `请修改 ${projectDir}，只做本地编译确认`,
+      undefined,
+      true,
+      undefined,
+      undefined,
+      { rollbackOnValidationFailure: true, validationCommandRunner: runValidationCommand },
+    );
+
+    assert.equal(result.applied, false);
+    assert.deepEqual(result.changedPaths, []);
+    assert.equal(result.rolledBack, true);
+    assert.equal(result.validation?.ok, false);
+    assert.equal(result.verificationReceipt?.status, 'failed');
+    assert.equal(result.changeReceipts?.[0]?.status, 'rolled-back');
+    assert.equal(readFileSync(target, 'utf8'), 'int main() { return 0; }\n');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

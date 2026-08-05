@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
 import * as vscode from 'vscode';
+import type { CodingWorkspaceMutationReceipt } from '@devseek-netai/shared';
 import type { AgentLoopResult } from './agent/loop-types';
 import { decideAgentAutopilotAccept } from './app/agent-autopilot-policy';
 import { settleRunContextDirect } from './app/agent-run-settlement';
@@ -28,6 +29,7 @@ import { DiffDecorationManager, type DiffRecordInfo } from './diff-decorator';
 import { closePendingEditDiffTabAsync, DeepSeekOriginalContentProvider } from './ui/pending-edit-diff';
 import { openWorkspacePathInEditor, revealEditorLine } from './ui/generated-artifact-ui';
 import { WorkspaceEditService, type WorkspaceTextFileCommitToken } from './workspace/edit-service';
+import { VsCodeWorkspaceMutationAdapter } from './workspace/coding-workspace-mutation-adapter';
 
 export interface PendingEditRecord {
   id: string;
@@ -51,6 +53,12 @@ interface PendingActionNotice {
 export interface PendingEditCoordinatorOptions {
   getContextFiles: () => string[];
   getActiveWebview: () => vscode.Webview | undefined;
+}
+
+interface PendingEditMutationHost {
+  editService: WorkspaceEditService;
+  workspaceMutation: VsCodeWorkspaceMutationAdapter;
+  runId: string;
 }
 
 export class PendingEditCoordinator {
@@ -424,17 +432,47 @@ export class PendingEditCoordinator {
     const { target, workspaceRoot } = this.resolveMutationTarget(record);
     const content = renderPendingContentFromHunks(record);
     if (!record.existed && content.length === 0) {
-      await this.runPendingEditMutation(record, 'undo pending edit by deleting the generated file', async (editService) => {
-        const result = editService.deleteTextFile(target.fsPath, workspaceRoot);
-        return { operation: 'delete-created-file', targetPath: target.fsPath, result };
+      await this.runPendingEditMutation(record, 'undo pending edit by deleting the generated file', async (host) => {
+        const baseline = host.editService.captureTextFileBaseline(target.fsPath, workspaceRoot);
+        const outcome = await host.workspaceMutation.executeTextFileDelete({
+          runId: host.runId,
+          sequence: 1,
+          actionId: `pending-edit-delete:${record.id}`,
+          absPath: target.fsPath,
+          workspaceRoot,
+          baseline,
+          evidenceRefs: [`pending-edit-authority:${record.id}`],
+        });
+        const result = requireCommittedMutationResult(outcome.receipt, 'delete pending edit file');
+        return {
+          operation: 'delete-created-file',
+          targetPath: target.fsPath,
+          result,
+          canonicalReceipt: outcome.receipt,
+        };
       }, () => !fs.existsSync(target.fsPath), content.length, 'absent', scope, selectedHunk);
       return;
     }
-    await this.runPendingEditMutation(record, 'undo pending edit hunk by restoring the selected snapshot', async (editService) => {
-      const baseline = editService.captureTextFileBaseline(target.fsPath, workspaceRoot);
-      const proposal = editService.proposeTextFileWrite(target.fsPath, content);
-      const result = editService.commitTextFileProposal(proposal, baseline);
-      return { operation: 'restore-text-file', targetPath: target.fsPath, result };
+    await this.runPendingEditMutation(record, 'undo pending edit hunk by restoring the selected snapshot', async (host) => {
+      const baseline = host.editService.captureTextFileBaseline(target.fsPath, workspaceRoot);
+      const outcome = await host.workspaceMutation.executeTextFileWrite({
+        runId: host.runId,
+        sequence: 1,
+        actionId: `pending-edit-hunk-restore:${record.id}:${selectedHunk?.id ?? 'file'}`,
+        absPath: target.fsPath,
+        workspaceRoot,
+        content,
+        baseline,
+        applyOptions: {},
+        evidenceRefs: [`pending-edit-authority:${record.id}`],
+      });
+      const result = requireCommittedMutationResult(outcome.receipt, 'restore pending edit hunk');
+      return {
+        operation: 'restore-text-file',
+        targetPath: target.fsPath,
+        result,
+        canonicalReceipt: outcome.receipt,
+      };
     }, () => readTextFileEquals(target.fsPath, content), content.length, 'content-readback', scope, selectedHunk);
   }
 
@@ -445,17 +483,47 @@ export class PendingEditCoordinator {
   ): Promise<void> {
     const { target, workspaceRoot } = this.resolveMutationTarget(record);
     if (record.existed) {
-      await this.runPendingEditMutation(record, 'undo pending edit by restoring the original file', async (editService) => {
-        const baseline = editService.captureTextFileBaseline(target.fsPath, workspaceRoot);
-        const proposal = editService.proposeTextFileWrite(target.fsPath, record.oldContent);
-        const result = editService.commitTextFileProposal(proposal, baseline);
-        return { operation: 'restore-text-file', targetPath: target.fsPath, result };
+      await this.runPendingEditMutation(record, 'undo pending edit by restoring the original file', async (host) => {
+        const baseline = host.editService.captureTextFileBaseline(target.fsPath, workspaceRoot);
+        const outcome = await host.workspaceMutation.executeTextFileWrite({
+          runId: host.runId,
+          sequence: 1,
+          actionId: `pending-edit-file-restore:${record.id}`,
+          absPath: target.fsPath,
+          workspaceRoot,
+          content: record.oldContent,
+          baseline,
+          applyOptions: {},
+          evidenceRefs: [`pending-edit-authority:${record.id}`],
+        });
+        const result = requireCommittedMutationResult(outcome.receipt, 'restore pending edit file');
+        return {
+          operation: 'restore-text-file',
+          targetPath: target.fsPath,
+          result,
+          canonicalReceipt: outcome.receipt,
+        };
       }, () => readTextFileEquals(target.fsPath, record.oldContent), record.oldContent.length, 'content-readback', scope, undefined, allRecordIds);
       return;
     }
-    await this.runPendingEditMutation(record, 'undo pending edit by deleting the generated file', async (editService) => {
-      const result = editService.deleteTextFile(target.fsPath, workspaceRoot);
-      return { operation: 'delete-created-file', targetPath: target.fsPath, result };
+    await this.runPendingEditMutation(record, 'undo pending edit by deleting the generated file', async (host) => {
+      const baseline = host.editService.captureTextFileBaseline(target.fsPath, workspaceRoot);
+      const outcome = await host.workspaceMutation.executeTextFileDelete({
+        runId: host.runId,
+        sequence: 1,
+        actionId: `pending-edit-file-delete:${record.id}`,
+        absPath: target.fsPath,
+        workspaceRoot,
+        baseline,
+        evidenceRefs: [`pending-edit-authority:${record.id}`],
+      });
+      const result = requireCommittedMutationResult(outcome.receipt, 'delete pending edit file');
+      return {
+        operation: 'delete-created-file',
+        targetPath: target.fsPath,
+        result,
+        canonicalReceipt: outcome.receipt,
+      };
     }, () => !fs.existsSync(target.fsPath), 0, 'absent', scope, undefined, allRecordIds);
   }
 
@@ -522,7 +590,7 @@ export class PendingEditCoordinator {
   private async runPendingEditMutation(
     record: PendingEditRecord,
     label: string,
-    invoke: (editService: WorkspaceEditService) => PendingEditUndoTransaction | Promise<PendingEditUndoTransaction>,
+    invoke: (host: PendingEditMutationHost) => PendingEditUndoTransaction | Promise<PendingEditUndoTransaction>,
     verify: () => boolean | Promise<boolean>,
     expectedContentLength: number,
     postcondition: PendingEditUndoPostcondition,
@@ -539,12 +607,13 @@ export class PendingEditCoordinator {
     });
     const mutation = new ProductMutationCoordinator(runContext, 'vscode-pending-edit');
     const editService = new WorkspaceEditService();
+    const workspaceMutation = new VsCodeWorkspaceMutationAdapter(editService);
     try {
       await mutation.run({
         kind: 'pending-edit-undo',
         label,
         authorize: () => ({ allowed: true, source: 'explicit-user-action' }),
-        invoke: () => invoke(editService),
+        invoke: () => invoke({ editService, workspaceMutation, runId: runContext.runId }),
         completionEvidence: {
           kind: 'verified-postcondition',
           verify,
@@ -743,6 +812,18 @@ function readTextFileEquals(absPath: string, expected: string): boolean {
   } catch {
     return false;
   }
+}
+
+function requireCommittedMutationResult<TResult>(
+  receipt: CodingWorkspaceMutationReceipt<TResult>,
+  label: string,
+): TResult {
+  if (receipt.status !== 'committed' || receipt.result === undefined) {
+    throw new ProductMutationIndeterminateError(
+      `${label} did not commit: ${receipt.errorCode ?? receipt.status}`,
+    );
+  }
+  return receipt.result;
 }
 
 function markPendingHunks(record: PendingEditRecord, resolution: 'kept' | 'undone'): void {

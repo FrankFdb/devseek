@@ -6,6 +6,11 @@
  */
 
 import * as vscode from 'vscode';
+import type {
+  CodingToolExecutionReceipt,
+  CodingVerificationReceipt,
+  CodingWorkspaceMutationReceipt,
+} from '@devseek-netai/shared';
 import { type ChatMessage } from '../llm/types';
 import { getProjectMemorySync } from '../project-rules';
 import type { ExecutionMode } from '../intent/intent-types';
@@ -18,8 +23,6 @@ import {
   assessMissingCompletionEvidence,
   coalesceWrittenFileEvidence,
   describeBlockingTerminalFailure,
-  findBlockingTerminalFailureEvidence,
-  getBlockingTerminalFailure,
   getUnsupportedSummaryFileClaims,
   requiresCommandEvidence,
   requiresFileChangeEvidence,
@@ -59,6 +62,11 @@ import type { AgentLoopCallbacks, AgentLoopResult } from './loop-types';
 import type { EvidenceRef } from './tool-executor';
 import { chatWithMessages } from './loop-chat';
 import { hasWriteRevokedToolAttempt } from './write-authority';
+import {
+  buildAgenticVerificationAcceptance,
+  extractPlanningTodoItems,
+} from './agentic-planning';
+import { getAgenticBlockingTerminalFailure } from './agentic-execution-evidence';
 import {
   analyzeTerminalEvidence,
   describeAgentToolActivity,
@@ -113,16 +121,6 @@ const AGENTIC_ASSISTANT_HISTORY_CHAR_BUDGET = 6_000;
 const AGENTIC_USER_HISTORY_CHAR_BUDGET = 8_000;
 const AGENTIC_RECENT_MESSAGE_KEEP_COUNT = 5;
 const AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS = 3;
-function getAgenticBlockingTerminalFailure(
-  userPrompt: string,
-  todos: TodoItem[],
-  writtenFiles: WrittenFileEvidence[],
-  terminalEvidence: TerminalEvidence[],
-  semanticContract?: TaskSemanticContract,
-): TerminalEvidence | undefined {
-  return getBlockingTerminalFailure(userPrompt, todos, writtenFiles, terminalEvidence, semanticContract)
-    ?? findBlockingTerminalFailureEvidence(terminalEvidence);
-}
 function agenticMessageContentLength(content: ChatMessage['content']): number {
   return typeof content === 'string' ? content.length : JSON.stringify(content).length;
 }
@@ -180,45 +178,6 @@ function compactAgenticMessageHistory(messages: ChatMessage[]): number {
   }
   return totalAgenticMessageChars(messages);
 }
-function extractPlanningTodoItems(text: string): TodoItem[] {
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const startIndex = lines.findIndex((line) => /(规划任务|任务规划|任务清单|待办清单|计划任务|规划如下|计划如下|todos?|tasks?)(：|:)?$/i.test(line));
-  if (startIndex < 0) return [];
-  const sourceLines = lines.slice(startIndex + 1);
-  const items: string[] = [];
-  for (const rawLine of sourceLines) {
-    if (!/^\s*(?:[-*•]|\d+[.)、])\s+/.test(rawLine)) {
-      if (items.length > 0) break;
-      continue;
-    }
-    const line = rawLine
-      .replace(/^[-*•]\s*/, '')
-      .replace(/^\d+[.)、]\s*/, '')
-      .trim();
-
-    if (!line) continue;
-    if (/^(<tool_call>|\[TOOL:|```|\{|\}|我来|让我|下面是|以下是|请开始|开始执行|让我开始)/i.test(line)) break;
-    if (/^(规划任务|任务规划|任务清单|待办清单|计划任务|规划如下|计划如下)$/i.test(line)) continue;
-    if (/^[，。,。.；;：:]+$/.test(line)) continue;
-    items.push(line);
-  }
-
-  const uniqueItems: string[] = [];
-  for (const item of items) {
-    if (!uniqueItems.includes(item)) uniqueItems.push(item);
-  }
-
-  if (uniqueItems.length === 0) return [];
-  return uniqueItems.slice(0, 8).map((title, index) => ({
-    id: index + 1,
-    title,
-    status: index === 0 ? 'in-progress' : 'not-started',
-  }));
-}
-
 function classifyAgenticManualReviewEvidence(input: {
   evidence: TerminalEvidence[] | undefined;
   feedbackForAI: string;
@@ -441,6 +400,9 @@ export async function runAgenticLoop(
   };
   // Accumulate files written across all rounds for the phase:done editedFiles payload.
   const allWrittenFiles: Array<{path: string; basename: string; linesAdded: number; linesRemoved: number; action: string}> = [];
+  const allVerificationReceipts: CodingVerificationReceipt[] = [];
+  const allChangeReceipts: CodingWorkspaceMutationReceipt<unknown>[] = [];
+  const allToolExecutionReceipts: CodingToolExecutionReceipt<unknown>[] = [];
   let autoValidatedWriteCount = 0;
   const assessCurrentCompletionEvidence = (): string[] => assessMissingCompletionEvidence({
     userPrompt: writeAuthority.currentPrompt,
@@ -509,6 +471,9 @@ export async function runAgenticLoop(
       workspaceRoot,
       callbacks: writeAuthority.callbacks,
       cppValidationPolicy,
+      options: {
+        verificationAcceptance: buildAgenticVerificationAcceptance(writeAuthority.semanticContract),
+      },
     });
     if (simpleFileResult) return simpleFileResult;
   }
@@ -725,7 +690,12 @@ export async function runAgenticLoop(
           requireReadBeforeOverwrite: true,
           readEvidencePaths: allReadEvidencePaths,
         })
-        : { feedbackForAI: '', writtenFiles: [] as WrittenFileEvidence[] };
+        : {
+          feedbackForAI: '',
+          writtenFiles: [] as WrittenFileEvidence[],
+          changeReceipts: [] as CodingWorkspaceMutationReceipt<unknown>[],
+        };
+      if (artifactApply.changeReceipts.length) allChangeReceipts.push(...artifactApply.changeReceipts);
       if (artifactApply.writtenFiles.length > 0) {
         sawWorkTool = true;
         noToolRounds = 0;
@@ -751,11 +721,15 @@ export async function runAgenticLoop(
         const autoValidation = await runAgentAutoValidationForWrites(
           allWrittenFiles.slice(autoValidatedWriteCount),
           workspaceRoot,
-        writeAuthority.currentPrompt,
-        writeAuthority.callbacks,
-        cppValidationPolicy,
-        { qualityWrittenFiles: allWrittenFiles },
-      );
+          writeAuthority.currentPrompt,
+          writeAuthority.callbacks,
+          cppValidationPolicy,
+          {
+            qualityWrittenFiles: allWrittenFiles,
+            verificationAcceptance: buildAgenticVerificationAcceptance(writeAuthority.semanticContract),
+          },
+        );
+        if (autoValidation.verificationReceipt) allVerificationReceipts.push(autoValidation.verificationReceipt);
         autoValidatedWriteCount = allWrittenFiles.length;
         const normalizedAutoValidation = normalizeAgenticAutoValidation({
           autoValidation,
@@ -890,7 +864,12 @@ export async function runAgenticLoop(
         requireReadBeforeOverwrite: true,
         readEvidencePaths: allReadEvidencePaths,
       })
-      : { feedbackForAI: '', writtenFiles: [] as WrittenFileEvidence[] };
+      : {
+        feedbackForAI: '',
+        writtenFiles: [] as WrittenFileEvidence[],
+        changeReceipts: [] as CodingWorkspaceMutationReceipt<unknown>[],
+      };
+    if (artifactApply.changeReceipts.length) allChangeReceipts.push(...artifactApply.changeReceipts);
     if (artifactApply.writtenFiles.length > 0) {
       allWrittenFiles.push(...artifactApply.writtenFiles);
       progressEpoch++;
@@ -963,6 +942,10 @@ export async function runAgenticLoop(
       toolFailureRecovery.clearForWrittenPaths(loopRes.writtenFiles.map(file => file.path));
       progressEpoch++;
     }
+    if (loopRes.changeReceipts?.length) allChangeReceipts.push(...loopRes.changeReceipts);
+    if (loopRes.toolExecutionReceipts?.length) {
+      allToolExecutionReceipts.push(...loopRes.toolExecutionReceipts);
+    }
     if (loopRes.readFiles?.length) {
       for (const readPath of loopRes.readFiles) allReadEvidencePaths.add(readPath);
     }
@@ -1016,8 +999,12 @@ export async function runAgenticLoop(
       writeAuthority.currentPrompt,
       writeAuthority.callbacks,
       cppValidationPolicy,
-      { qualityWrittenFiles: allWrittenFiles },
+      {
+        qualityWrittenFiles: allWrittenFiles,
+        verificationAcceptance: buildAgenticVerificationAcceptance(writeAuthority.semanticContract),
+      },
     );
+    if (autoValidation.verificationReceipt) allVerificationReceipts.push(autoValidation.verificationReceipt);
     autoValidatedWriteCount = allWrittenFiles.length;
     const normalizedAutoValidation = normalizeAgenticAutoValidation({
       autoValidation,
@@ -1361,6 +1348,9 @@ export async function runAgenticLoop(
     tasksApplied: finalWrittenFiles.length > 0 ? 1 : 0,
     tasksFailed: cleanAbort || failedReason ? 1 : 0,
     changedPaths: [...new Set(finalWrittenFiles.map(f => f.path))],
+    verificationReceipts: allVerificationReceipts,
+    toolExecutionReceipts: allToolExecutionReceipts,
+    changeReceipts: allChangeReceipts,
     ...(manualReviewReason ? {
       manualReviewRequired: true,
       manualReviewReason,

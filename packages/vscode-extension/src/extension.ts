@@ -719,11 +719,11 @@ async function runActiveChat(
               trace: agentRunContext.childTrace('vscode-extension.file-write-policy'),
             }),
             mcpToolRefs: mcpManager.hasMcpTools ? mcpManager.toolRefs : undefined,
-            onMcpToolCall: mcpManager.hasMcpTools
+            onPrepareMcpToolCall: mcpManager.hasMcpTools
               ? createEvidenceAwareMcpToolCall(agentRunContext, webview)
               : undefined,
-            onTerminalCommand: async (command, workdir) => {
-              return terminalPermissionCoordinator.runCommandWithPermission({
+            onPrepareTerminalCommand: async (command, workdir) => {
+              return terminalPermissionCoordinator.prepareToolExecutionWithPermission({
                 webview,
                 command,
                 workdir,
@@ -1141,7 +1141,7 @@ async function runActiveChat(
         registerToMemory,
         sessionRecentFiles,
         mcpToolRefs: mcpManager.hasMcpTools ? mcpManager.toolRefs : undefined,
-        onMcpToolCall: mcpManager.hasMcpTools ? createEvidenceAwareMcpToolCall(chatRunContext, webview) : undefined,
+        onPrepareMcpToolCall: mcpManager.hasMcpTools ? createEvidenceAwareMcpToolCall(chatRunContext, webview) : undefined,
         signal: chatSignal,
         sessionId: activeSessionId,
         onChangedPaths: (paths) => { chatRunChangedPaths.add(paths); },

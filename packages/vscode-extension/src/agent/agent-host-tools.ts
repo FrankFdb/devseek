@@ -4,9 +4,10 @@ import * as vscode from 'vscode';
 import type { TerminalPermissionCoordinator } from '../app/terminal-permission-coordinator';
 import { buildToolPolicy } from '../app/permission-service';
 import { ProductMutationCoordinator } from '../app/product-mutation-coordinator';
+import { adaptPreparedProductTool } from '../app/prepared-product-tool-adapter';
 import type { DevSeekRunContext } from '../app/run-context';
+import { VsCodeWorkspaceDirectoryMutationAdapter } from '../workspace/coding-workspace-directory-mutation-adapter';
 import { WorkspaceEditService } from '../workspace/edit-service';
-import { isCanonicalPathInsideRoot } from '../workspace/path-containment';
 import type { AgentLoopCallbacks } from './loop-types';
 import { explainUnsupportedVscodeCommand, getSupportedVscodeCommandPolicy } from './vscode-command-policy';
 
@@ -18,7 +19,7 @@ type HostToolCallbacks = Pick<
   | 'onCreateDirectory'
   | 'onFetchWebpage'
   | 'onListCodeUsages'
-  | 'onRunVscodeCommand'
+  | 'onPrepareVscodeCommand'
 >;
 
 export interface AgentHostToolContext {
@@ -143,6 +144,7 @@ export function createAgentHostToolCallbacks(context: AgentHostToolContext): Hos
   const { workspaceRoot, webview, terminalPermissionCoordinator, runContext } = context;
   const mutations = new ProductMutationCoordinator(runContext, 'vscode-agent-host');
   const workspaceEditService = new WorkspaceEditService();
+  const directoryMutations = new VsCodeWorkspaceDirectoryMutationAdapter(workspaceEditService);
   const runReadOnlyCommand: ReadOnlyCommandRunner = async (command, timeoutMs) => {
     const result = await terminalPermissionCoordinator.runCommandWithPermissionDetailed({
       webview,
@@ -193,40 +195,24 @@ export function createAgentHostToolCallbacks(context: AgentHostToolContext): Hos
         return '（非 git 工作区或无变更）';
       }
     },
-    onCreateDirectory: async (dirPath: string, authorization: { policyPreauthorized: true }) => {
+    onCreateDirectory: async (dirPath, authorization) => {
       const absPath = nodePath.isAbsolute(dirPath) ? dirPath : nodePath.join(workspaceRoot, dirPath);
-      const result = await mutations.run({
-        kind: 'workspace-directory',
-        label: `create-directory:${nodePath.relative(workspaceRoot, absPath)}`,
-        authorize: () => ({
-          allowed: authorization.policyPreauthorized === true,
-          source: 'execution-policy',
-          reason: 'agent file-write policy did not authorize directory creation',
-        }),
-        invoke: () => workspaceEditService.createWorkspaceDirectory(absPath, workspaceRoot),
-        completionEvidence: {
-          kind: 'verified-postcondition',
-          verify: value => fs.statSync(value.canonicalPath).isDirectory()
-            && isCanonicalPathInsideRoot(value.canonicalPath, workspaceRoot),
-          proof: value => ({
-            created: value.created,
-            canonical_path: summarizePath(value.canonicalPath, workspaceRoot),
-            directory_transaction: {
-              before_existed: value.commitToken.before.snapshot.existed,
-              before_missing_segments: value.commitToken.before.route.missingSegments,
-              before_existing_ancestor: summarizePath(value.commitToken.before.route.existingAncestorCanonicalPath, workspaceRoot),
-              before_existing_ancestor_fingerprint: value.commitToken.before.route.existingAncestorFingerprint,
-              after_existed: value.commitToken.after.snapshot.existed,
-              after_canonical_path: value.commitToken.after.snapshot.canonicalPath
-                ? summarizePath(value.commitToken.after.snapshot.canonicalPath, workspaceRoot)
-                : null,
-              after_device: value.commitToken.after.snapshot.device ?? null,
-              after_inode: value.commitToken.after.snapshot.inode ?? null,
-            },
-          }),
-        },
+      if (authorization.policyPreauthorized !== true) {
+        throw new Error('agent file-write policy did not authorize directory creation');
+      }
+      const outcome = await directoryMutations.execute({
+        runId: authorization.runId,
+        sequence: authorization.sequence,
+        actionId: authorization.actionId,
+        absPath,
+        workspaceRoot,
+        baseline: workspaceEditService.captureWorkspaceDirectoryBaseline(absPath, workspaceRoot),
+        evidenceRefs: authorization.evidenceRefs,
       });
-      return result.created ? `目录已创建: ${dirPath}` : `目录已存在: ${dirPath}`;
+      return {
+        message: outcome.receipt.result?.created ? `目录已创建: ${dirPath}` : `目录已存在: ${dirPath}`,
+        changeReceipt: outcome.receipt,
+      };
     },
     onFetchWebpage: fetchWebpageText,
     onListCodeUsages: (symbol: string, filePath?: string) => listCodeUsages(
@@ -235,30 +221,22 @@ export function createAgentHostToolCallbacks(context: AgentHostToolContext): Hos
       filePath,
       runReadOnlyCommand,
     ),
-    onRunVscodeCommand: async (command: string, args?: unknown[]) => {
+    onPrepareVscodeCommand: async (command: string, args?: unknown[]) => {
       if (!/^[\w.-]+$/.test(command)) throw new Error(`无效命令 ID: ${command}`);
       const policy = getSupportedVscodeCommandPolicy(command);
-      if (!policy || (args?.length ?? 0) > 0) {
-        const reason = policy
+      const preflightReason = !policy
+        ? explainUnsupportedVscodeCommand(command)
+        : (args?.length ?? 0) > 0
           ? `${command} does not accept opaque agent-supplied arguments`
-          : explainUnsupportedVscodeCommand(command);
-        await mutations.run({
-          kind: 'vscode-command',
-          label: `vscode-command:${command}`,
-          authorize: () => ({ allowed: false, source: 'execution-policy', reason }),
-          invoke: () => undefined,
-          completionEvidence: {
-            kind: 'invocation-receipt',
-            proof: () => ({ command_id: command, receipt: 'unreachable' }),
-          },
-        });
-        throw new Error(reason);
-      }
+          : undefined;
       const isAutopilot = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
-      const result = await mutations.run({
+      const prepared = await mutations.prepare({
         kind: 'vscode-command',
         label: `vscode-command:${command}`,
         authorize: async () => {
+          if (!policy || (args?.length ?? 0) > 0) {
+            return { allowed: false, source: 'execution-policy', reason: preflightReason };
+          }
           if (policy.classification !== 'mutating-with-permission' || isAutopilot) {
             return { allowed: true, source: 'execution-policy' };
           }
@@ -270,18 +248,19 @@ export function createAgentHostToolCallbacks(context: AgentHostToolContext): Hos
           kind: 'invocation-receipt',
           proof: () => ({
             command_id: command,
-            command_classification: policy.classification,
+            command_classification: policy?.classification ?? 'unsupported',
             receipt: 'vscode-command-promise-resolved',
           }),
         },
       });
-      return result !== undefined
-        ? `VS Code 已接受命令: ${command}\n返回: ${JSON.stringify(result).slice(0, 500)}\n（仅证明命令 Promise 已成功返回）`
-        : `VS Code 已接受命令: ${command}（仅证明命令 Promise 已成功返回）`;
+      return adaptPreparedProductTool({
+        prepared,
+        authorityRef: `vscode-command-authority:${runContext.runId}:${command}`,
+        completedEvidenceRef: `vscode-command-result:${runContext.runId}:${command}`,
+        formatResult: result => result !== undefined
+          ? `VS Code 已接受命令: ${command}\n返回: ${JSON.stringify(result).slice(0, 500)}\n（仅证明命令 Promise 已成功返回）`
+          : `VS Code 已接受命令: ${command}（仅证明命令 Promise 已成功返回）`,
+      });
     },
   };
-}
-
-function summarizePath(absPath: string, workspaceRoot: string): string {
-  return nodePath.relative(workspaceRoot, absPath).replace(/\\/g, '/').slice(0, 512);
 }

@@ -10,8 +10,9 @@ import {
   type CliCodingKernelRuntimeContext,
 } from './cli-coding-kernel-runtime';
 import { buildCliCodingKernelTaskContract } from './cli-coding-kernel-task-contract';
-import { CliVerificationService } from './cli-verification-service';
-import { CliWorkspaceMutationService } from './cli-workspace-mutation-service';
+import { CliVerificationAdapter } from './cli-verification-adapter';
+import { CliVerificationHostAdapter } from './cli-verification-service';
+import { CliWorkspaceMutationHostAdapter } from './cli-workspace-mutation-service';
 
 export interface CliProductCodingKernelInput extends CliCodingKernelRuntimeContext {
   readonly workspaceRoot: string;
@@ -23,8 +24,8 @@ export interface CliProductCodingKernelInput extends CliCodingKernelRuntimeConte
 
 const kernel = new CanonicalCodingKernel(new CliCodingKernelRuntimeAdapter(
   new CliCodingArtifactInterpreter(),
-  new CliWorkspaceMutationService(),
-  new CliVerificationService(),
+  new CliWorkspaceMutationHostAdapter(),
+  new CliVerificationAdapter(new CliVerificationHostAdapter()),
 ));
 
 export const productCliCodingKernelExecutor = {
@@ -50,3 +51,11 @@ export const productCliCodingKernelExecutor = {
     });
   },
 };
+
+export function assertCompletedCliCodingKernelOutput(
+  output: CodingKernelExecutionOutput<CliCodingKernelResult>,
+): void {
+  if (output.status === 'completed') return;
+  const reasons = output.result.completion.reasonCodes.join(', ') || 'completion-not-authorized';
+  throw new Error(`DevSeek coding run ${output.status}: ${reasons}`);
+}

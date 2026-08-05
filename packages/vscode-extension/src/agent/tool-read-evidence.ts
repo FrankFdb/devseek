@@ -16,6 +16,15 @@ export class ToolReadEvidenceRecorder {
     return this.evidenceStore.recordTerminalOutput({ command, output, workdir, exitCode });
   }
 
+  recordObservation(
+    kind: 'search' | 'diagnostics' | 'network' | 'memory' | 'plan',
+    label: string,
+    content: string,
+    sourcePath?: string,
+  ): EvidenceRef {
+    return this.evidenceStore.recordObservation({ kind, label, content, sourcePath });
+  }
+
   record(displayText: string, fallbackPath: string): EvidenceRef {
     const normalized = String(displayText || '').replace(/\r\n?/g, '\n');
     const envelope = normalized.match(/^\[file_context\]\n([\s\S]*?)\n\[\/file_context\]\n?/);

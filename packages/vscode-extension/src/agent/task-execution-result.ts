@@ -1,3 +1,8 @@
+import type {
+  CodingToolExecutionReceipt,
+  CodingVerificationReceipt,
+  CodingWorkspaceMutationReceipt,
+} from '@devseek-netai/shared';
 import type { TerminalEvidence, WrittenFileEvidence } from './completion-evidence';
 import type { ArtifactClaim, EvidenceRef, VerificationResult } from './evidence-grounding';
 
@@ -15,6 +20,9 @@ export interface TaskExecutionResult {
   evidenceRefs?: EvidenceRef[];
   artifactClaims?: ArtifactClaim[];
   verificationResults?: VerificationResult[];
+  verificationReceipts?: CodingVerificationReceipt[];
+  toolExecutionReceipts?: CodingToolExecutionReceipt<unknown>[];
+  changeReceipts?: CodingWorkspaceMutationReceipt<unknown>[];
 }
 
 export function withTaskTerminalEvidence<T extends Omit<TaskExecutionResult, 'terminalEvidence'>>(
