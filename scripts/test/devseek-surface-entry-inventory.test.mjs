@@ -29,7 +29,7 @@ test('surface entry inventory is source-bound and covers every current entry den
   assert.equal(actual.claims_permitted, false);
   assert.equal(actual.asserts_gate_pass, false);
   assert.deepEqual(actual.counts, {
-    total_entries: 87,
+    total_entries: 88,
     vscode_manifest_commands: 19,
     vscode_runtime_commands: 25,
     vscode_manifest_commands_missing_runtime: 0,
@@ -40,6 +40,7 @@ test('surface entry inventory is source-bound and covers every current entry den
     webview_handler_missing_protocol: 0,
     attachment_entries: 5,
     cli_entrypoints: 8,
+    headless_entrypoints: 1,
     bridge_endpoints: 10,
     unknown_entries: 0,
     duplicate_surface_entry_ids: 0,
@@ -55,6 +56,11 @@ test('surface entry inventory is source-bound and covers every current entry den
   assert.equal(resumeEntry.coverage_status, 'covered');
   assert.equal(resumeEntry.owner, 'CliSurfaceAdapter');
   assert.equal(resumeEntry.kernel_contract_projection, 'AgentCommand/Event');
+  const headlessEntry = actual.entries.find(item => item.entry_id === 'headless/programmatic-run');
+  assert.ok(headlessEntry, 'Headless programmatic product entry must be inventoried');
+  assert.equal(headlessEntry.coverage_status, 'covered');
+  assert.equal(headlessEntry.owner, 'HeadlessCodingKernelExecutor');
+  assert.equal(headlessEntry.kernel_contract_projection, 'CanonicalCodingKernelRequest/Output');
   for (const commandId of [
     'devseek.applyDiff',
     'devseek.ask',
@@ -100,6 +106,8 @@ test('surface entry inventory is source-bound and covers every current entry den
   }
   assert.equal(actual.bypass_guards.generic_webview_command_disabled, true);
   assert.equal(actual.bypass_guards.surface_entry_ids_unique, true);
+  assert.equal(actual.bypass_guards.headless_single_product_entrypoint, true);
+  assert.equal(actual.bypass_guards.headless_surface_no_vscode_dependency, true);
   assert.equal(actual.bypass_guards.legacy_surface_projection_fallbacks_removed, true);
   assert.equal(actual.bypass_guards.manifest_command_declaration_unique, true);
   assert.equal(actual.bypass_guards.runtime_command_registration_unique, true);
@@ -256,10 +264,11 @@ test('surface inventory checker command validates current inventory and generate
   assert.equal(result.ok, true, JSON.stringify(result.errors, null, 2));
   assert.deepEqual(result.summary, {
     inventory_sha256: expected.inventory_sha256,
-    entries: 87,
+    entries: 88,
     vscode_commands: 25,
     webview_inbound: 41,
     cli_entrypoints: 8,
+    headless_entrypoints: 1,
     bridge_endpoints: 10,
     attachment_entries: 5,
     unknown_entries: 0,

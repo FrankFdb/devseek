@@ -1,7 +1,7 @@
 # DevSeek Surface Entry Inventory
 
 - inventory_id: `DEVSEEK-R1-D1A-SURFACE-ENTRY-INVENTORY/v1`
-- inventory_sha256: `3d79b31a57aa569b98e7b4228e65f5d6c48d0b0bd05533c42c6b89382829ebce`
+- inventory_sha256: `d33a713923807a043250864196773eb9cee878b8834e44fea4398f0d91fbc884`
 - qualification_effect: `NONE`
 - claims_permitted: `false`
 - asserts_gate_pass: `false`
@@ -10,7 +10,7 @@
 
 | Metric | Count |
 | --- | ---: |
-| total_entries | 87 |
+| total_entries | 88 |
 | vscode_manifest_commands | 19 |
 | vscode_runtime_commands | 25 |
 | vscode_manifest_commands_missing_runtime | 0 |
@@ -21,6 +21,7 @@
 | webview_handler_missing_protocol | 0 |
 | attachment_entries | 5 |
 | cli_entrypoints | 8 |
+| headless_entrypoints | 1 |
 | bridge_endpoints | 10 |
 | unknown_entries | 0 |
 | duplicate_surface_entry_ids | 0 |
@@ -56,6 +57,7 @@
 | `cli/mock-exec` | cli | cli-entrypoint | cli-test | `packages/cli/src/index.ts` | covered | local-mock-provider |
 | `cli/resume-exec` | cli | cli-entrypoint | cli-resume | `packages/cli/src/index.ts` | covered | AgentCommand/Event |
 | `cli/version` | cli | cli-entrypoint | cli-version | `packages/cli/src/index.ts` | covered | version-text |
+| `headless/programmatic-run` | headless | programmatic-entrypoint | public | `packages/headless/src/headless-coding-kernel.ts` | covered | CanonicalCodingKernelRequest/Output |
 | `vscode-command/_deepseek.askChat` | vscode | command | internal | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | chat-relay-internal |
 | `vscode-command/_devseek.diffKeepHunk` | vscode | command | internal | `packages/vscode-extension/src/pending-edit-coordinator.ts` | covered | pending-edit-action |
 | `vscode-command/_devseek.diffUndoHunk` | vscode | command | internal | `packages/vscode-extension/src/pending-edit-coordinator.ts` | covered | pending-edit-action |

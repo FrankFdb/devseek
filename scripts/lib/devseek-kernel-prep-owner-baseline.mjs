@@ -3,8 +3,8 @@ import {
   sha256Object,
 } from './devseek-capability-ledger.mjs';
 
-export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v4';
-export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v4';
+export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v5';
+export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v5';
 
 const SOURCE_PATHS = Object.freeze({
   gate0: 'docs/process/devseek-gate0-decision-report.json',
@@ -47,18 +47,30 @@ const SOURCE_PATHS = Object.freeze({
   cliMutation: 'packages/cli/src/cli-workspace-mutation-service.ts',
   cliVerification: 'packages/cli/src/cli-verification-service.ts',
   cliEvidence: 'packages/cli/src/cli-run-evidence.ts',
+  headlessPackageJson: 'packages/headless/package.json',
+  headlessIndex: 'packages/headless/src/index.ts',
+  headlessProductExecutor: 'packages/headless/src/headless-coding-kernel.ts',
+  headlessProductProbe: 'packages/headless/test/headless-coding-kernel.test.mjs',
 });
 
 const SOURCE_CHECKS = Object.freeze([
   check('package-verification-entrypoint', SOURCE_PATHS.packageJson, [
     '"verify:kernel-prep-owner-baseline"',
   ]),
+  check('headless-workspace-build-gate', SOURCE_PATHS.packageJson, [
+    '"packages/headless"',
+    '"headless:build"',
+    '"headless:typecheck"',
+    '"headless:test"',
+  ]),
   check('default-phase-gate', SOURCE_PATHS.phaseGate, [
     "id: 'kernel-prep-owner-baseline'",
     "command: ['npm', 'run', 'verify:kernel-prep-owner-baseline']",
   ]),
   check('shared-contract-description', SOURCE_PATHS.sharedBuildProfile, [
-    'Shared Coding Kernel, command, event, and evidence contracts used by VS Code and CLI',
+    'Shared Coding Kernel, command, event, and evidence contracts used by VS Code, CLI, and Headless',
+    "id: 'headless-programmatic'",
+    "command: 'npm run headless:test'",
   ], ['Headless Agent Core shared by VS Code and CLI']),
   check('shared-canonical-coding-kernel', SOURCE_PATHS.sharedCodingKernel, [
     "CODING_KERNEL_REQUEST_VERSION = 'devseek.coding-kernel-request/v1'",
@@ -100,6 +112,28 @@ const SOURCE_CHECKS = Object.freeze([
     "export * from './coding-conformance';",
     "export * from './coding-conformance-fixtures';",
     "export * from './coding-kernel';",
+  ]),
+  check('headless-package-entrypoint', SOURCE_PATHS.headlessPackageJson, [
+    '"name": "@devseek-netai/headless"',
+    '"main": "dist/index.js"',
+    '"types": "dist/index.d.ts"',
+    '"@devseek-netai/shared": "*"',
+  ]),
+  check('headless-public-export', SOURCE_PATHS.headlessIndex, [
+    "export * from './headless-coding-kernel';",
+  ]),
+  check('headless-canonical-kernel-composition', SOURCE_PATHS.headlessProductExecutor, [
+    'export class HeadlessCodingKernelExecutor<TRuntimeContext, TResult>',
+    'this.kernel = new CanonicalCodingKernel(runtime)',
+    'return this.kernel.execute({',
+    "route: 'canonical'",
+    "surface: 'headless'",
+    'taskContract: input.taskContract',
+  ], ["from 'vscode'", 'CliCodingKernelRuntimeAdapter', 'runAgenticLoop']),
+  check('headless-product-route-probe', SOURCE_PATHS.headlessProductProbe, [
+    'Headless product entry delegates one immutable request to the shared canonical Kernel',
+    "assert.equal(calls[0].surface, 'headless')",
+    'coding-kernel-execution:cancelled-before-start',
   ]),
   check('cli-coding-conformance-development-probe', SOURCE_PATHS.cliCodingConformanceProbe, [
     'CLI canonical Kernel probe exposes settled output without inventing mutation readback receipts',
@@ -410,13 +444,13 @@ export function buildKernelPrepOwnerBaseline(sources) {
     semantic_domains: buildSemanticDomains(),
     counts: {
       product_routes: 4,
-      active_product_routes: headlessProductEntrypoints === 0 ? 3 : 4,
+      active_product_routes: headlessProductEntrypoints === 1 ? 4 : 3,
       headless_product_entrypoints: headlessProductEntrypoints,
-      canonical_fresh_task_routes: 2,
+      canonical_fresh_task_routes: headlessProductEntrypoints === 1 ? 3 : 2,
       canonical_recovery_routes: 1,
       legacy_recovery_routes: 0,
       legacy_execution_owners: 0,
-      cross_surface_kernel_routes: 3,
+      cross_surface_kernel_routes: headlessProductEntrypoints === 1 ? 4 : 3,
       semantic_domains: 5,
       converged_semantic_domains: 0,
       source_checks: sourceChecks.length,
@@ -461,13 +495,13 @@ export function validateKernelPrepOwnerBaseline(baseline, sources) {
   if (baseline.iteration_policy?.qualification_promotion_requires_gate0 !== true) {
     errors.push('iteration-policy:qualification-promotion-must-require-gate0');
   }
-  if (baseline.counts?.headless_product_entrypoints !== 0) {
+  if (baseline.counts?.headless_product_entrypoints !== 1) {
     errors.push(`headless:unexpected-product-entrypoints-${baseline.counts?.headless_product_entrypoints}`);
   }
   if (baseline.counts?.legacy_execution_owners !== 0) {
     errors.push(`legacy-execution-owner:unexpected-${baseline.counts?.legacy_execution_owners}`);
   }
-  if (baseline.counts?.cross_surface_kernel_routes !== 3) {
+  if (baseline.counts?.cross_surface_kernel_routes !== 4) {
     errors.push(`cross-surface-kernel-routes:unexpected-${baseline.counts?.cross_surface_kernel_routes}`);
   }
   if (baseline.counts?.converged_semantic_domains !== 0) {
@@ -576,8 +610,10 @@ function buildProductRoutes(headlessProductEntrypoints) {
     {
       route_id: 'headless-product',
       surface: 'headless',
-      current_chain: headlessProductEntrypoints === 0 ? [] : ['unclassified-headless-entrypoint'],
-      status: headlessProductEntrypoints === 0 ? 'absent' : 'unclassified',
+      current_chain: headlessProductEntrypoints === 1
+        ? ['HeadlessCodingKernelExecutor', 'CanonicalCodingKernel', 'CodingKernelRuntimePort']
+        : [],
+      status: headlessProductEntrypoints === 1 ? 'canonical-cross-surface-route' : 'absent',
     },
   ];
 }
@@ -585,9 +621,9 @@ function buildProductRoutes(headlessProductEntrypoints) {
 function buildSemanticDomains() {
   return [
     domain('task-contract', 'TaskContractPort', [
-      owner('shared-CodingKernelTaskContract', ['vscode', 'cli'], SOURCE_PATHS.sharedCodingKernel),
+      owner('shared-CodingKernelTaskContract', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedCodingKernel),
       owner('vscode-rich-TaskSemanticContract', ['vscode'], SOURCE_PATHS.taskContract),
-    ], ['headless']),
+    ], []),
     domain('tool-execution', 'ToolExecutorPort', [
       owner('vscode-AgentToolExecutor', ['vscode'], SOURCE_PATHS.toolExecutor),
       owner('cli-artifact-interpreter', ['cli'], 'packages/cli/src/cli-coding-artifact-interpreter.ts'),
@@ -601,10 +637,10 @@ function buildSemanticDomains() {
       owner('cli-CliVerificationService', ['cli'], SOURCE_PATHS.cliVerification),
     ], ['headless']),
     domain('completion-decision', 'CompletionDecisionPort', [
-      owner('shared-CanonicalCodingKernel-output', ['vscode', 'cli'], SOURCE_PATHS.sharedCodingKernel),
+      owner('shared-CanonicalCodingKernel-output', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedCodingKernel),
       owner('vscode-TerminalPermissionCoordinator', ['vscode'], SOURCE_PATHS.completion),
       owner('cli-runPrompt-and-CliRunEvidence', ['cli'], SOURCE_PATHS.cliIndex),
-    ], ['headless']),
+    ], []),
   ];
 }
 

@@ -41,16 +41,16 @@ test('kernel prep owner baseline is source-bound and discloses every unconverged
   });
   assert.deepEqual(actual.counts, {
     product_routes: 4,
-    active_product_routes: 3,
-    headless_product_entrypoints: 0,
-    canonical_fresh_task_routes: 2,
+    active_product_routes: 4,
+    headless_product_entrypoints: 1,
+    canonical_fresh_task_routes: 3,
     canonical_recovery_routes: 1,
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
-    cross_surface_kernel_routes: 3,
+    cross_surface_kernel_routes: 4,
     semantic_domains: 5,
     converged_semantic_domains: 0,
-    source_checks: 42,
+    source_checks: 47,
     failed_source_checks: 0,
   });
   assert.deepEqual(
@@ -59,7 +59,7 @@ test('kernel prep owner baseline is source-bound and discloses every unconverged
       ['vscode-fresh-task', 'canonical-cross-surface-route'],
       ['vscode-checkpoint-resume', 'canonical-recovery-route'],
       ['cli-exec', 'canonical-cross-surface-route'],
-      ['headless-product', 'absent'],
+      ['headless-product', 'canonical-cross-surface-route'],
     ],
   );
   assert.deepEqual(
@@ -103,17 +103,31 @@ test('kernel prep owner baseline is source-bound and discloses every unconverged
   );
 });
 
-test('coding conformance preparation has no product-route imports or adapters', () => {
+test('product Surfaces do not bypass the canonical Kernel through conformance-only adapters', () => {
   const productRoots = [
     'packages/vscode-extension/src',
     'packages/cli/src',
     'packages/bridge/src',
+    'packages/headless/src',
   ];
   const hits = productRoots.flatMap(relativeRoot => collectTypeScriptFiles(path.join(repoRoot, relativeRoot)))
     .filter(filePath => /CodingConformance|coding-conformance/.test(fs.readFileSync(filePath, 'utf8')))
     .map(filePath => path.relative(repoRoot, filePath));
 
   assert.deepEqual(hits, []);
+});
+
+test('kernel prep owner baseline fails closed when Headless bypasses the shared canonical Kernel', () => {
+  const mutatedSources = structuredClone(sources);
+  const sourcePath = 'packages/headless/src/headless-coding-kernel.ts';
+  mutatedSources.sourceContents[sourcePath] = mutatedSources.sourceContents[sourcePath]
+    .replace('return this.kernel.execute({', 'return this.runtime.executeCanonical({');
+
+  const mutated = buildKernelPrepOwnerBaseline(mutatedSources);
+  const result = validateKernelPrepOwnerBaseline(mutated, mutatedSources);
+
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.includes('source-check:failed-headless-canonical-kernel-composition'));
 });
 
 test('kernel prep owner baseline fails closed when the canonical recovery adapter drifts', () => {
@@ -167,13 +181,13 @@ test('kernel prep owner baseline checker validates the current generated artifac
     gate0_status: 'NOT_PASSED',
     local_product_convergence_allowed: true,
     qualification_promotion_allowed: false,
-    active_product_routes: 3,
-    headless_product_entrypoints: 0,
-    canonical_fresh_task_routes: 2,
+    active_product_routes: 4,
+    headless_product_entrypoints: 1,
+    canonical_fresh_task_routes: 3,
     canonical_recovery_routes: 1,
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
-    cross_surface_kernel_routes: 3,
+    cross_surface_kernel_routes: 4,
     converged_semantic_domains: 0,
     failed_source_checks: 0,
     qualification_effect: 'NONE',

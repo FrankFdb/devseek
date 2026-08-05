@@ -4,6 +4,7 @@ export type BuildProfileId =
   | 'vscode-extension'
   | 'cli-tui'
   | 'cli-jsonl'
+  | 'headless-programmatic'
   | 'desktop-local-web';
 
 export interface BuildProfile {
@@ -16,7 +17,7 @@ export interface BuildProfile {
 export const BUILD_PROFILES: readonly BuildProfile[] = [
   {
     id: 'shared-core',
-    description: 'Shared Coding Kernel, command, event, and evidence contracts used by VS Code and CLI',
+    description: 'Shared Coding Kernel, command, event, and evidence contracts used by VS Code, CLI, and Headless',
     command: 'npm run shared:build',
     requiredForPhase10: true,
   },
@@ -42,6 +43,12 @@ export const BUILD_PROFILES: readonly BuildProfile[] = [
     id: 'cli-jsonl',
     description: 'Non-interactive JSONL surface',
     command: 'npm run cli:test',
+    requiredForPhase10: true,
+  },
+  {
+    id: 'headless-programmatic',
+    description: 'Programmatic Headless Surface over the shared Coding Kernel',
+    command: 'npm run headless:test',
     requiredForPhase10: true,
   },
   {

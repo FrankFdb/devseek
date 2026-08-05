@@ -30,6 +30,9 @@ const SOURCE_PATHS = Object.freeze({
   cliPackageJson: 'packages/cli/package.json',
   cliIndex: 'packages/cli/src/index.ts',
   cliSurfaceAdapter: 'packages/cli/src/cli-surface-adapter.ts',
+  headlessPackageJson: 'packages/headless/package.json',
+  headlessIndex: 'packages/headless/src/index.ts',
+  headlessExecutor: 'packages/headless/src/headless-coding-kernel.ts',
   bridgeServer: 'packages/bridge/src/server.ts',
   schemaSource: 'docs/process/devseek-surface-entry-inventory.schema.json',
   checkerSource: 'scripts/devseek-surface-entry-inventory-check.mjs',
@@ -123,6 +126,7 @@ export function collectSurfaceEntryInventorySources(repoRoot, readText, readJson
     repoRoot,
     packageJson: readJson(SOURCE_PATHS.packageJson),
     cliPackageJson: readJson(SOURCE_PATHS.cliPackageJson),
+    headlessPackageJson: readJson(SOURCE_PATHS.headlessPackageJson),
     sourceContents,
   };
 }
@@ -133,6 +137,7 @@ export function buildSurfaceEntryInventory(sources) {
     ...buildWebviewEntries(sources),
     ...buildAttachmentEntries(sources),
     ...buildCliEntries(sources),
+    ...buildHeadlessEntries(sources),
     ...buildBridgeEntries(sources),
   ].sort((left, right) => left.entry_id.localeCompare(right.entry_id));
   const packageJson = sources.packageJson;
@@ -290,6 +295,12 @@ export function validateSurfaceEntryInventory(inventory, sources) {
   if (guards.surface_entry_ids_unique !== true) {
     errors.push('bypass:surface-entry-ids-not-unique');
   }
+  if (guards.headless_single_product_entrypoint !== true) {
+    errors.push('bypass:headless-product-entrypoint-not-unique');
+  }
+  if (guards.headless_surface_no_vscode_dependency !== true) {
+    errors.push('bypass:headless-surface-depends-on-vscode');
+  }
   if (guards.inventory_asserts_gate_pass === true) {
     errors.push('bypass:inventory-asserts-gate-pass');
   }
@@ -302,6 +313,7 @@ export function validateSurfaceEntryInventory(inventory, sources) {
       vscode_commands: counts.vscode_runtime_commands ?? 0,
       webview_inbound: counts.webview_protocol_entries ?? 0,
       cli_entrypoints: counts.cli_entrypoints ?? 0,
+      headless_entrypoints: counts.headless_entrypoints ?? 0,
       bridge_endpoints: counts.bridge_endpoints ?? 0,
       attachment_entries: counts.attachment_entries ?? 0,
       unknown_entries: counts.unknown_entries ?? 0,
@@ -526,6 +538,34 @@ function buildCliEntries(sources) {
   ];
 }
 
+function buildHeadlessEntries(sources) {
+  const packageJson = sources.headlessPackageJson;
+  const indexSource = sources.sourceContents[SOURCE_PATHS.headlessIndex] ?? '';
+  const executorSource = sources.sourceContents[SOURCE_PATHS.headlessExecutor] ?? '';
+  const observed = packageJson.name === '@devseek-netai/headless'
+    && packageJson.main === 'dist/index.js'
+    && packageJson.types === 'dist/index.d.ts'
+    && indexSource.includes("export * from './headless-coding-kernel';")
+    && executorSource.includes('export class HeadlessCodingKernelExecutor')
+    && executorSource.includes('new CanonicalCodingKernel(runtime)')
+    && executorSource.includes("surface: 'headless'");
+  return [{
+    entry_id: 'headless/programmatic-run',
+    surface: 'headless',
+    kind: 'programmatic-entrypoint',
+    scope: 'public',
+    source_ref: SOURCE_PATHS.headlessExecutor,
+    entrypoint: 'HeadlessCodingKernelExecutor.execute',
+    manifest_declared: true,
+    runtime_registered: observed,
+    protocol_declared: true,
+    handler_declared: observed,
+    owner: 'HeadlessCodingKernelExecutor',
+    kernel_contract_projection: 'CanonicalCodingKernelRequest/Output',
+    coverage_status: observed ? 'covered' : 'missing-source',
+  }];
+}
+
 function cliEntry(entryId, entrypoint, observed, scope, projection) {
   return {
     entry_id: entryId,
@@ -570,9 +610,12 @@ function buildBridgeEntries(sources) {
 function buildBypassGuards(sources, entries) {
   const provider = sources.sourceContents[SOURCE_PATHS.deepseekViewProvider] ?? '';
   const inventoryLib = sources.sourceContents[SOURCE_PATHS.inventoryLibSource] ?? '';
+  const headlessSource = sources.sourceContents[SOURCE_PATHS.headlessExecutor] ?? '';
   return {
     unknown_entry_fail_closed: entries.every(entry => entry.coverage_status !== 'unknown-entry'),
     surface_entry_ids_unique: duplicateEntryIds(entries).length === 0,
+    headless_single_product_entrypoint: entries.filter(entry => entry.surface === 'headless').length === 1,
+    headless_surface_no_vscode_dependency: !/from\s+['"]vscode['"]|require\(['"]vscode['"]\)/.test(headlessSource),
     generic_webview_command_disabled: provider.includes('Generic inbound VS Code commands are disabled; use a typed product action.'),
     legacy_surface_projection_fallbacks_removed: !hasLegacySurfaceProjectionFallbacks(inventoryLib),
     manifest_command_declaration_unique: duplicateManifestCommandIds(sources.packageJson).length === 0,
@@ -614,6 +657,7 @@ function buildCounts(entries, sources) {
     webview_handler_missing_protocol: webviewEntries.filter(entry => entry.coverage_status === 'missing-protocol').length,
     attachment_entries: entries.filter(entry => entry.kind.startsWith('attachment') || entry.surface.includes('attachment')).length,
     cli_entrypoints: entries.filter(entry => entry.surface === 'cli').length,
+    headless_entrypoints: entries.filter(entry => entry.surface === 'headless').length,
     bridge_endpoints: entries.filter(entry => entry.surface.startsWith('bridge')).length,
     unknown_entries: entries.filter(entry => (
       entry.coverage_status === 'unknown-entry'

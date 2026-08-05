@@ -39,7 +39,7 @@
     },
     "deepseekViewProvider": {
       "path": "packages/vscode-extension/src/ui/deepseek-view-provider.ts",
-      "source_sha256": "f1b97855a34e4a1f228521e18f572a064f67d8d13c66ff8036f00044dfd7ecfa"
+      "source_sha256": "25dcefdc19de235671767ac089a058987fe22387c6acb98ae457e69af5ee39e6"
     },
     "cliPackageJson": {
       "path": "packages/cli/package.json",
@@ -47,11 +47,23 @@
     },
     "cliIndex": {
       "path": "packages/cli/src/index.ts",
-      "source_sha256": "ef266a06da74b8a97181f49737452b547ce447adcf49368c83036a1c20f2aef5"
+      "source_sha256": "e5dade28699a76d2e2af6b0041c617a28225ac76bf0f1d2eec05874e2f49b06d"
     },
     "cliSurfaceAdapter": {
       "path": "packages/cli/src/cli-surface-adapter.ts",
       "source_sha256": "bfe3a03759d4622a0ffb5d0b3747a2896dfc9cebd3eeee1a2d384106b334283b"
+    },
+    "headlessPackageJson": {
+      "path": "packages/headless/package.json",
+      "source_sha256": "e3159685efd04ce36dfc9c0fff198fafeb182eb342c1e9e16c28ba34f6da42b7"
+    },
+    "headlessIndex": {
+      "path": "packages/headless/src/index.ts",
+      "source_sha256": "dcb12457fdea5d4e45fb4e667930f96b020812b4442b845b90a9faf6de3b3c15"
+    },
+    "headlessExecutor": {
+      "path": "packages/headless/src/headless-coding-kernel.ts",
+      "source_sha256": "e3594d2799410b9875833dc0628b7132a59f4cb251a9de67622f4b1280fee219"
     },
     "bridgeServer": {
       "path": "packages/bridge/src/server.ts",
@@ -59,7 +71,7 @@
     },
     "schemaSource": {
       "path": "docs/process/devseek-surface-entry-inventory.schema.json",
-      "source_sha256": "0229d5dcaa13be8159208aa603cd855ee43e290915f80bf219616ffef94b1ce9"
+      "source_sha256": "91baf34e906dc9141dc8944fdb24248af4bde0eafc4fd6c3400eb55744c130c0"
     },
     "checkerSource": {
       "path": "scripts/devseek-surface-entry-inventory-check.mjs",
@@ -67,15 +79,15 @@
     },
     "inventoryLibSource": {
       "path": "scripts/lib/devseek-surface-entry-inventory.mjs",
-      "source_sha256": "7deba48c54ae55337bddf5cdfb8ee6a9f918b296c032bad0f408fbc39d04e361"
+      "source_sha256": "8eb48dbd944458369ef20d14919706b1d7b46472ad7baac3c8f9fefec1e74ab5"
     },
     "oracleSource": {
       "path": "scripts/test/devseek-surface-entry-inventory.test.mjs",
-      "source_sha256": "e3842737ad8566173beb3cc56e3768f3c9b0d879beab727c2d15b0ae38e436ee"
+      "source_sha256": "b2c6608fe345822f8b4abee44e884b122b24580f70969e9ea7857716938ca892"
     },
     "rootPackageJson": {
       "path": "package.json",
-      "source_sha256": "15d66674eea541522923999edf71a178e89686e770a2e9252829508a4914e85c"
+      "source_sha256": "77d475cf39644b8fd5bbcbb6c83f187ea792ef72f0f159f57ba66496abda03f6"
     }
   },
   "owner": {
@@ -431,6 +443,21 @@
       "handler_declared": true,
       "owner": "CliSurfaceAdapter",
       "kernel_contract_projection": "version-text",
+      "coverage_status": "covered"
+    },
+    {
+      "entry_id": "headless/programmatic-run",
+      "surface": "headless",
+      "kind": "programmatic-entrypoint",
+      "scope": "public",
+      "source_ref": "packages/headless/src/headless-coding-kernel.ts",
+      "entrypoint": "HeadlessCodingKernelExecutor.execute",
+      "manifest_declared": true,
+      "runtime_registered": true,
+      "protocol_declared": true,
+      "handler_declared": true,
+      "owner": "HeadlessCodingKernelExecutor",
+      "kernel_contract_projection": "CanonicalCodingKernelRequest/Output",
       "coverage_status": "covered"
     },
     {
@@ -1427,6 +1454,8 @@
   "bypass_guards": {
     "unknown_entry_fail_closed": true,
     "surface_entry_ids_unique": true,
+    "headless_single_product_entrypoint": true,
+    "headless_surface_no_vscode_dependency": true,
     "generic_webview_command_disabled": true,
     "legacy_surface_projection_fallbacks_removed": true,
     "manifest_command_declaration_unique": true,
@@ -1439,7 +1468,7 @@
     "inventory_asserts_gate_pass": false
   },
   "counts": {
-    "total_entries": 87,
+    "total_entries": 88,
     "vscode_manifest_commands": 19,
     "vscode_runtime_commands": 25,
     "vscode_manifest_commands_missing_runtime": 0,
@@ -1450,6 +1479,7 @@
     "webview_handler_missing_protocol": 0,
     "attachment_entries": 5,
     "cli_entrypoints": 8,
+    "headless_entrypoints": 1,
     "bridge_endpoints": 10,
     "unknown_entries": 0,
     "duplicate_surface_entry_ids": 0,
@@ -1460,5 +1490,5 @@
     "duplicate_webview_protocol_declarations": 0,
     "duplicate_webview_handler_registrations": 0
   },
-  "inventory_sha256": "3d79b31a57aa569b98e7b4228e65f5d6c48d0b0bd05533c42c6b89382829ebce"
+  "inventory_sha256": "d33a713923807a043250864196773eb9cee878b8834e44fea4398f0d91fbc884"
 }

@@ -97,6 +97,8 @@
       "required": [
         "unknown_entry_fail_closed",
         "surface_entry_ids_unique",
+        "headless_single_product_entrypoint",
+        "headless_surface_no_vscode_dependency",
         "generic_webview_command_disabled",
         "legacy_surface_projection_fallbacks_removed",
         "manifest_command_declaration_unique",
@@ -111,6 +113,8 @@
       "properties": {
         "unknown_entry_fail_closed": { "type": "boolean" },
         "surface_entry_ids_unique": { "type": "boolean" },
+        "headless_single_product_entrypoint": { "const": true },
+        "headless_surface_no_vscode_dependency": { "const": true },
         "generic_webview_command_disabled": { "type": "boolean" },
         "legacy_surface_projection_fallbacks_removed": { "type": "boolean" },
         "manifest_command_declaration_unique": { "type": "boolean" },
@@ -138,6 +142,7 @@
         "webview_handler_missing_protocol",
         "attachment_entries",
         "cli_entrypoints",
+        "headless_entrypoints",
         "bridge_endpoints",
         "unknown_entries",
         "duplicate_surface_entry_ids",
@@ -160,6 +165,7 @@
         "webview_handler_missing_protocol": { "type": "integer", "minimum": 0 },
         "attachment_entries": { "type": "integer", "minimum": 0 },
         "cli_entrypoints": { "type": "integer", "minimum": 0 },
+        "headless_entrypoints": { "type": "integer", "minimum": 0 },
         "bridge_endpoints": { "type": "integer", "minimum": 0 },
         "unknown_entries": { "type": "integer", "minimum": 0 },
         "duplicate_surface_entry_ids": { "type": "integer", "minimum": 0 },
