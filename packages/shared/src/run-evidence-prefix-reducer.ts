@@ -4,6 +4,7 @@ import {
   type RunEvidenceEvent,
   type RunEvidenceEventType,
   type RunEvidenceJson,
+  type RunEvidenceSettlementStatus,
   RunEvidenceLedgerError,
 } from './run-evidence-protocol';
 
@@ -47,7 +48,7 @@ const VERIFIED_LOCAL_PROVIDER_FAILURE_RESOLUTION = 'provider-failure-superseded-
 
 export interface RunEvidencePrefixState {
   settled: boolean;
-  settlementStatus?: 'completed' | 'failed' | 'cancelled';
+  settlementStatus?: RunEvidenceSettlementStatus;
   operationalEventCount: number;
 }
 
@@ -403,7 +404,7 @@ function assertSettlementClosure(
     adverseTerminals: readonly AdverseTerminal[];
     degradedReasons: readonly string[];
   },
-  status: 'completed' | 'failed' | 'cancelled',
+  status: RunEvidenceSettlementStatus,
 ): void {
   if (state.operationalEventCount === 0) {
     semanticFailure('An opened run cannot settle without operational evidence');
@@ -431,10 +432,10 @@ function assertSettlementClosure(
   }
 }
 
-function requireSettlementStatus(event: RunEvidenceSemanticEvent): 'completed' | 'failed' | 'cancelled' {
+function requireSettlementStatus(event: RunEvidenceSemanticEvent): RunEvidenceSettlementStatus {
   const status = readObjectPayload(event).status;
-  if (status !== 'completed' && status !== 'failed' && status !== 'cancelled') {
-    semanticFailure('run.settled requires status=completed, failed, or cancelled');
+  if (status !== 'completed' && status !== 'failed' && status !== 'blocked' && status !== 'cancelled') {
+    semanticFailure('run.settled requires status=completed, failed, blocked, or cancelled');
   }
   return status;
 }

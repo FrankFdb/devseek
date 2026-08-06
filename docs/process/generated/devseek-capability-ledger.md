@@ -4,7 +4,7 @@
 
 - Schema: `devseek.capability-ledger/v1`
 - Capabilities: 76
-- Ledger SHA-256: `08bb2cc53b13c32807373db73cb80cda97a745cc4941aa919bbac4e76f5c45d5`
+- Ledger SHA-256: `415abaef2c9f49261528cceb8701ea1138cb9e718089d618047b0f1007fe9cac`
 - Qualification claim policy: `deny-until-signed-evidence-validator`
 
 | Capability | Priority | Applicability | Claim scopes | Implementation | Qualification | Authority port | Typed dependencies |
@@ -17,7 +17,7 @@
 | `C0-QUALIFICATION-PROFILE-SCHEMA` | P0 | active | qualification-infrastructure | wired | — | `QualificationProfileSchemaPort` | C0-CAPABILITY-LEDGER-SCHEMA (evidence/wired)<br>C0-CASE-CATALOG (evidence/wired) |
 | `C0-RUN-EVIDENCE-LEDGER` | P0 | active | qualification-infrastructure | wired | — | `RunEvidenceLedgerPort` | — |
 | `C1-AGENT-COMMAND` | P0 | active | core-coding | proposed | — | `AgentCommandPort` | C1-RUN-LIFECYCLE (control/wired) |
-| `C1-RUN-LIFECYCLE` | P0 | active | core-coding | proposed | — | `RunLifecyclePort` | C0-RUN-EVIDENCE-LEDGER (evidence/wired) |
+| `C1-RUN-LIFECYCLE` | P0 | active | core-coding | wired | — | `RunLifecyclePort` | C0-RUN-EVIDENCE-LEDGER (evidence/wired) |
 | `C1-SETTLEMENT` | P0 | active | core-coding | proposed | — | `SettlementDecisionPort` | C1-RUN-LIFECYCLE (control/wired) |
 | `C1-SURFACE-ADAPTER-CONFORMANCE` | P0 | active | core-coding | proposed | — | `SurfaceAdapterConformancePort` | C1-RUN-LIFECYCLE (control/wired)<br>C1-AGENT-COMMAND (control/wired)<br>C1-SETTLEMENT (control/wired) |
 | `C10-ARTIFACT-IDENTITY` | P0 | active | core-coding, safety | proposed | — | `ArtifactIdentityPort` | C9-BUILD-ORCHESTRATION (verification/wired)<br>C10-INDEPENDENT-REVIEW (delivery/wired) |
@@ -36,7 +36,7 @@
 | `C11-USER-COLLABORATION` | P1 | active | core-coding | proposed | — | `UserCollaborationPort` | C1-AGENT-COMMAND (control/wired)<br>C2-TASK-CONTRACT (semantic/wired)<br>C11-CANCEL-INTERRUPT (recovery/wired)<br>C11-STEERING (recovery/wired) |
 | `C12-CONTEXT-COMPACTION` | P1 | active | core-coding | proposed | — | `ContextCompactionPort` | C3-CONTEXT-GRAPH (semantic/wired)<br>C11-CHECKPOINT (recovery/wired) |
 | `C12-MEMORY-POLICY` | P1 | active | core-coding | proposed | — | `MemoryPolicyPort` | C3-INSTRUCTION-PRECEDENCE (semantic/wired)<br>C12-RUN-EVIDENCE-RETENTION (context/wired) |
-| `C12-RUN-EVIDENCE-RETENTION` | P0 | active | core-coding, safety | proposed | — | `RunEvidenceRetentionPort` | C0-RUN-EVIDENCE-LEDGER (evidence/wired) |
+| `C12-RUN-EVIDENCE-RETENTION` | P0 | active | core-coding, safety | wired | — | `RunEvidenceRetentionPort` | C0-RUN-EVIDENCE-LEDGER (evidence/wired) |
 | `C13-EXTENSION-CONFORMANCE` | P2 | conditional | orchestration-capable, extension-capable | proposed | — | `ExtensionConformancePort` | C13-SKILL-BOUNDARY (extension/wired)<br>C13-HOOK-BOUNDARY (extension/wired)<br>C13-MCP-BOUNDARY (extension/wired)<br>C13-SUBAGENT-DELEGATION (extension/wired)<br>C13-WORKTREE-ISOLATION (extension/wired) |
 | `C13-HEADLESS-SDK` | P2 | conditional | orchestration-capable, extension-capable | proposed | — | `HeadlessSdkPort` | C1-SURFACE-ADAPTER-CONFORMANCE (control/wired)<br>C13-EXTENSION-CONFORMANCE (extension/wired) |
 | `C13-HOOK-BOUNDARY` | P2 | conditional | orchestration-capable, extension-capable | proposed | — | `HookBoundaryPort` | C6-TOOL-EXECUTION (execution/wired)<br>C7-PERMISSION-DECISION (authority/wired)<br>C7-EXTERNAL-EFFECT (authority/wired)<br>C0-RUN-EVIDENCE-LEDGER (evidence/wired) |

@@ -4,6 +4,11 @@ import type {
   CodingTaskMode,
   CodingTerminalStatus,
 } from './coding-conformance';
+import {
+  CanonicalRunLifecycleService,
+  type CodingRunLifecycleSnapshot,
+  type RunLifecycleSessionPort,
+} from './coding-run-lifecycle';
 
 export const CODING_KERNEL_REQUEST_VERSION = 'devseek.coding-kernel-request/v1' as const;
 export const CODING_KERNEL_OUTPUT_VERSION = 'devseek.coding-kernel-output/v1' as const;
@@ -75,6 +80,7 @@ export interface CodingKernelExecutionOutput<TResult> {
   readonly surface: CodingKernelSurface;
   readonly runId: string;
   readonly status: CodingTerminalStatus;
+  readonly lifecycle: CodingRunLifecycleSnapshot;
   readonly taskContract: CodingKernelTaskContract;
   readonly result: TResult;
   readonly evidenceRefs: readonly string[];
@@ -86,6 +92,20 @@ export interface CodingKernelRuntimePort<TRuntimeContext, TResult> {
     request: CodingKernelExecutionRequest<TRuntimeContext>,
   ): Promise<CodingKernelRuntimeOutput<TResult>>;
 }
+
+export class CodingKernelExecutionError extends Error {
+  readonly lifecycle: CodingRunLifecycleSnapshot;
+  readonly runtimeCause: unknown;
+
+  constructor(message: string, lifecycle: CodingRunLifecycleSnapshot, runtimeCause?: unknown) {
+    super(message);
+    this.name = 'CodingKernelExecutionError';
+    this.lifecycle = lifecycle;
+    this.runtimeCause = runtimeCause;
+  }
+}
+
+const RUN_LIFECYCLE = new CanonicalRunLifecycleService();
 
 /**
  * The product-level execution owner shared by every Surface. Runtime adapters
@@ -99,29 +119,52 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
     request: CodingKernelExecutionRequest<TRuntimeContext>,
   ): Promise<CodingKernelExecutionOutput<TResult>> {
     assertCanonicalRequest(request);
+    const lifecycle = RUN_LIFECYCLE.start({ runId: request.runId, surface: request.surface });
     if (request.signal?.aborted) {
-      throw new Error('coding-kernel-execution:cancelled-before-start');
+      lifecycle.settle('cancelled');
+      throw lifecycleError('coding-kernel-execution:cancelled-before-start', lifecycle);
     }
 
     const taskContract = snapshotTaskContract(request.taskContract);
     const runtimeRequest = Object.freeze({ ...request, taskContract });
-    const runtimeOutput = await this.runtime.executeCanonical(runtimeRequest);
-    if (!runtimeOutput || typeof runtimeOutput !== 'object') {
-      throw new Error('coding-kernel-execution:missing-runtime-output');
+    lifecycle.beginExecution();
+    try {
+      const runtimeOutput = await this.runtime.executeCanonical(runtimeRequest);
+      if (!runtimeOutput || typeof runtimeOutput !== 'object') {
+        throw new Error('coding-kernel-execution:missing-runtime-output');
+      }
+      assertTerminalStatus(runtimeOutput.status);
+      lifecycle.settle(runtimeOutput.status);
+      return {
+        version: CODING_KERNEL_OUTPUT_VERSION,
+        route: 'canonical',
+        surface: request.surface,
+        runId: request.runId,
+        status: runtimeOutput.status,
+        lifecycle: lifecycle.snapshot(),
+        taskContract,
+        result: runtimeOutput.result,
+        evidenceRefs: uniqueNonEmpty(runtimeOutput.evidenceRefs ?? []),
+        residualRisks: uniqueNonEmpty(runtimeOutput.residualRisks ?? []),
+      };
+    } catch (error) {
+      if (error instanceof CodingKernelExecutionError) throw error;
+      lifecycle.settle(request.signal?.aborted ? 'cancelled' : 'failed');
+      throw lifecycleError(errorMessage(error), lifecycle, error);
     }
-    assertTerminalStatus(runtimeOutput.status);
-    return {
-      version: CODING_KERNEL_OUTPUT_VERSION,
-      route: 'canonical',
-      surface: request.surface,
-      runId: request.runId,
-      status: runtimeOutput.status,
-      taskContract,
-      result: runtimeOutput.result,
-      evidenceRefs: uniqueNonEmpty(runtimeOutput.evidenceRefs ?? []),
-      residualRisks: uniqueNonEmpty(runtimeOutput.residualRisks ?? []),
-    };
   }
+}
+
+function lifecycleError(
+  message: string,
+  lifecycle: RunLifecycleSessionPort,
+  cause?: unknown,
+): CodingKernelExecutionError {
+  return new CodingKernelExecutionError(message, lifecycle.snapshot(), cause);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function buildCodingKernelTaskContract(

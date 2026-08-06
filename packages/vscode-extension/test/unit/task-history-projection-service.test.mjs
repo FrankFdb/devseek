@@ -176,6 +176,25 @@ test('R3-05E TaskHistoryProjectionService: projects list, detail, and timeline f
   });
 });
 
+test('TaskHistoryProjectionService preserves blocked as a distinct durable terminal state', () => {
+  withTempWorkspace((workspace) => {
+    createEvidenceRun(workspace, {
+      runId: 'run-blocked',
+      sessionId: 'session-blocked',
+      status: 'blocked',
+      startedAt: '2026-07-21T03:30:00.000Z',
+      statusAt: '2026-07-21T03:30:05.000Z',
+      settledAt: '2026-07-21T03:30:20.000Z',
+      promptSha256: '1'.repeat(64),
+      summarySha256: '2'.repeat(64),
+    });
+
+    const detail = new TaskHistoryProjectionService({ workspaceRoot: workspace }).get('run-blocked');
+    assert.equal(detail.task.status, 'blocked');
+    assert.ok(detail.timeline.some(item => item.type === 'run.settled' && item.status === 'blocked'));
+  });
+});
+
 test('R3-05F TaskHistoryProjectionService: lifecycle receipts preserve evidence, redact export, and gate cross-window resume', async () => {
   await withTempWorkspaceAsync(async (workspace) => {
     createEvidenceRun(workspace, {

@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import {
   CODING_KERNEL_REQUEST_VERSION,
   CODING_KERNEL_TASK_CONTRACT_VERSION,
+  CODING_RUN_LIFECYCLE_VERSION,
   CanonicalCodingKernel,
+  CanonicalRunLifecycleService,
+  CodingKernelExecutionError,
   buildCodingKernelTaskContract,
   projectCodingKernelTaskContract,
 } from '../dist/index.js';
@@ -53,6 +56,42 @@ test('CanonicalCodingKernel preserves one versioned request and terminal output 
   assert.equal(output.route, 'canonical');
   assert.equal(output.surface, 'cli');
   assert.equal(output.status, 'completed');
+  assert.deepEqual(output.lifecycle, {
+    version: CODING_RUN_LIFECYCLE_VERSION,
+    runId: 'run-1',
+    surface: 'cli',
+    status: 'completed',
+    terminal: true,
+    events: [
+      {
+        version: CODING_RUN_LIFECYCLE_VERSION,
+        runId: 'run-1',
+        surface: 'cli',
+        sequence: 1,
+        from: null,
+        to: 'accepted',
+        cause: 'task-accepted',
+      },
+      {
+        version: CODING_RUN_LIFECYCLE_VERSION,
+        runId: 'run-1',
+        surface: 'cli',
+        sequence: 2,
+        from: 'accepted',
+        to: 'running',
+        cause: 'execution-dispatched',
+      },
+      {
+        version: CODING_RUN_LIFECYCLE_VERSION,
+        runId: 'run-1',
+        surface: 'cli',
+        sequence: 3,
+        from: 'running',
+        to: 'completed',
+        cause: 'runtime-completed',
+      },
+    ],
+  });
   assert.equal(output.taskContract.version, CODING_KERNEL_TASK_CONTRACT_VERSION);
   assert.deepEqual(output.taskContract.scope.include, ['src/value.ts']);
   assert.deepEqual(output.result.changedPaths, ['src/value.ts']);
@@ -71,8 +110,54 @@ test('CanonicalCodingKernel fails closed before invoking runtime for invalid rou
   await assert.rejects(kernel.execute(request({ route: 'legacy-planned' })), /unsupported-route/u);
   const controller = new AbortController();
   controller.abort();
-  await assert.rejects(kernel.execute(request({ signal: controller.signal })), /cancelled-before-start/u);
+  await assert.rejects(kernel.execute(request({ signal: controller.signal })), error => {
+    assert.equal(error instanceof CodingKernelExecutionError, true);
+    assert.match(error.message, /cancelled-before-start/u);
+    assert.equal(error.lifecycle.status, 'cancelled');
+    assert.deepEqual(error.lifecycle.events.map(event => event.to), ['accepted', 'cancelled']);
+    return true;
+  });
   assert.equal(calls, 0);
+});
+
+test('CanonicalCodingKernel seals blocked and failed runtime outcomes through one lifecycle owner', async () => {
+  const blockedKernel = new CanonicalCodingKernel({
+    async executeCanonical() {
+      return { status: 'blocked', result: { reason: 'permission-denied' } };
+    },
+  });
+  const blocked = await blockedKernel.execute(request());
+  assert.equal(blocked.lifecycle.status, 'blocked');
+  assert.equal(blocked.lifecycle.events.at(-1).cause, 'authority-blocked');
+
+  const failedKernel = new CanonicalCodingKernel({
+    async executeCanonical() {
+      throw new Error('provider disconnected');
+    },
+  });
+  await assert.rejects(failedKernel.execute(request()), error => {
+    assert.equal(error instanceof CodingKernelExecutionError, true);
+    assert.equal(error.message, 'provider disconnected');
+    assert.equal(error.lifecycle.status, 'failed');
+    assert.equal(error.lifecycle.events.at(-1).cause, 'runtime-failed');
+    return true;
+  });
+});
+
+test('RunLifecyclePort treats waiting-user as resumable and rejects post-terminal transitions', () => {
+  const lifecycle = new CanonicalRunLifecycleService().start({ runId: 'run-wait', surface: 'vscode' });
+  lifecycle.beginExecution();
+  lifecycle.waitForUser();
+  assert.equal(lifecycle.snapshot().terminal, false);
+  assert.equal(lifecycle.snapshot().status, 'waiting-user');
+  lifecycle.resumeExecution();
+  lifecycle.settle('completed');
+
+  assert.deepEqual(
+    lifecycle.snapshot().events.map(event => event.to),
+    ['accepted', 'running', 'waiting-user', 'running', 'completed'],
+  );
+  assert.throws(() => lifecycle.settle('failed'), /invalid-transition:completed->failed/u);
 });
 
 test('task contract rejects missing provenance and ambiguous acceptance ids', () => {

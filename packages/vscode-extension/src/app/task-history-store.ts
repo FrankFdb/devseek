@@ -6,6 +6,7 @@ export type TaskRunStatus =
   | 'quality-failed'
   | 'review-ready'
   | 'completed'
+  | 'blocked'
   | 'cancelled'
   | 'failed'
   | 'archived';

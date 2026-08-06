@@ -1,9 +1,12 @@
 import {
+  CanonicalRunEvidenceRetentionService,
   createProductRunEvidenceAuthorityToken,
   ProductRunEvidenceSession,
   productRunEvidenceIdempotencyKey,
   summarizeTraceText,
+  type CodingRunLifecycleSnapshot,
   type ProductRunEvidenceRecordInput,
+  type RunEvidenceSettlementStatus,
 } from '@devseek-netai/shared';
 import { formatCliError } from './cli-error';
 
@@ -142,7 +145,19 @@ export class CliRunEvidence {
     }
   }
 
-  settle(status: 'completed' | 'failed' | 'cancelled'): void {
+  retainLifecycle(snapshot: CodingRunLifecycleSnapshot): void {
+    if (!this.session) {
+      this.degraded = true;
+      return;
+    }
+    try {
+      new CanonicalRunEvidenceRetentionService(this.runId, this.session).retainLifecycle(snapshot);
+    } catch (error) {
+      this.markDegraded(error);
+    }
+  }
+
+  settle(status: RunEvidenceSettlementStatus): void {
     if (!this.session) return;
     if (status === 'completed' && this.degraded) {
       this.runtime.warn('DevSeek evidence warning: completed settlement refused because evidence is degraded');

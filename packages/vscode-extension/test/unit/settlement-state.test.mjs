@@ -39,6 +39,17 @@ test('SettlementState: plain terminal requests pass through unchanged', () => {
     reason: 'user-stop',
     data: { reason: 'user-stop' },
   });
+
+  assert.deepEqual(decideSettlementState({
+    requestedStatus: 'blocked',
+    data: { reason: 'permission-denied' },
+  }), {
+    status: 'blocked',
+    terminal: true,
+    requestedStatus: 'blocked',
+    reason: 'permission-denied',
+    data: { reason: 'permission-denied' },
+  });
 });
 
 test('SettlementState: pending adverse evidence cannot settle as completed', () => {

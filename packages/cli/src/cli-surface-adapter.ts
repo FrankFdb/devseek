@@ -23,10 +23,10 @@ export interface CliSurfaceAdapterOptions {
 
 export const CLI_JSONL_COLLABORATION_SCHEMA = 'devseek.cli-jsonl-collaboration/v1';
 
-export type CliRunLifecycleStatus = 'running' | 'completed' | 'failed' | 'cancelled';
+export type CliRunLifecycleStatus = 'running' | 'completed' | 'failed' | 'blocked' | 'cancelled';
 
 export interface CliRunLifecycleEvent {
-  type: 'cli.run.started' | 'cli.run.completed' | 'cli.run.failed' | 'cli.run.cancelled';
+  type: 'cli.run.started' | 'cli.run.completed' | 'cli.run.failed' | 'cli.run.blocked' | 'cli.run.cancelled';
   schema: typeof CLI_JSONL_COLLABORATION_SCHEMA;
   surface: CliSurfaceKind;
   timestamp: number;
@@ -216,6 +216,7 @@ export function createCliRunLifecycleEvent(args: {
 function lifecycleTypeForStatus(status: CliRunLifecycleStatus): CliRunLifecycleEvent['type'] {
   if (status === 'running') return 'cli.run.started';
   if (status === 'completed') return 'cli.run.completed';
+  if (status === 'blocked') return 'cli.run.blocked';
   if (status === 'cancelled') return 'cli.run.cancelled';
   return 'cli.run.failed';
 }

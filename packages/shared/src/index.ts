@@ -13,6 +13,8 @@ export * from './coding-conformance-projection';
 export * from './coding-task-contract-resolver';
 export * from './coding-terminal-effects';
 export * from './coding-kernel';
+export * from './coding-run-evidence-retention';
+export * from './coding-run-lifecycle';
 export * from './coding-safety-policy';
 export * from './coding-tool-execution';
 export * from './coding-workspace-mutation';

@@ -30,6 +30,7 @@ import {
   type RunEvidenceExpectedAnchor,
   type RunEvidenceRecoveryReport,
   type RunEvidenceSealResult,
+  type RunEvidenceSettlementStatus,
   type RunEvidenceSnapshot,
   type RunEvidenceVerificationReport,
   sha256RunEvidence,
@@ -312,7 +313,7 @@ export class ProductRunEvidenceSession {
   }
 
   settleAndSeal(input: {
-    status: 'completed' | 'failed' | 'cancelled';
+    status: RunEvidenceSettlementStatus;
     idempotencyKey: string;
     payload?: RunEvidenceJson;
     occurredAt?: string | Date;
@@ -656,9 +657,9 @@ function requireContractText(value: unknown, name: string): string {
   return requireRunEvidenceBoundedText(value, name);
 }
 
-function requireSettlementStatus(value: unknown): 'completed' | 'failed' | 'cancelled' {
-  if (value !== 'completed' && value !== 'failed' && value !== 'cancelled') {
-    throw new RunEvidenceLedgerError('INVALID_INPUT', 'status must be completed, failed, or cancelled');
+function requireSettlementStatus(value: unknown): RunEvidenceSettlementStatus {
+  if (value !== 'completed' && value !== 'failed' && value !== 'blocked' && value !== 'cancelled') {
+    throw new RunEvidenceLedgerError('INVALID_INPUT', 'status must be completed, failed, blocked, or cancelled');
   }
   return value;
 }

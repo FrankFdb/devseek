@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildSync } from 'esbuild';
+import { CanonicalRunLifecycleService } from '../../shared/dist/index.js';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const cliRoot = path.resolve(testDir, '..');
@@ -103,6 +104,30 @@ test('CLI run evidence owns authority setup, operation enrichment, and terminal 
   assert.equal(harness.settlements.length, 1);
   assert.equal(harness.settlements[0].status, 'completed');
   assert.deepEqual(harness.settlements[0].payload, { surface: 'jsonl' });
+});
+
+test('CLI run evidence preserves a blocked product terminal', () => {
+  const harness = createHarness();
+
+  harness.evidence.settle('blocked');
+
+  assert.deepEqual(harness.settlements.map(settlement => settlement.status), ['blocked']);
+});
+
+test('CLI run evidence retains the canonical lifecycle before settlement', () => {
+  const harness = createHarness();
+  const lifecycle = new CanonicalRunLifecycleService().start({ runId: 'run-1', surface: 'cli' });
+  lifecycle.beginExecution();
+  lifecycle.settle('blocked');
+
+  harness.evidence.retainLifecycle(lifecycle.snapshot());
+  harness.evidence.settle('blocked');
+
+  assert.deepEqual(
+    harness.events.filter(event => event.type === 'agent.status').map(event => event.payload.status),
+    ['accepted', 'running', 'blocked'],
+  );
+  assert.deepEqual(harness.settlements.map(settlement => settlement.status), ['blocked']);
 });
 
 test('CLI run evidence degrades without losing its participant token when the store cannot open', () => {

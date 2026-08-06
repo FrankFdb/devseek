@@ -14,10 +14,12 @@ function readSource(fileName) {
 test('CLI composition root delegates canonical execution to the shared Kernel', () => {
   const index = readSource('index.ts');
   const productKernel = readSource('cli-product-coding-kernel.ts');
+  const runLifecycle = readSource('cli-run-lifecycle.ts');
 
   assert.match(index, /new CliLegacyWorkspaceContextSelector\(\)/);
   assert.match(index, /CliRunEvidence\.open\(/);
-  assert.match(index, /assertCompletedCliCodingKernelOutput\(await productCliCodingKernelExecutor\.execute\(/);
+  assert.match(index, /acceptCliCodingKernelOutput\(evidence, await productCliCodingKernelExecutor\.execute\(/);
+  assert.match(index, /settleCliRunFailure\(\{/);
   assert.doesNotMatch(index, /kernelOutput\.status !== 'completed'/);
   assert.match(index, /workspaceContextSelector\.select\(/);
   assert.doesNotMatch(index, /CliCodingArtifactInterpreter|CliWorkspaceMutationHostAdapter|CliVerificationAdapter|CliVerificationHostAdapter/);
@@ -31,6 +33,13 @@ test('CLI composition root delegates canonical execution to the shared Kernel', 
   assert.match(productKernel, /route: 'canonical'/);
   assert.match(productKernel, /output\.status === 'completed'/);
   assert.match(productKernel, /completion\.reasonCodes/);
+
+  assert.match(runLifecycle, /export function acceptCliCodingKernelOutput\(/);
+  assert.match(runLifecycle, /evidence\.retainLifecycle\(output\.lifecycle\);\s*assertCompletedCliCodingKernelOutput\(output\);/);
+  assert.match(runLifecycle, /export async function settleCliRunFailure\(/);
+  assert.match(runLifecycle, /resolveCliRunTerminalStatus\(input\.error, input\.cancellation\.cancelled\)/);
+  assert.match(runLifecycle, /await input\.renderLifecycle\(status, exitCode\)/);
+  assert.match(runLifecycle, /input\.evidence\.settle\(status\)/);
 
   assert.doesNotMatch(index, /function runCodingLoop\b/);
   assert.doesNotMatch(index, /CliLegacyCodingLoop|legacyCodingLoop|cli-legacy-coding-loop/);
@@ -76,6 +85,8 @@ test('CLI runtime adapter keeps context, interpretation, mutation, and verificat
 
   assert.match(runEvidence, /class CliRunEvidence/);
   assert.match(runEvidence, /ProductRunEvidenceSession\.forWorkspace/);
+  assert.match(runEvidence, /CanonicalRunEvidenceRetentionService/);
+  assert.match(runEvidence, /retainLifecycle\(snapshot: CodingRunLifecycleSnapshot\)/);
   assert.match(runEvidence, /settleAndSeal/);
   assert.match(runEvidence, /boundary === 'bridge-server'/);
   assert.match(runEvidence, /type: 'evidence\.degraded'/);

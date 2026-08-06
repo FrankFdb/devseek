@@ -135,7 +135,7 @@ test('agent run settlement preserves automatic validation verification ids', () 
   assert.equal(completionData.artifactVerificationOk, true);
 });
 
-test('agent run settlement projects canonical blocked completion as failed without recomputing it', () => {
+test('agent run settlement preserves canonical blocked completion without recomputing it', () => {
   let completionRequest;
   const terminalPermissions = {
     completeRunContext(_runContext, requestedStatus, data) {
@@ -163,7 +163,8 @@ test('agent run settlement projects canonical blocked completion as failed witho
     completionDecision,
   });
 
-  assert.equal(settlement.requestedStatus, 'failed');
+  assert.equal(settlement.requestedStatus, 'blocked');
+  assert.equal(settlement.status, 'blocked');
   assert.equal(settlement.completed, false);
   assert.equal(completionRequest.data.canonicalCompletionStatus, 'blocked');
   assert.deepEqual(completionRequest.data.canonicalCompletionReasonCodes, ['verification-not-run']);

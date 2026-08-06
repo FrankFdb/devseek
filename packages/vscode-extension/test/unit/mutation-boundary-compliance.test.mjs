@@ -215,7 +215,8 @@ test('Mutation guard: durable settlement controls every completed success projec
   assert.match(agentKernel, /settleAgentLoopResult\(this\.terminalPermissions, this\.runContext/);
   assert.match(agentKernel, /completeRunContext\(this\.runContext,\s*'failed'/);
   assert.match(agentSettlement, /const canonicalStatus = result\.completionDecision\?\.status/);
-  assert.match(agentSettlement, /const requestedStatus: RunContextStatus = canonicalStatus === 'completed'/);
+  assert.match(agentSettlement, /const requestedStatus: RunContextStatus = canonicalStatus\s*\?\?/);
+  assert.doesNotMatch(agentSettlement, /canonicalStatus === 'blocked'[\s\S]*?'failed'/);
   assert.doesNotMatch(agentSettlement, /const requestedStatus = result\.tasksFailed > 0 \? 'failed' : 'completed'/);
   assert.match(agentSettlement, /const status = terminalPermissions\.completeRunContext[\s\S]*?const completed = requestedStatus === 'completed' && status === 'completed'/);
   assert.match(agentSettlement, /function settleRunContextDirect[\s\S]*?runContext\.complete\(requestedStatus, data\)/);

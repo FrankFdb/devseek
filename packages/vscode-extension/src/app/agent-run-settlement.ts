@@ -28,15 +28,8 @@ export function settleAgentLoopResult(
   changedPaths: readonly string[] = result.changedPaths,
 ): AgentRunSettlement {
   const canonicalStatus = result.completionDecision?.status;
-  const requestedStatus: RunContextStatus = canonicalStatus === 'completed'
-    ? 'completed'
-    : canonicalStatus === 'cancelled'
-      ? 'cancelled'
-      : canonicalStatus
-        ? 'failed'
-        : result.tasksFailed > 0
-          ? 'failed'
-          : 'completed';
+  const requestedStatus: RunContextStatus = canonicalStatus
+    ?? (result.tasksFailed > 0 ? 'failed' : 'completed');
   const status = terminalPermissions.completeRunContext(runContext, requestedStatus, {
     tasksTotal: result.tasksTotal,
     tasksApplied: result.tasksApplied,

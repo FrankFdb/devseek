@@ -61,6 +61,7 @@ export const RUN_EVIDENCE_EVENT_TYPES = [
 ] as const;
 
 export type RunEvidenceEventType = typeof RUN_EVIDENCE_EVENT_TYPES[number];
+export type RunEvidenceSettlementStatus = 'completed' | 'failed' | 'blocked' | 'cancelled';
 export const RUN_METRICS_SCHEMA = 'devseek.run-metrics/v1' as const;
 export const RUN_METRICS_UNKNOWN = 'unknown' as const;
 export type RunEvidenceJson =

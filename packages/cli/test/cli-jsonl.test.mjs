@@ -223,8 +223,11 @@ test('CLI bridge text mode streams SSE, propagates one run identity, and seals p
       const records = readdirSync(path.join(evidenceRoot, runDirectory, 'records'))
         .sort()
         .map(name => JSON.parse(readFileSync(path.join(evidenceRoot, runDirectory, 'records', name), 'utf8')));
+      const events = records
+        .filter(record => record.record_kind === 'event')
+        .map(record => record.event);
       assert.deepEqual(
-        records.filter(record => record.record_kind === 'event').map(record => record.event.type),
+        events.map(event => event.type),
         [
           'run.opened',
           'command.accepted',
@@ -232,8 +235,17 @@ test('CLI bridge text mode streams SSE, propagates one run identity, and seals p
           'provider.requested',
           'provider.completed',
           'provider.completed',
+          'agent.status',
+          'agent.status',
+          'agent.status',
           'run.settled',
         ],
+      );
+      assert.deepEqual(
+        events
+          .filter(event => event.payload.schema === 'devseek.coding-run-lifecycle-evidence/v1')
+          .map(event => event.payload.status),
+        ['accepted', 'running', 'completed'],
       );
       assert.equal(records.at(-1).record_kind, 'seal');
       assert.equal(records.every(record => record.record_kind !== 'event' || record.event.qualification_eligible === false), true);

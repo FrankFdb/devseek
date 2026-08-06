@@ -21,6 +21,7 @@ import {
   buildCodingKernelTaskContract,
   classifyCodingTerminalEffects,
   evaluateCodingConformanceFixture,
+  ProductRunEvidenceWorkspaceReader,
   projectSettledCodingConformanceRun,
   resolveCodingKernelTaskContract,
 } from '../../shared/dist/index.js';
@@ -73,6 +74,16 @@ test('Headless product entry settles five coding fixtures from isolated real wor
       assert.equal(output.version, CODING_KERNEL_OUTPUT_VERSION, fixture.fixtureId);
       assert.equal(output.surface, 'headless', fixture.fixtureId);
       assert.equal(output.status, fixture.expected.completion.status, fixture.fixtureId);
+      assert.equal(output.runEvidence.status, output.status, fixture.fixtureId);
+      assert.equal(output.runEvidence.qualificationEligible, false, fixture.fixtureId);
+      const evidenceReader = ProductRunEvidenceWorkspaceReader.forWorkspace({ workspaceRoot: cwd });
+      assert.equal(evidenceReader.verify(fixture.fixtureId).status, 'valid-sealed', fixture.fixtureId);
+      const retainedEvents = evidenceReader.readSnapshot(fixture.fixtureId).records.map(record => record.event);
+      assert.deepEqual(
+        retainedEvents.filter(event => event.type === 'agent.status').map(event => event.payload.status),
+        ['accepted', 'running', output.status],
+        fixture.fixtureId,
+      );
       assert.deepEqual(output.result, { fixtureId: fixture.fixtureId }, fixture.fixtureId);
       assert.equal(Object.isFrozen(output.conformance), true, fixture.fixtureId);
       assert.equal(Object.isFrozen(output.conformance.taskContract.scope.include), true, fixture.fixtureId);
@@ -130,15 +141,25 @@ test('Headless product entry fails before runtime dispatch when cancellation is 
   });
   const controller = new AbortController();
   controller.abort();
+  const workspaceRoot = mkdtempSync(join(tmpdir(), 'devseek-headless-cancel-'));
 
-  await assert.rejects(
-    executor.execute({
-      ...runInput(findFixture('create-and-verify')),
-      signal: controller.signal,
-    }),
-    /coding-kernel-execution:cancelled-before-start/,
-  );
-  assert.equal(calls, 0);
+  try {
+    await assert.rejects(
+      executor.execute({
+        ...runInput(findFixture('create-and-verify'), workspaceRoot),
+        signal: controller.signal,
+      }),
+      /coding-kernel-execution:cancelled-before-start/,
+    );
+    assert.equal(calls, 0);
+    const reader = ProductRunEvidenceWorkspaceReader.forWorkspace({ workspaceRoot });
+    const [runId] = reader.discoverRunIds();
+    const events = reader.readSnapshot(runId).records.map(record => record.event);
+    assert.equal(events.at(-1).payload.status, 'cancelled');
+    assert.equal(reader.verify(runId).status, 'valid-sealed');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
 });
 
 test('Headless tool adapter composes host capability without bypassing shared authority', async () => {
@@ -644,7 +665,12 @@ async function executeMutated(fixture, mutate) {
       };
     },
   });
-  return executor.execute(runInput(fixture));
+  const workspaceRoot = mkdtempSync(join(tmpdir(), 'devseek-headless-invalid-'));
+  try {
+    return await executor.execute(runInput(fixture, workspaceRoot));
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
 }
 
 function runtimeOutput(fixture, value) {
@@ -659,11 +685,11 @@ function runtimeOutput(fixture, value) {
   };
 }
 
-function runInput(fixture) {
+function runInput(fixture, workspaceRoot) {
   return {
     runId: fixture.fixtureId,
     userPrompt: fixture.prompt,
-    workspaceRoot: '/workspace',
+    workspaceRoot,
     taskContract: buildCodingKernelTaskContract({
       goal: fixture.expected.taskContract.goal,
       mode: fixture.expected.taskContract.mode,

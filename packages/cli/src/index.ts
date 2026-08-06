@@ -13,8 +13,9 @@ import {
 import { bridgeCancel as callBridgeCancel, bridgeChat as callBridgeChat } from './bridge-client';
 import { formatCliError } from './cli-error';
 import { CliLegacyWorkspaceContextSelector } from './cli-legacy-workspace-context-selector';
-import { assertCompletedCliCodingKernelOutput, productCliCodingKernelExecutor } from './cli-product-coding-kernel';
+import { productCliCodingKernelExecutor } from './cli-product-coding-kernel';
 import { CliRunEvidence } from './cli-run-evidence';
+import { acceptCliCodingKernelOutput, settleCliRunFailure } from './cli-run-lifecycle';
 import { CliSurfaceAdapter, createCliRunLifecycleEvent, type CliRunLifecycleStatus, type CliSurfaceKind } from './cli-surface-adapter';
 
 interface CliOptions {
@@ -166,7 +167,7 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
       payload: { provider: options.mock ? 'local-api' : 'bridge', attempt: 1, response: summarizeTraceText(response) },
     }, initialProviderOperationId, 'cli-provider-client');
     if (!options.mock) evidence.assertBridgeComplete(initialProviderOperationId, 'completed');
-    assertCompletedCliCodingKernelOutput(await productCliCodingKernelExecutor.execute({
+    acceptCliCodingKernelOutput(evidence, await productCliCodingKernelExecutor.execute({
       workspaceRoot: options.cwd,
       userPrompt: prompt,
       contextFiles,
@@ -206,25 +207,11 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
     evidence.settle('completed');
     return 0;
   } catch (error) {
-    let terminalError = error;
-    try {
-      await surface.flush();
-    } catch (flushError) {
-      terminalError = flushError;
-    }
-    if (cancellation.cancelled && !options.mock) {
-      await evidence.waitForBridgeProviderTerminals();
-    }
-    const exitCode = cancellation.cancelled ? cancellation.exitCode : 1;
-    try {
-      await renderLifecycle(cancellation.cancelled ? 'cancelled' : 'failed', exitCode);
-      await surface.flush();
-    } catch (flushError) {
-      terminalError = flushError;
-    }
-    evidence.settle(cancellation.cancelled ? 'cancelled' : 'failed');
-    console.error(`DevSeek CLI error: ${formatCliError(terminalError)}`);
-    return exitCode;
+    const failure = await settleCliRunFailure({
+      error, cancellation, usesBridge: !options.mock, evidence, surface, renderLifecycle,
+    });
+    console.error(`DevSeek CLI error: ${formatCliError(failure.error)}`);
+    return failure.exitCode;
   } finally {
     cancellation.dispose();
   }

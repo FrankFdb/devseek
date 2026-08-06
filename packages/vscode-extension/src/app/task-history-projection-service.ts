@@ -425,7 +425,12 @@ function projectTaskRunStatus(
   activeCheckpoint: TaskCheckpointRecord<unknown> | undefined,
 ): TaskRunStatus {
   const settlementStatus = stringValue(payloadObject(settlementEvent).status);
-  if (settlementStatus === 'completed' || settlementStatus === 'failed' || settlementStatus === 'cancelled') {
+  if (
+    settlementStatus === 'completed'
+    || settlementStatus === 'failed'
+    || settlementStatus === 'blocked'
+    || settlementStatus === 'cancelled'
+  ) {
     return settlementStatus;
   }
   if (events.some(event => event.type === 'quality_gate.failed' || event.type === 'quality_gate.vetoed')) {

@@ -1,4 +1,4 @@
-export type SettlementTerminalStatus = 'completed' | 'failed' | 'cancelled';
+export type SettlementTerminalStatus = 'completed' | 'failed' | 'blocked' | 'cancelled';
 
 export interface SettlementStateInput {
   requestedStatus: SettlementTerminalStatus;

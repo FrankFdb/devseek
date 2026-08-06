@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from 'node:util';
 import {
   CODING_KERNEL_REQUEST_VERSION,
   CanonicalCodingKernel,
+  CodingKernelExecutionError,
   projectCodingKernelTaskContract,
   validateCodingConformanceProjection,
   type CodingConformanceObservedProjection,
@@ -10,6 +11,10 @@ import {
   type CodingKernelRuntimePort,
   type CodingKernelTaskContract,
 } from '@devseek-netai/shared';
+import {
+  HeadlessRunEvidence,
+  type HeadlessRunEvidenceReceipt,
+} from './headless-run-evidence';
 
 export interface HeadlessCodingRunInput<TRuntimeContext> {
   readonly runId: string;
@@ -36,6 +41,7 @@ export type HeadlessCodingExecutionOutput<TResult> = Omit<
 > & {
   readonly result: TResult;
   readonly conformance: CodingConformanceProjection;
+  readonly runEvidence: HeadlessRunEvidenceReceipt;
 };
 
 /**
@@ -52,30 +58,52 @@ export class HeadlessCodingKernelExecutor<TRuntimeContext, TResult> {
   async execute(
     input: HeadlessCodingRunInput<TRuntimeContext>,
   ): Promise<HeadlessCodingExecutionOutput<TResult>> {
-    const output = await this.kernel.execute({
-      version: CODING_KERNEL_REQUEST_VERSION,
-      route: 'canonical',
-      surface: 'headless',
-      runId: input.runId,
-      userPrompt: input.userPrompt,
-      workspaceRoot: input.workspaceRoot,
-      taskContract: input.taskContract,
-      runtimeContext: input.runtimeContext,
-      signal: input.signal,
-    });
+    const evidence = HeadlessRunEvidence.open(input);
+    let lifecycle: CodingKernelExecutionOutput<unknown>['lifecycle'] | undefined;
+    let finalizationAttempted = false;
+    try {
+      const output = await this.kernel.execute({
+        version: CODING_KERNEL_REQUEST_VERSION,
+        route: 'canonical',
+        surface: 'headless',
+        runId: input.runId,
+        userPrompt: input.userPrompt,
+        workspaceRoot: input.workspaceRoot,
+        taskContract: input.taskContract,
+        runtimeContext: input.runtimeContext,
+        signal: input.signal,
+      });
+      lifecycle = output.lifecycle;
 
-    const runtimeResult = output.result;
-    if (!runtimeResult || typeof runtimeResult !== 'object' || !runtimeResult.conformance) {
-      throw new Error('headless-coding-conformance:missing-runtime-evidence');
+      const runtimeResult = output.result;
+      if (!runtimeResult || typeof runtimeResult !== 'object' || !runtimeResult.conformance) {
+        throw new Error('headless-coding-conformance:missing-runtime-evidence');
+      }
+      const conformance = snapshotConformance(runtimeResult.conformance);
+      assertOutputBinding(output, conformance);
+      finalizationAttempted = true;
+      const runEvidence = evidence.finalize(lifecycle, output.status, 'surface-output-settled');
+      const { result: _runtimeResult, ...kernelOutput } = output;
+      return Object.freeze({
+        ...kernelOutput,
+        result: runtimeResult.value,
+        conformance,
+        runEvidence,
+      });
+    } catch (error) {
+      if (!finalizationAttempted) {
+        const kernelLifecycle = error instanceof CodingKernelExecutionError
+          ? error.lifecycle
+          : lifecycle;
+        const status = error instanceof CodingKernelExecutionError
+          && (error.lifecycle.status === 'cancelled' || error.lifecycle.status === 'blocked')
+          ? error.lifecycle.status
+          : 'failed';
+        finalizationAttempted = true;
+        evidence.finalize(kernelLifecycle, status, 'surface-output-failed');
+      }
+      throw error;
     }
-    const conformance = snapshotConformance(runtimeResult.conformance);
-    assertOutputBinding(output, conformance);
-    const { result: _runtimeResult, ...kernelOutput } = output;
-    return Object.freeze({
-      ...kernelOutput,
-      result: runtimeResult.value,
-      conformance,
-    });
   }
 }
 

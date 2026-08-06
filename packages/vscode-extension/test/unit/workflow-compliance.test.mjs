@@ -2556,6 +2556,7 @@ test('R3-08A-VSCODE-USER-COLLABORATION: VS Code surface adapter projects core ev
 test('R3-08B-CLI-JSONL-USER-COLLABORATION: CLI surfaces expose lifecycle schema and terminal status', () => {
   const cliSurface = src('../cli/src/cli-surface-adapter.ts');
   const cliIndex = src('../cli/src/index.ts');
+  const cliRunLifecycle = src('../cli/src/cli-run-lifecycle.ts');
   const cliJsonlTest = src('../cli/test/cli-jsonl.test.mjs');
 
   assertContains(cliSurface, 'CLI_JSONL_COLLABORATION_SCHEMA', 'R3-08B must define a CLI JSONL collaboration schema');
@@ -2569,9 +2570,12 @@ test('R3-08B-CLI-JSONL-USER-COLLABORATION: CLI surfaces expose lifecycle schema 
 
   assertContains(cliIndex, "await renderLifecycle('running')", 'R3-08B CLI must emit run start before provider work');
   assertContains(cliIndex, "await renderLifecycle('completed', 0)", 'R3-08B CLI must emit successful terminal exit status');
-  assertContains(cliIndex, "await renderLifecycle(cancellation.cancelled ? 'cancelled' : 'failed', exitCode)", 'R3-08B CLI must emit failed/cancelled terminal exit status');
+  assertContains(cliIndex, 'settleCliRunFailure({', 'R3-08B CLI must delegate failure settlement to the lifecycle boundary');
+  assertContains(cliRunLifecycle, 'error instanceof CliCodingKernelTerminalError', 'R3-08B CLI must preserve blocked Kernel terminals');
+  assertContains(cliRunLifecycle, 'await input.renderLifecycle(status, exitCode)', 'R3-08B CLI must emit the exact terminal status');
+  assertContains(cliRunLifecycle, 'input.evidence.settle(status)', 'R3-08B CLI UI and durable settlement must share one terminal status');
   assertContains(cliIndex, 'signalName', 'R3-08B cancel lifecycle must include SIGINT/SIGTERM identity');
-  assertContains(cliIndex, 'await surface.flush()', 'R3-08B CLI must flush lifecycle and AgentEvent writes before process exit');
+  assertContains(cliRunLifecycle, 'await input.surface.flush()', 'R3-08B CLI must flush lifecycle and AgentEvent writes before process exit');
 
   assertContains(cliJsonlTest, 'R3-08B CLI JSONL emits machine-readable collaboration lifecycle schema', 'R3-08B must have a failure-first JSONL lifecycle oracle');
   assertContains(cliJsonlTest, 'devseek.cli-jsonl-collaboration/v1', 'R3-08B oracle must assert the schema line');

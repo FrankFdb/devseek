@@ -22,6 +22,18 @@ export interface CliProductCodingKernelInput extends CliCodingKernelRuntimeConte
   readonly signal: AbortSignal;
 }
 
+export type CliProductCodingKernelOutput = CodingKernelExecutionOutput<CliCodingKernelResult>;
+
+export class CliCodingKernelTerminalError extends Error {
+  constructor(
+    readonly status: Exclude<CodingKernelExecutionOutput<unknown>['status'], 'completed'>,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'CliCodingKernelTerminalError';
+  }
+}
+
 const kernel = new CanonicalCodingKernel(new CliCodingKernelRuntimeAdapter(
   new CliCodingArtifactInterpreter(),
   new CliWorkspaceMutationHostAdapter(),
@@ -29,7 +41,7 @@ const kernel = new CanonicalCodingKernel(new CliCodingKernelRuntimeAdapter(
 ));
 
 export const productCliCodingKernelExecutor = {
-  execute(input: CliProductCodingKernelInput): Promise<CodingKernelExecutionOutput<CliCodingKernelResult>> {
+  execute(input: CliProductCodingKernelInput): Promise<CliProductCodingKernelOutput> {
     const {
       workspaceRoot,
       userPrompt,
@@ -53,9 +65,12 @@ export const productCliCodingKernelExecutor = {
 };
 
 export function assertCompletedCliCodingKernelOutput(
-  output: CodingKernelExecutionOutput<CliCodingKernelResult>,
+  output: CliProductCodingKernelOutput,
 ): void {
   if (output.status === 'completed') return;
   const reasons = output.result.completion.reasonCodes.join(', ') || 'completion-not-authorized';
-  throw new Error(`DevSeek coding run ${output.status}: ${reasons}`);
+  throw new CliCodingKernelTerminalError(
+    output.status,
+    `DevSeek coding run ${output.status}: ${reasons}`,
+  );
 }

@@ -48,9 +48,9 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    semantic_domains: 5,
-    converged_semantic_domains: 5,
-    source_checks: 66,
+    semantic_domains: 7,
+    converged_semantic_domains: 7,
+    source_checks: 74,
     failed_source_checks: 0,
   });
   assert.deepEqual(
@@ -77,16 +77,24 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
   );
   assert.deepEqual(actual.semantic_domains.map(domain => domain.domain_id), [
     'canonical-task-contract',
+    'run-lifecycle',
     'tool-execution',
     'workspace-mutation',
     'verification',
     'completion-decision',
+    'run-evidence-retention',
   ]);
   const taskContractDomain = actual.semantic_domains.find(domain => domain.domain_id === 'canonical-task-contract');
   assert.equal(taskContractDomain.convergence_status, 'converged');
   assert.equal(taskContractDomain.current_owner_count, 1);
   assert.deepEqual(taskContractDomain.current_owners[0].surfaces, ['vscode', 'cli', 'headless']);
   assert.deepEqual(taskContractDomain.missing_surfaces, []);
+  const lifecycleDomain = actual.semantic_domains.find(domain => domain.domain_id === 'run-lifecycle');
+  assert.equal(lifecycleDomain.current_owner_count, 1);
+  assert.equal(lifecycleDomain.current_owners[0].owner_id, 'shared-CanonicalRunLifecycleService');
+  assert.deepEqual(lifecycleDomain.current_owners[0].surfaces, ['vscode', 'cli', 'headless']);
+  assert.deepEqual(lifecycleDomain.missing_surfaces, []);
+  assert.equal(lifecycleDomain.convergence_status, 'converged');
   const toolDomain = actual.semantic_domains.find(domain => domain.domain_id === 'tool-execution');
   assert.equal(toolDomain.current_owner_count, 1);
   assert.equal(toolDomain.current_owners[0].owner_id, 'shared-CanonicalToolExecutor');
@@ -111,6 +119,12 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
   assert.deepEqual(completionDomain.current_owners[0].surfaces, ['vscode', 'cli', 'headless']);
   assert.deepEqual(completionDomain.missing_surfaces, []);
   assert.equal(completionDomain.convergence_status, 'converged');
+  const retentionDomain = actual.semantic_domains.find(domain => domain.domain_id === 'run-evidence-retention');
+  assert.equal(retentionDomain.current_owner_count, 1);
+  assert.equal(retentionDomain.current_owners[0].owner_id, 'shared-CanonicalRunEvidenceRetentionService');
+  assert.deepEqual(retentionDomain.current_owners[0].surfaces, ['vscode', 'cli', 'headless']);
+  assert.deepEqual(retentionDomain.missing_surfaces, []);
+  assert.equal(retentionDomain.convergence_status, 'converged');
   assert.equal(actual.semantic_domains.every(domain => domain.convergence_status === 'converged'), true);
   assert.equal(actual.source_checks.every(assertion => assertion.passed), true);
   assert.equal(fs.existsSync(path.join(repoRoot, 'packages/cli/src/cli-legacy-coding-loop.ts')), false);
@@ -247,7 +261,7 @@ test('kernel prep owner baseline checker validates the current generated artifac
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    converged_semantic_domains: 5,
+    converged_semantic_domains: 7,
     failed_source_checks: 0,
     qualification_effect: 'NONE',
   });

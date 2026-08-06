@@ -249,6 +249,29 @@ test('semantic guard rejects open-direct settlement without writing run.settled'
   assert.equal(owner.verify().status, 'valid-open');
 });
 
+test('blocked is retained as a distinct sealed terminal instead of being rewritten as failed', t => {
+  const workspaceRoot = tempWorkspace(t);
+  const authority = authoritySet();
+  const owner = ProductRunEvidenceSession.forWorkspace({
+    workspaceRoot,
+    runId: 'blocked-run',
+    surface: 'headless',
+    authority: authority.ownerOpen,
+    openIfMissing: true,
+  });
+  owner.record({ type: 'command.accepted', idempotencyKey: 'command:blocked' });
+  owner.settleAndSeal({
+    status: 'blocked',
+    idempotencyKey: 'settlement:blocked',
+    payload: { reason: 'permission-denied' },
+  });
+
+  const events = owner.readEvents();
+  assert.equal(events.at(-1).type, 'run.settled');
+  assert.equal(events.at(-1).payload.status, 'blocked');
+  assert.equal(owner.verify().status, 'valid-sealed');
+});
+
 test('semantic guard requires operation ids and terminal closure before settlement', t => {
   const workspaceRoot = tempWorkspace(t);
   const missingIdAuthority = authoritySet();
