@@ -22,8 +22,8 @@
     "baseline_sha256"
   ],
   "properties": {
-    "schema_version": { "const": "devseek.kernel-prep-owner-baseline/v14" },
-    "baseline_id": { "const": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v14" },
+    "schema_version": { "const": "devseek.kernel-prep-owner-baseline/v15" },
+    "baseline_id": { "const": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v15" },
     "purpose": { "type": "string", "minLength": 1 },
     "qualification_eligible": { "const": false },
     "qualification_effect": { "const": "NONE" },
@@ -80,8 +80,8 @@
     "semantic_domains": {
       "type": "array",
       "items": { "$ref": "#/$defs/semanticDomain" },
-      "minItems": 10,
-      "maxItems": 10
+      "minItems": 11,
+      "maxItems": 11
     },
     "counts": {
       "type": "object",

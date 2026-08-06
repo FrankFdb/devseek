@@ -5,16 +5,12 @@ import {
   type CodingKernelTaskContract,
 } from './coding-kernel';
 import type { CodingTaskMode } from './coding-conformance';
+import { resolveCodingOrientationDecision } from './coding-orientation';
 import {
   buildSecretHarvestingRefusalTaskContract,
   isUnsafeSecretHarvestingImplementationRequest,
 } from './coding-safety-policy';
 
-const RELEASE_REQUEST_RE = /(?:\brelease\b|\bpublish\b|\bpackage\b|\bdeploy\b|发布|发版|打包|部署)/iu;
-const REVIEW_REQUEST_RE = /(?:\breview\b|\baudit\b|\binspect\b|\banaly[sz]e\b|审查|审计|检查|分析)/iu;
-const CHANGE_REQUEST_RE = /(?:\badd\b|\bcreate\b|\bwrite\b|\bimplement\b|\bfix\b|\brepair\b|\brecover(?:y)?\b|\bmodify\b|\bupdate\b|\brefactor\b|\bapply\b|\bpatch\b|\binstall\b|添加|新增|创建|编写|实现|修复|恢复|修改|更新|重构|应用|打补丁|安装)/iu;
-const EXPLAIN_REQUEST_RE = /(?:\bexplain\b|\bdescribe\b|\bhow\b|\bwhy\b|\bwhat\b|解释|说明|如何|为什么|什么)/iu;
-const EXPLANATION_PREFIX_RE = /^(?:please\s+)?(?:explain|describe|how|why|what|解释|说明|如何|为什么|什么)\b/iu;
 const VERIFICATION_REQUEST_RE = /(?:\bverif(?:y|ied|ication)\b|\bvalidat(?:e|ed|ion)\b|\btests?\b|\bchecks?\b|\bcompile\b|\brun\b|验证|校验|测试|检查|编译|运行|自测)/iu;
 const SCOPED_CHANGE_RE = /(?:keep\s+the\s+change\s+scoped|do\s+not\s+(?:modify|change|touch)\s+(?:any\s+)?other\s+files?|only\s+[^.\n]{0,80}\s+changes?|不要(?:修改|改动|新增)(?:任何)?其他文件|只(?:修改|改动)[^，。；\n]{0,80})/iu;
 const NO_DEPENDENCY_RE = /(?:do\s+not\s+(?:add|introduce)\s+(?:any\s+)?dependenc|no\s+(?:new\s+)?dependenc|不要(?:新增|引入)(?:任何)?依赖|不(?:新增|引入)依赖)/iu;
@@ -36,13 +32,14 @@ export function resolveCodingKernelTaskContract(
   input: ResolveCodingKernelTaskContractInput,
 ): CodingKernelTaskContract {
   const prompt = normalizePrompt(input.prompt);
+  const orientation = resolveCodingOrientationDecision({ prompt, modeHint: input.modeHint });
   if (isUnsafeSecretHarvestingImplementationRequest(prompt)) {
-    return buildSecretHarvestingRefusalTaskContract(input.surface);
+    return buildSecretHarvestingRefusalTaskContract(input.surface, orientation);
   }
 
   const dependencyEffect = DEPENDENCY_EFFECT_RE.test(prompt);
   const networkEffect = dependencyEffect || NETWORK_EFFECT_RE.test(prompt);
-  const mode = resolveTaskMode(prompt, input.modeHint);
+  const mode = orientation.mode;
   const mutating = mode === 'change' || mode === 'release';
   const explicitTargets = extractCodingWorkspacePaths(prompt);
   const include = dependencyEffect && explicitTargets.length === 0
@@ -65,6 +62,7 @@ export function resolveCodingKernelTaskContract(
   return buildCodingKernelTaskContract({
     goal: prompt,
     mode,
+    orientation,
     include,
     deliverables: resolveDeliverables({ mutating, dependencyEffect, verificationRequired, include }),
     constraints: resolveConstraints({
@@ -93,16 +91,6 @@ export function extractCodingWorkspacePaths(prompt: string): string[] {
     if (path) paths.push(path);
   }
   return uniquePaths(paths);
-}
-
-function resolveTaskMode(prompt: string, hint?: CodingTaskMode): CodingTaskMode {
-  if (EXPLANATION_PREFIX_RE.test(prompt)) return 'explain';
-  if (CHANGE_REQUEST_RE.test(prompt)) return 'change';
-  if (REVIEW_REQUEST_RE.test(prompt)) return 'review';
-  if (RELEASE_REQUEST_RE.test(prompt)) return 'release';
-  if (EXPLAIN_REQUEST_RE.test(prompt)) return 'explain';
-  if (hint === 'change' || hint === 'release') return hint;
-  return hint === 'review' ? 'review' : 'explain';
 }
 
 function resolveDeliverables(input: {

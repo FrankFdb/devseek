@@ -33,12 +33,15 @@ test('OrientationDecision: ordinary read-only request is ready with grounded evi
   assert.equal(decision.version, 'devseek.orientation-decision/v1');
   assert.equal(decision.status, 'ready');
   assert.equal(decision.mode, 'inspect');
+  assert.equal(decision.codingMode, 'explain');
+  assert.equal(decision.canonicalDecision.version, 'devseek.coding-orientation-decision/v1');
   assert.equal(decision.risk, 'low');
   assert.equal(decision.allowedToExecute, true);
   assert.equal(decision.requiresClarification, false);
   assert.equal(decision.requiresConfirmation, false);
   assert.ok(decision.confidence >= 0.7);
   assert.ok(decision.evidence.some(item => item.kind === 'canonical-route'));
+  assert.ok(decision.evidence.some(item => item.kind === 'canonical-coding-orientation'));
   assert.ok(decision.evidence.some(item => item.kind === 'target-path-known' && item.value === 'src/cache.ts'));
 });
 
@@ -78,6 +81,7 @@ test('OrientationDecision: release wording cannot execute without explicit autho
 
   assert.equal(decision.status, 'needs-confirmation');
   assert.equal(decision.mode, 'edit');
+  assert.equal(decision.codingMode, 'release');
   assert.equal(decision.risk, 'high');
   assert.equal(decision.allowedToExecute, false);
   assert.equal(decision.requiresConfirmation, true);

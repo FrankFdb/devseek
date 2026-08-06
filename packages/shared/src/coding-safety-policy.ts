@@ -4,10 +4,13 @@ import {
   type CodingKernelSurface,
   type CodingKernelTaskContract,
 } from './coding-kernel';
+import type { CodingOrientationDecision } from './coding-orientation';
+import {
+  hasSecretMaterialSignal,
+  isUnsafeSecretHarvestingImplementationRequest,
+} from './coding-safety-intent';
+export { isUnsafeSecretHarvestingImplementationRequest } from './coding-safety-intent';
 
-const SECRET_MATERIAL_RE = /(?:cookie|ssh\s*key|环境变量\s*token|api\s*key|apikey|token|secret|credential|password|凭据|密钥|令牌|密码)/iu;
-const HARVEST_OR_EXFILTRATE_RE = /(?:悄悄|隐蔽|不(?:要)?提示用户|不(?:要)?留下(?:明显)?日志|读取|收集|采集|导出|窃取|上传|发送到|发到|传到|服务器|监控员工|steal|harvest|collect|exfiltrat|upload|send\s+to)/iu;
-const IMPLEMENTATION_REQUEST_RE = /(?:写(?:一个|个|一段)?(?:脚本|程序|代码)|编写|实现|生成|创建|开发|write\b.{0,32}\b(?:script|program|code|tool)\b|implement|create\b.{0,32}\b(?:script|program|tool)\b)/iu;
 const REFUSAL_EVIDENCE_RE = /(?:不能帮助|无法协助|已拒绝|拒绝(?:生成|编写|实现)|cannot\s+help|can't\s+help|will\s+not\s+(?:write|create|implement)|won't\s+(?:write|create|implement))/iu;
 const SAFE_ALTERNATIVE_EVIDENCE_RE = /(?:合规|审计|最小权限|密钥轮换|泄露检测|安全告警|compliant|audit|least\s+privilege|secret\s+rotation|leak\s+detection)/iu;
 const NO_MUTATION_EVIDENCE_RE = /(?:未(?:修改|创建|写入)(?:任何)?文件|没有(?:修改|创建|写入)(?:任何)?文件|no\s+files?\s+(?:were\s+)?(?:modified|created|written)|did\s+not\s+(?:modify|create|write)\s+(?:any\s+)?files?)/iu;
@@ -21,20 +24,14 @@ export const CODING_SECRET_HARVESTING_REFUSAL_ACCEPTANCE = Object.freeze([
   Object.freeze({ id: 'a-no-mutation', statement: 'No user file is created or modified.' }),
 ]);
 
-export function isUnsafeSecretHarvestingImplementationRequest(text: string): boolean {
-  const normalized = String(text || '').replace(/\s+/g, ' ').trim();
-  if (!normalized) return false;
-  return SECRET_MATERIAL_RE.test(normalized)
-    && HARVEST_OR_EXFILTRATE_RE.test(normalized)
-    && IMPLEMENTATION_REQUEST_RE.test(normalized);
-}
-
 export function buildSecretHarvestingRefusalTaskContract(
   surface: CodingKernelSurface,
+  orientation?: CodingOrientationDecision,
 ): CodingKernelTaskContract {
   return buildCodingKernelTaskContract({
     goal: 'Refuse unsafe secret harvesting and provide a safe alternative without changing the workspace.',
     mode: 'explain',
+    ...(orientation ? { orientation } : {}),
     exclude: ['**/*'],
     deliverables: [{ id: 'safe-response', kind: 'report' }],
     constraints: ['no-work-tools', 'no-workspace-mutation'],
@@ -61,7 +58,7 @@ export function hasUnsafeSecretHarvestingRefusalEvidence(
   return isUnsafeSecretHarvestingImplementationRequest(requestText)
     && runtime.workToolUsed !== true
     && (runtime.changedFileCount ?? 0) === 0
-    && SECRET_MATERIAL_RE.test(response)
+    && hasSecretMaterialSignal(response)
     && REFUSAL_EVIDENCE_RE.test(response)
     && SAFE_ALTERNATIVE_EVIDENCE_RE.test(response)
     && NO_MUTATION_EVIDENCE_RE.test(response);

@@ -1,3 +1,8 @@
+import {
+  resolveCodingOrientationDecision,
+  type CodingOrientationDecision,
+  type CodingTaskMode,
+} from '@devseek-netai/shared';
 import { routeTaskIntent, type TaskIntentFamily, type TaskIntentRoute } from '../task-intent-router';
 import type { ExecutionMode } from './intent-types';
 import type { TaskSemanticResolutionContext } from './task-semantic-contract-service';
@@ -8,6 +13,7 @@ export type OrientationStatus = 'ready' | 'needs-clarification' | 'needs-confirm
 export interface OrientationEvidence {
   kind:
     | 'canonical-route'
+    | 'canonical-coding-orientation'
     | 'mixed-language-input'
     | 'ambiguous-action-alternatives'
     | 'target-path-known'
@@ -31,6 +37,8 @@ export interface OrientationDecision {
   version: 'devseek.orientation-decision/v1';
   prompt: string;
   mode: ExecutionMode;
+  codingMode: CodingTaskMode;
+  canonicalDecision: CodingOrientationDecision;
   family: TaskIntentFamily;
   risk: OrientationRisk;
   confidence: number;
@@ -54,11 +62,22 @@ const READ_ONLY_ALTERNATIVE_RE = /(?:解释|说明|分析|审查|查看|只读|�
 export function buildOrientationDecision(input: OrientationDecisionInput): OrientationDecision {
   const prompt = String(input.prompt || '').trim();
   const route = input.route ?? routeTaskIntent(prompt, input.semanticContext);
-  const evidence: OrientationEvidence[] = [{
-    kind: 'canonical-route',
-    source: 'route',
-    value: `${route.family}:${route.mode}`,
-  }];
+  const canonicalDecision = resolveCodingOrientationDecision({
+    prompt,
+    modeHint: projectCodingTaskMode(route),
+  });
+  const evidence: OrientationEvidence[] = [
+    {
+      kind: 'canonical-route',
+      source: 'route',
+      value: `${route.family}:${route.mode}`,
+    },
+    {
+      kind: 'canonical-coding-orientation',
+      source: 'route',
+      value: `${canonicalDecision.mode}:${canonicalDecision.source}`,
+    },
+  ];
   const blockers: string[] = [];
 
   if (hasMixedLanguageInput(prompt)) {
@@ -110,6 +129,8 @@ export function buildOrientationDecision(input: OrientationDecisionInput): Orien
     version: 'devseek.orientation-decision/v1',
     prompt,
     mode: route.mode,
+    codingMode: canonicalDecision.mode,
+    canonicalDecision,
     family: route.family,
     risk,
     confidence,
@@ -122,6 +143,13 @@ export function buildOrientationDecision(input: OrientationDecisionInput): Orien
     route,
     reason: buildReason(route, risk, blockers),
   };
+}
+
+function projectCodingTaskMode(route: TaskIntentRoute): CodingTaskMode {
+  if (route.family === 'release-external-effect') return 'release';
+  if (route.family === 'review' || route.mode === 'inspect' || route.mode === 'plan') return 'review';
+  if (route.mode === 'edit' || route.mode === 'run' || route.mode === 'destructive') return 'change';
+  return 'explain';
 }
 
 function collectPathEvidence(input: {

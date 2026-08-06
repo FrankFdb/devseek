@@ -13,6 +13,11 @@ import {
   CanonicalSettlementDecisionService,
   type CodingSettlementDecision,
 } from './coding-settlement';
+import {
+  assertCodingOrientationDecision,
+  resolveCodingOrientationDecision,
+  type CodingOrientationDecision,
+} from './coding-orientation';
 
 export const CODING_KERNEL_REQUEST_VERSION = 'devseek.coding-kernel-request/v1' as const;
 export const CODING_KERNEL_OUTPUT_VERSION = 'devseek.coding-kernel-output/v1' as const;
@@ -24,6 +29,7 @@ export interface CodingKernelTaskContract {
   readonly version: typeof CODING_KERNEL_TASK_CONTRACT_VERSION;
   readonly goal: string;
   readonly mode: CodingTaskMode;
+  readonly orientation: CodingOrientationDecision;
   readonly scope: {
     readonly include: readonly string[];
     readonly exclude: readonly string[];
@@ -44,6 +50,7 @@ export interface CodingKernelTaskContract {
 export interface BuildCodingKernelTaskContractInput {
   readonly goal: string;
   readonly mode: CodingTaskMode;
+  readonly orientation?: CodingOrientationDecision;
   readonly include?: readonly string[];
   readonly exclude?: readonly string[];
   readonly deliverables: readonly {
@@ -86,6 +93,7 @@ export interface CodingKernelExecutionOutput<TResult> {
   readonly status: CodingTerminalStatus;
   readonly lifecycle: CodingRunLifecycleSnapshot;
   readonly settlement: CodingSettlementDecision;
+  readonly orientation: CodingOrientationDecision;
   readonly taskContract: CodingKernelTaskContract;
   readonly result: TResult;
   readonly evidenceRefs: readonly string[];
@@ -163,6 +171,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         status: settlement.status,
         lifecycle: lifecycleSnapshot,
         settlement,
+        orientation: taskContract.orientation,
         taskContract,
         result: runtimeOutput.result,
         evidenceRefs: settlement.evidenceRefs,
@@ -211,8 +220,12 @@ export function buildCodingKernelTaskContract(
     statement: criterion.statement.trim(),
   }));
   const provenanceRefs = uniqueNonEmpty(input.provenanceRefs);
-
   if (!goal) throw new Error('coding-kernel-task-contract:missing-goal');
+  const orientation = input.orientation
+    ? assertCodingOrientationDecision(input.orientation)
+    : resolveCodingOrientationDecision({ prompt: goal, modeHint: input.mode });
+
+  if (orientation.mode !== input.mode) throw new Error('coding-kernel-task-contract:orientation-mode-mismatch');
   if (!uniqueIds(deliverables)) throw new Error('coding-kernel-task-contract:invalid-deliverables');
   if (!uniqueIds(acceptance)) throw new Error('coding-kernel-task-contract:invalid-acceptance');
   if (provenanceRefs.length === 0) throw new Error('coding-kernel-task-contract:missing-provenance');
@@ -224,6 +237,7 @@ export function buildCodingKernelTaskContract(
     version: CODING_KERNEL_TASK_CONTRACT_VERSION,
     goal,
     mode: input.mode,
+    orientation,
     scope: {
       include: uniqueNonEmpty(input.include ?? []),
       exclude: uniqueNonEmpty(input.exclude ?? []),
@@ -301,6 +315,7 @@ function snapshotTaskContract(contract: CodingKernelTaskContract): CodingKernelT
   return buildCodingKernelTaskContract({
     goal: contract.goal,
     mode: contract.mode,
+    orientation: contract.orientation,
     include: contract.scope.include,
     exclude: contract.scope.exclude,
     deliverables: contract.deliverables,

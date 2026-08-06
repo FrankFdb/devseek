@@ -3,8 +3,8 @@ import {
   sha256Object,
 } from './devseek-capability-ledger.mjs';
 
-export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v14';
-export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v14';
+export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v15';
+export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v15';
 
 const SOURCE_PATHS = Object.freeze({
   gate0: 'docs/process/devseek-gate0-decision-report.json',
@@ -20,8 +20,10 @@ const SOURCE_PATHS = Object.freeze({
   sharedCodingConformanceFixtures: 'packages/shared/src/coding-conformance-fixtures.ts',
   sharedCodingConformanceProjection: 'packages/shared/src/coding-conformance-projection.ts',
   sharedTaskContractResolver: 'packages/shared/src/coding-task-contract-resolver.ts',
+  sharedOrientation: 'packages/shared/src/coding-orientation.ts',
   sharedTerminalEffects: 'packages/shared/src/coding-terminal-effects.ts',
   sharedSafetyPolicy: 'packages/shared/src/coding-safety-policy.ts',
+  sharedSafetyIntent: 'packages/shared/src/coding-safety-intent.ts',
   sharedCodingKernel: 'packages/shared/src/coding-kernel.ts',
   sharedRunLifecycle: 'packages/shared/src/coding-run-lifecycle.ts',
   sharedSettlement: 'packages/shared/src/coding-settlement.ts',
@@ -85,6 +87,7 @@ const SOURCE_PATHS = Object.freeze({
   controlledVsixHarness: 'packages/vscode-extension/test/devseek-controlled-vsix-harness.mjs',
   surfaceProductVerifier: 'scripts/verify-coding-surface-product-conformance.mjs',
   vscodeSurfaceAdapter: 'packages/vscode-extension/src/ui/vscode-surface-adapter.ts',
+  vscodeOrientation: 'packages/vscode-extension/src/intent/orientation-decision.ts',
 });
 
 const SOURCE_CHECKS = Object.freeze([
@@ -122,6 +125,9 @@ const SOURCE_CHECKS = Object.freeze([
     'lifecycle: lifecycleSnapshot',
     'status: settlement.status',
     'settlement,',
+    'orientation: taskContract.orientation',
+    'assertCodingOrientationDecision(input.orientation)',
+    'coding-kernel-task-contract:orientation-mode-mismatch',
     'export function projectCodingKernelTaskContract(',
     "if (request.route !== 'canonical')",
     'coding-kernel-execution:unsupported-route',
@@ -134,6 +140,30 @@ const SOURCE_CHECKS = Object.freeze([
     'snapshotChatRequest(command.request)',
     'unsupported-type:',
   ], ["from 'vscode'", 'HeadlessCodingKernelExecutor', 'CliSurfaceAdapter']),
+  check('shared-canonical-orientation-decision-owner', SOURCE_PATHS.sharedOrientation, [
+    "CODING_ORIENTATION_DECISION_VERSION = 'devseek.coding-orientation-decision/v1'",
+    'export interface OrientationDecisionPort',
+    'export class CanonicalOrientationDecisionService implements OrientationDecisionPort',
+    'isUnsafeSecretHarvestingImplementationRequest(prompt)',
+    "resolved('release', 'prompt', 'explicit-external-effect-action')",
+    "resolved('change', 'prompt', 'explicit-change-action')",
+    "resolved('review', 'prompt', 'explicit-review-action')",
+    "resolved('explain', 'read-only-default', 'default-read-only')",
+    'coding-orientation:',
+  ], ["from 'vscode'", 'TaskIntentRoute', 'ExecutionMode']),
+  check('shared-coding-safety-intent-boundary', SOURCE_PATHS.sharedSafetyIntent, [
+    'export function hasSecretMaterialSignal(text: string)',
+    'export function isUnsafeSecretHarvestingImplementationRequest(text: string)',
+    'HARVEST_OR_EXFILTRATE_RE.test(normalized)',
+    'IMPLEMENTATION_REQUEST_RE.test(normalized)',
+  ], ['buildCodingKernelTaskContract', 'CanonicalOrientationDecisionService']),
+  check('vscode-canonical-orientation-projection', SOURCE_PATHS.vscodeOrientation, [
+    'const canonicalDecision = resolveCodingOrientationDecision({',
+    'modeHint: projectCodingTaskMode(route)',
+    "kind: 'canonical-coding-orientation'",
+    'codingMode: canonicalDecision.mode',
+    'canonicalDecision,',
+  ], ['new CanonicalOrientationDecisionService']),
   check('shared-surface-adapter-conformance-owner', SOURCE_PATHS.sharedSurfaceAdapterConformance, [
     "SURFACE_ADAPTER_CONFORMANCE_VERSION = 'devseek.surface-adapter-conformance/v1'",
     'export interface SurfaceAdapterConformancePort',
@@ -246,6 +276,7 @@ const SOURCE_CHECKS = Object.freeze([
     "export * from './coding-task-contract-resolver';",
     "export * from './coding-terminal-effects';",
     "export * from './coding-kernel';",
+    "export * from './coding-orientation';",
     "export * from './coding-run-lifecycle';",
     "export * from './coding-settlement';",
     "export * from './coding-run-evidence-retention';",
@@ -259,7 +290,8 @@ const SOURCE_CHECKS = Object.freeze([
     'export function resolveCodingKernelTaskContract(',
     'export function resolveCodingKernelAcceptance(',
     'export function extractCodingWorkspacePaths(',
-    'buildSecretHarvestingRefusalTaskContract(input.surface)',
+    'const orientation = resolveCodingOrientationDecision({ prompt, modeHint: input.modeHint })',
+    'buildSecretHarvestingRefusalTaskContract(input.surface, orientation)',
     "'dependency-change-requires-approval'",
     "'verification-before-completion'",
   ], [
@@ -1069,6 +1101,9 @@ function buildSemanticDomains() {
     ], []),
     domain('surface-adapter-conformance', 'SurfaceAdapterConformancePort', [
       owner('shared-CanonicalSurfaceAdapterConformanceService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedSurfaceAdapterConformance),
+    ], []),
+    domain('orientation-decision', 'OrientationDecisionPort', [
+      owner('shared-CanonicalOrientationDecisionService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedOrientation),
     ], []),
     domain('canonical-task-contract', 'CodingKernelTaskContract', [
       owner('shared-CodingKernelTaskContract', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedCodingKernel),

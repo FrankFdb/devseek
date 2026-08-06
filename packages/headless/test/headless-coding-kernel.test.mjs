@@ -74,6 +74,8 @@ test('Headless product entry settles five coding fixtures from isolated real wor
       assert.equal(output.version, CODING_KERNEL_OUTPUT_VERSION, fixture.fixtureId);
       assert.equal(output.surface, 'headless', fixture.fixtureId);
       assert.equal(output.status, fixture.expected.completion.status, fixture.fixtureId);
+      assert.equal(output.orientation, output.taskContract.orientation, fixture.fixtureId);
+      assert.equal(output.orientation.mode, output.taskContract.mode, fixture.fixtureId);
       assert.equal(output.runEvidence.status, output.status, fixture.fixtureId);
       assert.equal(output.runEvidence.qualificationEligible, false, fixture.fixtureId);
       const evidenceReader = ProductRunEvidenceWorkspaceReader.forWorkspace({ workspaceRoot: cwd });

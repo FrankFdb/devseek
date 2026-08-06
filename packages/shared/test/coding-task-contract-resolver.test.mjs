@@ -37,8 +37,11 @@ test('task-contract mode resolution preserves read-only questions and explicit c
   });
 
   assert.equal(explain.mode, 'explain');
+  assert.equal(explain.orientation.mode, explain.mode);
   assert.equal(review.mode, 'review');
+  assert.equal(review.orientation.mode, review.mode);
   assert.equal(change.mode, 'change');
+  assert.equal(change.orientation.mode, change.mode);
   assert.deepEqual(change.deliverables.map(deliverable => deliverable.kind), [
     'source-change',
     'verification-result',

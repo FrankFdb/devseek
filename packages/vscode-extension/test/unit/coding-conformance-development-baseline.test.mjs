@@ -70,6 +70,8 @@ test('VS Code canonical Kernel probe exposes semantically conformant settled pro
     assert.equal(Boolean(calls[0].request.recoveryContextText), routeCase.recovery, routeCase.fixtureId);
     assert.notEqual(routeOutput.result, loopResult, routeCase.fixtureId);
     assert.ok(routeOutput.result.completionDecision, routeCase.fixtureId);
+    assert.equal(routeOutput.orientation, routeOutput.taskContract.orientation, routeCase.fixtureId);
+    assert.equal(routeOutput.orientation.mode, routeOutput.taskContract.mode, routeCase.fixtureId);
     assert.equal(vscodeResult.contractConformant, true, JSON.stringify(vscodeResult.violations));
     assert.equal(vscodeResult.evidenceClass, 'product-route', routeCase.fixtureId);
     assert.deepEqual(vscodeResult.observedDimensions, [

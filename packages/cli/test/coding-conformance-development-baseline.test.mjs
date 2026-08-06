@@ -86,6 +86,8 @@ test('CLI product route settles five coding fixtures from isolated real workspac
       scenario.fixtureId,
     );
     assert.equal(output.status, fixture.expected.completion.status, scenario.fixtureId);
+    assert.equal(output.orientation, output.taskContract.orientation, scenario.fixtureId);
+    assert.equal(output.orientation.mode, output.taskContract.mode, scenario.fixtureId);
     observations.push(observation);
   }
 

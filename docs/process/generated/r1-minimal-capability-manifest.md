@@ -7,7 +7,7 @@
 - Selected: 45/76
 - Roots: 10
 - Group closure: gate0=7, gate1=39
-- Manifest SHA-256: `aff79d59a3ed768595f1679a0e7ced922ceb9229ebab634ddcd4ea850eedc5df`
+- Manifest SHA-256: `1583cab7daca092cadb78ddda2b7b735787670b059a0c8c0a6cf689087a3628e`
 
 | Capability | Mode | Implementation view | Exact tuple requirements (state/level/scope) | Profile scope | Groups |
 | --- | --- | --- | --- | --- | --- |

@@ -27,6 +27,7 @@
 | --- | --- | --- | ---: | --- |
 | agent-command | shared-CanonicalAgentCommandService | - | 1 | converged |
 | surface-adapter-conformance | shared-CanonicalSurfaceAdapterConformanceService | - | 1 | converged |
+| orientation-decision | shared-CanonicalOrientationDecisionService | - | 1 | converged |
 | canonical-task-contract | shared-CodingKernelTaskContract | - | 1 | converged |
 | run-lifecycle | shared-CanonicalRunLifecycleService | - | 1 | converged |
 | settlement-decision | shared-CanonicalSettlementDecisionService | - | 1 | converged |

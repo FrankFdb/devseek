@@ -48,9 +48,9 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    semantic_domains: 10,
-    converged_semantic_domains: 10,
-    source_checks: 80,
+    semantic_domains: 11,
+    converged_semantic_domains: 11,
+    source_checks: 83,
     failed_source_checks: 0,
   });
   assert.deepEqual(
@@ -78,6 +78,7 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
   assert.deepEqual(actual.semantic_domains.map(domain => domain.domain_id), [
     'agent-command',
     'surface-adapter-conformance',
+    'orientation-decision',
     'canonical-task-contract',
     'run-lifecycle',
     'settlement-decision',
@@ -95,6 +96,10 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
   assert.equal(surfaceDomain.current_owners[0].owner_id, 'shared-CanonicalSurfaceAdapterConformanceService');
   assert.deepEqual(surfaceDomain.current_owners[0].surfaces, ['vscode', 'cli', 'headless']);
   assert.equal(surfaceDomain.convergence_status, 'converged');
+  const orientationDomain = actual.semantic_domains.find(domain => domain.domain_id === 'orientation-decision');
+  assert.equal(orientationDomain.current_owners[0].owner_id, 'shared-CanonicalOrientationDecisionService');
+  assert.deepEqual(orientationDomain.current_owners[0].surfaces, ['vscode', 'cli', 'headless']);
+  assert.equal(orientationDomain.convergence_status, 'converged');
   const taskContractDomain = actual.semantic_domains.find(domain => domain.domain_id === 'canonical-task-contract');
   assert.equal(taskContractDomain.convergence_status, 'converged');
   assert.equal(taskContractDomain.current_owner_count, 1);
@@ -277,7 +282,7 @@ test('kernel prep owner baseline checker validates the current generated artifac
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    converged_semantic_domains: 10,
+    converged_semantic_domains: 11,
     failed_source_checks: 0,
     qualification_effect: 'NONE',
   });

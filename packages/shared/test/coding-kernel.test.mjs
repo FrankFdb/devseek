@@ -60,6 +60,8 @@ test('CanonicalCodingKernel preserves one versioned request and terminal output 
   assert.equal(output.settlement.version, CODING_SETTLEMENT_DECISION_VERSION);
   assert.equal(output.settlement.status, output.status);
   assert.equal(output.settlement.lifecycleSequence, output.lifecycle.events.length);
+  assert.equal(output.orientation, output.taskContract.orientation);
+  assert.equal(output.orientation.mode, 'change');
   assert.deepEqual(output.lifecycle, {
     version: CODING_RUN_LIFECYCLE_VERSION,
     runId: 'run-1',
@@ -187,6 +189,16 @@ test('task contract rejects missing provenance and ambiguous acceptance ids', ()
     ],
     provenanceRefs: ['user-prompt'],
   }), /invalid-acceptance/u);
+});
+
+test('task contract rejects a mode that contradicts canonical prompt orientation', () => {
+  assert.throws(() => buildCodingKernelTaskContract({
+    goal: 'Fix src/value.ts.',
+    mode: 'review',
+    deliverables: [{ id: 'report', kind: 'report' }],
+    acceptance: [{ id: 'reviewed', statement: 'The file is reviewed.' }],
+    provenanceRefs: ['user-prompt'],
+  }), /coding-kernel-task-contract:orientation-mode-mismatch/u);
 });
 
 test('canonical TaskContract projection has one immutable shared owner', () => {
