@@ -50,7 +50,7 @@ devseek_governance:
 | 范围 | 状态 | 当前事实 |
 | --- | --- | --- |
 | C0 本地实现与机器裁决前置 | `completed` | 7/7 implementation requirements satisfied，repository blockers=0，local conformance=`PASSED` |
-| Extension 类型与候选包基线 | `completed` | TypeScript 基线零错误；173/173 extension 套件与架构守卫通过；本轮精确 VSIX 身份、安装与产品路径回执在源码提交后刷新；T3 与 `realistic-product` 继续作为发版门禁 |
+| Extension 类型与候选包基线 | `completed` | TypeScript 基线零错误；173/173 extension 套件与架构守卫通过；`379efbd` 精确 VSIX 已编译、安装并通过五场景 T3 产品路径，稳定运行时唯一且无 stale runtime；`realistic-product` 继续作为发版门禁 |
 | Surface 入口盘点 | `completed` | 88/88 入口受 inventory 覆盖，其中 Headless product entry=1；未知入口与未声明 legacy owner 可达性均为 0 |
 | Kernel owner 收敛基线 | `completed` | v20 将本地产品迭代与资格晋级解耦；4 条活跃路由均通过 shared `CanonicalCodingKernel`，legacy execution owner=0；18 个语义域均为 shared 单一 owner、missing Surface=0；101/101 源码断言通过 |
 | 01：VS Code 新任务与恢复路由收敛 | `completed` | `AgentKernelService` 统一决定 fresh/checkpoint 路由；附件只作为 Context；durable checkpoint 与 local validation repair 均通过 typed recovery 输入进入 canonical loop，失败保留待办、成功唯一清除 checkpoint；产品 adapter 不再拥有 `runLegacyPlanned` |
@@ -67,7 +67,7 @@ devseek_governance:
 | C12：运行证据保留 | `completed` | shared `RunEvidenceRetentionPort` 将生命周期投影到 append-only owner ledger；CLI 与 Headless owner 负责封存，VS Code 仅持 participant authority；三 Surface 均保留精确终态且 qualification effect=`NONE` |
 | C12：记忆策略 | `completed` | shared `MemoryPolicyPort` 唯一裁决来源、权限、审批、敏感内容、TTL、作用域与上下文预算；Kernel 封存决策摘要，VS Code 提示词只投影该次决策，legacy markdown 与 external instruction 均不能自动提权或注入 |
 | C11：durable checkpoint | `completed` | shared `CheckpointPort` 封存 run、Surface、workspace、TaskContract、ContextGraph、MemoryPolicy、完成前缀和剩余单元；VS Code 与 Headless 恢复只执行 pending 单元，篡改、工作区漂移和任务替换 fail closed |
-| I10 用户仿真增量 | `completed` | 固定 5 例只作回归；I10 新增 5 例均直接消费 `code/devseek-tests/memory-checkpoint/scenario.json`；治理门禁拒绝重复 case ID、重复用户场景、重复测试证据和未绑定 test name，runner 按源码提交保留原始 TAP 与 fixture SHA |
+| I10 用户仿真增量 | `completed` | 固定 5 例只作回归；I10 新增 5 例均直接消费 `code/devseek-tests/memory-checkpoint/scenario.json`；治理门禁拒绝重复 case ID、重复用户场景、重复测试证据和未绑定 test name；原始 TAP、fixture SHA、精确 VSIX 与三 Surface 产品报告保存在 `runs/i10-local-20260806-g379efbd/` |
 | Intent Semantic Contract 产品纵切 | `completed` | `TaskSemanticContract/v3` 统一任务形态、作用域、mutation/read、验证、质量义务、`done_iff`、歧义、跨轮修订与项目指令；session、Kernel、双 loop、deterministic/fast path 只消费该契约；48 条外部形式自然输入覆盖 12 类任务。非 Web Provider candidate 与隔离 semantic channel 仍属后续责任 |
 | 语义执行职责重构 | `completed` | Agentic 系统提示词、双阶段分析提示词、项目指令绑定、跨轮路由和 Agent Surface 展示均有独立 owner；Headless Kernel 不依赖 `vscode`；三项大型入口上限仅在职责、依赖和测试迁移后下调 |
 | R4 非资格本地工作 | `completed` | v2 清单冻结 `4f8a567`；原 `a034e5e` v1 JSON/schema/view 按字节归档；冻结时 artifact/install/runtime 精确一致，stable runtime=1；6/6 leaf completed、blocked=0、qualification effect=`NONE` |

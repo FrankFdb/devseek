@@ -38,7 +38,7 @@
       "path": "docs/process/devseek-capability-ledger.json",
       "schema_version": "devseek.capability-ledger/v1",
       "ledger_id": "DEVSEEK-CAPABILITY-LEDGER/v1",
-      "source_sha256": "08bb2cc53b13c32807373db73cb80cda97a745cc4941aa919bbac4e76f5c45d5"
+      "source_sha256": "f79372dddf5cce4d892651d715741d0a811ac10a41d4eff60d7cec20d4e425eb"
     },
     "qualification_profiles": {
       "path": "docs/process/devseek-qualification-profiles.json",
@@ -55,7 +55,7 @@
     },
     "package_json": {
       "path": "package.json",
-      "source_sha256": "67a67acbea1765137dd8eb4ef9e57c43d4b8d6c1f1ba4f703f203a7df7779082"
+      "source_sha256": "780137ef62e1d44c196cc732e78dd3b34df77939d6134d833a553029697213ea"
     },
     "implementation_sources": [
       {
@@ -72,7 +72,7 @@
       },
       {
         "path": "package.json",
-        "source_sha256": "77d475cf39644b8fd5bbcbb6c83f187ea792ef72f0f159f57ba66496abda03f6"
+        "source_sha256": "d31cab51401797bdb7f501f833a396f2fbdf23172e67623025bd9e1180a05ffa"
       },
       {
         "path": "scripts/devseek-external-authority-adapter-check.mjs",
@@ -277,5 +277,5 @@
     "failure_oracles_covered": 7,
     "bypasses": 0
   },
-  "adapter_sha256": "c9f470af023bcbdf5b4285be1e35d3d1b073b779907f9cae593b43875845f3e7"
+  "adapter_sha256": "ca3ab518be021914c84ba9e6a0c637194a16250f58dabb225c7be8c7e32ee5f2"
 }

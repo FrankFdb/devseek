@@ -1,6 +1,5 @@
 import crypto from 'node:crypto';
 import cp from 'node:child_process';
-import fs from 'node:fs';
 import path from 'node:path';
 import {
   canonicalJson,
@@ -51,8 +50,15 @@ export function buildR4ReleaseCandidateManifest({ repoRoot } = {}) {
   const packageCopyVsix = readVsixIdentity(path.join(repoRoot, PACKAGE_COPY_VSIX_PATH), repoRoot);
   const artifactGitCommit = primaryVsix.package_identity.devseekBuild.gitCommit;
   const artifactSourceCommit = resolveGitCommit(repoRoot, artifactGitCommit);
-  const currentIdentityPath = path.join(repoRoot, R4_FROZEN_CANDIDATE.current_identity_path);
-  const currentIdentity = readJsonFile(currentIdentityPath);
+  // A frozen candidate consumes the identity bytes from its freeze commit,
+  // while the live current-candidate file remains free to advance.
+  const currentIdentityText = readGitFile(
+    repoRoot,
+    R4_FROZEN_CANDIDATE.current_identity_commit,
+    R4_FROZEN_CANDIDATE.current_identity_path,
+  );
+  const currentIdentity = JSON.parse(currentIdentityText);
+  const currentIdentityFileSha256 = sha256Buffer(Buffer.from(currentIdentityText, 'utf8'));
   const verificationRecordText = readGitFile(
     repoRoot,
     R4_VERIFICATION_RECORD.commit,
@@ -64,7 +70,7 @@ export function buildR4ReleaseCandidateManifest({ repoRoot } = {}) {
     primaryVsix,
     packageCopyVsix,
     currentIdentity,
-    currentIdentityFileSha256: sha256File(currentIdentityPath),
+    currentIdentityFileSha256,
   });
 
   const artifactComparable = comparableVsixIdentity(primaryVsix);
@@ -105,7 +111,7 @@ export function buildR4ReleaseCandidateManifest({ repoRoot } = {}) {
       verification_record_ref: R4_VERIFICATION_RECORD.ref,
       verification_record_commit: R4_VERIFICATION_RECORD.commit,
       current_candidate_identity_path: R4_FROZEN_CANDIDATE.current_identity_path,
-      current_candidate_identity_file_sha256: sha256File(currentIdentityPath),
+      current_candidate_identity_file_sha256: currentIdentityFileSha256,
       current_candidate_identity_probe_sha256: currentIdentity.identity_probe_sha256,
       artifact_source_matches_current_identity: artifactSourceCommit === currentIdentity.source_identity.candidate_source_commit,
     },
@@ -125,7 +131,7 @@ export function buildR4ReleaseCandidateManifest({ repoRoot } = {}) {
       path: R4_FROZEN_CANDIDATE.current_identity_path,
       status: 'verified-current-candidate',
       identity_probe_sha256: currentIdentity.identity_probe_sha256,
-      identity_source_sha256: sha256File(currentIdentityPath),
+      identity_source_sha256: currentIdentityFileSha256,
       candidate_source_commit: currentIdentity.source_identity.candidate_source_commit,
       artifact_source_matches_current_identity: true,
       stable_runtime_count: currentIdentity.counts.active_runtime_identities,
@@ -399,16 +405,8 @@ function escapeTableText(value) {
   return String(value).replace(/\|/gu, '\\|');
 }
 
-function readJsonFile(filePath) {
-  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-}
-
 function sha256Buffer(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
-}
-
-function sha256File(filePath) {
-  return sha256Buffer(fs.readFileSync(filePath));
 }
 
 function withoutKeys(value, keys) {

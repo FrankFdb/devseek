@@ -6,6 +6,7 @@ export const R4_FROZEN_CANDIDATE = Object.freeze({
   vsix_sha256: '68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc',
   vsix_name: 'devseek-netai-1.0.0-debug.20260804.t093020.g4f8a567.vsix',
   current_identity_path: 'docs/process/devseek-current-candidate-identity.json',
+  current_identity_commit: '8f30f1b79285c2e2141cbbcacf69b30969487768',
   current_identity_file_sha256: '80a68b5207f65625458b18320c15e1b89514125d7e77d1b3f7f2928c585b294e',
   current_identity_probe_sha256: 'c629bfa4bdf1c7a1843a34e6c5e1277c6260dc5829072510c933b5a14664eafd',
 });

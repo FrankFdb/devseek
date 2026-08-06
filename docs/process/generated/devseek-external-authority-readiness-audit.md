@@ -52,18 +52,18 @@
 
 ## Source Bindings
 
-- `external_authority_requests`: `docs/process/devseek-external-authority-requests.json` -> `47239b5590ad93bc2ca307fef7b10207491d683b7a50a53952fe2d4a334341eb`
+- `external_authority_requests`: `docs/process/devseek-external-authority-requests.json` -> `ee3686f72dcb051590e8000773178b11f72731f30949a0ac027a3de5d7921aa9`
 - `r4_live_qualification_request_packet`: `docs/process/devseek-r4-live-qualification-request-packet.json` -> `8efb7b899a44b81ab3965e757ec5a38549da4369512a9150f4c2628f6dba4fc7`
 - `r4_live_user_way_holdout_matrix`: `docs/process/devseek-r4-live-user-way-holdout-matrix.json` -> `000a82523ebeb1047518c7ca32f232d1416cfccf8ec6418599428b642ed783cf`
 - `r4_real_provider_failure_taxonomy`: `docs/process/devseek-r4-real-provider-failure-taxonomy.json` -> `f600782836dcd78b8050870f72cdee8e5ae8fecfe6eab9e9410edd439e22ed35`
 - `r4_authorization_and_permission_guide`: `docs/process/devseek-r4-authorization-and-permission-guide.md` -> `826240c4a2cfcae0c6fb1068ed199b1ffed99d64857fd8053d70e3790f40ada5`
 - `r4_process_artifacts_aggregate`: `docs/process/devseek-r4-process-artifacts-aggregate.json` -> `6dac45a810f112a5599ccb1347e58c9430c11a49cafe00255184d344cfd6a06e`
-- `gate0_decision`: `docs/process/devseek-gate0-decision-report.json` -> `d9df26f6bf488f995fa49c0ca5154eb49806cbfb815e46d7a44ff5af90a18b69`
-- `package_scripts`: `package.json` -> `77d475cf39644b8fd5bbcbb6c83f187ea792ef72f0f159f57ba66496abda03f6`
+- `gate0_decision`: `docs/process/devseek-gate0-decision-report.json` -> `7056371dd94947228a58cf2938347dee554b324071076800f2a6bfc29c0716a8`
+- `package_scripts`: `package.json` -> `d31cab51401797bdb7f501f833a396f2fbdf23172e67623025bd9e1180a05ffa`
 - `phase_gate_source`: `scripts/devseek-phase0-12-verify.mjs` -> `db927db5c6d2bf78ba78e62075bdde17a39c26ccdb41fef9f1847bd496b48702`
 - `checker_source`: `scripts/devseek-external-authority-readiness-audit-check.mjs` -> `07bcdf406f21ca21f930a1b84b9a06d24f2a2e94ebb34dd1e61ce76f7a7e6944`
 - `oracle_source`: `scripts/test/devseek-external-authority-readiness-audit.test.mjs` -> `2d356a6fe285af4fdc72493e39f88f201b98a9d92a2a27d189d8f4fd1d5af1a5`
 
 ## Audit Identity
 
-- Audit SHA-256: `edb5bbf8a75c351b0cf87ec892670ba5c0d4ddf877cde7f6173a8f38676bc8d5`
+- Audit SHA-256: `2b2929dfbf06adcfcf3ad0c13ee1e965d48c67d46e87e26870592580015773f2`

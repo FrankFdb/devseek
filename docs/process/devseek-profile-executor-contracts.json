@@ -17,7 +17,7 @@
       "path": "docs/process/devseek-profile-denominator-registry.json",
       "schema_version": "devseek.profile-denominator-registry/v1",
       "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
-      "source_sha256": "76fef8d4b29f7e045206f4f42222402c7529576fe804e2d75d6b9cefa9e3781c"
+      "source_sha256": "264a50fe6f3f380d3fdd8ec2c1769edf083016da8e3c077a916f298915641d9f"
     },
     "qualification_runner_inventory": {
       "path": "docs/process/devseek-qualification-runner-inventory.json",
@@ -56,7 +56,7 @@
       "purpose": "Reject lowered applicability, platform, provider, or qualification level denominators.",
       "denominator_binding": {
         "denominator_registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
-        "denominator_registry_sha256": "76fef8d4b29f7e045206f4f42222402c7529576fe804e2d75d6b9cefa9e3781c",
+        "denominator_registry_sha256": "264a50fe6f3f380d3fdd8ec2c1769edf083016da8e3c077a916f298915641d9f",
         "capability_ids": [
           "C0-CAPABILITY-LEDGER-SCHEMA",
           "C0-CASE-CATALOG",
@@ -162,7 +162,7 @@
       "execution_result_count": 0,
       "qualification_effect": "NONE",
       "asserts_gate_pass": false,
-      "contract_sha256": "22b9460081b0e7f1fc26c13d5fd6ae801d2e2851e4e852a5b6cac3b444066c96"
+      "contract_sha256": "cefdd02cab1478158cf2c55c2dea1022f153e5481fbac61c16691dd97363552d"
     },
     {
       "contract_id": "G0-05:catalog-corpus-binding:executor-contract/v1",
@@ -172,7 +172,7 @@
       "purpose": "Bind the exact catalog and corpus denominator before case metadata can be consumed.",
       "denominator_binding": {
         "denominator_registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
-        "denominator_registry_sha256": "76fef8d4b29f7e045206f4f42222402c7529576fe804e2d75d6b9cefa9e3781c",
+        "denominator_registry_sha256": "264a50fe6f3f380d3fdd8ec2c1769edf083016da8e3c077a916f298915641d9f",
         "capability_ids": [
           "C0-CAPABILITY-LEDGER-SCHEMA",
           "C0-CASE-CATALOG",
@@ -278,7 +278,7 @@
       "execution_result_count": 0,
       "qualification_effect": "NONE",
       "asserts_gate_pass": false,
-      "contract_sha256": "74bc188632da865de8b5a52cfb62cc29f6c7a75f01b8a791b3c578af6dc0577b"
+      "contract_sha256": "024dd38c57cbfd28016672a8d36b0ae4ba72961fd4484cd0ed12586ae97c48d9"
     },
     {
       "contract_id": "G0-05:profile-tuple-binding:executor-contract/v1",
@@ -288,7 +288,7 @@
       "purpose": "Bind the exact Gate 0 profile tuple before any execution result can be interpreted.",
       "denominator_binding": {
         "denominator_registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
-        "denominator_registry_sha256": "76fef8d4b29f7e045206f4f42222402c7529576fe804e2d75d6b9cefa9e3781c",
+        "denominator_registry_sha256": "264a50fe6f3f380d3fdd8ec2c1769edf083016da8e3c077a916f298915641d9f",
         "capability_ids": [
           "C0-CAPABILITY-LEDGER-SCHEMA",
           "C0-CASE-CATALOG",
@@ -394,7 +394,7 @@
       "execution_result_count": 0,
       "qualification_effect": "NONE",
       "asserts_gate_pass": false,
-      "contract_sha256": "f1c1c635e800e8a1cd987827ebbeb60e1dc0216b723eef2d5af7c2b8520da4b6"
+      "contract_sha256": "e067021d1e99a954f0147bb8470e3a87d9695d990843cb245cb798b857767c4b"
     },
     {
       "contract_id": "G0-05:schema-invalid-denominator:executor-contract/v1",
@@ -404,7 +404,7 @@
       "purpose": "Reject missing, wildcard, or default denominator fields at the schema/runtime boundary.",
       "denominator_binding": {
         "denominator_registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
-        "denominator_registry_sha256": "76fef8d4b29f7e045206f4f42222402c7529576fe804e2d75d6b9cefa9e3781c",
+        "denominator_registry_sha256": "264a50fe6f3f380d3fdd8ec2c1769edf083016da8e3c077a916f298915641d9f",
         "capability_ids": [
           "C0-CAPABILITY-LEDGER-SCHEMA",
           "C0-CASE-CATALOG",
@@ -510,7 +510,7 @@
       "execution_result_count": 0,
       "qualification_effect": "NONE",
       "asserts_gate_pass": false,
-      "contract_sha256": "ff84fd51b74c68567dce6c4696fd9fe8897b6406ee65f996c9dfd0989190dcf8"
+      "contract_sha256": "77cc9be9a1ff640b33d74d32eeb39acda2d3b76d4ba9fb8dbeb69d5a13a5db4b"
     },
     {
       "contract_id": "G0-05:slot-attempt-identity-drift:executor-contract/v1",
@@ -520,7 +520,7 @@
       "purpose": "Reject slot, case, profile, platform, or attempt-role identity drift.",
       "denominator_binding": {
         "denominator_registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
-        "denominator_registry_sha256": "76fef8d4b29f7e045206f4f42222402c7529576fe804e2d75d6b9cefa9e3781c",
+        "denominator_registry_sha256": "264a50fe6f3f380d3fdd8ec2c1769edf083016da8e3c077a916f298915641d9f",
         "capability_ids": [
           "C0-CAPABILITY-LEDGER-SCHEMA",
           "C0-CASE-CATALOG",
@@ -626,7 +626,7 @@
       "execution_result_count": 0,
       "qualification_effect": "NONE",
       "asserts_gate_pass": false,
-      "contract_sha256": "0f41d1299345cca16311e59df1ce02080c14f6196be3d5ccce76d1d5914de8c9"
+      "contract_sha256": "0cfb74d5fc1fb2e879be6fd79815f86c45981d4de1cbdc3e2476ed0c74fe7e7a"
     }
   ],
   "counts": {
@@ -639,5 +639,5 @@
     "execution_results": 0,
     "qualification_claims": 0
   },
-  "contract_registry_sha256": "9ac6d8185668a82862012026f632a743bf8136eb67f8fc7ac2e30cccf0733777"
+  "contract_registry_sha256": "d4613cd771c7dc32d4b4c2e8e5b115d7fd17fcb2f02d1b1f17e2bc46a2bad939"
 }

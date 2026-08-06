@@ -1,0 +1,17 @@
+TAP version 13
+# Memory service tests passed.
+# Subtest: I10-MEM-02 user journey: sensitive persistent memory is blocked before storage
+ok 1 - I10-MEM-02 user journey: sensitive persistent memory is blocked before storage
+  ---
+  duration_ms: 4.119699
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 533.153867

@@ -29,7 +29,7 @@
     },
     "package_scripts": {
       "path": "package.json",
-      "source_sha256": "77d475cf39644b8fd5bbcbb6c83f187ea792ef72f0f159f57ba66496abda03f6",
+      "source_sha256": "d31cab51401797bdb7f501f833a396f2fbdf23172e67623025bd9e1180a05ffa",
       "required_script": "verify:post-r4-local-regression-manifest",
       "required_script_present": true
     },
@@ -194,7 +194,7 @@
         {
           "path": "packages/vscode-extension/src/app/settlement-state.ts",
           "role": "terminal-state-policy",
-          "source_sha256": "d2bce0452613011e88e93fe15bf3c7514fd28fb4e34c8c3528673cb0541f63a0"
+          "source_sha256": "9cea105e0d8354725f971cc1dc9d5dec1942c52fbf7a687a2efa3a2a1ea172d6"
         },
         {
           "path": "packages/vscode-extension/src/diagnostics/run-log-replay.ts",
@@ -214,7 +214,7 @@
         {
           "path": "packages/vscode-extension/test/unit/workflow-compliance.test.mjs",
           "role": "workflow-static-contract-oracle",
-          "source_sha256": "34ad20b8a7e49502a4470849c957a32549d69f26fc5235ad8dc02c8990f6fec3"
+          "source_sha256": "602d07f51faea525f4a6fea38b82c52b49c8ba0fcd6d29aeb24e64d9f5ccf3e0"
         }
       ],
       "anchor_checks": [
@@ -314,7 +314,7 @@
         {
           "path": "packages/vscode-extension/src/agent/completion-evidence.ts",
           "role": "completion-evidence-deliverable-contract",
-          "source_sha256": "0b64015c5ac1abd56037bb18927d71500f6cc78828c2a0809a381af2d0e10e3b"
+          "source_sha256": "b422f5777d92a9390f65f3a43c96794fb8bf37ca74ac8aa08d47691824c5914e"
         },
         {
           "path": "packages/vscode-extension/test/unit/artifact-quality-oracle.test.mjs",
@@ -324,7 +324,7 @@
         {
           "path": "packages/vscode-extension/test/unit/completion-evidence.test.mjs",
           "role": "completion-evidence-tests",
-          "source_sha256": "9ed3b29bb025d24d4781fad62906717a9d7413928788473a853905bd3f53ef80"
+          "source_sha256": "8af307e968cd6dd387e91b8d76796a6e09ea90227d2ff7bbefac7bcee589aaa6"
         }
       ],
       "anchor_checks": [
@@ -414,5 +414,5 @@
     "gate_pass_assertions": 0,
     "bypasses": 0
   },
-  "manifest_sha256": "1b97b29d493c95821f91f7611a9f00c731b0d827b7012141d0c6f33e8dcc8813"
+  "manifest_sha256": "3fd6ac3df678fba545a0771b7f0a2842e3bad0567d4c2e23137758d1a17742c9"
 }

@@ -40,11 +40,19 @@ export class CliVerificationHostAdapter {
 
     const cppFiles = files.filter(file => /\.(cc|cpp|cxx)$/i.test(file));
     if (cppFiles.length === 0) {
+      if (projectValidation) {
+        return {
+          passed: true,
+          status: 'passed',
+          evidenceRefs,
+          summary: projectValidation.summary,
+        };
+      }
       return {
         passed: false,
         status: 'unverified',
-        evidenceRefs: evidenceRefs.length > 0 ? evidenceRefs : ['no verifier configured for changed file types'],
-        summary: evidenceRefs.length > 0 ? 'All configured verifiers passed.' : 'No verifier configured for changed file types.',
+        evidenceRefs: ['no verifier configured for changed file types'],
+        summary: 'No verifier configured for changed file types.',
       };
     }
 

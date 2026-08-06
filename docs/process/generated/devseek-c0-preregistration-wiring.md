@@ -16,7 +16,7 @@
 - Capability: `C0-PREREGISTRATION-PLAN`
 - Implementation state: `wired`
 - Authority port: `QualificationPlanRegistrationPort`
-- Capability ledger SHA-256: `08bb2cc53b13c32807373db73cb80cda97a745cc4941aa919bbac4e76f5c45d5`
+- Capability ledger SHA-256: `f79372dddf5cce4d892651d715741d0a811ac10a41d4eff60d7cec20d4e425eb`
 
 ## Production Entrypoints
 
@@ -58,4 +58,4 @@
 
 ## Wiring Identity
 
-- Wiring SHA-256: `cc7d6f0da501b52c9c2974ef4ce51d8a3e57652beffd6af73f23d4b1cce2aa80`
+- Wiring SHA-256: `534e64895931446ad6c6d9aa8a4ebd12142a044ec63369c5dfe6028c1ff1b4a6`

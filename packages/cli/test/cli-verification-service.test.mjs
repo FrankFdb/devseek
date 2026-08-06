@@ -57,6 +57,41 @@ test('CLI verification host reports unverified when no verifier applies', async 
   }
 });
 
+test('CLI verification host preserves a passing package test for non-C++ changes', async () => {
+  const workspace = createWorkspace('package-test-pass');
+  try {
+    writeFileSync(path.join(workspace, 'package.json'), JSON.stringify({
+      scripts: { test: 'node -e "console.log(\\\"PROJECT_TEST_OK\\\")"' },
+    }), 'utf8');
+
+    const result = await service.verify(workspace, ['src/app.js'], 'Update src/app.js and run tests');
+
+    assert.equal(result.passed, true);
+    assert.equal(result.status, 'passed');
+    assert.match(result.evidenceRefs.join('\n'), /npm test --silent: PROJECT_TEST_OK/);
+    assert.equal(result.summary, 'npm test --silent passed.');
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('CLI verification host preserves a failing package test for non-C++ changes', async () => {
+  const workspace = createWorkspace('package-test-fail');
+  try {
+    writeFileSync(path.join(workspace, 'package.json'), JSON.stringify({
+      scripts: { test: 'node -e "process.exit(2)"' },
+    }), 'utf8');
+
+    const result = await service.verify(workspace, ['src/app.ts'], 'Update src/app.ts and run tests');
+
+    assert.equal(result.passed, false);
+    assert.notEqual(result.status, 'unverified');
+    assert.match(result.evidenceRefs.join('\n'), /npm test --silent/);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 test('CLI verification adapter emits an unverified shared receipt without acceptance coverage', async () => {
   const workspace = createWorkspace('shared-receipt');
   try {

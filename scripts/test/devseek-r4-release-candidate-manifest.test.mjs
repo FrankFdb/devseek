@@ -25,8 +25,14 @@ const expected = buildR4ReleaseCandidateManifest({ repoRoot });
 
 test('R4 v2 manifest freezes 4f8a567 and binds current identity without qualification effect', () => {
   const actual = readJson('docs/process/devseek-r4-release-candidate-manifest.json');
+  const activeCurrentIdentity = readJson('docs/process/devseek-current-candidate-identity.json');
 
   assert.equal(canonicalJson(actual), canonicalJson(expected));
+  assert.notEqual(
+    activeCurrentIdentity.source_identity.candidate_source_commit,
+    actual.source_identity.artifact_source_commit,
+    'the active development identity must be allowed to advance without rewriting the frozen candidate',
+  );
   assert.deepEqual(actual.counts, {
     vsix_artifacts: 2,
     historical_candidates: 1,
