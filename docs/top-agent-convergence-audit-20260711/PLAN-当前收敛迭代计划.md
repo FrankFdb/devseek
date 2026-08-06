@@ -50,7 +50,7 @@ devseek_governance:
 | 范围 | 状态 | 当前事实 |
 | --- | --- | --- |
 | C0 本地实现与机器裁决前置 | `completed` | 7/7 implementation requirements satisfied，repository blockers=0，local conformance=`PASSED` |
-| Extension 类型与候选包基线 | `completed` | TypeScript 基线零错误；171/171 extension 套件、架构守卫、48/48 自然输入、8 步 Webview 人工输入、精确 VSIX `1.0.0-debug.20260806.t113509.gf8bf8f3` 五场景产品路径与四段同会话真实产品仿真通过；T3 与 `realistic-product` 继续作为发版门禁 |
+| Extension 类型与候选包基线 | `completed` | TypeScript 基线零错误；172/172 extension 套件、架构守卫、48/48 自然输入、8 步 Webview 人工输入、精确 VSIX `1.0.0-debug.20260806.t124239.g8d60aef` 的受控普通用户路径与五场景产品路径通过；T3 与 `realistic-product` 继续作为发版门禁 |
 | Surface 入口盘点 | `completed` | 88/88 入口受 inventory 覆盖，其中 Headless product entry=1；未知入口与未声明 legacy owner 可达性均为 0 |
 | Kernel owner 收敛基线 | `completed` | v18 将本地产品迭代与资格晋级解耦；4 条活跃路由均通过 shared `CanonicalCodingKernel`，legacy execution owner=0；16 个语义域均为 shared 单一 owner、missing Surface=0；91/91 源码断言通过 |
 | 01：VS Code 新任务与恢复路由收敛 | `completed` | `AgentKernelService` 统一决定 fresh/checkpoint 路由；附件只作为 Context；durable checkpoint 与 local validation repair 均通过 typed recovery 输入进入 canonical loop，失败保留待办、成功唯一清除 checkpoint；产品 adapter 不再拥有 `runLegacyPlanned` |
