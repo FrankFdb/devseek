@@ -33,6 +33,16 @@ import {
   type CodingMemoryCandidate,
   type CodingMemoryContextDecision,
 } from './coding-memory-policy';
+import {
+  CanonicalContextCompactionService,
+  type CodingContextCompactionReceipt,
+  type CodingContextCompactionSessionPort,
+} from './coding-context-compaction';
+import {
+  CanonicalResumeIdempotencyService,
+  type CodingResumeIdempotencySessionPort,
+  type CodingResumeOperationReceipt,
+} from './coding-resume-idempotency';
 
 export {
   CODING_KERNEL_TASK_CONTRACT_VERSION,
@@ -60,6 +70,7 @@ export interface CodingKernelExecutionRequest<TRuntimeContext> {
   readonly contextSeed?: CodingContextSeed;
   readonly memoryCandidates?: readonly CodingMemoryCandidate[];
   readonly resumeCheckpoint?: CodingCheckpoint;
+  readonly resumeReceipts?: readonly CodingResumeOperationReceipt[];
   readonly runtimeContext: TRuntimeContext;
   readonly signal?: AbortSignal;
 }
@@ -69,7 +80,9 @@ export interface CodingKernelRuntimeRequest<TRuntimeContext>
   readonly contextGraph: CodingContextGraph;
   readonly memoryPolicy: CodingMemoryContextDecision;
   readonly checkpoint: CodingCheckpointSessionPort;
+  readonly contextCompaction: CodingContextCompactionSessionPort;
   readonly resume?: CodingCheckpointRestoreDecision;
+  readonly resumeIdempotency?: CodingResumeIdempotencySessionPort;
 }
 
 export interface CodingKernelRuntimeOutput<TResult> {
@@ -92,6 +105,8 @@ export interface CodingKernelExecutionOutput<TResult> {
   readonly contextGraph: CodingContextGraph;
   readonly memoryPolicy: CodingMemoryContextDecision;
   readonly resume?: CodingCheckpointRestoreDecision;
+  readonly contextCompactions: readonly CodingContextCompactionReceipt[];
+  readonly resumeReceipts: readonly CodingResumeOperationReceipt[];
   readonly result: TResult;
   readonly evidenceRefs: readonly string[];
   readonly residualRisks: readonly string[];
@@ -107,6 +122,8 @@ export class CodingKernelExecutionError extends Error {
   readonly lifecycle: CodingRunLifecycleSnapshot;
   readonly settlement: CodingSettlementDecision;
   readonly checkpoint: CodingCheckpointSessionPort;
+  readonly contextCompactions: readonly CodingContextCompactionReceipt[];
+  readonly resumeReceipts: readonly CodingResumeOperationReceipt[];
   readonly runtimeCause: unknown;
 
   constructor(
@@ -114,6 +131,8 @@ export class CodingKernelExecutionError extends Error {
     lifecycle: CodingRunLifecycleSnapshot,
     settlement: CodingSettlementDecision,
     checkpoint: CodingCheckpointSessionPort,
+    contextCompactions: readonly CodingContextCompactionReceipt[],
+    resumeReceipts: readonly CodingResumeOperationReceipt[],
     runtimeCause?: unknown,
   ) {
     super(message);
@@ -121,6 +140,8 @@ export class CodingKernelExecutionError extends Error {
     this.lifecycle = lifecycle;
     this.settlement = settlement;
     this.checkpoint = checkpoint;
+    this.contextCompactions = contextCompactions;
+    this.resumeReceipts = resumeReceipts;
     this.runtimeCause = runtimeCause;
   }
 }
@@ -131,6 +152,8 @@ const TASK_CONTRACT = new CanonicalTaskContractService();
 const CONTEXT_GRAPH = new CanonicalContextGraphService();
 const MEMORY_POLICY = new CanonicalMemoryPolicyService();
 const CHECKPOINT = new CanonicalCheckpointService();
+const CONTEXT_COMPACTION = new CanonicalContextCompactionService();
+const RESUME_IDEMPOTENCY = new CanonicalResumeIdempotencyService();
 
 /**
  * The product-level execution owner shared by every Surface. Runtime adapters
@@ -173,10 +196,36 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
           memoryPolicySha256: memoryPolicy.decisionSha256,
         })
       : undefined;
+    const contextCompaction = CONTEXT_COMPACTION.bind({
+      taskContract,
+      contextGraph,
+      memoryPolicy,
+      checkpoint,
+      ...(request.resumeCheckpoint ? { resumeCheckpoint: request.resumeCheckpoint } : {}),
+    });
+    const resumeIdempotency = resume
+      ? RESUME_IDEMPOTENCY.bind({ restore: resume, receipts: request.resumeReceipts })
+      : undefined;
     const lifecycle = RUN_LIFECYCLE.start({ runId: request.runId, surface: request.surface });
     if (request.signal?.aborted) {
       lifecycle.settle('cancelled');
-      throw lifecycleError('coding-kernel-execution:cancelled-before-start', lifecycle, checkpoint);
+      throw lifecycleError(
+        'coding-kernel-execution:cancelled-before-start',
+        lifecycle,
+        checkpoint,
+        contextCompaction,
+        resumeIdempotency,
+      );
+    }
+    if (resumeIdempotency && !resumeIdempotency.plan.executionAllowed) {
+      lifecycle.settle('blocked');
+      throw lifecycleError(
+        'coding-kernel-execution:resume-indeterminate-effect',
+        lifecycle,
+        checkpoint,
+        contextCompaction,
+        resumeIdempotency,
+      );
     }
 
     const runtimeRequest = Object.freeze({
@@ -185,7 +234,9 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       contextGraph,
       memoryPolicy,
       checkpoint,
+      contextCompaction,
       ...(resume ? { resume } : {}),
+      ...(resumeIdempotency ? { resumeIdempotency } : {}),
     });
     lifecycle.beginExecution();
     try {
@@ -215,6 +266,8 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         contextGraph,
         memoryPolicy,
         ...(resume ? { resume } : {}),
+        contextCompactions: contextCompaction.receipts(),
+        resumeReceipts: resumeIdempotency?.receipts() ?? [],
         result: runtimeOutput.result,
         evidenceRefs: settlement.evidenceRefs,
         residualRisks: settlement.residualRisks,
@@ -224,7 +277,14 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       if (!lifecycle.snapshot().terminal) {
         lifecycle.settle(request.signal?.aborted ? 'cancelled' : 'failed');
       }
-      throw lifecycleError(errorMessage(error), lifecycle, checkpoint, error);
+      throw lifecycleError(
+        errorMessage(error),
+        lifecycle,
+        checkpoint,
+        contextCompaction,
+        resumeIdempotency,
+        error,
+      );
     }
   }
 }
@@ -233,6 +293,8 @@ function lifecycleError(
   message: string,
   lifecycle: RunLifecycleSessionPort,
   checkpoint: CodingCheckpointSessionPort,
+  contextCompaction: CodingContextCompactionSessionPort,
+  resumeIdempotency?: CodingResumeIdempotencySessionPort,
   cause?: unknown,
 ): CodingKernelExecutionError {
   const snapshot = lifecycle.snapshot();
@@ -242,7 +304,15 @@ function lifecycleError(
     lifecycle: snapshot,
     requestedStatus: snapshot.status,
   });
-  return new CodingKernelExecutionError(message, snapshot, settlement, checkpoint, cause);
+  return new CodingKernelExecutionError(
+    message,
+    snapshot,
+    settlement,
+    checkpoint,
+    contextCompaction.receipts(),
+    resumeIdempotency?.receipts() ?? [],
+    cause,
+  );
 }
 
 function errorMessage(error: unknown): string {
@@ -273,6 +343,9 @@ function assertCanonicalRequest(request: CodingKernelExecutionRequest<unknown>):
   }
   if (!request.taskContract || request.taskContract.version !== CODING_KERNEL_TASK_CONTRACT_VERSION) {
     throw new Error('coding-kernel-execution:unsupported-task-contract-version');
+  }
+  if (request.resumeReceipts && !request.resumeCheckpoint) {
+    throw new Error('coding-kernel-execution:resume-receipts-without-checkpoint');
   }
 }
 

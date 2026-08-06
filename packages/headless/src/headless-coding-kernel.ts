@@ -13,6 +13,7 @@ import {
   type CodingKernelRuntimePort,
   type CodingKernelTaskContract,
   type CodingMemoryCandidate,
+  type CodingResumeOperationReceipt,
 } from '@devseek-netai/shared';
 import {
   HeadlessRunEvidence,
@@ -28,6 +29,7 @@ export interface HeadlessCodingRunInput<TRuntimeContext> {
   readonly contextSeed?: CodingContextSeed;
   readonly memoryCandidates?: readonly CodingMemoryCandidate[];
   readonly resumeCheckpoint?: CodingCheckpoint;
+  readonly resumeReceipts?: readonly CodingResumeOperationReceipt[];
   readonly runtimeContext: TRuntimeContext;
   readonly signal?: AbortSignal;
 }
@@ -92,6 +94,7 @@ export class HeadlessCodingKernelExecutor<TRuntimeContext, TResult> {
         contextSeed: input.contextSeed,
         memoryCandidates: input.memoryCandidates,
         resumeCheckpoint: input.resumeCheckpoint,
+        resumeReceipts: input.resumeReceipts,
         runtimeContext: input.runtimeContext,
         signal: command.request.signal,
       });

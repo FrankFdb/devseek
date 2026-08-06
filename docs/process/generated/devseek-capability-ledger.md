@@ -4,7 +4,7 @@
 
 - Schema: `devseek.capability-ledger/v1`
 - Capabilities: 76
-- Ledger SHA-256: `f79372dddf5cce4d892651d715741d0a811ac10a41d4eff60d7cec20d4e425eb`
+- Ledger SHA-256: `d8380b88a2a5ac9b74406f8b963e580f33fcc12b402c93e2ac3d029e20231221`
 - Qualification claim policy: `deny-until-signed-evidence-validator`
 
 | Capability | Priority | Applicability | Claim scopes | Implementation | Qualification | Authority port | Typed dependencies |
@@ -30,11 +30,11 @@
 | `C11-BACKGROUND-AUTOMATION` | P2 | deferred | background-automation | proposed | — | `BackgroundAutomationPort` | C11-CHECKPOINT (recovery/wired)<br>C11-RESUME-IDEMPOTENCY (recovery/wired)<br>C11-CANCEL-INTERRUPT (recovery/wired)<br>C7-EXTERNAL-EFFECT (authority/wired) |
 | `C11-CANCEL-INTERRUPT` | P1 | active | core-coding | proposed | — | `CancellationPort` | C1-AGENT-COMMAND (control/wired) |
 | `C11-CHECKPOINT` | P1 | active | core-coding | wired | — | `CheckpointPort` | C1-RUN-LIFECYCLE (control/wired)<br>C0-RUN-EVIDENCE-LEDGER (evidence/wired) |
-| `C11-RESUME-IDEMPOTENCY` | P1 | active | core-coding | proposed | — | `ResumeIdempotencyPort` | C11-CHECKPOINT (recovery/wired)<br>C7-EXTERNAL-EFFECT (authority/wired)<br>C7-WORKSPACE-MUTATION (authority/wired) |
+| `C11-RESUME-IDEMPOTENCY` | P1 | active | core-coding | implemented | — | `ResumeIdempotencyPort` | C11-CHECKPOINT (recovery/wired)<br>C7-EXTERNAL-EFFECT (authority/wired)<br>C7-WORKSPACE-MUTATION (authority/wired) |
 | `C11-STEERING` | P1 | active | core-coding | proposed | — | `SteeringPort` | C1-AGENT-COMMAND (control/wired)<br>C2-TASK-CONTRACT (semantic/wired) |
 | `C11-SURFACE-ACCESSIBILITY` | P1 | active | core-coding | proposed | — | `SurfaceAccessibilityPort` | C11-USER-COLLABORATION (recovery/wired) |
 | `C11-USER-COLLABORATION` | P1 | active | core-coding | proposed | — | `UserCollaborationPort` | C1-AGENT-COMMAND (control/wired)<br>C2-TASK-CONTRACT (semantic/wired)<br>C11-CANCEL-INTERRUPT (recovery/wired)<br>C11-STEERING (recovery/wired) |
-| `C12-CONTEXT-COMPACTION` | P1 | active | core-coding | proposed | — | `ContextCompactionPort` | C3-CONTEXT-GRAPH (semantic/wired)<br>C11-CHECKPOINT (recovery/wired) |
+| `C12-CONTEXT-COMPACTION` | P1 | active | core-coding | wired | — | `ContextCompactionPort` | C3-CONTEXT-GRAPH (semantic/wired)<br>C11-CHECKPOINT (recovery/wired) |
 | `C12-MEMORY-POLICY` | P1 | active | core-coding | wired | — | `MemoryPolicyPort` | C3-INSTRUCTION-PRECEDENCE (semantic/wired)<br>C12-RUN-EVIDENCE-RETENTION (context/wired) |
 | `C12-RUN-EVIDENCE-RETENTION` | P0 | active | core-coding, safety | wired | — | `RunEvidenceRetentionPort` | C0-RUN-EVIDENCE-LEDGER (evidence/wired) |
 | `C13-EXTENSION-CONFORMANCE` | P2 | conditional | orchestration-capable, extension-capable | proposed | — | `ExtensionConformancePort` | C13-SKILL-BOUNDARY (extension/wired)<br>C13-HOOK-BOUNDARY (extension/wired)<br>C13-MCP-BOUNDARY (extension/wired)<br>C13-SUBAGENT-DELEGATION (extension/wired)<br>C13-WORKTREE-ISOLATION (extension/wired) |

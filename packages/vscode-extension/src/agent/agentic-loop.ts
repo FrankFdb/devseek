@@ -109,10 +109,9 @@ import {
 } from './task-output-scope';
 import {
   applyProviderRecoveryHistory,
-  compactAgentMessageHistoryWithFidelity,
-  replaceAllAssistantToolHistory,
   replaceLatestAssistantToolHistory,
 } from './agent-history-compaction';
+import { compactAgenticMessageHistory } from './agentic-context-compaction';
 import { ToolFailureRecoveryLedger } from './tool-failure-recovery';
 import { QualityGateStagnationLedger } from './quality-gate-stagnation';
 import { tryRunGroundedMarkdownAgenticTask } from './grounded-markdown-agentic-task';
@@ -123,70 +122,8 @@ import {
   classifyAgenticManualReviewEvidence,
   projectTerminalVerificationReceipts,
 } from './terminal-evidence-settlement';
-const AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET = 52_000;
-const AGENTIC_TASK_PROMPT_CHAR_BUDGET = 34_000;
-const AGENTIC_TOOL_FEEDBACK_CHAR_BUDGET = 8_000;
-const AGENTIC_ASSISTANT_HISTORY_CHAR_BUDGET = 6_000;
-const AGENTIC_USER_HISTORY_CHAR_BUDGET = 8_000;
-const AGENTIC_RECENT_MESSAGE_KEEP_COUNT = 5;
 const AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS = 3;
-function agenticMessageContentLength(content: ChatMessage['content']): number {
-  return typeof content === 'string' ? content.length : JSON.stringify(content).length;
-}
-function totalAgenticMessageChars(messages: ChatMessage[]): number {
-  return messages.reduce((sum, message) => sum + agenticMessageContentLength(message.content), 0);
-}
-function truncateAgenticHistoryText(text: string, maxChars: number, label: string): string {
-  if (text.length <= maxChars) return text;
-  const omitted = text.length - maxChars;
-  const headChars = Math.max(1000, Math.floor(maxChars * 0.58));
-  const tailChars = Math.max(1000, maxChars - headChars - 320);
-  return [
-    text.slice(0, headChars).trimEnd(),
-    '',
-    `[DevSeek 上下文压缩] ${label} 已压缩 ${omitted} 字符，保留首尾关键信息；如需细节，请继续用 read_file/grep_search 精确读取。`,
-    '',
-    text.slice(Math.max(0, text.length - tailChars)).trimStart(),
-  ].join('\n');
-}
-function isAgenticToolFeedback(content: string): boolean {
-  return /^\s*\[工具结果 Round \d+\]/.test(content)
-    || /^\s*【系统反馈】/.test(content)
-    || /^\s*\[DevSeek 上下文压缩(?:事实)?]/.test(content);
-}
-function agenticMessageBudgetFor(message: ChatMessage, index: number): number {
-  if (typeof message.content !== 'string') return Number.POSITIVE_INFINITY;
-  if (index === 0) return AGENTIC_TASK_PROMPT_CHAR_BUDGET;
-  if (isAgenticToolFeedback(message.content)) return AGENTIC_TOOL_FEEDBACK_CHAR_BUDGET;
-  if (message.role === 'assistant') return AGENTIC_ASSISTANT_HISTORY_CHAR_BUDGET;
-  return AGENTIC_USER_HISTORY_CHAR_BUDGET;
-}
-function compactAgenticMessageHistory(messages: ChatMessage[]): number {
-  replaceAllAssistantToolHistory(messages);
-  for (let index = 0; index < messages.length; index += 1) {
-    const message = messages[index];
-    if (typeof message.content !== 'string') continue;
-    const budget = agenticMessageBudgetFor(message, index);
-    message.content = truncateAgenticHistoryText(
-      message.content,
-      budget,
-      index === 0 ? '任务上下文' : message.role === 'assistant' ? '模型历史回复' : '工具反馈/用户补充',
-    );
-  }
-  let total = totalAgenticMessageChars(messages);
-  if (total <= AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET) return total;
-  if (messages.length > AGENTIC_RECENT_MESSAGE_KEEP_COUNT + 1) {
-    compactAgentMessageHistoryWithFidelity(messages, { maxMessages: AGENTIC_RECENT_MESSAGE_KEEP_COUNT + 2 });
-    total = totalAgenticMessageChars(messages);
-  }
-  if (total <= AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET) return total;
-  for (let index = 1; index < messages.length - 1; index += 1) {
-    const message = messages[index];
-    if (typeof message.content !== 'string') continue;
-    message.content = truncateAgenticHistoryText(message.content, 2_500, '早期轮次历史');
-  }
-  return totalAgenticMessageChars(messages);
-}
+
 function normalizeAgenticAutoValidation(input: {
   autoValidation: AgentAutoValidationResult;
   userPrompt: string;
@@ -529,7 +466,14 @@ export async function runAgenticLoop(
     // ReAct: suppress intermediate prose; route only the final answer to ASUM.
     // This avoids showing the same content in both working box AND bubble.
     messages.push(...writeAuthority.takePendingAndDrain());
-    totalChars = compactAgenticMessageHistory(messages);
+    totalChars = compactAgenticMessageHistory({
+      messages,
+      session: executionContext.contextCompaction,
+      currentTodos,
+      workspaceRoot,
+      round: roundCount,
+      evidenceRefs: allEvidenceRefs,
+    });
     let text = '';
     let tools: ReturnType<typeof parseFakeToolCalls> = [];
     const useFreshProviderSession = roundCount === 1 || forceProviderNewSessionNextTurn;
@@ -601,8 +545,15 @@ export async function runAgenticLoop(
           partialResponseLength: sAccum.trim().length,
         });
         applyProviderRecoveryHistory(messages, recoveryMessage);
-        totalChars = messages.reduce((sum, message) => sum + agenticMessageContentLength(message.content), 0);
-        totalChars = compactAgenticMessageHistory(messages);
+        totalChars = compactAgenticMessageHistory({
+          messages,
+          session: executionContext.contextCompaction,
+          currentTodos,
+          workspaceRoot,
+          round: roundCount,
+          evidenceRefs: allEvidenceRefs,
+          trigger: 'provider-recovery',
+        });
         continue;
       }
       throw error;

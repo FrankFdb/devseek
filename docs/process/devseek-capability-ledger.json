@@ -3459,10 +3459,39 @@
         },
         "contract_sha256": "3da2e08b7262828bdd3d7bfdc28438caf62f0908cbbe8163baa35415cd428dad"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "implemented",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-resume-idempotency.ts"
+        },
+        {
+          "role": "canonical-kernel-binding",
+          "path": "packages/shared/src/coding-kernel.ts"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/coding-context-resume.test.mjs"
+        },
+        {
+          "role": "headless-product-adapter",
+          "path": "packages/headless/src/headless-coding-kernel.ts"
+        },
+        {
+          "role": "headless-user-journey-tests",
+          "path": "packages/headless/test/headless-context-resume-journeys.test.mjs"
+        },
+        {
+          "role": "iteration-user-journey-evidence",
+          "path": "docs/process/devseek-iteration-user-journeys.json"
+        },
+        {
+          "role": "machine-wiring-evidence",
+          "path": "docs/process/devseek-kernel-prep-owner-baseline.json"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C11-CHECKPOINT",
@@ -3482,7 +3511,16 @@
           "required_implementation_state": "wired",
           "contract_sha256": "3d40c41d418c02213eacbcbce6f25bbb71b65c0c4bfe819ea3e43e8ef73566c6"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run verify:kernel-prep-owner-baseline",
+          "npm run verify:iteration-user-journeys",
+          "npm run shared:test",
+          "npm run headless:test"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C11-CANCEL-INTERRUPT",
@@ -3735,10 +3773,55 @@
         },
         "contract_sha256": "348e6490ef7c54aafeadbe9e51afa644f024826e550737f27bc283fdbaacf545"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-context-compaction.ts"
+        },
+        {
+          "role": "canonical-kernel-binding",
+          "path": "packages/shared/src/coding-kernel.ts"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/coding-context-resume.test.mjs"
+        },
+        {
+          "role": "vscode-history-transport",
+          "path": "packages/vscode-extension/src/agent/agent-history-compaction.ts"
+        },
+        {
+          "role": "vscode-agentic-adapter",
+          "path": "packages/vscode-extension/src/agent/agentic-context-compaction.ts"
+        },
+        {
+          "role": "vscode-kernel-runtime-binding",
+          "path": "packages/vscode-extension/src/app/coding-kernel-execution.ts"
+        },
+        {
+          "role": "vscode-product-composition",
+          "path": "packages/vscode-extension/src/product-coding-kernel-executor.ts"
+        },
+        {
+          "role": "vscode-user-journey-tests",
+          "path": "packages/vscode-extension/test/unit/agent-history-compaction.test.mjs"
+        },
+        {
+          "role": "headless-user-journey-tests",
+          "path": "packages/headless/test/headless-context-resume-journeys.test.mjs"
+        },
+        {
+          "role": "iteration-user-journey-evidence",
+          "path": "docs/process/devseek-iteration-user-journeys.json"
+        },
+        {
+          "role": "machine-wiring-evidence",
+          "path": "docs/process/devseek-kernel-prep-owner-baseline.json"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C3-CONTEXT-GRAPH",
@@ -3752,7 +3835,17 @@
           "required_implementation_state": "wired",
           "contract_sha256": "ae8106fe6cbbc6cf8b75ddf8ce724b6ecd7626939a4a9087034acfc93d442069"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run verify:kernel-prep-owner-baseline",
+          "npm run verify:iteration-user-journeys",
+          "npm run shared:test",
+          "npm run headless:test",
+          "node --test packages/vscode-extension/test/unit/agent-history-compaction.test.mjs packages/vscode-extension/test/unit/agentic-context-compaction.test.mjs packages/vscode-extension/test/unit/workflow-compliance.test.mjs"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C12-RUN-EVIDENCE-RETENTION",
@@ -4535,5 +4628,5 @@
       ]
     }
   ],
-  "ledger_sha256": "f79372dddf5cce4d892651d715741d0a811ac10a41d4eff60d7cec20d4e425eb"
+  "ledger_sha256": "d8380b88a2a5ac9b74406f8b963e580f33fcc12b402c93e2ac3d029e20231221"
 }

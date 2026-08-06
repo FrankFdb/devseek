@@ -7,7 +7,7 @@
   "manifest_kind": "target-work-requirements",
   "asserts_current_qualification": false,
   "manifest_id": "R1-MINIMAL-SEAM/v1-work-manifest",
-  "source_ledger_sha256": "f79372dddf5cce4d892651d715741d0a811ac10a41d4eff60d7cec20d4e425eb",
+  "source_ledger_sha256": "d8380b88a2a5ac9b74406f8b963e580f33fcc12b402c93e2ac3d029e20231221",
   "milestone_profile_sha256": "27c90f86cab61156766e18b36bcb368842e424d25c5fae2de2534fcdd1753ad9",
   "counts": {
     "ledger_capabilities": 76,
@@ -10098,5 +10098,5 @@
       ]
     }
   ],
-  "manifest_sha256": "3b61548ba3c90606bce9ff2fd58c1cbcacc7a362b297c9b566ef1763b6defc5d"
+  "manifest_sha256": "a27fb9b8e6773ddf1da43c25516bec656242593d771817268be77ff556b6d05a"
 }

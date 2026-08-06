@@ -3,6 +3,7 @@ import {
   renderCodingContextGraphSummary,
   renderCodingMemoryContext,
   type CodingConformanceProjection,
+  type CodingContextCompactionSessionPort,
   type CodingKernelRuntimeRequest,
   type CodingKernelRuntimeOutput,
   type CodingKernelRuntimePort,
@@ -55,6 +56,7 @@ export interface CanonicalKernelLoopRequest {
   readonly semanticContract?: TaskSemanticContract;
   readonly recoveryContextText: string;
   readonly memoryContextText: string;
+  readonly contextCompaction: CodingContextCompactionSessionPort;
 }
 
 export interface CodingKernelLoopPorts {
@@ -135,6 +137,7 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
         semanticContract: request.semanticContract,
         recoveryContextText,
         memoryContextText: renderCodingMemoryContext(kernelRequest.memoryPolicy),
+        contextCompaction: kernelRequest.contextCompaction,
       });
       const completionDecision = this.completion.decide({
         runId: kernelRequest.runId,

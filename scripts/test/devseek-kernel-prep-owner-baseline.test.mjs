@@ -48,9 +48,9 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    semantic_domains: 18,
-    converged_semantic_domains: 18,
-    source_checks: 101,
+    semantic_domains: 20,
+    converged_semantic_domains: 20,
+    source_checks: 107,
     failed_source_checks: 0,
   });
   assert.deepEqual(
@@ -94,6 +94,8 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     'run-evidence-retention',
     'memory-policy',
     'checkpoint',
+    'context-compaction',
+    'resume-idempotency',
   ]);
   const commandDomain = actual.semantic_domains.find(domain => domain.domain_id === 'agent-command');
   assert.equal(commandDomain.current_owners[0].owner_id, 'shared-CanonicalAgentCommandService');
@@ -311,7 +313,7 @@ test('kernel prep owner baseline checker validates the current generated artifac
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    converged_semantic_domains: 18,
+    converged_semantic_domains: 20,
     failed_source_checks: 0,
     qualification_effect: 'NONE',
   });

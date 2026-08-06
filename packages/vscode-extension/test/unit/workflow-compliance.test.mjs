@@ -3795,6 +3795,7 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   const routeDecision = src('src/app/coding-kernel-route-decision.ts');
   const agentProviderRecovery = src('src/agent/provider-response-recovery.ts');
   const agentHistoryCompaction = src('src/agent/agent-history-compaction.ts');
+  const agenticContextCompaction = src('src/agent/agentic-context-compaction.ts');
   const runDisplay = src('src/agent/agent-run-display.ts');
   const loop = src('src/agent-loop.ts');
   const agenticLoop = src('src/agent/agentic-loop.ts');
@@ -3839,7 +3840,7 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   assertContains(agenticLoop, 'forceProviderNewSessionNextTurn', 'agentic loop must rebuild a wedged Provider session from task history');
   assertContains(agenticLoop, 'applyProviderRecoveryHistory', 'provider recovery must rebuild a minimal ledger context instead of replaying raw history');
   assertContains(agenticLoop, 'resetProviderRecoveryAttemptsAfterProgress', 'provider recovery budget must reset after real tool progress');
-  assertContains(agenticLoop, 'replaceAllAssistantToolHistory', 'agentic loop must summarize all executed assistant tool calls before provider sends');
+  assertContains(agenticContextCompaction, 'replaceAllAssistantToolHistory', 'context compaction adapter must summarize all executed assistant tool calls before provider sends');
   assertContains(agenticLoop, 'replaceLatestAssistantToolHistory', 'agentic loop must summarize executed tool calls before the next provider round');
   assertContains(agentHistoryCompaction, 'applyProviderRecoveryHistory', 'agent history compaction must own provider recovery history rebuilding');
   assertContains(agentHistoryCompaction, 'replaceAllAssistantToolHistory', 'agent history compaction must support whole-history tool request summarization');
@@ -3862,23 +3863,28 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   );
 });
 
-test('R3-04: Context compaction fidelity, redaction, and stale-memory receipts live in one owner', () => {
+test('I11: Context compaction semantics live in the shared owner and VS Code only adapts transport history', () => {
   const agentHistoryCompaction = src('src/agent/agent-history-compaction.ts');
+  const agenticContextCompaction = src('src/agent/agentic-context-compaction.ts');
+  const canonicalContextCompaction = src('../shared/src/coding-context-compaction.ts');
   const agentHistoryCompactionTests = src('test/unit/agent-history-compaction.test.mjs');
 
   assertContains(agentHistoryCompaction, 'CONTEXT_COMPACTION_RECEIPT_PROTOCOL', 'context compaction must publish a versioned receipt protocol');
-  assertContains(agentHistoryCompaction, 'devseek.context-compaction/v1', 'context compaction receipts must use a stable protocol id');
+  assertContains(canonicalContextCompaction, 'devseek.coding-context-compaction/v1', 'context compaction receipts must use a stable canonical protocol id');
   assertContains(agentHistoryCompaction, 'compactAgentMessageHistoryWithFidelity', 'history compaction owner must own fidelity-preserving long-context compaction');
-  assertContains(agentHistoryCompaction, 'extractCompactionFacts', 'history compaction owner must extract durable constraints and decisions');
+  assertContains(agentHistoryCompaction, 'renderCodingContextCompactionReceipt', 'history transport must consume the canonical sealed receipt');
+  assert.doesNotMatch(agentHistoryCompaction, /extractCompactionFacts|isDurableConstraintLine|isDurableDecisionLine/, 'history transport must not infer semantic facts from prose');
   assertContains(agentHistoryCompaction, 'redactSecretsInText', 'history compaction owner must redact secrets before summaries re-enter prompts');
-  assertContains(agentHistoryCompaction, 'staleMemoryRejectedCount', 'context compaction receipts must account for stale-memory rejection');
-  assertContains(agentHistoryCompaction, 'preservedConstraints', 'context compaction receipts must preserve key constraints');
-  assertContains(agentHistoryCompaction, 'preservedDecisions', 'context compaction receipts must preserve key decisions');
+  assertContains(canonicalContextCompaction, 'rejectedMemoryIds', 'canonical receipts must retain MemoryPolicy rejection identity');
+  assertContains(canonicalContextCompaction, 'taskContract', 'canonical receipts must preserve the TaskContract projection');
+  assertContains(canonicalContextCompaction, 'provenance', 'canonical receipts must preserve ContextGraph provenance');
+  assertContains(agenticContextCompaction, 'projectCompactionProgress', 'agentic compaction must project durable pending progress');
+  assertContains(agenticContextCompaction, 'pending-plan-expanded', 'later compaction cannot silently expand the pending plan');
   assertContains(agentHistoryCompaction, 'replaceAllAssistantToolHistory(messages)', 'long-context compaction must absorb existing tool-history compaction');
-  assertContains(agentHistoryCompactionTests, 'R3-04 Context compaction', 'R3-04 must have failure-first unit oracle coverage');
-  assertContains(agentHistoryCompactionTests, 'for (let pass = 1; pass <= 3; pass += 1)', 'R3-04 oracle must prove at least three compaction passes');
-  assertContains(agentHistoryCompactionTests, 'live-secret-token', 'R3-04 oracle must cover command secret redaction');
-  assertContains(agentHistoryCompactionTests, 'ttl=expired', 'R3-04 oracle must cover stale-memory rejection');
+  assertContains(agentHistoryCompactionTests, 'I11-CMP-02 user journey', 'I11 must have failure-first unit oracle coverage');
+  assertContains(agentHistoryCompactionTests, 'for (let pass = 1; pass <= 3; pass += 1)', 'I11 oracle must prove at least three compaction passes');
+  assertContains(agentHistoryCompactionTests, 'live-secret-token', 'I11 oracle must cover command secret redaction');
+  assertContains(agentHistoryCompactionTests, 'stale-target', 'I11 oracle must cover MemoryPolicy rejection');
 });
 
 test('R3-05A: MemoryService owns scope, provenance, and persistent-write approval', () => {

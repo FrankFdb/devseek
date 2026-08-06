@@ -21,6 +21,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
 const agentLoop = readFileSync(path.join(rootDir, 'src/agent-loop.ts'), 'utf8');
 const agenticLoop = readFileSync(path.join(rootDir, 'src/agent/agentic-loop.ts'), 'utf8');
+const agenticContextCompaction = readFileSync(path.join(rootDir, 'src/agent/agentic-context-compaction.ts'), 'utf8');
 const writeAuthority = readFileSync(path.join(rootDir, 'src/agent/write-authority.ts'), 'utf8');
 const simpleFileTask = readFileSync(path.join(rootDir, 'src/agent/simple-file-task.ts'), 'utf8');
 const bridgeProvider = readFileSync(path.join(rootDir, 'src/llm/providers/bridge.ts'), 'utf8');
@@ -139,12 +140,13 @@ test('two-phase agent todos are delegated to the task state machine boundary', (
   assert.match(agentLoop, /buildAgentMetaOnlyToolFeedback/, 'two-phase agent loops must feed back meta-only tool rounds as non-work');
   assert.match(agentLoop, /AGENT_LOOP_MESSAGE_TOTAL_CHAR_BUDGET/, 'two-phase agent loops must cap provider prompt history size');
   assert.match(agentLoop, /function compactAgentLoopMessageHistory/, 'two-phase agent loops must own context compaction at the runtime boundary');
-  assert.match(agenticLoop, /AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET/, 'agentic loop must cap provider prompt history size');
-  assert.match(agenticLoop, /function compactAgenticMessageHistory/, 'agentic loop must own context compaction at the runtime boundary');
+  assert.match(agenticContextCompaction, /AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET/, 'context compaction owner must cap provider prompt history size');
+  assert.match(agenticContextCompaction, /export function compactAgenticMessageHistory/, 'the dedicated adapter must own agentic history budget orchestration');
+  assert.match(agenticLoop, /from '\.\/agentic-context-compaction'/, 'agentic loop must delegate context compaction to its dedicated adapter');
   assert.match(
     agenticLoop,
-    /messages\.push\(\.\.\.writeAuthority\.takePendingAndDrain\(\)\);\s*totalChars\s*=\s*compactAgenticMessageHistory\(messages\);/,
-    'agentic loop must compact message history before provider calls',
+    /messages\.push\(\.\.\.writeAuthority\.takePendingAndDrain\(\)\);\s*totalChars\s*=\s*compactAgenticMessageHistory\(\{\s*messages,/,
+    'agentic loop must route history through canonical compaction after steering and before provider calls',
   );
   assert.match(agenticLoop, /writeAuthority\.drainAfterProvider\(\)/, 'agentic loop must drain in-flight steers before executing provider tools');
   assert.match(writeAuthority, /pendingMessages\.push\(\.\.\.drain\(\)\)/, 'file writes must re-check steers at the actual mutation boundary');

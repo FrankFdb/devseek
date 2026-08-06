@@ -43,5 +43,7 @@
 | run-evidence-retention | shared-CanonicalRunEvidenceRetentionService | - | 1 | converged |
 | memory-policy | shared-CanonicalMemoryPolicyService | - | 1 | converged |
 | checkpoint | shared-CanonicalCheckpointService | - | 1 | converged |
+| context-compaction | shared-CanonicalContextCompactionService | - | 1 | converged |
+| resume-idempotency | shared-CanonicalResumeIdempotencyService | - | 1 | converged |
 
 This is a non-qualification local architecture convergence baseline. It records a unified cross-Surface Coding Kernel and does not assert Gate 0 pass or qualification.

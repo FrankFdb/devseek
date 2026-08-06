@@ -3,8 +3,8 @@ import {
   sha256Object,
 } from './devseek-capability-ledger.mjs';
 
-export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v20';
-export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v20';
+export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v21';
+export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v21';
 
 const SOURCE_PATHS = Object.freeze({
   gate0: 'docs/process/devseek-gate0-decision-report.json',
@@ -37,6 +37,8 @@ const SOURCE_PATHS = Object.freeze({
   sharedRunEvidenceRetention: 'packages/shared/src/coding-run-evidence-retention.ts',
   sharedMemoryPolicy: 'packages/shared/src/coding-memory-policy.ts',
   sharedCheckpoint: 'packages/shared/src/coding-checkpoint.ts',
+  sharedContextCompaction: 'packages/shared/src/coding-context-compaction.ts',
+  sharedResumeIdempotency: 'packages/shared/src/coding-resume-idempotency.ts',
   sharedToolExecution: 'packages/shared/src/coding-tool-execution.ts',
   sharedWorkspaceMutation: 'packages/shared/src/coding-workspace-mutation.ts',
   sharedVerification: 'packages/shared/src/coding-verification.ts',
@@ -69,6 +71,8 @@ const SOURCE_PATHS = Object.freeze({
   taskContract: 'packages/vscode-extension/src/agent/task-contract.ts',
   safetyIntent: 'packages/vscode-extension/src/intent/safety-intent.ts',
   agenticLoop: 'packages/vscode-extension/src/agent/agentic-loop.ts',
+  agentHistoryCompaction: 'packages/vscode-extension/src/agent/agent-history-compaction.ts',
+  agenticContextCompaction: 'packages/vscode-extension/src/agent/agentic-context-compaction.ts',
   runtimeState: 'packages/vscode-extension/src/agent/agent-runtime-state-machine.ts',
   toolExecutor: 'packages/vscode-extension/src/agent/tool-executor.ts',
   workspaceMutation: 'packages/vscode-extension/src/workspace/coding-workspace-mutation-adapter.ts',
@@ -100,6 +104,8 @@ const SOURCE_PATHS = Object.freeze({
   iterationUserJourneys: 'docs/process/devseek-iteration-user-journeys.json',
   iterationUserJourneyTests: 'packages/headless/test/headless-memory-checkpoint-journeys.test.mjs',
   iterationUserJourneyFixture: 'code/devseek-tests/memory-checkpoint/scenario.json',
+  iterationI11UserJourneyTests: 'packages/headless/test/headless-context-resume-journeys.test.mjs',
+  iterationI11UserJourneyFixture: 'code/devseek-tests/context-resume/scenario.json',
   iterationUserJourneyRunner: 'scripts/run-devseek-iteration-user-journeys.mjs',
   controlledVsixHarness: 'packages/vscode-extension/test/devseek-controlled-vsix-harness.mjs',
   surfaceProductVerifier: 'scripts/verify-coding-surface-product-conformance.mjs',
@@ -142,11 +148,15 @@ const SOURCE_CHECKS = Object.freeze([
     'new CanonicalContextGraphService()',
     'new CanonicalMemoryPolicyService()',
     'new CanonicalCheckpointService()',
+    'new CanonicalContextCompactionService()',
+    'new CanonicalResumeIdempotencyService()',
     'TASK_CONTRACT.snapshot(request.taskContract)',
     'CONTEXT_GRAPH.build({',
     'MEMORY_POLICY.selectContext({',
     'CHECKPOINT.bind({',
     'CHECKPOINT.restore(request.resumeCheckpoint',
+    'CONTEXT_COMPACTION.bind({',
+    'RESUME_IDEMPOTENCY.bind({ restore: resume, receipts: request.resumeReceipts })',
     'assertCodingOrientationPrompt(taskContract.orientation, request.userPrompt)',
     'lifecycle.beginExecution()',
     'lifecycle.settle(runtimeOutput.status)',
@@ -182,6 +192,26 @@ const SOURCE_CHECKS = Object.freeze([
     'requiresRevalidation: true',
     'sealSha256: checkpointSeal(stateSha256)',
   ], ["from 'vscode'", 'TaskCheckpointStore']),
+  check('shared-canonical-context-compaction-owner', SOURCE_PATHS.sharedContextCompaction, [
+    "CODING_CONTEXT_COMPACTION_VERSION = 'devseek.coding-context-compaction/v1'",
+    'export interface ContextCompactionPort',
+    'export class CanonicalContextCompactionService implements ContextCompactionPort',
+    'this.taskContracts.snapshot(input.taskContract)',
+    "reason: 'compaction'",
+    'assertProgressContinuity(',
+    'requiresRevalidation: true',
+    "compactionFailure('pending-unit-drift')",
+  ], ["from 'vscode'", 'extractCompactionFacts']),
+  check('shared-canonical-resume-idempotency-owner', SOURCE_PATHS.sharedResumeIdempotency, [
+    "CODING_RESUME_IDEMPOTENCY_VERSION = 'devseek.coding-resume-idempotency/v1'",
+    'export interface ResumeIdempotencyPort',
+    'export class CanonicalResumeIdempotencyService implements ResumeIdempotencyPort',
+    'idempotencyKey = codingSemanticDigest({',
+    "receipt?.status === 'completed'",
+    "receipt?.status === 'indeterminate'",
+    'executionAllowed: blockedUnits.length === 0',
+    "resumeFailure('invalid-operation-receipt-transition')",
+  ], ["from 'vscode'", 'IdempotencyGuard']),
   check('shared-canonical-task-contract-owner', SOURCE_PATHS.sharedTaskContract, [
     "CODING_KERNEL_TASK_CONTRACT_VERSION = 'devseek.coding-kernel-task-contract/v1'",
     'export interface TaskContractPort',
@@ -402,6 +432,8 @@ const SOURCE_CHECKS = Object.freeze([
     "export * from './coding-run-evidence-retention';",
     "export * from './coding-memory-policy';",
     "export * from './coding-checkpoint';",
+    "export * from './coding-context-compaction';",
+    "export * from './coding-resume-idempotency';",
     "export * from './coding-semantic-digest';",
     "export * from './coding-tool-execution';",
     "export * from './coding-workspace-mutation';",
@@ -438,6 +470,22 @@ const SOURCE_CHECKS = Object.freeze([
     "reason: reason === 'paused' ? 'paused' : 'progress'",
     'parentCheckpointId',
   ]),
+  check('vscode-canonical-context-compaction-transport', SOURCE_PATHS.agentHistoryCompaction, [
+    'renderCodingContextCompactionReceipt(options.receipt)',
+    'redactAgentMessageHistory(messages)',
+    'replaceAllAssistantToolHistory(messages)',
+    'CONTEXT_COMPACTION_RECEIPT_PROTOCOL = CODING_CONTEXT_COMPACTION_VERSION',
+  ], ['extractCompactionFacts', 'isDurableConstraintLine', 'isDurableDecisionLine']),
+  check('vscode-agentic-context-compaction-adapter', SOURCE_PATHS.agenticContextCompaction, [
+    'export function compactAgenticMessageHistory(',
+    'AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET',
+    'compactCanonicalAgenticHistory(',
+    'projectCompactionProgress(',
+    'input.session.compact({',
+    "const FINALIZE_UNIT_ID = 'agentic:finalize'",
+    "compactionFailure('pending-plan-expanded')",
+    "compactionFailure('pending-plan-drift')",
+  ], ['CanonicalContextCompactionService']),
   check('headless-memory-checkpoint-user-journeys', SOURCE_PATHS.iterationUserJourneyTests, [
     'I10-MEM-01 user journey: external memory cannot become an instruction',
     'I10-CHK-01 user journey: interrupted work resumes pending units without replay',
@@ -452,12 +500,31 @@ const SOURCE_CHECKS = Object.freeze([
     '"iteration_id": "I10"',
     '"C11-CHECKPOINT"',
     '"C12-MEMORY-POLICY"',
+    '"iteration_id": "I11"',
+    '"fixture_path": "code/devseek-tests/context-resume/scenario.json"',
+    '"C12-CONTEXT-COMPACTION"',
+    '"C11-RESUME-IDEMPOTENCY"',
   ]),
   check('iteration-user-journey-durable-fixture', SOURCE_PATHS.iterationUserJourneyFixture, [
     '"schema_version": "devseek.user-simulation-scenario/v1"',
     '"case_id": "I10-MEM-01"',
     '"case_id": "I10-MEM-04"',
     '"case_id": "I10-CHK-01"',
+  ]),
+  check('headless-context-resume-user-journeys', SOURCE_PATHS.iterationI11UserJourneyTests, [
+    'I11-CMP-01 user journey: three context compactions preserve canonical facts and progress',
+    'I11-RSM-01 user journey: completed workspace effect is skipped on a second resume',
+    'I11-RSM-02 user journey: indeterminate external effect blocks replay before runtime',
+    'request.contextCompaction.compact({',
+    'resumeReceipts: first.resumeReceipts',
+  ]),
+  check('iteration-i11-user-journey-durable-fixture', SOURCE_PATHS.iterationI11UserJourneyFixture, [
+    '"schema_version": "devseek.user-simulation-scenario/v1"',
+    '"iteration_id": "I11"',
+    '"case_id": "I11-CMP-01"',
+    '"case_id": "I11-CMP-02"',
+    '"case_id": "I11-RSM-01"',
+    '"case_id": "I11-RSM-02"',
   ]),
   check('iteration-user-journey-evidence-runner', SOURCE_PATHS.iterationUserJourneyRunner, [
     "path.join(repoRoot, 'code/devseek-tests')",
@@ -1340,6 +1407,12 @@ function buildSemanticDomains() {
     ], []),
     domain('checkpoint', 'CheckpointPort', [
       owner('shared-CanonicalCheckpointService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedCheckpoint),
+    ], []),
+    domain('context-compaction', 'ContextCompactionPort', [
+      owner('shared-CanonicalContextCompactionService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedContextCompaction),
+    ], []),
+    domain('resume-idempotency', 'ResumeIdempotencyPort', [
+      owner('shared-CanonicalResumeIdempotencyService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedResumeIdempotency),
     ], []),
   ];
 }

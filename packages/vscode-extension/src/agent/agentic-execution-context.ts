@@ -1,8 +1,10 @@
 import type { ChatMessage } from '../llm/types';
+import type { CodingContextCompactionSessionPort } from '@devseek-netai/shared';
 
 export interface AgenticLoopExecutionContext {
   readonly recoveryContextText?: string;
   readonly memoryContextText?: string;
+  readonly contextCompaction?: CodingContextCompactionSessionPort;
 }
 
 export interface AgenticInitialPromptContext {

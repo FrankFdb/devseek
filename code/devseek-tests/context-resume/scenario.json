@@ -1,0 +1,53 @@
+{
+  "schema_version": "devseek.user-simulation-scenario/v1",
+  "iteration_id": "I11",
+  "name": "context-resume",
+  "purpose": "Preserve original long-context and resume-idempotency user inputs for I11 regression and later replay.",
+  "cases": [
+    {
+      "case_id": "I11-CMP-01",
+      "input": {
+        "prompt": "Inspect the resume implementation while preserving the constraint token=fixture-context-secret-123456 and report verified findings.",
+        "stale_memory_id": "stale-resume-target",
+        "stale_memory_content": "Use removed file src/legacy-resume.ts.",
+        "pending_units": [
+          { "id": "inspect", "description": "Inspect src/resume.ts", "action": "read", "target": "src/resume.ts" },
+          { "id": "verify", "description": "Verify with Authorization: Bearer fixture-context-bearer-123456", "action": "verify", "target": "npm test" },
+          { "id": "finalize", "description": "Revalidate acceptance and report", "action": "verify", "target": "task" }
+        ],
+        "compaction_passes": 3
+      }
+    },
+    {
+      "case_id": "I11-CMP-02",
+      "input": {
+        "prompt": "Refactor src/cache.ts through a long VS Code conversation and retain the canonical task, source provenance, rejected memory ids, remaining plan, and revalidation requirement."
+      }
+    },
+    {
+      "case_id": "I11-RSM-01",
+      "input": {
+        "prompt": "Inspect the interrupted workspace operation receipt and ensure the completed edit is not applied twice.",
+        "pending_unit": {
+          "id": "apply-edit",
+          "description": "Modify src/resume.ts once",
+          "action": "modify",
+          "target": "src/resume.ts"
+        }
+      }
+    },
+    {
+      "case_id": "I11-RSM-02",
+      "input": {
+        "prompt": "Inspect the interrupted release receipt and ensure an external publish with unknown result is not repeated.",
+        "pending_unit": {
+          "id": "publish-release",
+          "description": "Publish the release to the external registry",
+          "action": "deploy",
+          "target": "registry"
+        },
+        "interruption": "provider disconnected after publish"
+      }
+    }
+  ]
+}

@@ -28,6 +28,7 @@ const runtime = new VsCodeCodingKernelRuntimeAdapter({
     {
       recoveryContextText: request.recoveryContextText,
       memoryContextText: request.memoryContextText,
+      contextCompaction: request.contextCompaction,
     },
   ),
 });

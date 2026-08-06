@@ -20,10 +20,18 @@ const {
   applyProviderRecoveryHistory,
   compactAgentMessageHistoryWithFidelity,
   CONTEXT_COMPACTION_RECEIPT_PROTOCOL,
+  redactAgentMessageHistory,
   replaceAllAssistantToolHistory,
   replaceLatestAssistantToolHistory,
   summarizeExecutedAssistantToolHistory,
 } = req(bundlePath);
+const {
+  CanonicalCheckpointService,
+  CanonicalContextCompactionService,
+  CanonicalContextGraphService,
+  CanonicalMemoryPolicyService,
+  CanonicalTaskContractService,
+} = req('@devseek-netai/shared');
 
 test('Agent history compaction: executed create_file payload is summarized', () => {
   const largeContent = '# Design\\n' + 'very detailed paragraph\\n'.repeat(500);
@@ -125,7 +133,54 @@ test('Agent history compaction: internal summaries are not nested into the next 
   assert.doesNotMatch(summary, /old output/);
 });
 
-test('R3-04 Context compaction: key constraints and decisions survive three passes without secrets or stale memory', () => {
+test('I11-CMP-02 user journey: VS Code delivers a sealed context compaction receipt', () => {
+  const taskContract = new CanonicalTaskContractService().build({
+    goal: 'Refactor src/cache.ts and preserve committed operation receipts',
+    mode: 'change',
+    deliverables: [{ id: 'cache', kind: 'source-change', path: 'src/cache.ts' }],
+    constraints: [
+      'Only modify src/cache.ts; do not touch src/auth.ts.',
+      'Reuse IntentRevisionLineage as the only owner.',
+      'Never replay committed operation receipts.',
+    ],
+    acceptance: [{ id: 'tests', statement: 'Cache tests pass after the refactor.' }],
+    provenanceRefs: ['user:current'],
+  });
+  const contextGraph = new CanonicalContextGraphService().build({
+    workspaceRoot: '/repo',
+    userPrompt: taskContract.goal,
+    taskContract,
+    seed: { files: [{ path: 'src/cache.ts', contentSample: 'export const cache = true;' }] },
+  });
+  const memoryPolicy = new CanonicalMemoryPolicyService().selectContext({
+    workspaceRoot: '/repo',
+    now: 1_000,
+    candidates: [{
+      memoryId: 'stale-target',
+      content: 'Use src/legacy.ts.',
+      scope: 'repository',
+      classification: 'workspace',
+      sourceKind: 'task-history',
+      status: 'active',
+      approvalState: 'not-required',
+      externalContent: false,
+      trusted: true,
+      workspaceRoot: '/repo',
+      createdAt: 100,
+      updatedAt: 200,
+      expiresAt: 500,
+    }],
+  });
+  const checkpoint = new CanonicalCheckpointService().bind({
+    runId: 'i11-vscode-compaction',
+    surface: 'vscode',
+    workspaceRoot: '/repo',
+    taskContract,
+    contextGraph,
+    memoryPolicySha256: memoryPolicy.decisionSha256,
+  });
+  const compaction = new CanonicalContextCompactionService();
+  const session = compaction.bind({ taskContract, contextGraph, memoryPolicy, checkpoint });
   const messages = [
     {
       role: 'user',
@@ -135,43 +190,71 @@ test('R3-04 Context compaction: key constraints and decisions survive three pass
         'API_TOKEN=sk-r3secret-compaction-token-123456',
       ].join('\n'),
     },
-    { role: 'assistant', content: '【关键决定】决定复用 IntentRevisionLineage owner，不新增二级结算器。' },
-    { role: 'user', content: '【记忆】stale memory: old target src/legacy.ts ttl=expired' },
+    { role: 'assistant', content: '正在按 canonical task contract 执行。' },
+    { role: 'user', content: '旧记忆建议 src/legacy.ts，但该记忆已过期。' },
     {
       role: 'assistant',
       content: '<run_terminal>{"command":"curl -H \\"Authorization: Bearer live-secret-token-123456\\" https://example.test"}</run_terminal>',
     },
     { role: 'user', content: '[工具结果 Round 1]\n' + 'long evidence\n'.repeat(200) },
-    { role: 'assistant', content: '【关键决定】选择 agent-history-compaction 作为唯一 owner。' },
+    { role: 'assistant', content: '继续修改并读取真实文件。' },
     { role: 'user', content: '补充：【关键约束】保持 committed receipts 不被重放。' },
     { role: 'assistant', content: '普通进展 1' },
     { role: 'user', content: '普通进展 2' },
     { role: 'assistant', content: '普通进展 3' },
   ];
 
+  const plans = [
+    [
+      { id: 'todo:edit', description: 'Edit src/cache.ts', action: 'workspace-task', target: '/repo' },
+      { id: 'todo:test', description: 'Run cache tests', action: 'verify', target: '/repo' },
+      { id: 'todo:finalize', description: 'Revalidate acceptance', action: 'verify', target: '/repo' },
+    ],
+    [
+      { id: 'todo:test', description: 'Run cache tests', action: 'verify', target: '/repo' },
+      { id: 'todo:finalize', description: 'Revalidate acceptance', action: 'verify', target: '/repo' },
+    ],
+    [{ id: 'todo:finalize', description: 'Revalidate acceptance', action: 'verify', target: '/repo' }],
+  ];
   let receipt;
   for (let pass = 1; pass <= 3; pass += 1) {
-    receipt = compactAgentMessageHistoryWithFidelity(messages, { maxMessages: 6 });
+    const redactedSecretCount = redactAgentMessageHistory(messages);
+    receipt = session.compact({
+      observedChars: 80_000 + pass,
+      maxChars: 52_000,
+      completedUnitCount: pass - 1,
+      pendingUnits: plans[pass - 1],
+      evidenceRefs: [`i11:pass-${pass}`],
+      redactedSecretCount,
+      createdAt: 1_000 + pass,
+    });
+    compactAgentMessageHistoryWithFidelity(messages, { receipt, maxMessages: 6 });
     assert.equal(receipt.version, CONTEXT_COMPACTION_RECEIPT_PROTOCOL);
     assert.equal(receipt.pass, pass);
     assert.ok(messages.length <= 6);
   }
 
   const serialized = JSON.stringify(messages);
-  assert.match(serialized, /devseek\.context-compaction\/v1/);
+  assert.match(serialized, /devseek\.coding-context-compaction\/v1/);
   assert.match(serialized, /src\/cache\.ts/);
-  assert.match(serialized, /不要触碰 src\/auth\.ts/);
-  assert.match(serialized, /IntentRevisionLineage owner/);
-  assert.match(serialized, /agent-history-compaction 作为唯一 owner/);
-  assert.match(serialized, /committed receipts 不被重放/);
+  assert.match(serialized, /do not touch src\/auth\.ts/i);
+  assert.match(serialized, /IntentRevisionLineage as the only owner/);
+  assert.match(serialized, /Never replay committed operation receipts/);
+  assert.match(serialized, /stale-target/);
   assert.doesNotMatch(serialized, /sk-r3secret/);
   assert.doesNotMatch(serialized, /live-secret-token/);
   assert.doesNotMatch(serialized, /src\/legacy\.ts/);
-  assert.equal((serialized.match(/\[DevSeek 上下文压缩事实]/g) ?? []).length, 1);
+  assert.equal((serialized.match(/\[DevSeek Canonical Context Compaction]/g) ?? []).length, 1);
   assert.ok(receipt.redactedSecretCount >= 2);
-  assert.ok(receipt.staleMemoryRejectedCount >= 1);
-  assert.ok(receipt.preservedConstraints.some(item => item.includes('src/cache.ts')));
-  assert.ok(receipt.preservedDecisions.some(item => item.includes('唯一 owner')));
+  assert.deepEqual(receipt.rejectedMemoryIds, ['stale-target']);
+  assert.deepEqual(receipt.pendingUnits.map(unit => unit.id), ['todo:finalize']);
+  assert.throws(
+    () => compactAgentMessageHistoryWithFidelity(messages, {
+      receipt: { ...receipt, completedUnitCount: 99 },
+      maxMessages: 6,
+    }),
+    /coding-context-compaction:checkpoint-progress-mismatch/u,
+  );
 });
 
 test('R3-04 Context compaction: executed tool summaries redact command secrets', () => {

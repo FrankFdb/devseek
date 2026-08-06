@@ -139,7 +139,6 @@ import {
   collectToolReadEvidence,
   ToolReadEvidenceRecorder,
 } from './agent/tool-read-evidence';
-import { compactAgentMessageHistoryWithFidelity } from './agent/agent-history-compaction';
 import {
   appendAgentLoopWrittenFiles,
   buildWrittenFileEvidenceForPaths,
@@ -204,7 +203,6 @@ const AGENT_LOOP_TASK_PROMPT_CHAR_BUDGET = 32_000;
 const AGENT_LOOP_TOOL_FEEDBACK_CHAR_BUDGET = 7_000;
 const AGENT_LOOP_ASSISTANT_HISTORY_CHAR_BUDGET = 6_000;
 const AGENT_LOOP_USER_HISTORY_CHAR_BUDGET = 8_000;
-const AGENT_LOOP_RECENT_MESSAGE_KEEP_COUNT = 3;
 
 function messageContentLength(content: ChatMessage['content']): number {
   if (typeof content === 'string') return content.length;
@@ -256,24 +254,8 @@ function compactAgentLoopMessageHistory(messages: ChatMessage[]): void {
     }
   }
 
-  if (totalAgentLoopMessageChars(messages) <= AGENT_LOOP_MESSAGE_TOTAL_CHAR_BUDGET || messages.length <= AGENT_LOOP_RECENT_MESSAGE_KEEP_COUNT + 2) {
-    return;
-  }
-
-  compactAgentMessageHistoryWithFidelity(messages, {
-    maxMessages: AGENT_LOOP_RECENT_MESSAGE_KEEP_COUNT + 2,
-    isProtectedMessage: message => typeof message.content === 'string' && isAgentLoopTaskPrompt(message.content),
-  });
-
-  for (let index = 0; index < messages.length; index += 1) {
-    if (totalAgentLoopMessageChars(messages) <= AGENT_LOOP_MESSAGE_TOTAL_CHAR_BUDGET) break;
-    const message = messages[index];
-    if (typeof message.content !== 'string') continue;
-    if (isAgentLoopTaskPrompt(message.content) || message.content.startsWith('[DevSeek 上下文压缩')) continue;
-    messages[index] = {
-      ...message,
-      content: truncateAgentLoopHistoryText(message.content, 4_000, '较早轮次上下文'),
-    };
+  if (totalAgentLoopMessageChars(messages) > AGENT_LOOP_MESSAGE_TOTAL_CHAR_BUDGET) {
+    throw new Error('agent-loop-boundary:canonical-context-compaction-required');
   }
 }
 

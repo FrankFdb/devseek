@@ -112,6 +112,75 @@
           }
         }
       ]
+    },
+    {
+      "iteration_id": "I11",
+      "status": "verified-local",
+      "goal": "Converge canonical context compaction and fail-closed resume idempotency without replaying completed or indeterminate effects.",
+      "delta_from_baseline": "Adds three-pass context compaction with sealed task, provenance, memory-policy, progress, evidence, and checkpoint ancestry; adds stable resume operation receipts and replay blocking absent from I10 and the five fixed coding fixtures.",
+      "fixture_path": "code/devseek-tests/context-resume/scenario.json",
+      "capability_ids": [
+        "C12-CONTEXT-COMPACTION",
+        "C11-RESUME-IDEMPOTENCY"
+      ],
+      "cases": [
+        {
+          "case_id": "I11-CMP-01",
+          "capability_ids": ["C12-CONTEXT-COMPACTION"],
+          "surface": "headless",
+          "user_action": "Run a long task through three context compactions after stale memory and secret-shaped text enter the candidate context.",
+          "expected_outcomes": [
+            "Every pass retains the canonical task, source provenance, rejected memory identity, completed prefix, pending work, evidence, and revalidation requirement.",
+            "Receipt and checkpoint ancestry remain continuous while secret and stale-memory content never re-enter the rendered prompt."
+          ],
+          "evidence": {
+            "test_path": "packages/headless/test/headless-context-resume-journeys.test.mjs",
+            "test_name": "I11-CMP-01 user journey: three context compactions preserve canonical facts and progress"
+          }
+        },
+        {
+          "case_id": "I11-CMP-02",
+          "capability_ids": ["C12-CONTEXT-COMPACTION"],
+          "surface": "vscode",
+          "user_action": "Continue a long VS Code tool conversation until history is compacted three times.",
+          "expected_outcomes": [
+            "VS Code inserts the Kernel-sealed context receipt instead of inferring constraints or decisions from prose.",
+            "A tampered receipt is rejected before it can be delivered to the provider."
+          ],
+          "evidence": {
+            "test_path": "packages/vscode-extension/test/unit/agent-history-compaction.test.mjs",
+            "test_name": "I11-CMP-02 user journey: VS Code delivers a sealed context compaction receipt"
+          }
+        },
+        {
+          "case_id": "I11-RSM-01",
+          "capability_ids": ["C11-RESUME-IDEMPOTENCY"],
+          "surface": "headless",
+          "user_action": "Resume the same interrupted workspace edit twice after the first resumed attempt committed it.",
+          "expected_outcomes": [
+            "The stable operation key maps the completed receipt back to the same checkpoint unit.",
+            "The second resume skips the committed workspace effect and does not apply it twice."
+          ],
+          "evidence": {
+            "test_path": "packages/headless/test/headless-context-resume-journeys.test.mjs",
+            "test_name": "I11-RSM-01 user journey: completed workspace effect is skipped on a second resume"
+          }
+        },
+        {
+          "case_id": "I11-RSM-02",
+          "capability_ids": ["C11-RESUME-IDEMPOTENCY"],
+          "surface": "headless",
+          "user_action": "Retry an interrupted release after the provider disconnected with the external publish result unknown.",
+          "expected_outcomes": [
+            "The indeterminate external-effect receipt blocks the entire replay plan.",
+            "The retry is settled blocked before the runtime can repeat the publish."
+          ],
+          "evidence": {
+            "test_path": "packages/headless/test/headless-context-resume-journeys.test.mjs",
+            "test_name": "I11-RSM-02 user journey: indeterminate external effect blocks replay before runtime"
+          }
+        }
+      ]
     }
   ]
 }

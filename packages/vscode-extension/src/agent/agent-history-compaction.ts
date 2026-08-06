@@ -1,4 +1,8 @@
-import { createHash } from 'crypto';
+import {
+  CODING_CONTEXT_COMPACTION_VERSION,
+  renderCodingContextCompactionReceipt,
+  type CodingContextCompactionReceipt,
+} from '@devseek-netai/shared';
 import type { ChatMessage } from '../llm/types';
 import { redactProviderSecrets } from '../llm/provider-events';
 import {
@@ -10,30 +14,16 @@ import {
 
 const MAX_TOOL_SUMMARIES = 14;
 const EXECUTED_TOOL_SUMMARY_MARKER = '[DevSeek 已执行工具请求摘要]';
-export const CONTEXT_COMPACTION_RECEIPT_PROTOCOL = 'devseek.context-compaction/v1';
-export const CONTEXT_COMPACTION_SUMMARY_MARKER = '[DevSeek 上下文压缩事实]';
+export const CONTEXT_COMPACTION_RECEIPT_PROTOCOL = CODING_CONTEXT_COMPACTION_VERSION;
+export const CONTEXT_COMPACTION_SUMMARY_MARKER = '[DevSeek Canonical Context Compaction]';
 const SECRET_REDACTION = '[REDACTED_SECRET]';
-const MAX_COMPACTION_FACTS = 12;
 
-export interface ContextCompactionReceipt {
-  version: typeof CONTEXT_COMPACTION_RECEIPT_PROTOCOL;
-  pass: number;
-  preservedConstraints: string[];
-  preservedDecisions: string[];
-  redactedSecretCount: number;
-  staleMemoryRejectedCount: number;
-  digest: string;
-}
+export type ContextCompactionReceipt = CodingContextCompactionReceipt;
 
 export interface AgentHistoryCompactionOptions {
+  receipt: CodingContextCompactionReceipt;
   maxMessages?: number;
-  maxFacts?: number;
   isProtectedMessage?: (message: ChatMessage, index: number) => boolean;
-}
-
-interface ExtractedCompactionFacts {
-  preservedConstraints: string[];
-  preservedDecisions: string[];
 }
 
 export function replaceLatestAssistantToolHistory(messages: ChatMessage[]): boolean {
@@ -71,39 +61,25 @@ export function applyProviderRecoveryHistory(
 
 export function compactAgentMessageHistoryWithFidelity(
   messages: ChatMessage[],
-  options: AgentHistoryCompactionOptions = {},
+  options: AgentHistoryCompactionOptions,
 ): ContextCompactionReceipt {
   const maxMessages = clampPositiveInteger(options.maxMessages, 10, 2);
-  const maxFacts = clampPositiveInteger(options.maxFacts, MAX_COMPACTION_FACTS, 1);
-  const priorReceipt = readPriorContextCompactionReceipt(messages);
-  let redactedSecretCount = priorReceipt.redactedSecretCount;
-  let staleMemoryRejectedCount = priorReceipt.staleMemoryRejectedCount;
+  const summary = renderCodingContextCompactionReceipt(options.receipt);
+  redactAgentMessageHistory(messages);
+  replaceAllAssistantToolHistory(messages);
+  rewriteMessagesWithContextSummary(messages, summary, options, maxMessages);
+  return options.receipt;
+}
 
+export function redactAgentMessageHistory(messages: ChatMessage[]): number {
+  let count = 0;
   for (const message of messages) {
     if (typeof message.content !== 'string') continue;
     const redacted = redactSecretsInText(message.content);
-    redactedSecretCount = Math.max(redactedSecretCount, redacted.count);
-    staleMemoryRejectedCount = Math.max(
-      staleMemoryRejectedCount,
-      countStaleMemoryLines(redacted.text),
-    );
+    count += redacted.count;
     if (redacted.text !== message.content) message.content = redacted.text;
   }
-
-  replaceAllAssistantToolHistory(messages);
-  const facts = extractCompactionFacts(messages, { maxFacts });
-  const receipt: ContextCompactionReceipt = {
-    version: CONTEXT_COMPACTION_RECEIPT_PROTOCOL,
-    pass: priorReceipt.pass + 1,
-    preservedConstraints: facts.preservedConstraints,
-    preservedDecisions: facts.preservedDecisions,
-    redactedSecretCount,
-    staleMemoryRejectedCount,
-    digest: '',
-  };
-  receipt.digest = digestContextCompactionReceipt(receipt);
-  rewriteMessagesWithContextSummary(messages, renderContextCompactionSummary(receipt), options, maxMessages);
-  return receipt;
+  return count;
 }
 
 export function summarizeExecutedAssistantToolHistory(text: string): string {
@@ -187,32 +163,6 @@ function numericField(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
-export function extractCompactionFacts(
-  messages: ChatMessage[],
-  options: { maxFacts?: number } = {},
-): ExtractedCompactionFacts {
-  const maxFacts = clampPositiveInteger(options.maxFacts, MAX_COMPACTION_FACTS, 1);
-  const constraints: string[] = [];
-  const decisions: string[] = [];
-  const constraintKeys = new Set<string>();
-  const decisionKeys = new Set<string>();
-  for (const message of messages) {
-    if (typeof message.content !== 'string') continue;
-    const redacted = redactSecretsInText(message.content).text;
-    for (const rawLine of redacted.split(/\r?\n/)) {
-      const line = cleanCompactionFactLine(rawLine);
-      if (!line || isContextCompactionMetadata(line) || isStaleMemoryLine(line)) continue;
-      if (isDurableConstraintLine(line)) {
-        pushUniqueFact(constraints, constraintKeys, line, maxFacts);
-      }
-      if (isDurableDecisionLine(line)) {
-        pushUniqueFact(decisions, decisionKeys, line, maxFacts);
-      }
-    }
-  }
-  return { preservedConstraints: constraints, preservedDecisions: decisions };
-}
-
 export function redactSecretsInText(text: string): { text: string; count: number } {
   const normalized = String(text ?? '');
   const providerRedacted = redactProviderSecrets(normalized).replace(/\*\*\*/g, SECRET_REDACTION);
@@ -260,99 +210,15 @@ function rewriteMessagesWithContextSummary(
   messages.splice(0, messages.length, ...compacted.slice(0, maxMessages));
 }
 
-function renderContextCompactionSummary(receipt: ContextCompactionReceipt): string {
-  const lines = [
-    CONTEXT_COMPACTION_SUMMARY_MARKER,
-    `protocol: ${receipt.version}`,
-    `pass: ${receipt.pass}`,
-    'preservedConstraints:',
-    ...renderFactLines(receipt.preservedConstraints),
-    'preservedDecisions:',
-    ...renderFactLines(receipt.preservedDecisions),
-    `redactedSecretCount: ${receipt.redactedSecretCount}`,
-    `staleMemoryRejectedCount: ${receipt.staleMemoryRejectedCount}`,
-    `digest: ${receipt.digest}`,
-  ];
-  return lines.join('\n');
-}
-
-function renderFactLines(facts: string[]): string[] {
-  return facts.length ? facts.map(fact => `- ${fact}`) : ['- none'];
-}
-
-function digestContextCompactionReceipt(receipt: ContextCompactionReceipt): string {
-  const payload = {
-    version: receipt.version,
-    pass: receipt.pass,
-    preservedConstraints: receipt.preservedConstraints,
-    preservedDecisions: receipt.preservedDecisions,
-    redactedSecretCount: receipt.redactedSecretCount,
-    staleMemoryRejectedCount: receipt.staleMemoryRejectedCount,
-  };
-  return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
-}
-
-function readPriorContextCompactionReceipt(messages: ChatMessage[]): Pick<ContextCompactionReceipt, 'pass' | 'redactedSecretCount' | 'staleMemoryRejectedCount'> {
-  let pass = 0;
-  let redactedSecretCount = 0;
-  let staleMemoryRejectedCount = 0;
-  for (const message of messages) {
-    if (typeof message.content !== 'string' || !isContextCompactionSummary(message.content)) continue;
-    pass = Math.max(pass, readNumericMetadata(message.content, 'pass'));
-    redactedSecretCount = Math.max(redactedSecretCount, readNumericMetadata(message.content, 'redactedSecretCount'));
-    staleMemoryRejectedCount = Math.max(staleMemoryRejectedCount, readNumericMetadata(message.content, 'staleMemoryRejectedCount'));
-  }
-  return { pass, redactedSecretCount, staleMemoryRejectedCount };
-}
-
-function readNumericMetadata(content: string, key: string): number {
-  const pattern = new RegExp(`^${key}:\\s*(\\d+)`, 'mi');
-  const match = pattern.exec(content);
-  return match ? Number.parseInt(match[1], 10) : 0;
-}
-
-function cleanCompactionFactLine(line: string): string {
-  return truncateOneLine(String(line || '').replace(/^\s*[-*]\s*/, '').trim(), 220);
-}
-
-function pushUniqueFact(list: string[], keys: Set<string>, line: string, maxFacts: number): void {
-  const key = line.toLowerCase();
-  if (!line || keys.has(key) || list.length >= maxFacts) return;
-  keys.add(key);
-  list.push(line);
-}
-
-function isContextCompactionMetadata(line: string): boolean {
-  return line === CONTEXT_COMPACTION_SUMMARY_MARKER
-    || /^(?:protocol|pass|redactedSecretCount|staleMemoryRejectedCount|digest):/.test(line)
-    || /^(?:preservedConstraints|preservedDecisions):$/.test(line)
-    || line === 'none';
-}
-
-function isDurableConstraintLine(line: string): boolean {
-  return /【关键约束】|(?:必须|不得|不要|禁止|不能|只修改|只允许|保持|不被重放|权限不扩大)|\b(?:must|must not|do not|never|only)\b/i.test(line);
-}
-
-function isDurableDecisionLine(line: string): boolean {
-  return /【关键决定】|(?:决定|选择|采用|复用|唯一 owner|作为唯一 owner)|\b(?:decision|decided|chosen|selected|owner)\b/i.test(line);
-}
-
-function countStaleMemoryLines(text: string): number {
-  return String(text || '').split(/\r?\n/).filter(isStaleMemoryLine).length;
-}
-
-function isStaleMemoryLine(line: string): boolean {
-  return /(?:\bstale\s+memory\b|\bexpired\s+memory\b|\brevoked\s+memory\b|\bttl\s*=\s*expired\b|过期记忆|已撤销记忆)/i.test(line);
-}
-
 function shouldDropFromCompactedTail(message: ChatMessage): boolean {
   if (typeof message.content !== 'string') return false;
-  return isContextCompactionSummary(message.content) || countStaleMemoryLines(message.content) > 0;
+  return isContextCompactionSummary(message.content);
 }
 
 function isContextCompactionSummary(content: string): boolean {
   const trimmed = String(content || '').trimStart();
   return trimmed.startsWith(CONTEXT_COMPACTION_SUMMARY_MARKER)
+    || trimmed.startsWith('[DevSeek 上下文压缩事实]')
     || trimmed.startsWith('[DevSeek 上下文压缩]');
 }
 

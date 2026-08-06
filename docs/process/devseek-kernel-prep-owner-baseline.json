@@ -1,6 +1,6 @@
 {
-  "schema_version": "devseek.kernel-prep-owner-baseline/v20",
-  "baseline_id": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v20",
+  "schema_version": "devseek.kernel-prep-owner-baseline/v21",
+  "baseline_id": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v21",
   "purpose": "Track product-route and semantic-owner convergence without asserting qualification or coupling local iteration to Gate 0.",
   "qualification_eligible": false,
   "qualification_effect": "NONE",
@@ -418,6 +418,44 @@
       ],
       "missing_surfaces": [],
       "convergence_status": "converged"
+    },
+    {
+      "domain_id": "context-compaction",
+      "target_port": "ContextCompactionPort",
+      "target_owner_count": 1,
+      "current_owner_count": 1,
+      "current_owners": [
+        {
+          "owner_id": "shared-CanonicalContextCompactionService",
+          "surfaces": [
+            "vscode",
+            "cli",
+            "headless"
+          ],
+          "source_ref": "packages/shared/src/coding-context-compaction.ts"
+        }
+      ],
+      "missing_surfaces": [],
+      "convergence_status": "converged"
+    },
+    {
+      "domain_id": "resume-idempotency",
+      "target_port": "ResumeIdempotencyPort",
+      "target_owner_count": 1,
+      "current_owner_count": 1,
+      "current_owners": [
+        {
+          "owner_id": "shared-CanonicalResumeIdempotencyService",
+          "surfaces": [
+            "vscode",
+            "cli",
+            "headless"
+          ],
+          "source_ref": "packages/shared/src/coding-resume-idempotency.ts"
+        }
+      ],
+      "missing_surfaces": [],
+      "convergence_status": "converged"
     }
   ],
   "counts": {
@@ -429,9 +467,9 @@
     "legacy_recovery_routes": 0,
     "legacy_execution_owners": 0,
     "cross_surface_kernel_routes": 4,
-    "semantic_domains": 18,
-    "converged_semantic_domains": 18,
-    "source_checks": 101,
+    "semantic_domains": 20,
+    "converged_semantic_domains": 20,
+    "source_checks": 107,
     "failed_source_checks": 0
   },
   "source_checks": [
@@ -498,11 +536,15 @@
         "new CanonicalContextGraphService()",
         "new CanonicalMemoryPolicyService()",
         "new CanonicalCheckpointService()",
+        "new CanonicalContextCompactionService()",
+        "new CanonicalResumeIdempotencyService()",
         "TASK_CONTRACT.snapshot(request.taskContract)",
         "CONTEXT_GRAPH.build({",
         "MEMORY_POLICY.selectContext({",
         "CHECKPOINT.bind({",
         "CHECKPOINT.restore(request.resumeCheckpoint",
+        "CONTEXT_COMPACTION.bind({",
+        "RESUME_IDEMPOTENCY.bind({ restore: resume, receipts: request.resumeReceipts })",
         "assertCodingOrientationPrompt(taskContract.orientation, request.userPrompt)",
         "lifecycle.beginExecution()",
         "lifecycle.settle(runtimeOutput.status)",
@@ -559,6 +601,44 @@
       "excludes": [
         "from 'vscode'",
         "TaskCheckpointStore"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "shared-canonical-context-compaction-owner",
+      "path": "packages/shared/src/coding-context-compaction.ts",
+      "includes": [
+        "CODING_CONTEXT_COMPACTION_VERSION = 'devseek.coding-context-compaction/v1'",
+        "export interface ContextCompactionPort",
+        "export class CanonicalContextCompactionService implements ContextCompactionPort",
+        "this.taskContracts.snapshot(input.taskContract)",
+        "reason: 'compaction'",
+        "assertProgressContinuity(",
+        "requiresRevalidation: true",
+        "compactionFailure('pending-unit-drift')"
+      ],
+      "excludes": [
+        "from 'vscode'",
+        "extractCompactionFacts"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "shared-canonical-resume-idempotency-owner",
+      "path": "packages/shared/src/coding-resume-idempotency.ts",
+      "includes": [
+        "CODING_RESUME_IDEMPOTENCY_VERSION = 'devseek.coding-resume-idempotency/v1'",
+        "export interface ResumeIdempotencyPort",
+        "export class CanonicalResumeIdempotencyService implements ResumeIdempotencyPort",
+        "idempotencyKey = codingSemanticDigest({",
+        "receipt?.status === 'completed'",
+        "receipt?.status === 'indeterminate'",
+        "executionAllowed: blockedUnits.length === 0",
+        "resumeFailure('invalid-operation-receipt-transition')"
+      ],
+      "excludes": [
+        "from 'vscode'",
+        "IdempotencyGuard"
       ],
       "passed": true
     },
@@ -968,6 +1048,8 @@
         "export * from './coding-run-evidence-retention';",
         "export * from './coding-memory-policy';",
         "export * from './coding-checkpoint';",
+        "export * from './coding-context-compaction';",
+        "export * from './coding-resume-idempotency';",
         "export * from './coding-semantic-digest';",
         "export * from './coding-tool-execution';",
         "export * from './coding-workspace-mutation';",
@@ -1034,6 +1116,40 @@
       "passed": true
     },
     {
+      "check_id": "vscode-canonical-context-compaction-transport",
+      "path": "packages/vscode-extension/src/agent/agent-history-compaction.ts",
+      "includes": [
+        "renderCodingContextCompactionReceipt(options.receipt)",
+        "redactAgentMessageHistory(messages)",
+        "replaceAllAssistantToolHistory(messages)",
+        "CONTEXT_COMPACTION_RECEIPT_PROTOCOL = CODING_CONTEXT_COMPACTION_VERSION"
+      ],
+      "excludes": [
+        "extractCompactionFacts",
+        "isDurableConstraintLine",
+        "isDurableDecisionLine"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-agentic-context-compaction-adapter",
+      "path": "packages/vscode-extension/src/agent/agentic-context-compaction.ts",
+      "includes": [
+        "export function compactAgenticMessageHistory(",
+        "AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET",
+        "compactCanonicalAgenticHistory(",
+        "projectCompactionProgress(",
+        "input.session.compact({",
+        "const FINALIZE_UNIT_ID = 'agentic:finalize'",
+        "compactionFailure('pending-plan-expanded')",
+        "compactionFailure('pending-plan-drift')"
+      ],
+      "excludes": [
+        "CanonicalContextCompactionService"
+      ],
+      "passed": true
+    },
+    {
       "check_id": "headless-memory-checkpoint-user-journeys",
       "path": "packages/headless/test/headless-memory-checkpoint-journeys.test.mjs",
       "includes": [
@@ -1055,7 +1171,11 @@
         "\"fixture_path\": \"code/devseek-tests/memory-checkpoint/scenario.json\"",
         "\"iteration_id\": \"I10\"",
         "\"C11-CHECKPOINT\"",
-        "\"C12-MEMORY-POLICY\""
+        "\"C12-MEMORY-POLICY\"",
+        "\"iteration_id\": \"I11\"",
+        "\"fixture_path\": \"code/devseek-tests/context-resume/scenario.json\"",
+        "\"C12-CONTEXT-COMPACTION\"",
+        "\"C11-RESUME-IDEMPOTENCY\""
       ],
       "excludes": [],
       "passed": true
@@ -1068,6 +1188,33 @@
         "\"case_id\": \"I10-MEM-01\"",
         "\"case_id\": \"I10-MEM-04\"",
         "\"case_id\": \"I10-CHK-01\""
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "headless-context-resume-user-journeys",
+      "path": "packages/headless/test/headless-context-resume-journeys.test.mjs",
+      "includes": [
+        "I11-CMP-01 user journey: three context compactions preserve canonical facts and progress",
+        "I11-RSM-01 user journey: completed workspace effect is skipped on a second resume",
+        "I11-RSM-02 user journey: indeterminate external effect blocks replay before runtime",
+        "request.contextCompaction.compact({",
+        "resumeReceipts: first.resumeReceipts"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "iteration-i11-user-journey-durable-fixture",
+      "path": "code/devseek-tests/context-resume/scenario.json",
+      "includes": [
+        "\"schema_version\": \"devseek.user-simulation-scenario/v1\"",
+        "\"iteration_id\": \"I11\"",
+        "\"case_id\": \"I11-CMP-01\"",
+        "\"case_id\": \"I11-CMP-02\"",
+        "\"case_id\": \"I11-RSM-01\"",
+        "\"case_id\": \"I11-RSM-02\""
       ],
       "excludes": [],
       "passed": true
@@ -2085,5 +2232,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "a0386aaaf56a165033d37fc8fd1cb66d2edbb6dc6fe48dfc1bc6a96089a3cf7c"
+  "baseline_sha256": "e0c881a9e1c60156bd2b5ae8555e191ad4cb5db50f4447084e3aaad15d036df8"
 }
