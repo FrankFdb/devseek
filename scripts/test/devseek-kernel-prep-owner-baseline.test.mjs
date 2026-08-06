@@ -48,9 +48,9 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    semantic_domains: 7,
-    converged_semantic_domains: 7,
-    source_checks: 74,
+    semantic_domains: 9,
+    converged_semantic_domains: 9,
+    source_checks: 76,
     failed_source_checks: 0,
   });
   assert.deepEqual(
@@ -76,14 +76,20 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     true,
   );
   assert.deepEqual(actual.semantic_domains.map(domain => domain.domain_id), [
+    'agent-command',
     'canonical-task-contract',
     'run-lifecycle',
+    'settlement-decision',
     'tool-execution',
     'workspace-mutation',
     'verification',
     'completion-decision',
     'run-evidence-retention',
   ]);
+  const commandDomain = actual.semantic_domains.find(domain => domain.domain_id === 'agent-command');
+  assert.equal(commandDomain.current_owners[0].owner_id, 'shared-CanonicalAgentCommandService');
+  assert.deepEqual(commandDomain.current_owners[0].surfaces, ['vscode', 'cli', 'headless']);
+  assert.equal(commandDomain.convergence_status, 'converged');
   const taskContractDomain = actual.semantic_domains.find(domain => domain.domain_id === 'canonical-task-contract');
   assert.equal(taskContractDomain.convergence_status, 'converged');
   assert.equal(taskContractDomain.current_owner_count, 1);
@@ -95,6 +101,10 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
   assert.deepEqual(lifecycleDomain.current_owners[0].surfaces, ['vscode', 'cli', 'headless']);
   assert.deepEqual(lifecycleDomain.missing_surfaces, []);
   assert.equal(lifecycleDomain.convergence_status, 'converged');
+  const settlementDomain = actual.semantic_domains.find(domain => domain.domain_id === 'settlement-decision');
+  assert.equal(settlementDomain.current_owners[0].owner_id, 'shared-CanonicalSettlementDecisionService');
+  assert.deepEqual(settlementDomain.current_owners[0].surfaces, ['vscode', 'cli', 'headless']);
+  assert.equal(settlementDomain.convergence_status, 'converged');
   const toolDomain = actual.semantic_domains.find(domain => domain.domain_id === 'tool-execution');
   assert.equal(toolDomain.current_owner_count, 1);
   assert.equal(toolDomain.current_owners[0].owner_id, 'shared-CanonicalToolExecutor');
@@ -261,7 +271,7 @@ test('kernel prep owner baseline checker validates the current generated artifac
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    converged_semantic_domains: 7,
+    converged_semantic_domains: 9,
     failed_source_checks: 0,
     qualification_effect: 'NONE',
   });

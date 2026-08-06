@@ -1,6 +1,6 @@
 import type { ChatMessage, TokenUsage } from './llm-types';
 
-export type AgentSurfaceKind = 'vscode' | 'cli' | 'jsonl' | 'desktop' | 'test';
+export type AgentSurfaceKind = 'vscode' | 'cli' | 'jsonl' | 'headless' | 'desktop' | 'test';
 
 export interface SurfaceCapabilities {
   supportsHunkReview: boolean;

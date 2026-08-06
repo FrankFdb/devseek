@@ -70,6 +70,9 @@ export const productCodingKernelExecutor: CodingKernelExecutionPort = {
         signal: request.callbacks.signal,
       });
       retainLifecycle(output.lifecycle);
+      if (output.result.completionDecision?.status !== output.settlement.status) {
+        throw new Error('vscode-coding-kernel:settlement-binding-mismatch');
+      }
       return output.result;
     } catch (error) {
       if (error instanceof CodingKernelExecutionError) retainLifecycle(error.lifecycle);

@@ -3,6 +3,9 @@ import {
   CODING_KERNEL_REQUEST_VERSION,
   CanonicalCodingKernel,
   CodingKernelExecutionError,
+  HEADLESS_SURFACE_CAPABILITIES,
+  createChatRequestCommand,
+  detectPlatformProfile,
   projectCodingKernelTaskContract,
   validateCodingConformanceProjection,
   type CodingConformanceObservedProjection,
@@ -58,6 +61,23 @@ export class HeadlessCodingKernelExecutor<TRuntimeContext, TResult> {
   async execute(
     input: HeadlessCodingRunInput<TRuntimeContext>,
   ): Promise<HeadlessCodingExecutionOutput<TResult>> {
+    const command = createChatRequestCommand({
+      surface: 'headless',
+      capabilities: HEADLESS_SURFACE_CAPABILITIES,
+      platform: detectPlatformProfile({
+        platform: process.platform,
+        env: process.env,
+        shellPath: process.env.SHELL ?? process.env.ComSpec,
+        workspaceKind: 'local',
+      }),
+      prompt: input.userPrompt,
+      commandId: `headless-${input.runId}`,
+      request: {
+        stream: false,
+        trackHistory: false,
+        signal: input.signal,
+      },
+    });
     const evidence = HeadlessRunEvidence.open(input);
     let lifecycle: CodingKernelExecutionOutput<unknown>['lifecycle'] | undefined;
     let finalizationAttempted = false;
@@ -67,11 +87,11 @@ export class HeadlessCodingKernelExecutor<TRuntimeContext, TResult> {
         route: 'canonical',
         surface: 'headless',
         runId: input.runId,
-        userPrompt: input.userPrompt,
+        userPrompt: command.request.prompt,
         workspaceRoot: input.workspaceRoot,
         taskContract: input.taskContract,
         runtimeContext: input.runtimeContext,
-        signal: input.signal,
+        signal: command.request.signal,
       });
       lifecycle = output.lifecycle;
 
@@ -96,8 +116,8 @@ export class HeadlessCodingKernelExecutor<TRuntimeContext, TResult> {
           ? error.lifecycle
           : lifecycle;
         const status = error instanceof CodingKernelExecutionError
-          && (error.lifecycle.status === 'cancelled' || error.lifecycle.status === 'blocked')
-          ? error.lifecycle.status
+          && (error.settlement.status === 'cancelled' || error.settlement.status === 'blocked')
+          ? error.settlement.status
           : 'failed';
         finalizationAttempted = true;
         evidence.finalize(kernelLifecycle, status, 'surface-output-failed');
@@ -133,11 +153,11 @@ function assertOutputBinding<TResult>(
   if (!isDeepStrictEqual(conformance.taskContract, projectCodingKernelTaskContract(output.taskContract))) {
     violations.push('task-contract-mismatch');
   }
-  if (conformance.completion.status !== output.status) violations.push('terminal-status-mismatch');
-  if (!isDeepStrictEqual(conformance.completion.evidenceRefs, output.evidenceRefs)) {
+  if (conformance.completion.status !== output.settlement.status) violations.push('terminal-status-mismatch');
+  if (!isDeepStrictEqual(conformance.completion.evidenceRefs, output.settlement.evidenceRefs)) {
     violations.push('completion-evidence-mismatch');
   }
-  if (!isDeepStrictEqual(conformance.completion.residualRisks, output.residualRisks)) {
+  if (!isDeepStrictEqual(conformance.completion.residualRisks, output.settlement.residualRisks)) {
     violations.push('residual-risk-mismatch');
   }
   if (violations.length > 0) {

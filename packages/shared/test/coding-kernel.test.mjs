@@ -4,6 +4,7 @@ import {
   CODING_KERNEL_REQUEST_VERSION,
   CODING_KERNEL_TASK_CONTRACT_VERSION,
   CODING_RUN_LIFECYCLE_VERSION,
+  CODING_SETTLEMENT_DECISION_VERSION,
   CanonicalCodingKernel,
   CanonicalRunLifecycleService,
   CodingKernelExecutionError,
@@ -56,6 +57,9 @@ test('CanonicalCodingKernel preserves one versioned request and terminal output 
   assert.equal(output.route, 'canonical');
   assert.equal(output.surface, 'cli');
   assert.equal(output.status, 'completed');
+  assert.equal(output.settlement.version, CODING_SETTLEMENT_DECISION_VERSION);
+  assert.equal(output.settlement.status, output.status);
+  assert.equal(output.settlement.lifecycleSequence, output.lifecycle.events.length);
   assert.deepEqual(output.lifecycle, {
     version: CODING_RUN_LIFECYCLE_VERSION,
     runId: 'run-1',
@@ -96,6 +100,7 @@ test('CanonicalCodingKernel preserves one versioned request and terminal output 
   assert.deepEqual(output.taskContract.scope.include, ['src/value.ts']);
   assert.deepEqual(output.result.changedPaths, ['src/value.ts']);
   assert.deepEqual(output.evidenceRefs, ['verify:passed']);
+  assert.deepEqual(output.settlement.evidenceRefs, output.evidenceRefs);
 });
 
 test('CanonicalCodingKernel fails closed before invoking runtime for invalid routes and cancellation', async () => {
@@ -114,6 +119,7 @@ test('CanonicalCodingKernel fails closed before invoking runtime for invalid rou
     assert.equal(error instanceof CodingKernelExecutionError, true);
     assert.match(error.message, /cancelled-before-start/u);
     assert.equal(error.lifecycle.status, 'cancelled');
+    assert.equal(error.settlement.status, 'cancelled');
     assert.deepEqual(error.lifecycle.events.map(event => event.to), ['accepted', 'cancelled']);
     return true;
   });
@@ -128,6 +134,7 @@ test('CanonicalCodingKernel seals blocked and failed runtime outcomes through on
   });
   const blocked = await blockedKernel.execute(request());
   assert.equal(blocked.lifecycle.status, 'blocked');
+  assert.equal(blocked.settlement.status, 'blocked');
   assert.equal(blocked.lifecycle.events.at(-1).cause, 'authority-blocked');
 
   const failedKernel = new CanonicalCodingKernel({
@@ -139,6 +146,7 @@ test('CanonicalCodingKernel seals blocked and failed runtime outcomes through on
     assert.equal(error instanceof CodingKernelExecutionError, true);
     assert.equal(error.message, 'provider disconnected');
     assert.equal(error.lifecycle.status, 'failed');
+    assert.equal(error.settlement.status, 'failed');
     assert.equal(error.lifecycle.events.at(-1).cause, 'runtime-failed');
     return true;
   });

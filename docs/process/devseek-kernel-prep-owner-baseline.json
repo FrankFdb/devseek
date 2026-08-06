@@ -1,6 +1,6 @@
 {
-  "schema_version": "devseek.kernel-prep-owner-baseline/v12",
-  "baseline_id": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v12",
+  "schema_version": "devseek.kernel-prep-owner-baseline/v13",
+  "baseline_id": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v13",
   "purpose": "Track product-route and semantic-owner convergence without asserting qualification or coupling local iteration to Gate 0.",
   "qualification_eligible": false,
   "qualification_effect": "NONE",
@@ -78,6 +78,25 @@
   ],
   "semantic_domains": [
     {
+      "domain_id": "agent-command",
+      "target_port": "AgentCommandPort",
+      "target_owner_count": 1,
+      "current_owner_count": 1,
+      "current_owners": [
+        {
+          "owner_id": "shared-CanonicalAgentCommandService",
+          "surfaces": [
+            "vscode",
+            "cli",
+            "headless"
+          ],
+          "source_ref": "packages/shared/src/agent-command.ts"
+        }
+      ],
+      "missing_surfaces": [],
+      "convergence_status": "converged"
+    },
+    {
       "domain_id": "canonical-task-contract",
       "target_port": "CodingKernelTaskContract",
       "target_owner_count": 1,
@@ -110,6 +129,25 @@
             "headless"
           ],
           "source_ref": "packages/shared/src/coding-run-lifecycle.ts"
+        }
+      ],
+      "missing_surfaces": [],
+      "convergence_status": "converged"
+    },
+    {
+      "domain_id": "settlement-decision",
+      "target_port": "SettlementDecisionPort",
+      "target_owner_count": 1,
+      "current_owner_count": 1,
+      "current_owners": [
+        {
+          "owner_id": "shared-CanonicalSettlementDecisionService",
+          "surfaces": [
+            "vscode",
+            "cli",
+            "headless"
+          ],
+          "source_ref": "packages/shared/src/coding-settlement.ts"
         }
       ],
       "missing_surfaces": [],
@@ -220,9 +258,9 @@
     "legacy_recovery_routes": 0,
     "legacy_execution_owners": 0,
     "cross_surface_kernel_routes": 4,
-    "semantic_domains": 7,
-    "converged_semantic_domains": 7,
-    "source_checks": 74,
+    "semantic_domains": 9,
+    "converged_semantic_domains": 9,
+    "source_checks": 76,
     "failed_source_checks": 0
   },
   "source_checks": [
@@ -283,9 +321,12 @@
         "export interface CodingKernelRuntimePort<TRuntimeContext, TResult>",
         "export class CanonicalCodingKernel<TRuntimeContext, TResult>",
         "new CanonicalRunLifecycleService()",
+        "new CanonicalSettlementDecisionService()",
         "lifecycle.beginExecution()",
         "lifecycle.settle(runtimeOutput.status)",
-        "lifecycle: lifecycle.snapshot()",
+        "lifecycle: lifecycleSnapshot",
+        "status: settlement.status",
+        "settlement,",
         "export function projectCodingKernelTaskContract(",
         "if (request.route !== 'canonical')",
         "coding-kernel-execution:unsupported-route"
@@ -293,6 +334,24 @@
       "excludes": [
         "legacy-planned",
         "CliLegacyCodingLoop"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "shared-canonical-agent-command-owner",
+      "path": "packages/shared/src/agent-command.ts",
+      "includes": [
+        "AGENT_COMMAND_VERSION = 'devseek.agent-command/v1'",
+        "export interface AgentCommandPort",
+        "export class CanonicalAgentCommandService implements AgentCommandPort",
+        "snapshotCommandBase(command)",
+        "snapshotChatRequest(command.request)",
+        "unsupported-type:"
+      ],
+      "excludes": [
+        "from 'vscode'",
+        "HeadlessCodingKernelExecutor",
+        "CliSurfaceAdapter"
       ],
       "passed": true
     },
@@ -307,6 +366,24 @@
         "return this.transition('waiting-user', 'user-input-required', ['running'])",
         "settle(status: CodingTerminalStatus)",
         "assertCodingRunLifecycleSnapshot("
+      ],
+      "excludes": [
+        "from 'vscode'",
+        "CliRunEvidence",
+        "HeadlessRunEvidence"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "shared-canonical-settlement-decision-owner",
+      "path": "packages/shared/src/coding-settlement.ts",
+      "includes": [
+        "CODING_SETTLEMENT_DECISION_VERSION = 'devseek.coding-settlement-decision/v1'",
+        "export interface SettlementDecisionPort",
+        "export class CanonicalSettlementDecisionService implements SettlementDecisionPort",
+        "settlementFailure('non-terminal-lifecycle')",
+        "terminal-mismatch:",
+        "terminal-preserved:"
       ],
       "excludes": [
         "from 'vscode'",
@@ -396,6 +473,7 @@
       "check_id": "shared-coding-conformance-export",
       "path": "packages/shared/src/index.ts",
       "includes": [
+        "export * from './agent-command';",
         "export * from './coding-conformance';",
         "export * from './coding-conformance-fixtures';",
         "export * from './coding-conformance-projection';",
@@ -403,6 +481,7 @@
         "export * from './coding-terminal-effects';",
         "export * from './coding-kernel';",
         "export * from './coding-run-lifecycle';",
+        "export * from './coding-settlement';",
         "export * from './coding-run-evidence-retention';",
         "export * from './coding-tool-execution';",
         "export * from './coding-workspace-mutation';",
@@ -556,6 +635,9 @@
         "this.kernel = new CanonicalCodingKernel(runtime)",
         "const output = await this.kernel.execute({",
         "const evidence = HeadlessRunEvidence.open(input)",
+        "const command = createChatRequestCommand({",
+        "capabilities: HEADLESS_SURFACE_CAPABILITIES",
+        "userPrompt: command.request.prompt",
         "route: 'canonical'",
         "surface: 'headless'",
         "taskContract: input.taskContract",
@@ -1388,5 +1470,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "0afa6c2b64a13476f36411ad3f9eda15db95c3c60d836ed130ccbf83dba3c739"
+  "baseline_sha256": "0a8d92d9b80c2301005c99e371ab5de56eb8e4aa22905e10871c82010f177a0a"
 }

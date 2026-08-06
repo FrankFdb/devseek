@@ -49,7 +49,8 @@ test('CLI run lifecycle retains canonical output before projecting a blocked ter
     acceptCliCodingKernelOutput(evidence, {
       status: 'blocked',
       lifecycle,
-      result: { completion: { reasonCodes: ['permission-denied'] } },
+      settlement: { status: 'blocked' },
+      result: { completion: { status: 'blocked', reasonCodes: ['permission-denied'] } },
     });
   } catch (error) {
     blockedError = error;
@@ -84,6 +85,18 @@ test('CLI run lifecycle retains canonical output before projecting a blocked ter
     ['flush-2'],
     ['settle', 'blocked'],
   ]);
+});
+
+test('CLI run lifecycle rejects a Surface terminal that disagrees with canonical settlement', () => {
+  assert.throws(
+    () => acceptCliCodingKernelOutput({ retainLifecycle() {} }, {
+      status: 'completed',
+      lifecycle: { status: 'completed', events: [] },
+      settlement: { status: 'blocked' },
+      result: { completion: { status: 'completed', reasonCodes: [] } },
+    }),
+    /cli-coding-kernel:settlement-binding-mismatch/u,
+  );
 });
 
 test('CLI run lifecycle gives explicit cancellation precedence and fails closed otherwise', () => {

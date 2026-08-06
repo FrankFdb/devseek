@@ -3,8 +3,8 @@ import {
   sha256Object,
 } from './devseek-capability-ledger.mjs';
 
-export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v12';
-export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v12';
+export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v13';
+export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v13';
 
 const SOURCE_PATHS = Object.freeze({
   gate0: 'docs/process/devseek-gate0-decision-report.json',
@@ -13,6 +13,7 @@ const SOURCE_PATHS = Object.freeze({
   phaseGate: 'scripts/devseek-phase0-12-verify.mjs',
   sharedBuildProfile: 'packages/shared/src/build-profile.ts',
   sharedIndex: 'packages/shared/src/index.ts',
+  sharedAgentCommand: 'packages/shared/src/agent-command.ts',
   sharedCodingConformance: 'packages/shared/src/coding-conformance.ts',
   sharedCodingConformanceFixtures: 'packages/shared/src/coding-conformance-fixtures.ts',
   sharedCodingConformanceProjection: 'packages/shared/src/coding-conformance-projection.ts',
@@ -21,6 +22,7 @@ const SOURCE_PATHS = Object.freeze({
   sharedSafetyPolicy: 'packages/shared/src/coding-safety-policy.ts',
   sharedCodingKernel: 'packages/shared/src/coding-kernel.ts',
   sharedRunLifecycle: 'packages/shared/src/coding-run-lifecycle.ts',
+  sharedSettlement: 'packages/shared/src/coding-settlement.ts',
   sharedRunEvidenceRetention: 'packages/shared/src/coding-run-evidence-retention.ts',
   sharedToolExecution: 'packages/shared/src/coding-tool-execution.ts',
   sharedWorkspaceMutation: 'packages/shared/src/coding-workspace-mutation.ts',
@@ -109,13 +111,24 @@ const SOURCE_CHECKS = Object.freeze([
     'export interface CodingKernelRuntimePort<TRuntimeContext, TResult>',
     'export class CanonicalCodingKernel<TRuntimeContext, TResult>',
     'new CanonicalRunLifecycleService()',
+    'new CanonicalSettlementDecisionService()',
     'lifecycle.beginExecution()',
     'lifecycle.settle(runtimeOutput.status)',
-    'lifecycle: lifecycle.snapshot()',
+    'lifecycle: lifecycleSnapshot',
+    'status: settlement.status',
+    'settlement,',
     'export function projectCodingKernelTaskContract(',
     "if (request.route !== 'canonical')",
     'coding-kernel-execution:unsupported-route',
   ], ['legacy-planned', 'CliLegacyCodingLoop']),
+  check('shared-canonical-agent-command-owner', SOURCE_PATHS.sharedAgentCommand, [
+    "AGENT_COMMAND_VERSION = 'devseek.agent-command/v1'",
+    'export interface AgentCommandPort',
+    'export class CanonicalAgentCommandService implements AgentCommandPort',
+    'snapshotCommandBase(command)',
+    'snapshotChatRequest(command.request)',
+    'unsupported-type:',
+  ], ["from 'vscode'", 'HeadlessCodingKernelExecutor', 'CliSurfaceAdapter']),
   check('shared-canonical-run-lifecycle-owner', SOURCE_PATHS.sharedRunLifecycle, [
     "CODING_RUN_LIFECYCLE_VERSION = 'devseek.coding-run-lifecycle/v1'",
     'export interface RunLifecyclePort',
@@ -124,6 +137,14 @@ const SOURCE_CHECKS = Object.freeze([
     "return this.transition('waiting-user', 'user-input-required', ['running'])",
     'settle(status: CodingTerminalStatus)',
     'assertCodingRunLifecycleSnapshot(',
+  ], ["from 'vscode'", 'CliRunEvidence', 'HeadlessRunEvidence']),
+  check('shared-canonical-settlement-decision-owner', SOURCE_PATHS.sharedSettlement, [
+    "CODING_SETTLEMENT_DECISION_VERSION = 'devseek.coding-settlement-decision/v1'",
+    'export interface SettlementDecisionPort',
+    'export class CanonicalSettlementDecisionService implements SettlementDecisionPort',
+    "settlementFailure('non-terminal-lifecycle')",
+    'terminal-mismatch:',
+    'terminal-preserved:',
   ], ["from 'vscode'", 'CliRunEvidence', 'HeadlessRunEvidence']),
   check('shared-canonical-run-evidence-retention-owner', SOURCE_PATHS.sharedRunEvidenceRetention, [
     "CODING_RUN_LIFECYCLE_EVIDENCE_SCHEMA = 'devseek.coding-run-lifecycle-evidence/v1'",
@@ -175,6 +196,7 @@ const SOURCE_CHECKS = Object.freeze([
     'HeadlessCodingKernelExecutor',
   ]),
   check('shared-coding-conformance-export', SOURCE_PATHS.sharedIndex, [
+    "export * from './agent-command';",
     "export * from './coding-conformance';",
     "export * from './coding-conformance-fixtures';",
     "export * from './coding-conformance-projection';",
@@ -182,6 +204,7 @@ const SOURCE_CHECKS = Object.freeze([
     "export * from './coding-terminal-effects';",
     "export * from './coding-kernel';",
     "export * from './coding-run-lifecycle';",
+    "export * from './coding-settlement';",
     "export * from './coding-run-evidence-retention';",
     "export * from './coding-tool-execution';",
     "export * from './coding-workspace-mutation';",
@@ -281,6 +304,9 @@ const SOURCE_CHECKS = Object.freeze([
     'this.kernel = new CanonicalCodingKernel(runtime)',
     'const output = await this.kernel.execute({',
     'const evidence = HeadlessRunEvidence.open(input)',
+    'const command = createChatRequestCommand({',
+    'capabilities: HEADLESS_SURFACE_CAPABILITIES',
+    'userPrompt: command.request.prompt',
     "route: 'canonical'",
     "surface: 'headless'",
     'taskContract: input.taskContract',
@@ -818,7 +844,7 @@ export function buildKernelPrepOwnerBaseline(sources) {
       legacy_recovery_routes: 0,
       legacy_execution_owners: 0,
       cross_surface_kernel_routes: headlessProductEntrypoints === 1 ? 4 : 3,
-      semantic_domains: 7,
+      semantic_domains: semanticDomains.length,
       converged_semantic_domains: semanticDomains.filter(domainEntry => (
         domainEntry.convergence_status === 'converged'
       )).length,
@@ -873,7 +899,7 @@ export function validateKernelPrepOwnerBaseline(baseline, sources) {
   if (baseline.counts?.cross_surface_kernel_routes !== 4) {
     errors.push(`cross-surface-kernel-routes:unexpected-${baseline.counts?.cross_surface_kernel_routes}`);
   }
-  if (baseline.counts?.converged_semantic_domains !== 7) {
+  if (baseline.counts?.converged_semantic_domains !== baseline.counts?.semantic_domains) {
     errors.push(`semantic-domain:unexpected-converged-${baseline.counts?.converged_semantic_domains}`);
   }
   for (const domain of baseline.semantic_domains ?? []) {
@@ -993,11 +1019,17 @@ function buildProductRoutes(headlessProductEntrypoints) {
 
 function buildSemanticDomains() {
   return [
+    domain('agent-command', 'AgentCommandPort', [
+      owner('shared-CanonicalAgentCommandService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedAgentCommand),
+    ], []),
     domain('canonical-task-contract', 'CodingKernelTaskContract', [
       owner('shared-CodingKernelTaskContract', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedCodingKernel),
     ], []),
     domain('run-lifecycle', 'RunLifecyclePort', [
       owner('shared-CanonicalRunLifecycleService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedRunLifecycle),
+    ], []),
+    domain('settlement-decision', 'SettlementDecisionPort', [
+      owner('shared-CanonicalSettlementDecisionService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedSettlement),
     ], []),
     domain('tool-execution', 'ToolExecutorPort', [
       owner('shared-CanonicalToolExecutor', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedToolExecution),

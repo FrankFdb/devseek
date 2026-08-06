@@ -75,7 +75,7 @@ export function resolveCliRunTerminalStatus(
   if (cancelled) return 'cancelled';
   if (error instanceof CliCodingKernelTerminalError) return error.status;
   if (error instanceof CodingKernelExecutionError) {
-    const status = error.lifecycle.status;
+    const status = error.settlement.status;
     if (status === 'blocked' || status === 'cancelled') return status;
   }
   return 'failed';

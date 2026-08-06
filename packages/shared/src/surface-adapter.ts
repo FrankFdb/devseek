@@ -8,6 +8,7 @@ import type {
   SurfaceCapabilities,
 } from './agent-protocol';
 import { assertPlatformRuntimeProfileSupported } from './platform-runtime';
+import { acceptAgentCommand } from './agent-command';
 
 export interface SurfaceAdapter {
   readonly kind: AgentSurfaceKind;
@@ -46,6 +47,11 @@ export const JSONL_SURFACE_CAPABILITIES: SurfaceCapabilities = {
   supportsJsonl: true,
 };
 
+export const HEADLESS_SURFACE_CAPABILITIES: SurfaceCapabilities = {
+  ...CLI_SURFACE_CAPABILITIES,
+  supportsDiagnostics: true,
+};
+
 export const DESKTOP_SURFACE_CAPABILITIES: SurfaceCapabilities = {
   supportsHunkReview: true,
   supportsInlineSelection: false,
@@ -65,7 +71,7 @@ export function createChatRequestCommand(args: {
   now?: () => number;
 }): ChatRequestCommand {
   assertPlatformRuntimeProfileSupported(args.platform);
-  return {
+  return acceptAgentCommand({
     type: 'chat.request',
     commandId: args.commandId ?? `cmd-${(args.now ?? Date.now)().toString(36)}`,
     surface: args.surface,
@@ -78,7 +84,7 @@ export function createChatRequestCommand(args: {
       trackHistory: true,
       ...args.request,
     },
-  };
+  });
 }
 
 export function summarizeSurfaceCapabilityGaps(

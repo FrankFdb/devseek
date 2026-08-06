@@ -3,6 +3,7 @@
 // ============================================================
 
 export * from './agent-application-service';
+export * from './agent-command';
 export * from './agent-enhancements';
 export * from './agent-protocol';
 export * from './bridge-stream-protocol';
@@ -16,6 +17,7 @@ export * from './coding-kernel';
 export * from './coding-run-evidence-retention';
 export * from './coding-run-lifecycle';
 export * from './coding-safety-policy';
+export * from './coding-settlement';
 export * from './coding-tool-execution';
 export * from './coding-workspace-mutation';
 export * from './coding-verification';

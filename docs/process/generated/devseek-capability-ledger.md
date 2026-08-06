@@ -4,7 +4,7 @@
 
 - Schema: `devseek.capability-ledger/v1`
 - Capabilities: 76
-- Ledger SHA-256: `415abaef2c9f49261528cceb8701ea1138cb9e718089d618047b0f1007fe9cac`
+- Ledger SHA-256: `76358b3b248e1934ac084114d9b55131ec528efdd9479b9cfe760b7838bc8787`
 - Qualification claim policy: `deny-until-signed-evidence-validator`
 
 | Capability | Priority | Applicability | Claim scopes | Implementation | Qualification | Authority port | Typed dependencies |
@@ -16,9 +16,9 @@
 | `C0-QUALIFICATION-EVIDENCE-MANIFEST` | P0 | active | qualification-infrastructure | wired | — | `QualificationEvidenceManifestPort` | C0-PREREGISTRATION-PLAN (evidence/wired)<br>C0-RUN-EVIDENCE-LEDGER (evidence/wired) |
 | `C0-QUALIFICATION-PROFILE-SCHEMA` | P0 | active | qualification-infrastructure | wired | — | `QualificationProfileSchemaPort` | C0-CAPABILITY-LEDGER-SCHEMA (evidence/wired)<br>C0-CASE-CATALOG (evidence/wired) |
 | `C0-RUN-EVIDENCE-LEDGER` | P0 | active | qualification-infrastructure | wired | — | `RunEvidenceLedgerPort` | — |
-| `C1-AGENT-COMMAND` | P0 | active | core-coding | proposed | — | `AgentCommandPort` | C1-RUN-LIFECYCLE (control/wired) |
+| `C1-AGENT-COMMAND` | P0 | active | core-coding | wired | — | `AgentCommandPort` | C1-RUN-LIFECYCLE (control/wired) |
 | `C1-RUN-LIFECYCLE` | P0 | active | core-coding | wired | — | `RunLifecyclePort` | C0-RUN-EVIDENCE-LEDGER (evidence/wired) |
-| `C1-SETTLEMENT` | P0 | active | core-coding | proposed | — | `SettlementDecisionPort` | C1-RUN-LIFECYCLE (control/wired) |
+| `C1-SETTLEMENT` | P0 | active | core-coding | wired | — | `SettlementDecisionPort` | C1-RUN-LIFECYCLE (control/wired) |
 | `C1-SURFACE-ADAPTER-CONFORMANCE` | P0 | active | core-coding | proposed | — | `SurfaceAdapterConformancePort` | C1-RUN-LIFECYCLE (control/wired)<br>C1-AGENT-COMMAND (control/wired)<br>C1-SETTLEMENT (control/wired) |
 | `C10-ARTIFACT-IDENTITY` | P0 | active | core-coding, safety | proposed | — | `ArtifactIdentityPort` | C9-BUILD-ORCHESTRATION (verification/wired)<br>C10-INDEPENDENT-REVIEW (delivery/wired) |
 | `C10-CI-DEPLOY-OBSERVE` | P2 | conditional | release-capable | proposed | — | `CiDeployObservePort` | C10-RELEASE-GATE (delivery/wired)<br>C7-EXTERNAL-EFFECT (authority/wired) |

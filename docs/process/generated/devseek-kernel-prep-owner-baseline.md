@@ -25,8 +25,10 @@
 
 | Domain | Current owners | Missing surfaces | Target owner count | Status |
 | --- | --- | --- | ---: | --- |
+| agent-command | shared-CanonicalAgentCommandService | - | 1 | converged |
 | canonical-task-contract | shared-CodingKernelTaskContract | - | 1 | converged |
 | run-lifecycle | shared-CanonicalRunLifecycleService | - | 1 | converged |
+| settlement-decision | shared-CanonicalSettlementDecisionService | - | 1 | converged |
 | tool-execution | shared-CanonicalToolExecutor | - | 1 | converged |
 | workspace-mutation | shared-CanonicalWorkspaceMutationTransaction | - | 1 | converged |
 | verification | shared-CanonicalVerificationService | - | 1 | converged |

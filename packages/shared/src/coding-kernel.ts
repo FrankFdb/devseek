@@ -9,6 +9,10 @@ import {
   type CodingRunLifecycleSnapshot,
   type RunLifecycleSessionPort,
 } from './coding-run-lifecycle';
+import {
+  CanonicalSettlementDecisionService,
+  type CodingSettlementDecision,
+} from './coding-settlement';
 
 export const CODING_KERNEL_REQUEST_VERSION = 'devseek.coding-kernel-request/v1' as const;
 export const CODING_KERNEL_OUTPUT_VERSION = 'devseek.coding-kernel-output/v1' as const;
@@ -81,6 +85,7 @@ export interface CodingKernelExecutionOutput<TResult> {
   readonly runId: string;
   readonly status: CodingTerminalStatus;
   readonly lifecycle: CodingRunLifecycleSnapshot;
+  readonly settlement: CodingSettlementDecision;
   readonly taskContract: CodingKernelTaskContract;
   readonly result: TResult;
   readonly evidenceRefs: readonly string[];
@@ -95,17 +100,25 @@ export interface CodingKernelRuntimePort<TRuntimeContext, TResult> {
 
 export class CodingKernelExecutionError extends Error {
   readonly lifecycle: CodingRunLifecycleSnapshot;
+  readonly settlement: CodingSettlementDecision;
   readonly runtimeCause: unknown;
 
-  constructor(message: string, lifecycle: CodingRunLifecycleSnapshot, runtimeCause?: unknown) {
+  constructor(
+    message: string,
+    lifecycle: CodingRunLifecycleSnapshot,
+    settlement: CodingSettlementDecision,
+    runtimeCause?: unknown,
+  ) {
     super(message);
     this.name = 'CodingKernelExecutionError';
     this.lifecycle = lifecycle;
+    this.settlement = settlement;
     this.runtimeCause = runtimeCause;
   }
 }
 
 const RUN_LIFECYCLE = new CanonicalRunLifecycleService();
+const SETTLEMENT = new CanonicalSettlementDecisionService();
 
 /**
  * The product-level execution owner shared by every Surface. Runtime adapters
@@ -135,21 +148,31 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       }
       assertTerminalStatus(runtimeOutput.status);
       lifecycle.settle(runtimeOutput.status);
+      const lifecycleSnapshot = lifecycle.snapshot();
+      const settlement = SETTLEMENT.decide({
+        lifecycle: lifecycleSnapshot,
+        requestedStatus: runtimeOutput.status,
+        evidenceRefs: runtimeOutput.evidenceRefs,
+        residualRisks: runtimeOutput.residualRisks,
+      });
       return {
         version: CODING_KERNEL_OUTPUT_VERSION,
         route: 'canonical',
         surface: request.surface,
         runId: request.runId,
-        status: runtimeOutput.status,
-        lifecycle: lifecycle.snapshot(),
+        status: settlement.status,
+        lifecycle: lifecycleSnapshot,
+        settlement,
         taskContract,
         result: runtimeOutput.result,
-        evidenceRefs: uniqueNonEmpty(runtimeOutput.evidenceRefs ?? []),
-        residualRisks: uniqueNonEmpty(runtimeOutput.residualRisks ?? []),
+        evidenceRefs: settlement.evidenceRefs,
+        residualRisks: settlement.residualRisks,
       };
     } catch (error) {
       if (error instanceof CodingKernelExecutionError) throw error;
-      lifecycle.settle(request.signal?.aborted ? 'cancelled' : 'failed');
+      if (!lifecycle.snapshot().terminal) {
+        lifecycle.settle(request.signal?.aborted ? 'cancelled' : 'failed');
+      }
       throw lifecycleError(errorMessage(error), lifecycle, error);
     }
   }
@@ -160,7 +183,14 @@ function lifecycleError(
   lifecycle: RunLifecycleSessionPort,
   cause?: unknown,
 ): CodingKernelExecutionError {
-  return new CodingKernelExecutionError(message, lifecycle.snapshot(), cause);
+  const snapshot = lifecycle.snapshot();
+  if (!snapshot.terminal) throw new Error('coding-kernel-execution:non-terminal-error');
+  assertTerminalStatus(snapshot.status);
+  const settlement = SETTLEMENT.decide({
+    lifecycle: snapshot,
+    requestedStatus: snapshot.status,
+  });
+  return new CodingKernelExecutionError(message, snapshot, settlement, cause);
 }
 
 function errorMessage(error: unknown): string {
@@ -247,8 +277,8 @@ function assertCanonicalRequest(request: CodingKernelExecutionRequest<unknown>):
   }
 }
 
-function assertTerminalStatus(status: CodingTerminalStatus): void {
-  if (!['completed', 'failed', 'blocked', 'cancelled'].includes(status)) {
+function assertTerminalStatus(status: unknown): asserts status is CodingTerminalStatus {
+  if (status !== 'completed' && status !== 'failed' && status !== 'blocked' && status !== 'cancelled') {
     throw new Error('coding-kernel-execution:invalid-terminal-status');
   }
 }

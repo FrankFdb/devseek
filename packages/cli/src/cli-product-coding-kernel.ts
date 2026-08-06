@@ -67,6 +67,10 @@ export const productCliCodingKernelExecutor = {
 export function assertCompletedCliCodingKernelOutput(
   output: CliProductCodingKernelOutput,
 ): void {
+  if (output.status !== output.settlement.status
+    || output.result.completion.status !== output.settlement.status) {
+    throw new Error('cli-coding-kernel:settlement-binding-mismatch');
+  }
   if (output.status === 'completed') return;
   const reasons = output.result.completion.reasonCodes.join(', ') || 'completion-not-authorized';
   throw new CliCodingKernelTerminalError(

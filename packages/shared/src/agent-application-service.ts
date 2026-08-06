@@ -17,6 +17,7 @@ import {
   snapshotRunEvidenceInputObject,
 } from './run-evidence-protocol';
 import { DevSeekCapabilityTextStreamGuard } from './persisted-secret';
+import { CanonicalAgentCommandService, type AgentCommandPort } from './agent-command';
 
 interface SnapshotAgentChatRequest {
   readonly request: CapabilityFreeAgentChatRequest;
@@ -33,26 +34,30 @@ export interface AgentApplicationServiceDeps {
   emitEvent?: (event: AgentEvent) => void;
   now?: () => number;
   newId?: () => string;
+  commandAuthority?: AgentCommandPort;
 }
 
 export class AgentApplicationService {
   private readonly now: () => number;
   private readonly newId: () => string;
+  private readonly commandAuthority: AgentCommandPort;
 
   constructor(private readonly deps: AgentApplicationServiceDeps) {
     this.now = deps.now ?? (() => Date.now());
     this.newId = deps.newId ?? (() => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
+    this.commandAuthority = deps.commandAuthority ?? new CanonicalAgentCommandService();
   }
 
   async handle(command: AgentCommand): Promise<AgentEvent[]> {
-    switch (command.type) {
+    const accepted = this.commandAuthority.accept(command);
+    switch (accepted.type) {
       case 'chat.request':
-        return this.handleChatCommand(command);
+        return this.handleChatCommand(accepted);
       case 'plan.reviewDecision':
       case 'permission.decision':
       case 'task.resume':
       case 'task.cancel':
-        return [this.errorEvent(command.commandId, `Unsupported command: ${command.type}`, 'UnsupportedCommand', command.surface)];
+        return [this.errorEvent(accepted.commandId, `Unsupported command: ${accepted.type}`, 'UnsupportedCommand', accepted.surface)];
     }
   }
 
