@@ -469,7 +469,7 @@
     "cross_surface_kernel_routes": 4,
     "semantic_domains": 20,
     "converged_semantic_domains": 20,
-    "source_checks": 107,
+    "source_checks": 108,
     "failed_source_checks": 0
   },
   "source_checks": [
@@ -1168,12 +1168,14 @@
         "\"role\": \"regression-only\"",
         "\"fixed_baseline_cannot_substitute_for_iteration_evidence\": true",
         "\"verified_cases_require_unique_test_evidence\": true",
-        "\"fixture_path\": \"code/devseek-tests/memory-checkpoint/scenario.json\"",
+        "\"fixture_path\": \"scripts/test/fixtures/user-simulations/i10-memory-checkpoint.json\"",
+        "\"local_artifact_root\": \"code/devseek-tests/memory-checkpoint\"",
         "\"iteration_id\": \"I10\"",
         "\"C11-CHECKPOINT\"",
         "\"C12-MEMORY-POLICY\"",
         "\"iteration_id\": \"I11\"",
-        "\"fixture_path\": \"code/devseek-tests/context-resume/scenario.json\"",
+        "\"fixture_path\": \"scripts/test/fixtures/user-simulations/i11-context-resume.json\"",
+        "\"local_artifact_root\": \"code/devseek-tests/context-resume\"",
         "\"C12-CONTEXT-COMPACTION\"",
         "\"C11-RESUME-IDEMPOTENCY\""
       ],
@@ -1182,7 +1184,7 @@
     },
     {
       "check_id": "iteration-user-journey-durable-fixture",
-      "path": "code/devseek-tests/memory-checkpoint/scenario.json",
+      "path": "scripts/test/fixtures/user-simulations/i10-memory-checkpoint.json",
       "includes": [
         "\"schema_version\": \"devseek.user-simulation-scenario/v1\"",
         "\"case_id\": \"I10-MEM-01\"",
@@ -1207,7 +1209,7 @@
     },
     {
       "check_id": "iteration-i11-user-journey-durable-fixture",
-      "path": "code/devseek-tests/context-resume/scenario.json",
+      "path": "scripts/test/fixtures/user-simulations/i11-context-resume.json",
       "includes": [
         "\"schema_version\": \"devseek.user-simulation-scenario/v1\"",
         "\"iteration_id\": \"I11\"",
@@ -1220,10 +1222,23 @@
       "passed": true
     },
     {
+      "check_id": "iteration-user-simulation-artifact-boundary",
+      "path": "scripts/lib/devseek-user-simulation-paths.mjs",
+      "includes": [
+        "VERSIONED_SIMULATION_FIXTURE_ROOT = 'scripts/test/fixtures/user-simulations'",
+        "LOCAL_SIMULATION_ARTIFACT_ROOT = 'code/devseek-tests'",
+        "resolveVersionedSimulationFixture",
+        "resolveLocalSimulationArtifactRoot"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
       "check_id": "iteration-user-journey-evidence-runner",
       "path": "scripts/run-devseek-iteration-user-journeys.mjs",
       "includes": [
-        "path.join(repoRoot, 'code/devseek-tests')",
+        "resolveLocalSimulationArtifactRoot(repoRoot, iteration.local_artifact_root)",
+        "const runDir = path.join(artifactRoot, 'runs', runId)",
         "--test-name-pattern=${testPattern}",
         "fs.writeFileSync(path.join(runDir, outputName), rawOutput)",
         "raw_output_sha256: sha256(rawOutput)"
@@ -2232,5 +2247,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "e0c881a9e1c60156bd2b5ae8555e191ad4cb5db50f4447084e3aaad15d036df8"
+  "baseline_sha256": "b0daedab2846bc43a9cd0a9863d118bbca314c450c31e09b7d38c0b982102c02"
 }

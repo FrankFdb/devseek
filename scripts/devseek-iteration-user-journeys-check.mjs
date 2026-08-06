@@ -2,6 +2,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import {
+  resolveLocalSimulationArtifactRoot,
+  resolveVersionedSimulationFixture,
+} from './lib/devseek-user-simulation-paths.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const manifestPath = path.join(repoRoot, 'docs/process/devseek-iteration-user-journeys.json');
@@ -34,6 +38,7 @@ export function validateIterationUserJourneys(manifest, root = repoRoot) {
     if (!requiredText(iteration?.delta_from_baseline, `${iterationId}.delta_from_baseline`, errors)) continue;
     const cases = Array.isArray(iteration?.cases) ? iteration.cases : [];
     const fixtureCaseIds = validateScenarioFixture(iteration?.fixture_path, iterationId, root, errors);
+    validateLocalArtifactRoot(iteration?.local_artifact_root, iterationId, root, errors);
     const minimum = Number(manifest?.iteration_policy?.minimum_new_cases ?? 1);
     if (cases.length < minimum) errors.push(`${iterationId}.cases:below-minimum`);
     const coveredCapabilities = new Set();
@@ -77,10 +82,11 @@ export function validateIterationUserJourneys(manifest, root = repoRoot) {
 function validateScenarioFixture(value, iterationId, root, errors) {
   const fixturePath = requiredText(value, `${iterationId}.fixture_path`, errors);
   if (!fixturePath) return new Set();
-  const allowedRoot = path.join(root, 'code/devseek-tests');
-  const absolutePath = path.resolve(root, fixturePath);
-  if (absolutePath !== allowedRoot && !absolutePath.startsWith(`${allowedRoot}${path.sep}`)) {
-    errors.push(`${iterationId}.fixture_path:outside-test-root`);
+  let absolutePath;
+  try {
+    absolutePath = resolveVersionedSimulationFixture(root, fixturePath);
+  } catch {
+    errors.push(`${iterationId}.fixture_path:outside-versioned-fixture-root`);
     return new Set();
   }
   if (!fs.existsSync(absolutePath)) {
@@ -94,6 +100,16 @@ function validateScenarioFixture(value, iterationId, root, errors) {
   } catch (error) {
     errors.push(`${iterationId}.fixture_path:unreadable:${error instanceof Error ? error.message : String(error)}`);
     return new Set();
+  }
+}
+
+function validateLocalArtifactRoot(value, iterationId, root, errors) {
+  const artifactRoot = requiredText(value, `${iterationId}.local_artifact_root`, errors);
+  if (!artifactRoot) return;
+  try {
+    resolveLocalSimulationArtifactRoot(root, artifactRoot);
+  } catch {
+    errors.push(`${iterationId}.local_artifact_root:outside-local-artifact-root`);
   }
 }
 

@@ -4,6 +4,10 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  resolveLocalSimulationArtifactRoot,
+  resolveVersionedSimulationFixture,
+} from './lib/devseek-user-simulation-paths.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const manifestPath = path.join(repoRoot, 'docs/process/devseek-iteration-user-journeys.json');
@@ -14,14 +18,15 @@ function main() {
   const manifest = readJson(manifestPath);
   const iteration = manifest.iterations.find(item => item.iteration_id === iterationId);
   if (!iteration) fail(`unknown iteration: ${iterationId}`);
-  const fixturePath = safeFixturePath(iteration.fixture_path);
+  const fixturePath = resolveVersionedSimulationFixture(repoRoot, iteration.fixture_path);
+  const artifactRoot = resolveLocalSimulationArtifactRoot(repoRoot, iteration.local_artifact_root);
   const fixture = readJson(fixturePath);
   if (fixture.iteration_id !== iterationId) fail('fixture iteration mismatch');
   const sourceHead = gitValue(['rev-parse', 'HEAD']);
   const sourceWorktreeDirty = Boolean(gitValue(['status', '--porcelain']));
 
   const runId = sanitizeRunId(argument('--run-id') || new Date().toISOString());
-  const runDir = path.join(path.dirname(fixturePath), 'runs', runId);
+  const runDir = path.join(artifactRoot, 'runs', runId);
   if (fs.existsSync(runDir)) fail(`run already exists: ${path.relative(repoRoot, runDir)}`);
   fs.mkdirSync(runDir, { recursive: true });
 
@@ -76,16 +81,6 @@ function executeCase(journey, runDir) {
     raw_output_path: outputName,
     raw_output_sha256: sha256(rawOutput),
   };
-}
-
-function safeFixturePath(value) {
-  const relativePath = String(value || '').trim();
-  const allowedRoot = path.join(repoRoot, 'code/devseek-tests');
-  const resolved = path.resolve(repoRoot, relativePath);
-  if (!relativePath || (resolved !== allowedRoot && !resolved.startsWith(`${allowedRoot}${path.sep}`))) {
-    fail('fixture path must stay under code/devseek-tests');
-  }
-  return resolved;
 }
 
 function argument(name) {

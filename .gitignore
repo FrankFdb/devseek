@@ -35,6 +35,8 @@ backups/
 code/*
 !code/devseek-tests/
 !code/devseek-tests/**
+code/devseek-tests/**/scenario.json
+code/devseek-tests/**/runs/
 aircraft/
 docs/testing/programming-agent-benchmark-reports/
 docs/testing/agent-loop-eval-reports/

@@ -50,7 +50,7 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     cross_surface_kernel_routes: 4,
     semantic_domains: 20,
     converged_semantic_domains: 20,
-    source_checks: 107,
+    source_checks: 108,
     failed_source_checks: 0,
   });
   assert.deepEqual(

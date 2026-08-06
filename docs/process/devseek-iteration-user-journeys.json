@@ -35,7 +35,8 @@
       "status": "verified-local",
       "goal": "Converge canonical memory authority and durable checkpoint ownership across product surfaces.",
       "delta_from_baseline": "Adds memory authority, sensitive persistence, legacy-memory migration, sealed prompt projection, and interruption/resume behaviors absent from the five fixed coding fixtures.",
-      "fixture_path": "code/devseek-tests/memory-checkpoint/scenario.json",
+      "fixture_path": "scripts/test/fixtures/user-simulations/i10-memory-checkpoint.json",
+      "local_artifact_root": "code/devseek-tests/memory-checkpoint",
       "capability_ids": [
         "C11-CHECKPOINT",
         "C12-MEMORY-POLICY"
@@ -118,7 +119,8 @@
       "status": "verified-local",
       "goal": "Converge canonical context compaction and fail-closed resume idempotency without replaying completed or indeterminate effects.",
       "delta_from_baseline": "Adds three-pass context compaction with sealed task, provenance, memory-policy, progress, evidence, and checkpoint ancestry; adds stable resume operation receipts and replay blocking absent from I10 and the five fixed coding fixtures.",
-      "fixture_path": "code/devseek-tests/context-resume/scenario.json",
+      "fixture_path": "scripts/test/fixtures/user-simulations/i11-context-resume.json",
+      "local_artifact_root": "code/devseek-tests/context-resume",
       "capability_ids": [
         "C12-CONTEXT-COMPACTION",
         "C11-RESUME-IDEMPOTENCY"
