@@ -48,9 +48,9 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    semantic_domains: 14,
-    converged_semantic_domains: 14,
-    source_checks: 88,
+    semantic_domains: 16,
+    converged_semantic_domains: 16,
+    source_checks: 91,
     failed_source_checks: 0,
   });
   assert.deepEqual(
@@ -83,6 +83,8 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     'engineering-orientation',
     'codebase-exploration',
     'context-graph',
+    'context-provenance',
+    'instruction-precedence',
     'run-lifecycle',
     'settlement-decision',
     'tool-execution',
@@ -113,6 +115,8 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     ['engineering-orientation', 'shared-CanonicalEngineeringOrientationService'],
     ['codebase-exploration', 'shared-CanonicalCodebaseExplorationService'],
     ['context-graph', 'shared-CanonicalContextGraphService'],
+    ['context-provenance', 'shared-CanonicalContextProvenanceService'],
+    ['instruction-precedence', 'shared-CanonicalInstructionPrecedenceService'],
   ]) {
     const contextDomain = actual.semantic_domains.find(domain => domain.domain_id === domainId);
     assert.equal(contextDomain.convergence_status, 'converged');
@@ -297,7 +301,7 @@ test('kernel prep owner baseline checker validates the current generated artifac
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    converged_semantic_domains: 14,
+    converged_semantic_domains: 16,
     failed_source_checks: 0,
     qualification_effect: 'NONE',
   });

@@ -58,6 +58,35 @@ test('ProjectInstructionService: discovers DevSeek, Codex, Copilot, and Claude i
     assert.match(result.content, /\[来源: AGENTS\.md\]/);
     assert.match(result.content, /\[来源: \.devseek\/rules\.md\]/);
     assert.equal(result.budget.omittedSources.length, 0);
+    assert.equal(result.precedence.version, 'devseek.coding-instruction-precedence/v1');
+    assert.equal(result.provenance.length, 4);
+    assert.match(result.provenance[0].contentSha256, /^[a-f0-9]{64}$/);
+    assert.equal(JSON.stringify(result.provenance).includes('repo-wide agent rules'), false);
+  });
+});
+
+test('ProjectInstructionService: AGENTS override replaces its peer and Claude local follows Claude', () => {
+  withTempWorkspace((workspace) => {
+    const target = write(workspace, 'packages/app/src/main.ts', 'console.log("ok");');
+    write(workspace, 'AGENTS.md', 'Root standard rule.');
+    write(workspace, 'AGENTS.override.md', 'Root override rule.');
+    write(workspace, 'CLAUDE.md', 'Root Claude rule.');
+    write(workspace, 'CLAUDE.local.md', 'Root Claude local rule.');
+    write(workspace, 'packages/app/AGENTS.md', 'Package standard rule.');
+
+    const result = new ProjectInstructionService().discover({
+      workspaceRoots: [workspace],
+      targetPaths: [target],
+    });
+
+    assert.deepEqual(result.sources.map(source => source.relPath), [
+      'AGENTS.override.md',
+      'CLAUDE.md',
+      'CLAUDE.local.md',
+      'packages/app/AGENTS.md',
+    ]);
+    assert.doesNotMatch(result.content, /Root standard rule/);
+    assert.ok(result.content.indexOf('Root Claude rule.') < result.content.indexOf('Root Claude local rule.'));
   });
 });
 

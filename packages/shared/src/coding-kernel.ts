@@ -125,6 +125,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
     assertCodingOrientationPrompt(taskContract.orientation, request.userPrompt);
     const contextGraph = CONTEXT_GRAPH.build({
       workspaceRoot: request.workspaceRoot,
+      userPrompt: request.userPrompt,
       taskContract,
       seed: request.contextSeed,
     });

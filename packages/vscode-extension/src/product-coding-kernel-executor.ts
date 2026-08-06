@@ -10,6 +10,7 @@ import {
   type CodingKernelExecutionPort,
 } from './app/coding-kernel-execution';
 import { projectVsCodeCodingKernelTaskContract } from './app/coding-kernel-task-contract';
+import { projectVsCodeCodingContextSeed } from './app/coding-kernel-context-seed';
 import { retainVsCodeCodingRunLifecycle } from './app/coding-run-evidence-retention';
 
 const runtime = new VsCodeCodingKernelRuntimeAdapter({
@@ -57,7 +58,7 @@ export const productCodingKernelExecutor: CodingKernelExecutionPort = {
           contextFiles: request.contextFiles,
           taskContract: request.semanticContract.taskContract,
         }),
-        contextSeed: { files: request.contextFiles.map(path => ({ path })) },
+        contextSeed: projectVsCodeCodingContextSeed(request.contextFiles, request.semanticContract),
         runtimeContext: {
           contextFiles: request.contextFiles,
           mode: request.mode,

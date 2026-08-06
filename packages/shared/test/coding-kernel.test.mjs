@@ -72,6 +72,7 @@ test('CanonicalCodingKernel preserves one versioned request and terminal output 
   assert.equal(output.contextGraph, calls[0].contextGraph);
   assert.equal(output.contextGraph.orientation.environment.languages.includes('typescript'), true);
   assert.equal(output.contextGraph.nodes.some(node => node.id === 'file:src/value.ts'), true);
+  assert.equal(output.contextGraph.instructionPrecedence.instructions.at(-1).sourceId, 'user:current');
   assert.deepEqual(output.lifecycle, {
     version: CODING_RUN_LIFECYCLE_VERSION,
     runId: 'run-1',

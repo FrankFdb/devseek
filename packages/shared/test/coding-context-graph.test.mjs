@@ -25,6 +25,7 @@ function taskContract() {
 test('canonical context graph composes bounded repository facts without projecting content', () => {
   const graph = new CanonicalContextGraphService().build({
     workspaceRoot: '/repo',
+    userPrompt: 'Always run `npm test` before finishing.',
     taskContract: taskContract(),
     seed: {
       files: [
@@ -38,6 +39,12 @@ test('canonical context graph composes bounded repository facts without projecti
       manifests: {
         'package.json': JSON.stringify({ scripts: { build: 'tsc', test: 'node --test' } }),
       },
+      instructions: [{
+        sourceId: 'workspace:agents',
+        kind: 'agents',
+        locator: 'AGENTS.md',
+        content: 'Do not run `npm test` in this workspace.',
+      }],
     },
   });
 
@@ -52,10 +59,20 @@ test('canonical context graph composes bounded repository facts without projecti
   assert.equal(node(graph, 'file:.env').status, 'excluded');
   assert.equal(graph.exploration.excludedFiles.some(file => file.path === 'build.log'), true);
   assert.equal(graph.exploration.visibleFiles.some(file => 'contentSample' in file), false);
+  assert.equal(graph.instructionPrecedence.instructions.at(-1).sourceId, 'user:current');
+  assert.equal(graph.instructionPrecedence.conflicts[0].winningSourceId, 'user:current');
+  assert.equal(graph.provenance.some(record => record.sourceId === 'instruction-source:user:current'), true);
+  assert.match(
+    graph.provenance.find(record => record.sourceId === 'workspace-file:src/value.ts').contentSha256,
+    /^[a-f0-9]{64}$/u,
+  );
+  assert.equal(graph.provenance.every(record => !('content' in record)), true);
+  assert.equal(node(graph, 'instruction:workspace:agents').label, 'AGENTS.md');
   assert.equal(JSON.stringify(graph).includes('never-project-this'), false);
   assert.equal(JSON.stringify(graph).includes('projected-only-to-budget'), false);
   assert.equal(graph.edges.some(edge => edge.from === 'task:current' && edge.to === 'file:src/value.ts'), true);
   assert.match(renderCodingContextGraphSummary(graph), /build commands: npm run build/u);
+  assert.match(renderCodingContextGraphSummary(graph), /instruction conflicts: 1/u);
   assert.throws(() => graph.nodes.push({}), TypeError);
   assert.throws(() => graph.orientation.environment.languages.push('python'), TypeError);
 });
@@ -75,10 +92,19 @@ test('engineering context path snapshots preserve filesystem roots and reject ma
   assert.throws(
     () => new CanonicalContextGraphService().build({
       workspaceRoot: '/repo',
+      userPrompt: 'Inspect the workspace.',
       taskContract: taskContract(),
       seed: { files: [{ path: '', sizeBytes: 1 }] },
     }),
     /coding-engineering-orientation:invalid-file-path/u,
+  );
+  assert.throws(
+    () => new CanonicalContextGraphService().build({
+      workspaceRoot: '/repo',
+      userPrompt: '',
+      taskContract: taskContract(),
+    }),
+    /coding-context-graph:missing-user-prompt/u,
   );
   assert.throws(
     () => new CanonicalCodebaseExplorationService().explore({

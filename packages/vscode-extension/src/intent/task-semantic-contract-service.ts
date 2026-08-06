@@ -13,8 +13,10 @@ import { buildTaskSemanticObligationContracts } from './task-semantic-obligation
 export interface TaskSemanticProjectInstructionInput {
   content: string;
   sources: readonly {
+    sourceId?: string;
     kind: string;
     relPath: string;
+    content?: string;
     priority?: number;
     depth?: number;
   }[];
@@ -383,9 +385,11 @@ function bindProjectInstructions(
 ): TaskSemanticProjectInstructionBinding {
   if (!input) return fallback;
   const content = String(input.content || '').trim();
-  const sources = input.sources.map(source => ({
+  const sources = input.sources.map((source, index) => ({
+    sourceId: source.sourceId ?? `project-instruction:${index + 1}:${source.relPath}`,
     kind: source.kind,
     relPath: source.relPath,
+    ...(source.content === undefined ? {} : { content: source.content }),
     priority: source.priority ?? 0,
     depth: source.depth ?? 0,
   }));

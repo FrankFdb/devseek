@@ -32,6 +32,8 @@
 | engineering-orientation | shared-CanonicalEngineeringOrientationService | - | 1 | converged |
 | codebase-exploration | shared-CanonicalCodebaseExplorationService | - | 1 | converged |
 | context-graph | shared-CanonicalContextGraphService | - | 1 | converged |
+| context-provenance | shared-CanonicalContextProvenanceService | - | 1 | converged |
+| instruction-precedence | shared-CanonicalInstructionPrecedenceService | - | 1 | converged |
 | run-lifecycle | shared-CanonicalRunLifecycleService | - | 1 | converged |
 | settlement-decision | shared-CanonicalSettlementDecisionService | - | 1 | converged |
 | tool-execution | shared-CanonicalToolExecutor | - | 1 | converged |

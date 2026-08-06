@@ -149,7 +149,7 @@ function normalizeWrittenFileEvidenceKey(filePath: string, workspaceRoot?: strin
 }
 
 export function coalesceWrittenFileEvidence(
-  files: WrittenFileEvidence[],
+  files: readonly WrittenFileEvidence[],
   workspaceRoot?: string,
 ): WrittenFileEvidence[] {
   const byPath = new Map<string, WrittenFileEvidence>();
@@ -316,7 +316,7 @@ export function getUnsupportedSummaryFileClaims(
     .filter(claim => !fileClaimHasEvidence(claim, writtenFiles, workspaceRoot));
 }
 
-function buildEvidenceText(userPrompt: string, todos: CompletionTodo[]): string {
+function buildEvidenceText(userPrompt: string, todos: readonly CompletionTodo[]): string {
   const promptIntentText = stripInlineFileContent(userPrompt);
   const todoText = todos
     .map(t => t.title.trim())
@@ -565,7 +565,7 @@ export function requiresFileCheckEvidence(text: string, semanticContract?: TaskS
 }
 
 function lastUnclearedTerminalFailure(
-  terminalEvidence: TerminalEvidence[],
+  terminalEvidence: readonly TerminalEvidence[],
   failureKinds: Set<TerminalEvidenceKind>,
   successKinds: Set<TerminalEvidenceKind>,
 ): TerminalEvidence | undefined {
@@ -635,9 +635,9 @@ function looksLikeValidationShellCommand(command: string): boolean {
 
 export function getBlockingTerminalFailure(
   userPrompt: string,
-  todos: CompletionTodo[],
-  writtenFiles: WrittenFileEvidence[],
-  terminalEvidence: TerminalEvidence[],
+  todos: readonly CompletionTodo[],
+  writtenFiles: readonly WrittenFileEvidence[],
+  terminalEvidence: readonly TerminalEvidence[],
   semanticContract?: TaskSemanticContract,
 ): TerminalEvidence | undefined {
   if (terminalEvidence.length === 0) return undefined;

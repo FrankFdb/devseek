@@ -4,7 +4,7 @@
 
 - Schema: `devseek.capability-ledger/v1`
 - Capabilities: 76
-- Ledger SHA-256: `c29060a0a602fbae877bf26f116105b8f98560a843e501e21e1d96c49dbe0f6a`
+- Ledger SHA-256: `a1ec4c6449f9635c2f0c86a1f6d62cc1ec511b7f3ac0fb3ebac4fb7285bf8b2f`
 - Qualification claim policy: `deny-until-signed-evidence-validator`
 
 | Capability | Priority | Applicability | Claim scopes | Implementation | Qualification | Authority port | Typed dependencies |
@@ -54,9 +54,9 @@
 | `C2-TASK-CONTRACT` | P0 | active | core-coding | wired | — | `TaskContractPort` | C2-ORIENTATION (semantic/wired) |
 | `C3-CODEBASE-EXPLORATION` | P1 | active | core-coding | wired | — | `CodebaseExplorationPort` | C3-ENGINEERING-ORIENTATION (semantic/wired) |
 | `C3-CONTEXT-GRAPH` | P1 | active | core-coding | wired | — | `ContextGraphPort` | C2-TASK-CONTRACT (semantic/wired)<br>C3-CODEBASE-EXPLORATION (semantic/wired) |
-| `C3-CONTEXT-PROVENANCE` | P1 | active | core-coding | proposed | — | `ContextProvenancePort` | C3-CONTEXT-GRAPH (semantic/wired) |
+| `C3-CONTEXT-PROVENANCE` | P1 | active | core-coding | wired | — | `ContextProvenancePort` | C3-CONTEXT-GRAPH (semantic/wired) |
 | `C3-ENGINEERING-ORIENTATION` | P1 | active | core-coding | wired | — | `EngineeringOrientationPort` | C2-TASK-CONTRACT (semantic/wired) |
-| `C3-INSTRUCTION-PRECEDENCE` | P1 | active | core-coding | proposed | — | `InstructionPrecedencePort` | C3-CONTEXT-GRAPH (semantic/wired) |
+| `C3-INSTRUCTION-PRECEDENCE` | P1 | active | core-coding | wired | — | `InstructionPrecedencePort` | C3-CONTEXT-GRAPH (semantic/wired) |
 | `C4-ACCEPTANCE-CONTRACT` | P1 | active | core-coding | proposed | — | `AcceptanceContractPort` | C4-REQUIREMENTS (semantic/wired)<br>C4-EXTERNAL-BOUNDARY (semantic/wired) |
 | `C4-EXTERNAL-BOUNDARY` | P0 | active | core-coding, safety | proposed | — | `ExternalBoundaryPort` | C4-REQUIREMENTS (semantic/wired)<br>C3-CONTEXT-PROVENANCE (semantic/wired) |
 | `C4-REQUIREMENTS` | P1 | active | core-coding | proposed | — | `RequirementDecisionPort` | C3-CONTEXT-GRAPH (semantic/wired) |

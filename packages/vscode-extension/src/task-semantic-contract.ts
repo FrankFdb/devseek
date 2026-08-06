@@ -33,8 +33,10 @@ export type TaskSemanticKind =
   | 'general';
 
 export interface TaskSemanticProjectInstructionSource {
+  sourceId?: string;
   kind: string;
   relPath: string;
+  content?: string;
   priority: number;
   depth: number;
 }

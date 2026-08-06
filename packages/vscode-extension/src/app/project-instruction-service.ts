@@ -1,8 +1,20 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
+import {
+  CanonicalInstructionPrecedenceService,
+  type CodingContextProvenanceRecord,
+  type CodingInstructionKind,
+  type CodingInstructionPrecedenceDecision,
+} from '@devseek-netai/shared';
 import { shouldBlockProjectInstructionFileContent } from '../workspace/instruction-file-safety';
 
-export type ProjectInstructionKind = 'codex' | 'devseek' | 'copilot' | 'claude';
+export type ProjectInstructionKind =
+  | 'codex'
+  | 'codex-override'
+  | 'devseek'
+  | 'copilot'
+  | 'claude'
+  | 'claude-local';
 
 export interface ProjectInstructionSource {
   kind: ProjectInstructionKind;
@@ -32,6 +44,8 @@ export interface ProjectInstructionResult {
   sources: ProjectInstructionSource[];
   content: string;
   diagnostics: ProjectInstructionDiagnostic[];
+  precedence: CodingInstructionPrecedenceDecision;
+  provenance: readonly CodingContextProvenanceRecord[];
   budget: {
     maxCharsPerSource: number;
     maxTotalChars: number;
@@ -56,23 +70,20 @@ interface InstructionDefinition {
   scoped: boolean;
 }
 
-interface InstructionRuleFact {
-  source: ProjectInstructionSource;
-  polarity: 'allow' | 'deny';
-  ruleKey: string;
-  lineNumber: number;
-}
-
 const DEFAULT_MAX_CHARS_PER_SOURCE = 4000;
 const DEFAULT_MAX_TOTAL_CHARS = 12_000;
 const INIT_RULES_REL_PATH = '.devseek/rules.md';
 
 const INSTRUCTION_DEFINITIONS: InstructionDefinition[] = [
+  { kind: 'codex-override', label: 'AGENTS.override.md', relPath: 'AGENTS.override.md', priority: 11, scoped: true },
   { kind: 'codex', label: 'AGENTS.md', relPath: 'AGENTS.md', priority: 10, scoped: true },
   { kind: 'devseek', label: '.devseek/rules.md', relPath: INIT_RULES_REL_PATH, priority: 20, scoped: false },
   { kind: 'copilot', label: '.github/copilot-instructions.md', relPath: '.github/copilot-instructions.md', priority: 30, scoped: false },
   { kind: 'claude', label: 'CLAUDE.md', relPath: 'CLAUDE.md', priority: 40, scoped: true },
+  { kind: 'claude-local', label: 'CLAUDE.local.md', relPath: 'CLAUDE.local.md', priority: 41, scoped: true },
 ];
+
+const instructionPrecedenceService = new CanonicalInstructionPrecedenceService();
 
 export class ProjectInstructionService {
   discover(options: ProjectInstructionServiceOptions): ProjectInstructionResult {
@@ -85,12 +96,18 @@ export class ProjectInstructionService {
       rawSources.push(...this.discoverRoot(root, options.targetPaths ?? [], maxCharsPerSource));
     }
 
-    const sources = rawSources
-      .sort((a, b) => a.depth - b.depth || a.priority - b.priority || a.relPath.localeCompare(b.relPath));
+    const discoveredDecision = resolveInstructionPrecedence(rawSources);
+    const sourceById = new Map(rawSources.map(source => [instructionSourceId(source), source]));
+    const sources = discoveredDecision.instructions.map(instruction => {
+      const source = sourceById.get(instruction.sourceId);
+      if (!source) throw new Error(`project-instruction:missing-source:${instruction.sourceId}`);
+      return source;
+    });
 
     const included: string[] = [];
     const truncatedSources: string[] = [];
     const omittedSources: string[] = [];
+    const omittedSourceIds = new Set<string>();
     let usedChars = 0;
 
     for (const source of sources) {
@@ -98,17 +115,21 @@ export class ProjectInstructionService {
       const block = formatInstructionSource(source);
       if (usedChars + block.length > maxTotalChars) {
         omittedSources.push(source.relPath);
+        omittedSourceIds.add(instructionSourceId(source));
         continue;
       }
       included.push(block);
       usedChars += block.length;
     }
 
-    const includedSources = sources.filter(source => !omittedSources.includes(source.relPath));
+    const includedSources = sources.filter(source => !omittedSourceIds.has(instructionSourceId(source)));
+    const precedence = resolveInstructionPrecedence(includedSources);
     return {
       sources: includedSources,
       content: included.join('\n\n'),
-      diagnostics: buildInstructionDiagnostics(includedSources),
+      diagnostics: buildInstructionDiagnostics(includedSources, precedence),
+      precedence,
+      provenance: precedence.provenance,
       budget: {
         maxCharsPerSource,
         maxTotalChars,
@@ -128,7 +149,7 @@ export class ProjectInstructionService {
 
     for (const dir of dirs) {
       const depth = relativeDepth(root, dir);
-      for (const definition of INSTRUCTION_DEFINITIONS) {
+      for (const definition of selectInstructionDefinitions(dir)) {
         if (!definition.scoped && dir !== root) continue;
         const absPath = nodePath.join(dir, definition.relPath);
         if (seen.has(absPath) || !fs.existsSync(absPath)) continue;
@@ -184,7 +205,10 @@ function formatInstructionSource(source: ProjectInstructionSource): string {
   return `[来源: ${source.relPath}]\n${source.content}`;
 }
 
-function buildInstructionDiagnostics(sources: ProjectInstructionSource[]): ProjectInstructionDiagnostic[] {
+function buildInstructionDiagnostics(
+  sources: ProjectInstructionSource[],
+  precedence: CodingInstructionPrecedenceDecision,
+): ProjectInstructionDiagnostic[] {
   const diagnostics: ProjectInstructionDiagnostic[] = [];
   if (sources.length === 0) {
     diagnostics.push({
@@ -195,92 +219,60 @@ function buildInstructionDiagnostics(sources: ProjectInstructionSource[]): Proje
       recommendedInitTargetRelPath: INIT_RULES_REL_PATH,
     });
   }
-  diagnostics.push(...detectScopedInstructionConflicts(sources));
+  const sourceById = new Map(sources.map(source => [instructionSourceId(source), source]));
+  diagnostics.push(...precedence.conflicts.map(conflict => ({
+    kind: 'scoped-conflict' as const,
+    severity: 'warning' as const,
+    message: `Conflicting scoped instruction for ${conflict.ruleKey}; strongest applicable rule wins for this target.`,
+    sources: conflict.sourceIds.map(sourceId => sourceById.get(sourceId)?.relPath ?? sourceId),
+    ruleKey: conflict.ruleKey,
+    winningRelPath: sourceById.get(conflict.winningSourceId)?.relPath ?? conflict.winningSourceId,
+  })));
   return diagnostics;
 }
 
-function detectScopedInstructionConflicts(sources: ProjectInstructionSource[]): ProjectInstructionDiagnostic[] {
-  const facts = sources.flatMap(collectInstructionRuleFacts);
-  const byRule = new Map<string, InstructionRuleFact[]>();
-  for (const fact of facts) {
-    const existing = byRule.get(fact.ruleKey) ?? [];
-    existing.push(fact);
-    byRule.set(fact.ruleKey, existing);
-  }
-
-  const diagnostics: ProjectInstructionDiagnostic[] = [];
-  for (const [ruleKey, group] of byRule.entries()) {
-    const polarities = new Set(group.map(fact => fact.polarity));
-    if (!polarities.has('allow') || !polarities.has('deny')) continue;
-
-    const winner = group.reduce((selected, candidate) => {
-      if (candidate.source.depth !== selected.source.depth) {
-        return candidate.source.depth > selected.source.depth ? candidate : selected;
-      }
-      if (candidate.source.priority !== selected.source.priority) {
-        return candidate.source.priority > selected.source.priority ? candidate : selected;
-      }
-      return candidate.lineNumber > selected.lineNumber ? candidate : selected;
-    });
-
-    diagnostics.push({
-      kind: 'scoped-conflict',
-      severity: 'warning',
-      message: `Conflicting scoped instruction for ${ruleKey}; nearest scoped rule wins for this target.`,
-      sources: unique(group.map(fact => fact.source.relPath)),
-      ruleKey,
-      winningRelPath: winner.source.relPath,
-    });
-  }
-  return diagnostics;
+function resolveInstructionPrecedence(
+  sources: readonly ProjectInstructionSource[],
+): CodingInstructionPrecedenceDecision {
+  return instructionPrecedenceService.resolve({
+    instructions: sources.map(source => ({
+      sourceId: instructionSourceId(source),
+      authority: 'workspace',
+      kind: sharedInstructionKind(source.kind),
+      locator: source.relPath,
+      content: source.content,
+      scopeDepth: source.depth,
+      sourcePriority: source.priority,
+    })),
+  });
 }
 
-function collectInstructionRuleFacts(source: ProjectInstructionSource): InstructionRuleFact[] {
-  const facts: InstructionRuleFact[] = [];
-  const lines = source.content.split(/\r?\n/);
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
-    const polarity = classifyInstructionPolarity(line);
-    if (!polarity) continue;
-    for (const command of extractBacktickCommands(line)) {
-      facts.push({
-        source,
-        polarity,
-        ruleKey: `command:${command}`,
-        lineNumber: index + 1,
-      });
-    }
-  }
-  return facts;
+function selectInstructionDefinitions(dir: string): InstructionDefinition[] {
+  const override = INSTRUCTION_DEFINITIONS.find(definition => definition.kind === 'codex-override');
+  const standard = INSTRUCTION_DEFINITIONS.find(definition => definition.kind === 'codex');
+  const selectedCodex = override && isInstructionFile(nodePath.join(dir, override.relPath)) ? override : standard;
+  return INSTRUCTION_DEFINITIONS.filter(definition => (
+    definition.kind !== 'codex' && definition.kind !== 'codex-override'
+  )).concat(selectedCodex ? [selectedCodex] : []);
 }
 
-function classifyInstructionPolarity(line: string): 'allow' | 'deny' | null {
-  const text = line.replace(/^#{1,6}\s*/, '').replace(/^[-*]\s*/, '').trim();
-  if (!text) return null;
-  if (/(?:do\s+not|don't|never|must\s+not|should\s+not|avoid|禁止|不得|不要|不允许|避免)/i.test(text)) {
-    return 'deny';
+function isInstructionFile(absPath: string): boolean {
+  try {
+    return fs.statSync(absPath).isFile();
+  } catch {
+    return false;
   }
-  if (/(?:always|must|should|prefer|run|use|execute|运行|执行|必须|应该|优先|使用)/i.test(text)) {
-    return 'allow';
-  }
-  return null;
 }
 
-function extractBacktickCommands(line: string): string[] {
-  const commands: string[] = [];
-  const re = /`([^`]+)`/g;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(line)) !== null) {
-    const command = match[1].replace(/\s+/g, ' ').trim().toLowerCase();
-    if (!command || !looksLikeCommand(command)) continue;
-    commands.push(command);
-  }
-  return unique(commands);
+function instructionSourceId(source: ProjectInstructionSource): string {
+  return `project-instruction:${normalizeRelPath(source.absPath)}`;
 }
 
-function looksLikeCommand(value: string): boolean {
-  return /^(?:npm|pnpm|yarn|node|python|pytest|go|cargo|cmake|make|npx|bash|sh|tsc|eslint)\b/i.test(value)
-    || /\s/.test(value);
+function sharedInstructionKind(kind: ProjectInstructionKind): CodingInstructionKind {
+  if (kind === 'codex') return 'agents';
+  if (kind === 'codex-override') return 'agents-override';
+  if (kind === 'claude-local') return 'claude-local';
+  return kind;
 }
 
 function collectInstructionDirs(root: string, targetPaths: string[]): string[] {

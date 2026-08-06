@@ -16,7 +16,7 @@ const instructionService = new ProjectInstructionService();
 
 /**
  * 兼容旧入口：返回统一项目指令字符串。
- * 发现链包括 AGENTS.md、.devseek/rules.md、.github/copilot-instructions.md、CLAUDE.md。
+ * 发现链包括 Codex/Claude 分层文件以及 DevSeek、Copilot 项目指令。
  */
 export async function getProjectRules(): Promise<string | null> {
   return getProjectRulesSync();

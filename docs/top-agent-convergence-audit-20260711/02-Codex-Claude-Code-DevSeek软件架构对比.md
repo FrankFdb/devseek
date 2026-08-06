@@ -41,7 +41,7 @@ devseek_governance:
 
 OpenAI 官方资料表明 Codex 的工程能力不是固定瀑布阶段，而是围绕代码库理解、行动、验证和可控扩展形成工作系统：
 
-- 通过 [`AGENTS.md`](https://developers.openai.com/codex/guides/agents-md) 建立全局、项目和更近目录的分层指令链；越接近工作目录的规则越具体。
+- 通过 [`AGENTS.md`](https://developers.openai.com/codex/guides/agents-md) 建立从项目根到工作目录的分层指令链；每层优先 `AGENTS.override.md`、否则使用 `AGENTS.md`，越近目录的规则越晚生效且可覆盖上层。
 - 通过 [sandbox 与 approval](https://developers.openai.com/codex/concepts/sandboxing) 分离“允许模型自主到什么程度”和“何时需要用户授权”，子进程继承约束。
 - 通过 [Skills](https://developers.openai.com/codex/skills) 封装可复用说明、资源和脚本，并渐进加载任务所需上下文。
 - 通过 [Subagents](https://developers.openai.com/codex/subagents) 隔离探索、测试、分诊等上下文并并行工作，再把结论汇总给主任务；官方也提醒写密集型并行可能冲突。
@@ -59,7 +59,7 @@ Anthropic 官方把 Claude Code 的核心循环明确描述为“获取上下文
 - [`Best practices`](https://code.claude.com/docs/en/best-practices) 建议给智能体可运行的测试、构建或截图验证，强调用证据而不是自我断言完成；复杂任务可先探索、再规划、再编码。
 - [`Subagents`](https://code.claude.com/docs/en/sub-agents) 具有独立上下文、工具和权限，可用于 Explore、Plan 和并行只读研究，再向主会话返回摘要。
 - [`Hooks`](https://code.claude.com/docs/en/hooks) 把可确定执行的检查接到生命周期事件，而不完全依赖模型记得执行。
-- [`Memory`](https://code.claude.com/docs/en/memory) 支持项目说明和持续上下文管理。
+- [`Memory`](https://code.claude.com/docs/en/memory) 支持从根到当前目录的项目说明链、同层更晚生效的 `CLAUDE.local.md`，以及访问子树时按需加载的嵌套说明；这些内容是上下文而不是独立强制策略。
 - 官方扩展体系还包括 Skills、MCP、Plugins/marketplaces、worktrees、programmatic/headless usage 和 Agent SDK；[`Agent teams`](https://code.claude.com/docs/en/agent-teams) 支持 peer 会话与共享任务，但官方明确标记为 experimental、默认关闭，不应当成稳定基线。
 - [`Permissions`](https://code.claude.com/docs/en/permissions) 明确将工具权限与 OS sandbox 作为互补层：权限覆盖 Bash/Read/Edit/WebFetch/MCP 等，sandbox 对 Bash 及其子进程做操作系统级约束。
 - [`Computer use`](https://code.claude.com/docs/en/computer-use) 已作为 macOS CLI research preview 公开，可打开应用、点击、输入、看屏幕并验证原生/视觉流程；它有计划、版本、交互模式和逐会话应用审批限制，不能外推为所有平台/Surface 的稳定能力。
@@ -165,7 +165,7 @@ Anthropic 官方把 Claude Code 的核心循环明确描述为“获取上下文
 
 | 公开机制 | Codex observable | Claude Code observable | DevSeek 范围裁决 |
 | --- | --- | --- | --- |
-| 分层项目指令 | documented: AGENTS.md | documented: CLAUDE.md | P1，统一 C3 instruction precedence |
+| 分层项目指令 | documented: `AGENTS.override.md` / `AGENTS.md`，root-to-leaf | documented: `CLAUDE.md` / `CLAUDE.local.md`，root-to-leaf 与嵌套按需加载 | C3 5/5 本地 wired；shared precedence/provenance owner 统一裁决，资格效力仍为 `NONE` |
 | 本地/持续记忆 | documented: Memories/Chronicle | documented: Memory | P1，统一 C12 policy，外部内容不提权 |
 | Skills | documented | documented | P2，C13-SKILL-BOUNDARY |
 | MCP | documented | documented | P0 安全，C13-MCP-BOUNDARY |

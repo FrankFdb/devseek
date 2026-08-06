@@ -3,8 +3,8 @@ import {
   sha256Object,
 } from './devseek-capability-ledger.mjs';
 
-export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v17';
-export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v17';
+export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v18';
+export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v18';
 
 const SOURCE_PATHS = Object.freeze({
   gate0: 'docs/process/devseek-gate0-decision-report.json',
@@ -24,6 +24,8 @@ const SOURCE_PATHS = Object.freeze({
   sharedEngineeringOrientation: 'packages/shared/src/coding-engineering-orientation.ts',
   sharedCodebaseExploration: 'packages/shared/src/coding-codebase-exploration.ts',
   sharedContextGraph: 'packages/shared/src/coding-context-graph.ts',
+  sharedContextProvenance: 'packages/shared/src/coding-context-provenance.ts',
+  sharedInstructionPrecedence: 'packages/shared/src/coding-instruction-precedence.ts',
   sharedTaskContractResolver: 'packages/shared/src/coding-task-contract-resolver.ts',
   sharedOrientation: 'packages/shared/src/coding-orientation.ts',
   sharedTerminalEffects: 'packages/shared/src/coding-terminal-effects.ts',
@@ -48,6 +50,7 @@ const SOURCE_PATHS = Object.freeze({
   runChangedPaths: 'packages/vscode-extension/src/app/run-changed-path-recorder.ts',
   viewProvider: 'packages/vscode-extension/src/ui/deepseek-view-provider.ts',
   productExecutor: 'packages/vscode-extension/src/product-coding-kernel-executor.ts',
+  vscodeCodingContextSeed: 'packages/vscode-extension/src/app/coding-kernel-context-seed.ts',
   vscodeRunEvidenceRetention: 'packages/vscode-extension/src/app/coding-run-evidence-retention.ts',
   settlementState: 'packages/vscode-extension/src/app/settlement-state.ts',
   agentRunSettlement: 'packages/vscode-extension/src/app/agent-run-settlement.ts',
@@ -180,8 +183,27 @@ const SOURCE_CHECKS = Object.freeze([
     'export class CanonicalContextGraphService implements ContextGraphPort',
     'const orientation = this.orientation.orient({',
     'const exploration = this.exploration.explore({',
+    'const instructionPrecedence = this.instructionPrecedence.resolve({',
+    'const provenance = buildContextProvenance(',
     'renderCodingContextGraphSummary(graph: CodingContextGraph)',
     'coding-context-graph:',
+  ], ["from 'vscode'", 'CanonicalCodingKernel']),
+  check('shared-canonical-context-provenance-owner', SOURCE_PATHS.sharedContextProvenance, [
+    "CODING_CONTEXT_PROVENANCE_VERSION = 'devseek.coding-context-provenance/v1'",
+    'export interface ContextProvenancePort',
+    'export class CanonicalContextProvenanceService implements ContextProvenancePort',
+    'contentSha256',
+    'recordSha256: sha256(JSON.stringify(recordBase))',
+    'coding-context-provenance:',
+  ], ["from 'vscode'", 'CanonicalCodingKernel']),
+  check('shared-canonical-instruction-precedence-owner', SOURCE_PATHS.sharedInstructionPrecedence, [
+    "CODING_INSTRUCTION_PRECEDENCE_VERSION = 'devseek.coding-instruction-precedence/v1'",
+    'export interface InstructionPrecedencePort',
+    'export class CanonicalInstructionPrecedenceService implements InstructionPrecedencePort',
+    'authorityRank(a.authority) - authorityRank(b.authority)',
+    'scopeDepth - b.scopeDepth',
+    'winningSourceId:',
+    'coding-instruction-precedence:',
   ], ["from 'vscode'", 'CanonicalCodingKernel']),
   check('shared-canonical-agent-command-owner', SOURCE_PATHS.sharedAgentCommand, [
     "AGENT_COMMAND_VERSION = 'devseek.agent-command/v1'",
@@ -328,6 +350,8 @@ const SOURCE_CHECKS = Object.freeze([
     "export * from './coding-engineering-orientation';",
     "export * from './coding-codebase-exploration';",
     "export * from './coding-context-graph';",
+    "export * from './coding-context-provenance';",
+    "export * from './coding-instruction-precedence';",
     "export * from './coding-task-contract-resolver';",
     "export * from './coding-terminal-effects';",
     "export * from './coding-kernel';",
@@ -659,11 +683,18 @@ const SOURCE_CHECKS = Object.freeze([
     'const kernel = new CanonicalCodingKernel(runtime)',
     "surface: 'vscode'",
     'taskContract: projectVsCodeCodingKernelTaskContract({',
-    'contextSeed: { files: request.contextFiles.map(path => ({ path })) }',
+    'contextSeed: projectVsCodeCodingContextSeed(request.contextFiles, request.semanticContract)',
     'retainVsCodeCodingRunLifecycle({',
     'retainLifecycle(output.lifecycle)',
     'error instanceof CodingKernelExecutionError',
   ], ['runAgentLoop', 'runLegacyPlanned', 'CodingKernelExecutionService', 'runtimeContext: request']),
+  check('vscode-coding-context-seed-projection', SOURCE_PATHS.vscodeCodingContextSeed, [
+    'export function projectVsCodeCodingContextSeed(',
+    'instructions: projectInstructionSeeds(semanticContract)',
+    'binding.sources.every(source => Boolean(source.content?.trim()))',
+    "sourceId: 'vscode-project:merged'",
+    'normalizeInstructionKind(source.kind)',
+  ], ['authority:']),
   check('vscode-run-evidence-retention-boundary', SOURCE_PATHS.vscodeRunEvidenceRetention, [
     'export function retainVsCodeCodingRunLifecycle(',
     "authority: { role: 'participant', token: participantToken }",
@@ -1175,6 +1206,12 @@ function buildSemanticDomains() {
     ], []),
     domain('context-graph', 'ContextGraphPort', [
       owner('shared-CanonicalContextGraphService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedContextGraph),
+    ], []),
+    domain('context-provenance', 'ContextProvenancePort', [
+      owner('shared-CanonicalContextProvenanceService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedContextProvenance),
+    ], []),
+    domain('instruction-precedence', 'InstructionPrecedencePort', [
+      owner('shared-CanonicalInstructionPrecedenceService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedInstructionPrecedence),
     ], []),
     domain('run-lifecycle', 'RunLifecyclePort', [
       owner('shared-CanonicalRunLifecycleService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedRunLifecycle),
