@@ -33,7 +33,7 @@ devseek_governance:
 <!-- DEVSEEK-GOVERNANCE-STATUS:END -->
 
 - 本次复核日期：2026-08-06
-- 当前 Extension 行为候选：`d02ef96`；R4 v2 冻结候选仍为 `4f8a567`，原 `a034e5e` v1 清单仍是历史不可变候选，三者不得互相覆盖身份或资格效力
+- 当前 Extension 行为候选：`f8bf8f3`；R4 v2 冻结候选仍为 `4f8a567`，原 `a034e5e` v1 清单仍是历史不可变候选，三者不得互相覆盖身份或资格效力
 - 复核原则：文档声明只作索引；结论以 `docs/process` 机器源、实际代码可达性、当前工作树和本轮重跑验证为准
 
 ## 1. 本次结论
@@ -61,7 +61,7 @@ devseek_governance:
 | Qualification runner | 19 个入口；1 个本地非资格 runner、10 个 catalog fixture、4 个 production disabled、4 个 historical disabled |
 | R4 | 6/6 原始 leaf completed，blocked=0；current artifact/install/runtime 与 v2 冻结候选精确绑定，stable runtime=1、window-sensitive leaf=0 |
 | Frozen R4 candidate | 当前 `R4-RELEASE-CANDIDATE-MANIFEST/v2` 冻结 `4f8a567` VSIX；原 `a034e5e` v1 JSON/schema/view 以固定文件哈希归档为历史不可变候选；两者均无资格效力 |
-| Current local development receipt | `d02ef96` 精确 VSIX `1.0.0-debug.20260806.t103338.gd02ef96` 已编译、安装并通过五场景 VS Code 产品路径及三 Surface 联合验收；该本地开发回执不改写 `4f8a567` 冻结候选，也不是 qualification receipt |
+| Current local development receipt | `f8bf8f3` 精确 VSIX `1.0.0-debug.20260806.t113509.gf8bf8f3` 已编译、安装并通过五场景 VS Code 产品路径及三 Surface 联合验收；该本地开发回执不改写 `4f8a567` 冻结候选，也不是 qualification receipt |
 | Post-R4 local track | NP-05/06/07 manifest 已在 `5c32551` 提交；检查覆盖 16 个 source、17/17 anchors、8 个 local-only command，6/6 通过 |
 | Surface inventory | 88 个入口分母全部 covered，无 unknown、重复或待 cutover；source hash 对账通过 |
 | Architecture budget | 设计优先门禁通过，仍有 7 个明确债务热点；Extension 受控总量 2018 行；大小只作回退护栏，不替代职责、依赖和 owner 判定 |
@@ -155,11 +155,11 @@ devseek_governance:
 | VS Code extension full unit runner | `PASS`，171/171 suites |
 | Intent/routing focused matrix | `PASS`，524/524；否定 external-effect 与 duplicate-owner 反例受保护 |
 | Natural intent UI corpus | `PASS`，48/48，12 类任务各 4 条自然输入 |
-| Shared / CLI / Headless regression | `PASS`，Shared 293 tests、CLI 68 tests、Headless 10 tests |
-| Kernel owner convergence baseline | `PASS`，v12、74/74 source checks、7/7 semantic domains converged、missing Surface=0 |
+| Shared / CLI / Headless regression | `PASS`，Shared 307 tests、CLI 70 tests、Headless 12 tests |
+| Kernel owner convergence baseline | `PASS`，v15、83/83 source checks、11 semantic domains converged、missing Surface=0 |
 | Lifecycle focused/static suites | `PASS`；blocked 保真、flush 异常、证据保留与职责防绕过均覆盖 |
 | Workspace TypeScript `--noEmit` audit | `PASS`，既存 extension 类型债务已清零 |
-| Capability ledger | `PASS`，76 capabilities / 138 dependency edges；9 `wired`、67 `proposed`、claims=0 |
+| Capability ledger | `PASS`，76 capabilities / 138 dependency edges；13 `wired`、63 `proposed`、claims=0 |
 | Gate 0 decision | checker `PASS`，决策仍为 `NOT_PASSED` |
 | External authority readiness | `PASS`，10/10 请求均保持精确 blocker 与可执行下一授权动作；approved=0、local-unblockable=0、live runs=0 |
 | R4 versioned candidate manifest | `PASS`，v2 冻结 `4f8a567`；v1 `a034e5e` JSON/schema/view 与两份 VSIX 字节哈希受守卫 |
@@ -171,8 +171,8 @@ devseek_governance:
 | Surface inventory | `PASS`，12/12 checker tests；88/88 covered，unknown=0 |
 | Legacy doc inventory | `PASS`，5/5 tests；40 个 legacy 文档全覆盖，archive 明确排除，root duplicate=0 |
 | Doc governance | `PASS`，4/4 tests；43 个受治理文档，3 个 active baseline、40 个 legacy/reference |
-| Surface product conformance | `PASS`，`d02ef96` 精确 VSIX 的 VS Code create/modify/repair/permission-denied/policy-refusal 5/5 通过；run evidence 与 coding conformance 均有效，qualification eligible=false |
-| VSIX release loop | `PASS`，`1.0.0-debug.20260806.t103338.gd02ef96`；SHA256 `17ebd794eb083e48bebfe892ab4448bd05ed9fd9c3ba82533335f4ec0b6cbd0c`；包内源码身份、本地安装身份与 Bridge 校验通过 |
+| Surface product conformance | `PASS`，`f8bf8f3` 精确 VSIX 的 VS Code create/modify/repair/permission-denied/policy-refusal 5/5 通过；run evidence 与 coding conformance 均有效，qualification eligible=false |
+| VSIX release loop | `PASS`，`1.0.0-debug.20260806.t113509.gf8bf8f3`；SHA256 `124e10f79654325ca93d661eb8a4268f7c019599ee29f25a3542700b910ef082`；包内源码身份、本地安装身份与 Bridge 校验通过 |
 | 本地用户闭环 | `PASS`，8 个 static/local create/modify/multiturn/repair/multi-file 场景；3 个 real DeepSeek 场景因资格前置未满足而显式跳过 |
 | R4 frozen candidate identity | `PASS`，11/11；stable=1、stale/unknown/unreadable=0；qualification effect=`NONE` |
 | Phase 0-12 | `PASS`，32/32；run id `2026-08-04T03-14-57-152Z`；Gate 0 仍为 `NOT_PASSED` |

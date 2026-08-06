@@ -50,18 +50,18 @@ devseek_governance:
 | 范围 | 状态 | 当前事实 |
 | --- | --- | --- |
 | C0 本地实现与机器裁决前置 | `completed` | 7/7 implementation requirements satisfied，repository blockers=0，local conformance=`PASSED` |
-| Extension 类型与候选包基线 | `completed` | TypeScript 基线零错误；171/171 extension 套件、架构守卫、48/48 自然输入、8 步 Webview 人工输入、精确 VSIX 五场景产品路径与四段同会话真实产品仿真通过；T3 与 `realistic-product` 继续作为发版门禁 |
+| Extension 类型与候选包基线 | `completed` | TypeScript 基线零错误；171/171 extension 套件、架构守卫、48/48 自然输入、8 步 Webview 人工输入、精确 VSIX `1.0.0-debug.20260806.t113509.gf8bf8f3` 五场景产品路径与四段同会话真实产品仿真通过；T3 与 `realistic-product` 继续作为发版门禁 |
 | Surface 入口盘点 | `completed` | 88/88 入口受 inventory 覆盖，其中 Headless product entry=1；未知入口与未声明 legacy owner 可达性均为 0 |
-| Kernel owner 收敛基线 | `completed` | v12 将本地产品迭代与资格晋级解耦；4 条活跃路由均通过 shared `CanonicalCodingKernel`，legacy execution owner=0；TaskContract、RunLifecycle、Tool、Mutation、Verification、Completion、RunEvidenceRetention 七个核心语义域均为 shared 单一 owner、missing Surface=0；74/74 源码断言通过 |
+| Kernel owner 收敛基线 | `completed` | v15 将本地产品迭代与资格晋级解耦；4 条活跃路由均通过 shared `CanonicalCodingKernel`，legacy execution owner=0；11 个语义域均为 shared 单一 owner、missing Surface=0；83/83 源码断言通过 |
 | 01：VS Code 新任务与恢复路由收敛 | `completed` | `AgentKernelService` 统一决定 fresh/checkpoint 路由；附件只作为 Context；durable checkpoint 与 local validation repair 均通过 typed recovery 输入进入 canonical loop，失败保留待办、成功唯一清除 checkpoint；产品 adapter 不再拥有 `runLegacyPlanned` |
 | 01：CLI canonical Kernel 路由 | `completed` | shared 层拥有版本化 request/output、TaskContract 与唯一 `CanonicalCodingKernel`；VS Code/CLI product adapter 只组合 runtime；CLI Surface 不再 import parser、mutation、verification 或 loop，`CliLegacyCodingLoop` 源码与测试均已删除；非 mutation TaskContract 对意外写入 fail closed |
 | 01：Headless canonical 产品路由 | `completed` | `@devseek-netai/headless` 提供公开 programmatic entry；只组合 shared `CanonicalCodingKernel` 与 runtime port，不依赖 `vscode`、Surface UI、CLI runtime 或 agent loop；预取消在 runtime dispatch 前失败 |
 | 01：Headless 五维证据边界 | `completed` | create、modify、repair、permission-denied、policy-refusal 五类场景均由 Headless 产品输出完整 TaskContract、tool execution、change receipt、verification 与 completion；缺维、身份/契约/终态/evidence/risk 漂移均 fail closed；该结论不替代 VS Code/CLI 产品证据或 qualification |
-| canonical 语义 owner | `completed` | shared `CodingKernelTaskContract`、`CanonicalRunLifecycleService`、`CanonicalToolExecutor`、`CanonicalWorkspaceMutationTransaction`、`CanonicalVerificationService`、`CanonicalCompletionDecisionService`、`CanonicalRunEvidenceRetentionService` 是三 Surface 唯一 owner；Surface 只组合宿主能力；核心语义域收敛数=7/7 |
+| canonical 语义 owner | `completed` | Orientation、TaskContract、RunLifecycle、AgentCommand、Settlement、SurfaceAdapterConformance、Tool、Mutation、Verification、Completion、RunEvidenceRetention 均由 shared 唯一 owner 裁决；Surface 只组合宿主能力；语义域收敛数=11 |
 | 01：三 Surface 五维 development projection | `completed` | create、modify、repair、permission-denied、policy-refusal 五类对标场景通过同一 settled projection owner 联合评估；CLI/VS Code 不再复制投影语义，缺证据和未决 mutation fail closed |
 | 01：三 Surface 五场景产品契约 | `completed` | 同批真实工作区经 VS Code 精确安装 VSIX、CLI 和 Headless 产品入口完成五类场景；五个维度均有 product-route evidence，repair 保留失败→修复→重验证，两个拒绝场景零 mutation；该结论不产生 qualification claim |
 | C1：运行生命周期 | `completed` | shared `RunLifecyclePort` 唯一裁决 accepted/running/waiting/terminal 转换；VS Code、CLI、Headless 保留同一不可变生命周期，blocked/cancelled 不再被 Surface 降格为 failed |
-| C1：命令、结算与 Surface 适配 | `completed` | shared `AgentCommandPort` 统一 steer/pause/resume/cancel 与幂等 receipt，`SettlementDecisionPort` 统一终态裁决，`SurfaceAdapterConformancePort` 机器检查三 Surface 命令和交付投影；Surface 不再重算状态或完成语义 |
+| C1：命令、结算与 Surface 适配 | `completed` | shared `AgentCommandPort` 统一 chat/steer/cancel/resume/confirmation 五类版本化命令，`SettlementDecisionPort` 统一终态裁决，`SurfaceAdapterConformancePort` 机器检查三 Surface 命令和交付投影；Surface 不再重算状态或完成语义 |
 | C2：任务定向 | `completed` | shared `OrientationDecisionPort` 唯一裁决 explain/review/change/release、mutation 与 external-effect 事实；安全拒绝优先于提示词 hint，TaskContract 与 Kernel 对不一致 mode fail closed，VS Code 只投影 canonical decision |
 | C12：运行证据保留 | `completed` | shared `RunEvidenceRetentionPort` 将生命周期投影到 append-only owner ledger；CLI 与 Headless owner 负责封存，VS Code 仅持 participant authority；三 Surface 均保留精确终态且 qualification effect=`NONE` |
 | Intent Semantic Contract 产品纵切 | `completed` | `TaskSemanticContract/v3` 统一任务形态、作用域、mutation/read、验证、质量义务、`done_iff`、歧义、跨轮修订与项目指令；session、Kernel、双 loop、deterministic/fast path 只消费该契约；48 条外部形式自然输入覆盖 12 类任务。非 Web Provider candidate 与隔离 semantic channel 仍属后续责任 |
