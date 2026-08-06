@@ -6,6 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { createCanonicalCheckpointFixture } from '../helpers/canonical-checkpoint-fixture.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
@@ -41,6 +42,7 @@ test('checkpoint recovery preserves only pending work and projects bounded host 
   const recovery = createCheckpointKernelRecovery({
     tasks,
     startFromIndex: 1,
+    canonicalCheckpoint: createCanonicalCheckpointFixture({ tasks, startFromIndex: 1 }),
     analysisContext: 'Prior finding must be rechecked.',
   });
 
@@ -82,12 +84,14 @@ test('local validation recovery records the failed command and rejects invalid a
 });
 
 test('recovery context files cannot escape the workspace root', () => {
+  const tasks = [
+    task('inside', 'src/main.ts', 'inside'),
+    task('outside', '../secret.txt', 'outside'),
+  ];
   const recovery = createCheckpointKernelRecovery({
-    tasks: [
-      task('inside', 'src/main.ts', 'inside'),
-      task('outside', '../secret.txt', 'outside'),
-    ],
+    tasks,
     startFromIndex: 0,
+    canonicalCheckpoint: createCanonicalCheckpointFixture({ tasks }),
   });
 
   assert.deepEqual(getKernelRecoveryContextFiles(recovery, '/workspace'), ['/workspace/src/main.ts']);

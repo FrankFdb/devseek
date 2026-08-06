@@ -3791,6 +3791,8 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   const history = src('src/app/task-history-store.ts');
   const resume = src('src/app/resume-context-builder.ts');
   const recovery = src('src/app/provider-recovery-service.ts');
+  const recoveryCheckpoint = src('src/app/provider-recovery-checkpoint.ts');
+  const routeDecision = src('src/app/coding-kernel-route-decision.ts');
   const agentProviderRecovery = src('src/agent/provider-response-recovery.ts');
   const agentHistoryCompaction = src('src/agent/agent-history-compaction.ts');
   const runDisplay = src('src/agent/agent-run-display.ts');
@@ -3845,10 +3847,13 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   assertContains(agentHistoryCompaction, 'contentChars=', 'agent history compaction must preserve write payload size without resending content');
   assertContains(agenticLoop, 'AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS', 'agentic loop provider recovery must be bounded');
   assertContains(extension, 'new ProviderRecoveryService().classify', 'agent provider errors must be classified before showing UI errors');
-  assertContains(extension, 'buildProviderRecoveryCheckpointTasks', 'provider recovery must save a resumable checkpoint from task facts');
+  assertContains(extension, 'buildProviderRecoveryCheckpointRecord', 'provider recovery must save a canonical resumable record');
+  assertContains(recoveryCheckpoint, 'buildProviderRecoveryCheckpointTasks', 'provider recovery checkpoint must derive pending work from task facts');
+  assertContains(recoveryCheckpoint, 'input.error.checkpoint.create', 'provider recovery checkpoint must be sealed by the failed kernel run');
   assertContains(extension, 'buildAgentRunDisplayProfile', 'free-explore UI copy must be selected by the display classifier');
   assertContains(extension, 'shouldResumeCheckpointFromPrompt', 'short resume prompts must route to checkpoint resume before normal chat');
-  assertContains(extension, 'checkpointResumeTasks', 'agent resume routing must use an explicit checkpoint state');
+  assertContains(extension, 'projectCodingKernelCheckpointResume(resumeCheckpoint, lastAnalysisText)', 'agent resume routing must use the checkpoint projector');
+  assertContains(routeDecision, 'canonicalCheckpoint: checkpoint.canonicalCheckpoint', 'agent resume routing must carry the sealed canonical checkpoint');
   assert.doesNotMatch(extension, /!resumeFromIndex\b/, 'resume index 0 must not be treated as no checkpoint resume');
   assert.match(
     extension,
@@ -3879,6 +3884,7 @@ test('R3-04: Context compaction fidelity, redaction, and stale-memory receipts l
 test('R3-05A: MemoryService owns scope, provenance, and persistent-write approval', () => {
   const memoryTypes = src('src/memory/types.ts');
   const memoryService = src('src/app/memory-service.ts');
+  const canonicalMemoryPolicy = src('../shared/src/coding-memory-policy.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
   const memoryTests = src('test/unit/memory-service.test.mjs');
   const toolLoopTests = src('test/unit/agent-tool-loop-terminal-guard.test.mjs');
@@ -3893,7 +3899,8 @@ test('R3-05A: MemoryService owns scope, provenance, and persistent-write approva
   assertContains(memoryService, 'classifyMemoryWriteProposal', 'MemoryService must own memory scope classification');
   assertContains(memoryService, 'requiresPersistentMemoryApproval', 'MemoryService must own persistent memory approval policy');
   assertContains(memoryService, 'approveWriteProposal', 'MemoryService must expose an auditable approval transition');
-  assertContains(memoryService, 'external content cannot become privileged memory', 'MemoryService must prevent external content privilege escalation');
+  assertContains(canonicalMemoryPolicy, "reasons.push('external-authority-elevation')", 'shared MemoryPolicy owner must prevent external content privilege escalation');
+  assertContains(memoryService, 'classifyCodingMemoryWrite', 'MemoryService must delegate classification to the shared policy owner');
   assertContains(toolLoop, 'requiresUserApproval: true', 'tool-loop memory_write proposals must be approval-required before persistence');
   assertDoesNotContain(toolLoop, 'requiresUserApproval: false', 'tool-loop must not declare provider memory writes as pre-approved');
   assertContains(memoryTests, 'R3-05A MemoryService', 'R3-05A must have MemoryService failure-first oracle coverage');
@@ -3938,10 +3945,12 @@ test('R3-05C: MemoryService owns memory secret redaction and legacy import inval
   assertContains(sensitiveGuard, 'redact(content: string)', 'SensitiveMemoryGuard must expose a reusable redaction API');
   assertContains(sensitiveGuard, '[REDACTED_TOKEN]', 'SensitiveMemoryGuard must redact token-shaped secrets');
   assertContains(memoryService, 'sanitizeSensitiveMemoryRecords', 'MemoryService must sanitize persisted records before retrieval/prompt projection');
-  assertContains(memoryService, 'sanitizeLegacyMemoryMarkdownForPrompt', 'MemoryService must redact legacy markdown before prompt injection');
+  assertContains(memoryService, 'retrieveCodingMemoryCandidates', 'MemoryService must expose policy candidates to the canonical Kernel');
+  assertContains(memoryService, 'renderCodingMemoryContext', 'MemoryService prompt projection must consume the shared sealed policy decision');
+  assert.doesNotMatch(memoryService, /sanitizeLegacyMemoryMarkdownForPrompt/u, 'Legacy markdown must not have an automatic prompt injection path');
   assertContains(memoryService, 'invalidateLegacyImportedMemoryRecords', 'MemoryService must invalidate untrusted structured legacy imports');
   assertContains(memoryService, 'legacy memory is untrusted', 'MemoryService must document the legacy trust downgrade');
-  assertContains(memoryTests, 'R3-05C MemoryService: legacy markdown prompt context is redacted with proof', 'R3-05C must cover legacy markdown redaction');
+  assertContains(memoryTests, 'I10-MEM-03 user journey: legacy markdown never enters prompt context automatically', 'I10 must prove legacy markdown cannot enter prompt context automatically');
   assertContains(memoryTests, 'R3-05C MemoryService: structured legacy imports are invalidated and cannot leak secrets', 'R3-05C must cover structured legacy invalidation');
 });
 

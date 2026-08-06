@@ -72,17 +72,6 @@ export class MemoryStore {
     fs.writeFileSync(filePath, `${JSON.stringify(document, null, 2)}\n`, 'utf8');
   }
 
-  readLegacyMarkdown(maxChars = 3000): string | null {
-    const filePath = this.getLegacyMemoryPath();
-    if (!fs.existsSync(filePath)) return null;
-    try {
-      const content = fs.readFileSync(filePath, 'utf8').trim();
-      return content.slice(0, maxChars) || null;
-    } catch {
-      return null;
-    }
-  }
-
   ensureLegacyMarkdownFile(): string {
     const filePath = this.getLegacyMemoryPath();
     fs.mkdirSync(nodePath.dirname(filePath), { recursive: true });

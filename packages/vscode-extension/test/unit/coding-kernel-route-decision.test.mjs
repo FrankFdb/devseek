@@ -6,6 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { createCanonicalCheckpointFixture } from '../helpers/canonical-checkpoint-fixture.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
@@ -25,6 +26,7 @@ const req = createRequire(import.meta.url);
 const {
   CODING_KERNEL_ROUTE_DECISION_VERSION,
   decideCodingKernelRoute,
+  projectCodingKernelCheckpointResume,
 } = req(bundlePath);
 
 after(() => rmSync(tempRoot, { recursive: true, force: true }));
@@ -50,7 +52,12 @@ test('CodingKernelRouteDecision keeps attachments as context, never executor sel
 test('CodingKernelRouteDecision keeps checkpoint replay on the canonical route', () => {
   const tasks = [{ id: 'task-1', action: 'modify', file: 'src/main.ts', desc: 'finish edit' }];
   const decision = decideCodingKernelRoute({
-    checkpoint: { tasks, startFromIndex: 0, analysisContext: ' prior verified finding ' },
+    checkpoint: {
+      tasks,
+      startFromIndex: 0,
+      canonicalCheckpoint: createCanonicalCheckpointFixture({ tasks }),
+      analysisContext: ' prior verified finding ',
+    },
   });
 
   assert.equal(decision.route, 'canonical');
@@ -60,6 +67,22 @@ test('CodingKernelRouteDecision keeps checkpoint replay on the canonical route',
   assert.deepEqual(decision.recovery.tasks, tasks);
   assert.equal(decision.recovery.startFromIndex, 0);
   assert.equal(decision.recovery.analysisContext, 'prior verified finding');
+});
+
+test('CodingKernelRouteDecision projects persisted checkpoint fields without rebuilding authority', () => {
+  const allTasks = [{ id: 'task-1', action: 'modify', file: 'src/main.ts', desc: 'finish edit' }];
+  const canonicalCheckpoint = createCanonicalCheckpointFixture({ tasks: allTasks });
+  const projected = projectCodingKernelCheckpointResume({
+    allTasks,
+    startFromIndex: 0,
+    canonicalCheckpoint,
+  }, ' prior verified finding ');
+
+  assert.deepEqual(projected.tasks, allTasks);
+  assert.equal(projected.startFromIndex, 0);
+  assert.equal(projected.canonicalCheckpoint, canonicalCheckpoint);
+  assert.equal(projected.analysisContext, 'prior verified finding');
+  assert.equal(projectCodingKernelCheckpointResume(undefined, 'ignored'), undefined);
 });
 
 test('CodingKernelRouteDecision fails closed on malformed checkpoint replay', () => {

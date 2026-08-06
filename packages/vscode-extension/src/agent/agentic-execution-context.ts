@@ -2,6 +2,7 @@ import type { ChatMessage } from '../llm/types';
 
 export interface AgenticLoopExecutionContext {
   readonly recoveryContextText?: string;
+  readonly memoryContextText?: string;
 }
 
 export interface AgenticInitialPromptContext {

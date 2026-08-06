@@ -3369,10 +3369,47 @@
         },
         "contract_sha256": "ae8106fe6cbbc6cf8b75ddf8ce724b6ecd7626939a4a9087034acfc93d442069"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-checkpoint.ts"
+        },
+        {
+          "role": "canonical-kernel-binding",
+          "path": "packages/shared/src/coding-kernel.ts"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/coding-memory-checkpoint.test.mjs"
+        },
+        {
+          "role": "vscode-runtime-adapter",
+          "path": "packages/vscode-extension/src/app/coding-kernel-execution.ts"
+        },
+        {
+          "role": "vscode-durable-store",
+          "path": "packages/vscode-extension/src/app/task-checkpoint-store.ts"
+        },
+        {
+          "role": "vscode-recovery-boundary",
+          "path": "packages/vscode-extension/src/app/coding-kernel-recovery.ts"
+        },
+        {
+          "role": "headless-user-journey-tests",
+          "path": "packages/headless/test/headless-memory-checkpoint-journeys.test.mjs"
+        },
+        {
+          "role": "iteration-user-journey-evidence",
+          "path": "docs/process/devseek-iteration-user-journeys.json"
+        },
+        {
+          "role": "machine-wiring-evidence",
+          "path": "docs/process/devseek-kernel-prep-owner-baseline.json"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C1-RUN-LIFECYCLE",
@@ -3386,7 +3423,17 @@
           "required_implementation_state": "wired",
           "contract_sha256": "cec65045423ca109d43db56d7045650393d4cf903f49909eaf28a6b22b645564"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run verify:kernel-prep-owner-baseline",
+          "npm run verify:iteration-user-journeys",
+          "npm run shared:test",
+          "npm run headless:test",
+          "node --test packages/vscode-extension/test/unit/coding-kernel-execution.test.mjs packages/vscode-extension/test/unit/coding-kernel-recovery.test.mjs packages/vscode-extension/test/unit/task-checkpoint-store.test.mjs packages/vscode-extension/test/unit/agent-checkpoint-callback.test.mjs"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C11-RESUME-IDEMPOTENCY",
@@ -3825,10 +3872,47 @@
         },
         "contract_sha256": "7c8749b26b104570a2b657e284274f00928202c9676c3e87f26c64342a46dd38"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-memory-policy.ts"
+        },
+        {
+          "role": "canonical-kernel-binding",
+          "path": "packages/shared/src/coding-kernel.ts"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/coding-memory-checkpoint.test.mjs"
+        },
+        {
+          "role": "vscode-policy-adapter",
+          "path": "packages/vscode-extension/src/app/memory-service.ts"
+        },
+        {
+          "role": "vscode-structured-store",
+          "path": "packages/vscode-extension/src/memory/memory-store.ts"
+        },
+        {
+          "role": "headless-user-journey-tests",
+          "path": "packages/headless/test/headless-memory-checkpoint-journeys.test.mjs"
+        },
+        {
+          "role": "vscode-user-journey-tests",
+          "path": "packages/vscode-extension/test/unit/memory-service.test.mjs"
+        },
+        {
+          "role": "iteration-user-journey-evidence",
+          "path": "docs/process/devseek-iteration-user-journeys.json"
+        },
+        {
+          "role": "machine-wiring-evidence",
+          "path": "docs/process/devseek-kernel-prep-owner-baseline.json"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C3-INSTRUCTION-PRECEDENCE",
@@ -3842,7 +3926,17 @@
           "required_implementation_state": "wired",
           "contract_sha256": "342945b722fb25ad6d80d98dcc574bc9a14a4b8805c6eb7d846579fd09d64069"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run verify:kernel-prep-owner-baseline",
+          "npm run verify:iteration-user-journeys",
+          "npm run shared:test",
+          "npm run headless:test",
+          "node --test packages/vscode-extension/test/unit/memory-service.test.mjs"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C13-SKILL-BOUNDARY",
@@ -4441,5 +4535,5 @@
       ]
     }
   ],
-  "ledger_sha256": "a1ec4c6449f9635c2f0c86a1f6d62cc1ec511b7f3ac0fb3ebac4fb7285bf8b2f"
+  "ledger_sha256": "f79372dddf5cce4d892651d715741d0a811ac10a41d4eff60d7cec20d4e425eb"
 }

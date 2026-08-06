@@ -12,6 +12,7 @@ import {
 import { projectVsCodeCodingKernelTaskContract } from './app/coding-kernel-task-contract';
 import { projectVsCodeCodingContextSeed } from './app/coding-kernel-context-seed';
 import { retainVsCodeCodingRunLifecycle } from './app/coding-run-evidence-retention';
+import { MemoryService } from './app/memory-service';
 
 const runtime = new VsCodeCodingKernelRuntimeAdapter({
   runCanonical: request => runAgenticLoop(
@@ -24,7 +25,10 @@ const runtime = new VsCodeCodingKernelRuntimeAdapter({
     request.workflowMode,
     request.memoryRelatedPaths,
     request.semanticContract,
-    { recoveryContextText: request.recoveryContextText },
+    {
+      recoveryContextText: request.recoveryContextText,
+      memoryContextText: request.memoryContextText,
+    },
   ),
 });
 const kernel = new CanonicalCodingKernel(runtime);
@@ -45,6 +49,12 @@ export const productCodingKernelExecutor: CodingKernelExecutionPort = {
       })
     );
     try {
+      const memoryCandidates = new MemoryService({ workspaceRoot: request.workspaceRoot })
+        .retrieveCodingMemoryCandidates({
+          query: request.userPrompt,
+          relatedPaths: [...request.contextFiles, ...(request.memoryRelatedPaths ?? [])],
+          requireContextMatch: true,
+        });
       const output = await kernel.execute({
         version: CODING_KERNEL_REQUEST_VERSION,
         route: 'canonical',
@@ -59,6 +69,10 @@ export const productCodingKernelExecutor: CodingKernelExecutionPort = {
           taskContract: request.semanticContract.taskContract,
         }),
         contextSeed: projectVsCodeCodingContextSeed(request.contextFiles, request.semanticContract),
+        memoryCandidates,
+        resumeCheckpoint: request.recovery?.kind === 'checkpoint-resume'
+          ? request.recovery.checkpoint
+          : undefined,
         runtimeContext: {
           contextFiles: request.contextFiles,
           mode: request.mode,

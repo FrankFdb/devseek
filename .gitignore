@@ -32,7 +32,9 @@ packages/vscode-extension/media/*
 # Generated reports, probes, and runtime artifacts
 artifacts/
 backups/
-code/
+code/*
+!code/devseek-tests/
+!code/devseek-tests/**
 aircraft/
 docs/testing/programming-agent-benchmark-reports/
 docs/testing/agent-loop-eval-reports/

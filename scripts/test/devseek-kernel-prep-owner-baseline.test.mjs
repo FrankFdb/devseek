@@ -48,9 +48,9 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    semantic_domains: 16,
-    converged_semantic_domains: 16,
-    source_checks: 91,
+    semantic_domains: 18,
+    converged_semantic_domains: 18,
+    source_checks: 101,
     failed_source_checks: 0,
   });
   assert.deepEqual(
@@ -92,6 +92,8 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     'verification',
     'completion-decision',
     'run-evidence-retention',
+    'memory-policy',
+    'checkpoint',
   ]);
   const commandDomain = actual.semantic_domains.find(domain => domain.domain_id === 'agent-command');
   assert.equal(commandDomain.current_owners[0].owner_id, 'shared-CanonicalAgentCommandService');
@@ -164,6 +166,14 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
   assert.deepEqual(retentionDomain.current_owners[0].surfaces, ['vscode', 'cli', 'headless']);
   assert.deepEqual(retentionDomain.missing_surfaces, []);
   assert.equal(retentionDomain.convergence_status, 'converged');
+  const memoryDomain = actual.semantic_domains.find(domain => domain.domain_id === 'memory-policy');
+  assert.equal(memoryDomain.current_owners[0].owner_id, 'shared-CanonicalMemoryPolicyService');
+  assert.deepEqual(memoryDomain.current_owners[0].surfaces, ['vscode', 'cli', 'headless']);
+  assert.equal(memoryDomain.convergence_status, 'converged');
+  const checkpointDomain = actual.semantic_domains.find(domain => domain.domain_id === 'checkpoint');
+  assert.equal(checkpointDomain.current_owners[0].owner_id, 'shared-CanonicalCheckpointService');
+  assert.deepEqual(checkpointDomain.current_owners[0].surfaces, ['vscode', 'cli', 'headless']);
+  assert.equal(checkpointDomain.convergence_status, 'converged');
   assert.equal(actual.semantic_domains.every(domain => domain.convergence_status === 'converged'), true);
   assert.equal(actual.source_checks.every(assertion => assertion.passed), true);
   assert.equal(fs.existsSync(path.join(repoRoot, 'packages/cli/src/cli-legacy-coding-loop.ts')), false);
@@ -247,7 +257,7 @@ test('kernel prep owner baseline fails closed when the canonical recovery adapte
   const mutatedSources = structuredClone(sources);
   const sourcePath = 'packages/vscode-extension/src/product-coding-kernel-executor.ts';
   mutatedSources.sourceContents[sourcePath] = mutatedSources.sourceContents[sourcePath]
-    .replace('{ recoveryContextText: request.recoveryContextText },', "{ recoveryContextText: '' },");
+    .replace('recoveryContextText: request.recoveryContextText,', "recoveryContextText: '',");
 
   const mutated = buildKernelPrepOwnerBaseline(mutatedSources);
   const result = validateKernelPrepOwnerBaseline(mutated, mutatedSources);
@@ -301,7 +311,7 @@ test('kernel prep owner baseline checker validates the current generated artifac
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    converged_semantic_domains: 16,
+    converged_semantic_domains: 18,
     failed_source_checks: 0,
     qualification_effect: 'NONE',
   });

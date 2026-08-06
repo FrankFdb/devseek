@@ -3,8 +3,8 @@ import {
   sha256Object,
 } from './devseek-capability-ledger.mjs';
 
-export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v18';
-export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v18';
+export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v20';
+export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v20';
 
 const SOURCE_PATHS = Object.freeze({
   gate0: 'docs/process/devseek-gate0-decision-report.json',
@@ -35,6 +35,8 @@ const SOURCE_PATHS = Object.freeze({
   sharedRunLifecycle: 'packages/shared/src/coding-run-lifecycle.ts',
   sharedSettlement: 'packages/shared/src/coding-settlement.ts',
   sharedRunEvidenceRetention: 'packages/shared/src/coding-run-evidence-retention.ts',
+  sharedMemoryPolicy: 'packages/shared/src/coding-memory-policy.ts',
+  sharedCheckpoint: 'packages/shared/src/coding-checkpoint.ts',
   sharedToolExecution: 'packages/shared/src/coding-tool-execution.ts',
   sharedWorkspaceMutation: 'packages/shared/src/coding-workspace-mutation.ts',
   sharedVerification: 'packages/shared/src/coding-verification.ts',
@@ -60,6 +62,9 @@ const SOURCE_PATHS = Object.freeze({
   kernelTaskContract: 'packages/vscode-extension/src/app/coding-kernel-task-contract.ts',
   kernelRouteDecision: 'packages/vscode-extension/src/app/coding-kernel-route-decision.ts',
   kernelRecovery: 'packages/vscode-extension/src/app/coding-kernel-recovery.ts',
+  taskCheckpointStore: 'packages/vscode-extension/src/app/task-checkpoint-store.ts',
+  providerRecoveryCheckpoint: 'packages/vscode-extension/src/app/provider-recovery-checkpoint.ts',
+  memoryService: 'packages/vscode-extension/src/app/memory-service.ts',
   localExecutionRunner: 'packages/vscode-extension/src/local-execution-chat-runner.ts',
   taskContract: 'packages/vscode-extension/src/agent/task-contract.ts',
   safetyIntent: 'packages/vscode-extension/src/intent/safety-intent.ts',
@@ -92,6 +97,10 @@ const SOURCE_PATHS = Object.freeze({
   headlessVerification: 'packages/headless/src/headless-verification.ts',
   headlessCompletion: 'packages/headless/src/headless-completion.ts',
   headlessProductProbe: 'packages/headless/test/headless-coding-kernel.test.mjs',
+  iterationUserJourneys: 'docs/process/devseek-iteration-user-journeys.json',
+  iterationUserJourneyTests: 'packages/headless/test/headless-memory-checkpoint-journeys.test.mjs',
+  iterationUserJourneyFixture: 'code/devseek-tests/memory-checkpoint/scenario.json',
+  iterationUserJourneyRunner: 'scripts/run-devseek-iteration-user-journeys.mjs',
   controlledVsixHarness: 'packages/vscode-extension/test/devseek-controlled-vsix-harness.mjs',
   surfaceProductVerifier: 'scripts/verify-coding-surface-product-conformance.mjs',
   vscodeSurfaceAdapter: 'packages/vscode-extension/src/ui/vscode-surface-adapter.ts',
@@ -101,6 +110,8 @@ const SOURCE_PATHS = Object.freeze({
 const SOURCE_CHECKS = Object.freeze([
   check('package-verification-entrypoint', SOURCE_PATHS.packageJson, [
     '"verify:kernel-prep-owner-baseline"',
+    '"verify:iteration-user-journeys"',
+    '"run:iteration-user-journeys"',
     '"verify:surface-product-conformance"',
   ]),
   check('headless-workspace-build-gate', SOURCE_PATHS.packageJson, [
@@ -129,8 +140,13 @@ const SOURCE_CHECKS = Object.freeze([
     'new CanonicalSettlementDecisionService()',
     'new CanonicalTaskContractService()',
     'new CanonicalContextGraphService()',
+    'new CanonicalMemoryPolicyService()',
+    'new CanonicalCheckpointService()',
     'TASK_CONTRACT.snapshot(request.taskContract)',
     'CONTEXT_GRAPH.build({',
+    'MEMORY_POLICY.selectContext({',
+    'CHECKPOINT.bind({',
+    'CHECKPOINT.restore(request.resumeCheckpoint',
     'assertCodingOrientationPrompt(taskContract.orientation, request.userPrompt)',
     'lifecycle.beginExecution()',
     'lifecycle.settle(runtimeOutput.status)',
@@ -141,6 +157,31 @@ const SOURCE_CHECKS = Object.freeze([
     "if (request.route !== 'canonical')",
     'coding-kernel-execution:unsupported-route',
   ], ['legacy-planned', 'CliLegacyCodingLoop']),
+  check('shared-canonical-memory-policy-owner', SOURCE_PATHS.sharedMemoryPolicy, [
+    "CODING_MEMORY_POLICY_VERSION = 'devseek.coding-memory-policy/v1'",
+    'export interface MemoryPolicyPort',
+    'export class CanonicalMemoryPolicyService implements MemoryPolicyPort',
+    'assessWrite(input:',
+    'selectContext(input:',
+    'export function renderCodingMemoryContext(',
+    'assertCodingMemoryContextDecision(decision)',
+    "effectiveAuthority: 'memory'",
+    "reasons.push('external-authority-elevation')",
+    "reasons.push('sensitive-content')",
+    'decisionSha256: codingSemanticDigest({',
+  ], ["from 'vscode'", 'MemoryService']),
+  check('shared-canonical-checkpoint-owner', SOURCE_PATHS.sharedCheckpoint, [
+    "CODING_CHECKPOINT_VERSION = 'devseek.coding-checkpoint/v1'",
+    'export interface CheckpointPort',
+    'export class CanonicalCheckpointService implements CheckpointPort',
+    'bind(input:',
+    'snapshot(checkpoint: CodingCheckpoint)',
+    'restore(checkpoint: CodingCheckpoint',
+    "checkpointFailure('workspace-mismatch')",
+    "checkpointFailure('task-contract-mismatch')",
+    'requiresRevalidation: true',
+    'sealSha256: checkpointSeal(stateSha256)',
+  ], ["from 'vscode'", 'TaskCheckpointStore']),
   check('shared-canonical-task-contract-owner', SOURCE_PATHS.sharedTaskContract, [
     "CODING_KERNEL_TASK_CONTRACT_VERSION = 'devseek.coding-kernel-task-contract/v1'",
     'export interface TaskContractPort',
@@ -359,11 +400,70 @@ const SOURCE_CHECKS = Object.freeze([
     "export * from './coding-run-lifecycle';",
     "export * from './coding-settlement';",
     "export * from './coding-run-evidence-retention';",
+    "export * from './coding-memory-policy';",
+    "export * from './coding-checkpoint';",
+    "export * from './coding-semantic-digest';",
     "export * from './coding-tool-execution';",
     "export * from './coding-workspace-mutation';",
     "export * from './coding-verification';",
     "export * from './coding-completion';",
     "export * from './surface-adapter-conformance';",
+  ]),
+  check('vscode-memory-policy-adapter', SOURCE_PATHS.memoryService, [
+    'new CanonicalMemoryPolicyService()',
+    'retrieveCodingMemoryCandidates(',
+    'const policyDecision = this.policy.selectContext({',
+    'return renderCodingMemoryContext(policyDecision) || null',
+    'return classifyCodingMemoryWrite({',
+  ], ['readLegacyMarkdown(']),
+  check('vscode-canonical-checkpoint-store', SOURCE_PATHS.taskCheckpointStore, [
+    "TASK_CHECKPOINT_RESUME_PROTOCOL = 'devseek.checkpoint-resume/v2'",
+    'canonicalCheckpoint: CodingCheckpoint',
+    'CHECKPOINT.snapshot(record.canonicalCheckpoint)',
+    "canonicalCheckpoint.originSurface !== 'vscode'",
+    "throw new Error('task-checkpoint:workspace-binding-mismatch')",
+    "throw new Error('task-checkpoint:pending-task-binding-mismatch')",
+    'canonicalCheckpointSealSha256: checkpoint.canonicalCheckpoint.sealSha256',
+  ]),
+  check('vscode-provider-recovery-checkpoint-owner', SOURCE_PATHS.providerRecoveryCheckpoint, [
+    'buildProviderRecoveryCheckpointRecord(',
+    'buildProviderRecoveryCheckpointTasks(input)',
+    'input.error.checkpoint.create({',
+    'evidenceRefs: input.evidenceRefs ?? input.error.settlement.evidenceRefs',
+    'isCheckpointableProviderRecoveryError(',
+  ]),
+  check('vscode-canonical-checkpoint-emission', SOURCE_PATHS.kernelExecution, [
+    'kernelRequest.checkpoint.create({',
+    'memoryContextText: renderCodingMemoryContext(kernelRequest.memoryPolicy)',
+    "reason: reason === 'paused' ? 'paused' : 'progress'",
+    'parentCheckpointId',
+  ]),
+  check('headless-memory-checkpoint-user-journeys', SOURCE_PATHS.iterationUserJourneyTests, [
+    'I10-MEM-01 user journey: external memory cannot become an instruction',
+    'I10-CHK-01 user journey: interrupted work resumes pending units without replay',
+    'resumeCheckpoint: interruptedCheckpoint',
+    'request.resume.requiresRevalidation',
+  ]),
+  check('iteration-user-journey-contract', SOURCE_PATHS.iterationUserJourneys, [
+    '"role": "regression-only"',
+    '"fixed_baseline_cannot_substitute_for_iteration_evidence": true',
+    '"verified_cases_require_unique_test_evidence": true',
+    '"fixture_path": "code/devseek-tests/memory-checkpoint/scenario.json"',
+    '"iteration_id": "I10"',
+    '"C11-CHECKPOINT"',
+    '"C12-MEMORY-POLICY"',
+  ]),
+  check('iteration-user-journey-durable-fixture', SOURCE_PATHS.iterationUserJourneyFixture, [
+    '"schema_version": "devseek.user-simulation-scenario/v1"',
+    '"case_id": "I10-MEM-01"',
+    '"case_id": "I10-MEM-04"',
+    '"case_id": "I10-CHK-01"',
+  ]),
+  check('iteration-user-journey-evidence-runner', SOURCE_PATHS.iterationUserJourneyRunner, [
+    "path.join(repoRoot, 'code/devseek-tests')",
+    '--test-name-pattern=${testPattern}',
+    "fs.writeFileSync(path.join(runDir, outputName), rawOutput)",
+    "raw_output_sha256: sha256(rawOutput)",
   ]),
   check('shared-coding-task-contract-resolver', SOURCE_PATHS.sharedTaskContractResolver, [
     'export function resolveCodingKernelTaskContract(',
@@ -601,7 +701,7 @@ const SOURCE_CHECKS = Object.freeze([
     'activeRun.bindAgentKernelRun(agentKernelRun)',
     'agentKernelService.decideExecutionRoute({',
     'agentKernelService.executeCanonicalTask({',
-    'analysisContext: lastAnalysisText',
+    'projectCodingKernelCheckpointResume(resumeCheckpoint, lastAnalysisText)',
   ], [
     'let activeChatAbortController',
     'let activeAgentKernelRun',
@@ -679,7 +779,8 @@ const SOURCE_CHECKS = Object.freeze([
     "import { runAgenticLoop } from './agent/agentic-loop'",
     'const runtime = new VsCodeCodingKernelRuntimeAdapter({',
     'runCanonical: request => runAgenticLoop(',
-    '{ recoveryContextText: request.recoveryContextText },',
+    'recoveryContextText: request.recoveryContextText,',
+    'memoryContextText: request.memoryContextText,',
     'const kernel = new CanonicalCodingKernel(runtime)',
     "surface: 'vscode'",
     'taskContract: projectVsCodeCodingKernelTaskContract({',
@@ -1233,6 +1334,12 @@ function buildSemanticDomains() {
     ], []),
     domain('run-evidence-retention', 'RunEvidenceRetentionPort', [
       owner('shared-CanonicalRunEvidenceRetentionService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedRunEvidenceRetention),
+    ], []),
+    domain('memory-policy', 'MemoryPolicyPort', [
+      owner('shared-CanonicalMemoryPolicyService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedMemoryPolicy),
+    ], []),
+    domain('checkpoint', 'CheckpointPort', [
+      owner('shared-CanonicalCheckpointService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedCheckpoint),
     ], []),
   ];
 }

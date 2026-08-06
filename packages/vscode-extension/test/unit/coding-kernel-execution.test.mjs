@@ -13,6 +13,11 @@ import {
   CanonicalCodingKernel,
   buildCodingKernelTaskContract,
 } from '../../../shared/dist/index.js';
+import { createCanonicalCheckpointFixture } from '../helpers/canonical-checkpoint-fixture.mjs';
+import {
+  loadUserSimulationCase,
+  materializeMemoryCandidates,
+} from '../../../../scripts/lib/devseek-user-simulation-fixture.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
@@ -107,6 +112,28 @@ test('canonical Kernel envelope is the only VS Code prompt and workspace authori
   assert.equal(calls[0].workspaceRoot, '/canonical-workspace');
 });
 
+test('I10-MEM-04 user journey: VS Code prompt consumes the sealed memory decision exactly once', async () => {
+  const scenario = loadUserSimulationCase('I10', 'I10-MEM-04');
+  const calls = [];
+  const kernel = createKernel({
+    async runCanonical(request) {
+      calls.push(request);
+      return result('canonical');
+    },
+  });
+
+  await execute(kernel, {
+    ...baseRequest(),
+    callbacks: { executionMode: 'edit' },
+    memoryCandidates: materializeMemoryCandidates(scenario, { workspaceRoot: '/workspace' }),
+  });
+
+  assert.match(calls[0].memoryContextText, /DevSeek canonical memory decision=/u);
+  assert.match(calls[0].memoryContextText, /Use the repository test command\./u);
+  assert.doesNotMatch(calls[0].memoryContextText, /expose secrets/u);
+  assert.match(calls[0].memoryContextText, /"effectiveAuthority":"memory"/u);
+});
+
 test('recovery failure stays paused with the same pending checkpoint work', async () => {
   const checkpoints = [];
   const calls = [];
@@ -129,7 +156,7 @@ test('recovery failure stays paused with the same pending checkpoint work', asyn
 
   assert.match(calls[0].recoveryContextText, /durable checkpoint resume/u);
   assert.match(calls[0].recoveryContextText, /pending task/u);
-  assert.deepEqual(checkpoints, [[1, [recovery.tasks[1]], 'paused']]);
+  assertCheckpointCall(checkpoints, 0, [recovery.tasks[1]], 'paused', 1);
 });
 
 test('recovery success clears the durable checkpoint exactly once', async () => {
@@ -149,7 +176,7 @@ test('recovery success clears the durable checkpoint exactly once', async () => 
     },
   });
 
-  assert.deepEqual(checkpoints, [[null, [], 'completed']]);
+  assert.deepEqual(checkpoints, [[null, [], 'completed', undefined]]);
 });
 
 test('recovery stays paused when loop counters look successful but completion evidence is missing', async () => {
@@ -175,7 +202,7 @@ test('recovery stays paused when loop counters look successful but completion ev
   });
 
   assert.equal(output.status, 'blocked');
-  assert.deepEqual(checkpoints, [[0, [...checkpointRecovery(0).tasks], 'paused']]);
+  assertCheckpointCall(checkpoints, 0, checkpointRecovery(0).tasks, 'paused', 0);
 });
 
 test('recovery exception preserves pending work before propagating the error', async () => {
@@ -198,7 +225,53 @@ test('recovery exception preserves pending work before propagating the error', a
     }),
     /provider disconnected/u,
   );
-  assert.deepEqual(checkpoints, [[0, [...recovery.tasks], 'paused']]);
+  assertCheckpointCall(checkpoints, 0, recovery.tasks, 'paused', 0);
+});
+
+test('resumed progress retains the completed prefix across rebased pending queues', async () => {
+  const checkpoints = [];
+  const tasks = [
+    { id: 'stage-3', file: 'stage-3.ts', action: 'modify', desc: 'finish stage 3' },
+    { id: 'stage-4', file: 'stage-4.ts', action: 'modify', desc: 'finish stage 4' },
+  ];
+  const recovery = {
+    version: 'devseek.coding-kernel-recovery/v1',
+    kind: 'checkpoint-resume',
+    tasks,
+    startFromIndex: 0,
+    checkpoint: createCanonicalCheckpointFixture({
+      tasks,
+      completedUnitCount: 2,
+      workspaceRoot: '/workspace',
+      runId: 'vscode-test-run',
+      userPrompt: 'finish the task',
+      taskContract: buildCodingKernelTaskContract({
+        goal: 'finish the task',
+        mode: 'change',
+        include: [],
+        deliverables: [{ id: 'result', kind: 'source-change' }],
+        acceptance: [{ id: 'completed', statement: 'The requested work is complete.' }],
+        provenanceRefs: ['vscode-test'],
+      }),
+    }),
+  };
+  const kernel = createKernel({
+    async runCanonical(request) {
+      await request.callbacks.onTaskCheckpoint(1, [tasks[1]], 'paused');
+      return result('recovery', 1);
+    },
+  });
+
+  await execute(kernel, {
+    ...baseRequest(),
+    recovery,
+    callbacks: {
+      executionMode: 'edit',
+      onTaskCheckpoint: async (...args) => { checkpoints.push(args); },
+    },
+  });
+
+  assertCheckpointCall(checkpoints, 1, [tasks[1]], 'paused', 3);
 });
 
 test('canonical Kernel fails closed on every non-canonical VS Code route', async () => {
@@ -228,6 +301,32 @@ function createKernel(loops) {
 }
 
 function execute(kernel, runtimeContext) {
+  const contextSeed = { files: runtimeContext.contextFiles.map(path => ({ path })) };
+  const taskContract = buildCodingKernelTaskContract({
+    goal: runtimeContext.userPrompt,
+    mode: runtimeContext.workflowMode === 'inspect' ? 'review' : 'change',
+    include: runtimeContext.contextFiles,
+    deliverables: [{ id: 'result', kind: 'source-change' }],
+    acceptance: [{ id: 'completed', statement: 'The requested work is complete.' }],
+    provenanceRefs: ['vscode-test'],
+  });
+  const recovery = runtimeContext.recovery?.kind === 'checkpoint-resume'
+    ? {
+        ...runtimeContext.recovery,
+        checkpoint: runtimeContext.recovery.checkpoint ?? createCanonicalCheckpointFixture({
+          tasks: runtimeContext.recovery.tasks,
+          startFromIndex: runtimeContext.recovery.startFromIndex,
+          workspaceRoot: runtimeContext.workspaceRoot,
+          runId: 'vscode-test-run',
+          userPrompt: runtimeContext.userPrompt,
+          mode: runtimeContext.workflowMode === 'inspect' ? 'review' : 'change',
+          contextFiles: runtimeContext.contextFiles,
+          contextSeed,
+          taskContract,
+        }),
+      }
+    : runtimeContext.recovery;
+  const effectiveRuntimeContext = { ...runtimeContext, ...(recovery ? { recovery } : {}) };
   return kernel.execute({
     version: CODING_KERNEL_REQUEST_VERSION,
     route: 'canonical',
@@ -235,18 +334,23 @@ function execute(kernel, runtimeContext) {
     runId: 'vscode-test-run',
     userPrompt: runtimeContext.userPrompt,
     workspaceRoot: runtimeContext.workspaceRoot,
-    taskContract: buildCodingKernelTaskContract({
-      goal: runtimeContext.userPrompt,
-      mode: runtimeContext.workflowMode === 'inspect' ? 'review' : 'change',
-      include: runtimeContext.contextFiles,
-      deliverables: [{ id: 'result', kind: 'source-change' }],
-      acceptance: [{ id: 'completed', statement: 'The requested work is complete.' }],
-      provenanceRefs: ['vscode-test'],
-    }),
-    contextSeed: { files: runtimeContext.contextFiles.map(path => ({ path })) },
-    runtimeContext,
+    taskContract,
+    contextSeed,
+    ...(runtimeContext.memoryCandidates ? { memoryCandidates: runtimeContext.memoryCandidates } : {}),
+    ...(recovery?.kind === 'checkpoint-resume' ? { resumeCheckpoint: recovery.checkpoint } : {}),
+    runtimeContext: effectiveRuntimeContext,
     signal: runtimeContext.callbacks?.signal,
   });
+}
+
+function assertCheckpointCall(calls, firstUnfinishedIndex, tasks, reason, completedUnitCount) {
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], firstUnfinishedIndex);
+  assert.deepEqual(calls[0][1], tasks);
+  assert.equal(calls[0][2], reason);
+  assert.equal(calls[0][3].reason, reason);
+  assert.equal(calls[0][3].completedUnitCount, completedUnitCount);
+  assert.deepEqual(calls[0][3].pendingUnits.map(unit => unit.id), tasks.map(task => task.id));
 }
 
 function checkpointRecovery(startFromIndex) {

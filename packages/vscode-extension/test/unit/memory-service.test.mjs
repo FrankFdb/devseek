@@ -10,6 +10,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { loadUserSimulationCase } from '../../../../scripts/lib/devseek-user-simulation-fixture.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
@@ -127,28 +128,23 @@ test('R3-05A MemoryService: ephemeral session memories keep provenance and do no
   });
 });
 
-test('MemoryService: blocks sensitive memory writes before persistence', () => {
+test('I10-MEM-02 user journey: sensitive persistent memory is blocked before storage', () => {
+  const scenario = loadUserSimulationCase('I10', 'I10-MEM-02');
   withTempWorkspace((workspace) => {
     const service = new MemoryService({ workspaceRoot: workspace });
 
     assert.throws(
-      () => service.appendAgentMemory('生产环境 api_key=sk-123456789012345678901234567890 请记住'),
+      () => service.appendAgentMemory(scenario.input.memory_write),
       /敏感信息/,
     );
     assert.equal(service.retrieve({ includeDisabled: true }).length, 0);
   });
 });
 
-test('R3-05C MemoryService: legacy markdown prompt context is redacted with proof', () => {
+test('I10-MEM-03 user journey: legacy markdown never enters prompt context automatically', () => {
+  const scenario = loadUserSimulationCase('I10', 'I10-MEM-03');
   withTempWorkspace((workspace) => {
-    write(workspace, '.devseek/memory.md', [
-      '# Legacy',
-      '',
-      'code/shape_manager 验证命令使用 npm test。',
-      'token=legacysecretvalue12345',
-      'Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456',
-      'sk-r3legacysecret123456789012345',
-    ].join('\n'));
+    write(workspace, '.devseek/memory.md', scenario.input.legacy_memory_lines.join('\n'));
     const service = new MemoryService({ workspaceRoot: workspace });
 
     const context = service.retrievePromptContext({
@@ -156,22 +152,8 @@ test('R3-05C MemoryService: legacy markdown prompt context is redacted with proo
       relatedPaths: [path.join(workspace, 'code/shape_manager/main.cpp')],
     });
 
-    assert.match(context, /DevSeek legacy memory/);
-    assert.match(context, /npm test/);
-    assert.match(context, /\[REDACTED_TOKEN\]/);
-    assert.match(context, /token=\[REDACTED\]/);
-    assert.match(context, /authorization=\[REDACTED\]/i);
-    assert.doesNotMatch(context, /legacysecretvalue12345/);
-    assert.doesNotMatch(context, /abcdefghijklmnopqrstuvwxyz123456/);
-    assert.doesNotMatch(context, /sk-r3legacysecret123456789012345/);
-    assert.ok(
-      service.getLifecycleReceipts().some((receipt) => (
-        receipt.action === 'legacy-secret-redacted'
-        && receipt.recordId === 'legacy-memory.md'
-        && receipt.sensitiveMatches.includes('authorization-header')
-        && receipt.redactionCount >= 3
-      )),
-    );
+    assert.equal(context, null);
+    assert.equal(service.getLifecycleReceipts().length, 0);
   });
 });
 
@@ -225,14 +207,13 @@ test('R3-05C MemoryService: structured legacy imports are invalidated and cannot
   });
 });
 
-test('MemoryService: imports legacy markdown memory into prompt context', () => {
+test('C12 MemoryService: legacy markdown requires structured migration and approval', () => {
   withTempWorkspace((workspace) => {
     write(workspace, '.devseek/memory.md', '# Legacy\n\n旧记忆：修复前先运行编译。');
 
     const context = new MemoryService({ workspaceRoot: workspace }).retrievePromptContext();
 
-    assert.match(context, /DevSeek legacy memory/);
-    assert.match(context, /旧记忆：修复前先运行编译。/);
+    assert.equal(context, null);
   });
 });
 

@@ -1,7 +1,12 @@
 import * as nodePath from 'path';
+import {
+  CanonicalCheckpointService,
+  type CodingCheckpoint,
+} from '@devseek-netai/shared';
 import type { AgentTask } from '../agent-task-decomposer';
 
 export const CODING_KERNEL_RECOVERY_VERSION = 'devseek.coding-kernel-recovery/v1';
+const CHECKPOINT = new CanonicalCheckpointService();
 
 interface CodingKernelRecoveryBase {
   readonly version: typeof CODING_KERNEL_RECOVERY_VERSION;
@@ -11,6 +16,7 @@ interface CodingKernelRecoveryBase {
 
 export interface CheckpointKernelRecovery extends CodingKernelRecoveryBase {
   readonly kind: 'checkpoint-resume';
+  readonly checkpoint: CodingCheckpoint;
   readonly analysisContext?: string;
 }
 
@@ -25,14 +31,21 @@ export type CodingKernelRecovery = CheckpointKernelRecovery | LocalValidationKer
 export function createCheckpointKernelRecovery(input: {
   readonly tasks: readonly AgentTask[];
   readonly startFromIndex: number;
+  readonly canonicalCheckpoint: CodingCheckpoint;
   readonly analysisContext?: string;
 }): CheckpointKernelRecovery {
   assertRecoveryTasks(input.tasks, input.startFromIndex);
+  const checkpoint = CHECKPOINT.snapshot(input.canonicalCheckpoint);
+  const pendingTaskIds = input.tasks.slice(input.startFromIndex).map(task => task.id);
+  if (checkpoint.pendingUnits.map(unit => unit.id).join('\n') !== pendingTaskIds.join('\n')) {
+    throw new Error('coding-kernel-recovery:checkpoint-task-binding-mismatch');
+  }
   return {
     version: CODING_KERNEL_RECOVERY_VERSION,
     kind: 'checkpoint-resume',
     tasks: cloneTasks(input.tasks),
     startFromIndex: input.startFromIndex,
+    checkpoint,
     ...(input.analysisContext?.trim() ? { analysisContext: input.analysisContext.trim() } : {}),
   };
 }
@@ -73,6 +86,7 @@ export function renderCodingKernelRecoveryContext(recovery: CodingKernelRecovery
         '恢复类型: durable checkpoint resume',
         `已完成任务数: ${recovery.startFromIndex}`,
         `待继续任务数: ${pendingTasks.length}`,
+        `Checkpoint: ${recovery.checkpoint.checkpointId}`,
       ]
     : [
         '恢复类型: local validation repair',
@@ -133,6 +147,8 @@ export function assertCodingKernelRecovery(recovery: CodingKernelRecovery): void
     if (!recovery.failedCommand?.trim()) {
       throw new Error('coding-kernel-recovery:missing-failed-command');
     }
+  } else {
+    CHECKPOINT.snapshot(recovery.checkpoint);
   }
 }
 

@@ -1,3 +1,7 @@
+import {
+  CanonicalCheckpointService,
+  type CodingCheckpoint,
+} from '@devseek-netai/shared';
 import { stableSha256 } from './stable-hash';
 
 export interface TaskCheckpointStorage {
@@ -5,7 +9,7 @@ export interface TaskCheckpointStorage {
   update(key: string, value: unknown): PromiseLike<void> | Promise<void> | void;
 }
 
-export const TASK_CHECKPOINT_RESUME_PROTOCOL = 'devseek.checkpoint-resume/v1';
+export const TASK_CHECKPOINT_RESUME_PROTOCOL = 'devseek.checkpoint-resume/v2';
 
 export interface TaskCheckpointRecord<TTask = unknown> {
   userPrompt: string;
@@ -23,6 +27,7 @@ export interface TaskCheckpointRecord<TTask = unknown> {
   checkpointEpoch?: number;
   taskFingerprint?: string;
   resumeReceipt?: string;
+  canonicalCheckpoint: CodingCheckpoint;
 }
 
 interface SealedTaskCheckpointRecord<TTask = unknown> extends TaskCheckpointRecord<TTask> {
@@ -43,6 +48,7 @@ export interface TaskCheckpointScope {
 }
 
 export const DEFAULT_TASK_CHECKPOINT_KEY = 'devseek.agentTaskCheckpoint';
+const CHECKPOINT = new CanonicalCheckpointService();
 
 export interface ScopedTaskCheckpointServiceOptions {
   readonly storage: TaskCheckpointStorage;
@@ -71,8 +77,12 @@ export class TaskCheckpointStore<TTask = unknown> {
   load(): TaskCheckpointRecord<TTask> | undefined {
     const record = this.storage.get<TaskCheckpointRecord<TTask>>(this.key);
     if (!record) return undefined;
-    const checkpoint = normalizeCheckpointRecord(record);
-    return checkpointResumeReceiptIsValid(checkpoint, this.loadMeta()) ? checkpoint : undefined;
+    try {
+      const checkpoint = normalizeCheckpointRecord(record);
+      return checkpointResumeReceiptIsValid(checkpoint, this.loadMeta()) ? checkpoint : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   loadScoped(scope?: TaskCheckpointScope): TaskCheckpointRecord<TTask> | undefined {
@@ -109,7 +119,13 @@ export class TaskCheckpointStore<TTask = unknown> {
   ): Promise<FreshCheckpointResult<TTask> | undefined> {
     const raw = this.storage.get<TaskCheckpointRecord<TTask>>(this.key);
     if (!raw) return undefined;
-    const checkpoint = normalizeCheckpointRecord(raw);
+    let checkpoint: TaskCheckpointRecord<TTask>;
+    try {
+      checkpoint = normalizeCheckpointRecord(raw);
+    } catch {
+      await this.clear();
+      return undefined;
+    }
     if (!checkpointResumeReceiptIsValid(checkpoint, this.loadMeta())) {
       await this.clear();
       return undefined;
@@ -172,17 +188,28 @@ export class ScopedTaskCheckpointService<TTask = unknown> {
 }
 
 function normalizeCheckpointRecord<TTask>(record: TaskCheckpointRecord<TTask>): TaskCheckpointRecord<TTask> {
-  const total = Array.isArray(record.allTasks) ? record.allTasks.length : 0;
+  const allTasks = Array.isArray(record.allTasks) ? record.allTasks : [];
+  const total = allTasks.length;
   const startFromIndex = clampInteger(record.startFromIndex, 0, total);
   const completedCount = clampInteger(record.completedCount, 0, startFromIndex);
+  const wsRootFsPath = normalizeFsPath(record.wsRootFsPath);
+  const canonicalCheckpoint = CHECKPOINT.snapshot(record.canonicalCheckpoint);
+  if (canonicalCheckpoint.originSurface !== 'vscode') {
+    throw new Error('task-checkpoint:surface-mismatch');
+  }
+  if (normalizeFsPath(canonicalCheckpoint.workspaceRoot) !== wsRootFsPath) {
+    throw new Error('task-checkpoint:workspace-binding-mismatch');
+  }
+  assertPendingTaskBinding(allTasks.slice(startFromIndex), canonicalCheckpoint);
   return {
     ...record,
-    allTasks: Array.isArray(record.allTasks) ? record.allTasks : [],
+    allTasks,
     startFromIndex,
     completedCount,
     savedAt: Number(record.savedAt) || Date.now(),
     sessionId: String(record.sessionId || ''),
-    wsRootFsPath: normalizeFsPath(record.wsRootFsPath),
+    wsRootFsPath,
+    canonicalCheckpoint,
     ...(record.checkpointProtocol === TASK_CHECKPOINT_RESUME_PROTOCOL
       ? { checkpointProtocol: TASK_CHECKPOINT_RESUME_PROTOCOL }
       : {}),
@@ -196,6 +223,25 @@ function normalizeCheckpointRecord<TTask>(record: TaskCheckpointRecord<TTask>): 
       ? { resumeReceipt: record.resumeReceipt }
       : {}),
   };
+}
+
+function assertPendingTaskBinding<TTask>(
+  pendingTasks: readonly TTask[],
+  checkpoint: CodingCheckpoint,
+): void {
+  if (pendingTasks.length === 0) return;
+  const taskIds = pendingTasks.map(readTaskId);
+  if (taskIds.some(id => id === undefined)) return;
+  const checkpointIds = checkpoint.pendingUnits.map(unit => unit.id);
+  if (taskIds.join('\n') !== checkpointIds.join('\n')) {
+    throw new Error('task-checkpoint:pending-task-binding-mismatch');
+  }
+}
+
+function readTaskId(task: unknown): string | undefined {
+  if (!task || typeof task !== 'object') return undefined;
+  const id = (task as { id?: unknown }).id;
+  return typeof id === 'string' && id.trim() ? id.trim() : undefined;
 }
 
 function clampInteger(value: number, min: number, max: number): number {
@@ -259,6 +305,7 @@ function buildCheckpointTaskFingerprint<TTask>(checkpoint: TaskCheckpointRecord<
     startFromIndex: checkpoint.startFromIndex,
     userPrompt: checkpoint.userPrompt,
     wsRootFsPath: normalizeFsPath(checkpoint.wsRootFsPath),
+    canonicalCheckpointSealSha256: checkpoint.canonicalCheckpoint.sealSha256,
   });
 }
 

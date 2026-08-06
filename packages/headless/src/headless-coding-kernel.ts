@@ -7,10 +7,12 @@ import {
   validateCodingConformanceProjection,
   type CodingConformanceObservedProjection,
   type CodingConformanceProjection,
+  type CodingCheckpoint,
   type CodingContextSeed,
   type CodingKernelExecutionOutput,
   type CodingKernelRuntimePort,
   type CodingKernelTaskContract,
+  type CodingMemoryCandidate,
 } from '@devseek-netai/shared';
 import {
   HeadlessRunEvidence,
@@ -24,6 +26,8 @@ export interface HeadlessCodingRunInput<TRuntimeContext> {
   readonly workspaceRoot: string;
   readonly taskContract: CodingKernelTaskContract;
   readonly contextSeed?: CodingContextSeed;
+  readonly memoryCandidates?: readonly CodingMemoryCandidate[];
+  readonly resumeCheckpoint?: CodingCheckpoint;
   readonly runtimeContext: TRuntimeContext;
   readonly signal?: AbortSignal;
 }
@@ -86,6 +90,8 @@ export class HeadlessCodingKernelExecutor<TRuntimeContext, TResult> {
         workspaceRoot: input.workspaceRoot,
         taskContract: input.taskContract,
         contextSeed: input.contextSeed,
+        memoryCandidates: input.memoryCandidates,
+        resumeCheckpoint: input.resumeCheckpoint,
         runtimeContext: input.runtimeContext,
         signal: command.request.signal,
       });

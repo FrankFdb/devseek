@@ -22,6 +22,17 @@ import {
   assertCodingOrientationPrompt,
   type CodingOrientationDecision,
 } from './coding-orientation';
+import {
+  CanonicalCheckpointService,
+  type CodingCheckpoint,
+  type CodingCheckpointRestoreDecision,
+  type CodingCheckpointSessionPort,
+} from './coding-checkpoint';
+import {
+  CanonicalMemoryPolicyService,
+  type CodingMemoryCandidate,
+  type CodingMemoryContextDecision,
+} from './coding-memory-policy';
 
 export {
   CODING_KERNEL_TASK_CONTRACT_VERSION,
@@ -47,6 +58,8 @@ export interface CodingKernelExecutionRequest<TRuntimeContext> {
   readonly workspaceRoot: string;
   readonly taskContract: CodingKernelTaskContract;
   readonly contextSeed?: CodingContextSeed;
+  readonly memoryCandidates?: readonly CodingMemoryCandidate[];
+  readonly resumeCheckpoint?: CodingCheckpoint;
   readonly runtimeContext: TRuntimeContext;
   readonly signal?: AbortSignal;
 }
@@ -54,6 +67,9 @@ export interface CodingKernelExecutionRequest<TRuntimeContext> {
 export interface CodingKernelRuntimeRequest<TRuntimeContext>
   extends CodingKernelExecutionRequest<TRuntimeContext> {
   readonly contextGraph: CodingContextGraph;
+  readonly memoryPolicy: CodingMemoryContextDecision;
+  readonly checkpoint: CodingCheckpointSessionPort;
+  readonly resume?: CodingCheckpointRestoreDecision;
 }
 
 export interface CodingKernelRuntimeOutput<TResult> {
@@ -74,6 +90,8 @@ export interface CodingKernelExecutionOutput<TResult> {
   readonly orientation: CodingOrientationDecision;
   readonly taskContract: CodingKernelTaskContract;
   readonly contextGraph: CodingContextGraph;
+  readonly memoryPolicy: CodingMemoryContextDecision;
+  readonly resume?: CodingCheckpointRestoreDecision;
   readonly result: TResult;
   readonly evidenceRefs: readonly string[];
   readonly residualRisks: readonly string[];
@@ -88,18 +106,21 @@ export interface CodingKernelRuntimePort<TRuntimeContext, TResult> {
 export class CodingKernelExecutionError extends Error {
   readonly lifecycle: CodingRunLifecycleSnapshot;
   readonly settlement: CodingSettlementDecision;
+  readonly checkpoint: CodingCheckpointSessionPort;
   readonly runtimeCause: unknown;
 
   constructor(
     message: string,
     lifecycle: CodingRunLifecycleSnapshot,
     settlement: CodingSettlementDecision,
+    checkpoint: CodingCheckpointSessionPort,
     runtimeCause?: unknown,
   ) {
     super(message);
     this.name = 'CodingKernelExecutionError';
     this.lifecycle = lifecycle;
     this.settlement = settlement;
+    this.checkpoint = checkpoint;
     this.runtimeCause = runtimeCause;
   }
 }
@@ -108,6 +129,8 @@ const RUN_LIFECYCLE = new CanonicalRunLifecycleService();
 const SETTLEMENT = new CanonicalSettlementDecisionService();
 const TASK_CONTRACT = new CanonicalTaskContractService();
 const CONTEXT_GRAPH = new CanonicalContextGraphService();
+const MEMORY_POLICY = new CanonicalMemoryPolicyService();
+const CHECKPOINT = new CanonicalCheckpointService();
 
 /**
  * The product-level execution owner shared by every Surface. Runtime adapters
@@ -129,13 +152,41 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       taskContract,
       seed: request.contextSeed,
     });
+    const memoryPolicy = MEMORY_POLICY.selectContext({
+      candidates: request.memoryCandidates ?? [],
+      workspaceRoot: request.workspaceRoot,
+    });
+    const checkpoint = CHECKPOINT.bind({
+      runId: request.runId,
+      surface: request.surface,
+      workspaceRoot: request.workspaceRoot,
+      taskContract,
+      contextGraph,
+      memoryPolicySha256: memoryPolicy.decisionSha256,
+    });
+    const resume = request.resumeCheckpoint
+      ? CHECKPOINT.restore(request.resumeCheckpoint, {
+          surface: request.surface,
+          workspaceRoot: request.workspaceRoot,
+          taskContract,
+          contextGraph,
+          memoryPolicySha256: memoryPolicy.decisionSha256,
+        })
+      : undefined;
     const lifecycle = RUN_LIFECYCLE.start({ runId: request.runId, surface: request.surface });
     if (request.signal?.aborted) {
       lifecycle.settle('cancelled');
-      throw lifecycleError('coding-kernel-execution:cancelled-before-start', lifecycle);
+      throw lifecycleError('coding-kernel-execution:cancelled-before-start', lifecycle, checkpoint);
     }
 
-    const runtimeRequest = Object.freeze({ ...request, taskContract, contextGraph });
+    const runtimeRequest = Object.freeze({
+      ...request,
+      taskContract,
+      contextGraph,
+      memoryPolicy,
+      checkpoint,
+      ...(resume ? { resume } : {}),
+    });
     lifecycle.beginExecution();
     try {
       const runtimeOutput = await this.runtime.executeCanonical(runtimeRequest);
@@ -162,6 +213,8 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         orientation: taskContract.orientation,
         taskContract,
         contextGraph,
+        memoryPolicy,
+        ...(resume ? { resume } : {}),
         result: runtimeOutput.result,
         evidenceRefs: settlement.evidenceRefs,
         residualRisks: settlement.residualRisks,
@@ -171,7 +224,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       if (!lifecycle.snapshot().terminal) {
         lifecycle.settle(request.signal?.aborted ? 'cancelled' : 'failed');
       }
-      throw lifecycleError(errorMessage(error), lifecycle, error);
+      throw lifecycleError(errorMessage(error), lifecycle, checkpoint, error);
     }
   }
 }
@@ -179,6 +232,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
 function lifecycleError(
   message: string,
   lifecycle: RunLifecycleSessionPort,
+  checkpoint: CodingCheckpointSessionPort,
   cause?: unknown,
 ): CodingKernelExecutionError {
   const snapshot = lifecycle.snapshot();
@@ -188,7 +242,7 @@ function lifecycleError(
     lifecycle: snapshot,
     requestedStatus: snapshot.status,
   });
-  return new CodingKernelExecutionError(message, snapshot, settlement, cause);
+  return new CodingKernelExecutionError(message, snapshot, settlement, checkpoint, cause);
 }
 
 function errorMessage(error: unknown): string {

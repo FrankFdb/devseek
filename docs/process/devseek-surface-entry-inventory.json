@@ -27,7 +27,7 @@
     },
     "pendingEditCoordinator": {
       "path": "packages/vscode-extension/src/pending-edit-coordinator.ts",
-      "source_sha256": "c07d85a926cfae649a7a842f40181d11c842e195a358da8881fd9a02ea22c63c"
+      "source_sha256": "2cec1fb6c25299342576b33d816befd2b14f77502c406bb663b023974002f7a1"
     },
     "realPluginHarness": {
       "path": "packages/vscode-extension/src/ui/real-plugin-harness.ts",
@@ -39,7 +39,7 @@
     },
     "deepseekViewProvider": {
       "path": "packages/vscode-extension/src/ui/deepseek-view-provider.ts",
-      "source_sha256": "25dcefdc19de235671767ac089a058987fe22387c6acb98ae457e69af5ee39e6"
+      "source_sha256": "b01fadbbb592dfb1bd1549adc7497031aefd3433c5b1979217b74cb732fbcac2"
     },
     "cliPackageJson": {
       "path": "packages/cli/package.json",
@@ -47,11 +47,11 @@
     },
     "cliIndex": {
       "path": "packages/cli/src/index.ts",
-      "source_sha256": "e5dade28699a76d2e2af6b0041c617a28225ac76bf0f1d2eec05874e2f49b06d"
+      "source_sha256": "b815f7e38985c8081e6a2c75617c8e4d56cc35e7fddc7e14c61f0c7e665d3887"
     },
     "cliSurfaceAdapter": {
       "path": "packages/cli/src/cli-surface-adapter.ts",
-      "source_sha256": "bfe3a03759d4622a0ffb5d0b3747a2896dfc9cebd3eeee1a2d384106b334283b"
+      "source_sha256": "2f6102b4abd094c35ec58e475bf5f65dc1f7729e95b5fd0ec092f285e4832b1e"
     },
     "headlessPackageJson": {
       "path": "packages/headless/package.json",
@@ -59,11 +59,11 @@
     },
     "headlessIndex": {
       "path": "packages/headless/src/index.ts",
-      "source_sha256": "dcb12457fdea5d4e45fb4e667930f96b020812b4442b845b90a9faf6de3b3c15"
+      "source_sha256": "8257089f9e9dc0f26a0931293125536e6d4640e521241443d1f024dcca6c5757"
     },
     "headlessExecutor": {
       "path": "packages/headless/src/headless-coding-kernel.ts",
-      "source_sha256": "e3594d2799410b9875833dc0628b7132a59f4cb251a9de67622f4b1280fee219"
+      "source_sha256": "98c639c39a8a5c60830e098fb90cb77fc02db6dd95b04d113116dd54e78378ce"
     },
     "bridgeServer": {
       "path": "packages/bridge/src/server.ts",
@@ -87,7 +87,7 @@
     },
     "rootPackageJson": {
       "path": "package.json",
-      "source_sha256": "77d475cf39644b8fd5bbcbb6c83f187ea792ef72f0f159f57ba66496abda03f6"
+      "source_sha256": "d31cab51401797bdb7f501f833a396f2fbdf23172e67623025bd9e1180a05ffa"
     }
   },
   "owner": {
@@ -1490,5 +1490,5 @@
     "duplicate_webview_protocol_declarations": 0,
     "duplicate_webview_handler_registrations": 0
   },
-  "inventory_sha256": "d33a713923807a043250864196773eb9cee878b8834e44fea4398f0d91fbc884"
+  "inventory_sha256": "945af3c3cab1ce1281ec2a686b1584ec33e27ed7fa355e15d3e994b6e4b0086c"
 }

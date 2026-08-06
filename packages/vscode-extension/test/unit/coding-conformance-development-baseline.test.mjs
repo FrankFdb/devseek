@@ -20,6 +20,7 @@ import {
   isSecretHarvestingRefusalTaskContract,
   resolveCodingOrientationDecision,
 } from '../../../shared/dist/index.js';
+import { createCanonicalCheckpointFixture } from '../helpers/canonical-checkpoint-fixture.mjs';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const extensionRoot = path.resolve(testDir, '../..');
@@ -243,6 +244,30 @@ function buildDevelopmentLoopResult(fixture) {
 }
 
 function routeInput(recovery, fixture) {
+  const tasks = [{ id: 'resume', file: 'src/main.ts', action: 'modify', desc: fixture.title }];
+  const taskContract = buildCodingKernelTaskContract({
+    goal: fixture.expected.taskContract.goal,
+    mode: fixture.expected.taskContract.mode,
+    orientation: resolveCodingOrientationDecision({
+      prompt: fixture.prompt,
+      modeHint: fixture.expected.taskContract.mode,
+    }),
+    include: fixture.expected.taskContract.scope.include,
+    exclude: fixture.expected.taskContract.scope.exclude,
+    deliverables: fixture.expected.taskContract.deliverables,
+    constraints: fixture.expected.taskContract.constraints,
+    acceptance: fixture.expected.taskContract.acceptance,
+    provenanceRefs: fixture.expected.taskContract.provenanceRefs,
+  });
+  const canonicalCheckpoint = recovery
+    ? createCanonicalCheckpointFixture({
+        tasks,
+        workspaceRoot: '/workspace',
+        runId: `conformance-${fixture.fixtureId}`,
+        userPrompt: fixture.prompt,
+        taskContract,
+      })
+    : undefined;
   const runtimeContext = {
     route: 'canonical',
     userPrompt: fixture.prompt,
@@ -255,8 +280,9 @@ function routeInput(recovery, fixture) {
       recovery: {
         version: 'devseek.coding-kernel-recovery/v1',
         kind: 'checkpoint-resume',
-        tasks: [{ id: 'resume', file: 'src/main.ts', action: 'modify', desc: fixture.title }],
+        tasks,
         startFromIndex: 0,
+        checkpoint: canonicalCheckpoint,
       },
     } : {}),
   };
@@ -267,20 +293,8 @@ function routeInput(recovery, fixture) {
     runId: `conformance-${fixture.fixtureId}`,
     userPrompt: fixture.prompt,
     workspaceRoot: '/workspace',
-    taskContract: buildCodingKernelTaskContract({
-      goal: fixture.expected.taskContract.goal,
-      mode: fixture.expected.taskContract.mode,
-      orientation: resolveCodingOrientationDecision({
-        prompt: fixture.prompt,
-        modeHint: fixture.expected.taskContract.mode,
-      }),
-      include: fixture.expected.taskContract.scope.include,
-      exclude: fixture.expected.taskContract.scope.exclude,
-      deliverables: fixture.expected.taskContract.deliverables,
-      constraints: fixture.expected.taskContract.constraints,
-      acceptance: fixture.expected.taskContract.acceptance,
-      provenanceRefs: fixture.expected.taskContract.provenanceRefs,
-    }),
+    taskContract,
+    ...(canonicalCheckpoint ? { resumeCheckpoint: canonicalCheckpoint } : {}),
     runtimeContext,
   };
 }

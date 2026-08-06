@@ -94,6 +94,8 @@
     "verify:surface-entry-inventory": "node --test scripts/test/devseek-surface-entry-inventory.test.mjs && node scripts/devseek-surface-entry-inventory-check.mjs",
     "generate:kernel-prep-owner-baseline": "node scripts/devseek-kernel-prep-owner-baseline-check.mjs --write",
     "verify:kernel-prep-owner-baseline": "node --test scripts/test/devseek-kernel-prep-owner-baseline.test.mjs && node scripts/devseek-kernel-prep-owner-baseline-check.mjs",
+    "verify:iteration-user-journeys": "node --test scripts/test/devseek-iteration-user-journeys.test.mjs && node scripts/devseek-iteration-user-journeys-check.mjs",
+    "run:iteration-user-journeys": "npm run headless:build && node scripts/run-devseek-iteration-user-journeys.mjs",
     "verify:surface-product-conformance": "node scripts/verify-coding-surface-product-conformance.mjs",
     "generate:capability-ledger": "node scripts/devseek-capability-ledger-check.mjs --write",
     "verify:capability-ledger": "node --test scripts/test/devseek-capability-ledger.test.mjs && node scripts/devseek-capability-ledger-check.mjs",

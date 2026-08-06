@@ -52,6 +52,7 @@ import { buildLocalAttachmentContextPrompt } from './app/local-attachment-contex
 import { MemoryService } from './app/memory-service';
 import { AgentKernelService } from './app/agent-kernel-service';
 import { getKernelRecoveryContextFiles } from './app/coding-kernel-recovery';
+import { projectCodingKernelCheckpointResume } from './app/coding-kernel-route-decision';
 import { ActiveChatRunCoordinator, type ActiveChatRunHandle } from './app/active-chat-run-coordinator';
 import { productCodingKernelExecutor } from './product-coding-kernel-executor';
 import { createDevSeekRunContext } from './app/run-context';
@@ -72,8 +73,12 @@ import {
   appendSessionContinuationContext,
   shouldResumeCheckpointFromPrompt,
 } from './app/session-continuation';
-import { ScopedTaskCheckpointService } from './app/task-checkpoint-store';
-import { buildProviderRecoveryCheckpointTasks, buildProviderRecoveryDisplay, ProviderRecoveryService } from './app/provider-recovery-service';
+import {
+  ScopedTaskCheckpointService,
+  type TaskCheckpointRecord,
+} from './app/task-checkpoint-store';
+import { buildProviderRecoveryCheckpointRecord, isCheckpointableProviderRecoveryError } from './app/provider-recovery-checkpoint';
+import { buildProviderRecoveryDisplay, ProviderRecoveryService } from './app/provider-recovery-service';
 import { resolveProviderStatusResponse } from './app/provider-status-service';
 import { PendingEditCoordinator } from './pending-edit-coordinator';
 import { recordTrackedChatHistory as recordTrackedChatHistoryState } from './app/chat-history-tracker';
@@ -246,6 +251,7 @@ async function runChat(
   images?: string[],
   intentConfirmed = false,
   suppressUserMessage = false,
+  resumeCheckpoint?: TaskCheckpointRecord<AgentTask>,
 ): Promise<void> {
   const promptResumeCp = shouldResumeCheckpointFromPrompt({ userDisplay, prompt, newSession, resumeFromIndex })
     ? await agentCheckpointService.loadFresh(7_200_000)
@@ -253,7 +259,7 @@ async function runChat(
   if (promptResumeCp) {
     if (!suppressUserMessage) webview.postMessage({ type: 'userMessage', text: userDisplay, prompt, images });
     webview.postMessage({ type: 'agentCheckpointCleared' });
-    await runChat(webview, promptResumeCp.displayPrompt, promptResumeCp.userPrompt, false, promptResumeCp.mode, undefined, false, promptResumeCp.startFromIndex, promptResumeCp.allTasks, undefined, intentConfirmed, true);
+    await runChat(webview, promptResumeCp.displayPrompt, promptResumeCp.userPrompt, false, promptResumeCp.mode, undefined, false, promptResumeCp.startFromIndex, promptResumeCp.allTasks, undefined, intentConfirmed, true, promptResumeCp);
     return;
   }
 
@@ -262,7 +268,7 @@ async function runChat(
     source: 'run-chat-start',
   });
   try {
-    await runActiveChat(activeRun, webview, userDisplay, prompt, newSession, mode, files, forceNoAgent, resumeFromIndex, resumeTasks, images, intentConfirmed, suppressUserMessage);
+    await runActiveChat(activeRun, webview, userDisplay, prompt, newSession, mode, files, forceNoAgent, resumeFromIndex, resumeTasks, images, intentConfirmed, suppressUserMessage, resumeCheckpoint);
   } finally {
     activeRun.finish();
   }
@@ -282,6 +288,7 @@ async function runActiveChat(
   images: string[] | undefined,
   intentConfirmed: boolean,
   suppressUserMessage: boolean,
+  resumeCheckpoint: TaskCheckpointRecord<AgentTask> | undefined,
 ): Promise<void> {
   const chatSignal = activeRun.signal;
   const consumeAgentSteer = (): string[] => activeRun.consumeAgentSteer();
@@ -599,13 +606,8 @@ async function runActiveChat(
     let loopResult: AgentLoopResult | undefined;
 
     try {
-      const checkpointResumeTasks = resumeFromIndex !== undefined && resumeTasks && resumeTasks.length > 0
-        ? resumeTasks
-        : undefined;
       const kernelRoute = agentKernelService.decideExecutionRoute({
-        checkpoint: checkpointResumeTasks && resumeFromIndex !== undefined
-          ? { tasks: checkpointResumeTasks, startFromIndex: resumeFromIndex, analysisContext: lastAnalysisText }
-          : undefined,
+        checkpoint: projectCodingKernelCheckpointResume(resumeCheckpoint, lastAnalysisText),
       });
       {
         const agWsRootPath = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath);
@@ -758,7 +760,7 @@ async function runActiveChat(
               runContext: agentRunContext,
             }),
             signal: chatSignal,
-            onTaskCheckpoint: async (firstUnfinishedIndex, remainingTasks, reason = 'progress') => {
+            onTaskCheckpoint: async (firstUnfinishedIndex, remainingTasks, reason = 'progress', canonicalCheckpoint) => {
               agentRunContext?.recordCheckpoint(firstUnfinishedIndex, remainingTasks.length, reason);
               return createAgentCheckpointCallback({
                 userPrompt: prompt,
@@ -768,7 +770,7 @@ async function runActiveChat(
                 sessionId: activeSessionId,
                 save: agentCheckpointService.save,
                 postMessage: message => { webview.postMessage(message); },
-              })(firstUnfinishedIndex, remainingTasks, reason);
+              })(firstUnfinishedIndex, remainingTasks, reason, canonicalCheckpoint);
             },
             autopilot: vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false),
           },
@@ -834,34 +836,28 @@ async function runActiveChat(
         code: msg,
         signals: [msg],
       });
-      if (recovery.kind !== 'Unknown') {
+      if (recovery.kind !== 'Unknown' && isCheckpointableProviderRecoveryError(e)) {
         const savedAt = Date.now();
         const wsRootFsPath = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath)
           ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
           ?? '';
-        const recoveryTasks = buildProviderRecoveryCheckpointTasks({
+        const recoveryCheckpoint = buildProviderRecoveryCheckpointRecord({
+          error: e,
           prompt,
-          files: effectiveFiles,
-          workspaceRootFsPath: wsRootFsPath,
-          recoveryKind: recovery.kind,
-        }) as AgentTask[];
-        await agentCheckpointService.save({
-          userPrompt: prompt,
           displayPrompt: userDisplay,
           mode,
-          wsRootFsPath,
-          allTasks: recoveryTasks,
-          startFromIndex: 0,
-          completedCount: 0,
+          files: effectiveFiles,
+          workspaceRootFsPath: wsRootFsPath,
           savedAt,
           sessionId: activeSessionId || 'provider-recovery',
           recoveryKind: recovery.kind,
           pauseReason: recovery.pauseReason,
         });
+        await agentCheckpointService.save(recoveryCheckpoint);
         webview.postMessage({
           type: 'agentCheckpointAvailable',
           resumeTaskIndex: 0,
-          totalTasks: recoveryTasks.length,
+          totalTasks: recoveryCheckpoint.allTasks.length,
           userPrompt: userDisplay,
           savedAt,
           recoveryKind: recovery.kind,

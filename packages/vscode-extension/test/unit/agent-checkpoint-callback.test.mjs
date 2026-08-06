@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { createCanonicalCheckpointFixture } from '../helpers/canonical-checkpoint-fixture.mjs';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../');
 const bundlePath = path.join(tmpdir(), `devseek-agent-checkpoint-callback-${process.pid}.cjs`);
@@ -55,8 +56,13 @@ function makeHarness() {
 test('agent checkpoint callback rebases a remaining-task slice to its local index space', async () => {
   const harness = makeHarness();
   const remainingTasks = [task('t3'), task('t4')];
+  const canonicalCheckpoint = createCanonicalCheckpointFixture({
+    tasks: remainingTasks,
+    completedUnitCount: 2,
+    workspaceRoot: '/repo',
+  });
 
-  await harness.callback(2, remainingTasks, 'progress');
+  await harness.callback(2, remainingTasks, 'progress', canonicalCheckpoint);
   remainingTasks.length = 0;
 
   assert.equal(harness.saved.length, 1);
@@ -69,8 +75,14 @@ test('agent checkpoint callback rebases a remaining-task slice to its local inde
 
 test('agent checkpoint callback preserves original progress only in paused UI metadata', async () => {
   const harness = makeHarness();
+  const pendingTasks = [task('t4'), task('t5')];
+  const canonicalCheckpoint = createCanonicalCheckpointFixture({
+    tasks: pendingTasks,
+    completedUnitCount: 3,
+    workspaceRoot: '/repo',
+  });
 
-  await harness.callback(3, [task('t4'), task('t5')], 'paused');
+  await harness.callback(0, pendingTasks, 'paused', canonicalCheckpoint);
 
   assert.equal(harness.saved[0].startFromIndex, 0);
   assert.equal(harness.saved[0].allTasks.length, 2);
@@ -82,6 +94,7 @@ test('agent checkpoint callback preserves original progress only in paused UI me
     userPrompt: 'Create the reports',
     savedAt: harness.saved[0].savedAt,
     pauseReason: harness.saved[0].pauseReason,
+    checkpointId: canonicalCheckpoint.checkpointId,
   }]);
 });
 

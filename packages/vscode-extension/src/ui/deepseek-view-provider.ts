@@ -69,6 +69,7 @@ export type ViewRunChat = (
   images?: string[],
   intentConfirmed?: boolean,
   suppressUserMessage?: boolean,
+  resumeCheckpoint?: AgentTaskCheckpoint,
 ) => Promise<void>;
 
 export interface DeepSeekViewProviderDeps {
@@ -590,6 +591,10 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
       false,
       checkpoint.startFromIndex,
       checkpoint.allTasks,
+      undefined,
+      undefined,
+      undefined,
+      checkpoint,
     );
   }
 

@@ -1,4 +1,14 @@
 import { createHash } from 'crypto';
+import {
+  CanonicalMemoryPolicyService,
+  classifyCodingMemoryWrite,
+  codingMemorySourceIsExternal,
+  codingMemorySourceIsTrusted,
+  codingMemoryWriteRequiresApproval,
+  renderCodingMemoryContext,
+  type CodingMemoryCandidate,
+  type MemoryPolicyPort,
+} from '@devseek-netai/shared';
 import { MemoryStore } from '../memory/memory-store';
 import { SensitiveMemoryGuard } from '../memory/sensitive-memory-guard';
 import type {
@@ -19,19 +29,19 @@ import type {
 import {
   buildContextAnchors,
   filterByContextAnchors,
-  filterLegacyMemoryMarkdownByContext,
   hasContextAnchors,
 } from './context-relevance';
 
 const DEFAULT_MEMORY_LIMIT = 20;
 const DEFAULT_MEMORY_MANAGEMENT_LIMIT = 100;
 const DEFAULT_CONTEXT_CHARS = 3000;
-const FILTERED_LEGACY_SCAN_CHARS = 12000;
+const NO_CONTEXT_MATCH = Symbol('no-context-match');
 
 export interface MemoryServiceDeps {
   workspaceRoot: string;
   store?: MemoryStore;
   guard?: SensitiveMemoryGuard;
+  policy?: MemoryPolicyPort;
   now?: () => number;
 }
 
@@ -62,12 +72,14 @@ export class MemoryService {
   private readonly guard: SensitiveMemoryGuard;
   private readonly workspaceRoot: string;
   private readonly now: () => number;
+  private readonly policy: MemoryPolicyPort;
 
   constructor(deps: MemoryServiceDeps) {
     this.workspaceRoot = deps.workspaceRoot;
     this.store = deps.store ?? new MemoryStore(deps.workspaceRoot);
     this.guard = deps.guard ?? new SensitiveMemoryGuard();
     this.now = deps.now ?? Date.now;
+    this.policy = deps.policy ?? new CanonicalMemoryPolicyService();
   }
 
   retrieve(query: MemoryQuery = {}): MemoryRecord[] {
@@ -120,17 +132,23 @@ export class MemoryService {
   acceptWriteProposal(proposal: MemoryWriteProposal): MemoryRecord {
     const normalized = normalizeMemoryWriteProposal(proposal);
     const check = this.guard.check(normalized.content);
-    if (!check.allowed) {
-      throw new Error(check.reason ?? '记忆内容疑似包含敏感信息');
-    }
-    if (
-      normalized.requiresUserApproval
-      && normalized.provenance?.approvalState !== 'approved'
-    ) {
-      throw new Error('持久记忆写入需要用户审批');
+    const now = this.now();
+    const policyDecision = this.policy.assessWrite({
+      candidate: proposalToCodingMemoryCandidate(normalized, this.workspaceRoot, now),
+      workspaceRoot: this.workspaceRoot,
+      now,
+      sensitiveMatches: check.matches,
+    });
+    if (!policyDecision.allowed) {
+      if (policyDecision.reasonCodes.includes('sensitive-content')) {
+        throw new Error(check.reason ?? '记忆内容疑似包含敏感信息');
+      }
+      if (policyDecision.reasonCodes.includes('approval-required')) {
+        throw new Error('持久记忆写入需要用户审批');
+      }
+      throw new Error(`记忆策略拒绝写入：${policyDecision.reasonCodes.join(', ')}`);
     }
 
-    const now = this.now();
     this.refreshExpiredMemoryRecords(now);
     const records = this.readNormalizedMemoryRecords();
     const record: MemoryRecord = {
@@ -244,38 +262,43 @@ export class MemoryService {
     return this.store.readLifecycleReceipts();
   }
 
+  retrieveCodingMemoryCandidates(options: MemoryPromptContextOptions = {}): CodingMemoryCandidate[] {
+    const records = this.retrieveRelevantRecords(options);
+    return records === NO_CONTEXT_MATCH
+      ? []
+      : records.map(record => recordToCodingMemoryCandidate(record, this.workspaceRoot));
+  }
+
   retrievePromptContext(options: MemoryPromptContextOptions | number = {}): string | null {
     const normalizedOptions = typeof options === 'number' ? { maxChars: options } : options;
     const maxChars = normalizedOptions.maxChars ?? DEFAULT_CONTEXT_CHARS;
-    const anchorQuery = stripInjectedSessionContextForMemoryAnchors(normalizedOptions.query ?? '');
+    const relevantRecords = this.retrieveRelevantRecords(normalizedOptions);
+    if (normalizedOptions.requireContextMatch && relevantRecords === NO_CONTEXT_MATCH) return null;
+    const records = relevantRecords === NO_CONTEXT_MATCH ? [] : relevantRecords;
+    const policyDecision = this.policy.selectContext({
+      candidates: records.map(record => recordToCodingMemoryCandidate(record, this.workspaceRoot)),
+      workspaceRoot: this.workspaceRoot,
+      now: this.now(),
+      maxEntries: DEFAULT_MEMORY_LIMIT,
+      maxChars,
+    });
+    return renderCodingMemoryContext(policyDecision) || null;
+  }
+
+  private retrieveRelevantRecords(options: MemoryPromptContextOptions): MemoryRecord[] | typeof NO_CONTEXT_MATCH {
+    const anchorQuery = stripInjectedSessionContextForMemoryAnchors(options.query ?? '');
     const anchors = buildContextAnchors({
       workspaceRoot: this.workspaceRoot,
       prompt: anchorQuery,
-      relatedPaths: normalizedOptions.relatedPaths ?? [],
+      relatedPaths: options.relatedPaths ?? [],
     });
     const hasAnchors = hasContextAnchors(anchors);
-    if (normalizedOptions.requireContextMatch && !hasAnchors) {
-      return null;
-    }
-
-    const activeRecords = filterByContextAnchors(
+    if (options.requireContextMatch && !hasAnchors) return NO_CONTEXT_MATCH;
+    return filterByContextAnchors(
       this.retrieve({ limit: DEFAULT_MEMORY_LIMIT }),
       anchors,
       (record) => `${record.content}\n${record.tags.join(' ')}`,
     );
-    const structured = activeRecords.length > 0
-      ? activeRecords.map((record) => renderStructuredMemoryPromptLine(record)).join('\n')
-      : '';
-    const legacyRaw = this.store.readLegacyMarkdown(hasAnchors ? Math.max(maxChars, FILTERED_LEGACY_SCAN_CHARS) : maxChars);
-    const legacy = legacyRaw
-      ? this.sanitizeLegacyMemoryMarkdownForPrompt(filterLegacyMemoryMarkdownByContext(legacyRaw, anchors))
-      : null;
-    const combined = [
-      structured ? `[DevSeek structured memory]\n${structured}` : '',
-      legacy ? `[DevSeek legacy memory]\n${legacy}` : '',
-    ].filter(Boolean).join('\n\n').trim();
-
-    return combined.slice(0, maxChars) || null;
   }
 
   ensureLegacyMemoryFile(): string {
@@ -308,15 +331,6 @@ export class MemoryService {
 
   private appendLifecycleReceipts(receipts: MemoryLifecycleReceipt[]): void {
     for (const receipt of receipts) this.store.appendLifecycleReceipt(receipt);
-  }
-
-  private appendLifecycleReceiptOnce(receipt: MemoryLifecycleReceipt): void {
-    const exists = this.store.readLifecycleReceipts().some((existing) => (
-      existing.action === receipt.action
-      && existing.recordId === receipt.recordId
-      && existing.contentHash === receipt.contentHash
-    ));
-    if (!exists) this.store.appendLifecycleReceipt(receipt);
   }
 
   private readNormalizedMemoryRecords(): MemoryRecord[] {
@@ -409,25 +423,6 @@ export class MemoryService {
     if (receipts.length === 0) return;
     this.store.writeAll(next);
     this.appendLifecycleReceipts(receipts);
-  }
-
-  private sanitizeLegacyMemoryMarkdownForPrompt(markdown: string): string | null {
-    const content = String(markdown || '').trim();
-    if (!content) return null;
-    const redaction = this.guard.redact(content);
-    if (redaction.redacted) {
-      this.appendLifecycleReceiptOnce(this.createLifecycleReceipt({
-        action: 'legacy-secret-redacted',
-        recordId: 'legacy-memory.md',
-        reason: 'legacy memory is untrusted; secrets redacted before prompt projection',
-        at: this.now(),
-        contentHash: hashText(content),
-        recordSnapshotHash: hashText(redaction.text),
-        sensitiveMatches: redaction.matches,
-        redactionCount: redaction.redactionCount,
-      }));
-    }
-    return redaction.text;
   }
 
   private invalidateLegacyImportedMemoryRecords(now = this.now()): void {
@@ -594,40 +589,12 @@ export function classifyMemoryWriteProposal(input: Partial<MemoryWriteProposal>)
   scope: MemoryScope;
   classification: MemoryClassification;
 } {
-  const requestedType = input.type ?? 'verified-experience';
-  const requestedScope = input.scope ?? 'repository';
   const source = input.source ?? { kind: 'agent' };
-  const externalContent = isExternalMemorySource(source);
-  let type = requestedType;
-  let scope = requestedScope;
-  let classification: MemoryClassification;
-
-  if (scope === 'session' || type === 'session-summary') {
-    classification = 'ephemeral';
-    scope = 'session';
-    type = 'session-summary';
-  } else if (scope === 'user' || type === 'user-preference') {
-    classification = 'preference';
-    scope = 'user';
-    type = 'user-preference';
-  } else if (type === 'project-rule' || source.kind === 'project-rule') {
-    classification = 'instruction';
-    type = 'project-rule';
-  } else if (scope === 'task' || source.kind === 'task-history') {
-    classification = 'task';
-    scope = 'task';
-  } else {
-    classification = 'workspace';
-  }
-
-  if (externalContent && (classification === 'instruction' || classification === 'preference')) {
-    // R3-05A: external content cannot become privileged memory.
-    classification = 'task';
-    scope = 'task';
-    type = 'verified-experience';
-  }
-
-  return { type, scope, classification };
+  return classifyCodingMemoryWrite({
+    type: input.type,
+    scope: input.scope,
+    sourceKind: source.kind,
+  });
 }
 
 export function requiresPersistentMemoryApproval(input: {
@@ -635,9 +602,11 @@ export function requiresPersistentMemoryApproval(input: {
   classification: MemoryClassification;
   source: MemorySource;
 }): boolean {
-  if (input.scope === 'session' || input.classification === 'ephemeral') return false;
-  if (input.source.kind === 'user') return false;
-  return true;
+  return codingMemoryWriteRequiresApproval({
+    scope: input.scope,
+    classification: input.classification,
+    sourceKind: input.source.kind,
+  });
 }
 
 function normalizeMemoryWriteProposal(
@@ -690,6 +659,51 @@ function normalizeMemoryProvenance(
   };
 }
 
+function proposalToCodingMemoryCandidate(
+  proposal: NormalizedMemoryWriteProposal,
+  workspaceRoot: string,
+  now: number,
+): CodingMemoryCandidate {
+  return {
+    memoryId: `proposal:${hashText(proposal.content)}`,
+    content: proposal.content,
+    scope: proposal.scope,
+    classification: proposal.classification,
+    sourceKind: proposal.source.kind,
+    ...(proposal.source.ref ? { sourceRef: proposal.source.ref } : {}),
+    status: 'pending',
+    approvalState: proposal.provenance.approvalState,
+    externalContent: proposal.provenance.externalContent,
+    trusted: proposal.provenance.trusted,
+    workspaceRoot,
+    createdAt: now,
+    updatedAt: now,
+    ...(proposal.ttl ? { expiresAt: now + proposal.ttl } : {}),
+  };
+}
+
+function recordToCodingMemoryCandidate(
+  record: MemoryRecord,
+  workspaceRoot: string,
+): CodingMemoryCandidate {
+  return {
+    memoryId: record.id,
+    content: record.content,
+    scope: record.scope,
+    classification: record.classification,
+    sourceKind: record.source.kind,
+    ...(record.source.ref ? { sourceRef: record.source.ref } : {}),
+    status: record.status,
+    approvalState: record.provenance.approvalState,
+    externalContent: record.provenance.externalContent,
+    trusted: record.provenance.trusted,
+    workspaceRoot,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    ...(record.ttl ? { expiresAt: record.createdAt + record.ttl } : {}),
+  };
+}
+
 function buildMemoryProvenance(
   source: MemorySource,
   requiresApproval: boolean,
@@ -724,15 +738,6 @@ function normalizeStoredMemoryRecord(record: MemoryRecord): MemoryRecord {
   return normalized;
 }
 
-function renderStructuredMemoryPromptLine(record: MemoryRecord): string {
-  return [
-    `- [${record.type}/${record.scope}/${record.classification}`,
-    `source=${record.source.kind}`,
-    `approval=${record.provenance.approvalState}]`,
-    record.content,
-  ].join(' ');
-}
-
 function confidenceForMemorySource(source: MemorySource, provenance?: MemoryProvenance): number {
   if (source.kind === 'user') return 1;
   if (provenance?.externalContent) return 0.4;
@@ -741,11 +746,11 @@ function confidenceForMemorySource(source: MemorySource, provenance?: MemoryProv
 }
 
 function isTrustedMemorySource(source: MemorySource): boolean {
-  return source.kind === 'user' || source.kind === 'project-rule' || source.kind === 'task-history';
+  return codingMemorySourceIsTrusted(source.kind);
 }
 
 function isExternalMemorySource(source: MemorySource): boolean {
-  return source.kind === 'external' || source.kind === 'legacy-import';
+  return codingMemorySourceIsExternal(source.kind);
 }
 
 function isLegacyImportedMemoryRecord(record: MemoryRecord): boolean {

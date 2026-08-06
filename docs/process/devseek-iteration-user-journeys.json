@@ -1,0 +1,117 @@
+{
+  "schema_version": "devseek.iteration-user-journeys/v1",
+  "purpose": "Separate permanent regression coverage from capability-specific user journeys added by each DevSeek convergence iteration.",
+  "history_start_iteration": "I10",
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "baseline": {
+    "role": "regression-only",
+    "source_path": "packages/shared/src/coding-conformance-fixtures.ts",
+    "test_path": "packages/headless/test/headless-coding-kernel.test.mjs",
+    "test_name": "Headless product entry settles five coding fixtures from isolated real workspaces",
+    "case_ids": [
+      "create-and-verify",
+      "modify-and-verify",
+      "verify-repair-reverify",
+      "permission-denied-no-effect",
+      "policy-refusal-no-mutation"
+    ],
+    "claim_limit": "Passing these fixed cases proves regression stability only; it cannot prove an iteration's newly implemented capability."
+  },
+  "iteration_policy": {
+    "minimum_new_cases": 1,
+    "case_id_must_start_with_iteration_id": true,
+    "case_id_must_prefix_test_name": true,
+    "case_ids_must_be_disjoint_from_baseline_and_other_iterations": true,
+    "case_scenarios_must_be_unique": true,
+    "every_claimed_capability_requires_a_case": true,
+    "verified_cases_require_source_bound_automated_evidence": true,
+    "verified_cases_require_unique_test_evidence": true,
+    "fixed_baseline_cannot_substitute_for_iteration_evidence": true
+  },
+  "iterations": [
+    {
+      "iteration_id": "I10",
+      "status": "verified-local",
+      "goal": "Converge canonical memory authority and durable checkpoint ownership across product surfaces.",
+      "delta_from_baseline": "Adds memory authority, sensitive persistence, legacy-memory migration, sealed prompt projection, and interruption/resume behaviors absent from the five fixed coding fixtures.",
+      "fixture_path": "code/devseek-tests/memory-checkpoint/scenario.json",
+      "capability_ids": [
+        "C11-CHECKPOINT",
+        "C12-MEMORY-POLICY"
+      ],
+      "cases": [
+        {
+          "case_id": "I10-MEM-01",
+          "capability_ids": ["C12-MEMORY-POLICY"],
+          "surface": "headless",
+          "user_action": "Run a review while an external page attempts to persist an instruction and a user preference is also available.",
+          "expected_outcomes": [
+            "The external instruction is rejected with external-authority-elevation.",
+            "The user preference remains memory authority and is the only selected entry."
+          ],
+          "evidence": {
+            "test_path": "packages/headless/test/headless-memory-checkpoint-journeys.test.mjs",
+            "test_name": "I10-MEM-01 user journey: external memory cannot become an instruction"
+          }
+        },
+        {
+          "case_id": "I10-MEM-02",
+          "capability_ids": ["C12-MEMORY-POLICY"],
+          "surface": "vscode",
+          "user_action": "Ask DevSeek to persist memory containing a token-shaped secret.",
+          "expected_outcomes": [
+            "The write is rejected before storage even when persistence would otherwise be allowed.",
+            "No structured memory record is created."
+          ],
+          "evidence": {
+            "test_path": "packages/vscode-extension/test/unit/memory-service.test.mjs",
+            "test_name": "I10-MEM-02 user journey: sensitive persistent memory is blocked before storage"
+          }
+        },
+        {
+          "case_id": "I10-MEM-03",
+          "capability_ids": ["C12-MEMORY-POLICY"],
+          "surface": "vscode",
+          "user_action": "Open a repository that still contains legacy .devseek/memory.md content.",
+          "expected_outcomes": [
+            "Legacy markdown is not injected into the model prompt automatically.",
+            "Migration into structured memory still requires policy evaluation and approval."
+          ],
+          "evidence": {
+            "test_path": "packages/vscode-extension/test/unit/memory-service.test.mjs",
+            "test_name": "I10-MEM-03 user journey: legacy markdown never enters prompt context automatically"
+          }
+        },
+        {
+          "case_id": "I10-MEM-04",
+          "capability_ids": ["C12-MEMORY-POLICY"],
+          "surface": "vscode",
+          "user_action": "Run a canonical VS Code task while an approved user memory and an external instruction-shaped memory are both available.",
+          "expected_outcomes": [
+            "The prompt consumes the kernel's sealed memory decision without reading the store again.",
+            "Only the user memory is projected and every projected entry remains explicitly below instruction authority."
+          ],
+          "evidence": {
+            "test_path": "packages/vscode-extension/test/unit/coding-kernel-execution.test.mjs",
+            "test_name": "I10-MEM-04 user journey: VS Code prompt consumes the sealed memory decision exactly once"
+          }
+        },
+        {
+          "case_id": "I10-CHK-01",
+          "capability_ids": ["C11-CHECKPOINT"],
+          "surface": "headless",
+          "user_action": "Interrupt a two-stage task after the first stage, then resume it in a new run.",
+          "expected_outcomes": [
+            "The sealed checkpoint restores only the pending stage and does not replay the completed stage.",
+            "The resumed run is explicitly marked as requiring revalidation."
+          ],
+          "evidence": {
+            "test_path": "packages/headless/test/headless-memory-checkpoint-journeys.test.mjs",
+            "test_name": "I10-CHK-01 user journey: interrupted work resumes pending units without replay"
+          }
+        }
+      ]
+    }
+  ]
+}

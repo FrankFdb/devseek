@@ -1,6 +1,7 @@
 import {
   projectSettledCodingConformanceRun,
   renderCodingContextGraphSummary,
+  renderCodingMemoryContext,
   type CodingConformanceProjection,
   type CodingKernelRuntimeRequest,
   type CodingKernelRuntimeOutput,
@@ -53,6 +54,7 @@ export interface CanonicalKernelLoopRequest {
   readonly memoryRelatedPaths: readonly string[];
   readonly semanticContract?: TaskSemanticContract;
   readonly recoveryContextText: string;
+  readonly memoryContextText: string;
 }
 
 export interface CodingKernelLoopPorts {
@@ -79,6 +81,15 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
       ? getPendingKernelRecoveryTasks(request.recovery)
       : [];
     let terminalCheckpointEmitted = false;
+    let checkpointEpoch = request.recovery?.kind === 'checkpoint-resume'
+      ? request.recovery.checkpoint.epoch
+      : 0;
+    let parentCheckpointId = request.recovery?.kind === 'checkpoint-resume'
+      ? request.recovery.checkpoint.checkpointId
+      : undefined;
+    const completedUnitBase = request.recovery?.kind === 'checkpoint-resume'
+      ? request.recovery.checkpoint.completedUnitCount
+      : 0;
     const originalCheckpoint = request.callbacks.onTaskCheckpoint;
     const callbacks: AgentLoopCallbacks = {
       ...request.callbacks,
@@ -87,7 +98,23 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
           if (firstUnfinishedIndex === null || reason === 'paused' || reason === 'completed') {
             terminalCheckpointEmitted = true;
           }
-          await originalCheckpoint(firstUnfinishedIndex, remainingTasks, reason);
+          const checkpoint = firstUnfinishedIndex !== null && remainingTasks.length > 0
+            ? kernelRequest.checkpoint.create({
+                epoch: ++checkpointEpoch,
+                completedUnitCount: completedUnitBase + Math.max(0, Math.trunc(firstUnfinishedIndex)),
+                pendingUnits: remainingTasks.map(task => ({
+                  id: task.id,
+                  description: task.desc,
+                  action: task.action,
+                  target: task.visibleTarget || task.file || 'Agent task',
+                })),
+                reason: reason === 'paused' ? 'paused' : 'progress',
+                evidenceRefs: kernelRequest.resume?.evidenceRefs ?? [],
+                ...(parentCheckpointId ? { parentCheckpointId } : {}),
+              })
+            : undefined;
+          if (checkpoint) parentCheckpointId = checkpoint.checkpointId;
+          await originalCheckpoint(firstUnfinishedIndex, remainingTasks, reason, checkpoint);
         },
       } : {}),
     };
@@ -107,6 +134,7 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
         memoryRelatedPaths: request.memoryRelatedPaths ?? [],
         semanticContract: request.semanticContract,
         recoveryContextText,
+        memoryContextText: renderCodingMemoryContext(kernelRequest.memoryPolicy),
       });
       const completionDecision = this.completion.decide({
         runId: kernelRequest.runId,
@@ -130,13 +158,13 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
       const settledResult: AgentLoopResult = { ...result, completionDecision, codingConformance };
       if (request.recovery && originalCheckpoint && !terminalCheckpointEmitted) {
         if (completionDecision.status !== 'completed') {
-          await originalCheckpoint(
-            request.recovery.startFromIndex,
+          await callbacks.onTaskCheckpoint?.(
+            0,
             pendingRecoveryTasks,
             'paused',
           );
         } else {
-          await originalCheckpoint(null, [], 'completed');
+          await callbacks.onTaskCheckpoint?.(null, [], 'completed');
         }
       }
       return {
@@ -147,8 +175,8 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
       };
     } catch (error) {
       if (request.recovery && originalCheckpoint && !terminalCheckpointEmitted) {
-        await originalCheckpoint(
-          request.recovery.startFromIndex,
+        await callbacks.onTaskCheckpoint?.(
+          0,
           pendingRecoveryTasks,
           'paused',
         );

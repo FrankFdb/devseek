@@ -12,6 +12,7 @@ import type {
   CodingCompletionAcceptanceDecision,
   CodingCompletionDecision,
   CodingConformanceProjection,
+  CodingCheckpoint,
   CodingToolAuthorityReceipt,
   CodingToolExecutionReceipt,
   CodingToolHostResult,
@@ -70,6 +71,7 @@ export interface AgentLoopCallbacks {
     completedUpToIndex: number | null,
     remainingTasks: AgentTask[],
     reason?: 'progress' | 'paused' | 'completed',
+    checkpoint?: CodingCheckpoint,
   ) => void | Promise<void>;
   /**
    * L-3: AI called task_complete — terminate the agent loop.

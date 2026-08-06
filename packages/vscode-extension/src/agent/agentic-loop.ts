@@ -12,7 +12,6 @@ import type {
   CodingWorkspaceMutationReceipt,
 } from '@devseek-netai/shared';
 import { type ChatMessage } from '../llm/types';
-import { getProjectMemorySync } from '../project-rules';
 import type { ExecutionMode } from '../intent/intent-types';
 import type { CppValidationPolicy } from '../validation-planner';
 import { routeTaskSemanticContract } from '../task-intent-router';
@@ -273,6 +272,7 @@ export async function runAgenticLoop(
 ): Promise<AgentLoopResult> {
   callbacks = { ...callbacks, executionMode: workflowMode };
   const recoveryContextText = executionContext.recoveryContextText?.trim() ?? '';
+  const memoryContextText = executionContext.memoryContextText?.trim() ?? '';
   const writeAuthority = createSemanticExecutionWriteAuthority({
     userPrompt,
     callbacks,
@@ -296,10 +296,6 @@ export async function runAgenticLoop(
   }
 
   const rules = writeAuthority.projectInstructionsText || null;
-  const memory = getProjectMemorySync({
-    prompt: userPrompt,
-    relatedPaths: [...new Set([...contextFiles, ...memoryRelatedPaths].filter(Boolean))],
-  });
 
   const effectiveTaskIntent = routeTaskSemanticContract(
     writeAuthority.semanticContract,
@@ -310,7 +306,7 @@ export async function runAgenticLoop(
     contextFiles,
     callbacks.mcpToolRefs,
     rules ?? undefined,
-    memory ?? undefined,
+    memoryContextText || undefined,
     workflowMode,
     effectiveTaskIntent,
   );

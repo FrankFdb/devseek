@@ -1,4 +1,5 @@
 import type { AgentTask } from '../agent-task-decomposer';
+import type { CodingCheckpoint } from '@devseek-netai/shared';
 import {
   createCheckpointKernelRecovery,
   type CheckpointKernelRecovery,
@@ -9,7 +10,27 @@ export const CODING_KERNEL_ROUTE_DECISION_VERSION = 'devseek.coding-kernel-route
 export interface CodingKernelCheckpointResume {
   readonly tasks: readonly AgentTask[];
   readonly startFromIndex: number;
+  readonly canonicalCheckpoint: CodingCheckpoint;
   readonly analysisContext?: string;
+}
+
+export interface CodingKernelStoredCheckpointResume {
+  readonly allTasks: readonly AgentTask[];
+  readonly startFromIndex: number;
+  readonly canonicalCheckpoint: CodingCheckpoint;
+}
+
+export function projectCodingKernelCheckpointResume(
+  checkpoint: CodingKernelStoredCheckpointResume | undefined,
+  analysisContext?: string,
+): CodingKernelCheckpointResume | undefined {
+  if (!checkpoint) return undefined;
+  return {
+    tasks: checkpoint.allTasks,
+    startFromIndex: checkpoint.startFromIndex,
+    canonicalCheckpoint: checkpoint.canonicalCheckpoint,
+    ...(analysisContext?.trim() ? { analysisContext: analysisContext.trim() } : {}),
+  };
 }
 
 export type CodingKernelRouteDecision =

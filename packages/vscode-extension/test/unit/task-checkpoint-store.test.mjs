@@ -4,6 +4,7 @@ import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { createCanonicalCheckpointFixture } from '../helpers/canonical-checkpoint-fixture.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
@@ -32,7 +33,7 @@ class MemoryStorage {
 }
 
 function checkpoint(overrides = {}) {
-  return {
+  const record = {
     userPrompt: 'continue task',
     displayPrompt: 'continue task',
     mode: 'fast',
@@ -43,6 +44,19 @@ function checkpoint(overrides = {}) {
     savedAt: 1_000,
     sessionId: 's1',
     ...overrides,
+  };
+  const canonicalStart = record.startFromIndex >= 0 && record.startFromIndex < record.allTasks.length
+    ? record.startFromIndex
+    : 0;
+  return {
+    ...record,
+    canonicalCheckpoint: overrides.canonicalCheckpoint ?? createCanonicalCheckpointFixture({
+      tasks: record.allTasks,
+      startFromIndex: canonicalStart,
+      completedUnitCount: Math.max(0, canonicalStart),
+      workspaceRoot: record.wsRootFsPath,
+      userPrompt: record.userPrompt,
+    }),
   };
 }
 

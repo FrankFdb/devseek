@@ -1,5 +1,6 @@
 import type { AgentTask } from '../agent-task-decomposer';
 import type { AgentLoopCallbacks } from '../agent/loop-types';
+import type { CodingCheckpoint } from '@devseek-netai/shared';
 import type { TaskCheckpointRecord } from './task-checkpoint-store';
 
 interface AgentCheckpointCallbackInput {
@@ -15,7 +16,7 @@ interface AgentCheckpointCallbackInput {
 export function createAgentCheckpointCallback(
   input: AgentCheckpointCallbackInput,
 ): NonNullable<AgentLoopCallbacks['onTaskCheckpoint']> {
-  return async (firstUnfinishedIndex, remainingTasks, reason = 'progress') => {
+  return async (firstUnfinishedIndex, remainingTasks, reason = 'progress', canonicalCheckpoint?: CodingCheckpoint) => {
     if (firstUnfinishedIndex === null) {
       await input.save(null);
       input.postMessage({ type: 'agentCheckpointCleared' });
@@ -27,7 +28,13 @@ export function createAgentCheckpointCallback(
       input.postMessage({ type: 'agentCheckpointCleared' });
       return;
     }
-    const completedBeforePending = Math.max(0, Math.trunc(firstUnfinishedIndex));
+    if (!canonicalCheckpoint) {
+      throw new Error('agent-checkpoint:missing-canonical-checkpoint');
+    }
+    if (canonicalCheckpoint.pendingUnits.map(unit => unit.id).join('\n') !== pendingTasks.map(task => task.id).join('\n')) {
+      throw new Error('agent-checkpoint:pending-task-binding-mismatch');
+    }
+    const completedBeforePending = canonicalCheckpoint.completedUnitCount;
     const savedAt = Date.now();
     const pauseReason = reason === 'paused'
       ? `Agent execution paused with ${pendingTasks.length} unfinished task(s).`
@@ -46,6 +53,7 @@ export function createAgentCheckpointCallback(
       completedCount: 0,
       savedAt,
       sessionId: input.sessionId,
+      canonicalCheckpoint,
       ...(pauseReason ? { pauseReason } : {}),
     });
     if (reason === 'paused') {
@@ -58,6 +66,7 @@ export function createAgentCheckpointCallback(
         userPrompt: input.displayPrompt,
         savedAt,
         pauseReason,
+        checkpointId: canonicalCheckpoint.checkpointId,
       });
     }
   };
