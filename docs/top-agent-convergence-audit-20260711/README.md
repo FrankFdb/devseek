@@ -40,7 +40,7 @@ devseek_governance:
 
 **最开始的最终目的尚未达成。**
 
-文档包已经完成诊断、对标、目标架构和资格方法设计，C0 本地可证地基也已接线。VS Code、CLI、Headless 已共用 canonical Coding Kernel 与 11 个收敛语义域，五类场景的真实工作区产品路径也已通过跨 Surface 联合验收；C1～C14 已完成 C1 全部四项、C2 Orientation 与 C12 RunEvidenceRetention 共六项接线，但其余 63 项能力、长任务、完整用户路线和密封 holdout 资格尚未完成，因此当前不能宣称 DevSeek 已达到顶级编程智能体目标。
+文档包已经完成诊断、对标、目标架构和资格方法设计，C0 本地可证地基也已接线。VS Code、CLI、Headless 已共用 canonical Coding Kernel 与 11 个收敛语义域，五类场景的真实工作区产品路径也已通过跨 Surface 联合验收；C1～C14 已完成 C1/C2 全部六项与 C12 RunEvidenceRetention 共七项接线，但其余 62 项能力、长任务、完整用户路线和密封 holdout 资格尚未完成，因此当前不能宣称 DevSeek 已达到顶级编程智能体目标。
 
 | 原始目的 | 当前判定 | 主要证据 |
 | --- | --- | --- |
@@ -49,14 +49,14 @@ devseek_governance:
 | 定义单一执行内核与完整生命周期 | `已完成设计` | 03、04、08 已定义目标、能力 DAG 和里程碑 |
 | 建立机器账本、证据协议和 fail-closed 裁决 | `本地实现完成，未取得资格` | C0 `7/7 wired`；Gate 0 local conformance `PASSED`；claims `0` |
 | 将 VS Code、CLI、Headless 切到同一 Coding Kernel | `本地产品责任已完成` | 三 Surface 共用 canonical Kernel、TaskContract、Tool、Mutation、Verification、Completion；五类真实工作区产品场景联合等价，legacy execution owner=0 |
-| 让 C1～C14 产品能力达到可声明等级 | `进行中` | 69 项中 C1 4 项、`C2-ORIENTATION` 与 `C12-RUN-EVIDENCE-RETENTION` 已 `wired`，其余 63 项为 `proposed`，无 qualification claim |
+| 让 C1～C14 产品能力达到可声明等级 | `进行中` | 69 项中 C1/C2 6 项与 `C12-RUN-EVIDENCE-RETENTION` 已 `wired`，其余 62 项为 `proposed`，无 qualification claim |
 | 完成正式项目、真实 Provider 与 holdout 顶级资格 | `未完成` | Gate 0 `NOT_PASSED`，6 个外部 authority blocker，R1 qualification `NOT_STARTED` |
 
 ## 2. 当前机器事实
 
 | 范围 | 2026-08-06 观测 |
 | --- | --- |
-| Capability ledger | 76 项能力、15 个域；C0 7 项与 C1/C2/C12 六项共 13 项 `wired`；C1～C14 其余 63 项 `proposed`；claims=0 |
+| Capability ledger | 76 项能力、15 个域；C0 7 项与 C1/C2/C12 七项共 14 项 `wired`；C1～C14 其余 62 项 `proposed`；claims=0 |
 | Gate 0 | local conformance `PASSED`；implementation `7/7`；repository blocker `0`；external blocker `6`；最终 `NOT_PASSED` |
 | Qualification runner | 19 个入口；1 个本地非资格 runner、10 个 catalog fixture、4 个 production disabled、4 个 historical disabled |
 | R4 | 6/6 原始 leaf completed，blocked=0；current artifact/install/runtime 与 v2 冻结候选精确绑定，stable runtime=1、window-sensitive leaf=0 |
@@ -69,7 +69,7 @@ devseek_governance:
 必须同时保留三个事实：
 
 1. R1～R3 的大量产品侧原子卡确实有本地测试、发包和 controlled VSIX 回执，不能抹消这些实现进展。
-2. 这些回执一直声明 `qualification_effect=NONE`；能力账本只将具备 owner、产品接线和机器证据的六项 C1～C14 能力提升为 `wired`，不能从“作业卡 PASS”批量推导其余能力已完成。
+2. 这些回执一直声明 `qualification_effect=NONE`；能力账本只将具备 owner、产品接线和机器证据的七项 C1～C14 能力提升为 `wired`，不能从“作业卡 PASS”批量推导其余能力已完成。
 3. 当前 process baseline 已由简短 `PLAN-当前收敛迭代计划.md` 唯一承接；14 号只保留历史回执并已归档，计划与日志责任不再混写。
 
 ## 3. 核心缺口
@@ -90,7 +90,7 @@ devseek_governance:
 
 ### 3.3 产品能力和资格尚未对齐
 
-- C1～C14 其余 63 项产品实现需逐项回填“实现 owner 可达、全入口接线、失败语义、测试证据”，再由账本判定 `proposed -> implemented -> wired`。
+- C1～C14 其余 62 项产品实现需逐项回填“实现 owner 可达、全入口接线、失败语义、测试证据”，再由账本判定 `proposed -> implemented -> wired`。
 - Gate 0 缺少独立受保护 profile、aggregator、签名 evidence digest binding、WORM/retention、trusted time 和 7 个 exact claims。
 - R4 headed 真实用户路线已获得“外部资格前置满足后执行一次并保留窗口/页面”的条件授权；前置尚未满足，RC smoke 和 L6 holdout 均未执行，不能用 deterministic 或 controlled fake Bridge 结果替代。
 
@@ -131,7 +131,7 @@ devseek_governance:
 
 | ID | 任务 | 完成条件 |
 | --- | --- | --- |
-| `CAP-01` | 对 C1～C14 剩余 63 项产品能力逐项反查 | 每项有 owner、入口可达性、失败/恢复语义、验证证据和真实 implementation state；不按历史卡名批量提升 |
+| `CAP-01` | 对 C1～C14 剩余 62 项产品能力逐项反查 | 每项有 owner、入口可达性、失败/恢复语义、验证证据和真实 implementation state；不按历史卡名批量提升 |
 | `CAP-02` | 补齐 P0 黄金旅程 | D-G01～D-G10 的写入、修改、运行、失败、权限拒绝、cancel/resume、CAS 冲突在共享 conformance suite 下通过 |
 | `CAP-03` | 补齐 P1 软件工程能力 | 指令优先级、repo/symbol map、source grounding、设计影响、Provider normalization、review/delivery、memory/skills/hooks/MCP 分别有验收 profile |
 | `CAP-04` | 完成 Surface 和平台矩阵 | VS Code/CLI/Headless 与 Linux/macOS/Windows/WSL 的适用边界和降级都有机器证据 |

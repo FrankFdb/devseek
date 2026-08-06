@@ -82,6 +82,14 @@ export function assertCodingOrientationDecision(value: CodingOrientationDecision
   return freezeDecision({ ...value, prompt, mode, reasonCodes: uniqueReasons(value.reasonCodes) });
 }
 
+export function assertCodingOrientationPrompt(
+  decision: CodingOrientationDecision,
+  prompt: string,
+): void {
+  const canonical = assertCodingOrientationDecision(decision);
+  if (canonical.prompt !== normalizePrompt(prompt)) orientationFailure('prompt-mismatch');
+}
+
 function resolveMode(
   prompt: string,
   hint: CodingTaskMode | undefined,

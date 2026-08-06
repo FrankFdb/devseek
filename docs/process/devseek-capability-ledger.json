@@ -1475,10 +1475,43 @@
         },
         "contract_sha256": "2f7c8833fb07d3515342649b184c9079f84a5ed5c1cea952b384dfa4a25ae55e"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-task-contract.ts"
+        },
+        {
+          "role": "canonical-resolver-wiring",
+          "path": "packages/shared/src/coding-task-contract-resolver.ts"
+        },
+        {
+          "role": "canonical-kernel-wiring",
+          "path": "packages/shared/src/coding-kernel.ts"
+        },
+        {
+          "role": "vscode-product-projection",
+          "path": "packages/vscode-extension/src/app/coding-kernel-task-contract.ts"
+        },
+        {
+          "role": "cli-product-projection",
+          "path": "packages/cli/src/cli-coding-kernel-task-contract.ts"
+        },
+        {
+          "role": "headless-public-contract",
+          "path": "packages/headless/src/headless-coding-kernel.ts"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/coding-task-contract.test.mjs"
+        },
+        {
+          "role": "machine-wiring-evidence",
+          "path": "docs/process/devseek-kernel-prep-owner-baseline.json"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C2-ORIENTATION",
@@ -1486,7 +1519,17 @@
           "required_implementation_state": "wired",
           "contract_sha256": "d8c86037c75a71ee7c0eda2ee5e00ea069b4a1dd48895be6ccedcb87b233b065"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run verify:kernel-prep-owner-baseline",
+          "npm run shared:test",
+          "npm run cli:test",
+          "npm run headless:test",
+          "node --test packages/vscode-extension/test/unit/task-contract-acceptance.test.mjs packages/vscode-extension/test/unit/coding-conformance-development-baseline.test.mjs"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C3-ENGINEERING-ORIENTATION",
@@ -4236,5 +4279,5 @@
       ]
     }
   ],
-  "ledger_sha256": "61ac1f4b0749aaade170ccb4fbacd9c516db85dbe1bed6f09b24a2286b55eafe"
+  "ledger_sha256": "2d5d8b9ed35dfb54488e0e131149517c03ac5b8cb46e9962f2af20569560a002"
 }

@@ -115,6 +115,17 @@ test('CanonicalCodingKernel fails closed before invoking runtime for invalid rou
   });
 
   await assert.rejects(kernel.execute(request({ route: 'legacy-planned' })), /unsupported-route/u);
+  const otherContract = buildCodingKernelTaskContract({
+    goal: 'Fix src/other.ts and verify it',
+    mode: 'change',
+    deliverables: [{ id: 'source', kind: 'source-change', path: 'src/other.ts' }],
+    acceptance: [{ id: 'verified', statement: 'The other source change passes verification.' }],
+    provenanceRefs: ['user-prompt'],
+  });
+  await assert.rejects(
+    kernel.execute(request({ taskContract: otherContract })),
+    /coding-orientation:prompt-mismatch/u,
+  );
   const controller = new AbortController();
   controller.abort();
   await assert.rejects(kernel.execute(request({ signal: controller.signal })), error => {

@@ -1,6 +1,6 @@
 {
-  "schema_version": "devseek.kernel-prep-owner-baseline/v15",
-  "baseline_id": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v15",
+  "schema_version": "devseek.kernel-prep-owner-baseline/v16",
+  "baseline_id": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v16",
   "purpose": "Track product-route and semantic-owner convergence without asserting qualification or coupling local iteration to Gate 0.",
   "qualification_eligible": false,
   "qualification_effect": "NONE",
@@ -136,18 +136,18 @@
     },
     {
       "domain_id": "canonical-task-contract",
-      "target_port": "CodingKernelTaskContract",
+      "target_port": "TaskContractPort",
       "target_owner_count": 1,
       "current_owner_count": 1,
       "current_owners": [
         {
-          "owner_id": "shared-CodingKernelTaskContract",
+          "owner_id": "shared-CanonicalTaskContractService",
           "surfaces": [
             "vscode",
             "cli",
             "headless"
           ],
-          "source_ref": "packages/shared/src/coding-kernel.ts"
+          "source_ref": "packages/shared/src/coding-task-contract.ts"
         }
       ],
       "missing_surfaces": [],
@@ -298,7 +298,7 @@
     "cross_surface_kernel_routes": 4,
     "semantic_domains": 11,
     "converged_semantic_domains": 11,
-    "source_checks": 83,
+    "source_checks": 84,
     "failed_source_checks": 0
   },
   "source_checks": [
@@ -353,28 +353,50 @@
       "includes": [
         "CODING_KERNEL_REQUEST_VERSION = 'devseek.coding-kernel-request/v1'",
         "CODING_KERNEL_OUTPUT_VERSION = 'devseek.coding-kernel-output/v1'",
-        "CODING_KERNEL_TASK_CONTRACT_VERSION = 'devseek.coding-kernel-task-contract/v1'",
         "export interface CodingKernelExecutionRequest<TRuntimeContext>",
         "export interface CodingKernelExecutionOutput<TResult>",
         "export interface CodingKernelRuntimePort<TRuntimeContext, TResult>",
         "export class CanonicalCodingKernel<TRuntimeContext, TResult>",
         "new CanonicalRunLifecycleService()",
         "new CanonicalSettlementDecisionService()",
+        "new CanonicalTaskContractService()",
+        "TASK_CONTRACT.snapshot(request.taskContract)",
+        "assertCodingOrientationPrompt(taskContract.orientation, request.userPrompt)",
         "lifecycle.beginExecution()",
         "lifecycle.settle(runtimeOutput.status)",
         "lifecycle: lifecycleSnapshot",
         "status: settlement.status",
         "settlement,",
         "orientation: taskContract.orientation",
-        "assertCodingOrientationDecision(input.orientation)",
-        "coding-kernel-task-contract:orientation-mode-mismatch",
-        "export function projectCodingKernelTaskContract(",
         "if (request.route !== 'canonical')",
         "coding-kernel-execution:unsupported-route"
       ],
       "excludes": [
         "legacy-planned",
         "CliLegacyCodingLoop"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "shared-canonical-task-contract-owner",
+      "path": "packages/shared/src/coding-task-contract.ts",
+      "includes": [
+        "CODING_KERNEL_TASK_CONTRACT_VERSION = 'devseek.coding-kernel-task-contract/v1'",
+        "export interface TaskContractPort",
+        "export class CanonicalTaskContractService implements TaskContractPort",
+        "build(input: BuildCodingKernelTaskContractInput)",
+        "snapshot(contract: CodingKernelTaskContract)",
+        "project(contract: CodingKernelTaskContract)",
+        "orientation.mode !== mode",
+        "export function buildCodingKernelTaskContract(",
+        "export function snapshotCodingKernelTaskContract(",
+        "export function projectCodingKernelTaskContract(",
+        "coding-kernel-task-contract:"
+      ],
+      "excludes": [
+        "from 'vscode'",
+        "CodingKernelSurface",
+        "CanonicalCodingKernel"
       ],
       "passed": true
     },
@@ -641,6 +663,7 @@
         "export * from './coding-conformance';",
         "export * from './coding-conformance-fixtures';",
         "export * from './coding-conformance-projection';",
+        "export * from './coding-task-contract';",
         "export * from './coding-task-contract-resolver';",
         "export * from './coding-terminal-effects';",
         "export * from './coding-kernel';",
@@ -1638,5 +1661,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "8d532caa998ac96f19c5abc63c812f7aa853eb087d093d581c61dd39366c9844"
+  "baseline_sha256": "188812a80d4b051a12be2bbf8d41c9bbf6bb77b845fa4fbef7056134b34b8649"
 }

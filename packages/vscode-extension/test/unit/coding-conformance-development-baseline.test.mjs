@@ -18,6 +18,7 @@ import {
   buildCodingKernelTaskContract,
   evaluateCodingConformanceFixture,
   isSecretHarvestingRefusalTaskContract,
+  resolveCodingOrientationDecision,
 } from '../../../shared/dist/index.js';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
@@ -269,6 +270,10 @@ function routeInput(recovery, fixture) {
     taskContract: buildCodingKernelTaskContract({
       goal: fixture.expected.taskContract.goal,
       mode: fixture.expected.taskContract.mode,
+      orientation: resolveCodingOrientationDecision({
+        prompt: fixture.prompt,
+        modeHint: fixture.expected.taskContract.mode,
+      }),
       include: fixture.expected.taskContract.scope.include,
       exclude: fixture.expected.taskContract.scope.exclude,
       deliverables: fixture.expected.taskContract.deliverables,

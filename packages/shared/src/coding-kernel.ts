@@ -1,9 +1,4 @@
-import type {
-  CodingDeliverableKind,
-  CodingTaskContractProjection,
-  CodingTaskMode,
-  CodingTerminalStatus,
-} from './coding-conformance';
+import type { CodingTerminalStatus } from './coding-conformance';
 import {
   CanonicalRunLifecycleService,
   type CodingRunLifecycleSnapshot,
@@ -14,57 +9,29 @@ import {
   type CodingSettlementDecision,
 } from './coding-settlement';
 import {
-  assertCodingOrientationDecision,
-  resolveCodingOrientationDecision,
+  CODING_KERNEL_TASK_CONTRACT_VERSION,
+  CanonicalTaskContractService,
+  type CodingKernelTaskContract,
+} from './coding-task-contract';
+import {
+  assertCodingOrientationPrompt,
   type CodingOrientationDecision,
 } from './coding-orientation';
 
+export {
+  CODING_KERNEL_TASK_CONTRACT_VERSION,
+  CanonicalTaskContractService,
+  buildCodingKernelTaskContract,
+  projectCodingKernelTaskContract,
+  snapshotCodingKernelTaskContract,
+  type BuildCodingKernelTaskContractInput,
+  type CodingKernelTaskContract,
+  type TaskContractPort,
+} from './coding-task-contract';
+
 export const CODING_KERNEL_REQUEST_VERSION = 'devseek.coding-kernel-request/v1' as const;
 export const CODING_KERNEL_OUTPUT_VERSION = 'devseek.coding-kernel-output/v1' as const;
-export const CODING_KERNEL_TASK_CONTRACT_VERSION = 'devseek.coding-kernel-task-contract/v1' as const;
-
 export type CodingKernelSurface = 'vscode' | 'cli' | 'headless';
-
-export interface CodingKernelTaskContract {
-  readonly version: typeof CODING_KERNEL_TASK_CONTRACT_VERSION;
-  readonly goal: string;
-  readonly mode: CodingTaskMode;
-  readonly orientation: CodingOrientationDecision;
-  readonly scope: {
-    readonly include: readonly string[];
-    readonly exclude: readonly string[];
-  };
-  readonly deliverables: readonly {
-    readonly id: string;
-    readonly kind: CodingDeliverableKind;
-    readonly path?: string;
-  }[];
-  readonly constraints: readonly string[];
-  readonly acceptance: readonly {
-    readonly id: string;
-    readonly statement: string;
-  }[];
-  readonly provenanceRefs: readonly string[];
-}
-
-export interface BuildCodingKernelTaskContractInput {
-  readonly goal: string;
-  readonly mode: CodingTaskMode;
-  readonly orientation?: CodingOrientationDecision;
-  readonly include?: readonly string[];
-  readonly exclude?: readonly string[];
-  readonly deliverables: readonly {
-    readonly id: string;
-    readonly kind: CodingDeliverableKind;
-    readonly path?: string;
-  }[];
-  readonly constraints?: readonly string[];
-  readonly acceptance: readonly {
-    readonly id: string;
-    readonly statement: string;
-  }[];
-  readonly provenanceRefs: readonly string[];
-}
 
 export interface CodingKernelExecutionRequest<TRuntimeContext> {
   readonly version: typeof CODING_KERNEL_REQUEST_VERSION;
@@ -127,6 +94,7 @@ export class CodingKernelExecutionError extends Error {
 
 const RUN_LIFECYCLE = new CanonicalRunLifecycleService();
 const SETTLEMENT = new CanonicalSettlementDecisionService();
+const TASK_CONTRACT = new CanonicalTaskContractService();
 
 /**
  * The product-level execution owner shared by every Surface. Runtime adapters
@@ -140,13 +108,14 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
     request: CodingKernelExecutionRequest<TRuntimeContext>,
   ): Promise<CodingKernelExecutionOutput<TResult>> {
     assertCanonicalRequest(request);
+    const taskContract = TASK_CONTRACT.snapshot(request.taskContract);
+    assertCodingOrientationPrompt(taskContract.orientation, request.userPrompt);
     const lifecycle = RUN_LIFECYCLE.start({ runId: request.runId, surface: request.surface });
     if (request.signal?.aborted) {
       lifecycle.settle('cancelled');
       throw lifecycleError('coding-kernel-execution:cancelled-before-start', lifecycle);
     }
 
-    const taskContract = snapshotTaskContract(request.taskContract);
     const runtimeRequest = Object.freeze({ ...request, taskContract });
     lifecycle.beginExecution();
     try {
@@ -206,64 +175,6 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function buildCodingKernelTaskContract(
-  input: BuildCodingKernelTaskContractInput,
-): CodingKernelTaskContract {
-  const goal = input.goal.trim();
-  const deliverables = input.deliverables.map(deliverable => ({
-    ...deliverable,
-    id: deliverable.id.trim(),
-    ...(deliverable.path?.trim() ? { path: deliverable.path.trim() } : {}),
-  }));
-  const acceptance = input.acceptance.map(criterion => ({
-    id: criterion.id.trim(),
-    statement: criterion.statement.trim(),
-  }));
-  const provenanceRefs = uniqueNonEmpty(input.provenanceRefs);
-  if (!goal) throw new Error('coding-kernel-task-contract:missing-goal');
-  const orientation = input.orientation
-    ? assertCodingOrientationDecision(input.orientation)
-    : resolveCodingOrientationDecision({ prompt: goal, modeHint: input.mode });
-
-  if (orientation.mode !== input.mode) throw new Error('coding-kernel-task-contract:orientation-mode-mismatch');
-  if (!uniqueIds(deliverables)) throw new Error('coding-kernel-task-contract:invalid-deliverables');
-  if (!uniqueIds(acceptance)) throw new Error('coding-kernel-task-contract:invalid-acceptance');
-  if (provenanceRefs.length === 0) throw new Error('coding-kernel-task-contract:missing-provenance');
-  if (acceptance.some(criterion => !criterion.statement)) {
-    throw new Error('coding-kernel-task-contract:empty-acceptance-statement');
-  }
-
-  return freezeTaskContract({
-    version: CODING_KERNEL_TASK_CONTRACT_VERSION,
-    goal,
-    mode: input.mode,
-    orientation,
-    scope: {
-      include: uniqueNonEmpty(input.include ?? []),
-      exclude: uniqueNonEmpty(input.exclude ?? []),
-    },
-    deliverables,
-    constraints: uniqueNonEmpty(input.constraints ?? []),
-    acceptance,
-    provenanceRefs,
-  });
-}
-
-export function projectCodingKernelTaskContract(
-  contract: CodingKernelTaskContract,
-): CodingTaskContractProjection {
-  const snapshot = snapshotTaskContract(contract);
-  return Object.freeze({
-    goal: snapshot.goal,
-    mode: snapshot.mode,
-    scope: snapshot.scope,
-    deliverables: snapshot.deliverables,
-    constraints: snapshot.constraints,
-    acceptance: snapshot.acceptance,
-    provenanceRefs: snapshot.provenanceRefs,
-  });
-}
-
 function assertCanonicalRequest(request: CodingKernelExecutionRequest<unknown>): void {
   if (!request || typeof request !== 'object') {
     throw new Error('coding-kernel-execution:invalid-request');
@@ -295,53 +206,4 @@ function assertTerminalStatus(status: unknown): asserts status is CodingTerminal
   if (status !== 'completed' && status !== 'failed' && status !== 'blocked' && status !== 'cancelled') {
     throw new Error('coding-kernel-execution:invalid-terminal-status');
   }
-}
-
-function uniqueIds(items: readonly { readonly id: string }[]): boolean {
-  return items.length > 0
-    && items.every(item => item.id.length > 0)
-    && new Set(items.map(item => item.id)).size === items.length;
-}
-
-function snapshotTaskContract(contract: CodingKernelTaskContract): CodingKernelTaskContract {
-  if (!Array.isArray(contract.scope?.include)
-    || !Array.isArray(contract.scope?.exclude)
-    || !Array.isArray(contract.deliverables)
-    || !Array.isArray(contract.constraints)
-    || !Array.isArray(contract.acceptance)
-    || !Array.isArray(contract.provenanceRefs)) {
-    throw new Error('coding-kernel-task-contract:invalid-shape');
-  }
-  return buildCodingKernelTaskContract({
-    goal: contract.goal,
-    mode: contract.mode,
-    orientation: contract.orientation,
-    include: contract.scope.include,
-    exclude: contract.scope.exclude,
-    deliverables: contract.deliverables,
-    constraints: contract.constraints,
-    acceptance: contract.acceptance,
-    provenanceRefs: contract.provenanceRefs,
-  });
-}
-
-function freezeTaskContract(contract: CodingKernelTaskContract): CodingKernelTaskContract {
-  const scope = Object.freeze({
-    include: Object.freeze([...contract.scope.include]),
-    exclude: Object.freeze([...contract.scope.exclude]),
-  });
-  const deliverables = Object.freeze(contract.deliverables.map(deliverable => Object.freeze({ ...deliverable })));
-  const acceptance = Object.freeze(contract.acceptance.map(criterion => Object.freeze({ ...criterion })));
-  return Object.freeze({
-    ...contract,
-    scope,
-    deliverables,
-    constraints: Object.freeze([...contract.constraints]),
-    acceptance,
-    provenanceRefs: Object.freeze([...contract.provenanceRefs]),
-  });
-}
-
-function uniqueNonEmpty(values: readonly string[]): string[] {
-  return [...new Set(values.map(value => value.trim()).filter(Boolean))];
 }

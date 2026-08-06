@@ -4,7 +4,7 @@
 
 - Schema: `devseek.capability-ledger/v1`
 - Capabilities: 76
-- Ledger SHA-256: `61ac1f4b0749aaade170ccb4fbacd9c516db85dbe1bed6f09b24a2286b55eafe`
+- Ledger SHA-256: `2d5d8b9ed35dfb54488e0e131149517c03ac5b8cb46e9962f2af20569560a002`
 - Qualification claim policy: `deny-until-signed-evidence-validator`
 
 | Capability | Priority | Applicability | Claim scopes | Implementation | Qualification | Authority port | Typed dependencies |
@@ -51,7 +51,7 @@
 | `C14-RC-ELIGIBILITY` | P0 | conditional | qualification-aggregate | proposed | — | `RcEligibilityPort` | C0-QUALIFICATION-AGGREGATOR (evidence/wired) |
 | `C14-RELEASE-DECISION` | P0 | conditional | qualification-aggregate | proposed | — | `QualificationReleasePort` | C14-HOLDOUT-BLIND-COMPARE (qualification/wired) |
 | `C2-ORIENTATION` | P0 | active | core-coding | wired | — | `OrientationDecisionPort` | C1-AGENT-COMMAND (control/wired) |
-| `C2-TASK-CONTRACT` | P0 | active | core-coding | proposed | — | `TaskContractPort` | C2-ORIENTATION (semantic/wired) |
+| `C2-TASK-CONTRACT` | P0 | active | core-coding | wired | — | `TaskContractPort` | C2-ORIENTATION (semantic/wired) |
 | `C3-CODEBASE-EXPLORATION` | P1 | active | core-coding | proposed | — | `CodebaseExplorationPort` | C3-ENGINEERING-ORIENTATION (semantic/wired) |
 | `C3-CONTEXT-GRAPH` | P1 | active | core-coding | proposed | — | `ContextGraphPort` | C2-TASK-CONTRACT (semantic/wired)<br>C3-CODEBASE-EXPLORATION (semantic/wired) |
 | `C3-CONTEXT-PROVENANCE` | P1 | active | core-coding | proposed | — | `ContextProvenancePort` | C3-CONTEXT-GRAPH (semantic/wired) |

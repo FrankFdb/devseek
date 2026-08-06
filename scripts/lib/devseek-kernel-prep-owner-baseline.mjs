@@ -3,8 +3,8 @@ import {
   sha256Object,
 } from './devseek-capability-ledger.mjs';
 
-export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v15';
-export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v15';
+export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v16';
+export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v16';
 
 const SOURCE_PATHS = Object.freeze({
   gate0: 'docs/process/devseek-gate0-decision-report.json',
@@ -19,6 +19,7 @@ const SOURCE_PATHS = Object.freeze({
   sharedCodingConformance: 'packages/shared/src/coding-conformance.ts',
   sharedCodingConformanceFixtures: 'packages/shared/src/coding-conformance-fixtures.ts',
   sharedCodingConformanceProjection: 'packages/shared/src/coding-conformance-projection.ts',
+  sharedTaskContract: 'packages/shared/src/coding-task-contract.ts',
   sharedTaskContractResolver: 'packages/shared/src/coding-task-contract-resolver.ts',
   sharedOrientation: 'packages/shared/src/coding-orientation.ts',
   sharedTerminalEffects: 'packages/shared/src/coding-terminal-effects.ts',
@@ -113,25 +114,37 @@ const SOURCE_CHECKS = Object.freeze([
   check('shared-canonical-coding-kernel', SOURCE_PATHS.sharedCodingKernel, [
     "CODING_KERNEL_REQUEST_VERSION = 'devseek.coding-kernel-request/v1'",
     "CODING_KERNEL_OUTPUT_VERSION = 'devseek.coding-kernel-output/v1'",
-    "CODING_KERNEL_TASK_CONTRACT_VERSION = 'devseek.coding-kernel-task-contract/v1'",
     'export interface CodingKernelExecutionRequest<TRuntimeContext>',
     'export interface CodingKernelExecutionOutput<TResult>',
     'export interface CodingKernelRuntimePort<TRuntimeContext, TResult>',
     'export class CanonicalCodingKernel<TRuntimeContext, TResult>',
     'new CanonicalRunLifecycleService()',
     'new CanonicalSettlementDecisionService()',
+    'new CanonicalTaskContractService()',
+    'TASK_CONTRACT.snapshot(request.taskContract)',
+    'assertCodingOrientationPrompt(taskContract.orientation, request.userPrompt)',
     'lifecycle.beginExecution()',
     'lifecycle.settle(runtimeOutput.status)',
     'lifecycle: lifecycleSnapshot',
     'status: settlement.status',
     'settlement,',
     'orientation: taskContract.orientation',
-    'assertCodingOrientationDecision(input.orientation)',
-    'coding-kernel-task-contract:orientation-mode-mismatch',
-    'export function projectCodingKernelTaskContract(',
     "if (request.route !== 'canonical')",
     'coding-kernel-execution:unsupported-route',
   ], ['legacy-planned', 'CliLegacyCodingLoop']),
+  check('shared-canonical-task-contract-owner', SOURCE_PATHS.sharedTaskContract, [
+    "CODING_KERNEL_TASK_CONTRACT_VERSION = 'devseek.coding-kernel-task-contract/v1'",
+    'export interface TaskContractPort',
+    'export class CanonicalTaskContractService implements TaskContractPort',
+    'build(input: BuildCodingKernelTaskContractInput)',
+    'snapshot(contract: CodingKernelTaskContract)',
+    'project(contract: CodingKernelTaskContract)',
+    'orientation.mode !== mode',
+    'export function buildCodingKernelTaskContract(',
+    'export function snapshotCodingKernelTaskContract(',
+    'export function projectCodingKernelTaskContract(',
+    'coding-kernel-task-contract:',
+  ], ["from 'vscode'", 'CodingKernelSurface', 'CanonicalCodingKernel']),
   check('shared-canonical-agent-command-owner', SOURCE_PATHS.sharedAgentCommand, [
     "AGENT_COMMAND_VERSION = 'devseek.agent-command/v1'",
     'export interface AgentCommandPort',
@@ -273,6 +286,7 @@ const SOURCE_CHECKS = Object.freeze([
     "export * from './coding-conformance';",
     "export * from './coding-conformance-fixtures';",
     "export * from './coding-conformance-projection';",
+    "export * from './coding-task-contract';",
     "export * from './coding-task-contract-resolver';",
     "export * from './coding-terminal-effects';",
     "export * from './coding-kernel';",
@@ -1105,8 +1119,8 @@ function buildSemanticDomains() {
     domain('orientation-decision', 'OrientationDecisionPort', [
       owner('shared-CanonicalOrientationDecisionService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedOrientation),
     ], []),
-    domain('canonical-task-contract', 'CodingKernelTaskContract', [
-      owner('shared-CodingKernelTaskContract', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedCodingKernel),
+    domain('canonical-task-contract', 'TaskContractPort', [
+      owner('shared-CanonicalTaskContractService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedTaskContract),
     ], []),
     domain('run-lifecycle', 'RunLifecyclePort', [
       owner('shared-CanonicalRunLifecycleService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedRunLifecycle),

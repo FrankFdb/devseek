@@ -50,7 +50,7 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     cross_surface_kernel_routes: 4,
     semantic_domains: 11,
     converged_semantic_domains: 11,
-    source_checks: 83,
+    source_checks: 84,
     failed_source_checks: 0,
   });
   assert.deepEqual(
@@ -103,6 +103,7 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
   const taskContractDomain = actual.semantic_domains.find(domain => domain.domain_id === 'canonical-task-contract');
   assert.equal(taskContractDomain.convergence_status, 'converged');
   assert.equal(taskContractDomain.current_owner_count, 1);
+  assert.equal(taskContractDomain.current_owners[0].owner_id, 'shared-CanonicalTaskContractService');
   assert.deepEqual(taskContractDomain.current_owners[0].surfaces, ['vscode', 'cli', 'headless']);
   assert.deepEqual(taskContractDomain.missing_surfaces, []);
   const lifecycleDomain = actual.semantic_domains.find(domain => domain.domain_id === 'run-lifecycle');
