@@ -4,7 +4,7 @@
 
 - Schema: `devseek.capability-ledger/v1`
 - Capabilities: 76
-- Ledger SHA-256: `76358b3b248e1934ac084114d9b55131ec528efdd9479b9cfe760b7838bc8787`
+- Ledger SHA-256: `b4bc037a9c39716238d3b3a10e488d7555b267567f77b8a6b7078eb296970f32`
 - Qualification claim policy: `deny-until-signed-evidence-validator`
 
 | Capability | Priority | Applicability | Claim scopes | Implementation | Qualification | Authority port | Typed dependencies |
@@ -19,7 +19,7 @@
 | `C1-AGENT-COMMAND` | P0 | active | core-coding | wired | — | `AgentCommandPort` | C1-RUN-LIFECYCLE (control/wired) |
 | `C1-RUN-LIFECYCLE` | P0 | active | core-coding | wired | — | `RunLifecyclePort` | C0-RUN-EVIDENCE-LEDGER (evidence/wired) |
 | `C1-SETTLEMENT` | P0 | active | core-coding | wired | — | `SettlementDecisionPort` | C1-RUN-LIFECYCLE (control/wired) |
-| `C1-SURFACE-ADAPTER-CONFORMANCE` | P0 | active | core-coding | proposed | — | `SurfaceAdapterConformancePort` | C1-RUN-LIFECYCLE (control/wired)<br>C1-AGENT-COMMAND (control/wired)<br>C1-SETTLEMENT (control/wired) |
+| `C1-SURFACE-ADAPTER-CONFORMANCE` | P0 | active | core-coding | wired | — | `SurfaceAdapterConformancePort` | C1-RUN-LIFECYCLE (control/wired)<br>C1-AGENT-COMMAND (control/wired)<br>C1-SETTLEMENT (control/wired) |
 | `C10-ARTIFACT-IDENTITY` | P0 | active | core-coding, safety | proposed | — | `ArtifactIdentityPort` | C9-BUILD-ORCHESTRATION (verification/wired)<br>C10-INDEPENDENT-REVIEW (delivery/wired) |
 | `C10-CI-DEPLOY-OBSERVE` | P2 | conditional | release-capable | proposed | — | `CiDeployObservePort` | C10-RELEASE-GATE (delivery/wired)<br>C7-EXTERNAL-EFFECT (authority/wired) |
 | `C10-DELIVERY-MANIFEST` | P0 | active | core-coding, safety | proposed | — | `DeliveryManifestPort` | C10-INDEPENDENT-REVIEW (delivery/wired)<br>C10-ARTIFACT-IDENTITY (delivery/wired) |

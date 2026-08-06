@@ -3,9 +3,6 @@ import {
   CODING_KERNEL_REQUEST_VERSION,
   CanonicalCodingKernel,
   CodingKernelExecutionError,
-  HEADLESS_SURFACE_CAPABILITIES,
-  createChatRequestCommand,
-  detectPlatformProfile,
   projectCodingKernelTaskContract,
   validateCodingConformanceProjection,
   type CodingConformanceObservedProjection,
@@ -18,6 +15,7 @@ import {
   HeadlessRunEvidence,
   type HeadlessRunEvidenceReceipt,
 } from './headless-run-evidence';
+import { HeadlessSurfaceAdapter } from './headless-surface-adapter';
 
 export interface HeadlessCodingRunInput<TRuntimeContext> {
   readonly runId: string;
@@ -54,22 +52,17 @@ export type HeadlessCodingExecutionOutput<TResult> = Omit<
 export class HeadlessCodingKernelExecutor<TRuntimeContext, TResult> {
   private readonly kernel: CanonicalCodingKernel<TRuntimeContext, HeadlessCodingRuntimeResult<TResult>>;
 
-  constructor(runtime: HeadlessCodingRuntimePort<TRuntimeContext, TResult>) {
+  constructor(
+    runtime: HeadlessCodingRuntimePort<TRuntimeContext, TResult>,
+    private readonly surface: HeadlessSurfaceAdapter = new HeadlessSurfaceAdapter(),
+  ) {
     this.kernel = new CanonicalCodingKernel(runtime);
   }
 
   async execute(
     input: HeadlessCodingRunInput<TRuntimeContext>,
   ): Promise<HeadlessCodingExecutionOutput<TResult>> {
-    const command = createChatRequestCommand({
-      surface: 'headless',
-      capabilities: HEADLESS_SURFACE_CAPABILITIES,
-      platform: detectPlatformProfile({
-        platform: process.platform,
-        env: process.env,
-        shellPath: process.env.SHELL ?? process.env.ComSpec,
-        workspaceKind: 'local',
-      }),
+    const command = this.surface.toChatCommand({
       prompt: input.userPrompt,
       commandId: `headless-${input.runId}`,
       request: {

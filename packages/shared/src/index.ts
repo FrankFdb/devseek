@@ -31,6 +31,7 @@ export * from './run-evidence-ledger';
 export * from './run-evidence-integration';
 export * from './run-evidence-migration';
 export * from './surface-adapter';
+export * from './surface-adapter-conformance';
 
 /** POST /chat 请求体 */
 export interface ChatRequest {

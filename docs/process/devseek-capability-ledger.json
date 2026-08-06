@@ -1307,10 +1307,39 @@
         },
         "contract_sha256": "3ed3b52727759895fde7223977772771677cd3bd68e706f7d5895b802a643ec6"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/surface-adapter-conformance.ts"
+        },
+        {
+          "role": "shared-surface-contract",
+          "path": "packages/shared/src/surface-adapter.ts"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/surface-adapter-conformance.test.mjs"
+        },
+        {
+          "role": "vscode-product-adapter",
+          "path": "packages/vscode-extension/src/ui/vscode-surface-adapter.ts"
+        },
+        {
+          "role": "cli-product-adapter",
+          "path": "packages/cli/src/cli-surface-adapter.ts"
+        },
+        {
+          "role": "headless-product-adapter",
+          "path": "packages/headless/src/headless-surface-adapter.ts"
+        },
+        {
+          "role": "machine-wiring-evidence",
+          "path": "docs/process/devseek-kernel-prep-owner-baseline.json"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C1-RUN-LIFECYCLE",
@@ -1330,7 +1359,17 @@
           "required_implementation_state": "wired",
           "contract_sha256": "26b3a0d6c6190ccd11f95381a26078363b58ebd60512e155aa6f67f1df9ae274"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run verify:kernel-prep-owner-baseline",
+          "npm run shared:test",
+          "npm run cli:test",
+          "npm run headless:test",
+          "node --test packages/vscode-extension/test/unit/vscode-surface-adapter.test.mjs"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C2-ORIENTATION",
@@ -4154,5 +4193,5 @@
       ]
     }
   ],
-  "ledger_sha256": "76358b3b248e1934ac084114d9b55131ec528efdd9479b9cfe760b7838bc8787"
+  "ledger_sha256": "b4bc037a9c39716238d3b3a10e488d7555b267567f77b8a6b7078eb296970f32"
 }

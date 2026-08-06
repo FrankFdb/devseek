@@ -3,8 +3,8 @@ import {
   sha256Object,
 } from './devseek-capability-ledger.mjs';
 
-export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v13';
-export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v13';
+export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v14';
+export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v14';
 
 const SOURCE_PATHS = Object.freeze({
   gate0: 'docs/process/devseek-gate0-decision-report.json',
@@ -14,6 +14,8 @@ const SOURCE_PATHS = Object.freeze({
   sharedBuildProfile: 'packages/shared/src/build-profile.ts',
   sharedIndex: 'packages/shared/src/index.ts',
   sharedAgentCommand: 'packages/shared/src/agent-command.ts',
+  sharedSurfaceAdapter: 'packages/shared/src/surface-adapter.ts',
+  sharedSurfaceAdapterConformance: 'packages/shared/src/surface-adapter-conformance.ts',
   sharedCodingConformance: 'packages/shared/src/coding-conformance.ts',
   sharedCodingConformanceFixtures: 'packages/shared/src/coding-conformance-fixtures.ts',
   sharedCodingConformanceProjection: 'packages/shared/src/coding-conformance-projection.ts',
@@ -60,6 +62,7 @@ const SOURCE_PATHS = Object.freeze({
   verification: 'packages/vscode-extension/src/app/coding-verification-adapter.ts',
   completion: 'packages/vscode-extension/src/app/coding-completion-adapter.ts',
   cliIndex: 'packages/cli/src/index.ts',
+  cliSurfaceAdapter: 'packages/cli/src/cli-surface-adapter.ts',
   cliProductExecutor: 'packages/cli/src/cli-product-coding-kernel.ts',
   cliRunLifecycle: 'packages/cli/src/cli-run-lifecycle.ts',
   cliKernelRuntime: 'packages/cli/src/cli-coding-kernel-runtime.ts',
@@ -72,6 +75,7 @@ const SOURCE_PATHS = Object.freeze({
   headlessPackageJson: 'packages/headless/package.json',
   headlessIndex: 'packages/headless/src/index.ts',
   headlessProductExecutor: 'packages/headless/src/headless-coding-kernel.ts',
+  headlessSurfaceAdapter: 'packages/headless/src/headless-surface-adapter.ts',
   headlessRunEvidence: 'packages/headless/src/headless-run-evidence.ts',
   headlessToolExecution: 'packages/headless/src/headless-tool-execution.ts',
   headlessWorkspaceMutation: 'packages/headless/src/headless-workspace-mutation.ts',
@@ -80,6 +84,7 @@ const SOURCE_PATHS = Object.freeze({
   headlessProductProbe: 'packages/headless/test/headless-coding-kernel.test.mjs',
   controlledVsixHarness: 'packages/vscode-extension/test/devseek-controlled-vsix-harness.mjs',
   surfaceProductVerifier: 'scripts/verify-coding-surface-product-conformance.mjs',
+  vscodeSurfaceAdapter: 'packages/vscode-extension/src/ui/vscode-surface-adapter.ts',
 });
 
 const SOURCE_CHECKS = Object.freeze([
@@ -129,6 +134,44 @@ const SOURCE_CHECKS = Object.freeze([
     'snapshotChatRequest(command.request)',
     'unsupported-type:',
   ], ["from 'vscode'", 'HeadlessCodingKernelExecutor', 'CliSurfaceAdapter']),
+  check('shared-surface-adapter-conformance-owner', SOURCE_PATHS.sharedSurfaceAdapterConformance, [
+    "SURFACE_ADAPTER_CONFORMANCE_VERSION = 'devseek.surface-adapter-conformance/v1'",
+    'export interface SurfaceAdapterConformancePort',
+    'export class CanonicalSurfaceAdapterConformanceService implements SurfaceAdapterConformancePort',
+    'non-canonical-command-version',
+    'command-surface-mismatch',
+    'command-capabilities-mismatch',
+    'command-platform-mismatch',
+    'event-delivery-mismatch',
+  ], ["from 'vscode'", 'CliSurfaceAdapter', 'HeadlessSurfaceAdapter']),
+  check('cli-surface-adapter-conformance-wiring', SOURCE_PATHS.cliSurfaceAdapter, [
+    'export class CliSurfaceAdapter implements SurfaceAdapter',
+    'conformance(): SurfaceAdapterConformanceReceipt',
+    'return certifySurfaceAdapter({',
+    "adapterId: this.kind === 'jsonl' ? 'cli-jsonl-stdout' : 'cli-text-stdout'",
+    "channel: 'stdout'",
+    "ordering: 'serialized'",
+    "backpressure: 'awaited'",
+  ], ['CanonicalSurfaceAdapterConformanceService']),
+  check('vscode-surface-adapter-conformance-wiring', SOURCE_PATHS.vscodeSurfaceAdapter, [
+    'export class VSCodeSurfaceAdapter implements SurfaceAdapter',
+    'conformance(): SurfaceAdapterConformanceReceipt',
+    'return certifySurfaceAdapter({',
+    "adapterId: 'vscode-webview'",
+    "channel: 'webview'",
+    "ordering: 'host-ordered'",
+    "backpressure: 'host-managed'",
+  ], ['CanonicalSurfaceAdapterConformanceService']),
+  check('headless-surface-adapter-conformance-wiring', SOURCE_PATHS.headlessSurfaceAdapter, [
+    'export class HeadlessSurfaceAdapter implements SurfaceAdapter',
+    'conformance(): SurfaceAdapterConformanceReceipt',
+    'return certifySurfaceAdapter({',
+    "adapterId: 'headless-callback'",
+    "channel: 'callback'",
+    "ordering: 'serialized'",
+    "backpressure: 'awaited'",
+    'this.deliveryQueue.then(() => this.eventSink(event))',
+  ], ['CanonicalSurfaceAdapterConformanceService']),
   check('shared-canonical-run-lifecycle-owner', SOURCE_PATHS.sharedRunLifecycle, [
     "CODING_RUN_LIFECYCLE_VERSION = 'devseek.coding-run-lifecycle/v1'",
     'export interface RunLifecyclePort',
@@ -210,6 +253,7 @@ const SOURCE_CHECKS = Object.freeze([
     "export * from './coding-workspace-mutation';",
     "export * from './coding-verification';",
     "export * from './coding-completion';",
+    "export * from './surface-adapter-conformance';",
   ]),
   check('shared-coding-task-contract-resolver', SOURCE_PATHS.sharedTaskContractResolver, [
     'export function resolveCodingKernelTaskContract(',
@@ -293,6 +337,7 @@ const SOURCE_CHECKS = Object.freeze([
   ]),
   check('headless-public-export', SOURCE_PATHS.headlessIndex, [
     "export * from './headless-coding-kernel';",
+    "export * from './headless-surface-adapter';",
     "export * from './headless-run-evidence';",
     "export * from './headless-tool-execution';",
     "export * from './headless-workspace-mutation';",
@@ -304,8 +349,8 @@ const SOURCE_CHECKS = Object.freeze([
     'this.kernel = new CanonicalCodingKernel(runtime)',
     'const output = await this.kernel.execute({',
     'const evidence = HeadlessRunEvidence.open(input)',
-    'const command = createChatRequestCommand({',
-    'capabilities: HEADLESS_SURFACE_CAPABILITIES',
+    'new HeadlessSurfaceAdapter()',
+    'const command = this.surface.toChatCommand({',
     'userPrompt: command.request.prompt',
     "route: 'canonical'",
     "surface: 'headless'",
@@ -1021,6 +1066,9 @@ function buildSemanticDomains() {
   return [
     domain('agent-command', 'AgentCommandPort', [
       owner('shared-CanonicalAgentCommandService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedAgentCommand),
+    ], []),
+    domain('surface-adapter-conformance', 'SurfaceAdapterConformancePort', [
+      owner('shared-CanonicalSurfaceAdapterConformanceService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedSurfaceAdapterConformance),
     ], []),
     domain('canonical-task-contract', 'CodingKernelTaskContract', [
       owner('shared-CodingKernelTaskContract', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedCodingKernel),

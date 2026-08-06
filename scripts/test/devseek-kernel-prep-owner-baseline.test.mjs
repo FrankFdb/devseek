@@ -48,9 +48,9 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    semantic_domains: 9,
-    converged_semantic_domains: 9,
-    source_checks: 76,
+    semantic_domains: 10,
+    converged_semantic_domains: 10,
+    source_checks: 80,
     failed_source_checks: 0,
   });
   assert.deepEqual(
@@ -77,6 +77,7 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
   );
   assert.deepEqual(actual.semantic_domains.map(domain => domain.domain_id), [
     'agent-command',
+    'surface-adapter-conformance',
     'canonical-task-contract',
     'run-lifecycle',
     'settlement-decision',
@@ -90,6 +91,10 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
   assert.equal(commandDomain.current_owners[0].owner_id, 'shared-CanonicalAgentCommandService');
   assert.deepEqual(commandDomain.current_owners[0].surfaces, ['vscode', 'cli', 'headless']);
   assert.equal(commandDomain.convergence_status, 'converged');
+  const surfaceDomain = actual.semantic_domains.find(domain => domain.domain_id === 'surface-adapter-conformance');
+  assert.equal(surfaceDomain.current_owners[0].owner_id, 'shared-CanonicalSurfaceAdapterConformanceService');
+  assert.deepEqual(surfaceDomain.current_owners[0].surfaces, ['vscode', 'cli', 'headless']);
+  assert.equal(surfaceDomain.convergence_status, 'converged');
   const taskContractDomain = actual.semantic_domains.find(domain => domain.domain_id === 'canonical-task-contract');
   assert.equal(taskContractDomain.convergence_status, 'converged');
   assert.equal(taskContractDomain.current_owner_count, 1);
@@ -144,6 +149,7 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
       .filter(assertion => assertion.check_id.startsWith('shared-') && assertion.check_id.includes('conformance'))
       .map(assertion => assertion.check_id),
     [
+      'shared-surface-adapter-conformance-owner',
       'shared-coding-conformance-contract',
       'shared-coding-conformance-fixtures',
       'shared-settled-conformance-projection-owner',
@@ -271,7 +277,7 @@ test('kernel prep owner baseline checker validates the current generated artifac
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    converged_semantic_domains: 9,
+    converged_semantic_domains: 10,
     failed_source_checks: 0,
     qualification_effect: 'NONE',
   });

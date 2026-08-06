@@ -1,12 +1,13 @@
 import * as vscode from 'vscode';
 import {
   createChatRequestCommand,
+  certifySurfaceAdapter,
   detectPlatformProfile,
   VSCODE_SURFACE_CAPABILITIES,
   type AgentEvent,
-  type ChatRequestCommand,
   type PlatformProfile,
   type SurfaceAdapter,
+  type SurfaceAdapterConformanceReceipt,
   type SurfaceChatInput,
   type SurfaceCapabilities,
 } from '@devseek-netai/shared';
@@ -29,7 +30,7 @@ export class VSCodeSurfaceAdapter implements SurfaceAdapter {
     });
   }
 
-  toChatCommand(input: SurfaceChatInput): ChatRequestCommand {
+  toChatCommand(input: SurfaceChatInput) {
     return createChatRequestCommand({
       surface: this.kind,
       capabilities: this.capabilities,
@@ -37,6 +38,24 @@ export class VSCodeSurfaceAdapter implements SurfaceAdapter {
       prompt: input.prompt,
       commandId: input.commandId,
       request: input.request,
+    });
+  }
+
+  conformance(): SurfaceAdapterConformanceReceipt {
+    return certifySurfaceAdapter({
+      adapterId: 'vscode-webview',
+      kind: this.kind,
+      capabilities: this.capabilities,
+      platform: this.platform,
+      command: this.toChatCommand({
+        prompt: 'surface adapter conformance probe',
+        commandId: 'vscode-surface-conformance',
+      }),
+      eventDelivery: {
+        channel: 'webview',
+        ordering: 'host-ordered',
+        backpressure: 'host-managed',
+      },
     });
   }
 

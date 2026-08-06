@@ -2,12 +2,13 @@ import { once } from 'events';
 import {
   CLI_SURFACE_CAPABILITIES,
   JSONL_SURFACE_CAPABILITIES,
+  certifySurfaceAdapter,
   createChatRequestCommand,
   detectPlatformProfile,
   type AgentEvent,
   type AgentSurfaceKind,
-  type ChatRequestCommand,
   type SurfaceAdapter,
+  type SurfaceAdapterConformanceReceipt,
   type SurfaceCapabilities,
   type SurfaceChatInput,
 } from '@devseek-netai/shared';
@@ -73,7 +74,7 @@ export class CliSurfaceAdapter implements SurfaceAdapter {
     this.progressDelayMs = options.progressDelayMs ?? Number(process.env.DEVSEEK_CLI_PROGRESS_DELAY_MS ?? 1500);
   }
 
-  toChatCommand(input: SurfaceChatInput): ChatRequestCommand {
+  toChatCommand(input: SurfaceChatInput) {
     return createChatRequestCommand({
       surface: this.kind,
       capabilities: this.capabilities,
@@ -81,6 +82,24 @@ export class CliSurfaceAdapter implements SurfaceAdapter {
       prompt: input.prompt,
       commandId: input.commandId,
       request: input.request,
+    });
+  }
+
+  conformance(): SurfaceAdapterConformanceReceipt {
+    return certifySurfaceAdapter({
+      adapterId: this.kind === 'jsonl' ? 'cli-jsonl-stdout' : 'cli-text-stdout',
+      kind: this.kind,
+      capabilities: this.capabilities,
+      platform: this.platform,
+      command: this.toChatCommand({
+        prompt: 'surface adapter conformance probe',
+        commandId: `${this.kind}-surface-conformance`,
+      }),
+      eventDelivery: {
+        channel: 'stdout',
+        ordering: 'serialized',
+        backpressure: 'awaited',
+      },
     });
   }
 

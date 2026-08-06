@@ -107,3 +107,19 @@ test('R3-08A VSCodeSurfaceAdapter projects every collaboration event with same t
     assert.equal(message.surfaceTrace.sourceEventType, events[index].type, `${message.type} keeps source event type`);
   }
 });
+
+test('VSCodeSurfaceAdapter exposes canonical command and host delivery conformance', () => {
+  const adapter = new VSCodeSurfaceAdapter();
+  const command = adapter.toChatCommand({ prompt: ' inspect repo ', commandId: 'vscode-command' });
+  const receipt = adapter.conformance();
+
+  assert.equal(command.version, 'devseek.agent-command/v1');
+  assert.equal(command.surface, 'vscode');
+  assert.equal(command.request.prompt, 'inspect repo');
+  assert.equal(receipt.adapterId, 'vscode-webview');
+  assert.deepEqual(receipt.eventDelivery, {
+    channel: 'webview',
+    ordering: 'host-ordered',
+    backpressure: 'host-managed',
+  });
+});

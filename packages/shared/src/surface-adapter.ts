@@ -9,13 +9,16 @@ import type {
 } from './agent-protocol';
 import { assertPlatformRuntimeProfileSupported } from './platform-runtime';
 import { acceptAgentCommand } from './agent-command';
+import type { CanonicalAgentCommand } from './agent-command';
+import type { SurfaceAdapterConformanceReceipt } from './surface-adapter-conformance';
 
 export interface SurfaceAdapter {
   readonly kind: AgentSurfaceKind;
   readonly capabilities: SurfaceCapabilities;
   readonly platform: PlatformProfile;
-  toChatCommand(input: SurfaceChatInput): ChatRequestCommand;
+  toChatCommand(input: SurfaceChatInput): CanonicalAgentCommand<ChatRequestCommand>;
   renderEvent(event: AgentEvent): void | Promise<void>;
+  conformance(): SurfaceAdapterConformanceReceipt;
 }
 
 export interface SurfaceChatInput {
@@ -69,7 +72,7 @@ export function createChatRequestCommand(args: {
   commandId?: string;
   request?: Partial<AgentChatRequest>;
   now?: () => number;
-}): ChatRequestCommand {
+}): CanonicalAgentCommand<ChatRequestCommand> {
   assertPlatformRuntimeProfileSupported(args.platform);
   return acceptAgentCommand({
     type: 'chat.request',
