@@ -50,9 +50,9 @@ devseek_governance:
 | 范围 | 状态 | 当前事实 |
 | --- | --- | --- |
 | C0 本地实现与机器裁决前置 | `completed` | 7/7 implementation requirements satisfied，repository blockers=0，local conformance=`PASSED` |
-| Extension 类型与候选包基线 | `completed` | TypeScript 基线零错误；174 个 extension suite 的当前回归门持续执行；当前精确 VSIX 在本轮收尾重新编译、安装并记录身份，`realistic-product` 继续作为发版门禁 |
+| Extension 类型与候选包基线 | `completed` | TypeScript 基线零错误；174/174 extension suite 通过；`1.0.0-debug.20260806.t180307.gde2768c` 已按纠正提交重新编译、安装并完成 source/artifact/install/runtime 身份复核，`realistic-product` 继续作为发版门禁 |
 | Surface 入口盘点 | `completed` | 88/88 入口受 inventory 覆盖，其中 Headless product entry=1；未知入口与未声明 legacy owner 可达性均为 0 |
-| Kernel owner 收敛基线 | `completed` | v21 将本地产品迭代与资格晋级解耦；4 条活跃路由均通过 shared `CanonicalCodingKernel`，legacy execution owner=0；20 个语义域均为 shared 单一 owner、missing Surface=0；107/107 源码断言通过 |
+| Kernel owner 收敛基线 | `completed` | v21 将本地产品迭代与资格晋级解耦；4 条活跃路由均通过 shared `CanonicalCodingKernel`，legacy execution owner=0；20 个语义域均为 shared 单一 owner、missing Surface=0；108/108 源码断言通过 |
 | 01：VS Code 新任务与恢复路由收敛 | `completed` | `AgentKernelService` 统一决定 fresh/checkpoint 路由；附件只作为 Context；durable checkpoint 与 local validation repair 均通过 typed recovery 输入进入 canonical loop，失败保留待办、成功唯一清除 checkpoint；产品 adapter 不再拥有 `runLegacyPlanned` |
 | 01：CLI canonical Kernel 路由 | `completed` | shared 层拥有版本化 request/output、TaskContract 与唯一 `CanonicalCodingKernel`；VS Code/CLI product adapter 只组合 runtime；CLI Surface 不再 import parser、mutation、verification 或 loop，`CliLegacyCodingLoop` 源码与测试均已删除；非 mutation TaskContract 对意外写入 fail closed |
 | 01：Headless canonical 产品路由 | `completed` | `@devseek-netai/headless` 提供公开 programmatic entry；只组合 shared `CanonicalCodingKernel` 与 runtime port，不依赖 `vscode`、Surface UI、CLI runtime 或 agent loop；预取消在 runtime dispatch 前失败 |
@@ -69,8 +69,8 @@ devseek_governance:
 | C11：durable checkpoint | `completed` | shared `CheckpointPort` 封存 run、Surface、workspace、TaskContract、ContextGraph、MemoryPolicy、完成前缀和剩余单元；VS Code 与 Headless 恢复只执行 pending 单元，篡改、工作区漂移和任务替换 fail closed |
 | C12：上下文压缩 | `completed` | shared `ContextCompactionPort` 密封 TaskContract、ContextGraph provenance、MemoryPolicy、完成前缀、待办、证据引用、敏感信息清理和重验证要求；VS Code 活跃 agentic 路径仅负责收据投影与传输裁剪，多次压缩保持父收据与 checkpoint 连续性 |
 | C11：恢复幂等 | `in_progress` | shared `ResumeIdempotencyPort` 与 Headless 产品路径已实现 completed skip、indeterminate block、failed-no-effect retry 和防篡改回执；因 `C7-EXTERNAL-EFFECT`、`C7-WORKSPACE-MUTATION` 尚为 `proposed`，能力账本诚实保持 `implemented`，待真实 effect receipt 接入后才能 `wired` |
-| I10 用户仿真增量 | `completed` | 固定 5 例只作回归；I10 新增 5 例均直接消费 `code/devseek-tests/memory-checkpoint/scenario.json`；治理门禁拒绝重复 case ID、重复用户场景、重复测试证据和未绑定 test name；原始 TAP、fixture SHA、精确 VSIX 与三 Surface 产品报告保存在 `runs/i10-local-20260806-g379efbd/` |
-| I11 用户仿真增量 | `completed` | 新增 4 例覆盖三次连续压缩、VS Code 密封收据、已完成 workspace effect 二次恢复跳过和 indeterminate external effect 运行前阻断；输入、fixture SHA、逐例 TAP 与汇总保存在 `code/devseek-tests/context-resume/runs/i11-context-resume-20260806/`，qualification effect=`NONE` |
+| I10 用户仿真增量 | `completed` | 固定 5 例只作回归；I10 新增 5 例均直接消费版本化 fixture `scripts/test/fixtures/user-simulations/i10-memory-checkpoint.json`；治理门禁拒绝重复 case ID、重复用户场景、重复测试证据和未绑定 test name；原始 TAP、fixture SHA、精确 VSIX 与三 Surface 产品报告仅在本地 `code/devseek-tests/memory-checkpoint/runs/i10-local-20260806-g379efbd/` 保留，不进入 Git |
+| I11 用户仿真增量 | `completed` | 新增 4 例覆盖三次连续压缩、VS Code 密封收据、已完成 workspace effect 二次恢复跳过和 indeterminate external effect 运行前阻断；版本化输入位于 `scripts/test/fixtures/user-simulations/i11-context-resume.json`，逐例 TAP 与汇总仅在本地 `code/devseek-tests/context-resume/runs/i11-context-resume-20260806/` 保留，qualification effect=`NONE` |
 | Intent Semantic Contract 产品纵切 | `completed` | `TaskSemanticContract/v3` 统一任务形态、作用域、mutation/read、验证、质量义务、`done_iff`、歧义、跨轮修订与项目指令；session、Kernel、双 loop、deterministic/fast path 只消费该契约；48 条外部形式自然输入覆盖 12 类任务。非 Web Provider candidate 与隔离 semantic channel 仍属后续责任 |
 | 语义执行职责重构 | `completed` | Agentic 系统提示词、双阶段分析提示词、项目指令绑定、跨轮路由和 Agent Surface 展示均有独立 owner；Headless Kernel 不依赖 `vscode`；三项大型入口上限仅在职责、依赖和测试迁移后下调 |
 | R4 非资格本地工作 | `completed` | v2 清单冻结 `4f8a567`；原 `a034e5e` v1 JSON/schema/view 按字节归档；冻结时 artifact/install/runtime 精确一致，stable runtime=1；6/6 leaf completed、blocked=0、qualification effect=`NONE` |

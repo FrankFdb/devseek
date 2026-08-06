@@ -85,9 +85,9 @@
 - `r4_authorization_and_permission_guide`: `docs/process/devseek-r4-authorization-and-permission-guide.md` -> `826240c4a2cfcae0c6fb1068ed199b1ffed99d64857fd8053d70e3790f40ada5`
 - `r4_clean_runtime_limited_observation`: `docs/process/devseek-r4-clean-runtime-limited-observation.json` -> `3ff09be8b82f423f999560dfeef22c1967ae778bb020e132bb275cb90b16d63c`
 - `r4_process_artifacts_aggregate`: `docs/process/devseek-r4-process-artifacts-aggregate.json` -> `6dac45a810f112a5599ccb1347e58c9430c11a49cafe00255184d344cfd6a06e`
-- `post_r4_local_regression_manifest`: `docs/process/devseek-post-r4-local-regression-manifest.json` -> `f939759ad918ebc14de418ecd973816cb45e7b3d3942e8bfa1a14e9a7591698a`
+- `post_r4_local_regression_manifest`: `docs/process/devseek-post-r4-local-regression-manifest.json` -> `be5b12e7a8b680022459be48d426874ac595b74aa8e2fc0e6919c0b4ca24c815`
 - `post_r4_local_full_regression_checkpoint`: `docs/process/devseek-post-r4-local-full-regression-checkpoint.md` -> `a907249f6f69635b05942ad4061a8e13863cd127d35885a9f248c1fec8aa5509`
-- `external_authority_requests`: `docs/process/devseek-external-authority-requests.json` -> `ee3686f72dcb051590e8000773178b11f72731f30949a0ac027a3de5d7921aa9`
+- `external_authority_requests`: `docs/process/devseek-external-authority-requests.json` -> `11be1533cb90479cf67377cd029acfa8e0b819fdfe399fbdcabb69c63eaa5e36`
 - `r4_live_qualification_request_packet`: `docs/process/devseek-r4-live-qualification-request-packet.json` -> `8efb7b899a44b81ab3965e757ec5a38549da4369512a9150f4c2628f6dba4fc7`
 - `package_scripts`: `package.json` -> `d31cab51401797bdb7f501f833a396f2fbdf23172e67623025bd9e1180a05ffa`
 - `phase_gate_source`: `scripts/devseek-phase0-12-verify.mjs` -> `db927db5c6d2bf78ba78e62075bdde17a39c26ccdb41fef9f1847bd496b48702`
@@ -96,4 +96,4 @@
 
 ## Index Identity
 
-- Index SHA-256: `aedbdcf4426755b6abe3a830d4a0ff3bcf336755a9d087713809b5d982256438`
+- Index SHA-256: `2996acb9b360b7689a348389b21e4f98f04205df3c16bf56a85171efb6657a1d`
