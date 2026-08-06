@@ -2,51 +2,59 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   AgentEvalReplayStore,
+  CanonicalCodebaseExplorationService,
+  CanonicalEngineeringOrientationService,
   ConflictGuard,
   DependencyPolicyService,
   DocGroundingService,
-  EngineeringContextService,
   PreviewVerificationService,
   WorkspaceRootService,
 } from '../dist/index.js';
 
-test('EngineeringContextService excludes ignored and sensitive files while detecting project facts', () => {
-  const service = new EngineeringContextService();
-  const context = service.build({
+test('canonical orientation and exploration exclude content before indexing project facts', () => {
+  const files = [
+    { path: 'src/index.ts', sizeBytes: 1200, contentSample: 'export const value = 1;' },
+    { path: 'src/index.test.ts', sizeBytes: 800 },
+    { path: 'package.json', sizeBytes: 120 },
+    { path: 'tsconfig.json', sizeBytes: 90 },
+    { path: 'node_modules/lib/index.js', sizeBytes: 100 },
+    { path: '.env', sizeBytes: 20, contentSample: 'TOKEN=do-not-project' },
+    { path: 'private/notes.md', sizeBytes: 20 },
+    { path: 'coverage/report.json', sizeBytes: 20 },
+    { path: 'tmp/scratch.ts', sizeBytes: 20 },
+  ];
+  const manifests = {
+    'package.json': JSON.stringify({ scripts: { build: 'tsc', test: 'node --test', dev: 'vite' } }),
+  };
+  const orientation = new CanonicalEngineeringOrientationService().orient({
     workspaceRoot: '/repo',
+    files,
+    manifests,
+  });
+  const context = new CanonicalCodebaseExplorationService().explore({
+    orientation,
+    files,
     devseekignore: 'private/\n',
     gitignore: 'coverage/\n',
     userExcludes: ['tmp/'],
-    manifests: {
-      'package.json': JSON.stringify({ scripts: { build: 'tsc', test: 'node --test', dev: 'vite' } }),
-    },
-    files: [
-      { path: 'src/index.ts', sizeBytes: 1200, contentSample: 'export const value = 1;' },
-      { path: 'src/index.test.ts', sizeBytes: 800 },
-      { path: 'package.json', sizeBytes: 120 },
-      { path: 'tsconfig.json', sizeBytes: 90 },
-      { path: 'node_modules/lib/index.js', sizeBytes: 100 },
-      { path: '.env', sizeBytes: 20 },
-      { path: 'private/notes.md', sizeBytes: 20 },
-      { path: 'coverage/report.json', sizeBytes: 20 },
-      { path: 'tmp/scratch.ts', sizeBytes: 20 },
-    ],
   });
 
   assert.deepEqual(context.visibleFiles.map(file => file.path), [
-    'src/index.ts',
-    'src/index.test.ts',
     'package.json',
+    'src/index.test.ts',
+    'src/index.ts',
     'tsconfig.json',
   ]);
   assert.equal(context.index.totalFiles, 4);
   assert.deepEqual(context.index.testFiles, ['src/index.test.ts']);
-  assert.equal(context.environment.packageManager, 'npm');
-  assert.deepEqual(context.environment.buildCommands, ['npm run build']);
-  assert.deepEqual(context.environment.testCommands, ['npm test']);
-  assert.equal(context.runtimes.some(runtime => runtime.language === 'typescript'), true);
+  assert.equal(orientation.environment.packageManager, 'npm');
+  assert.deepEqual(orientation.environment.buildCommands, ['npm run build']);
+  assert.deepEqual(orientation.environment.testCommands, ['npm test']);
+  assert.equal(orientation.runtimes.some(runtime => runtime.language === 'typescript'), true);
   assert.equal(context.excludedFiles.some(file => file.path === '.env' && file.sensitive), true);
   assert.equal(context.excludedFiles.some(file => file.path === 'node_modules/lib/index.js'), true);
+  assert.equal(context.visibleFiles.some(file => 'contentSample' in file), false);
+  assert.equal(JSON.stringify(context).includes('do-not-project'), false);
 });
 
 test('Engineering policies expose dependency, docs, preview, conflict, root, and replay decisions', () => {
@@ -94,8 +102,8 @@ test('Engineering policies expose dependency, docs, preview, conflict, root, and
   assert.deepEqual(replay.expectedEvents, ['chat.started', 'qualityGate.completed']);
 });
 
-test('EngineeringContextService uses stable build/ directory for CMake command hints', () => {
-  const context = new EngineeringContextService().build({
+test('canonical engineering orientation uses stable build/ directory for CMake command hints', () => {
+  const context = new CanonicalEngineeringOrientationService().orient({
     workspaceRoot: '/repo',
     files: [
       { path: 'CMakeLists.txt', sizeBytes: 80 },

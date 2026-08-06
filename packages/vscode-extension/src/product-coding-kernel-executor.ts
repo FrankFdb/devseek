@@ -57,6 +57,7 @@ export const productCodingKernelExecutor: CodingKernelExecutionPort = {
           contextFiles: request.contextFiles,
           taskContract: request.semanticContract.taskContract,
         }),
+        contextSeed: { files: request.contextFiles.map(path => ({ path })) },
         runtimeContext: {
           contextFiles: request.contextFiles,
           mode: request.mode,

@@ -48,9 +48,9 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    semantic_domains: 11,
-    converged_semantic_domains: 11,
-    source_checks: 84,
+    semantic_domains: 14,
+    converged_semantic_domains: 14,
+    source_checks: 88,
     failed_source_checks: 0,
   });
   assert.deepEqual(
@@ -80,6 +80,9 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     'surface-adapter-conformance',
     'orientation-decision',
     'canonical-task-contract',
+    'engineering-orientation',
+    'codebase-exploration',
+    'context-graph',
     'run-lifecycle',
     'settlement-decision',
     'tool-execution',
@@ -106,6 +109,17 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
   assert.equal(taskContractDomain.current_owners[0].owner_id, 'shared-CanonicalTaskContractService');
   assert.deepEqual(taskContractDomain.current_owners[0].surfaces, ['vscode', 'cli', 'headless']);
   assert.deepEqual(taskContractDomain.missing_surfaces, []);
+  for (const [domainId, ownerId] of [
+    ['engineering-orientation', 'shared-CanonicalEngineeringOrientationService'],
+    ['codebase-exploration', 'shared-CanonicalCodebaseExplorationService'],
+    ['context-graph', 'shared-CanonicalContextGraphService'],
+  ]) {
+    const contextDomain = actual.semantic_domains.find(domain => domain.domain_id === domainId);
+    assert.equal(contextDomain.convergence_status, 'converged');
+    assert.equal(contextDomain.current_owner_count, 1);
+    assert.equal(contextDomain.current_owners[0].owner_id, ownerId);
+    assert.deepEqual(contextDomain.current_owners[0].surfaces, ['vscode', 'cli', 'headless']);
+  }
   const lifecycleDomain = actual.semantic_domains.find(domain => domain.domain_id === 'run-lifecycle');
   assert.equal(lifecycleDomain.current_owner_count, 1);
   assert.equal(lifecycleDomain.current_owners[0].owner_id, 'shared-CanonicalRunLifecycleService');
@@ -283,7 +297,7 @@ test('kernel prep owner baseline checker validates the current generated artifac
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    converged_semantic_domains: 11,
+    converged_semantic_domains: 14,
     failed_source_checks: 0,
     qualification_effect: 'NONE',
   });

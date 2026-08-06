@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   CODING_KERNEL_REQUEST_VERSION,
   CODING_KERNEL_TASK_CONTRACT_VERSION,
+  CODING_CONTEXT_GRAPH_VERSION,
   CODING_RUN_LIFECYCLE_VERSION,
   CODING_SETTLEMENT_DECISION_VERSION,
   CanonicalCodingKernel,
@@ -32,6 +33,10 @@ function request(overrides = {}) {
     userPrompt: 'Create src/value.ts and verify it',
     workspaceRoot: '/workspace',
     taskContract: taskContract(),
+    contextSeed: {
+      files: [{ path: '/workspace/src/value.ts', sizeBytes: 120 }],
+      manifests: { 'package.json': JSON.stringify({ scripts: { build: 'tsc', test: 'node --test' } }) },
+    },
     runtimeContext: { providerResponse: 'response' },
     ...overrides,
   };
@@ -43,6 +48,7 @@ test('CanonicalCodingKernel preserves one versioned request and terminal output 
     async executeCanonical(input) {
       calls.push(input);
       assert.throws(() => input.taskContract.scope.include.push('runtime-owned-path.ts'), TypeError);
+      assert.throws(() => input.contextGraph.nodes.push({}), TypeError);
       return {
         status: 'completed',
         result: { changedPaths: ['src/value.ts'] },
@@ -62,6 +68,10 @@ test('CanonicalCodingKernel preserves one versioned request and terminal output 
   assert.equal(output.settlement.lifecycleSequence, output.lifecycle.events.length);
   assert.equal(output.orientation, output.taskContract.orientation);
   assert.equal(output.orientation.mode, 'change');
+  assert.equal(output.contextGraph.version, CODING_CONTEXT_GRAPH_VERSION);
+  assert.equal(output.contextGraph, calls[0].contextGraph);
+  assert.equal(output.contextGraph.orientation.environment.languages.includes('typescript'), true);
+  assert.equal(output.contextGraph.nodes.some(node => node.id === 'file:src/value.ts'), true);
   assert.deepEqual(output.lifecycle, {
     version: CODING_RUN_LIFECYCLE_VERSION,
     runId: 'run-1',

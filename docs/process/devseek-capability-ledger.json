@@ -1555,10 +1555,31 @@
         },
         "contract_sha256": "98f3cb9ee28ebdb106b78b272aaeb3f582d12e8137857a5d7de221bf59e31a74"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-engineering-orientation.ts"
+        },
+        {
+          "role": "environment-primitives",
+          "path": "packages/shared/src/engineering-context.ts"
+        },
+        {
+          "role": "canonical-context-composition",
+          "path": "packages/shared/src/coding-context-graph.ts"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/coding-context-graph.test.mjs"
+        },
+        {
+          "role": "machine-wiring-evidence",
+          "path": "docs/process/devseek-kernel-prep-owner-baseline.json"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C2-TASK-CONTRACT",
@@ -1566,7 +1587,17 @@
           "required_implementation_state": "wired",
           "contract_sha256": "2f7c8833fb07d3515342649b184c9079f84a5ed5c1cea952b384dfa4a25ae55e"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run verify:kernel-prep-owner-baseline",
+          "npm run shared:test",
+          "npm run cli:test",
+          "npm run headless:test",
+          "node --test packages/vscode-extension/test/unit/coding-kernel-execution.test.mjs"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C3-CODEBASE-EXPLORATION",
@@ -1592,10 +1623,31 @@
         },
         "contract_sha256": "ea303a67a73064fe7057c8337c48c433f85d8cbef1cbb7829407b9c79c684c3c"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-codebase-exploration.ts"
+        },
+        {
+          "role": "exclusion-and-index-primitives",
+          "path": "packages/shared/src/engineering-context.ts"
+        },
+        {
+          "role": "canonical-context-composition",
+          "path": "packages/shared/src/coding-context-graph.ts"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/engineering-context.test.mjs"
+        },
+        {
+          "role": "machine-wiring-evidence",
+          "path": "docs/process/devseek-kernel-prep-owner-baseline.json"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C3-ENGINEERING-ORIENTATION",
@@ -1603,7 +1655,17 @@
           "required_implementation_state": "wired",
           "contract_sha256": "98f3cb9ee28ebdb106b78b272aaeb3f582d12e8137857a5d7de221bf59e31a74"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run verify:kernel-prep-owner-baseline",
+          "npm run shared:test",
+          "npm run cli:test",
+          "npm run headless:test",
+          "node --test packages/vscode-extension/test/unit/coding-kernel-execution.test.mjs"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C3-CONTEXT-GRAPH",
@@ -1629,10 +1691,39 @@
         },
         "contract_sha256": "36643d1f21d30e2dbe331d962f6f4807d0613ae8f6ebb2a08209ceca39b23cf2"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-context-graph.ts"
+        },
+        {
+          "role": "canonical-kernel-wiring",
+          "path": "packages/shared/src/coding-kernel.ts"
+        },
+        {
+          "role": "vscode-product-projection",
+          "path": "packages/vscode-extension/src/app/coding-kernel-execution.ts"
+        },
+        {
+          "role": "cli-product-projection",
+          "path": "packages/cli/src/cli-product-coding-kernel.ts"
+        },
+        {
+          "role": "headless-product-projection",
+          "path": "packages/headless/src/headless-coding-kernel.ts"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/coding-context-graph.test.mjs"
+        },
+        {
+          "role": "machine-wiring-evidence",
+          "path": "docs/process/devseek-kernel-prep-owner-baseline.json"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C2-TASK-CONTRACT",
@@ -1646,7 +1737,17 @@
           "required_implementation_state": "wired",
           "contract_sha256": "ea303a67a73064fe7057c8337c48c433f85d8cbef1cbb7829407b9c79c684c3c"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run verify:kernel-prep-owner-baseline",
+          "npm run shared:test",
+          "npm run cli:test",
+          "npm run headless:test",
+          "node --test packages/vscode-extension/test/unit/coding-kernel-execution.test.mjs"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C3-CONTEXT-PROVENANCE",
@@ -4279,5 +4380,5 @@
       ]
     }
   ],
-  "ledger_sha256": "2d5d8b9ed35dfb54488e0e131149517c03ac5b8cb46e9962f2af20569560a002"
+  "ledger_sha256": "c29060a0a602fbae877bf26f116105b8f98560a843e501e21e1d96c49dbe0f6a"
 }

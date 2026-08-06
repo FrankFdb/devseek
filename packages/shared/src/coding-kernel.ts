@@ -14,6 +14,11 @@ import {
   type CodingKernelTaskContract,
 } from './coding-task-contract';
 import {
+  CanonicalContextGraphService,
+  type CodingContextGraph,
+  type CodingContextSeed,
+} from './coding-context-graph';
+import {
   assertCodingOrientationPrompt,
   type CodingOrientationDecision,
 } from './coding-orientation';
@@ -41,8 +46,14 @@ export interface CodingKernelExecutionRequest<TRuntimeContext> {
   readonly userPrompt: string;
   readonly workspaceRoot: string;
   readonly taskContract: CodingKernelTaskContract;
+  readonly contextSeed?: CodingContextSeed;
   readonly runtimeContext: TRuntimeContext;
   readonly signal?: AbortSignal;
+}
+
+export interface CodingKernelRuntimeRequest<TRuntimeContext>
+  extends CodingKernelExecutionRequest<TRuntimeContext> {
+  readonly contextGraph: CodingContextGraph;
 }
 
 export interface CodingKernelRuntimeOutput<TResult> {
@@ -62,6 +73,7 @@ export interface CodingKernelExecutionOutput<TResult> {
   readonly settlement: CodingSettlementDecision;
   readonly orientation: CodingOrientationDecision;
   readonly taskContract: CodingKernelTaskContract;
+  readonly contextGraph: CodingContextGraph;
   readonly result: TResult;
   readonly evidenceRefs: readonly string[];
   readonly residualRisks: readonly string[];
@@ -69,7 +81,7 @@ export interface CodingKernelExecutionOutput<TResult> {
 
 export interface CodingKernelRuntimePort<TRuntimeContext, TResult> {
   executeCanonical(
-    request: CodingKernelExecutionRequest<TRuntimeContext>,
+    request: CodingKernelRuntimeRequest<TRuntimeContext>,
   ): Promise<CodingKernelRuntimeOutput<TResult>>;
 }
 
@@ -95,6 +107,7 @@ export class CodingKernelExecutionError extends Error {
 const RUN_LIFECYCLE = new CanonicalRunLifecycleService();
 const SETTLEMENT = new CanonicalSettlementDecisionService();
 const TASK_CONTRACT = new CanonicalTaskContractService();
+const CONTEXT_GRAPH = new CanonicalContextGraphService();
 
 /**
  * The product-level execution owner shared by every Surface. Runtime adapters
@@ -110,13 +123,18 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
     assertCanonicalRequest(request);
     const taskContract = TASK_CONTRACT.snapshot(request.taskContract);
     assertCodingOrientationPrompt(taskContract.orientation, request.userPrompt);
+    const contextGraph = CONTEXT_GRAPH.build({
+      workspaceRoot: request.workspaceRoot,
+      taskContract,
+      seed: request.contextSeed,
+    });
     const lifecycle = RUN_LIFECYCLE.start({ runId: request.runId, surface: request.surface });
     if (request.signal?.aborted) {
       lifecycle.settle('cancelled');
       throw lifecycleError('coding-kernel-execution:cancelled-before-start', lifecycle);
     }
 
-    const runtimeRequest = Object.freeze({ ...request, taskContract });
+    const runtimeRequest = Object.freeze({ ...request, taskContract, contextGraph });
     lifecycle.beginExecution();
     try {
       const runtimeOutput = await this.runtime.executeCanonical(runtimeRequest);
@@ -142,6 +160,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         settlement,
         orientation: taskContract.orientation,
         taskContract,
+        contextGraph,
         result: runtimeOutput.result,
         evidenceRefs: settlement.evidenceRefs,
         residualRisks: settlement.residualRisks,

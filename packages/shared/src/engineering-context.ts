@@ -97,24 +97,16 @@ export interface ReplayCase {
   evidenceRefs: readonly string[];
 }
 
-export interface EngineeringContextInput {
-  workspaceRoot: string;
-  files: readonly WorkspaceFileCandidate[];
+export interface ContentExclusionInput {
   devseekignore?: string;
   gitignore?: string;
   userExcludes?: readonly string[];
   maxFileBytes?: number;
-  manifests?: Readonly<Record<string, string>>;
 }
 
-export interface EngineeringContext {
-  workspaceRoot: string;
-  visibleFiles: readonly WorkspaceFileCandidate[];
-  excludedFiles: readonly ExclusionDecision[];
-  index: CodebaseIndex;
-  environment: EnvironmentProfile;
-  runtimes: readonly LanguageRuntimeProfile[];
-  budget: UsageBudgetEstimate;
+export interface EnvironmentProfileInput {
+  files: readonly WorkspaceFileCandidate[];
+  manifests?: Readonly<Record<string, string>>;
 }
 
 const DEFAULT_MAX_FILE_BYTES = 500 * 1024;
@@ -138,34 +130,8 @@ const SENSITIVE_PATTERNS = [
   'id_ed25519',
 ] as const;
 
-export class EngineeringContextService {
-  constructor(
-    private readonly exclusion = new ContentExclusionService(),
-    private readonly indexer = new CodebaseIndexService(),
-    private readonly environment = new EnvironmentProfileService(),
-    private readonly runtimeRegistry = new LanguageRuntimeRegistry(),
-    private readonly budget = new UsageBudgetService(),
-  ) {}
-
-  build(input: EngineeringContextInput): EngineeringContext {
-    const policy = this.exclusion.createPolicy(input);
-    const decisions = input.files.map(file => this.exclusion.decide(file, policy));
-    const visibleFiles = input.files.filter(file => !decisions.find(decision => decision.path === normalizePath(file.path))?.excluded);
-    const environment = this.environment.detect({ ...input, files: visibleFiles });
-    return {
-      workspaceRoot: normalizePath(input.workspaceRoot),
-      visibleFiles,
-      excludedFiles: decisions.filter(decision => decision.excluded),
-      index: this.indexer.build(visibleFiles),
-      environment,
-      runtimes: environment.languages.map(language => this.runtimeRegistry.resolve(language)),
-      budget: this.budget.estimate(visibleFiles),
-    };
-  }
-}
-
 export class ContentExclusionService {
-  createPolicy(input: Pick<EngineeringContextInput, 'devseekignore' | 'gitignore' | 'userExcludes' | 'maxFileBytes'>): ContentExclusionPolicy {
+  createPolicy(input: ContentExclusionInput): ContentExclusionPolicy {
     return {
       devseekignorePatterns: [...DEFAULT_EXCLUDES, ...parseIgnoreText(input.devseekignore)],
       gitignorePatterns: parseIgnoreText(input.gitignore),
@@ -224,7 +190,7 @@ export class CodebaseIndexService {
 }
 
 export class EnvironmentProfileService {
-  detect(input: Pick<EngineeringContextInput, 'files' | 'manifests'>): EnvironmentProfile {
+  detect(input: EnvironmentProfileInput): EnvironmentProfile {
     const paths = input.files.map(file => normalizePath(file.path));
     const languages = unique(paths.map(detectLanguage).filter(language => language !== 'unknown'));
     const packageManager = detectPackageManager(paths);

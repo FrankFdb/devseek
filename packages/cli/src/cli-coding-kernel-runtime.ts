@@ -5,6 +5,7 @@ import {
   isSecretHarvestingRefusalTaskContract,
   projectSettledCodingConformanceRun,
   type CodingKernelExecutionRequest,
+  type CodingKernelRuntimeRequest,
   type CodingKernelRuntimeOutput,
   type CodingKernelRuntimePort,
   type CodingCompletionAcceptanceDecision,
@@ -91,7 +92,7 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
   }
 
   async executeCanonical(
-    request: CodingKernelExecutionRequest<CliCodingKernelRuntimeContext>,
+    request: CodingKernelRuntimeRequest<CliCodingKernelRuntimeContext>,
   ): Promise<CodingKernelRuntimeOutput<CliCodingKernelResult>> {
     const input = request.runtimeContext;
     let response = input.response;

@@ -3,8 +3,8 @@ import {
   sha256Object,
 } from './devseek-capability-ledger.mjs';
 
-export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v16';
-export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v16';
+export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v17';
+export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v17';
 
 const SOURCE_PATHS = Object.freeze({
   gate0: 'docs/process/devseek-gate0-decision-report.json',
@@ -20,6 +20,10 @@ const SOURCE_PATHS = Object.freeze({
   sharedCodingConformanceFixtures: 'packages/shared/src/coding-conformance-fixtures.ts',
   sharedCodingConformanceProjection: 'packages/shared/src/coding-conformance-projection.ts',
   sharedTaskContract: 'packages/shared/src/coding-task-contract.ts',
+  sharedEngineeringContext: 'packages/shared/src/engineering-context.ts',
+  sharedEngineeringOrientation: 'packages/shared/src/coding-engineering-orientation.ts',
+  sharedCodebaseExploration: 'packages/shared/src/coding-codebase-exploration.ts',
+  sharedContextGraph: 'packages/shared/src/coding-context-graph.ts',
   sharedTaskContractResolver: 'packages/shared/src/coding-task-contract-resolver.ts',
   sharedOrientation: 'packages/shared/src/coding-orientation.ts',
   sharedTerminalEffects: 'packages/shared/src/coding-terminal-effects.ts',
@@ -121,7 +125,9 @@ const SOURCE_CHECKS = Object.freeze([
     'new CanonicalRunLifecycleService()',
     'new CanonicalSettlementDecisionService()',
     'new CanonicalTaskContractService()',
+    'new CanonicalContextGraphService()',
     'TASK_CONTRACT.snapshot(request.taskContract)',
+    'CONTEXT_GRAPH.build({',
     'assertCodingOrientationPrompt(taskContract.orientation, request.userPrompt)',
     'lifecycle.beginExecution()',
     'lifecycle.settle(runtimeOutput.status)',
@@ -145,6 +151,38 @@ const SOURCE_CHECKS = Object.freeze([
     'export function projectCodingKernelTaskContract(',
     'coding-kernel-task-contract:',
   ], ["from 'vscode'", 'CodingKernelSurface', 'CanonicalCodingKernel']),
+  check('shared-engineering-context-primitives', SOURCE_PATHS.sharedEngineeringContext, [
+    'export class ContentExclusionService',
+    'export class CodebaseIndexService',
+    'export class EnvironmentProfileService',
+    'export class LanguageRuntimeRegistry',
+    'export class UsageBudgetService',
+  ], ['EngineeringContextService', 'interface EngineeringContext {']),
+  check('shared-canonical-engineering-orientation-owner', SOURCE_PATHS.sharedEngineeringOrientation, [
+    "CODING_ENGINEERING_ORIENTATION_VERSION = 'devseek.coding-engineering-orientation/v1'",
+    'export interface EngineeringOrientationPort',
+    'export class CanonicalEngineeringOrientationService implements EngineeringOrientationPort',
+    'snapshotCodingContextCandidates(input.files, workspaceRoot)',
+    'freezeEnvironment(this.environment.detect({ files, manifests }))',
+    'coding-engineering-orientation:',
+  ], ["from 'vscode'", 'CanonicalCodingKernel']),
+  check('shared-canonical-codebase-exploration-owner', SOURCE_PATHS.sharedCodebaseExploration, [
+    "CODING_CODEBASE_EXPLORATION_VERSION = 'devseek.coding-codebase-exploration/v1'",
+    'export interface CodebaseExplorationPort',
+    'export class CanonicalCodebaseExplorationService implements CodebaseExplorationPort',
+    'const decisions = files.map(file => freezeDecision(this.exclusion.decide(file, policy)))',
+    'const visibleFiles = Object.freeze(visibleWithSamples.map(stripContentSample))',
+    'coding-codebase-exploration:',
+  ], ["from 'vscode'", 'CanonicalCodingKernel']),
+  check('shared-canonical-context-graph-owner', SOURCE_PATHS.sharedContextGraph, [
+    "CODING_CONTEXT_GRAPH_VERSION = 'devseek.coding-context-graph/v1'",
+    'export interface ContextGraphPort',
+    'export class CanonicalContextGraphService implements ContextGraphPort',
+    'const orientation = this.orientation.orient({',
+    'const exploration = this.exploration.explore({',
+    'renderCodingContextGraphSummary(graph: CodingContextGraph)',
+    'coding-context-graph:',
+  ], ["from 'vscode'", 'CanonicalCodingKernel']),
   check('shared-canonical-agent-command-owner', SOURCE_PATHS.sharedAgentCommand, [
     "AGENT_COMMAND_VERSION = 'devseek.agent-command/v1'",
     'export interface AgentCommandPort',
@@ -287,6 +325,9 @@ const SOURCE_CHECKS = Object.freeze([
     "export * from './coding-conformance-fixtures';",
     "export * from './coding-conformance-projection';",
     "export * from './coding-task-contract';",
+    "export * from './coding-engineering-orientation';",
+    "export * from './coding-codebase-exploration';",
+    "export * from './coding-context-graph';",
     "export * from './coding-task-contract-resolver';",
     "export * from './coding-terminal-effects';",
     "export * from './coding-kernel';",
@@ -401,6 +442,7 @@ const SOURCE_CHECKS = Object.freeze([
     "route: 'canonical'",
     "surface: 'headless'",
     'taskContract: input.taskContract',
+    'contextSeed: input.contextSeed',
     "validateCodingConformanceProjection(snapshot, 'headless')",
     "evidence.finalize(lifecycle, output.status, 'surface-output-settled')",
     'projectCodingKernelTaskContract(output.taskContract)',
@@ -617,6 +659,7 @@ const SOURCE_CHECKS = Object.freeze([
     'const kernel = new CanonicalCodingKernel(runtime)',
     "surface: 'vscode'",
     'taskContract: projectVsCodeCodingKernelTaskContract({',
+    'contextSeed: { files: request.contextFiles.map(path => ({ path })) }',
     'retainVsCodeCodingRunLifecycle({',
     'retainLifecycle(output.lifecycle)',
     'error instanceof CodingKernelExecutionError',
@@ -650,6 +693,7 @@ const SOURCE_CHECKS = Object.freeze([
     'getPendingKernelRecoveryTasks(request.recovery)',
     'userPrompt: kernelRequest.userPrompt',
     'workspaceRoot: kernelRequest.workspaceRoot',
+    'renderCodingContextGraphSummary(kernelRequest.contextGraph)',
     'const completionDecision = this.completion.decide({',
     'const codingConformance: CodingConformanceProjection = projectSettledCodingConformanceRun({',
     'const settledResult: AgentLoopResult = { ...result, completionDecision, codingConformance };',
@@ -805,6 +849,7 @@ const SOURCE_CHECKS = Object.freeze([
     "route: 'canonical'",
     "surface: 'cli'",
     'taskContract: buildCliCodingKernelTaskContract(userPrompt, contextFiles)',
+    'contextSeed: { files: contextFiles.map(path => ({ path })) }',
   ], ['CliLegacyCodingLoop', 'legacyCodingLoop', 'cli-legacy-coding-loop', 'AgentKernelService']),
   check('cli-canonical-kernel-runtime-adapter', SOURCE_PATHS.cliKernelRuntime, [
     'export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<',
@@ -1121,6 +1166,15 @@ function buildSemanticDomains() {
     ], []),
     domain('canonical-task-contract', 'TaskContractPort', [
       owner('shared-CanonicalTaskContractService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedTaskContract),
+    ], []),
+    domain('engineering-orientation', 'EngineeringOrientationPort', [
+      owner('shared-CanonicalEngineeringOrientationService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedEngineeringOrientation),
+    ], []),
+    domain('codebase-exploration', 'CodebaseExplorationPort', [
+      owner('shared-CanonicalCodebaseExplorationService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedCodebaseExploration),
+    ], []),
+    domain('context-graph', 'ContextGraphPort', [
+      owner('shared-CanonicalContextGraphService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedContextGraph),
     ], []),
     domain('run-lifecycle', 'RunLifecyclePort', [
       owner('shared-CanonicalRunLifecycleService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedRunLifecycle),

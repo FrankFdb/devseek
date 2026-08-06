@@ -58,6 +58,7 @@ export const productCliCodingKernelExecutor = {
       userPrompt,
       workspaceRoot,
       taskContract: buildCliCodingKernelTaskContract(userPrompt, contextFiles),
+      contextSeed: { files: contextFiles.map(path => ({ path })) },
       runtimeContext,
       signal,
     });

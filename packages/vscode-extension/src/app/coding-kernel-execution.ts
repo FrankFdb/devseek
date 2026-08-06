@@ -1,7 +1,8 @@
 import {
   projectSettledCodingConformanceRun,
+  renderCodingContextGraphSummary,
   type CodingConformanceProjection,
-  type CodingKernelExecutionRequest,
+  type CodingKernelRuntimeRequest,
   type CodingKernelRuntimeOutput,
   type CodingKernelRuntimePort,
 } from '@devseek-netai/shared';
@@ -68,7 +69,7 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
   ) {}
 
   async executeCanonical(
-    kernelRequest: CodingKernelExecutionRequest<VsCodeCodingKernelRuntimeContext>,
+    kernelRequest: CodingKernelRuntimeRequest<VsCodeCodingKernelRuntimeContext>,
   ): Promise<CodingKernelRuntimeOutput<AgentLoopResult>> {
     const request = kernelRequest.runtimeContext;
     const recoveryContextText = request.recovery
@@ -98,7 +99,10 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
         workspaceRoot: kernelRequest.workspaceRoot,
         mode: request.mode,
         callbacks,
-        sessionContextText: request.sessionContextText ?? '',
+        sessionContextText: mergeContextText(
+          request.sessionContextText,
+          renderCodingContextGraphSummary(kernelRequest.contextGraph),
+        ),
         workflowMode: request.workflowMode,
         memoryRelatedPaths: request.memoryRelatedPaths ?? [],
         semanticContract: request.semanticContract,
@@ -152,4 +156,8 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
       throw error;
     }
   }
+}
+
+function mergeContextText(...values: readonly (string | undefined)[]): string {
+  return values.map(value => value?.trim()).filter(Boolean).join('\n\n');
 }

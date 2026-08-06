@@ -66,6 +66,8 @@ test('canonical Kernel sends VS Code work through its runtime adapter', async ()
   assert.deepEqual(calls[0].contextFiles, ['src/main.ts', 'build.log']);
   assert.equal(calls[0].workspaceRoot, '/workspace');
   assert.equal(calls[0].workflowMode, 'inspect');
+  assert.match(calls[0].sessionContextText, /^session context\n\n\[DevSeek Engineering Context\]/u);
+  assert.match(calls[0].sessionContextText, /languages: typescript/u);
   assert.equal(calls[0].recoveryContextText, '');
   assert.equal(calls[0].semanticContract, semanticContract);
 });
@@ -241,6 +243,7 @@ function execute(kernel, runtimeContext) {
       acceptance: [{ id: 'completed', statement: 'The requested work is complete.' }],
       provenanceRefs: ['vscode-test'],
     }),
+    contextSeed: { files: runtimeContext.contextFiles.map(path => ({ path })) },
     runtimeContext,
     signal: runtimeContext.callbacks?.signal,
   });

@@ -7,6 +7,7 @@ import {
   validateCodingConformanceProjection,
   type CodingConformanceObservedProjection,
   type CodingConformanceProjection,
+  type CodingContextSeed,
   type CodingKernelExecutionOutput,
   type CodingKernelRuntimePort,
   type CodingKernelTaskContract,
@@ -22,6 +23,7 @@ export interface HeadlessCodingRunInput<TRuntimeContext> {
   readonly userPrompt: string;
   readonly workspaceRoot: string;
   readonly taskContract: CodingKernelTaskContract;
+  readonly contextSeed?: CodingContextSeed;
   readonly runtimeContext: TRuntimeContext;
   readonly signal?: AbortSignal;
 }
@@ -83,6 +85,7 @@ export class HeadlessCodingKernelExecutor<TRuntimeContext, TResult> {
         userPrompt: command.request.prompt,
         workspaceRoot: input.workspaceRoot,
         taskContract: input.taskContract,
+        contextSeed: input.contextSeed,
         runtimeContext: input.runtimeContext,
         signal: command.request.signal,
       });

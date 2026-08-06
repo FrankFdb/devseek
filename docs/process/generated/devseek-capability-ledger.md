@@ -4,7 +4,7 @@
 
 - Schema: `devseek.capability-ledger/v1`
 - Capabilities: 76
-- Ledger SHA-256: `2d5d8b9ed35dfb54488e0e131149517c03ac5b8cb46e9962f2af20569560a002`
+- Ledger SHA-256: `c29060a0a602fbae877bf26f116105b8f98560a843e501e21e1d96c49dbe0f6a`
 - Qualification claim policy: `deny-until-signed-evidence-validator`
 
 | Capability | Priority | Applicability | Claim scopes | Implementation | Qualification | Authority port | Typed dependencies |
@@ -52,10 +52,10 @@
 | `C14-RELEASE-DECISION` | P0 | conditional | qualification-aggregate | proposed | — | `QualificationReleasePort` | C14-HOLDOUT-BLIND-COMPARE (qualification/wired) |
 | `C2-ORIENTATION` | P0 | active | core-coding | wired | — | `OrientationDecisionPort` | C1-AGENT-COMMAND (control/wired) |
 | `C2-TASK-CONTRACT` | P0 | active | core-coding | wired | — | `TaskContractPort` | C2-ORIENTATION (semantic/wired) |
-| `C3-CODEBASE-EXPLORATION` | P1 | active | core-coding | proposed | — | `CodebaseExplorationPort` | C3-ENGINEERING-ORIENTATION (semantic/wired) |
-| `C3-CONTEXT-GRAPH` | P1 | active | core-coding | proposed | — | `ContextGraphPort` | C2-TASK-CONTRACT (semantic/wired)<br>C3-CODEBASE-EXPLORATION (semantic/wired) |
+| `C3-CODEBASE-EXPLORATION` | P1 | active | core-coding | wired | — | `CodebaseExplorationPort` | C3-ENGINEERING-ORIENTATION (semantic/wired) |
+| `C3-CONTEXT-GRAPH` | P1 | active | core-coding | wired | — | `ContextGraphPort` | C2-TASK-CONTRACT (semantic/wired)<br>C3-CODEBASE-EXPLORATION (semantic/wired) |
 | `C3-CONTEXT-PROVENANCE` | P1 | active | core-coding | proposed | — | `ContextProvenancePort` | C3-CONTEXT-GRAPH (semantic/wired) |
-| `C3-ENGINEERING-ORIENTATION` | P1 | active | core-coding | proposed | — | `EngineeringOrientationPort` | C2-TASK-CONTRACT (semantic/wired) |
+| `C3-ENGINEERING-ORIENTATION` | P1 | active | core-coding | wired | — | `EngineeringOrientationPort` | C2-TASK-CONTRACT (semantic/wired) |
 | `C3-INSTRUCTION-PRECEDENCE` | P1 | active | core-coding | proposed | — | `InstructionPrecedencePort` | C3-CONTEXT-GRAPH (semantic/wired) |
 | `C4-ACCEPTANCE-CONTRACT` | P1 | active | core-coding | proposed | — | `AcceptanceContractPort` | C4-REQUIREMENTS (semantic/wired)<br>C4-EXTERNAL-BOUNDARY (semantic/wired) |
 | `C4-EXTERNAL-BOUNDARY` | P0 | active | core-coding, safety | proposed | — | `ExternalBoundaryPort` | C4-REQUIREMENTS (semantic/wired)<br>C3-CONTEXT-PROVENANCE (semantic/wired) |
