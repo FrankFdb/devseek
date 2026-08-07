@@ -17,7 +17,7 @@
       "path": "docs/process/devseek-capability-ledger.json",
       "schema_version": "devseek.capability-ledger/v1",
       "ledger_id": "DEVSEEK-CAPABILITY-LEDGER/v1",
-      "source_sha256": "d8380b88a2a5ac9b74406f8b963e580f33fcc12b402c93e2ac3d029e20231221"
+      "source_sha256": "ec0581c90d8a1de71eecc8bd324d9722c22c6ec5aec3dd515a3300a39b855c78"
     },
     "runner_inventory": {
       "path": "docs/process/devseek-qualification-runner-inventory.json",
@@ -370,5 +370,5 @@
     "dispatch_bypasses": 0,
     "qualification_claims": 0
   },
-  "wiring_sha256": "38d81588b01351eadb088ba9fdef8570b56fdfc526e2c7ef0a16bcf656809bcd"
+  "wiring_sha256": "01feb23e0c23750b6a4e3fc6576996844960fc834f6e10a6656ef5575c176005"
 }

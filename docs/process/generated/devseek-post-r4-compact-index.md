@@ -72,13 +72,13 @@
 ## 历史支持文档
 
 - `docs/top-agent-convergence-audit-20260711/archive/14-未完成事项与后续整体迭代计划.md` (historical-unfinished-work-and-followup-plan) -> `f64bb5a55a2465618c4a06584ff98b1da689eecc6cb47f2f3009349e558213d1`
-- `docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md` (iteration-principles-quality-standards-and-skills-plan) -> `364d23269905679c8025018cbde33ac2438c7643e5e8729473d6ec24ad2249f8`
+- `docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md` (iteration-principles-quality-standards-and-skills-plan) -> `ba749cf4eafeddcf6c679f3a164a03306ad70116d0a3d603f9b6d1fb4f0e5028`
 - `docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md` (r3-closeout-and-next-phase-handoff) -> `712e09e938fa8718f44ab32c320f1937e28d8d635f736a936346494099dfc10e`
 
 ## Source Bindings
 
 - `top_agent_followup_plan_14`: `docs/top-agent-convergence-audit-20260711/archive/14-未完成事项与后续整体迭代计划.md` -> `f64bb5a55a2465618c4a06584ff98b1da689eecc6cb47f2f3009349e558213d1`
-- `top_agent_quality_principles_16`: `docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md` -> `364d23269905679c8025018cbde33ac2438c7643e5e8729473d6ec24ad2249f8`
+- `top_agent_quality_principles_16`: `docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md` -> `ba749cf4eafeddcf6c679f3a164a03306ad70116d0a3d603f9b6d1fb4f0e5028`
 - `r3_closeout_next_phase_20`: `docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md` -> `712e09e938fa8718f44ab32c320f1937e28d8d635f736a936346494099dfc10e`
 - `post_r4_nonpermission_plan`: `docs/process/devseek-post-r4-nonpermission-iteration-plan.md` -> `51623b1c2267f8d3f6fcb09b800396e5da12ea083dad5c5ed98f331b8b735555`
 - `r4_iteration_status_rollup`: `docs/process/devseek-r4-iteration-status-rollup.json` -> `fdf9c7be0c9043508596f0ff3b09f830dd61dc94292ffe9929aa5d687180e5c1`
@@ -96,4 +96,4 @@
 
 ## Index Identity
 
-- Index SHA-256: `2996acb9b360b7689a348389b21e4f98f04205df3c16bf56a85171efb6657a1d`
+- Index SHA-256: `6638d8bdf4bf586b8ed4b86faf344132bea718045e9709ef4e43f496979cd8d8`
