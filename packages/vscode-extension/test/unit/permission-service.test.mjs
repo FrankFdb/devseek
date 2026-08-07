@@ -23,7 +23,7 @@ execSync(
 );
 
 const req = createRequire(import.meta.url);
-const { buildToolPolicy, decideToolPermission, PermissionKernel } = req(bundlePath);
+const { buildToolPolicy, decideToolPermission, SurfaceToolPolicyEvaluator } = req(bundlePath);
 
 test('PermissionService: smalltalk allows no tools', () => {
   const policy = buildToolPolicy('smalltalk');
@@ -53,16 +53,18 @@ test('PermissionService: plan can plan but not mutate', () => {
   assert.equal(decideToolPermission(policy, 'terminal').action, 'deny');
 });
 
-test('PermissionService: edit allows writes and confirms terminal', () => {
+test('PermissionService: edit allows writes and lets command risk drive terminal confirmation', () => {
   const policy = buildToolPolicy('edit');
   assert.equal(decideToolPermission(policy, 'edit').action, 'allow');
   assert.equal(decideToolPermission(policy, 'terminal').action, 'requireConfirm');
+  assert.equal(decideToolPermission(policy, { kind: 'terminal', risk: 'medium' }).action, 'allow');
+  assert.equal(decideToolPermission(policy, { kind: 'terminal', risk: 'high' }).action, 'requireConfirm');
 });
 
 test('PermissionService: protected workspace writes require confirmation', () => {
   const policy = buildToolPolicy('edit');
-  const kernel = new PermissionKernel(policy);
-  const decision = kernel.decide({
+  const evaluator = new SurfaceToolPolicyEvaluator(policy);
+  const decision = evaluator.decide({
     kind: 'edit',
     toolName: 'write_file',
     risk: 'medium',
@@ -74,9 +76,10 @@ test('PermissionService: protected workspace writes require confirmation', () =>
   assert.match(decision.reason, /protected-path/);
 });
 
-test('PermissionService: run confirms terminal and denies edits', () => {
+test('PermissionService: run allows low-risk terminal commands and denies edits', () => {
   const policy = buildToolPolicy('run');
   assert.equal(decideToolPermission(policy, 'terminal').action, 'requireConfirm');
+  assert.equal(decideToolPermission(policy, { kind: 'terminal', risk: 'low' }).action, 'allow');
   assert.equal(decideToolPermission(policy, 'edit').action, 'deny');
 });
 

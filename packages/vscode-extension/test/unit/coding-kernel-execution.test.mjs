@@ -75,6 +75,9 @@ test('canonical Kernel sends VS Code work through its runtime adapter', async ()
   assert.match(calls[0].sessionContextText, /languages: typescript/u);
   assert.equal(calls[0].recoveryContextText, '');
   assert.equal(calls[0].semanticContract, semanticContract);
+  assert.equal(calls[0].callbacks.traceRunId, output.runId);
+  assert.equal(typeof calls[0].callbacks.canonicalToolAuthority.authorize, 'function');
+  assert.equal(typeof calls[0].callbacks.canonicalExternalEffects.execute, 'function');
 });
 
 test('canonical Kernel envelope is the only VS Code prompt and workspace authority', async () => {

@@ -69,6 +69,23 @@ const {
   withToolReadEvidence,
 } = req(readEvidenceBundlePath);
 
+const ALLOW_FILE_WRITE = Object.freeze({
+  decision: 'allow',
+  reason: 'test-file-write-allowed',
+  evidenceRefs: Object.freeze(['test:file-write-allowed']),
+});
+const DENY_FILE_WRITE = Object.freeze({
+  decision: 'deny',
+  reason: '写入权限策略阻止',
+  evidenceRefs: Object.freeze(['test:file-write-denied']),
+});
+const CONFIRMED_FILE_WRITE = Object.freeze({
+  decision: 'require-confirmation',
+  reason: 'test-high-risk-file-write-confirmed',
+  confirmationRef: 'test:file-write-confirmation',
+  evidenceRefs: Object.freeze(['test:file-write-confirmed']),
+});
+
 function executeFakeToolsForLoop(tools, callbacks, ...args) {
   return executeFakeToolsWithoutFixturePolicy(
     tools,
@@ -99,12 +116,11 @@ function committedDirectoryResult(message, authorization, relativePath = 'genera
 function preparedTerminalCallbacks(host) {
   return {
     onPrepareTerminalCommand: async (command, workdir) => ({
-      authority: {
+      constraint: {
         decision: 'require-confirmation',
-        status: 'authorized',
         reason: 'test-terminal-confirmed',
         confirmationRef: `test-terminal-confirmation:${command}`,
-        evidenceRefs: [`test-terminal-authority:${command}`],
+        evidenceRefs: [`test-terminal-constraint:${command}`],
       },
       execute: async () => {
         try {
@@ -733,9 +749,9 @@ test('ToolLoop create_directory consults the file-write policy before invoking t
     const result = await executeFakeToolsForLoop(
       [{ name: 'create_directory', input: { path: 'generated/docs' } }],
       {
-        onBeforeFileWrite: async (absPath, context) => {
+        onResolveFileWriteConstraint: async (absPath, context) => {
           policyCalls.push({ absPath, context });
-          return false;
+          return DENY_FILE_WRITE;
         },
         onCreateDirectory: async () => {
           hostMkdirCalls += 1;
@@ -755,6 +771,7 @@ test('ToolLoop create_directory consults the file-write policy before invoking t
         purpose: 'tool-write',
         userRequested: false,
         taskAction: 'create_directory',
+        toolRisk: 'medium',
         displayName: 'generated/docs',
         requestPrompt,
       },
@@ -784,7 +801,7 @@ test('ToolLoop file-write policy denials are structured tool failures', async ()
         },
       }],
       {
-        onBeforeFileWrite: async () => false,
+        onResolveFileWriteConstraint: async () => DENY_FILE_WRITE,
         onAppliedChange: async () => {},
         onToolActivity: () => {},
         onAgentStatus: async () => {},
@@ -814,7 +831,7 @@ test('ToolLoop create_directory gives policy and host the same resolved absolute
     const result = await executeFakeToolsForLoop(
       [{ name: 'create_directory', input: { path: 'generated/docs' } }],
       {
-        onBeforeFileWrite: async absPath => { policyPaths.push(absPath); return true; },
+        onResolveFileWriteConstraint: async absPath => { policyPaths.push(absPath); return ALLOW_FILE_WRITE; },
         onCreateDirectory: async (absPath, authorization) => {
           hostPaths.push(absPath);
           return committedDirectoryResult('created', authorization);
@@ -846,7 +863,7 @@ test('ToolLoop propagates a failed directory mutation receipt into canonical too
     const result = await executeFakeToolsForLoop(
       [{ name: 'create_directory', input: { path: 'generated/docs' } }],
       {
-        onBeforeFileWrite: async () => true,
+        onResolveFileWriteConstraint: async () => ALLOW_FILE_WRITE,
         onCreateDirectory: async (_absPath, authorization) => ({
           message: 'not-created',
           changeReceipt: {
@@ -883,7 +900,7 @@ test('ToolLoop create_directory fails canonically when the product host is missi
     const result = await executeFakeToolsForLoop(
       [{ name: 'create_directory', input: { path: 'generated/docs' } }],
       {
-        onBeforeFileWrite: async () => true,
+        onResolveFileWriteConstraint: async () => ALLOW_FILE_WRITE,
         onToolActivity: () => {},
         onAgentStatus: async () => {},
       },
@@ -905,10 +922,9 @@ test('ToolLoop settles prepared VS Code and MCP effects through canonical tool r
   const hostCalls = [];
   const authorized = label => ({
     decision: 'require-confirmation',
-    status: 'authorized',
     reason: `${label}-confirmed`,
     confirmationRef: `${label}-confirmation`,
-    evidenceRefs: [`${label}-authority`],
+    evidenceRefs: [`${label}-constraint`],
   });
   const result = await executeFakeToolsForLoop(
     [
@@ -918,14 +934,16 @@ test('ToolLoop settles prepared VS Code and MCP effects through canonical tool r
     {
       executionMode: 'destructive',
       onPrepareVscodeCommand: async command => ({
-        authority: authorized('vscode'),
+        constraint: authorized('vscode'),
+        reconcile: async () => ({ status: 'not-started', evidenceRefs: ['vscode-not-started'] }),
         execute: async () => {
           hostCalls.push(`vscode:${command}`);
           return { status: 'completed', result: 'formatted', evidenceRefs: ['vscode-result'] };
         },
       }),
       onPrepareMcpToolCall: async name => ({
-        authority: authorized('mcp'),
+        constraint: authorized('mcp'),
+        reconcile: async () => ({ status: 'not-started', evidenceRefs: ['mcp-not-started'] }),
         execute: async () => {
           hostCalls.push(`mcp:${name}`);
           return { status: 'completed', result: 'documentation', evidenceRefs: ['mcp-result'] };
@@ -946,18 +964,17 @@ test('ToolLoop settles prepared VS Code and MCP effects through canonical tool r
   assert.deepEqual(result.toolExecutionReceipts?.map(receipt => receipt.result), ['formatted', 'documentation']);
 });
 
-test('ToolLoop never dispatches a product host after prepared authority denies it', async () => {
+test('ToolLoop never dispatches a product host after its Surface constraint denies it', async () => {
   let hostCalls = 0;
   const result = await executeFakeToolsForLoop(
     [{ name: 'mcp__docs__lookup', input: { query: 'contract' } }],
     {
       executionMode: 'destructive',
       onPrepareMcpToolCall: async () => ({
-        authority: {
+        constraint: {
           decision: 'deny',
-          status: 'denied',
           reason: 'user-declined-mcp',
-          evidenceRefs: ['mcp-authority-denied'],
+          evidenceRefs: ['mcp-constraint-denied'],
         },
         execute: async () => {
           hostCalls += 1;
@@ -973,7 +990,7 @@ test('ToolLoop never dispatches a product host after prepared authority denies i
 
   assert.equal(hostCalls, 0);
   assert.equal(result.toolExecutionReceipts?.[0]?.status, 'denied');
-  assert.equal(result.toolExecutionReceipts?.[0]?.permission.reason, 'user-declined-mcp');
+  assert.equal(result.toolExecutionReceipts?.[0]?.permission.reason, 'surface-denies:user-declined-mcp');
 });
 
 test('ToolLoop delete_file leaves the file intact when the file-write policy rejects deletion', async () => {
@@ -988,9 +1005,9 @@ test('ToolLoop delete_file leaves the file intact when the file-write policy rej
     const result = await executeFakeToolsForLoop(
       [{ name: 'delete_file', input: { path: 'notes.txt' } }],
       {
-        onBeforeFileWrite: async (absPath, context) => {
+        onResolveFileWriteConstraint: async (absPath, context) => {
           policyCalls.push({ absPath, context });
-          return false;
+          return DENY_FILE_WRITE;
         },
         onAppliedChange: async () => {
           appliedChanges += 1;
@@ -1008,9 +1025,10 @@ test('ToolLoop delete_file leaves the file intact when the file-write policy rej
       absPath: filePath,
       context: {
         purpose: 'tool-write',
-        userRequested: false,
-        taskAction: 'delete_file',
-        displayName: 'notes.txt',
+          userRequested: false,
+          taskAction: 'delete_file',
+          toolRisk: 'high',
+          displayName: 'notes.txt',
         requestPrompt,
       },
     }]);
@@ -1031,7 +1049,7 @@ test('ToolLoop delete_file records applied change from the delete transaction ev
     const result = await executeFakeToolsForLoop(
       [{ name: 'delete_file', input: { path: 'obsolete.txt' } }],
       {
-        onBeforeFileWrite: async () => true,
+        onResolveFileWriteConstraint: async () => CONFIRMED_FILE_WRITE,
         onAppliedChange: async change => applied.push(change),
         onToolActivity: () => {},
         onAgentStatus: async () => {},
@@ -1076,7 +1094,7 @@ test('ToolLoop replace_in_file edits existing workspace file with write evidence
         },
       ],
       {
-        onBeforeFileWrite: async () => true,
+        onResolveFileWriteConstraint: async () => ALLOW_FILE_WRITE,
         onAppliedChange: async (change) => {
           applied.push(change);
         },
@@ -1118,7 +1136,7 @@ test('ToolLoop expands a batch file-write payload into independently settled can
         },
       }],
       {
-        onBeforeFileWrite: async () => true,
+        onResolveFileWriteConstraint: async () => ALLOW_FILE_WRITE,
         onAppliedChange: async change => applied.push(change),
         onToolActivity: () => {},
         onAgentStatus: async () => {},
@@ -1237,7 +1255,7 @@ test('ToolLoop records blocking source sanity failures as structured tool failur
         },
       ],
       {
-        onBeforeFileWrite: async () => true,
+        onResolveFileWriteConstraint: async () => ALLOW_FILE_WRITE,
         onAppliedChange: async () => {},
         onToolActivity: () => {},
         onAgentStatus: async () => {},
@@ -1277,7 +1295,7 @@ test('ToolLoop repairs C++ string newline transport pollution before writing sou
         },
       ],
       {
-        onBeforeFileWrite: async () => true,
+        onResolveFileWriteConstraint: async () => ALLOW_FILE_WRITE,
         onAppliedChange: async (change) => {
           applied.push(change);
         },
@@ -1325,7 +1343,7 @@ test('R3-01 ToolLoop skips all work tools after user cancellation', async () => 
         onAppliedChange: async () => {
           appliedChanges += 1;
         },
-        onBeforeFileWrite: async () => true,
+        onResolveFileWriteConstraint: async () => ALLOW_FILE_WRITE,
         onToolActivity: () => {},
         onAgentStatus: async () => {},
       },

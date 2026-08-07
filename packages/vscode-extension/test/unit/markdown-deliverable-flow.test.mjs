@@ -30,7 +30,6 @@ const rootDir = path.resolve(__dirname, '../../');
 const decomposerBundlePath = path.join(tmpdir(), `devseek-md-flow-decomposer-${process.pid}.cjs`);
 const markdownBundlePath = path.join(tmpdir(), `devseek-md-flow-executor-${process.pid}.cjs`);
 const agenticBundlePath = path.join(tmpdir(), `devseek-md-flow-agentic-${process.pid}.cjs`);
-const deterministicBundlePath = path.join(tmpdir(), `devseek-md-flow-deterministic-${process.pid}.cjs`);
 const fileWritePolicyBundlePath = path.join(tmpdir(), `devseek-md-flow-write-policy-${process.pid}.cjs`);
 
 execSync(
@@ -41,11 +40,6 @@ execSync(
 execSync(
   `npx esbuild src/agent/markdown-deliverable-task.ts --bundle ` +
   `--outfile=${markdownBundlePath} --format=cjs --platform=node --external:vscode`,
-  { cwd: rootDir, stdio: 'pipe' },
-);
-execSync(
-  `npx esbuild src/agent/deterministic-task-executor.ts --bundle ` +
-  `--outfile=${deterministicBundlePath} --format=cjs --platform=node --external:vscode`,
   { cwd: rootDir, stdio: 'pipe' },
 );
 execSync(
@@ -141,8 +135,13 @@ const req = createRequire(import.meta.url);
 const { decomposeTask } = req(decomposerBundlePath);
 const { tryExecuteMarkdownDeliverableTask } = req(markdownBundlePath);
 const { runAgenticLoop } = req(agenticBundlePath);
-const { tryExecuteDeterministicCreateTask } = req(deterministicBundlePath);
-const { decideAgentFileWrite } = req(fileWritePolicyBundlePath);
+const { decideAgentFileWrite, projectAgentFileWriteConstraint } = req(fileWritePolicyBundlePath);
+
+const ALLOW_FILE_WRITE = Object.freeze({
+  decision: 'allow',
+  reason: 'test-file-write-allowed',
+  evidenceRefs: Object.freeze(['test:file-write-allowed']),
+});
 
 function createFormalMaintenanceWorkspace() {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-md-flow-huida-uav-'));
@@ -330,7 +329,7 @@ function makeCallbacks() {
         checkpoints.push({ completedUpToIndex, remainingTasks, reason });
       },
       onToolActivity(kind, label) { activities.push({ kind, label }); },
-      onBeforeFileWrite: async () => true,
+      onResolveFileWriteConstraint: async () => ALLOW_FILE_WRITE,
     },
   };
 }
@@ -409,133 +408,6 @@ async function runMarkdownClosedLoop(responseFactory, options = {}) {
     throw error;
   }
 }
-
-test('recovery route: deterministic create cannot write a source-claim Markdown artifact', async () => {
-  const root = mkdtempSync(path.join(tmpdir(), 'devseek-grounded-recovery-guard-'));
-  const source = path.join(root, 'config.hpp');
-  const target = path.join(root, 'report.md');
-  mkdirSync(path.dirname(source), { recursive: true });
-  writeFileSync(source, 'constexpr int kTimeoutMs = 5000;\n');
-  const prompt = `请读取 ${source}，提取 kTimeoutMs 的真实值并创建 Markdown 报告 ${target}。`;
-  const io = makeCallbacks();
-  try {
-    const result = await tryExecuteDeterministicCreateTask({
-      task: {
-        id: 'recovered-grounded-report',
-        action: 'create',
-        file: target,
-        absPath: target,
-        desc: prompt,
-        expectedContent: '# forged\n\nkTimeoutMs = 30000\n',
-      },
-      taskIndex: 1,
-      taskTotal: 1,
-      workspaceRoot: Uri.file(root),
-      effectiveAbsPath: target,
-      userPrompt: prompt,
-      callbacks: io.callbacks,
-    });
-
-    assert.equal(result, undefined, 'grounded executor must own this recovered task');
-    assert.equal(existsSync(target), false);
-    assert.deepEqual(io.changes, []);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test('recovery route: deterministic expectedContent cannot override the current user prohibition', async () => {
-  const root = mkdtempSync(path.join(tmpdir(), 'devseek-deterministic-prohibited-'));
-  const target = path.join(root, 'forbidden.md');
-  const prompt = [
-    `不要创建 Markdown 报告 ${target}。`,
-    '',
-    '【同一会话续作上下文】',
-    `上一轮曾要求创建 Markdown 报告 ${target}。`,
-  ].join('\n');
-  const io = makeCallbacks();
-  try {
-    io.callbacks.onBeforeFileWrite = async (absPath, context) => decideAgentFileWrite({
-      absPath,
-      workspaceRoot: root,
-      context,
-    }).action === 'allow';
-    const result = await tryExecuteDeterministicCreateTask({
-      task: {
-        id: 'malicious-recovery-create',
-        action: 'create',
-        file: target,
-        absPath: target,
-        desc: `创建 Markdown 报告 ${target}`,
-        expectedContent: '# forbidden\n',
-      },
-      taskIndex: 1,
-      taskTotal: 1,
-      workspaceRoot: Uri.file(root),
-      effectiveAbsPath: target,
-      userPrompt: prompt,
-      callbacks: io.callbacks,
-    });
-
-    assert.equal(result?.applied, false);
-    assert.match(result?.raw || '', /markdown-artifact-write-prohibited/);
-    assert.equal(existsSync(target), false);
-    assert.deepEqual(io.changes, []);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test('recovery route: deterministic create settles an already-satisfied JavaScript probe without rewriting', async () => {
-  const root = mkdtempSync(path.join(tmpdir(), 'devseek-deterministic-js-satisfied-'));
-  const target = path.join(root, '.devseek-close02-probe/CLOSE02-20260713-manual-probe/probe.js');
-  const expectedContent = [
-    'function close02Add(a, b) {return a + b;}',
-    '',
-    "console.log('CLOSE02-20260713-manual-probe: 2+3=' + close02Add(2, 3));",
-    '',
-  ].join('\n');
-  const prompt = `创建 ${target}，定义函数 close02Add(a, b)，返回 a + b。最后一行打印：CLOSE02-20260713-manual-probe: 2+3=5。`;
-  const io = makeCallbacks();
-  const writeGuardCalls = [];
-  try {
-    mkdirSync(path.dirname(target), { recursive: true });
-    writeFileSync(target, expectedContent.replace(/\n/g, '\r\n'), 'utf8');
-    io.callbacks.onBeforeFileWrite = async (absPath, context) => {
-      writeGuardCalls.push({ absPath, context });
-      return true;
-    };
-
-    const result = await tryExecuteDeterministicCreateTask({
-      task: {
-        id: 'close02-satisfied-probe',
-        action: 'create',
-        file: '.devseek-close02-probe/CLOSE02-20260713-manual-probe/probe.js',
-        absPath: target,
-        desc: prompt,
-        expectedContent,
-      },
-      taskIndex: 1,
-      taskTotal: 1,
-      workspaceRoot: Uri.file(root),
-      effectiveAbsPath: target,
-      userPrompt: prompt,
-      callbacks: io.callbacks,
-    });
-
-    assert.equal(result?.applied, true);
-    assert.equal(result?.linesAdded, 0);
-    assert.equal(result?.linesRemoved, 0);
-    assert.match(result?.raw || '', /already satisfied/);
-    assert.equal(readFileSync(target, 'utf8'), expectedContent.replace(/\n/g, '\r\n'));
-    assert.deepEqual(io.changes, []);
-    assert.deepEqual(writeGuardCalls, []);
-    assert.equal(io.activities.some(item => item.kind === 'read' && item.label.endsWith('probe.js')), true);
-    assert.match(io.statuses.at(-1)?.detail || '', /已存在并读回验证/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
 
 test('markdown deliverable flow: same formal-project request reaches simulated DeepSeek Web and writes md', async () => {
   const providerMarkdown = [
@@ -797,11 +669,9 @@ test('agentic route: natural record wording remains grounded and ignores provide
     };
   };
   try {
-    io.callbacks.onBeforeFileWrite = async (absPath, context) => decideAgentFileWrite({
-      absPath,
-      workspaceRoot: workspace.root,
-      context,
-    }).action === 'allow';
+    io.callbacks.onResolveFileWriteConstraint = async (absPath, context) => projectAgentFileWriteConstraint(
+      decideAgentFileWrite({ absPath, workspaceRoot: workspace.root, context }),
+    );
     const result = await runAgenticLoop(prompt, [], workspace.root, 'fast', io.callbacks, '', 'edit', []);
 
     assert.equal(providerCalls, 2, 'the natural verb must keep the bounded verifier repair loop');
@@ -890,11 +760,9 @@ test('agentic route: a prohibited Markdown mutation never becomes a forced write
     return { text: '[TOOL:task_complete {"summary":"已遵守限制，未生成或修改报告。"}]', tools: [] };
   };
   try {
-    io.callbacks.onBeforeFileWrite = async (absPath, context) => decideAgentFileWrite({
-      absPath,
-      workspaceRoot: root,
-      context,
-    }).action === 'allow';
+    io.callbacks.onResolveFileWriteConstraint = async (absPath, context) => projectAgentFileWriteConstraint(
+      decideAgentFileWrite({ absPath, workspaceRoot: root, context }),
+    );
     const result = await runAgenticLoop(
       `不允许生成 Markdown 报告 ${target}。`,
       [],
@@ -1060,11 +928,11 @@ test(`agentic route: a ${timing} steer revokes write authority before provider t
     steerPolls += 1;
     return steerPolls === revokePoll ? [revoke] : [];
   };
-  io.callbacks.onBeforeFileWrite = async (absPath, context) => {
+  io.callbacks.onResolveFileWriteConstraint = async (absPath, context) => {
     observedAuthorityPrompts.push(context?.requestPrompt || '');
     const decision = decideAgentFileWrite({ absPath, workspaceRoot: root, context });
     controller.abort();
-    return decision.action === 'allow';
+    return projectAgentFileWriteConstraint(decision);
   };
   globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__ = async () => {
     providerCalls += 1;

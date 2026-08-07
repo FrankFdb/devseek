@@ -5,6 +5,7 @@ import {
   type ProviderRecoveryCheckpointTask,
   type ProviderRecoveryKind,
 } from './provider-recovery-service';
+import { projectAgentTaskCheckpointEffect } from './coding-checkpoint-effect';
 
 export interface ProviderRecoveryCheckpointInput {
   readonly error: CodingKernelExecutionError;
@@ -32,6 +33,7 @@ export function buildProviderRecoveryCheckpointRecord(
       description: task.desc,
       action: task.action,
       target: task.visibleTarget || task.file || 'Agent task',
+      effectClass: projectAgentTaskCheckpointEffect(task.action),
     })),
     reason: 'failed',
     evidenceRefs: input.evidenceRefs ?? input.error.settlement.evidenceRefs,

@@ -12,6 +12,7 @@ import {
 } from '../workspace/edit-service';
 import { VsCodeWorkspaceMutationAdapter } from '../workspace/coding-workspace-mutation-adapter';
 import { isCanonicalPathInsideRoot } from '../workspace/path-containment';
+import { isAgentFileWriteConstraintSatisfied } from '../app/agent-file-write-policy';
 import {
   isMarkdownDocumentDeliverableRequest,
   isMarkdownDocumentWriteTask,
@@ -425,13 +426,17 @@ export async function tryExecuteMarkdownDeliverableTask(
       title: '提交已验证的 Markdown 候选',
       detail: `正在对 ${relPath} 重新授权并执行唯一一次物理写入，随后读回并独立复核源码。`,
     });
-    if (callbacks.onBeforeFileWrite && !(await callbacks.onBeforeFileWrite(absPath, {
-      purpose: 'markdown-deliverable',
-      userRequested: true,
-      taskAction: task.action,
-      displayName: relPath,
-      requestPrompt: input.userPrompt,
-    }))) {
+    const resolveConstraint = callbacks.onResolveFileWriteConstraint;
+    const fileWriteConstraint = resolveConstraint
+      ? await resolveConstraint(absPath, {
+          purpose: 'markdown-deliverable',
+          userRequested: true,
+          taskAction: task.action,
+          displayName: relPath,
+          requestPrompt: input.userPrompt,
+        })
+      : undefined;
+    if (!fileWriteConstraint || !isAgentFileWriteConstraintSatisfied(fileWriteConstraint)) {
       await postMarkdownStatus(input, 'failed', basename, {
         title: 'Markdown 写入被阻止',
         detail: `目标：${relPath}\n写入被当前权限或保护规则阻止；已验证候选未落盘。`,

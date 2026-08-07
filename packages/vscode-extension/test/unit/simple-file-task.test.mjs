@@ -65,6 +65,12 @@ const {
   tryRunSimpleFileTask,
 } = req(bundlePath);
 
+const ALLOW_FILE_WRITE = Object.freeze({
+  decision: 'allow',
+  reason: 'test-file-write-allowed',
+  evidenceRefs: Object.freeze(['test:file-write-allowed']),
+});
+
 function makeCallbacks(events) {
   return {
     onDelta: (delta) => events.deltas.push(delta),
@@ -74,7 +80,7 @@ function makeCallbacks(events) {
     onResponseMeta: (text) => events.responseMeta.push(text),
     onTodoUpdate: (items) => events.todos.push(items),
     onToolActivity: (kind, label) => events.activities.push({ kind, label }),
-    onBeforeFileWrite: async () => true,
+    onResolveFileWriteConstraint: async () => ALLOW_FILE_WRITE,
     onValidationCommand: async ({ command, cwd, timeoutMs }) => {
       try {
         const stdout = execSync(command, {
@@ -309,9 +315,9 @@ test('Simple file task: preserves a concurrent user edit made during the permiss
   const callbacks = makeCallbacks(events);
   try {
     writeFileSync(target, 'old-content');
-    callbacks.onBeforeFileWrite = async () => {
+    callbacks.onResolveFileWriteConstraint = async () => {
       writeFileSync(target, 'newer-user-content');
-      return true;
+      return ALLOW_FILE_WRITE;
     };
 
     const result = await tryRunSimpleFileTask({

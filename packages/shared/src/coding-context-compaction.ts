@@ -278,6 +278,7 @@ function assertProgressContinuity(
       description: String(unit.description).trim(),
       ...(unit.action?.trim() ? { action: unit.action.trim() } : {}),
       ...(unit.target?.trim() ? { target: unit.target.trim() } : {}),
+      ...(unit.effectClass ? { effectClass: unit.effectClass } : {}),
     };
     if (codingSemanticDigest(comparable) !== previous.fingerprint) compactionFailure('pending-unit-drift');
   }

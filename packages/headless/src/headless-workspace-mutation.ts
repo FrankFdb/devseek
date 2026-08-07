@@ -2,6 +2,7 @@ import {
   CanonicalWorkspaceMutationTransaction,
   buildCodingWorkspaceMutationPlan,
   type BuildCodingWorkspaceMutationPlanInput,
+  type CodingToolAuthoritySessionPort,
   type CodingWorkspaceMutationOutcome,
   type WorkspaceMutationPort,
   type WorkspaceMutationTransactionPort,
@@ -9,6 +10,8 @@ import {
 
 export interface HeadlessWorkspaceMutationInput<TPayload, TBaseline, TApplied, TResult> {
   readonly plan: BuildCodingWorkspaceMutationPlanInput<TPayload>;
+  readonly tool: string;
+  readonly authority: CodingToolAuthoritySessionPort;
   readonly host: WorkspaceMutationPort<TPayload, TBaseline, TApplied, TResult>;
 }
 
@@ -21,6 +24,24 @@ export class HeadlessWorkspaceMutationAdapter {
   execute<TPayload, TBaseline, TApplied, TResult>(
     input: HeadlessWorkspaceMutationInput<TPayload, TBaseline, TApplied, TResult>,
   ): Promise<CodingWorkspaceMutationOutcome<TResult>> {
-    return this.transaction.execute(buildCodingWorkspaceMutationPlan(input.plan), input.host);
+    const authorization = input.authority.authorize({
+      actionId: input.plan.actionId,
+      tool: input.tool,
+      purpose: 'workspace-mutation',
+      effects: ['workspace-mutation'],
+      input: input.plan.payload,
+      risk: 'medium',
+      targetPaths: input.plan.paths,
+    });
+    if (authorization.receipt.status !== 'authorized') {
+      throw new Error(`headless-workspace-mutation:authority-denied:${authorization.receipt.reason}`);
+    }
+    return this.transaction.execute(buildCodingWorkspaceMutationPlan({
+      ...input.plan,
+      evidenceRefs: [
+        ...(input.plan.evidenceRefs ?? []),
+        ...authorization.receipt.evidenceRefs,
+      ],
+    }), input.host);
   }
 }

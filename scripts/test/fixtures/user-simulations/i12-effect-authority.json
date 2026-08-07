@@ -1,0 +1,79 @@
+{
+  "schema_version": "devseek.user-simulation-scenario/v1",
+  "iteration_id": "I12",
+  "name": "effect-authority",
+  "purpose": "Preserve distinct permission, external-effect reconciliation, and receipt-driven resume inputs for I12 regression.",
+  "cases": [
+    {
+      "case_id": "I12-AUT-01",
+      "input": {
+        "prompt": "Review the repository without changing files, even if the editor Surface attempts to authorize a write.",
+        "attempted_path": "generated/review.md",
+        "surface_reason": "editor-suggested-write"
+      }
+    },
+    {
+      "case_id": "I12-AUT-02",
+      "input": {
+        "prompt": "Change the requested file, but reject any Headless Surface that tries to issue the final authorized status itself.",
+        "attempted_path": "src/forged-authority.ts",
+        "surface_reason": "headless-forged-final-authority",
+        "forged_status": "authorized"
+      }
+    },
+    {
+      "case_id": "I12-AUT-03",
+      "input": {
+        "prompt": "Apply the approved change to src/approved.ts, but reject reuse of that authority for src/substituted.ts.",
+        "approved_path": "src/approved.ts",
+        "substituted_path": "src/substituted.ts",
+        "approved_content": "export const approved = true;",
+        "substituted_content": "export const substituted = true;"
+      }
+    },
+    {
+      "case_id": "I12-EFX-01",
+      "input": {
+        "prompt": "Post the approved implementation result to the remote issue exactly once.",
+        "action_id": "post-issue-result",
+        "tool": "mcp__issues__comment",
+        "issue_id": "DEVSEEK-12",
+        "body": "Implementation verified locally.",
+        "confirmation_ref": "user-confirmed-i12-remote-comment"
+      }
+    },
+    {
+      "case_id": "I12-RSM-01",
+      "input": {
+        "prompt": "Resume the interrupted approved issue update without posting the remote comment twice.",
+        "pending_unit": {
+          "id": "post-resume-result",
+          "description": "Post the verified resume result to the issue",
+          "action": "external-effect",
+          "target": "DEVSEEK-12",
+          "effect_class": "external-effect"
+        },
+        "tool": "mcp__issues__comment",
+        "body": "Resume verification completed.",
+        "confirmation_ref": "user-confirmed-i12-resume-comment"
+      }
+    },
+    {
+      "case_id": "I12-RSM-02",
+      "input": {
+        "prompt": "Resume the interrupted approved issue update, but reject a different comment body that tries to reuse its completed receipt.",
+        "pending_unit": {
+          "id": "post-bound-resume-result",
+          "description": "Post the exact approved resume result to the issue",
+          "action": "external-effect",
+          "target": "DEVSEEK-12",
+          "effect_class": "external-effect"
+        },
+        "tool": "mcp__issues__comment",
+        "approved_body": "Approved resume result.",
+        "substituted_body": "Different unapproved resume result.",
+        "confirmation_ref": "user-confirmed-i12-bound-resume-comment"
+      }
+    }
+  ]
+}

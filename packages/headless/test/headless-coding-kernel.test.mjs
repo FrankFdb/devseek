@@ -16,6 +16,7 @@ import {
   CODING_CONFORMANCE_DEVELOPMENT_FIXTURES,
   CODING_CONFORMANCE_DIMENSIONS,
   CODING_KERNEL_OUTPUT_VERSION,
+  CanonicalToolAuthorityService,
   bindSettledCodingConformanceObservation,
   buildSecretHarvestingRefusalAcceptanceEvidence,
   buildCodingKernelTaskContract,
@@ -175,12 +176,13 @@ test('Headless tool adapter composes host capability without bypassing shared au
       tool: 'fetch_webpage',
       effects: ['network'],
       input: { url: 'https://example.com' },
-      authority: {
-        decision: 'deny',
-        status: 'denied',
-        reason: 'network-not-authorized',
-        evidenceRefs: ['headless-authority:network-denied'],
-      },
+    },
+    authority: standaloneAuthority('headless-tool-run', 'change'),
+    purpose: 'observe',
+    surfaceConstraint: {
+      decision: 'deny',
+      reason: 'network-not-authorized',
+      evidenceRefs: ['headless-policy:network-denied'],
     },
     host: {
       async execute() {
@@ -207,6 +209,8 @@ test('Headless mutation adapter commits only caller-host readback evidence', asy
       payload: { content: 'updated\n' },
       evidenceRefs: ['headless-plan:write-1'],
     },
+    tool: 'replace_file',
+    authority: standaloneAuthority('headless-mutation-run', 'change'),
     host: {
       async captureBaseline() {
         calls.push('baseline');
@@ -309,12 +313,14 @@ async function executeHeadlessProductRoute(request, scenario) {
         tool: 'run_terminal',
         effects: classifyCodingTerminalEffects('npm install left-pad'),
         input: { command: 'npm install left-pad' },
-        authority: {
-          decision: 'deny',
-          status: 'denied',
-          reason: 'dependency-and-network-authority-not-granted',
-          evidenceRefs: ['headless-authority:install-denied'],
-        },
+      },
+      authority: request.toolAuthority,
+      purpose: 'external-effect',
+      risk: 'high',
+      surfaceConstraint: {
+        decision: 'deny',
+        reason: 'dependency-and-network-authority-not-granted',
+        evidenceRefs: ['headless-policy:install-denied'],
       },
       host: { async execute() { throw new Error('denied command must not execute'); } },
     });
@@ -404,13 +410,11 @@ async function executeHeadlessMutationTool(input) {
       tool: 'replace_file',
       effects: ['workspace-mutation'],
       input: { path: input.path, content: input.content },
-      authority: {
-        decision: 'allow',
-        status: 'authorized',
-        reason: 'headless-caller-authorized-scoped-workspace-change',
-        evidenceRefs: [`headless-authority:${input.actionId}:authorized`],
-      },
     },
+    authority: input.request.toolAuthority,
+    purpose: 'workspace-mutation',
+    risk: 'medium',
+    targetPaths: [input.path],
     host: {
       async execute() {
         const mutation = await new HeadlessWorkspaceMutationAdapter().execute({
@@ -423,6 +427,8 @@ async function executeHeadlessMutationTool(input) {
             payload: { path: input.path, content: input.content },
             evidenceRefs: [`headless-plan:${input.actionId}`],
           },
+          tool: 'replace_file',
+          authority: input.request.toolAuthority,
           host: realWorkspaceMutationHost(input.request.workspaceRoot),
         });
         changeReceipt = mutation.receipt;
@@ -442,23 +448,17 @@ async function executeHeadlessMutationTool(input) {
 
 async function executeHeadlessVerificationTool(input) {
   let verificationReceipt;
-  const tool = await new HeadlessToolExecutionAdapter().execute({
-    action: {
-      runId: input.request.runId,
-      sequence: input.sequence,
-      actionId: input.actionId,
-      tool: 'run_terminal',
-      effects: ['process'],
-      input: input.scenario.verifier,
-      authority: {
-        decision: 'allow',
-        status: 'authorized',
-        reason: 'headless-caller-authorized-local-verification',
-        evidenceRefs: [`headless-authority:${input.actionId}:authorized`],
-      },
-    },
-    host: {
-      async execute() {
+  const effect = await input.request.externalEffects.execute({
+    sequence: input.sequence,
+    actionId: input.actionId,
+    tool: 'run_terminal',
+    purpose: 'verify',
+    nature: 'observational',
+    effects: ['process'],
+    input: input.scenario.verifier,
+    risk: 'medium',
+  }, {
+    async execute() {
         const verification = await new HeadlessVerificationAdapter().verify({
           plan: {
             runId: input.request.runId,
@@ -490,16 +490,16 @@ async function executeHeadlessVerificationTool(input) {
         });
         verificationReceipt = verification.receipt;
         return {
-          status: verification.receipt.status === 'passed' ? 'completed' : 'failed',
+          status: verification.receipt.status === 'passed' ? 'committed' : 'failed-no-effect',
           result: verification.receipt,
           ...(verification.receipt.status === 'passed' ? {} : { errorCode: 'verification-failed' }),
           evidenceRefs: verification.receipt.evidenceRefs,
         };
-      },
     },
   });
   assert.ok(verificationReceipt, `${input.actionId} did not settle a verification receipt`);
-  return { toolReceipt: tool.receipt, verificationReceipt };
+  assert.ok(effect.receipt.toolReceipt, `${input.actionId} did not settle a tool receipt`);
+  return { toolReceipt: effect.receipt.toolReceipt, verificationReceipt };
 }
 
 function realWorkspaceMutationHost(workspaceRoot) {
@@ -685,6 +685,21 @@ function runtimeOutput(fixture, value) {
     evidenceRefs: fixture.expected.completion.evidenceRefs,
     residualRisks: fixture.expected.completion.residualRisks,
   };
+}
+
+function standaloneAuthority(runId, mode) {
+  return new CanonicalToolAuthorityService().bind({
+    runId,
+    surface: 'headless',
+    workspaceRoot: '/workspace',
+    taskContract: buildCodingKernelTaskContract({
+      goal: `${mode} the headless workspace`,
+      mode,
+      deliverables: [{ id: 'change', kind: 'source-change' }],
+      acceptance: [{ id: 'settled', statement: 'The operation is settled.' }],
+      provenanceRefs: ['headless-test'],
+    }),
+  });
 }
 
 function runInput(fixture, workspaceRoot) {

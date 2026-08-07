@@ -63,7 +63,7 @@
     },
     "headlessExecutor": {
       "path": "packages/headless/src/headless-coding-kernel.ts",
-      "source_sha256": "98c639c39a8a5c60830e098fb90cb77fc02db6dd95b04d113116dd54e78378ce"
+      "source_sha256": "5044a643d07669e36e3a42d24a4f5c783a7908bf50831759813cc636751914e1"
     },
     "bridgeServer": {
       "path": "packages/bridge/src/server.ts",
@@ -1490,5 +1490,5 @@
     "duplicate_webview_protocol_declarations": 0,
     "duplicate_webview_handler_registrations": 0
   },
-  "inventory_sha256": "945af3c3cab1ce1281ec2a686b1584ec33e27ed7fa355e15d3e994b6e4b0086c"
+  "inventory_sha256": "17522ef218af7878ffb229a3c28674be39da2b94624491cb64a6455568175a79"
 }

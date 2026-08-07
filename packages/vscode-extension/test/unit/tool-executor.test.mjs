@@ -28,6 +28,34 @@ execSync(
 const req = createRequire(import.meta.url);
 const { AgentToolExecutor, classifyToolKind } = req(bundlePath);
 const { normalizeToolCallEnvelope } = req(normalizerBundlePath);
+const {
+  CanonicalToolAuthorityService,
+  resolveCodingKernelTaskContract,
+} = req(path.join(rootDir, '../shared/dist/index.js'));
+
+function issueAuthorization(plan, scope, surfaceConstraint) {
+  const taskContract = resolveCodingKernelTaskContract({
+    prompt: 'Exercise the VS Code canonical tool executor.',
+    surface: 'vscode',
+    modeHint: 'change',
+  });
+  const session = new CanonicalToolAuthorityService().bind({
+    runId: scope.runId,
+    surface: 'vscode',
+    workspaceRoot: '/workspace',
+    taskContract,
+  });
+  const receipt = session.authorize({
+    actionId: scope.actionId,
+    tool: plan.tool.name,
+    purpose: plan.purpose,
+    effects: plan.effects,
+    input: plan.call.input,
+    risk: plan.risk,
+    surfaceConstraint,
+  }).receipt;
+  return { receipt, session };
+}
 
 test('AgentToolExecutor: classifies mutating and terminal tools', () => {
   assert.equal(classifyToolKind('create_file'), 'edit');
@@ -40,7 +68,7 @@ test('AgentToolExecutor: classifies mutating and terminal tools', () => {
   assert.equal(classifyToolKind('mcp__server__tool'), 'mcp');
 });
 
-test('AgentToolExecutor: plans activity and permission', () => {
+test('AgentToolExecutor: keeps validation risk classifier-owned while Surface policy may narrow it', () => {
   const executor = new AgentToolExecutor();
   const plan = executor.plan(
     { name: 'run_terminal', input: { command: 'npm test' } },
@@ -54,7 +82,7 @@ test('AgentToolExecutor: plans activity and permission', () => {
   );
 
   assert.equal(plan.kind, 'terminal');
-  assert.equal(plan.risk, 'high');
+  assert.equal(plan.risk, 'medium');
   assert.equal(plan.registered, true);
   assert.equal(plan.activity.kind, 'terminal');
   assert.equal(plan.permission.action, 'requireConfirm');
@@ -194,11 +222,20 @@ test('AgentToolExecutor: delegates terminal settlement to the shared canonical o
     { name: 'run_terminal', input: { command: 'npm test' } },
     toolPolicy,
   );
-  const denied = await executor.executeCanonical(plan, {
+  const deniedScope = {
     runId: 'vscode-run-1',
     sequence: 1,
     actionId: 'terminal-1',
-    authorityEvidenceRefs: ['vscode-authority:terminal-1:confirmation-missing'],
+  };
+  const deniedAuthorization = issueAuthorization(plan, deniedScope, {
+    decision: 'require-confirmation',
+    reason: 'terminal-confirmation-missing',
+    evidenceRefs: ['vscode-authority:terminal-1:confirmation-missing'],
+  });
+  const denied = await executor.executeCanonical(plan, {
+    ...deniedScope,
+    authority: deniedAuthorization.receipt,
+    authoritySession: deniedAuthorization.session,
     host: {
       async execute() {
         calls++;
@@ -212,12 +249,21 @@ test('AgentToolExecutor: delegates terminal settlement to the shared canonical o
   assert.equal(denied.receipt.permission.decision, 'require-confirmation');
   assert.deepEqual(denied.receipt.effects, ['process']);
 
-  const authorized = await executor.executeCanonical(plan, {
+  const authorizedScope = {
     runId: 'vscode-run-1',
     sequence: 2,
     actionId: 'terminal-2',
-    authorityEvidenceRefs: ['vscode-authority:terminal-2:confirmed'],
+  };
+  const authorizedAuthority = issueAuthorization(plan, authorizedScope, {
+    decision: 'require-confirmation',
+    reason: 'terminal-confirmed',
     confirmationRef: 'vscode-confirmation:terminal-2',
+    evidenceRefs: ['vscode-authority:terminal-2:confirmed'],
+  });
+  const authorized = await executor.executeCanonical(plan, {
+    ...authorizedScope,
+    authority: authorizedAuthority.receipt,
+    authoritySession: authorizedAuthority.session,
     host: {
       async execute() {
         calls++;
@@ -235,11 +281,20 @@ test('AgentToolExecutor: delegates terminal settlement to the shared canonical o
     { name: 'run_terminal', input: { command: 'npm install left-pad' } },
     toolPolicy,
   );
-  const installDenied = await executor.executeCanonical(installPlan, {
+  const installScope = {
     runId: 'vscode-run-1',
     sequence: 3,
     actionId: 'terminal-install',
-    authorityEvidenceRefs: ['vscode-authority:terminal-install:confirmation-missing'],
+  };
+  const installAuthorization = issueAuthorization(installPlan, installScope, {
+    decision: 'require-confirmation',
+    reason: 'terminal-install-confirmation-missing',
+    evidenceRefs: ['vscode-authority:terminal-install:confirmation-missing'],
+  });
+  const installDenied = await executor.executeCanonical(installPlan, {
+    ...installScope,
+    authority: installAuthorization.receipt,
+    authoritySession: installAuthorization.session,
     host: { async execute() { throw new Error('denied install must not execute'); } },
   });
   assert.deepEqual(installDenied.receipt.effects, ['process', 'network', 'workspace-mutation']);

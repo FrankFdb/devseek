@@ -85,7 +85,7 @@ import { recordTrackedChatHistory as recordTrackedChatHistoryState } from './app
 import { createDirectVisibleResponsePublisher } from './app/direct-visible-response-service';
 import type { AgentSessionState } from './app/agent-session-context';
 import { emitResponseMeta, injectFileHintsIntoResponse } from './ui/generated-artifact-ui';
-import { createAgentFileWriteConfirmation } from './ui/agent-file-write-confirmation';
+import { createAgentFileWriteConstraintResolver } from './ui/agent-file-write-constraint-resolver';
 import { postWebviewEvent, postWebviewMessage } from './ui/webview-event-adapter';
 import { AgentTurnPresenter } from './ui/agent-turn-presenter';
 import { DeepSeekViewProvider } from './ui/deepseek-view-provider';
@@ -151,7 +151,7 @@ const runChangedPathRecorder = new RunChangedPathRecorder({
 });
 // P3-5: MCP manager (singleton; initialized lazily in activate)
 const mcpManager = new McpManager();
-const confirmAgentFileWrite = createAgentFileWriteConfirmation(terminalPermissionCoordinator);
+const resolveAgentFileWriteConstraint = createAgentFileWriteConstraintResolver(terminalPermissionCoordinator);
 const createEvidenceAwareMcpToolCall = createEvidenceAwareMcpToolCallFactory({
   terminalPermissions: terminalPermissionCoordinator,
   mcpManager,
@@ -712,7 +712,7 @@ async function runActiveChat(
             onMemoryWrite: async (proposal) => {
               if (agWsRoot) new MemoryService({ workspaceRoot: agWsRoot }).acceptWriteProposal(proposal);
             },
-            onBeforeFileWrite: (absPath: string, context?: AgentFileWriteContext): Promise<boolean> => confirmAgentFileWrite({
+            onResolveFileWriteConstraint: (absPath: string, context?: AgentFileWriteContext) => resolveAgentFileWriteConstraint({
               webview,
               absPath,
               context,

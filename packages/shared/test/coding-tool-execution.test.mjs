@@ -3,32 +3,74 @@ import { test } from 'node:test';
 import {
   CODING_TOOL_ACTION_VERSION,
   CanonicalToolExecutor,
+  CanonicalToolAuthorityService,
   InMemoryCodingToolExecutionJournal,
   buildCodingToolAction,
+  codingToolExecutionFailureReason,
+  resolveCodingKernelTaskContract,
 } from '../dist/index.js';
 
-function action(overrides = {}) {
-  return buildCodingToolAction({
+const authorityByAction = new WeakMap();
+
+function action(overrides = {}, options = {}) {
+  const input = {
     runId: 'run-1',
     sequence: 1,
     actionId: 'read-1',
     tool: 'read_file',
+    purpose: 'observe',
     effects: ['read'],
     input: { path: 'src/main.ts' },
-    authority: {
-      decision: 'allow',
-      status: 'authorized',
-      reason: 'read-only-policy',
-      evidenceRefs: ['authority:read-1'],
-    },
     ...overrides,
+  };
+  const issued = input.authority
+    ? { receipt: input.authority }
+    : issuedAuthorization(input, options);
+  const built = buildCodingToolAction({
+    ...input,
+    authority: issued.receipt,
   });
+  if (issued.session) authorityByAction.set(built, issued.session);
+  return built;
+}
+
+function issuedAuthorization(input, options = {}) {
+  const taskContract = resolveCodingKernelTaskContract({
+    prompt: `Exercise ${input.tool} through the canonical executor.`,
+    surface: 'headless',
+    modeHint: options.mode ?? 'change',
+  });
+  const session = new CanonicalToolAuthorityService().bind({
+    runId: input.runId,
+    surface: 'headless',
+    workspaceRoot: '/workspace',
+    taskContract,
+  });
+  const receipt = session.authorize({
+    actionId: input.actionId,
+    tool: input.tool,
+    purpose: input.purpose,
+    effects: input.effects,
+    input: input.input,
+    ...(options.surfaceConstraint ? { surfaceConstraint: options.surfaceConstraint } : {}),
+  }).receipt;
+  return { receipt, session };
+}
+
+function issuedAuthority(input, options = {}) {
+  return issuedAuthorization(input, options).receipt;
+}
+
+function executeAction(executor, candidate, host) {
+  const authority = authorityByAction.get(candidate);
+  assert.ok(authority, 'test action must retain its issuing authority session');
+  return executor.execute(candidate, host, authority);
 }
 
 test('CanonicalToolExecutor invokes an authorized host once and emits immutable evidence', async () => {
   let calls = 0;
   const executor = new CanonicalToolExecutor();
-  const outcome = await executor.execute(action(), {
+  const outcome = await executeAction(executor, action(), {
     async execute(received) {
       calls++;
       assert.equal(received.version, CODING_TOOL_ACTION_VERSION);
@@ -44,7 +86,10 @@ test('CanonicalToolExecutor invokes an authorized host once and emits immutable 
   assert.equal(calls, 1);
   assert.equal(outcome.replayed, false);
   assert.equal(outcome.receipt.status, 'completed');
-  assert.deepEqual(outcome.receipt.evidenceRefs, ['authority:read-1', 'host:readback']);
+  assert.equal(outcome.receipt.evidenceRefs.includes('host:readback'), true);
+  assert.equal(outcome.receipt.evidenceRefs.some(ref => ref.startsWith('authority-policy:')), true);
+  assert.equal(outcome.receipt.evidenceRefs.some(ref => ref.startsWith('sandbox-policy:')), true);
+  assert.equal(outcome.receipt.inputSha256, outcome.receipt.permission.inputSha256);
   assert.equal(Object.isFrozen(outcome.receipt), true);
   assert.equal(Object.isFrozen(outcome.receipt.result), true);
 });
@@ -52,17 +97,12 @@ test('CanonicalToolExecutor invokes an authorized host once and emits immutable 
 test('CanonicalToolExecutor denies before host execution', async () => {
   let calls = 0;
   const executor = new CanonicalToolExecutor();
-  const outcome = await executor.execute(action({
+  const outcome = await executeAction(executor, action({
     actionId: 'write-denied',
     tool: 'write_file',
+    purpose: 'workspace-mutation',
     effects: ['workspace-mutation'],
-    authority: {
-      decision: 'deny',
-      status: 'denied',
-      reason: 'task-contract-read-only',
-      evidenceRefs: ['authority:write-denied'],
-    },
-  }), {
+  }, { mode: 'review' }), {
     async execute() {
       calls++;
       return { status: 'completed', evidenceRefs: ['must-not-exist'] };
@@ -72,21 +112,66 @@ test('CanonicalToolExecutor denies before host execution', async () => {
   assert.equal(calls, 0);
   assert.equal(outcome.receipt.status, 'denied');
   assert.equal(outcome.receipt.permission.decision, 'deny');
-  assert.deepEqual(outcome.receipt.evidenceRefs, ['authority:write-denied']);
+  assert.equal(
+    codingToolExecutionFailureReason(outcome.receipt),
+    outcome.receipt.permission.reason,
+  );
+  assert.equal(outcome.receipt.evidenceRefs.some(ref => ref.startsWith('authority-policy:')), true);
 });
 
 test('CanonicalToolExecutor requires confirmation evidence before an authorized effect', async () => {
-  assert.throws(() => action({
+  const input = {
+    runId: 'run-1',
+    sequence: 1,
     actionId: 'terminal-1',
     tool: 'run_terminal',
+    purpose: 'external-effect',
     effects: ['process'],
-    authority: {
+    input: { command: 'npm publish' },
+  };
+  const issued = issuedAuthority(input, {
+    surfaceConstraint: {
       decision: 'require-confirmation',
-      status: 'authorized',
-      reason: 'terminal-requires-confirmation',
-      evidenceRefs: ['authority:terminal-1'],
+      reason: 'test-confirmed',
+      confirmationRef: 'confirmation:terminal-1',
+      evidenceRefs: ['surface:terminal-1:confirmed'],
     },
-  }), /missing-confirmation-reference/);
+  });
+  const { confirmationRef: _omitted, ...missingConfirmation } = issued;
+  assert.throws(
+    () => action({ ...input, authority: missingConfirmation }),
+    /missing-confirmation-reference/,
+  );
+  assert.throws(
+    () => action({ ...input, authority: { ...issued, status: 'denied' } }),
+    /inconsistent-confirmation-status/,
+  );
+});
+
+test('CanonicalToolExecutor rejects a Kernel receipt reused outside its bound action scope', () => {
+  const original = {
+    runId: 'run-scope',
+    sequence: 1,
+    actionId: 'read-original',
+    tool: 'read_file',
+    purpose: 'observe',
+    effects: ['read'],
+    input: { path: 'src/main.ts' },
+  };
+  const authority = issuedAuthority(original);
+
+  assert.throws(
+    () => action({ ...original, actionId: 'read-reused', authority }),
+    /authority-scope-mismatch/u,
+  );
+  assert.throws(
+    () => action({ ...original, tool: 'grep_search', authority }),
+    /authority-scope-mismatch/u,
+  );
+  assert.throws(
+    () => action({ ...original, input: { path: 'src/other.ts' }, authority }),
+    /authority-scope-mismatch/u,
+  );
 });
 
 test('CanonicalToolExecutor coalesces concurrent retries and rejects identity drift', async () => {
@@ -101,8 +186,8 @@ test('CanonicalToolExecutor coalesces concurrent retries and rejects identity dr
       return { status: 'completed', result: 'ok', evidenceRefs: ['host:read-1'] };
     },
   };
-  const first = executor.execute(action(), host);
-  const replay = executor.execute(action(), host);
+  const first = executeAction(executor, action(), host);
+  const replay = executeAction(executor, action(), host);
   release();
   const [firstOutcome, replayOutcome] = await Promise.all([first, replay]);
 
@@ -111,7 +196,7 @@ test('CanonicalToolExecutor coalesces concurrent retries and rejects identity dr
   assert.equal(replayOutcome.replayed, true);
   assert.equal(firstOutcome.receipt, replayOutcome.receipt);
   await assert.rejects(
-    executor.execute(action({ input: { path: 'src/other.ts' } }), host),
+    executeAction(executor, action({ input: { path: 'src/other.ts' } }), host),
     /conflicting-action-identity/,
   );
 });
@@ -125,8 +210,8 @@ test('CanonicalToolExecutor replays a journaled receipt across executor instance
       return { status: 'completed', result: ['src/main.ts'], evidenceRefs: ['host:journaled'] };
     },
   };
-  await new CanonicalToolExecutor(journal).execute(action(), host);
-  const replay = await new CanonicalToolExecutor(journal).execute(action(), host);
+  await executeAction(new CanonicalToolExecutor(journal), action(), host);
+  const replay = await executeAction(new CanonicalToolExecutor(journal), action(), host);
 
   assert.equal(calls, 1);
   assert.equal(replay.replayed, true);
@@ -134,14 +219,41 @@ test('CanonicalToolExecutor replays a journaled receipt across executor instance
   assert.deepEqual(replay.receipt.result, ['src/main.ts']);
 });
 
+test('CanonicalToolExecutor rejects a journal receipt substituted for another action', async () => {
+  let stored;
+  const journal = {
+    async load() {
+      if (!stored) return undefined;
+      return {
+        action: stored.action,
+        receipt: { ...stored.receipt, sequence: stored.receipt.sequence + 1 },
+      };
+    },
+    async append(record) {
+      stored = record;
+    },
+  };
+  const host = {
+    async execute() {
+      return { status: 'completed', result: 'ok', evidenceRefs: ['host:journal-bound'] };
+    },
+  };
+  await executeAction(new CanonicalToolExecutor(journal), action(), host);
+
+  await assert.rejects(
+    executeAction(new CanonicalToolExecutor(journal), action(), host),
+    /receipt-action-mismatch/u,
+  );
+});
+
 test('CanonicalToolExecutor fails closed when host evidence is absent or execution throws', async () => {
   const executor = new CanonicalToolExecutor();
-  const noEvidence = await executor.execute(action({ actionId: 'read-no-evidence' }), {
+  const noEvidence = await executeAction(executor, action({ actionId: 'read-no-evidence' }), {
     async execute() {
       return { status: 'completed', result: 'unproven', evidenceRefs: [] };
     },
   });
-  const thrown = await executor.execute(action({ actionId: 'read-throws', sequence: 2 }), {
+  const thrown = await executeAction(executor, action({ actionId: 'read-throws', sequence: 2 }), {
     async execute() {
       throw new Error('sensitive host details');
     },
@@ -156,10 +268,11 @@ test('CanonicalToolExecutor fails closed when host evidence is absent or executi
 
 test('CanonicalToolExecutor preserves structured failure feedback in the terminal receipt', async () => {
   const executor = new CanonicalToolExecutor();
-  const outcome = await executor.execute(action({
+  const outcome = await executeAction(executor, action({
     actionId: 'verification-failed',
     sequence: 2,
     tool: 'run_terminal',
+    purpose: 'verify',
     effects: ['process'],
   }), {
     async execute() {

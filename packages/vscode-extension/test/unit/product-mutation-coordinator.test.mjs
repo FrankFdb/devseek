@@ -130,7 +130,9 @@ test('Product mutation: prepare settles authority without dispatch and exposes o
     'side_effect.requested',
     'side_effect.authorized',
   ]);
+  assert.deepEqual(await prepared.reconcile(), { status: 'not-started' });
   assert.equal(await prepared.execute(), 'done');
+  assert.deepEqual(await prepared.reconcile(), { status: 'committed', result: 'done' });
   assert.equal(await prepared.execute(), 'done');
   assert.equal(invokeCount, 1);
 });

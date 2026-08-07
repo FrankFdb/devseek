@@ -46,15 +46,16 @@ export function buildToolPolicy(mode: ExecutionMode): ToolPolicy {
     case 'plan':
       return makePolicy(mode, PLAN_TOOLS, []);
     case 'edit':
-      return makePolicy(mode, EDIT_TOOLS, ['terminal']);
+      return makePolicy(mode, EDIT_TOOLS, []);
     case 'run':
-      return makePolicy(mode, RUN_TOOLS, ['terminal']);
+      return makePolicy(mode, RUN_TOOLS, []);
     case 'destructive':
       return makePolicy(mode, ALL_TOOLS, ['edit', 'terminal', 'vscode', 'vscode-command', 'mcp'], true);
   }
 }
 
-export class PermissionKernel {
+/** Surface-local policy evaluator. It can narrow authority but never issue it. */
+export class SurfaceToolPolicyEvaluator {
   constructor(private readonly policy: ToolPolicy) {}
 
   decide(requestOrKind: ToolPermissionRequest | ToolKind): ToolPermissionDecision {
@@ -73,11 +74,13 @@ export class PermissionKernel {
     if (request.mutatesWorkspace && request.protectedPath) {
       return { action: 'requireConfirm', reason: `protected-path-requires-confirmation:${subject}` };
     }
-    if (request.risk === 'destructive') {
+    if (request.risk === 'destructive' || request.risk === 'high') {
       return { action: 'requireConfirm', reason: `tool-risk-requires-confirmation:${subject}` };
     }
+    if (kind === 'terminal' && request.risk === undefined) {
+      return { action: 'requireConfirm', reason: `unclassified-tool-risk-requires-confirmation:${subject}` };
+    }
     const inherentlyMutableOrOpaque = request.mutatesWorkspace === true
-      || request.risk === 'high'
       || kind === 'terminal'
       || kind === 'vscode'
       || kind === 'vscode-command'
@@ -94,7 +97,7 @@ export function decideToolPermission(
   policy: ToolPolicy,
   requestOrKind: ToolPermissionRequest | ToolKind,
 ): ToolPermissionDecision {
-  return new PermissionKernel(policy).decide(requestOrKind);
+  return new SurfaceToolPolicyEvaluator(policy).decide(requestOrKind);
 }
 
 export function assertToolAllowed(policy: ToolPolicy, kind: ToolKind): void {

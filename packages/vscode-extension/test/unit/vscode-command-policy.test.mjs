@@ -89,10 +89,10 @@ test('VS Code command registry: terminal-owned and unknown commands fail before 
   const { callbacks, owner } = openHarness(t);
   const terminalOwned = await callbacks.onPrepareVscodeCommand('workbench.action.tasks.build');
   const unknown = await callbacks.onPrepareVscodeCommand('evil.extension.arbitraryMutation');
-  assert.equal(terminalOwned.authority.status, 'denied');
-  assert.match(terminalOwned.authority.reason, /must use run_terminal/);
-  assert.equal(unknown.authority.status, 'denied');
-  assert.match(unknown.authority.reason, /closed VS Code command registry/);
+  assert.equal(terminalOwned.constraint.decision, 'deny');
+  assert.match(terminalOwned.constraint.reason, /must use run_terminal/);
+  assert.equal(unknown.constraint.decision, 'deny');
+  assert.match(unknown.constraint.reason, /closed VS Code command registry/);
   assert.deepEqual(commandCalls, []);
   const sideEffects = owner.readEvents().filter(event => event.type.startsWith('side_effect.'));
   assert.deepEqual(sideEffects.map(event => event.type), [
@@ -107,8 +107,8 @@ test('VS Code command registry: non-empty opaque args are rejected instead of si
   commandCalls.length = 0;
   const { callbacks } = openHarness(t);
   const prepared = await callbacks.onPrepareVscodeCommand('editor.action.formatDocument', ['unexpected']);
-  assert.equal(prepared.authority.status, 'denied');
-  assert.match(prepared.authority.reason, /does not accept opaque agent-supplied arguments/);
+  assert.equal(prepared.constraint.decision, 'deny');
+  assert.match(prepared.constraint.reason, /does not accept opaque agent-supplied arguments/);
   assert.deepEqual(commandCalls, []);
 });
 
@@ -118,8 +118,9 @@ test('VS Code command registry: supported read-only and mutating actions use hon
   const refresh = await callbacks.onPrepareVscodeCommand('workbench.files.action.refreshFilesExplorer');
   const format = await callbacks.onPrepareVscodeCommand('editor.action.formatDocument');
   assert.deepEqual(commandCalls, []);
-  assert.equal(refresh.authority.status, 'authorized');
-  assert.equal(format.authority.decision, 'require-confirmation');
+  assert.equal(refresh.constraint.decision, 'allow');
+  assert.equal(format.constraint.decision, 'require-confirmation');
+  assert.match(format.constraint.confirmationRef, /confirmed/u);
   const refreshResult = await refresh.execute();
   const formatResult = await format.execute();
   assert.match(refreshResult.result, /仅证明命令 Promise 已成功返回/);

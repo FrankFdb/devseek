@@ -1,5 +1,13 @@
 import type { CodingToolEffect } from './coding-conformance';
 import {
+  assertCodingToolAuthorityScope,
+  type CodingToolAuthorityReceipt,
+  type CodingToolAuthorityReceiptVerifierPort,
+  type CodingToolAuthorityStatus,
+  type CodingToolPermissionDecision,
+  type CodingToolPurpose,
+} from './coding-tool-authority';
+import {
   canonicalCodingJson,
   normalizeCodingErrorCode,
   normalizedCodingId,
@@ -10,17 +18,13 @@ import {
 export const CODING_TOOL_ACTION_VERSION = 'devseek.coding-tool-action/v1' as const;
 export const CODING_TOOL_RECEIPT_VERSION = 'devseek.coding-tool-receipt/v1' as const;
 
-export type CodingToolPermissionDecision = 'allow' | 'require-confirmation' | 'deny';
-export type CodingToolAuthorityStatus = 'authorized' | 'denied';
 export type CodingToolTerminalStatus = 'completed' | 'failed' | 'denied' | 'indeterminate';
 
-export interface CodingToolAuthorityReceipt {
-  readonly decision: CodingToolPermissionDecision;
-  readonly status: CodingToolAuthorityStatus;
-  readonly reason: string;
-  readonly confirmationRef?: string;
-  readonly evidenceRefs: readonly string[];
-}
+export type {
+  CodingToolAuthorityReceipt,
+  CodingToolAuthorityStatus,
+  CodingToolPermissionDecision,
+} from './coding-tool-authority';
 
 export interface CodingToolAction<TInput> {
   readonly version: typeof CODING_TOOL_ACTION_VERSION;
@@ -28,6 +32,7 @@ export interface CodingToolAction<TInput> {
   readonly sequence: number;
   readonly actionId: string;
   readonly tool: string;
+  readonly purpose: CodingToolPurpose;
   readonly effects: readonly CodingToolEffect[];
   readonly input: TInput;
   readonly authority: CodingToolAuthorityReceipt;
@@ -38,6 +43,7 @@ export interface BuildCodingToolActionInput<TInput> {
   readonly sequence: number;
   readonly actionId: string;
   readonly tool: string;
+  readonly purpose: CodingToolPurpose;
   readonly effects: readonly CodingToolEffect[];
   readonly input: TInput;
   readonly authority: CodingToolAuthorityReceipt;
@@ -56,7 +62,9 @@ export interface CodingToolExecutionReceipt<TResult> {
   readonly sequence: number;
   readonly actionId: string;
   readonly tool: string;
+  readonly purpose: CodingToolPurpose;
   readonly effects: readonly CodingToolEffect[];
+  readonly inputSha256: string;
   readonly permission: CodingToolAuthorityReceipt;
   readonly status: CodingToolTerminalStatus;
   readonly result?: TResult;
@@ -67,6 +75,15 @@ export interface CodingToolExecutionReceipt<TResult> {
 export interface CodingToolExecutionOutcome<TResult> {
   readonly receipt: CodingToolExecutionReceipt<TResult>;
   readonly replayed: boolean;
+}
+
+/** Preserves the canonical policy reason when execution is denied before the host runs. */
+export function codingToolExecutionFailureReason(
+  receipt: CodingToolExecutionReceipt<unknown>,
+): string {
+  return receipt.status === 'denied'
+    ? receipt.permission.reason
+    : receipt.errorCode ?? receipt.status;
 }
 
 export interface ToolExecutionHostPort<TInput, TResult> {
@@ -87,12 +104,13 @@ export interface ToolExecutorPort {
   execute<TInput, TResult>(
     action: CodingToolAction<TInput>,
     host: ToolExecutionHostPort<TInput, TResult>,
+    authority: CodingToolAuthorityReceiptVerifierPort,
   ): Promise<CodingToolExecutionOutcome<TResult>>;
 }
 
 interface ActiveExecution {
   readonly canonicalAction: string;
-  readonly receipt: Promise<CodingToolExecutionReceipt<unknown>>;
+  readonly outcome: Promise<CodingToolExecutionOutcome<unknown>>;
 }
 
 /**
@@ -108,15 +126,17 @@ export class CanonicalToolExecutor implements ToolExecutorPort {
   async execute<TInput, TResult>(
     action: CodingToolAction<TInput>,
     host: ToolExecutionHostPort<TInput, TResult>,
+    authority: CodingToolAuthorityReceiptVerifierPort,
   ): Promise<CodingToolExecutionOutcome<TResult>> {
-    const snapshot = snapshotCodingToolAction(action);
+    const snapshot = verifyCodingToolActionAuthority(snapshotCodingToolAction(action), authority);
     const key = actionIdentity(snapshot);
     const canonicalAction = canonicalCodingJson(snapshot);
     const existing = this.executions.get(key);
     if (existing) {
       assertSameAction(existing.canonicalAction, canonicalAction);
+      const outcome = await existing.outcome;
       return {
-        receipt: await existing.receipt as CodingToolExecutionReceipt<TResult>,
+        receipt: outcome.receipt as CodingToolExecutionReceipt<TResult>,
         replayed: true,
       };
     }
@@ -124,7 +144,7 @@ export class CanonicalToolExecutor implements ToolExecutorPort {
     const execution = this.executeOnce(snapshot, host, canonicalAction);
     this.executions.set(key, {
       canonicalAction,
-      receipt: execution.then(outcome => outcome.receipt) as Promise<CodingToolExecutionReceipt<unknown>>,
+      outcome: execution as Promise<CodingToolExecutionOutcome<unknown>>,
     });
     return execution;
   }
@@ -138,7 +158,10 @@ export class CanonicalToolExecutor implements ToolExecutorPort {
     if (replay) {
       assertSameAction(canonicalCodingJson(replay.action), canonicalAction);
       return {
-        receipt: snapshotCodingToolReceipt(replay.receipt) as CodingToolExecutionReceipt<TResult>,
+        receipt: assertReceiptMatchesAction(
+          action,
+          replay.receipt,
+        ) as CodingToolExecutionReceipt<TResult>,
         replayed: true,
       };
     }
@@ -160,6 +183,24 @@ export class CanonicalToolExecutor implements ToolExecutorPort {
   }
 }
 
+function verifyCodingToolActionAuthority<TInput>(
+  action: CodingToolAction<TInput>,
+  authority: CodingToolAuthorityReceiptVerifierPort,
+): CodingToolAction<TInput> {
+  if (!authority || typeof authority.verifyReceipt !== 'function') {
+    throw new Error('coding-tool-execution:missing-authority-verifier');
+  }
+  const receipt = authority.verifyReceipt(action.authority, {
+    runId: action.runId,
+    actionId: action.actionId,
+    tool: action.tool,
+    purpose: action.purpose,
+    effects: action.effects,
+    input: action.input,
+  });
+  return Object.freeze({ ...action, authority: receipt });
+}
+
 export class InMemoryCodingToolExecutionJournal implements CodingToolExecutionJournalPort {
   private readonly records = new Map<string, CodingToolExecutionJournalRecord>();
 
@@ -174,7 +215,7 @@ export class InMemoryCodingToolExecutionJournal implements CodingToolExecutionJo
 
   async append(record: CodingToolExecutionJournalRecord): Promise<void> {
     const action = snapshotCodingToolAction(record.action);
-    const receipt = snapshotCodingToolReceipt(record.receipt);
+    const receipt = assertReceiptMatchesAction(action, record.receipt);
     const key = actionIdentity(action);
     const existing = this.records.get(key);
     if (existing) {
@@ -241,7 +282,9 @@ async function executeAuthorizedAction<TInput, TResult>(
     sequence: action.sequence,
     actionId: action.actionId,
     tool: action.tool,
+    purpose: action.purpose,
     effects: action.effects,
+    inputSha256: action.authority.inputSha256,
     permission: action.authority,
     status: 'completed',
     ...(hostResult.result === undefined ? {} : { result: hostResult.result }),
@@ -266,7 +309,9 @@ function deniedReceipt<TResult>(action: CodingToolAction<unknown>): CodingToolEx
     sequence: action.sequence,
     actionId: action.actionId,
     tool: action.tool,
+    purpose: action.purpose,
     effects: action.effects,
+    inputSha256: action.authority.inputSha256,
     permission: action.authority,
     status: 'denied',
     errorCode: 'tool-authority-denied',
@@ -286,7 +331,9 @@ function failedReceipt<TResult>(
     sequence: action.sequence,
     actionId: action.actionId,
     tool: action.tool,
+    purpose: action.purpose,
     effects: action.effects,
+    inputSha256: action.authority.inputSha256,
     permission: action.authority,
     status: 'failed',
     errorCode: normalizeCodingErrorCode(errorCode) || 'tool-execution-failed',
@@ -306,7 +353,9 @@ function indeterminateReceipt<TResult>(
     sequence: action.sequence,
     actionId: action.actionId,
     tool: action.tool,
+    purpose: action.purpose,
     effects: action.effects,
+    inputSha256: action.authority.inputSha256,
     permission: action.authority,
     status: 'indeterminate',
     errorCode,
@@ -322,51 +371,33 @@ function snapshotCodingToolAction<TInput>(action: CodingToolAction<TInput>): Cod
   const runId = normalizedCodingId(action.runId, 'run-id');
   const actionId = normalizedCodingId(action.actionId, 'action-id');
   const tool = normalizedCodingId(action.tool, 'tool');
+  const purpose = action.purpose;
+  if (!['observe', 'verify', 'workspace-mutation', 'external-effect'].includes(purpose)) {
+    throw new Error('coding-tool-execution:invalid-purpose');
+  }
   if (!Number.isInteger(action.sequence) || action.sequence < 1) {
     throw new Error('coding-tool-execution:invalid-sequence');
   }
   const effects = uniqueEffects(action.effects);
-  const authority = snapshotAuthorityReceipt(action.authority);
   const input = snapshotCodingValue(action.input, 'action-input') as TInput;
+  const authority = assertCodingToolAuthorityScope(action.authority, {
+    runId,
+    actionId,
+    tool,
+    purpose,
+    effects,
+    input,
+  });
   return Object.freeze({
     version: CODING_TOOL_ACTION_VERSION,
     runId,
     sequence: action.sequence,
     actionId,
     tool,
+    purpose,
     effects,
     input,
     authority,
-  });
-}
-
-function snapshotAuthorityReceipt(authority: CodingToolAuthorityReceipt): CodingToolAuthorityReceipt {
-  if (!authority || typeof authority !== 'object') {
-    throw new Error('coding-tool-execution:missing-authority-receipt');
-  }
-  const decision = authority.decision;
-  const status = authority.status;
-  if (!['allow', 'require-confirmation', 'deny'].includes(decision)) {
-    throw new Error('coding-tool-execution:invalid-permission-decision');
-  }
-  if (!['authorized', 'denied'].includes(status)) {
-    throw new Error('coding-tool-execution:invalid-authority-status');
-  }
-  if ((decision === 'deny' && status !== 'denied') || (decision === 'allow' && status !== 'authorized')) {
-    throw new Error('coding-tool-execution:inconsistent-authority-receipt');
-  }
-  const confirmationRef = authority.confirmationRef?.trim();
-  if (decision === 'require-confirmation' && status === 'authorized' && !confirmationRef) {
-    throw new Error('coding-tool-execution:missing-confirmation-reference');
-  }
-  const evidenceRefs = uniqueCodingRefs(authority.evidenceRefs ?? []);
-  if (evidenceRefs.length === 0) throw new Error('coding-tool-execution:missing-authority-evidence');
-  return Object.freeze({
-    decision,
-    status,
-    reason: normalizedCodingId(authority.reason, 'authority-reason'),
-    ...(confirmationRef ? { confirmationRef } : {}),
-    evidenceRefs: Object.freeze(evidenceRefs),
   });
 }
 
@@ -379,24 +410,70 @@ function snapshotCodingToolReceipt<TResult>(
   if (!['completed', 'failed', 'denied', 'indeterminate'].includes(receipt.status)) {
     throw new Error('coding-tool-execution:invalid-receipt-status');
   }
+  if (!Number.isSafeInteger(receipt.sequence) || receipt.sequence < 1) {
+    throw new Error('coding-tool-execution:invalid-receipt-sequence');
+  }
   const evidenceRefs = uniqueCodingRefs(receipt.evidenceRefs ?? []);
   if (evidenceRefs.length === 0) throw new Error('coding-tool-execution:missing-receipt-evidence');
   const result = receipt.result === undefined
     ? undefined
     : snapshotCodingValue(receipt.result, 'tool-result') as TResult;
+  const inputSha256 = snapshotSha256(receipt.inputSha256, 'receipt-input');
+  const permission = assertCodingToolAuthorityScope(receipt.permission, {
+    runId: receipt.runId,
+    actionId: receipt.actionId,
+    tool: receipt.tool,
+    purpose: receipt.purpose,
+    effects: receipt.effects,
+    inputSha256,
+  });
+  if ((receipt.status === 'denied') !== (permission.status === 'denied')) {
+    throw new Error('coding-tool-execution:inconsistent-authority-status');
+  }
+  if (permission.evidenceRefs.some(ref => !evidenceRefs.includes(ref))) {
+    throw new Error('coding-tool-execution:missing-authority-evidence');
+  }
   return Object.freeze({
     version: CODING_TOOL_RECEIPT_VERSION,
     runId: normalizedCodingId(receipt.runId, 'receipt-run-id'),
-    sequence: receipt.sequence,
+    sequence: Number(receipt.sequence),
     actionId: normalizedCodingId(receipt.actionId, 'receipt-action-id'),
     tool: normalizedCodingId(receipt.tool, 'receipt-tool'),
+    purpose: receipt.purpose,
     effects: uniqueEffects(receipt.effects),
-    permission: snapshotAuthorityReceipt(receipt.permission),
+    inputSha256,
+    permission,
     status: receipt.status,
     ...(result === undefined ? {} : { result }),
     ...(receipt.errorCode ? { errorCode: normalizeCodingErrorCode(receipt.errorCode) } : {}),
     evidenceRefs: Object.freeze(evidenceRefs),
   });
+}
+
+function assertReceiptMatchesAction(
+  action: CodingToolAction<unknown>,
+  receipt: CodingToolExecutionReceipt<unknown>,
+): CodingToolExecutionReceipt<unknown> {
+  const settled = snapshotCodingToolReceipt(receipt);
+  if (settled.runId !== action.runId
+    || settled.sequence !== action.sequence
+    || settled.actionId !== action.actionId
+    || settled.tool !== action.tool
+    || settled.purpose !== action.purpose
+    || settled.inputSha256 !== action.authority.inputSha256
+    || canonicalCodingJson(settled.effects) !== canonicalCodingJson(action.effects)
+    || canonicalCodingJson(settled.permission) !== canonicalCodingJson(action.authority)) {
+    throw new Error('coding-tool-execution:receipt-action-mismatch');
+  }
+  return settled;
+}
+
+function snapshotSha256(value: string, label: string): string {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/u.test(normalized)) {
+    throw new Error(`coding-tool-execution:invalid-${label}-sha256`);
+  }
+  return normalized;
 }
 
 function uniqueEffects(effects: readonly CodingToolEffect[]): readonly CodingToolEffect[] {

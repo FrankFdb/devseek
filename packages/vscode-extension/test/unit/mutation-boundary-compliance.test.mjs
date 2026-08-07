@@ -77,14 +77,11 @@ test('Tool guard: terminal, VS Code, and MCP effects require prepared canonical 
     );
   }
 
-  const agentLoop = source('src/agent-loop.ts');
-  const deterministicAnalyze = source('src/agent/deterministic-analyze-execution.ts');
+  const agenticLoop = source('src/agent/agentic-loop.ts');
   const toolLoop = source('src/agent/tool-loop.ts');
   const canonicalSession = source('src/agent/tool-loop-canonical-session.ts');
-  assert.match(agentLoop, /executeFakeToolsForLoop\s*\(/);
-  assert.match(agentLoop, /plannedTerminalValidation/);
-  assert.match(deterministicAnalyze, /executeFakeToolsForLoop\s*\(/);
-  assert.match(deterministicAnalyze, /plannedTerminalValidation/);
+  assert.match(agenticLoop, /executeFakeToolsForLoop\s*\(/);
+  assert.match(toolLoop, /plannedTerminalValidation/);
   assert.match(toolLoop, /prepared\.execute\(\)/);
   assert.match(toolLoop, /canonicalTools\.settle\s*\(/);
   assert.match(canonicalSession, /this\.executor\.executeCanonical\s*\(/);
@@ -140,8 +137,6 @@ test('Mutation guard: workspace writes in audited flows route through the writer
     );
   }
   for (const relativePath of [
-    'src/agent-loop.ts',
-    'src/agent/deterministic-task-executor.ts',
     'src/agent/markdown-artifact-applier.ts',
     'src/agent/markdown-deliverable-task.ts',
     'src/agent/simple-file-task.ts',
@@ -163,14 +158,11 @@ test('Mutation guard: workspace writes in audited flows route through the writer
   assert.match(batchMutationAdapter, /rollbackTextFileCommit\(/, 'batch mutation adapter must own token compensation');
 });
 
-test('Verification guard: legacy and agentic validation project through the shared receipt owner', () => {
-  const agentLoop = source('src/agent-loop.ts');
+test('Verification guard: agentic validation projects through the shared receipt owner', () => {
   const autoValidation = source('src/agent/auto-validation.ts');
   const adapter = source('src/app/coding-verification-adapter.ts');
 
   assert.match(adapter, /new CanonicalVerificationService\(\)/);
-  assert.match(agentLoop, /legacyVerification\.verify\(\{/);
-  assert.match(agentLoop, /appendVerificationReceipt\(executionEvidence, legacyValidationOutcome\.verificationReceipt\)/);
   assert.match(autoValidation, /canonicalVerificationAdapter/);
   assert.match(autoValidation, /verificationReceipt: outcome\.receipt/);
 });
@@ -268,7 +260,10 @@ test('Mutation guard: every ValidationService construction injects command autho
       index = file.source.indexOf('new ValidationService(', index + 1);
     }
   }
-  assert.equal(constructors.length, 3);
+  assert.deepEqual(
+    constructors.map(constructor => constructor.relativePath).sort(),
+    ['src/agent/auto-validation.ts', 'src/workspace-applier.ts'],
+  );
   for (const constructor of constructors) {
     assert.match(constructor.excerpt, /commandRunner\s*:/, `${constructor.relativePath} lacks validation command authority`);
   }
@@ -286,7 +281,7 @@ test('Mutation guard: tool planning consumes policy before every execution branc
   assert.match(toolLoop, /toolPlan\.permission\?\.action === 'requireConfirm'/);
   assert.match(toolLoop, /hasEvidenceAwareToolAuthority\(toolPlan\.kind, callbacks\)/);
   assert.match(agenticLoop, /callbacks = \{ \.\.\.callbacks, executionMode: workflowMode \}/);
-  assert.doesNotMatch(writeAuthority, /if \(!callbacks\.onBeforeFileWrite\) return true/);
+  assert.doesNotMatch(writeAuthority, /if \(!callbacks\.onResolveFileWriteConstraint\) return true/);
   assert.match(source('src/extension.ts'), /agentKernelService\.executeCanonicalTask\(\{[\s\S]*?callbacks:\s*\{[\s\S]*?executionMode:\s*workflow\.toolPolicyMode/);
 });
 

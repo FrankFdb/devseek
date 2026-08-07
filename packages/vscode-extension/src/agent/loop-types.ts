@@ -13,9 +13,12 @@ import type {
   CodingCompletionDecision,
   CodingConformanceProjection,
   CodingCheckpoint,
-  CodingToolAuthorityReceipt,
+  CodingExternalEffectReconciliation,
+  CodingExternalEffectSessionPort,
+  CodingToolAuthoritySessionPort,
   CodingToolExecutionReceipt,
   CodingToolHostResult,
+  CodingToolSurfaceConstraint,
   CodingVerificationReceipt,
   CodingWorkspaceMutationReceipt,
 } from '@devseek-netai/shared';
@@ -23,7 +26,9 @@ import type {
 export type AgentStatusMessage = AgentStatusEvent;
 
 export interface AgentPreparedToolExecution<TResult = string> {
-  readonly authority: CodingToolAuthorityReceipt;
+  /** Surface-local policy/confirmation constraint; the Kernel remains the authority issuer. */
+  readonly constraint: CodingToolSurfaceConstraint;
+  reconcile?(): Promise<CodingExternalEffectReconciliation<TResult>>;
   execute(): Promise<CodingToolHostResult<TResult>>;
 }
 
@@ -56,6 +61,9 @@ export interface AgentLoopCallbacks {
   onAgentAnnouncement?: (text: string) => void | Promise<void>;
   /** One diagnostic trace id shared by all provider/tool rounds in this top-level run. */
   traceRunId?: string;
+  /** Kernel-owned authority/effect sessions. Product execution always supplies both together. */
+  canonicalToolAuthority?: CodingToolAuthoritySessionPort;
+  canonicalExternalEffects?: CodingExternalEffectSessionPort;
   /** Unified filesystem root for this run's provider/tool trace files. */
   traceWorkspaceRoot?: string;
   /** Run-scoped participant capability used by provider/Bridge evidence adapters. */
@@ -92,7 +100,7 @@ export interface AgentLoopCallbacks {
    * Populated from McpManager.toolRefs on activation.
    */
   mcpToolRefs?: McpToolRef[];
-  /** Settles terminal authority before exposing the one-shot host execution capability. */
+  /** Settles terminal policy/approval evidence before exposing the one-shot host capability. */
   onPrepareTerminalCommand?: (
     command: string,
     workdir?: string,
@@ -101,10 +109,13 @@ export interface AgentLoopCallbacks {
   /** Evidence-aware authority for every automatic validation process. */
   onValidationCommand: ValidationCommandRunner;
   /**
-   * P-SEC: About to write a file — return false to block the write (e.g., sensitive files).
-   * Called at every structured write boundary, including SEARCH/REPLACE and full-file apply.
+   * Resolve product policy and user-confirmation evidence before a file effect.
+   * The returned Surface constraint cannot grant final execution authority.
    */
-  onBeforeFileWrite?: (absPath: string, context?: AgentFileWriteContext) => Promise<boolean>;
+  onResolveFileWriteConstraint?: (
+    absPath: string,
+    context?: AgentFileWriteContext,
+  ) => Promise<CodingToolSurfaceConstraint>;
   /**
    * AI called read_file — return an AI-readable file context with metadata.
    * workDir resolves bare filenames against the current task directory first.

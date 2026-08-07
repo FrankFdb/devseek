@@ -6,8 +6,8 @@ import {
   ProductRunEvidenceSession,
   productRunEvidenceIdempotencyKey,
   summarizeTraceText,
-  type CodingToolAuthorityReceipt,
   type CodingToolHostResult,
+  type CodingToolSurfaceConstraint,
   type RunEvidenceJson,
 } from '@devseek-netai/shared';
 import { decideTerminalCommandPermission, type TerminalCommandRiskClass } from './terminal-command-policy';
@@ -31,6 +31,7 @@ export interface TerminalConfirmationResult {
   allow: boolean;
   alwaysAllow?: boolean;
   reason?: string;
+  confirmationRef?: string;
 }
 
 export interface RunTerminalWithPermissionInput {
@@ -58,8 +59,8 @@ export interface RunTerminalWithPermissionInput {
   manageRecoveryExternally?: boolean;
   /** Correlates this retry side effect with a previously detected recovery. */
   recoveryOperationId?: string;
-  /** Internal split boundary used to pause after authority settles and before execution starts. */
-  onAuthoritySettled?: (authority: CodingToolAuthorityReceipt) => void | Promise<void>;
+  /** Internal split boundary used to pause after the Surface constraint settles. */
+  onConstraintSettled?: (constraint: CodingToolSurfaceConstraint) => void | Promise<void>;
 }
 
 export interface RunOwnedTerminalWithPermissionInput {
@@ -107,12 +108,12 @@ export interface TerminalCommandExecutionResult {
 }
 
 export interface PreparedTerminalCommand {
-  readonly authority: CodingToolAuthorityReceipt;
+  readonly constraint: CodingToolSurfaceConstraint;
   execute(): Promise<TerminalCommandExecutionResult>;
 }
 
 export interface PreparedTerminalToolExecution {
-  readonly authority: CodingToolAuthorityReceipt;
+  readonly constraint: CodingToolSurfaceConstraint;
   execute(): Promise<CodingToolHostResult<string>>;
 }
 
@@ -132,22 +133,31 @@ export interface FinishTerminalCommandRecoveryInput extends TerminalCommandRecov
   reason?: string;
 }
 
-function terminalAuthorityReceipt(input: {
+function terminalSurfaceConstraint(input: {
   readonly operationId: string;
-  readonly decision: CodingToolAuthorityReceipt['decision'];
-  readonly status: CodingToolAuthorityReceipt['status'];
+  readonly decision: CodingToolSurfaceConstraint['decision'];
   readonly reason: string;
   readonly confirmationRef?: string;
-}): CodingToolAuthorityReceipt {
-  return {
-    decision: input.decision,
-    status: input.status,
+}): CodingToolSurfaceConstraint {
+  const base = {
     reason: input.reason,
-    ...(input.confirmationRef ? { confirmationRef: input.confirmationRef } : {}),
     evidenceRefs: [
-      `run-evidence:${input.operationId}:authority-${input.status === 'authorized' ? 'authorized' : 'denied'}`,
+      `run-evidence:${input.operationId}:surface-constraint-${input.decision}`,
     ],
   };
+  if (input.decision === 'require-confirmation') {
+    return {
+      decision: input.decision,
+      ...base,
+      ...(input.confirmationRef ? { confirmationRef: input.confirmationRef } : {}),
+    };
+  }
+  return { decision: input.decision, ...base };
+}
+
+function permitsPreparedExecution(constraint: CodingToolSurfaceConstraint): boolean {
+  return constraint.decision === 'allow'
+    || (constraint.decision === 'require-confirmation' && Boolean(constraint.confirmationRef));
 }
 
 export type ResolveTerminalCommandRecoveryInput = Omit<TerminalCommandRecoveryInput, 'targetOperationIds'>;
@@ -180,7 +190,11 @@ export class TerminalPermissionCoordinator {
   ): Promise<TerminalConfirmationResult> {
     const confirmId = `tc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     return new Promise((resolve) => {
-      this.pendingConfirms.set(confirmId, (allow, alwaysAllow) => resolve({ allow, alwaysAllow }));
+      this.pendingConfirms.set(confirmId, (allow, alwaysAllow) => resolve({
+        allow,
+        alwaysAllow,
+        ...(allow ? { confirmationRef: `inline-confirmation:${confirmId}` } : {}),
+      }));
       webview.postMessage({ type: 'terminalConfirm', command, workdir, confirmId });
       setTimeout(() => {
         if (this.pendingConfirms.delete(confirmId)) {
@@ -405,26 +419,26 @@ export class TerminalPermissionCoordinator {
   ): Promise<PreparedTerminalCommand> {
     let releaseExecution: (() => void) | undefined;
     const executionGate = new Promise<void>(resolve => { releaseExecution = resolve; });
-    let resolveAuthority: ((authority: CodingToolAuthorityReceipt) => void) | undefined;
-    let rejectAuthority: ((error: unknown) => void) | undefined;
-    const authoritySettled = new Promise<CodingToolAuthorityReceipt>((resolve, reject) => {
-      resolveAuthority = resolve;
-      rejectAuthority = reject;
+    let resolveConstraint: ((constraint: CodingToolSurfaceConstraint) => void) | undefined;
+    let rejectConstraint: ((error: unknown) => void) | undefined;
+    const constraintSettled = new Promise<CodingToolSurfaceConstraint>((resolve, reject) => {
+      resolveConstraint = resolve;
+      rejectConstraint = reject;
     });
     const execution = this.runCommandWithPermissionDetailed({
       ...input,
-      onAuthoritySettled: async authority => {
-        resolveAuthority?.(authority);
-        if (authority.status === 'authorized') await executionGate;
+      onConstraintSettled: async constraint => {
+        resolveConstraint?.(constraint);
+        if (permitsPreparedExecution(constraint)) await executionGate;
       },
     });
-    void execution.catch(error => rejectAuthority?.(error));
-    const authority = await authoritySettled;
+    void execution.catch(error => rejectConstraint?.(error));
+    const constraint = await constraintSettled;
     let released = false;
     return {
-      authority,
+      constraint,
       execute: async () => {
-        if (authority.status === 'authorized' && !released) {
+        if (permitsPreparedExecution(constraint) && !released) {
           released = true;
           releaseExecution?.();
         }
@@ -438,7 +452,7 @@ export class TerminalPermissionCoordinator {
   ): Promise<PreparedTerminalToolExecution> {
     const prepared = await this.prepareCommandWithPermission(input);
     return {
-      authority: prepared.authority,
+      constraint: prepared.constraint,
       execute: async () => {
         const result = await prepared.execute();
         const evidenceRefs = [`terminal-operation:${result.operationId}:${result.outcome}`];
@@ -536,7 +550,22 @@ export class TerminalPermissionCoordinator {
       workdir,
       mode,
     });
-    const terminalPermission = decideToolPermission(toolPolicy, 'terminal');
+    const terminalDecision = decideTerminalCommandPermission({
+      command: normalizedCommand,
+      workdir,
+      workspaceRoot,
+    });
+    const terminalPermission = decideToolPermission(toolPolicy, {
+      kind: 'terminal',
+      risk: terminalDecision.risk === 'destructive'
+        ? 'destructive'
+        : terminalDecision.risk === 'mutating' || terminalDecision.risk === 'unknown'
+          ? 'high'
+          : terminalDecision.risk === 'validation'
+            ? 'medium'
+            : 'low',
+      mutatesWorkspace: terminalDecision.risk === 'mutating' || terminalDecision.risk === 'destructive',
+    });
     if (terminalPermission.action === 'deny') {
       recordTerminalRunEvidence(runEvidence, input, 'side_effect.failed', {
         reason: terminalPermission.reason,
@@ -549,10 +578,9 @@ export class TerminalPermissionCoordinator {
         command: summarizeTraceText(normalizedCommand),
         workdir,
       });
-      await input.onAuthoritySettled?.(terminalAuthorityReceipt({
+      await input.onConstraintSettled?.(terminalSurfaceConstraint({
         operationId: runEvidence.operationId,
         decision: 'deny',
-        status: 'denied',
         reason: terminalPermission.reason,
       }));
       return {
@@ -563,14 +591,12 @@ export class TerminalPermissionCoordinator {
       };
     }
 
-    const terminalDecision = decideTerminalCommandPermission({
-      command: normalizedCommand,
-      workdir,
-      workspaceRoot,
-    });
     const isAutopilot = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
     const remembered = terminalDecision.canRememberDecision && this.trustedRiskClasses.has(terminalDecision.risk);
     let confirmedByUser = input.userConfirmed === true;
+    let confirmationRef = confirmedByUser
+      ? `caller-confirmation:${runEvidence.operationId}`
+      : undefined;
     const preauthorizedByPolicy = input.policyPreauthorized === true;
 
     if (
@@ -600,10 +626,9 @@ export class TerminalPermissionCoordinator {
           command: summarizeTraceText(normalizedCommand),
           workdir,
         });
-        await input.onAuthoritySettled?.(terminalAuthorityReceipt({
+        await input.onConstraintSettled?.(terminalSurfaceConstraint({
           operationId: runEvidence.operationId,
           decision: 'require-confirmation',
-          status: 'denied',
           reason: confirmResult.reason ?? 'terminal-confirmation-denied',
         }));
         return {
@@ -614,6 +639,7 @@ export class TerminalPermissionCoordinator {
         };
       }
       confirmedByUser = true;
+      confirmationRef = confirmResult.confirmationRef;
     }
 
     const authorization = confirmedByUser
@@ -625,17 +651,35 @@ export class TerminalPermissionCoordinator {
             : isAutopilot
               ? 'autopilot-policy'
               : 'tool-policy';
+    const settledConfirmationRef = terminalPermission.action === 'requireConfirm'
+      ? confirmationRef
+        ?? (remembered ? `remembered-confirmation:${terminalDecision.risk}` : undefined)
+        ?? (preauthorizedByPolicy ? `policy-preauthorization:${runEvidence.operationId}` : undefined)
+        ?? (isAutopilot ? `autopilot-setting:${runEvidence.operationId}` : undefined)
+      : undefined;
+    if (terminalPermission.action === 'requireConfirm' && !settledConfirmationRef) {
+      await input.onConstraintSettled?.(terminalSurfaceConstraint({
+        operationId: runEvidence.operationId,
+        decision: 'require-confirmation',
+        reason: 'terminal-confirmation-evidence-missing',
+      }));
+      return {
+        output: '（命令未执行：确认完成但缺少可验证的确认引用。）',
+        outcome: 'failed',
+        operationId: runEvidence.operationId,
+        executed: false,
+      };
+    }
     recordTerminalRunEvidence(runEvidence, input, 'side_effect.authorized', {
       authorization,
       risk: terminalDecision.risk,
     });
-    await input.onAuthoritySettled?.(terminalAuthorityReceipt({
+    await input.onConstraintSettled?.(terminalSurfaceConstraint({
       operationId: runEvidence.operationId,
       decision: terminalPermission.action === 'requireConfirm' ? 'require-confirmation' : 'allow',
-      status: 'authorized',
       reason: `${terminalPermission.reason}:${authorization}`,
       ...(terminalPermission.action === 'requireConfirm'
-        ? { confirmationRef: `terminal-authorization:${runEvidence.operationId}:${authorization}` }
+        ? { confirmationRef: settledConfirmationRef }
         : {}),
     }));
     recordTerminalRunEvidence(runEvidence, input, 'side_effect.started', {

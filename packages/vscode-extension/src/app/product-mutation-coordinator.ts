@@ -40,7 +40,13 @@ export type ProductMutationCompletionEvidence<T> =
 
 export interface PreparedProductMutation<T> {
   readonly authorization: ProductMutationAuthorizationDecision;
+  reconcile(): Promise<PreparedProductMutationReconciliation<T>>;
   execute(): Promise<T>;
+}
+
+export interface PreparedProductMutationReconciliation<T> {
+  readonly status: 'not-started' | 'committed' | 'indeterminate';
+  readonly result?: T;
 }
 
 export class ProductMutationDeniedError extends Error {
@@ -122,6 +128,7 @@ export class ProductMutationCoordinator {
       });
       return {
         authorization,
+        reconcile: async () => ({ status: 'not-started' }),
         execute: async () => {
           throw new ProductMutationDeniedError(authorization.reason ?? 'Mutation authorization denied');
         },
@@ -132,10 +139,19 @@ export class ProductMutationCoordinator {
     });
 
     let execution: Promise<T> | undefined;
+    let executionState: PreparedProductMutationReconciliation<T> = { status: 'not-started' };
     return {
       authorization,
+      reconcile: async () => executionState,
       execute: () => {
-        execution ??= this.executePreparedMutation(request, completionEvidence, operationId, observation);
+        if (!execution) {
+          executionState = { status: 'indeterminate' };
+          execution = this.executePreparedMutation(request, completionEvidence, operationId, observation)
+            .then(result => {
+              executionState = { status: 'committed', result };
+              return result;
+            });
+        }
         return execution;
       },
     };

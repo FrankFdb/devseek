@@ -199,6 +199,7 @@ function todoUnit(todo: TodoItem, workspaceRoot: string): CodingCheckpointPendin
     description: todo.title,
     action: 'workspace-task',
     target: requireRoot(workspaceRoot),
+    effectClass: 'workspace-mutation',
   });
 }
 
@@ -208,6 +209,7 @@ function finalizeUnit(workspaceRoot: string): CodingCheckpointPendingUnitInput {
     description: 'Revalidate task acceptance and settle the terminal result',
     action: 'verify',
     target: requireRoot(workspaceRoot),
+    effectClass: 'verification',
   });
 }
 
@@ -217,6 +219,7 @@ function copyUnit(unit: CodingCheckpointPendingUnitInput): CodingCheckpointPendi
     description: unit.description,
     ...(unit.action ? { action: unit.action } : {}),
     ...(unit.target ? { target: unit.target } : {}),
+    ...(unit.effectClass ? { effectClass: unit.effectClass } : {}),
   });
 }
 

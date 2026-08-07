@@ -39,6 +39,17 @@ execSync(
 const req = createRequire(import.meta.url);
 const { tryExecuteMarkdownDeliverableTask } = req(bundlePath);
 
+const ALLOW_FILE_WRITE = Object.freeze({
+  decision: 'allow',
+  reason: 'test-file-write-allowed',
+  evidenceRefs: Object.freeze(['test:file-write-allowed']),
+});
+const DENY_FILE_WRITE = Object.freeze({
+  decision: 'deny',
+  reason: 'test-file-write-denied',
+  evidenceRefs: Object.freeze(['test:file-write-denied']),
+});
+
 function makeCallbacks() {
   const statuses = [];
   const changes = [];
@@ -54,7 +65,7 @@ function makeCallbacks() {
       onAppliedChange(change) { changes.push(change); },
       onResponseMeta() {},
       onToolActivity(kind, label) { activities.push({ kind, label }); },
-      onBeforeFileWrite: async () => true,
+      onResolveFileWriteConstraint: async () => ALLOW_FILE_WRITE,
     },
   };
 }
@@ -685,9 +696,9 @@ test('markdown deliverable: revocation while bounded repair is in flight leaves 
       workspaceRoot: { fsPath: workspace.root },
       callbacks: {
         ...io.callbacks,
-        onBeforeFileWrite: async () => {
+        onResolveFileWriteConstraint: async () => {
           writeGuardCalls += 1;
-          return writeAuthorized;
+          return writeAuthorized ? ALLOW_FILE_WRITE : DENY_FILE_WRITE;
         },
       },
       chat: async () => {
@@ -823,7 +834,7 @@ test('markdown deliverable: unsafe exact table values fail closed before provide
       workspaceRoot: { fsPath: root },
       callbacks: {
         ...makeCallbacks().callbacks,
-        onBeforeFileWrite: async () => { guardCalls += 1; return true; },
+        onResolveFileWriteConstraint: async () => { guardCalls += 1; return ALLOW_FILE_WRITE; },
       },
       chat: async () => { providerCalls += 1; return '# should-not-run'; },
     });
@@ -882,9 +893,9 @@ test('markdown deliverable: source drift during asynchronous write authorization
       workspaceRoot: { fsPath: workspace.root },
       callbacks: {
         ...io.callbacks,
-        onBeforeFileWrite: async () => {
+        onResolveFileWriteConstraint: async () => {
           writeFileSync(workspace.source, `${readFileSync(workspace.source, 'utf8')}\n// drift during guard\n`);
-          return true;
+          return ALLOW_FILE_WRITE;
         },
       },
       chat: async () => workspace.repaired,
@@ -913,9 +924,9 @@ test('markdown deliverable: target creation during write authorization is detect
       workspaceRoot: { fsPath: workspace.root },
       callbacks: {
         ...io.callbacks,
-        onBeforeFileWrite: async () => {
+        onResolveFileWriteConstraint: async () => {
           writeFileSync(workspace.target, sentinel);
-          return true;
+          return ALLOW_FILE_WRITE;
         },
       },
       chat: async () => workspace.repaired,
@@ -981,9 +992,9 @@ test('markdown deliverable: guard-time parent symlink swap cannot create an outs
       workspaceRoot: { fsPath: root },
       callbacks: {
         ...makeCallbacks().callbacks,
-        async onBeforeFileWrite() {
+        async onResolveFileWriteConstraint() {
           symlinkSync(outside, docs, 'dir');
-          return true;
+          return ALLOW_FILE_WRITE;
         },
       },
       chat: async () => '# must-not-run',
@@ -1000,7 +1011,7 @@ test('markdown deliverable: guard-time parent symlink swap cannot create an outs
 test('markdown deliverable: explicit claim source remains first when project communication evidence is requested', async () => {
   const workspace = createLiveEvidenceStarvationReplay();
   const io = makeCallbacks();
-  io.callbacks.onBeforeFileWrite = async () => false;
+  io.callbacks.onResolveFileWriteConstraint = async () => DENY_FILE_WRITE;
   let providerCalls = 0;
   try {
     const result = await tryExecuteMarkdownDeliverableTask({
@@ -1087,7 +1098,7 @@ test('markdown deliverable: more than twelve contract-required sources bypass op
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-many-claim-sources-'));
   const target = path.join(root, 'docs/many-facts.md');
   const io = makeCallbacks();
-  io.callbacks.onBeforeFileWrite = async () => false;
+  io.callbacks.onResolveFileWriteConstraint = async () => DENY_FILE_WRITE;
   let providerPrompt = '';
   try {
     mkdirSync(path.dirname(target), { recursive: true });
@@ -1295,7 +1306,7 @@ test('markdown deliverable: direct executor rejects a symlink escape before prov
       workspaceRoot: { fsPath: root },
       callbacks: {
         ...makeCallbacks().callbacks,
-        async onBeforeFileWrite() { writeGuardCalls += 1; return true; },
+        async onResolveFileWriteConstraint() { writeGuardCalls += 1; return ALLOW_FILE_WRITE; },
       },
       chat: async () => { providerCalls += 1; return '# report'; },
     });

@@ -27,6 +27,7 @@ import {
   parseSimpleFileWriteRequest,
   type SimpleFileWriteRequest,
 } from './simple-file-intent';
+import { isAgentFileWriteConstraintSatisfied } from '../app/agent-file-write-policy';
 
 export { parseSimpleFileWriteRequest };
 export type { SimpleFileWriteRequest };
@@ -68,22 +69,23 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
   }
   await input.callbacks.onTodoUpdate?.(todos);
 
-  if (input.callbacks.onBeforeFileWrite) {
-    const allowed = await input.callbacks.onBeforeFileWrite(resolved.absPath, {
-      purpose: 'workspace-edit',
-      userRequested: true,
-      displayName: resolved.relPath,
-      requestPrompt: input.userPrompt,
+  const resolveConstraint = input.callbacks.onResolveFileWriteConstraint;
+  const fileWriteConstraint = resolveConstraint
+    ? await resolveConstraint(resolved.absPath, {
+        purpose: 'workspace-edit',
+        userRequested: true,
+        displayName: resolved.relPath,
+        requestPrompt: input.userPrompt,
+      })
+    : undefined;
+  if (!fileWriteConstraint || !isAgentFileWriteConstraintSatisfied(fileWriteConstraint)) {
+    return finishSimpleFileTask({
+      ...input,
+      todos: failLinearAgentTodo(todos, 0),
+      writtenFiles: [],
+      terminalEvidence: [],
+      failedReason: `写入被权限或保护规则阻止：${resolved.relPath}`,
     });
-    if (!allowed) {
-      return finishSimpleFileTask({
-        ...input,
-        todos: failLinearAgentTodo(todos, 0),
-        writtenFiles: [],
-        terminalEvidence: [],
-        failedReason: `写入被权限或保护规则阻止：${resolved.relPath}`,
-      });
-    }
   }
 
   input.callbacks.onToolActivity?.('write', resolved.relPath);

@@ -7,8 +7,7 @@
 
 /**
  * Map a filename or path to its code-fence language identifier.
- * Consolidates the duplicate fenceLangForFile (agent-loop.ts) and
- * fenceLangForPath (extension.ts) functions.
+ * Owns the shared language mapping used by agent and extension adapters.
  */
 export function fenceLangForFile(filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase() ?? '';

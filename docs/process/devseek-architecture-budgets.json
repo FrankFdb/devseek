@@ -37,20 +37,10 @@
       "targetLines": 1024,
       "boundary": "VS Code composition root and Surface Adapter"
     },
-    "packages/vscode-extension/src/agent-loop.ts": {
-      "maxLines": 2391,
-      "targetLines": 1024,
-      "boundary": "legacy two-stage Agent compatibility adapter"
-    },
-    "packages/vscode-extension/src/agent/agent-loop-written-files.ts": {
-      "maxLines": 119,
-      "targetLines": 512,
-      "boundary": "Agent Loop written file evidence and changed-path aggregation"
-    },
     "packages/vscode-extension/src/agent/agentic-loop.ts": {
       "maxLines": 1370,
       "targetLines": 1024,
-      "boundary": "Headless Agent orchestration"
+      "boundary": "Canonical Agent Core orchestration"
     },
     "packages/vscode-extension/src/agent/tool-loop.ts": {
       "maxLines": 1299,

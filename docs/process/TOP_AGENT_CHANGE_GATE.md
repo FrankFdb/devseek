@@ -76,6 +76,24 @@
 
 ---
 
+**变更标题**：I12 工具最终授权、外部副作用与旧执行 owner 物理收敛（2026-08-07）
+- **需求归因**：安全边界缺口 + 架构债务 — Surface 曾能携带近似最终授权的字段，authority receipt 未完整绑定工具输入，external effect 与 resume 对账缺少统一 owner；已切出的旧 executor 和孤立历史 loop 继续增加误用与维护成本。
+- **影响能力层**：C6 tool execution、C7 permission/sandbox/workspace/external effect、C11 checkpoint/resume，以及 VS Code/CLI/Headless 产品适配。
+- **架构影响**：
+  - shared `CanonicalToolAuthorityService` 成为最终 authority receipt 的唯一签发者；执行器除复核结构与作用域外，还必须向当前 authority session 验证该 receipt 确由本会话签发。Surface 只提交 `CodingToolSurfaceConstraint` 与真实 confirmation evidence，不能签发 status/version/sandbox identity。
+  - authority receipt 精确绑定 run/action/tool/purpose/effects/input digest/sandbox policy；`CanonicalToolExecutor` 在 host dispatch 前复核输入，journal replay 必须将 terminal receipt 与完整 canonical action 重新对账。
+  - shared `CanonicalExternalEffectService` 统一 mutating effect 的 reconcile-before-execute、terminal receipt、幂等重放和 resume settlement；checkpoint 封存 exact operation digest，缺失或替换 input 时不得复用 completed receipt，未知远程状态保持 indeterminate。
+  - 生产可达性与机器 owner 基线均为零后，物理删除旧 `agent-loop.ts`、其 16 个传递模块、旧 UI 最终授权 owner、孤立 `llm-agent-loop.ts` 及专属测试；静态守卫禁止重新引入。
+- **方案选择理由**：Codex 将 approval 与 sandbox 分成用户授权和技术执行边界，Claude Code 也由权限/沙箱宿主而非模型文本执行拒绝、询问和允许；DevSeek 采用同类可观察契约，并进一步用版本化、作用域和输入摘要保证跨 Surface 可复算。
+- **备选方案**：继续由 VS Code confirmation callback 构造最终 receipt，或保留旧 loop 作为 fallback；未采用，因为两者都会制造第二 authority/第二 execution owner，且无法证明 sibling 路径不会绕过新边界。
+- **主链路验证**：Shared 342/342、CLI 72/72、Headless 23/23、Extension 164/164 suites；88/88 Surface inventory、20 个 shared semantic domain、legacy execution owner=0。
+- **回退/攻击链路验证**：只读任务拒写、Surface 字段伪造和非当前 session 签发 receipt、批准后替换 input、journal receipt/action 替换、未分类 terminal 风险、远程 effect 对账不确定、completed resume receipt 跨 operation 复用均在宿主副作用前 fail closed；I12 六个独立用户仿真 6/6，fixture SHA256=`52c84a7b111b289745fab2aaedb950bdf90f3e51876c9de98e16b7f2768aeb85`，原始 TAP 仅保留在 ignored 本地目录 `code/devseek-tests/effect-authority/runs/i12-session-authority-final-20260807/`。
+- **结果判据变化**：`PermissionDecisionPort`/`SandboxPolicyPort` 为 `wired`；tool execution、workspace mutation、external effect、resume idempotency 保守保持 `implemented`，直到所有适用 sibling 与跨重启恢复均有无旁路证据。qualification claims 仍为 0，Gate 0 仍 `NOT_PASSED`。
+- **文档更新**：03、16、当前 PLAN、收敛 README、capability ledger、Surface/Kernel baseline、I12 user-journey manifest、本文件；02～09、16 的当前责任未全部完成，本轮不新增归档文档。
+- **备份/发布动作**：本变更提交后执行 extension compile、debug VSIX package 和本地覆盖安装；包身份绑定该提交，不改写 `4f8a567` 冻结候选或 `a034e5e` 历史候选。
+
+---
+
 **变更标题**：G0-A 机器能力账本与资格防越级门禁（2026-07-12）
 - **需求归因**：架构债务 + 验收口径缺陷 — 功能增长后简单编程反复回退，现有文档、实现状态、deterministic 测试、3/2/1 live 观测和产品资格没有共同机器事实源。
 - **影响能力层**：能力治理、架构依赖、里程碑计划、证据完整性、资格判定、默认回归门禁。

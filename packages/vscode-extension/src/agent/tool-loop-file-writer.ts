@@ -1,6 +1,9 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
-import type { CodingWorkspaceMutationReceipt } from '@devseek-netai/shared';
+import {
+  codingToolExecutionFailureReason,
+  type CodingWorkspaceMutationReceipt,
+} from '@devseek-netai/shared';
 import { looksLikeRawToolCallText } from '../generated-file-parser';
 import { resolveGeneratedArtifactPathForPrompt, resolveWorkspaceWritePath } from '../workspace/path-resolver';
 import {
@@ -145,22 +148,7 @@ export class ToolLoopFileWriter {
           return failBeforeEffect('source-overwrite-without-read-evidence', guard.reason ?? '覆盖现有源码前缺少读取证据，已阻止写入。');
         }
       }
-      if (callbacks.onBeforeFileWrite) {
-        const allowed = await callbacks.onBeforeFileWrite(absPath, {
-          purpose: 'tool-write',
-          userRequested: false,
-          displayName: rawPath,
-          requestPrompt: taskPrompt,
-        });
-        if (!allowed) {
-          const reason = `写入权限策略阻止：${absPath}`;
-          await canonical.deny(toolPlan, canonicalContext, reason);
-          canonicalSettled = true;
-          reporter.failure(toolName, rawPath, reason);
-          reporter.feedback(`[${toolName}: ${rawPath}] 跳过（写入权限策略阻止）`);
-          return false;
-        }
-      } else {
+      if (!callbacks.onResolveFileWriteConstraint) {
         const reason = `缺少写入授权边界：${absPath}`;
         await canonical.deny(toolPlan, canonicalContext, reason);
         canonicalSettled = true;
@@ -168,6 +156,14 @@ export class ToolLoopFileWriter {
         reporter.feedback(`[${toolName}: ${rawPath}] 跳过（缺少写入授权边界）`);
         return false;
       }
+      const fileWriteConstraint = await callbacks.onResolveFileWriteConstraint(absPath, {
+        purpose: 'tool-write',
+        userRequested: false,
+        taskAction: toolName,
+        toolRisk: toolPlan.risk,
+        displayName: rawPath,
+        requestPrompt: taskPrompt,
+      });
       if (this.cancellationRequested()) {
         await canonical.fail(toolPlan, canonicalContext, 'tool-cancelled-before-effect');
         canonicalSettled = true;
@@ -177,16 +173,18 @@ export class ToolLoopFileWriter {
 
       let mutationReceipt: CodingWorkspaceMutationReceipt<WorkspaceCommittedEdit> | undefined;
       const toolOutcome = await canonical.settle(toolPlan, canonicalContext, {
-        execute: async () => {
+        execute: async (_plan, authority) => {
           try {
             const mutationOutcome = await workspaceMutation.executeTextFileWrite({
-              runId: callbacks.traceRunId,
+              runId: canonicalContext.runId,
+              sequence: canonicalContext.sequence,
+              actionId: canonicalContext.actionId,
               absPath,
               workspaceRoot: this.options.workspaceRoot,
               content,
               baseline,
               applyOptions: { validateSourceSanity: true, repairSourceTransportEscapes: true },
-              evidenceRefs: [`file-write-authority:${normalized.path}`],
+              evidenceRefs: authority.evidenceRefs,
             });
             mutationReceipt = mutationOutcome.receipt;
             reporter.change(mutationOutcome.receipt);
@@ -208,11 +206,12 @@ export class ToolLoopFileWriter {
             };
           }
         },
-      }, canonical.fileWriteAuthority(toolPlan, canonicalContext));
+      }, fileWriteConstraint);
       canonicalSettled = true;
       const committedEdit = mutationReceipt?.result;
       if (toolOutcome.receipt.status !== 'completed' || mutationReceipt?.status !== 'committed' || !committedEdit) {
-        const terminalReason = mutationReceipt?.errorCode ?? toolOutcome.receipt.errorCode ?? toolOutcome.receipt.status;
+        const terminalReason = mutationReceipt?.errorCode
+          ?? codingToolExecutionFailureReason(toolOutcome.receipt);
         const reason = mutationReceipt?.errorCode === 'workspace-proposal-invalid'
           ? `源码语法护栏阻止写入：${terminalReason}`
           : `工作区写入事务未提交：${terminalReason}`;

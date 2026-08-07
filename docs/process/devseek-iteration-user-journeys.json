@@ -183,6 +183,131 @@
           }
         }
       ]
+    },
+    {
+      "iteration_id": "I12",
+      "status": "verified-local",
+      "goal": "Converge one Kernel-owned permission, sandbox, workspace-mutation, external-effect, and receipt-driven resume boundary across product surfaces.",
+      "delta_from_baseline": "Adds task-sandbox, forged-Surface-authority, approved-input-substitution, journal-receipt, and resume-operation-substitution denials, a reconciled and idempotent confirmed remote mutation, and a real external-effect receipt that settles and skips only the exact resumed work; none is exercised by I10, I11, or the five fixed coding fixtures.",
+      "fixture_path": "scripts/test/fixtures/user-simulations/i12-effect-authority.json",
+      "local_artifact_root": "code/devseek-tests/effect-authority",
+      "capability_ids": [
+        "C6-TOOL-EXECUTION",
+        "C7-PERMISSION-DECISION",
+        "C7-SANDBOX-POLICY",
+        "C7-WORKSPACE-MUTATION",
+        "C7-EXTERNAL-EFFECT",
+        "C11-RESUME-IDEMPOTENCY"
+      ],
+      "cases": [
+        {
+          "case_id": "I12-AUT-01",
+          "capability_ids": [
+            "C6-TOOL-EXECUTION",
+            "C7-PERMISSION-DECISION",
+            "C7-SANDBOX-POLICY",
+            "C7-WORKSPACE-MUTATION"
+          ],
+          "surface": "headless",
+          "user_action": "Run a read-only repository review while the editor Surface attempts to authorize a workspace write.",
+          "expected_outcomes": [
+            "The immutable review task resolves a read-only sandbox and overrides the Surface's attempted allow.",
+            "The canonical denied receipt is retained and the workspace host is never called."
+          ],
+          "evidence": {
+            "test_path": "packages/headless/test/headless-effect-authority-journeys.test.mjs",
+            "test_name": "I12-AUT-01 user journey: read-only task rejects a Surface-authorized write before host dispatch"
+          }
+        },
+        {
+          "case_id": "I12-AUT-02",
+          "capability_ids": [
+            "C6-TOOL-EXECUTION",
+            "C7-PERMISSION-DECISION",
+            "C7-WORKSPACE-MUTATION"
+          ],
+          "surface": "headless",
+          "user_action": "Run an authorized change task through a Headless Surface that attempts to forge the final authorized status.",
+          "expected_outcomes": [
+            "Both a final status hidden in the Surface constraint and a structurally valid foreign receipt are rejected because only the bound Kernel authority session may issue execution authority.",
+            "No authorization is recorded by the bound session and the workspace host is never called."
+          ],
+          "evidence": {
+            "test_path": "packages/headless/test/headless-effect-authority-journeys.test.mjs",
+            "test_name": "I12-AUT-02 user journey: a writable task rejects Surface-issued final authority"
+          }
+        },
+        {
+          "case_id": "I12-AUT-03",
+          "capability_ids": [
+            "C6-TOOL-EXECUTION",
+            "C7-PERMISSION-DECISION",
+            "C7-WORKSPACE-MUTATION"
+          ],
+          "surface": "headless",
+          "user_action": "Approve one exact workspace mutation, then let the Surface attempt to reuse its authority receipt for different tool input.",
+          "expected_outcomes": [
+            "The authority receipt binds an immutable semantic digest of the approved input.",
+            "Substituted path or content is rejected before host dispatch and no workspace effect occurs."
+          ],
+          "evidence": {
+            "test_path": "packages/headless/test/headless-effect-authority-journeys.test.mjs",
+            "test_name": "I12-AUT-03 user journey: approved tool input cannot be substituted before host dispatch"
+          }
+        },
+        {
+          "case_id": "I12-EFX-01",
+          "capability_ids": [
+            "C6-TOOL-EXECUTION",
+            "C7-PERMISSION-DECISION",
+            "C7-EXTERNAL-EFFECT"
+          ],
+          "surface": "headless",
+          "user_action": "Post an explicitly confirmed implementation result to a remote issue after checking whether that exact effect already exists.",
+          "expected_outcomes": [
+            "The mutation reconciles as not-started before dispatch and produces one committed external-effect receipt.",
+            "Repeating the same action identity replays the receipt without a second reconciliation or host call."
+          ],
+          "evidence": {
+            "test_path": "packages/headless/test/headless-effect-authority-journeys.test.mjs",
+            "test_name": "I12-EFX-01 user journey: confirmed remote mutation reconciles and executes only once"
+          }
+        },
+        {
+          "case_id": "I12-RSM-01",
+          "capability_ids": [
+            "C7-EXTERNAL-EFFECT",
+            "C11-RESUME-IDEMPOTENCY"
+          ],
+          "surface": "headless",
+          "user_action": "Resume an interrupted confirmed remote issue update twice after the first resumed run commits it.",
+          "expected_outcomes": [
+            "The actual external-effect receipt directly settles the structured external-effect checkpoint unit as completed.",
+            "The next resumed run sees skip-completed and returns prior evidence without reconciling or calling the remote host again."
+          ],
+          "evidence": {
+            "test_path": "packages/headless/test/headless-effect-authority-journeys.test.mjs",
+            "test_name": "I12-RSM-01 user journey: external effect receipt settles resume and skips the second host call"
+          }
+        },
+        {
+          "case_id": "I12-RSM-02",
+          "capability_ids": [
+            "C7-EXTERNAL-EFFECT",
+            "C11-RESUME-IDEMPOTENCY"
+          ],
+          "surface": "headless",
+          "user_action": "Resume a completed remote issue update while attempting to replace its approved comment body with different input.",
+          "expected_outcomes": [
+            "The checkpoint unit and completed receipt remain bound to the exact logical tool operation digest.",
+            "The substituted input is rejected before reconciliation, authorization, or remote host dispatch."
+          ],
+          "evidence": {
+            "test_path": "packages/headless/test/headless-effect-authority-journeys.test.mjs",
+            "test_name": "I12-RSM-02 user journey: completed resume receipt cannot authorize substituted effect input"
+          }
+        }
+      ]
     }
   ]
 }

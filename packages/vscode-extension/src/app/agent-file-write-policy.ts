@@ -1,4 +1,5 @@
 import * as nodePath from 'path';
+import type { CodingToolSurfaceConstraint } from '@devseek-netai/shared';
 import { authorizeAgentFileWriteContract } from '../agent/task-contract';
 import {
   detectIsolatedArtifactWriteScope,
@@ -8,6 +9,7 @@ import {
 import { isCanonicalPathInsideRoot } from '../workspace/path-containment';
 import type { ToolPolicy } from './permission-service';
 import { decideToolPermission } from './permission-service';
+import type { ToolRisk } from '../intent/intent-types';
 
 export { detectIsolatedArtifactWriteScope };
 export type { IsolatedArtifactWriteScope } from '../agent/isolated-artifact-write-scope';
@@ -23,6 +25,7 @@ export interface AgentFileWriteContext {
   purpose?: AgentFileWritePurpose;
   userRequested?: boolean;
   taskAction?: string;
+  toolRisk?: ToolRisk;
   displayName?: string;
   requestPrompt?: string;
 }
@@ -56,6 +59,39 @@ export interface AgentFileWriteDecision {
     isolatedArtifactScopeRequired?: boolean;
     isolatedArtifactAllowedRoots?: string[];
   };
+}
+
+/**
+ * Projects product policy into the only authority contribution a VS Code
+ * Surface is allowed to make. A real confirmation reference can only be added
+ * by the interaction owner after the user accepts the prompt.
+ */
+export function projectAgentFileWriteConstraint(
+  decision: AgentFileWriteDecision,
+  confirmationRef?: string,
+): CodingToolSurfaceConstraint {
+  const evidenceRefs = [`vscode-file-write-policy:${decision.reason}`];
+  if (decision.action === 'deny') {
+    return { decision: 'deny', reason: decision.reason, evidenceRefs };
+  }
+  if (decision.action === 'requireConfirm') {
+    const settledRef = confirmationRef?.trim();
+    return {
+      decision: 'require-confirmation',
+      reason: decision.reason,
+      ...(settledRef ? { confirmationRef: settledRef } : {}),
+      evidenceRefs,
+    };
+  }
+  return { decision: 'allow', reason: decision.reason, evidenceRefs };
+}
+
+/** Surface-only preflight for legacy deterministic paths that do not invoke a tool host. */
+export function isAgentFileWriteConstraintSatisfied(
+  constraint: CodingToolSurfaceConstraint,
+): boolean {
+  return constraint.decision === 'allow'
+    || (constraint.decision === 'require-confirmation' && Boolean(constraint.confirmationRef?.trim()));
 }
 
 const SENSITIVE_FILE_RE = /^(\.env(\.|$))|.*\.(pem|key|p12|pfx|crt|cer|jks|keystore|secret|credentials|token|passwd|password)$/i;
@@ -141,7 +177,12 @@ export function decideAgentFileWrite(input: AgentFileWriteDecisionInput): AgentF
     return deny('protected-files-match', `已跳过受保护文件：${relPath}（匹配 devseek.protectedFiles 规则）`, scopedAudit);
   }
   if (input.toolPolicy) {
-    const writePermission = decideToolPermission(input.toolPolicy, 'edit');
+    const writePermission = decideToolPermission(input.toolPolicy, {
+      kind: 'edit',
+      risk: input.context?.toolRisk,
+      mutatesWorkspace: true,
+      protectedPath: input.protectedPath,
+    });
     if (writePermission.action === 'deny') {
       return deny(writePermission.reason, `当前 ${input.toolPolicy.mode} 模式不允许写入文件（${writePermission.reason}）。`, scopedAudit);
     }

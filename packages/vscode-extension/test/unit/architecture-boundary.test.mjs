@@ -2,7 +2,7 @@
  * Architecture boundary guards for ARCH-05 Phase 0.
  *
  * These tests make the intended refactor path executable: new business should
- * move into domain services instead of growing extension.ts or agent-loop.ts.
+ * move into domain services instead of growing extension.ts.
  */
 
 import { test } from 'node:test';
@@ -35,12 +35,6 @@ test('Phase 0: composition-root files cannot grow past the baseline', () => {
       maxNonBlankLines: 4060,
       target: 'move VS Code business into app, ui, workspace, llm, memory, or agent services',
     },
-    {
-      file: 'src/agent-loop.ts',
-      maxPhysicalLines: 2650,
-      maxNonBlankLines: 2450,
-      target: 'move agent business into runtime, tools, workflow, quality, or memory services',
-    },
   ];
 
   for (const budget of budgets) {
@@ -54,6 +48,14 @@ test('Phase 0: composition-root files cannot grow past the baseline', () => {
       `${budget.file} grew past ${budget.maxNonBlankLines} non-blank lines; ${budget.target}`,
     );
   }
+});
+
+test('Phase 0: the retired legacy agent loop cannot return as a second execution owner', () => {
+  assert.equal(existsSync(path.join(root, 'src/agent-loop.ts')), false);
+  const sourceFiles = readdirSync(path.join(root, 'src'), { withFileTypes: true })
+    .filter(entry => entry.isFile() && entry.name.endsWith('.ts'))
+    .map(entry => read(`src/${entry.name}`));
+  assert.equal(sourceFiles.some(source => /from ['"].*agent-loop['"]/.test(source)), false);
 });
 
 test('Phase 0: domain roots expose explicit public boundaries', () => {
@@ -164,11 +166,8 @@ test('Phase 2: memory boundary exposes schema, store, and guard only', () => {
 });
 
 test('Phase 2: agent tool loop memory_write uses structured proposals only', () => {
-  const agentLoop = read('src/agent-loop.ts');
   const toolLoop = read('src/agent/tool-loop.ts');
   const loopTypes = read('src/agent/loop-types.ts');
-  assert.doesNotMatch(agentLoop, /\.devseek\/memory\.md|memory\.md/, 'agent-loop must not mention legacy memory file paths');
-  assert.doesNotMatch(agentLoop, /appendFileSync|writeFileSync|mkdirSync/, 'agent-loop must not persist memory directly');
   assert.doesNotMatch(toolLoop, /\.devseek\/memory\.md|memory\.md/, 'tool-loop must not mention legacy memory file paths');
   assert.doesNotMatch(toolLoop, /appendFileSync|writeFileSync|mkdirSync/, 'tool-loop must not persist memory directly');
   assert.match(loopTypes, /onMemoryWrite\?: \(proposal: MemoryWriteProposal\)/, 'agent callback protocol emits structured memory proposals');

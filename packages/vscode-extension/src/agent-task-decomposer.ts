@@ -54,7 +54,7 @@ import {
 export type AgentTaskAction = 'modify' | 'analyze' | 'create' | 'delete' | 'explain' | 'explore' | 'respond';
 
 // ----------------------------------------------------------------
-// File reading utility — exported for use in agent-loop.ts
+// File reading utility shared by task planning and canonical agent execution.
 // ----------------------------------------------------------------
 
 const READ_MAX_LINES = 400;

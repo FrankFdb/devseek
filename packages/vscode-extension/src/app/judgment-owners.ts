@@ -382,8 +382,9 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
     ],
     contractTests: [
       'test/unit/workflow-compliance.test.mjs',
-      'test/unit/agent-loop-task-state.test.mjs',
       'test/unit/agent-working-state.test.mjs',
+      'test/unit/task-ledger.test.mjs',
+      'test/unit/markdown-deliverable-flow.test.mjs',
     ],
     guardedTerms: ['completed', 'failed', 'manual_review_required'],
   },
@@ -398,7 +399,6 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
       'AgentRuntimeState',
     ],
     supportingModules: [
-      'src/agent/agent-runtime-turn-policy.ts',
       'src/agent/agentic-loop.ts',
       'src/agent/task-todo-ledger.ts',
       'src/app/agent-runtime-ledger.ts',
@@ -406,8 +406,7 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
     ],
     contractTests: [
       'test/unit/agent-runtime-state-machine.test.mjs',
-      'test/unit/agent-runtime-turn-policy.test.mjs',
-      'test/unit/agent-loop-task-state.test.mjs',
+      'test/unit/markdown-deliverable-flow.test.mjs',
       'test/unit/run-log-replay.test.mjs',
       'test/unit/agent-runtime-ledger.test.mjs',
     ],
@@ -457,7 +456,6 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
       'src/extension.ts',
       'media/webview-agent-activity.js',
       'media/webview.js',
-      'src/agent-loop.ts',
       'src/pending-edit-coordinator.ts',
     ],
     contractTests: [

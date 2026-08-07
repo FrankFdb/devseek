@@ -1,4 +1,5 @@
 import type {
+  CodingCheckpointEffectClass,
   CodingCheckpointPendingUnit,
   CodingCheckpointRestoreDecision,
 } from './coding-checkpoint';
@@ -6,7 +7,7 @@ import { codingSemanticDigest } from './coding-semantic-digest';
 
 export const CODING_RESUME_IDEMPOTENCY_VERSION = 'devseek.coding-resume-idempotency/v1' as const;
 
-export type CodingResumeEffectClass = 'read' | 'workspace-mutation' | 'external-effect' | 'verification';
+export type CodingResumeEffectClass = CodingCheckpointEffectClass;
 export type CodingResumeReceiptStatus = 'completed' | 'failed-no-effect' | 'indeterminate';
 export type CodingResumeUnitDisposition = 'execute' | 'skip-completed' | 'block-indeterminate';
 
@@ -251,6 +252,10 @@ function snapshotPendingUnit(unit: CodingCheckpointPendingUnit): CodingCheckpoin
     description: requireText(unit.description, 'missing-unit-description'),
     ...(unit.action?.trim() ? { action: unit.action.trim() } : {}),
     ...(unit.target?.trim() ? { target: unit.target.trim() } : {}),
+    ...(unit.effectClass ? { effectClass: requireEffectClass(unit.effectClass) } : {}),
+    ...(unit.operationSha256 ? {
+      operationSha256: requireSha256(unit.operationSha256, 'invalid-operation-sha256'),
+    } : {}),
   };
   return Object.freeze({ ...base, fingerprint: codingSemanticDigest(base) });
 }
@@ -265,6 +270,8 @@ function snapshotExecutionUnit(unit: CodingResumeExecutionUnit): CodingResumeExe
 }
 
 function classifyEffect(unit: CodingCheckpointPendingUnit): CodingResumeEffectClass {
+  if (unit.effectClass) return requireEffectClass(unit.effectClass);
+  // Compatibility only for checkpoints created before structured effectClass existed.
   const text = `${unit.action ?? ''} ${unit.description} ${unit.target ?? ''}`.toLowerCase();
   if (/\b(?:publish|deploy|release|upload|network|http|mcp|email|notify|external)\b/u.test(text)) {
     return 'external-effect';

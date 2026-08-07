@@ -676,7 +676,10 @@ const SOURCE_CHECKS = Object.freeze([
   check('headless-tool-host-composition', SOURCE_PATHS.headlessToolExecution, [
     'export class HeadlessToolExecutionAdapter',
     'private readonly executor: ToolExecutorPort = new CanonicalToolExecutor()',
-    'return this.executor.execute(buildCodingToolAction(input.action), input.host)',
+    'readonly authority: CodingToolAuthoritySessionPort',
+    'const authorization = input.authority.authorize({',
+    'return this.executor.execute(buildCodingToolAction({',
+    'authority: authorization.receipt',
   ], [
     "from 'vscode'",
     'CliToolExecutionAdapter',
@@ -685,7 +688,12 @@ const SOURCE_CHECKS = Object.freeze([
   check('headless-workspace-mutation-composition', SOURCE_PATHS.headlessWorkspaceMutation, [
     'export class HeadlessWorkspaceMutationAdapter',
     'private readonly transaction: WorkspaceMutationTransactionPort = new CanonicalWorkspaceMutationTransaction()',
-    'return this.transaction.execute(buildCodingWorkspaceMutationPlan(input.plan), input.host)',
+    'readonly authority: CodingToolAuthoritySessionPort',
+    "purpose: 'workspace-mutation'",
+    "effects: ['workspace-mutation']",
+    "authorization.receipt.status !== 'authorized'",
+    'return this.transaction.execute(buildCodingWorkspaceMutationPlan({',
+    '...authorization.receipt.evidenceRefs',
   ], [
     "from 'vscode'",
     'CliWorkspaceMutationHostAdapter',

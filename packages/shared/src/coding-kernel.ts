@@ -43,6 +43,16 @@ import {
   type CodingResumeIdempotencySessionPort,
   type CodingResumeOperationReceipt,
 } from './coding-resume-idempotency';
+import {
+  CanonicalToolAuthorityService,
+  type CodingToolAuthorization,
+  type CodingToolAuthoritySessionPort,
+} from './coding-tool-authority';
+import {
+  CanonicalExternalEffectService,
+  type CodingExternalEffectReceipt,
+  type CodingExternalEffectSessionPort,
+} from './coding-external-effect';
 
 export {
   CODING_KERNEL_TASK_CONTRACT_VERSION,
@@ -81,6 +91,8 @@ export interface CodingKernelRuntimeRequest<TRuntimeContext>
   readonly memoryPolicy: CodingMemoryContextDecision;
   readonly checkpoint: CodingCheckpointSessionPort;
   readonly contextCompaction: CodingContextCompactionSessionPort;
+  readonly toolAuthority: CodingToolAuthoritySessionPort;
+  readonly externalEffects: CodingExternalEffectSessionPort;
   readonly resume?: CodingCheckpointRestoreDecision;
   readonly resumeIdempotency?: CodingResumeIdempotencySessionPort;
 }
@@ -106,6 +118,8 @@ export interface CodingKernelExecutionOutput<TResult> {
   readonly memoryPolicy: CodingMemoryContextDecision;
   readonly resume?: CodingCheckpointRestoreDecision;
   readonly contextCompactions: readonly CodingContextCompactionReceipt[];
+  readonly toolAuthorizations: readonly CodingToolAuthorization[];
+  readonly externalEffectReceipts: readonly CodingExternalEffectReceipt<unknown>[];
   readonly resumeReceipts: readonly CodingResumeOperationReceipt[];
   readonly result: TResult;
   readonly evidenceRefs: readonly string[];
@@ -123,6 +137,8 @@ export class CodingKernelExecutionError extends Error {
   readonly settlement: CodingSettlementDecision;
   readonly checkpoint: CodingCheckpointSessionPort;
   readonly contextCompactions: readonly CodingContextCompactionReceipt[];
+  readonly toolAuthorizations: readonly CodingToolAuthorization[];
+  readonly externalEffectReceipts: readonly CodingExternalEffectReceipt<unknown>[];
   readonly resumeReceipts: readonly CodingResumeOperationReceipt[];
   readonly runtimeCause: unknown;
 
@@ -132,6 +148,8 @@ export class CodingKernelExecutionError extends Error {
     settlement: CodingSettlementDecision,
     checkpoint: CodingCheckpointSessionPort,
     contextCompactions: readonly CodingContextCompactionReceipt[],
+    toolAuthorizations: readonly CodingToolAuthorization[],
+    externalEffectReceipts: readonly CodingExternalEffectReceipt<unknown>[],
     resumeReceipts: readonly CodingResumeOperationReceipt[],
     runtimeCause?: unknown,
   ) {
@@ -141,6 +159,8 @@ export class CodingKernelExecutionError extends Error {
     this.settlement = settlement;
     this.checkpoint = checkpoint;
     this.contextCompactions = contextCompactions;
+    this.toolAuthorizations = toolAuthorizations;
+    this.externalEffectReceipts = externalEffectReceipts;
     this.resumeReceipts = resumeReceipts;
     this.runtimeCause = runtimeCause;
   }
@@ -154,6 +174,8 @@ const MEMORY_POLICY = new CanonicalMemoryPolicyService();
 const CHECKPOINT = new CanonicalCheckpointService();
 const CONTEXT_COMPACTION = new CanonicalContextCompactionService();
 const RESUME_IDEMPOTENCY = new CanonicalResumeIdempotencyService();
+const TOOL_AUTHORITY = new CanonicalToolAuthorityService();
+const EXTERNAL_EFFECT = new CanonicalExternalEffectService();
 
 /**
  * The product-level execution owner shared by every Surface. Runtime adapters
@@ -206,6 +228,17 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
     const resumeIdempotency = resume
       ? RESUME_IDEMPOTENCY.bind({ restore: resume, receipts: request.resumeReceipts })
       : undefined;
+    const toolAuthority = TOOL_AUTHORITY.bind({
+      runId: request.runId,
+      surface: request.surface,
+      workspaceRoot: request.workspaceRoot,
+      taskContract,
+    });
+    const externalEffects = EXTERNAL_EFFECT.bind({
+      runId: request.runId,
+      authority: toolAuthority,
+      ...(resumeIdempotency ? { resume: resumeIdempotency } : {}),
+    });
     const lifecycle = RUN_LIFECYCLE.start({ runId: request.runId, surface: request.surface });
     if (request.signal?.aborted) {
       lifecycle.settle('cancelled');
@@ -214,6 +247,8 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         lifecycle,
         checkpoint,
         contextCompaction,
+        toolAuthority,
+        externalEffects,
         resumeIdempotency,
       );
     }
@@ -224,6 +259,8 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         lifecycle,
         checkpoint,
         contextCompaction,
+        toolAuthority,
+        externalEffects,
         resumeIdempotency,
       );
     }
@@ -235,6 +272,8 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       memoryPolicy,
       checkpoint,
       contextCompaction,
+      toolAuthority,
+      externalEffects,
       ...(resume ? { resume } : {}),
       ...(resumeIdempotency ? { resumeIdempotency } : {}),
     });
@@ -267,6 +306,8 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         memoryPolicy,
         ...(resume ? { resume } : {}),
         contextCompactions: contextCompaction.receipts(),
+        toolAuthorizations: toolAuthority.authorizations(),
+        externalEffectReceipts: externalEffects.receipts(),
         resumeReceipts: resumeIdempotency?.receipts() ?? [],
         result: runtimeOutput.result,
         evidenceRefs: settlement.evidenceRefs,
@@ -282,6 +323,8 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         lifecycle,
         checkpoint,
         contextCompaction,
+        toolAuthority,
+        externalEffects,
         resumeIdempotency,
         error,
       );
@@ -294,6 +337,8 @@ function lifecycleError(
   lifecycle: RunLifecycleSessionPort,
   checkpoint: CodingCheckpointSessionPort,
   contextCompaction: CodingContextCompactionSessionPort,
+  toolAuthority: CodingToolAuthoritySessionPort,
+  externalEffects: CodingExternalEffectSessionPort,
   resumeIdempotency?: CodingResumeIdempotencySessionPort,
   cause?: unknown,
 ): CodingKernelExecutionError {
@@ -310,6 +355,8 @@ function lifecycleError(
     settlement,
     checkpoint,
     contextCompaction.receipts(),
+    toolAuthority.authorizations(),
+    externalEffects.receipts(),
     resumeIdempotency?.receipts() ?? [],
     cause,
   );

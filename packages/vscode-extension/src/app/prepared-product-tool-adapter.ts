@@ -1,6 +1,6 @@
 import type {
-  CodingToolAuthorityReceipt,
   CodingToolHostResult,
+  CodingToolSurfaceConstraint,
 } from '@devseek-netai/shared';
 import type { AgentPreparedToolExecution } from '../agent/loop-types';
 import {
@@ -11,35 +11,46 @@ import {
 
 export function adaptPreparedProductTool<T>(input: {
   prepared: PreparedProductMutation<T>;
-  authorityRef: string;
+  constraintRef: string;
   completedEvidenceRef: string;
   formatResult: (value: T) => string;
 }): AgentPreparedToolExecution<string> {
   return {
-    authority: projectProductToolAuthority(input.prepared, input.authorityRef),
+    constraint: projectProductToolConstraint(input.prepared, input.constraintRef),
+    reconcile: async () => {
+      const reconciliation = await input.prepared.reconcile();
+      return {
+        status: reconciliation.status,
+        ...(reconciliation.result === undefined ? {} : {
+          result: input.formatResult(reconciliation.result),
+        }),
+        evidenceRefs: [`${input.constraintRef}:reconcile-${reconciliation.status}`],
+      };
+    },
     execute: async () => executePreparedProductTool(input),
   };
 }
 
-function projectProductToolAuthority<T>(
+function projectProductToolConstraint<T>(
   prepared: PreparedProductMutation<T>,
-  authorityRef: string,
-): CodingToolAuthorityReceipt {
+  constraintRef: string,
+): CodingToolSurfaceConstraint {
   const { authorization } = prepared;
   const userConfirmed = authorization.source === 'user-confirmed';
-  return {
-    decision: authorization.allowed
-      ? userConfirmed ? 'require-confirmation' : 'allow'
-      : 'deny',
-    status: authorization.allowed ? 'authorized' : 'denied',
-    reason: authorization.reason ?? (authorization.allowed
-      ? 'product-tool-authorized'
-      : 'product-tool-denied'),
-    ...(authorization.allowed && userConfirmed ? {
-      confirmationRef: `${authorityRef}:confirmed`,
-    } : {}),
-    evidenceRefs: [`${authorityRef}:${authorization.allowed ? 'authorized' : 'denied'}`],
-  };
+  const reason = authorization.reason ?? (authorization.allowed
+    ? 'product-tool-authorized'
+    : 'product-tool-denied');
+  const evidenceRefs = [`${constraintRef}:${authorization.allowed ? 'allowed' : 'denied'}`];
+  if (!authorization.allowed) return { decision: 'deny', reason, evidenceRefs };
+  if (userConfirmed) {
+    return {
+      decision: 'require-confirmation',
+      reason,
+      confirmationRef: `${constraintRef}:confirmed`,
+      evidenceRefs,
+    };
+  }
+  return { decision: 'allow', reason, evidenceRefs };
 }
 
 async function executePreparedProductTool<T>(input: {

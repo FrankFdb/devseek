@@ -255,7 +255,7 @@ export function createAgentHostToolCallbacks(context: AgentHostToolContext): Hos
       });
       return adaptPreparedProductTool({
         prepared,
-        authorityRef: `vscode-command-authority:${runContext.runId}:${command}`,
+        constraintRef: `vscode-command-constraint:${runContext.runId}:${command}`,
         completedEvidenceRef: `vscode-command-result:${runContext.runId}:${command}`,
         formatResult: result => result !== undefined
           ? `VS Code 已接受命令: ${command}\n返回: ${JSON.stringify(result).slice(0, 500)}\n（仅证明命令 Promise 已成功返回）`

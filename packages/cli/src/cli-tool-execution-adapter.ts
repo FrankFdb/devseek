@@ -4,10 +4,8 @@ import {
   buildCodingToolAction,
   buildCodingWorkspaceMutationPlan,
   classifyCodingTerminalEffects,
-  type CodingToolAuthorityReceipt,
+  type CodingToolAuthoritySessionPort,
   type CodingToolExecutionOutcome,
-  type CodingVerificationOutcome,
-  type CodingVerificationReceipt,
   type CodingWorkspaceMutationReceipt,
   type ToolExecutorPort,
   type WorkspaceMutationTransactionPort,
@@ -24,24 +22,11 @@ export interface CliWorkspaceToolExecutionInput {
   readonly actionId: string;
   readonly workspaceRoot: string;
   readonly proposal: CliCodingArtifactProposal;
-  readonly authority: CodingToolAuthorityReceipt;
+  readonly authority: CodingToolAuthoritySessionPort;
 }
 
 export interface CliWorkspaceToolExecutionResult {
   readonly outcome: CodingToolExecutionOutcome<CodingWorkspaceMutationReceipt<readonly string[]>>;
-}
-
-export interface CliVerificationToolExecutionInput {
-  readonly runId: string;
-  readonly sequence: number;
-  readonly actionId: string;
-  readonly files: readonly string[];
-  readonly authority: CodingToolAuthorityReceipt;
-  readonly verify: () => Promise<CodingVerificationOutcome>;
-}
-
-export interface CliVerificationToolExecutionResult {
-  readonly outcome: CodingToolExecutionOutcome<CodingVerificationReceipt>;
 }
 
 export interface CliDeniedTerminalToolInput {
@@ -50,6 +35,7 @@ export interface CliDeniedTerminalToolInput {
   readonly actionId: string;
   readonly command: string;
   readonly workdir?: string;
+  readonly authority: CodingToolAuthoritySessionPort;
 }
 
 /** Maps the CLI filesystem capability onto the shared tool execution owner. */
@@ -63,17 +49,28 @@ export class CliToolExecutionAdapter {
   async executeWorkspaceMutation(
     input: CliWorkspaceToolExecutionInput,
   ): Promise<CliWorkspaceToolExecutionResult> {
+    const actionInput = {
+      workspaceRoot: input.workspaceRoot,
+      proposal: input.proposal,
+    };
+    const authority = input.authority.authorize({
+      actionId: input.actionId,
+      tool: 'cli-workspace-artifact-apply',
+      purpose: 'workspace-mutation',
+      effects: ['workspace-mutation'],
+      input: actionInput,
+      risk: 'medium',
+      targetPaths: collectCliWorkspaceMutationPaths(input.proposal),
+    });
     const action = buildCodingToolAction({
       runId: input.runId,
       sequence: input.sequence,
       actionId: input.actionId,
       tool: 'cli-workspace-artifact-apply',
+      purpose: 'workspace-mutation',
       effects: ['workspace-mutation'],
-      input: {
-        workspaceRoot: input.workspaceRoot,
-        proposal: input.proposal,
-      },
-      authority: input.authority,
+      input: actionInput,
+      authority: authority.receipt,
     });
     const outcome = await this.executor.execute(action, {
       execute: async settledAction => {
@@ -113,68 +110,46 @@ export class CliToolExecutionAdapter {
           evidenceRefs: receipt.evidenceRefs,
         };
       },
-    });
-    return { outcome };
-  }
-
-  async executeVerification(
-    input: CliVerificationToolExecutionInput,
-  ): Promise<CliVerificationToolExecutionResult> {
-    const action = buildCodingToolAction({
-      runId: input.runId,
-      sequence: input.sequence,
-      actionId: input.actionId,
-      tool: 'run_terminal',
-      effects: ['process'],
-      input: { files: input.files },
-      authority: input.authority,
-    });
-    const outcome = await this.executor.execute(action, {
-      execute: async () => {
-        const verification = await input.verify();
-        const receipt = verification.receipt;
-        return {
-          status: receipt.status === 'passed'
-            ? 'completed'
-            : receipt.status === 'indeterminate'
-              ? 'indeterminate'
-              : 'failed',
-          result: receipt,
-          ...(receipt.status === 'passed' ? {} : {
-            errorCode: receipt.errorCode ?? `verification-${receipt.status}`,
-          }),
-          evidenceRefs: receipt.evidenceRefs,
-        };
-      },
-    });
+    }, input.authority);
     return { outcome };
   }
 
   executeDeniedTerminal(
     input: CliDeniedTerminalToolInput,
   ): Promise<CodingToolExecutionOutcome<never>> {
+    const effects = classifyCodingTerminalEffects(input.command);
+    const actionInput = {
+      command: input.command,
+      ...(input.workdir ? { workdir: input.workdir } : {}),
+    };
+    const authority = input.authority.authorize({
+      actionId: input.actionId,
+      tool: 'run_terminal',
+      purpose: 'external-effect',
+      effects,
+      input: actionInput,
+      risk: 'high',
+      surfaceConstraint: {
+        decision: 'deny',
+        reason: 'cli-model-terminal-requires-explicit-authorization',
+        evidenceRefs: [`cli-terminal-policy:${input.actionId}:denied`],
+      },
+    });
     const action = buildCodingToolAction({
       runId: input.runId,
       sequence: input.sequence,
       actionId: input.actionId,
       tool: 'run_terminal',
-      effects: classifyCodingTerminalEffects(input.command),
-      input: {
-        command: input.command,
-        ...(input.workdir ? { workdir: input.workdir } : {}),
-      },
-      authority: {
-        decision: 'deny',
-        status: 'denied',
-        reason: 'cli-model-terminal-requires-explicit-authorization',
-        evidenceRefs: [`cli-authority:${input.actionId}:denied`],
-      },
+      purpose: 'external-effect',
+      effects,
+      input: actionInput,
+      authority: authority.receipt,
     });
     return this.executor.execute(action, {
       execute: async () => {
         throw new Error('denied CLI terminal host must not execute');
       },
-    });
+    }, input.authority);
   }
 }
 

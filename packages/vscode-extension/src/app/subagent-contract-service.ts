@@ -1,7 +1,7 @@
 import type { ToolKind } from '../intent/intent-types';
 import { SensitiveMemoryGuard } from '../memory/sensitive-memory-guard';
 import {
-  PermissionKernel,
+  SurfaceToolPolicyEvaluator,
   type ToolPermissionDecision,
   type ToolPermissionRequest,
   type ToolPolicy,
@@ -286,7 +286,7 @@ export class SubagentContractService {
     if (request.mutatesWorkspace || SUBAGENT_EFFECT_TOOL_KINDS.includes(request.kind)) {
       return { action: 'deny', reason: `child-effects-forbidden:${subject}` };
     }
-    return new PermissionKernel(contract.permissionPolicy).decide(request);
+    return new SurfaceToolPolicyEvaluator(contract.permissionPolicy).decide(request);
   }
 
   acceptChildResult(

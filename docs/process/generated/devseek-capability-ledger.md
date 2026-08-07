@@ -4,7 +4,7 @@
 
 - Schema: `devseek.capability-ledger/v1`
 - Capabilities: 76
-- Ledger SHA-256: `d8380b88a2a5ac9b74406f8b963e580f33fcc12b402c93e2ac3d029e20231221`
+- Ledger SHA-256: `ec0581c90d8a1de71eecc8bd324d9722c22c6ec5aec3dd515a3300a39b855c78`
 - Qualification claim policy: `deny-until-signed-evidence-validator`
 
 | Capability | Priority | Applicability | Claim scopes | Implementation | Qualification | Authority port | Typed dependencies |
@@ -67,16 +67,16 @@
 | `C6-DEEPSEEK-WEB-CONNECTOR` | P0 | active | core-coding | proposed | — | `DeepSeekWebConnectorPort` | C6-PROVIDER-NORMALIZATION (execution/wired)<br>C7-EXTERNAL-EFFECT (authority/wired)<br>C7-SECRETS-REDACTION (authority/wired) |
 | `C6-PROVIDER-NORMALIZATION` | P0 | active | core-coding | proposed | — | `ProviderEventPort` | C1-RUN-LIFECYCLE (control/wired) |
 | `C6-TOOL-DISPATCH` | P0 | active | core-coding | proposed | — | `ToolDispatchPort` | C6-TOOL-SCHEMA (execution/wired)<br>C1-AGENT-COMMAND (control/wired) |
-| `C6-TOOL-EXECUTION` | P0 | active | core-coding | proposed | — | `ToolExecutionPort` | C6-TOOL-DISPATCH (execution/wired) |
+| `C6-TOOL-EXECUTION` | P0 | active | core-coding | implemented | — | `ToolExecutionPort` | C6-TOOL-DISPATCH (execution/wired) |
 | `C6-TOOL-SCHEMA` | P0 | active | core-coding | proposed | — | `ToolSchemaRegistryPort` | C1-RUN-LIFECYCLE (control/wired) |
 | `C6-VISUAL-COMPUTER-USE` | P2 | conditional | visual-computer-use | proposed | — | `VisualComputerUsePort` | C6-TOOL-EXECUTION (execution/wired)<br>C7-EXTERNAL-EFFECT (authority/wired)<br>C7-SECRETS-REDACTION (authority/wired) |
 | `C7-DIRTY-WORKTREE` | P0 | active | core-coding | proposed | — | `DirtyWorktreePolicyPort` | C7-WORKSPACE-MUTATION (authority/wired) |
-| `C7-EXTERNAL-EFFECT` | P0 | active | core-coding | proposed | — | `ExternalEffectPort` | C7-PERMISSION-DECISION (authority/wired)<br>C7-SANDBOX-POLICY (authority/wired)<br>C6-TOOL-EXECUTION (execution/wired) |
-| `C7-PERMISSION-DECISION` | P0 | active | core-coding | proposed | — | `PermissionDecisionPort` | C2-TASK-CONTRACT (semantic/wired) |
+| `C7-EXTERNAL-EFFECT` | P0 | active | core-coding | implemented | — | `ExternalEffectPort` | C7-PERMISSION-DECISION (authority/wired)<br>C7-SANDBOX-POLICY (authority/wired)<br>C6-TOOL-EXECUTION (execution/wired) |
+| `C7-PERMISSION-DECISION` | P0 | active | core-coding | wired | — | `PermissionDecisionPort` | C2-TASK-CONTRACT (semantic/wired) |
 | `C7-PLATFORM-ADAPTER-CONFORMANCE` | P0 | active | core-coding | proposed | — | `PlatformAdapterConformancePort` | C7-SANDBOX-POLICY (authority/wired)<br>C7-WORKSPACE-MUTATION (authority/wired)<br>C7-EXTERNAL-EFFECT (authority/wired) |
-| `C7-SANDBOX-POLICY` | P0 | active | core-coding | proposed | — | `SandboxPolicyPort` | C7-PERMISSION-DECISION (authority/wired) |
+| `C7-SANDBOX-POLICY` | P0 | active | core-coding | wired | — | `SandboxPolicyPort` | C7-PERMISSION-DECISION (authority/wired) |
 | `C7-SECRETS-REDACTION` | P0 | active | core-coding | proposed | — | `SecretRedactionPort` | C7-EXTERNAL-EFFECT (authority/wired) |
-| `C7-WORKSPACE-MUTATION` | P0 | active | core-coding | proposed | — | `WorkspaceMutationPort` | C7-PERMISSION-DECISION (authority/wired)<br>C7-SANDBOX-POLICY (authority/wired)<br>C6-TOOL-EXECUTION (execution/wired) |
+| `C7-WORKSPACE-MUTATION` | P0 | active | core-coding | implemented | — | `WorkspaceMutationPort` | C7-PERMISSION-DECISION (authority/wired)<br>C7-SANDBOX-POLICY (authority/wired)<br>C6-TOOL-EXECUTION (execution/wired) |
 | `C8-CODE-CHANGE` | P0 | active | core-coding | proposed | — | `CodeChangePort` | C5-CHANGE-PLAN (semantic/wired)<br>C7-WORKSPACE-MUTATION (authority/wired) |
 | `C8-INTEGRATION-CONFORMANCE` | P0 | active | core-coding | proposed | — | `IntegrationConformancePort` | C8-CODE-CHANGE (execution/wired)<br>C6-TOOL-DISPATCH (execution/wired) |
 | `C9-BOUNDED-REPAIR` | P0 | active | core-coding | proposed | — | `RepairDecisionPort` | C9-DIAGNOSTIC-NORMALIZATION (verification/wired)<br>C7-WORKSPACE-MUTATION (authority/wired) |

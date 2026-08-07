@@ -62,9 +62,9 @@ function fixture(pendingUnits = defaultPendingUnits()) {
 
 function defaultPendingUnits() {
   return [
-    { id: 'edit', description: 'Modify the resume path', action: 'modify', target: 'src/resume.ts' },
-    { id: 'publish', description: 'Publish the package', action: 'deploy', target: 'registry' },
-    { id: 'verify', description: 'Run focused tests', action: 'verify', target: 'npm test' },
+    { id: 'edit', description: 'Modify the resume path', action: 'modify', target: 'src/resume.ts', effectClass: 'workspace-mutation' },
+    { id: 'publish', description: 'Publish the package', action: 'deploy', target: 'registry', effectClass: 'external-effect' },
+    { id: 'verify', description: 'Run focused tests', action: 'verify', target: 'npm test', effectClass: 'verification' },
   ];
 }
 
@@ -199,6 +199,18 @@ test('ResumeIdempotencyPort skips completed effects and blocks indeterminate rep
     () => service.bind({ restore, receipts: [{ ...completed, status: 'indeterminate' }] }),
     /coding-resume-idempotency:receipt-sha256-mismatch/u,
   );
+});
+
+test('ResumeIdempotencyPort trusts structured effect semantics over misleading display text', () => {
+  const { restore } = fixture([{
+    id: 'inspect',
+    description: 'Review text mentioning publish, delete, and test without executing them',
+    action: 'analyze',
+    target: 'src/resume.ts',
+    effectClass: 'read',
+  }]);
+  const session = new CanonicalResumeIdempotencyService().bind({ restore });
+  assert.equal(session.plan.units[0].effectClass, 'read');
 });
 
 test('ResumeIdempotencyPort permits failed-no-effect retry and seals the later completion', () => {

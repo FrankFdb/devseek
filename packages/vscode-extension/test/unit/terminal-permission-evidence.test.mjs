@@ -101,7 +101,15 @@ function openRun(workspaceRoot, runId) {
   return { owner, participantToken };
 }
 
-function inputFor({ workspaceRoot, runId, participantToken, command, policy, evidenceErrors }) {
+function inputFor({
+  workspaceRoot,
+  runId,
+  participantToken,
+  command,
+  policy,
+  evidenceErrors,
+  policyPreauthorized = false,
+}) {
   fakeVscode.workspace.workspaceFolders = [{ uri: { fsPath: workspaceRoot } }];
   return {
     webview: { postMessage() { return true; } },
@@ -113,6 +121,7 @@ function inputFor({ workspaceRoot, runId, participantToken, command, policy, evi
     traceRunId: runId,
     traceEvidenceParticipantToken: participantToken,
     onTraceEvidenceError: error => evidenceErrors.push(error),
+    policyPreauthorized,
   };
 }
 
@@ -210,7 +219,6 @@ test('Terminal evidence: validation execution has one injected authority and no 
   const source = relativePath => readFileSync(path.join(rootDir, relativePath), 'utf8');
   const validationService = source('src/workspace/validation-service.ts');
   const coordinator = source('src/app/terminal-permission-coordinator.ts');
-  const agentLoop = source('src/agent-loop.ts');
   const autoValidation = source('src/agent/auto-validation.ts');
   const workspaceApplier = source('src/workspace-applier.ts');
   const closedLoop = source('src/app/closed-loop-repair-runner.ts');
@@ -218,7 +226,8 @@ test('Terminal evidence: validation execution has one injected authority and no 
   const viewProvider = source('src/ui/deepseek-view-provider.ts');
   const generatedArtifacts = source('src/ui/generated-artifact-surface-controller.ts');
   const localRepair = source('src/local-execution-repair.ts');
-  const deterministicExecution = source('src/agent/deterministic-analyze-execution.ts');
+  const agenticLoop = source('src/agent/agentic-loop.ts');
+  const toolLoop = source('src/agent/tool-loop.ts');
   const executionPlanner = source('src/execution-planner.ts');
   const legacyExecution = source('src/local-execution.ts');
 
@@ -230,8 +239,6 @@ test('Terminal evidence: validation execution has one injected authority and no 
   assert.match(coordinator, /stdout:\s*result\.stdout/);
   assert.match(coordinator, /stderr:\s*result\.stderr/);
 
-  assert.match(agentLoop, /commandRunner:\s*callbacks\.onValidationCommand/);
-  assert.match(agentLoop, /validationCommandRunner:\s*callbacks\.onValidationCommand/);
   assert.match(autoValidation, /commandRunner:\s*callbacks\.onValidationCommand/);
   assert.match(workspaceApplier, /commandRunner:\s*validationCommandRunner/);
   assert.match(closedLoop, /validationCommandRunner:\s*input\.validationCommandRunner/);
@@ -240,10 +247,15 @@ test('Terminal evidence: validation execution has one injected authority and no 
   assert.equal((generatedArtifacts.match(/createValidationCommandRunner\s*\(\{/g) ?? []).length, 2);
   assert.equal((localRepair.match(/createValidationCommandRunner\s*\(\{/g) ?? []).length, 1);
 
-  assert.doesNotMatch(deterministicExecution, /\brunLocalExecution\s*\(/);
-  assert.match(deterministicExecution, /executeFakeToolsForLoop\s*\(/);
-  assert.match(deterministicExecution, /plannedTerminalValidation/);
-  assert.doesNotMatch(deterministicExecution, /onTerminalCommand/);
+  assert.equal(
+    existsSync(path.join(rootDir, 'src/agent/deterministic-analyze-execution.ts')),
+    false,
+    'retired deterministic executor must not restore a parallel terminal path',
+  );
+  assert.doesNotMatch(agenticLoop, /\brunLocalExecution\s*\(/);
+  assert.match(agenticLoop, /executeFakeToolsForLoop\s*\(/);
+  assert.match(toolLoop, /plannedTerminalValidation/);
+  assert.doesNotMatch(toolLoop, /onTerminalCommand/);
   assert.doesNotMatch(executionPlanner, /child_process|\brunLocalExecution\s*\(/);
   assert.doesNotMatch(legacyExecution, /child_process|\brunLocalExecution\s*\(/);
 });
@@ -729,7 +741,7 @@ test('Terminal evidence: prepared command cannot dispatch before canonical execu
     presentation: 'visible',
   });
 
-  assert.equal(prepared.authority.status, 'authorized');
+  assert.equal(prepared.constraint.decision, 'allow');
   assert.equal(fakeVscode.window.terminals.length, 0);
   assert.deepEqual(sideEffectEvents(owner).map(event => event.type), [
     'side_effect.requested',
@@ -768,7 +780,7 @@ test('Terminal evidence: a nonzero tool command settles as failed instead of com
   }));
   const result = await prepared.execute();
 
-  assert.equal(prepared.authority.status, 'authorized');
+  assert.equal(prepared.constraint.decision, 'allow');
   assert.equal(result.status, 'failed');
   assert.equal(result.errorCode, 'terminal-command-failed');
   assert.ok(result.evidenceRefs.some(ref => ref.endsWith(':failed')));
@@ -797,7 +809,7 @@ test('Terminal evidence: denied prepared command never exposes a process effect'
   });
   const result = await prepared.execute();
 
-  assert.equal(prepared.authority.status, 'denied');
+  assert.equal(prepared.constraint.decision, 'deny');
   assert.equal(result.executed, false);
   assert.equal(fakeVscode.window.terminals.length, 0);
   assertOneExactLifecycle(sideEffectEvents(owner), [
@@ -892,6 +904,7 @@ test('Terminal evidence: authorized append failure prevents process dispatch and
         command: `node -e "require('fs').writeFileSync(${JSON.stringify(marker)},'bad')"`,
         policy: allowTerminalPolicy,
         evidenceErrors,
+        policyPreauthorized: true,
       })),
       /injected authorized evidence append failure/,
     );
@@ -927,6 +940,7 @@ test('Terminal evidence: committed append failure records indeterminate degradat
         command: `node -e "require('fs').writeFileSync('did-run.txt','ran')"`,
         policy: allowTerminalPolicy,
         evidenceErrors,
+        policyPreauthorized: true,
       })),
       /injected committed evidence append failure/,
     );

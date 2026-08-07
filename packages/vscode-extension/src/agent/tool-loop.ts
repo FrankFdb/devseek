@@ -2,6 +2,7 @@ import * as nodePath from 'path';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import {
+  codingToolExecutionFailureReason,
   createDevSeekTraceLogger,
   type CodingToolExecutionReceipt,
   type CodingWorkspaceMutationReceipt,
@@ -41,8 +42,8 @@ import { buildToolPolicy } from '../app/permission-service';
 import type { ToolKind } from '../intent/intent-types';
 import { normalizeAgentFileWriteInputs } from './tool-registry';
 import {
+  createToolLoopCanonicalSession,
   projectFileWriteActionPlan,
-  ToolLoopCanonicalSession,
 } from './tool-loop-canonical-session';
 import { ToolLoopFileWriter } from './tool-loop-file-writer';
 import { analyzeTerminalEvidence } from './tool-loop-terminal-evidence';
@@ -58,7 +59,7 @@ const TOOL_TRACE_LOGGERS = new Map<string, DevSeekTraceLogger>();
 function hasEvidenceAwareToolAuthority(kind: ToolKind, callbacks: AgentLoopCallbacks): boolean {
   switch (kind) {
     case 'edit':
-      return typeof callbacks.onBeforeFileWrite === 'function';
+      return typeof callbacks.onResolveFileWriteConstraint === 'function';
     case 'terminal':
       return typeof callbacks.onPrepareTerminalCommand === 'function';
     case 'vscode':
@@ -277,7 +278,13 @@ export async function executeFakeToolsForLoop(
   const trace = getToolTraceLogger(callbacks.traceWorkspaceRoot ?? workspaceRoot, callbacks.traceRunId);
   const readEvidenceRecorder = taskContext?.readEvidenceRecorder
     ?? new ToolReadEvidenceRecorder(workspaceRoot, callbacks.traceRunId);
-  const canonicalTools = new ToolLoopCanonicalSession(toolExecutionReceipts, evidenceRefs, agentToolExecutor);
+  const canonicalTools = createToolLoopCanonicalSession({
+    callbacks,
+    workspaceRoot,
+    userPrompt: taskContext?.userPrompt,
+    receipts: toolExecutionReceipts,
+    evidenceRefs,
+  });
   const fileWriter = new ToolLoopFileWriter({
     callbacks,
     workspaceRoot,
@@ -316,7 +323,7 @@ export async function executeFakeToolsForLoop(
       tools[toolIndex],
       buildToolPolicy(callbacks.executionMode ?? 'inspect'),
     );
-    const canonicalContext = canonicalTools.nextContext(callbacks.traceRunId, toolPlan);
+    const canonicalContext = canonicalTools.nextContext(toolPlan);
     const tool = toolPlan.tool;
     const inputValidation = agentToolExecutor.validateInput(toolPlan);
     if (!inputValidation.ok) {
@@ -374,7 +381,7 @@ export async function executeFakeToolsForLoop(
           ),
         );
         if (execution.receipt.status !== 'completed' || !Array.isArray(execution.receipt.result)) {
-          const reason = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+          const reason = execution.error ?? codingToolExecutionFailureReason(execution.receipt);
           recordToolFailure(tool.name, 'tool-host', undefined, reason);
           parts.push(`[manage_todo_list] 错误: ${reason}`);
           continue;
@@ -414,7 +421,7 @@ export async function executeFakeToolsForLoop(
         // This receipt records model intent only. Completion remains owned by the orchestrator.
         taskComplete = true;
       } else {
-        const reason = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+        const reason = execution.error ?? codingToolExecutionFailureReason(execution.receipt);
         recordToolFailure(tool.name, 'tool-host', undefined, reason);
         parts.push(`[task_complete] 错误: ${reason}`);
       }
@@ -529,7 +536,7 @@ export async function executeFakeToolsForLoop(
               observedOutput = hostResult.result ?? '';
               return hostResult;
             },
-          }, prepared.authority);
+          }, prepared.constraint);
           canonicalSettled = true;
           const output = execution.receipt.result ?? observedOutput;
           if (execution.receipt.status === 'denied') {
@@ -539,7 +546,7 @@ export async function executeFakeToolsForLoop(
             continue;
           }
           if (!output) {
-            const reason = execution.receipt.errorCode ?? execution.receipt.status;
+            const reason = codingToolExecutionFailureReason(execution.receipt);
             recordToolFailure('run_terminal', 'terminal-guard', resolvedCommand, reason);
             parts.push(`[run_terminal: ${resolvedCommand}] 错误: ${reason}`);
             continue;
@@ -609,7 +616,7 @@ export async function executeFakeToolsForLoop(
           }
           parts.push(`[read_file: ${filePath}]\n${content}`);
         } else {
-          const msg = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+          const msg = execution.error ?? codingToolExecutionFailureReason(execution.receipt);
           recordToolFailure(tool.name, 'tool-host', filePath, msg);
           parts.push(`[read_file: ${filePath}] 错误: ${msg}`);
         }
@@ -635,7 +642,7 @@ export async function executeFakeToolsForLoop(
           callbacks.onToolActivity?.('search', label);
           parts.push(`[grep_search: "${pattern}"${searchPath ? ` in ${searchPath}` : ''}]\n${results}`);
         } else {
-          const msg = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+          const msg = execution.error ?? codingToolExecutionFailureReason(execution.receipt);
           recordToolFailure(tool.name, 'tool-host', searchPath, msg);
           parts.push(`[grep_search: "${pattern}"] 错误: ${msg}`);
         }
@@ -654,7 +661,7 @@ export async function executeFakeToolsForLoop(
         callbacks.onToolActivity?.('list', p);
         parts.push(`[list_dir: ${p}]\n${listing}`);
       } else {
-        const msg = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+        const msg = execution.error ?? codingToolExecutionFailureReason(execution.receipt);
         recordToolFailure(tool.name, 'tool-host', p, msg);
         parts.push(`[list_dir: ${p}] 错误: ${msg}`);
       }
@@ -670,7 +677,7 @@ export async function executeFakeToolsForLoop(
         const errors = execution.receipt.result;
         parts.push(`[get_errors]\n${errors}`);
       } else {
-        const msg = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+        const msg = execution.error ?? codingToolExecutionFailureReason(execution.receipt);
         recordToolFailure(tool.name, 'tool-host', undefined, msg);
         parts.push(`[get_errors] 错误: ${msg}`);
       }
@@ -699,7 +706,7 @@ export async function executeFakeToolsForLoop(
           callbacks.onToolActivity?.('search', `glob:${glob}`);
           parts.push(`[file_search: "${glob}"]\n${results}`);
         } else {
-          const msg = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+          const msg = execution.error ?? codingToolExecutionFailureReason(execution.receipt);
           recordToolFailure(tool.name, 'tool-host', targetDir, msg);
           parts.push(`[file_search: "${glob}"] 错误: ${msg}`);
         }
@@ -734,7 +741,7 @@ export async function executeFakeToolsForLoop(
           callbacks.onToolActivity?.('search', `semantic:"${query.slice(0, 50)}"`);
           parts.push(`[semantic_search: "${query}"]\n${results}`);
         } else {
-          const msg = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+          const msg = execution.error ?? codingToolExecutionFailureReason(execution.receipt);
           recordToolFailure(tool.name, 'tool-host', undefined, msg);
           parts.push(`[semantic_search: "${query}"] 错误: ${msg}`);
         }
@@ -772,7 +779,7 @@ export async function executeFakeToolsForLoop(
           parts.push(`[memory_write] 已写入记忆：${content.slice(0, 80)}`);
           callbacks.onToolActivity?.('memory', `记忆已保存: ${content.slice(0, 60)}`);
         } else {
-          const reason = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+          const reason = execution.error ?? codingToolExecutionFailureReason(execution.receipt);
           recordToolFailure(tool.name, 'tool-host', undefined, reason);
           parts.push(`[memory_write] 失败：${reason}`);
         }
@@ -830,7 +837,7 @@ export async function executeFakeToolsForLoop(
             continue;
           }
         }
-        if (!callbacks.onBeforeFileWrite) {
+        if (!callbacks.onResolveFileWriteConstraint) {
           const reason = '缺少删除授权边界。';
           await canonicalTools.deny(toolPlan, canonicalContext, reason);
           canonicalSettled = true;
@@ -838,21 +845,14 @@ export async function executeFakeToolsForLoop(
           parts.push(`[delete_file: ${rawPath}] 跳过（缺少删除授权边界）`);
           continue;
         }
-        const allowed = await callbacks.onBeforeFileWrite(absPath, {
+        const fileWriteConstraint = await callbacks.onResolveFileWriteConstraint(absPath, {
           purpose: 'tool-write',
           userRequested: false,
           taskAction: 'delete_file',
+          toolRisk: toolPlan.risk,
           displayName: rawPath,
           requestPrompt: taskContext?.userPrompt ?? '',
         });
-        if (!allowed) {
-          const reason = `写入权限策略阻止：${absPath}`;
-          await canonicalTools.deny(toolPlan, canonicalContext, reason);
-          canonicalSettled = true;
-          recordToolFailure('delete_file', 'write', rawPath, reason);
-          parts.push(`[delete_file: ${rawPath}] 跳过（写入权限策略阻止）`);
-          continue;
-        }
         if (cancellationRequested()) {
           await canonicalTools.fail(toolPlan, canonicalContext, 'tool-cancelled-before-effect');
           canonicalSettled = true;
@@ -861,13 +861,15 @@ export async function executeFakeToolsForLoop(
         }
         let mutationReceipt: CodingWorkspaceMutationReceipt<WorkspaceDeleteResult> | undefined;
         const toolOutcome = await canonicalTools.settle(toolPlan, canonicalContext, {
-          execute: async () => {
+          execute: async (_plan, authority) => {
             const mutationOutcome = await workspaceMutation.executeTextFileDelete({
-              runId: callbacks.traceRunId,
+              runId: canonicalContext.runId,
+              sequence: canonicalContext.sequence,
+              actionId: canonicalContext.actionId,
               absPath,
               workspaceRoot,
               baseline,
-              evidenceRefs: [`file-delete-authority:${rawPath}`],
+              evidenceRefs: authority.evidenceRefs,
             });
             mutationReceipt = mutationOutcome.receipt;
             changeReceipts.push(mutationOutcome.receipt);
@@ -882,14 +884,14 @@ export async function executeFakeToolsForLoop(
               evidenceRefs: mutationOutcome.receipt.evidenceRefs,
             };
           },
-        }, canonicalTools.fileWriteAuthority(toolPlan, canonicalContext));
+        }, fileWriteConstraint);
         canonicalSettled = true;
         const deleteResult = mutationReceipt?.result;
         if (toolOutcome.receipt.status !== 'completed'
           || mutationReceipt?.status !== 'committed'
           || !deleteResult?.deleted) {
-          const reason = mutationReceipt?.errorCode ?? toolOutcome.receipt.errorCode
-            ?? '目标在授权后已不存在，删除未形成提交证据。请重新 list_dir/read_file 确认当前路径。';
+          const reason = mutationReceipt?.errorCode
+            ?? codingToolExecutionFailureReason(toolOutcome.receipt);
           recordToolFailure('delete_file', 'write', rawPath, reason);
           parts.push(`[delete_file: ${rawPath}] 错误: ${reason}`);
           continue;
@@ -1010,7 +1012,7 @@ export async function executeFakeToolsForLoop(
         const filePlan = projectFileWriteActionPlan(toolPlan, fileWrite);
         const fileContext = fileIndex === 0
           ? canonicalContext
-          : canonicalTools.nextContext(callbacks.traceRunId, filePlan);
+          : canonicalTools.nextContext(filePlan);
         await fileWriter.apply(filePlan, fileContext, tool.name, rawPath, content);
       }
     } else if (tool.name === 'get_changed_files' && callbacks.onGetChangedFiles) {
@@ -1026,7 +1028,7 @@ export async function executeFakeToolsForLoop(
         callbacks.onToolActivity?.('search', 'git changes');
         parts.push(`[get_changed_files]\n${result}`);
       } else {
-        const msg = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+        const msg = execution.error ?? codingToolExecutionFailureReason(execution.receipt);
         recordToolFailure(tool.name, 'tool-host', undefined, msg);
         parts.push(`[get_changed_files] 错误: ${msg}`);
       }
@@ -1040,7 +1042,7 @@ export async function executeFakeToolsForLoop(
         let canonicalSettled = false;
         try {
           const absPath = resolveAgentToolEvidencePath(dirPath, workspaceRoot, defaultWorkdir);
-          if (!callbacks.onBeforeFileWrite) {
+          if (!callbacks.onResolveFileWriteConstraint) {
             const reason = '缺少写入授权边界。';
             await canonicalTools.deny(toolPlan, canonicalContext, reason);
             canonicalSettled = true;
@@ -1048,30 +1050,22 @@ export async function executeFakeToolsForLoop(
             parts.push(`[create_directory: ${dirPath}] 跳过（缺少写入授权边界）`);
             continue;
           }
-          const allowed = await callbacks.onBeforeFileWrite(absPath, {
+          const fileWriteConstraint = await callbacks.onResolveFileWriteConstraint(absPath, {
             purpose: 'tool-write',
             userRequested: false,
             taskAction: 'create_directory',
+            toolRisk: toolPlan.risk,
             displayName: dirPath,
             requestPrompt: taskContext?.userPrompt ?? '',
           });
-          if (!allowed) {
-            const reason = `写入权限策略阻止：${absPath}`;
-            await canonicalTools.deny(toolPlan, canonicalContext, reason);
-            canonicalSettled = true;
-            recordToolFailure('create_directory', 'write', dirPath, reason);
-            parts.push(`[create_directory: ${dirPath}] 跳过（写入权限策略阻止）`);
-            continue;
-          }
           if (cancellationRequested()) {
             await canonicalTools.fail(toolPlan, canonicalContext, 'tool-cancelled-before-effect');
             canonicalSettled = true;
             recordCancellationFeedback('create_directory', dirPath);
             continue;
           }
-          const authority = canonicalTools.fileWriteAuthority(toolPlan, canonicalContext);
           const execution = await canonicalTools.settle(toolPlan, canonicalContext, {
-            execute: async () => {
+            execute: async (_plan, authority) => {
               if (!callbacks.onCreateDirectory) {
                 return {
                   status: 'failed' as const,
@@ -1107,10 +1101,10 @@ export async function executeFakeToolsForLoop(
                 evidenceRefs: result.changeReceipt.evidenceRefs,
               };
             },
-          }, authority);
+          }, fileWriteConstraint);
           canonicalSettled = true;
           if (execution.receipt.status !== 'completed' || typeof execution.receipt.result !== 'string') {
-            const reason = execution.receipt.errorCode ?? execution.receipt.status;
+            const reason = codingToolExecutionFailureReason(execution.receipt);
             recordToolFailure('create_directory', 'write', dirPath, reason);
             parts.push(`[create_directory: ${dirPath}] 错误: ${reason}`);
             continue;
@@ -1142,7 +1136,7 @@ export async function executeFakeToolsForLoop(
           const result = execution.receipt.result;
           parts.push(`[fetch_webpage: ${url}]\n${result}`);
         } else {
-          const msg = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+          const msg = execution.error ?? codingToolExecutionFailureReason(execution.receipt);
           recordToolFailure(tool.name, 'tool-host', url, msg);
           parts.push(`[fetch_webpage: ${url}] 错误: ${msg}`);
         }
@@ -1172,7 +1166,7 @@ export async function executeFakeToolsForLoop(
           const result = execution.receipt.result;
           parts.push(`[vscode_listCodeUsages: "${symbol}"]\n${result}`);
         } else {
-          const msg = execution.error ?? execution.receipt.errorCode ?? execution.receipt.status;
+          const msg = execution.error ?? codingToolExecutionFailureReason(execution.receipt);
           recordToolFailure(tool.name, 'tool-host', filePath, msg);
           parts.push(`[vscode_listCodeUsages: "${symbol}"] 错误: ${msg}`);
         }
@@ -1189,18 +1183,16 @@ export async function executeFakeToolsForLoop(
         callbacks.onToolActivity?.('terminal', `⚡ ${command}`);
         try {
           if (!callbacks.onPrepareVscodeCommand) {
-            const reason = 'missing-vscode-command-authority';
+            const reason = 'missing-vscode-command-constraint';
             await canonicalTools.deny(toolPlan, canonicalContext, reason);
             recordToolFailure(tool.name, 'tool-host', command, reason);
             parts.push(`[run_vscode_command: ${command}] 错误: ${reason}`);
             continue;
           }
           const prepared = await callbacks.onPrepareVscodeCommand(command, args);
-          const execution = await canonicalTools.settle(toolPlan, canonicalContext, {
-            execute: () => prepared.execute(),
-          }, prepared.authority);
+          const execution = await canonicalTools.settle(toolPlan, canonicalContext, prepared, prepared.constraint);
           if (execution.receipt.status !== 'completed' || typeof execution.receipt.result !== 'string') {
-            const reason = execution.receipt.errorCode ?? execution.receipt.status;
+            const reason = codingToolExecutionFailureReason(execution.receipt);
             recordToolFailure(tool.name, 'tool-host', command, reason);
             parts.push(`[run_vscode_command: ${command}] ${execution.receipt.status}: ${reason}`);
             continue;
@@ -1208,7 +1200,7 @@ export async function executeFakeToolsForLoop(
           parts.push(`[run_vscode_command: ${command}]\n${execution.receipt.result}`);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          await canonicalTools.deny(toolPlan, canonicalContext, `vscode-command-authority-failed:${msg}`);
+          await canonicalTools.deny(toolPlan, canonicalContext, `vscode-command-constraint-failed:${msg}`);
           recordToolFailure(tool.name, 'tool-host', command, msg);
           parts.push(`[run_vscode_command: ${command}] 错误: ${msg}`);
         }
@@ -1217,18 +1209,16 @@ export async function executeFakeToolsForLoop(
       markToolCall();
       try {
         if (!callbacks.onPrepareMcpToolCall) {
-          const reason = 'missing-mcp-tool-authority';
+          const reason = 'missing-mcp-tool-constraint';
           await canonicalTools.deny(toolPlan, canonicalContext, reason);
           recordToolFailure(tool.name, 'tool-host', undefined, reason);
           parts.push(`[${tool.name}] 错误: ${reason}`);
           continue;
         }
         const prepared = await callbacks.onPrepareMcpToolCall(tool.name, tool.input as Record<string, unknown>);
-        const execution = await canonicalTools.settle(toolPlan, canonicalContext, {
-          execute: () => prepared.execute(),
-        }, prepared.authority);
+        const execution = await canonicalTools.settle(toolPlan, canonicalContext, prepared, prepared.constraint);
         if (execution.receipt.status !== 'completed' || typeof execution.receipt.result !== 'string') {
-          const reason = execution.receipt.errorCode ?? execution.receipt.status;
+          const reason = codingToolExecutionFailureReason(execution.receipt);
           recordToolFailure(tool.name, 'tool-host', undefined, reason);
           parts.push(`[${tool.name}] ${execution.receipt.status}: ${reason}`);
           continue;
@@ -1237,7 +1227,7 @@ export async function executeFakeToolsForLoop(
         parts.push(`[${tool.name}]\n${execution.receipt.result}`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        await canonicalTools.deny(toolPlan, canonicalContext, `mcp-tool-authority-failed:${msg}`);
+        await canonicalTools.deny(toolPlan, canonicalContext, `mcp-tool-constraint-failed:${msg}`);
         recordToolFailure(tool.name, 'tool-host', undefined, msg);
         parts.push(`[${tool.name}] 错误: ${msg}`);
         callbacks.onToolActivity?.('terminal', `❌ ${tool.name}: ${msg.slice(0, 50)}`);

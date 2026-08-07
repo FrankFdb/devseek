@@ -1452,7 +1452,10 @@
       "includes": [
         "export class HeadlessToolExecutionAdapter",
         "private readonly executor: ToolExecutorPort = new CanonicalToolExecutor()",
-        "return this.executor.execute(buildCodingToolAction(input.action), input.host)"
+        "readonly authority: CodingToolAuthoritySessionPort",
+        "const authorization = input.authority.authorize({",
+        "return this.executor.execute(buildCodingToolAction({",
+        "authority: authorization.receipt"
       ],
       "excludes": [
         "from 'vscode'",
@@ -1467,7 +1470,12 @@
       "includes": [
         "export class HeadlessWorkspaceMutationAdapter",
         "private readonly transaction: WorkspaceMutationTransactionPort = new CanonicalWorkspaceMutationTransaction()",
-        "return this.transaction.execute(buildCodingWorkspaceMutationPlan(input.plan), input.host)"
+        "readonly authority: CodingToolAuthoritySessionPort",
+        "purpose: 'workspace-mutation'",
+        "effects: ['workspace-mutation']",
+        "authorization.receipt.status !== 'authorized'",
+        "return this.transaction.execute(buildCodingWorkspaceMutationPlan({",
+        "...authorization.receipt.evidenceRefs"
       ],
       "excludes": [
         "from 'vscode'",
@@ -2247,5 +2255,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "b0daedab2846bc43a9cd0a9863d118bbca314c450c31e09b7d38c0b982102c02"
+  "baseline_sha256": "aefb2a1776050326906999f088d08406b183065ebd62246c96d1d8a21f2aa90e"
 }

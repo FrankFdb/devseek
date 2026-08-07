@@ -11,7 +11,6 @@ import {
   type CodingCompletionAcceptanceDecision,
   type CodingCompletionDecision,
   type CodingConformanceProjection,
-  type CodingToolAuthorityReceipt,
   type CodingToolExecutionReceipt,
   type CodingVerificationReceipt,
   type CodingWorkspaceMutationReceipt,
@@ -117,6 +116,7 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
               actionId: `cli-terminal-${index + 1}`,
               command: terminalCall.command,
               workdir: terminalCall.workdir,
+              authority: request.toolAuthority,
             });
             toolExecutions.push(terminalOutcome.receipt);
           }
@@ -190,7 +190,7 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
             actionId: sideEffectOperationId,
             workspaceRoot: request.workspaceRoot,
             proposal: artifactProposal,
-            authority: cliWorkspaceAuthority(request.taskContract.mode, sideEffectOperationId, false),
+            authority: request.toolAuthority,
           });
           toolExecutions.push(denied.outcome.receipt);
           input.recordOperationEvidence({
@@ -266,7 +266,7 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
           actionId: sideEffectOperationId,
           workspaceRoot: request.workspaceRoot,
           proposal: artifactProposal,
-          authority: cliWorkspaceAuthority(request.taskContract.mode, sideEffectOperationId, true),
+          authority: request.toolAuthority,
         });
         toolExecutions.push(toolExecution.outcome.receipt);
         const toolReceipt = toolExecution.outcome.receipt;
@@ -322,25 +322,48 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
         }, verificationOperationId);
         let validation: CliValidationResult;
         try {
-          const verificationTool = await this.toolExecution.executeVerification({
-            runId: request.runId,
+          const verificationEffect = await request.externalEffects.execute({
             sequence: verificationSequence,
             actionId: verificationOperationId,
-            files,
-            authority: cliVerificationAuthority(verificationOperationId),
-            verify: () => this.verification.verify({
-              runId: request.runId,
-              sequence: verificationSequence,
-              actionId: verificationOperationId,
-              workspaceRoot: request.workspaceRoot,
-              files,
-              prompt: request.userPrompt,
-              acceptance: request.taskContract.acceptance,
-              evidenceRefs: changeReceipt.evidenceRefs,
-            }),
+            tool: 'run_terminal',
+            purpose: 'verify',
+            nature: 'observational',
+            effects: ['process'],
+            input: { files },
+            risk: 'medium',
+          }, {
+            execute: async () => {
+              const verification = await this.verification.verify({
+                runId: request.runId,
+                sequence: verificationSequence,
+                actionId: verificationOperationId,
+                workspaceRoot: request.workspaceRoot,
+                files,
+                prompt: request.userPrompt,
+                acceptance: request.taskContract.acceptance,
+                evidenceRefs: changeReceipt.evidenceRefs,
+              });
+              const receipt = verification.receipt;
+              return {
+                status: receipt.status === 'passed'
+                  ? 'committed' as const
+                  : receipt.status === 'indeterminate'
+                    ? 'indeterminate' as const
+                    : 'failed-no-effect' as const,
+                result: receipt,
+                ...(receipt.status === 'passed' ? {} : {
+                  errorCode: receipt.errorCode ?? `verification-${receipt.status}`,
+                }),
+                evidenceRefs: receipt.evidenceRefs,
+              };
+            },
           });
-          toolExecutions.push(verificationTool.outcome.receipt);
-          const verificationReceipt = verificationTool.outcome.receipt.result;
+          const effectReceipt = verificationEffect.receipt;
+          if (effectReceipt.settlement !== 'attempt') {
+            throw new Error('CLI verification cannot consume a resume replay without restored result evidence');
+          }
+          toolExecutions.push(effectReceipt.toolReceipt);
+          const verificationReceipt = effectReceipt.result;
           if (!verificationReceipt) {
             throw new Error('Verification tool settled without a structured verification receipt');
           }
@@ -654,30 +677,6 @@ function cliValidationFromReceipt(receipt: CodingVerificationReceipt): CliValida
     summary: receipt.checks.map(check => check.summary).join('\n')
       || receipt.errorCode
       || 'Verification produced no executable check evidence.',
-  };
-}
-
-function cliWorkspaceAuthority(
-  mode: CodingKernelExecutionRequest<unknown>['taskContract']['mode'],
-  actionId: string,
-  authorized: boolean,
-): CodingToolAuthorityReceipt {
-  return {
-    decision: authorized ? 'allow' : 'deny',
-    status: authorized ? 'authorized' : 'denied',
-    reason: authorized
-      ? `task-contract-${mode}-authorizes-workspace-mutation`
-      : `task-contract-${mode}-denies-workspace-mutation`,
-    evidenceRefs: [`cli-authority:${actionId}:${authorized ? 'authorized' : 'denied'}`],
-  };
-}
-
-function cliVerificationAuthority(actionId: string): CodingToolAuthorityReceipt {
-  return {
-    decision: 'allow',
-    status: 'authorized',
-    reason: 'cli-exec-authorizes-requested-local-verification',
-    evidenceRefs: [`cli-authority:${actionId}:authorized`],
   };
 }
 

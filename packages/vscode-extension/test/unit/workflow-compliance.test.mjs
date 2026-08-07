@@ -90,7 +90,7 @@ function assertFileWritePolicyContextsCarryRequestPrompt(relPath, content) {
   const lines = content.split(/\r?\n/);
   const unsafe = [];
   for (let index = 0; index < lines.length; index += 1) {
-    if (!lines[index].includes('onBeforeFileWrite(')) continue;
+    if (!lines[index].includes('onResolveFileWriteConstraint(')) continue;
     const windowText = lines.slice(index, Math.min(lines.length, index + 12)).join('\n');
     if (!windowText.includes('requestPrompt:')) {
       unsafe.push({ line: index + 1, text: lines[index].trim() });
@@ -99,7 +99,7 @@ function assertFileWritePolicyContextsCarryRequestPrompt(relPath, content) {
   assert.deepEqual(
     unsafe,
     [],
-    `${relPath} has onBeforeFileWrite calls without requestPrompt context`,
+    `${relPath} has file-write constraint calls without requestPrompt context`,
   );
 }
 
@@ -146,46 +146,30 @@ test('§2/§3 Tool system: parseFakeToolCalls exists', () => {
 });
 
 test('§3 Tools: manage_todo_list handler present', () => {
-  const code = src('src/agent-loop.ts');
+  const code = src('src/agent/tool-loop.ts');
   assertContains(code, 'manage_todo_list', '§3 todo list tool');
 });
 
 test('§3 Tools: task_complete handler present', () => {
-  const code = src('src/agent-loop.ts');
+  const code = src('src/agent/tool-loop.ts');
   assertContains(code, 'task_complete', '§3 task complete tool');
 });
 
 test('§3 Tools: memory_write handler present', () => {
   const registry = src('src/agent/tool-registry.ts');
-  const prompt = src('src/agent/agent-prompt-builder.ts');
+  const prompt = src('src/agent/agentic-system-prompt.ts');
   assertContains(registry, 'memory_write', '§3 memory write tool registry');
   assertContains(prompt, 'memory_write', '§3 memory write tool prompt');
 });
 
 test('§3 Tools: run_terminal handler present', () => {
-  const code = src('src/agent-loop.ts');
+  const code = src('src/agent/tool-loop.ts');
   assertContains(code, 'run_terminal', '§3 terminal tool');
 });
 
 test('§3 Tools: mcp__ routing present', () => {
   const registry = src('src/agent/tool-registry.ts');
-  const prompt = src('src/agent/agent-prompt-builder.ts');
   assertContains(registry, 'mcp__', '§3 MCP tool routing registry');
-  assertContains(prompt, 'mcp__', '§3 MCP tool routing prompt');
-});
-
-test('§7 Recovery: checkpoint create facts are executed deterministically', () => {
-  const loop = src('src/agent-loop.ts');
-  const executor = src('src/agent/deterministic-task-executor.ts');
-  assertContains(loop, 'tryExecuteDeterministicCreateTask', 'checkpoint create executor is wired into agent loop');
-  assertContains(executor, 'task.expectedContent', 'checkpoint content fact is required before deterministic create');
-  assertContains(executor, 'hasSourceClaimArtifactContract', 'source-claim artifacts bypass unverified deterministic recovery writes');
-  assertContains(executor, 'authorizeAgentFileWriteContract', 'checkpoint writes must honor the current request at the final boundary');
-  assertContains(executor, 'input.semanticContract?.taskContract', 'deterministic recovery consumes the kernel-owned semantic contract');
-  assertContains(loop, 'semanticContract: writeAuthority.semanticContract', 'the current semantic revision reaches deterministic recovery');
-  assertContains(executor, 'workspaceMutation.executeTextFileWrite', 'deterministic create settles through the canonical mutation boundary');
-  assertContains(executor, 'file-write-authority:', 'deterministic create carries settled write authority into the mutation receipt');
-  assertContains(executor, 'readFileContentFull', 'deterministic create verifies content by reading from disk');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -443,7 +427,6 @@ test('§8.3 File edits: code directory prompts force generated code paths under 
     'generated code artifacts must be remapped to code/<basename> when user asks for code directory',
   );
 
-  const agentLoop = src('src/agent-loop.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
   const fileWriter = src('src/agent/tool-loop-file-writer.ts');
   const markdownArtifactApplier = src('src/agent/markdown-artifact-applier.ts');
@@ -459,12 +442,6 @@ test('§8.3 File edits: code directory prompts force generated code paths under 
     'directory auto-discovery must recognize absolute paths from user prompts',
   );
   assertContains(extension, 'pathResolutionHints', 'response meta and apply must keep prompt directory scope');
-  assertContains(agentLoop, 'resolveWorkspaceWritePath', 'agent loop must resolve bare task filenames through the shared path resolver before editing or validating');
-  assert.match(
-    agentLoop,
-    /resolveWorkspaceWritePath\(relNorm,\s*\{[\s\S]*?requestPrompt: writeAuthority\.currentPrompt[\s\S]*?workspaceRootFsPath: workspaceRoot\.fsPath[\s\S]*?defaultWorkdir: fallbackDir[\s\S]*?\}\)/,
-    'agent loop must resolve bare task filenames against the latest prompt/project scope, not only workspace root',
-  );
   assert.match(
     fileWriter,
     /resolveWorkspaceWritePath\(rawPath,\s*\{[\s\S]*?requestPrompt: userPrompt[\s\S]*?content[\s\S]*?workspaceRootFsPath[\s\S]*?defaultWorkdir[\s\S]*?\}\)/,
@@ -692,7 +669,7 @@ test('R3-06A: Subagent contract isolates child context, permission, budget, and 
   assertContains(subagent, 'terminalClaimsAllowed: false', 'Subagent output contract must reject terminal claims');
   assertContains(subagent, 'directEffectsAllowed: false', 'Subagent output contract must reject direct effects');
   assertContains(subagent, 'SensitiveMemoryGuard', 'Subagent inputs and outputs must use secret redaction');
-  assertContains(subagent, 'PermissionKernel', 'Subagent tool permission must reuse the central permission kernel');
+  assertContains(subagent, 'SurfaceToolPolicyEvaluator', 'Subagent policy must reuse the Surface evaluator');
   assertContains(subagent, 'child-terminal-claim-rejected', 'Subagent outputs must flag terminal claims');
   assertContains(subagent, 'child-direct-effect-rejected', 'Subagent outputs must flag direct effects');
   assertContains(subagent, 'rawContent', 'Subagent context isolation must strip raw context content');
@@ -1925,15 +1902,12 @@ test('Agentic loop: fallback todos are shown only after real tool work starts', 
 
 test('Agent planning: task shape guidance is injected before code is written', () => {
   const decomposer = src('src/agent-task-decomposer.ts');
-  const agentLoop = src('src/agent-loop.ts');
   const agentic = src('src/agent/agentic-loop.ts');
   const agenticPrompt = src('src/agent/agentic-system-prompt.ts');
   const guidelines = src('src/agent/engineering-guidelines.ts');
-  const prompts = src('src/agent/agent-prompt-builder.ts');
   const toolProtocolPrompt = src('src/agent/tool-protocol-prompt.ts');
 
   assertContains(decomposer, 'buildTaskShapeGuidancePrompt(userPrompt)', 'Architect planner must classify task shape from the current user prompt');
-  assertContains(agentLoop, 'buildTaskShapeGuidancePrompt(userPrompt)', 'generic Editor loop must preserve task shape guidance before emitting file content');
   assertContains(agentic, "from './agentic-system-prompt'", 'Agentic loop must delegate its system prompt responsibility');
   assertContains(agenticPrompt, 'buildTaskShapeGuidancePrompt(userPrompt)', 'Agentic prompt must classify task shape from the current user prompt');
   assertContains(guidelines, '既有大项目/正式项目', 'engineering guidelines must distinguish existing-project work');
@@ -1941,9 +1915,7 @@ test('Agent planning: task shape guidance is injected before code is written', (
   assertContains(guidelines, 'request JSON 示例', 'engineering guidelines must require request examples for interface deliverables');
   assertContains(guidelines, 'response JSON 示例', 'engineering guidelines must require response examples for interface deliverables');
   assertContains(guidelines, '独立新项目/原型/练习', 'engineering guidelines must preserve standalone task behavior');
-  assertContains(prompts, 'buildReplaceInFileToolPrompt()', 'task-specific prompt must use the shared targeted-edit protocol');
   assertContains(agenticPrompt, 'buildReplaceInFileToolPrompt()', 'Agentic prompt must use the shared targeted-edit protocol');
-  assertContains(prompts, 'buildFullFileWriteToolPrompt()', 'task-specific prompt must use the shared lossless full-file protocol');
   assertContains(agenticPrompt, 'buildFullFileWriteToolPrompt()', 'Agentic prompt must use the shared lossless full-file protocol');
   assertContains(toolProtocolPrompt, 'replace_in_file', 'shared tool prompt must expose targeted edits, not only full-file writes');
   assertContains(toolProtocolPrompt, '<old_str>', 'shared tool prompt must expose a quote-safe raw edit format');
@@ -1973,36 +1945,6 @@ test('§7 Final summary: done refreshes visible prose with files and validation'
     /msg\.phase === 'done'[\s\S]*?refreshVisibleAgentProseFromCurrentRaw\(\);/,
     'done phase must update already-visible ASUM prose with latest state',
   );
-});
-
-test('Agent loop: task_complete does not bypass final editedFiles accounting', () => {
-  const code = src('src/agent-loop.ts');
-  assert.match(
-    code,
-    /executeFakeToolsForLoop\(tools,\s*taskToolCallbacks,\s*editorWorkdir,\s*\{[\s\S]*?currentTaskIndex: taskIndex[\s\S]*?taskTotal: allTasks\.length[\s\S]*?deferDoneStatus: true[\s\S]*?userPrompt[\s\S]*?workspaceRoot: workspaceRoot\.fsPath[\s\S]*?\}\)/,
-    'editor task_complete must defer final done to runAgentLoop',
-  );
-  assert.match(
-    code,
-    /const resultWrittenFiles = taskSettlementInput\.writtenFiles[\s\S]*?if \(result\.applied && resultWrittenFiles\.length > 0\)[\s\S]*?appendAgentLoopWrittenFiles\(changedPaths,\s*editedFileRecords,\s*resultWrittenFiles[\s\S]*?if \(i \+ 1 < tasks\.length\) \{[\s\S]*?firstUnfinishedTaskIndex\(\) \?\? \(i \+ 1\)[\s\S]*?onTaskCheckpoint\?\.\(checkpointIndex, tasks\.slice\(checkpointIndex\), 'progress'\)[\s\S]*?if \(result\.taskComplete\)/,
-    'runAgentLoop must record applied result before task_complete and checkpoint the earliest unfinished task',
-  );
-});
-
-test('Agent loop: read-only planning prompts do not advertise terminal execution', () => {
-  const loop = src('src/agent-loop.ts');
-  const code = src('src/agent/analyze-task-prompt.ts');
-  assertContains(loop, 'buildAnalyzeTaskPrompt(', 'agent loop must delegate analyze prompt construction');
-  assertContains(code, 'allowTerminalTools', 'agent analyze prompt must derive terminal visibility from execution mode');
-  assertContains(code, 'hasRunnableFileExt', 'analyze compile hint must be limited to runnable source files');
-  assertContains(code, 'includeTerminal: allowTerminalTools', 'read-only execution modes must hide run_terminal examples');
-  assertContains(code, 'includeWorkspaceMutationTools: allowWorkspaceMutationTools', 'read-only execution modes must hide mutating examples');
-});
-
-test('Agent loop: exhausted analyze tool calls are not reported as completed', () => {
-  const code = src('src/agent-loop.ts');
-  assertContains(code, 'exhaustedWithPendingTools', 'analyze loop must track max-round exhaustion while tools are still pending');
-  assertContains(code, '分析工具调用未收敛', 'analyze loop must fail pending-tool exhaustion instead of reporting completion');
 });
 
 test('Agent loop: final written file evidence is coalesced before user-facing accounting', () => {
@@ -2035,16 +1977,13 @@ test('Agent loop: explicit-content validation conflicts stop autonomous rewrite 
   );
 });
 
-test('Agent loop: file tools and validation use ground-truth outcomes', () => {
-  const code = src('src/agent-loop.ts');
+test('Tool loop: file tools use canonical ground-truth outcomes', () => {
   const toolLoop = src('src/agent/tool-loop.ts');
   const fileWriter = src('src/agent/tool-loop-file-writer.ts');
-  const validationOutcome = src('src/agent/agent-loop-validation-outcome.ts');
   const registry = src('src/agent/tool-registry.ts');
   const executor = src('src/agent/tool-executor.ts');
   assertContains(registry, 'replace_file', 'replace_file tool calls must be registered as file writes, not prose');
   assertContains(executor, 'isFileWriteTool', 'tool executor must use ToolRegistry file-write classification');
-  assertContains(code, 'executeFakeToolsForLoop', 'agent loop must call the tool-loop service boundary');
   assertContains(toolLoop, 'agentToolExecutor.isFileWrite(tool)', 'tool loop must use ToolExecutor file-write classification');
   assertContains(toolLoop, 'ToolLoopFileWriter', 'tool loop must delegate file-write execution to its semantic owner');
   assertContains(fileWriter, 'looksLikeRawToolCallText(content)', 'file write tools must block raw tool transcript content');
@@ -2055,22 +1994,6 @@ test('Agent loop: file tools and validation use ground-truth outcomes', () => {
   assertContains(toolLoop, 'normalizeAgentFileWriteInputs(tool.input)', 'ToolLoop must consume normalized file-write inputs');
   assertContains(toolLoop, 'files:[{path,content}]', 'malformed batch file writes must return actionable feedback');
   assertContains(toolLoop, '缺少 path/filePath', 'malformed file write calls must return explicit feedback instead of silently doing nothing');
-  assertContains(validationOutcome, 'interface ValidationOutcome', 'compile validation must return a structured boundary outcome');
-  assert.match(
-    code,
-    /validationOutcome[\s\S]*?validationFailed[\s\S]*?callbacks\.onTodoUpdate/,
-    'validation failure must update todo state instead of only emitting a status line',
-  );
-  assert.match(
-    code,
-    /finalFailed[\s\S]*?state: finalFailed === 0 \? 'completed' : 'failed'/,
-    'final done state must include validation failure',
-  );
-  assertContains(code, 'buildValidationRepairContext', 'agent validation failures must build a repair context');
-  assertContains(code, 'makeValidationRepairTask', 'agent validation failures must create an internal repair task');
-  assertContains(code, '第 ${repairRound} 轮自动修复验证失败', 'agent validation failures must enter an automatic repair loop');
-  assertContains(code, 'analyzeTerminalEvidence(runCmd, output, runPlan.cwd)', 'runtime validation must parse terminal exit status from the shared run plan');
-  assertContains(code, 'run-failed', 'non-zero runtime exits must be reported as failed validation');
 });
 
 test('Agent parser: malformed file tool JSON is recovered for code payloads', () => {
@@ -2096,7 +2019,6 @@ test('Local execution failures escalate into Agent repair instead of browser upl
   assertContains(localRunner, 'agentKernelService.executeCanonicalTask({', 'local failures must enter the canonical Kernel route');
   assertContains(localRunner, 'createLocalValidationKernelRecovery({', 'local repair must carry typed recovery context');
   assertContains(localRunner, 'workflowMode: input.toolPolicy.mode', 'local repair must preserve its tool policy mode');
-  assert.doesNotMatch(localRunner, /runAgentLoop\(/, 'local repair must not bypass the Coding Kernel execution boundary');
   assertContains(localRunner, '本地执行失败，进入 Agent 修复', 'UI must show the repair escalation');
   assertContains(repair, '按 Claude Code / Codex 风格处理', 'repair prompt must follow coding-agent closed-loop behavior');
   assertContains(repair, '不要依赖网页附件上传', 'repair must use local tools rather than DeepSeek browser uploads');
@@ -2736,14 +2658,14 @@ test('Safety refusal: no-mutation delivery has one explicit evidence path', () =
 });
 
 test('Agentic evidence: read-only terminal checks are retained as completion evidence', () => {
-  const agentLoop = src('src/agent/tool-loop.ts');
+  const toolLoop = src('src/agent/tool-loop.ts');
   assertContains(
-    agentLoop,
+    toolLoop,
     'isReadOnlyTerminalEvidenceCommand(resolvedCommand)',
     'tool loop must keep read-only terminal evidence for the capability-resolved command instead of dropping kind=other commands',
   );
   assert.match(
-    agentLoop,
+    toolLoop,
     /canonicalEvidence\.kind !== 'other' \|\| isReadOnlyTerminalEvidenceCommand\(resolvedCommand\)[\s\S]*?terminalEvidence\.push\(canonicalEvidence\)/,
     'run_terminal evidence collection must retain read-only other-kind commands after capability resolution',
   );
@@ -2787,10 +2709,15 @@ test('Architecture: PermissionService maps ExecutionMode to tool policy', () => 
   assertContains(service, "case 'destructive'", 'permission service must handle destructive mode');
   assertContains(controller, 'const toolPolicy = buildToolPolicy(workflow.toolPolicyMode)', 'chat controller must bind tool policy from workflow mode');
   assertContains(ext, 'const { intentRoutingText, intent, toolPolicy, workflow } = routeDecision', 'runChat must use routed tool policy');
-  assertContains(ext, 'confirmAgentFileWrite({', 'file writes must route through the shared file-write policy boundary');
+  assertContains(ext, 'resolveAgentFileWriteConstraint({', 'file writes must resolve a Surface constraint through the shared file-write policy boundary');
   assertContains(ext, 'toolPolicy,', 'file writes must pass ToolPolicy into the shared file-write policy boundary');
-  assertContains(fileWritePolicy, "decideToolPermission(input.toolPolicy, 'edit')", 'file writes must check ToolPolicy');
-  assertContains(terminalCoordinator, "decideToolPermission(toolPolicy, 'terminal')", 'terminal commands must check ToolPolicy');
+  assertContains(fileWritePolicy, 'decideToolPermission(input.toolPolicy, {', 'file writes must check structured ToolPolicy facts');
+  assertContains(fileWritePolicy, "kind: 'edit'", 'file writes must identify edit operations');
+  assertContains(fileWritePolicy, 'mutatesWorkspace: true', 'file writes must declare workspace mutation');
+  assertContains(fileWritePolicy, 'risk: input.context?.toolRisk', 'file writes must preserve projected risk');
+  assertContains(terminalCoordinator, 'const terminalPermission = decideToolPermission(toolPolicy, {', 'terminal commands must check structured ToolPolicy facts');
+  assertContains(terminalCoordinator, 'const terminalDecision = decideTerminalCommandPermission({', 'terminal commands must use the canonical command risk strategy');
+  assertContains(terminalCoordinator, "risk: terminalDecision.risk === 'destructive'", 'terminal commands must preserve the command-specific risk projection');
 });
 
 test('Architecture: WorkflowService selects agent entry outside extension inline gate', () => {
@@ -3266,14 +3193,14 @@ test('Architecture: PendingEditService owns pending edit record map', () => {
   assert.doesNotMatch(coordinator, /interface\s+DiffOp\b/, 'pending edit coordinator must not own pending edit diff internals');
 });
 
-test('Architecture: fake tool parser is split from Agent Loop executor', () => {
+test('Architecture: fake tool parser is split from the canonical tool loop', () => {
   const parser = src('src/agent/fake-tool-parser.ts');
-  const agentLoop = src('src/agent-loop.ts');
+  const toolLoop = src('src/agent/tool-loop.ts');
   assertContains(parser, 'parseFakeToolCalls', 'fake tool parser must expose parseFakeToolCalls');
   assertContains(parser, 'stripToolCallBlocks', 'fake tool parser must expose transcript stripping');
   assertContains(parser, 'findFirstToolCallStart', 'fake tool parser must expose streaming boundary detection');
   assertContains(parser, 'containsFakeToolCallProtocol', 'fake tool parser must expose the single protocol-detection boundary');
-  assertContains(agentLoop, "from './agent/fake-tool-parser'", 'agent loop must import fake tool parser module');
+  assertContains(toolLoop, "from './fake-tool-parser'", 'tool loop must import fake tool parser module');
 });
 
 test('Architecture: agentic loop does not hard-code fake tool protocol formats', () => {
@@ -3323,28 +3250,22 @@ test('Architecture: model-visible webview messages cannot bypass outbound saniti
   }
 });
 
-test('Architecture: agent loop stays orchestration-only for tool execution details', () => {
-  const agentLoop = src('src/agent-loop.ts');
+test('Architecture: canonical tool execution details have explicit owners', () => {
   const toolLoop = src('src/agent/tool-loop.ts');
   const terminalAdapter = src('src/agent/tool-loop-terminal-evidence.ts');
   const summary = src('src/agent/agentic-summary.ts');
   const markdownArtifactApplier = src('src/agent/markdown-artifact-applier.ts');
-  const lineCount = agentLoop.split(/\r?\n/).length;
-  assert.ok(lineCount <= 2800, `agent-loop.ts should stay below 2800 lines after tool-loop extraction, got ${lineCount}`);
-  assertContains(agentLoop, 'executeFakeToolsForLoop', 'agent loop must call the tool-loop service');
   assertContains(toolLoop, 'export async function executeFakeToolsForLoop', 'tool loop must own fake-tool dispatch');
   assertContains(markdownArtifactApplier, 'export async function applyMarkdownFileArtifactsForLoop', 'markdown artifact adapter must own parsed artifact application');
   assertContains(toolLoop, "export { analyzeTerminalEvidence } from './tool-loop-terminal-evidence'", 'tool loop must preserve its terminal evidence facade');
   assertContains(terminalAdapter, 'export function analyzeTerminalEvidence', 'terminal evidence adapter must own execution analysis');
   assertContains(src('src/execution-outcome-classifier.ts'), 'classifyFormattedTerminalExecutionEvidence', 'execution outcome owner must parse formatted terminal execution evidence');
   assertContains(summary, 'export function cleanAgentFinalSummaryForUser', 'summary sanitizer must live in agentic summary module');
-  assert.doesNotMatch(agentLoop, /function\s+(executeFakeToolsForLoop|applyMarkdownFileArtifactsForLoop|analyzeTerminalEvidence|cleanAgentFinalSummaryForUser)\b/, 'agent loop must not define extracted domain services');
 });
 
 test('Architecture: ToolRegistry owns agent tool metadata', () => {
   const registry = src('src/agent/tool-registry.ts');
   const executor = src('src/agent/tool-executor.ts');
-  const agentLoop = src('src/agent-loop.ts');
   const agenticLoop = src('src/agent/agentic-loop.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
   const webview = webviewRuntime();
@@ -3370,8 +3291,6 @@ test('Architecture: ToolRegistry owns agent tool metadata', () => {
   assertContains(extensionPackage.scripts.watch, 'generate-webview-tool-manifest.mjs', 'extension watch must refresh webview tool manifest');
   assert.ok(existsSync(path.join(root, 'test/fixtures/deepseek-tool-transcripts.mjs')), 'DeepSeek transcript fixtures must exist');
   assert.ok(existsSync(path.join(root, 'test/unit/tool-protocol-contract.test.mjs')), 'tool protocol replay contract must exist');
-  assert.doesNotMatch(agentLoop, /agentToolExecutor/, 'agent loop must not own tool executor internals');
-  assert.doesNotMatch(agentLoop, /function toolCallToEarlyActivity/, 'agent loop must not keep local tool activity registry');
   assert.doesNotMatch(sanitizer, /search_content/, 'webview sanitizer must not keep hand-written tool aliases');
 });
 
@@ -3379,24 +3298,20 @@ test('Architecture: AgentEvent union lives in agent layer', () => {
   const events = src('src/agent/events.ts');
   const loopTypes = src('src/agent/loop-types.ts');
   const protocol = src('src/ui/webview-protocol.ts');
-  const agentLoop = src('src/agent-loop.ts');
   assertContains(events, 'export type AgentEvent', 'agent event union must exist');
   assertContains(events, 'interface AgentStatusEvent', 'agent status event must live in agent layer');
   assertContains(protocol, "from '../agent/events'", 'webview protocol must import agent events');
   assertContains(loopTypes, "from './events'", 'agent loop callback protocol must import agent status from agent layer');
-  assertContains(agentLoop, "from './agent/loop-types'", 'agent loop must consume agent callback protocol, not event internals');
 });
 
 test('Architecture: shared mutation transaction owns migrated writes and WorkspaceEditService owns the host commit', () => {
   const service = src('src/workspace/edit-service.ts');
   const mutationAdapter = src('src/workspace/coding-workspace-mutation-adapter.ts');
   const batchMutationAdapter = src('src/workspace/coding-workspace-batch-mutation-adapter.ts');
-  const agentLoop = src('src/agent-loop.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
   const fileWriter = src('src/agent/tool-loop-file-writer.ts');
   const applier = src('src/workspace-applier.ts');
   const simpleFileTask = src('src/agent/simple-file-task.ts');
-  const deterministicTaskExecutor = src('src/agent/deterministic-task-executor.ts');
   const markdownDeliverableTask = src('src/agent/markdown-deliverable-task.ts');
   const markdownArtifactApplier = src('src/agent/markdown-artifact-applier.ts');
   assertContains(service, 'class WorkspaceEditService', 'workspace edit service class must exist');
@@ -3416,10 +3331,6 @@ test('Architecture: shared mutation transaction owns migrated writes and Workspa
   assertContains(batchMutationAdapter, 'class VsCodeWorkspaceBatchMutationAdapter', 'multi-file mutation host adapter must exist');
   assertContains(batchMutationAdapter, 'commitTextFileProposal', 'multi-file adapter must commit through the atomic CAS boundary');
   assertContains(batchMutationAdapter, 'rollbackTextFileCommit', 'multi-file adapter must compensate partial commits by token');
-  assertContains(agentLoop, 'new WorkspaceEditService()', 'agent loop must construct workspace edit service');
-  assertContains(agentLoop, 'workspaceEditService.captureTextFileBaseline', 'agent loop must capture write authority before asynchronous work');
-  assertContains(agentLoop, 'workspaceMutation.executeTextFileWrite', 'agent loop writes must use the shared mutation transaction');
-  assertDoesNotContain(agentLoop, 'workspaceEditService.commitTextFileProposal', 'agent loop must not bypass canonical mutation settlement');
   assertContains(toolLoop, 'new WorkspaceEditService()', 'tool loop must construct workspace edit service for tool writes');
   assertContains(toolLoop, 'workspaceEditService.captureTextFileBaseline', 'tool loop must capture write authority before permission callbacks');
   assertContains(toolLoop, 'ToolLoopFileWriter', 'tool loop must delegate file-write mutation ownership');
@@ -3434,37 +3345,28 @@ test('Architecture: shared mutation transaction owns migrated writes and Workspa
   assertContains(applier, 'changeReceipts', 'workspace applier must expose mutation receipts to completion settlement');
   assertDoesNotContain(applier, 'commitTextFileProposal', 'workspace applier must not bypass canonical mutation settlement');
   assertDoesNotContain(applier, 'rollbackTextFileCommit', 'workspace applier must not retain a second rollback implementation');
-  assertContains(agentLoop, 'validateSourceSanity: true', 'agent loop model-driven writes must enable source sanity validation');
   assertContains(fileWriter, 'validateSourceSanity: true', 'tool loop file writes must enable source sanity validation');
   assertContains(batchMutationAdapter, 'validateSourceSanity: true', 'workspace batch writes must enable source sanity validation');
   assertContains(simpleFileTask, 'validateSourceSanity: true', 'simple file task writes must enable source sanity validation');
-  assertContains(deterministicTaskExecutor, 'validateSourceSanity: true', 'deterministic task writes must enable source sanity validation');
   assertContains(service, 'repairGeneratedSourceTransportEscapes', 'workspace edit service must repair provider source transport escapes before validation');
-  assertWorkspaceWritesValidateSourceSanity('src/agent-loop.ts', agentLoop);
   assertWorkspaceWritesValidateSourceSanity('src/agent/tool-loop-file-writer.ts', fileWriter);
   assertWorkspaceWritesValidateSourceSanity('src/workspace/coding-workspace-batch-mutation-adapter.ts', batchMutationAdapter);
   assertWorkspaceWritesValidateSourceSanity('src/agent/simple-file-task.ts', simpleFileTask);
-  assertWorkspaceWritesValidateSourceSanity('src/agent/deterministic-task-executor.ts', deterministicTaskExecutor);
   for (const [relPath, content] of [
-    ['src/agent-loop.ts', agentLoop],
     ['src/agent/tool-loop.ts', toolLoop],
     ['src/agent/tool-loop-file-writer.ts', fileWriter],
     ['src/agent/simple-file-task.ts', simpleFileTask],
-    ['src/agent/deterministic-task-executor.ts', deterministicTaskExecutor],
     ['src/agent/markdown-deliverable-task.ts', markdownDeliverableTask],
   ]) {
     assertFileWritePolicyContextsCarryRequestPrompt(relPath, content);
   }
   for (const [relPath, content] of [
-    ['src/agent-loop.ts', agentLoop],
     ['src/agent/tool-loop-file-writer.ts', fileWriter],
     ['src/workspace/coding-workspace-batch-mutation-adapter.ts', batchMutationAdapter],
     ['src/agent/simple-file-task.ts', simpleFileTask],
-    ['src/agent/deterministic-task-executor.ts', deterministicTaskExecutor],
   ]) {
     assertSourceSanityWritesRepairTransportEscapes(relPath, content);
   }
-  assert.doesNotMatch(agentLoop, /fs\.writeFileSync/, 'agent loop must not write workspace files directly');
   assert.doesNotMatch(applier, /workspace\.fs\.writeFile/, 'workspace applier must not write workspace files directly');
 });
 
@@ -3510,10 +3412,6 @@ test('Architecture: ValidationService owns validation semantics and receives exe
   assertContains(service, 'rejectMissingCommandAuthority', 'validation service must fail closed without injected command authority');
   assertDoesNotContain(service, /child_process|\bexec\s*\(/, 'validation service must not execute a process outside the terminal evidence boundary');
   assertContains(applier, 'new ValidationService({ commandRunner: validationCommandRunner })', 'workspace applier must inject validation command authority');
-  const agentLoop = src('src/agent-loop.ts');
-  assertContains(agentLoop, 'commandRunner: callbacks.onValidationCommand', 'main agent loop must inject validation command authority');
-  assertContains(agentLoop, 'new VerificationPlanner()', 'interactive agent runs must reuse the shared verification planner');
-  assert.doesNotMatch(agentLoop, /planLocalExecution\(/, 'main agent validation must not bypass the shared verification planner');
   assert.doesNotMatch(applier, /planCppValidation|child_process|runShell|runCppAutoValidation/, 'workspace applier must not own validation execution internals');
 });
 
@@ -3529,29 +3427,6 @@ test('Architecture: verification result authority normalizes runner facts before
   assertContains(autoValidation, 'normalizeVerificationResult', 'auto-validation must consume normalized verification results');
   assertContains(autoValidation, 'shouldEmitTerminalEvidenceForVerification', 'auto-validation must not emit terminal evidence for non-terminal verification states');
   assertContains(autoValidation, '[verification_result:', 'AI feedback must carry the normalized verification status');
-});
-
-test('Architecture: agent final validation uses written-file evidence, not planned targets', () => {
-  const agentLoop = src('src/agent-loop.ts');
-  const autoValidationBlock = agentLoop.match(/const autoValidationWrittenFiles = editedFileRecords\.filter\([\s\S]*?\);\n\s*if \(autoValidationWrittenFiles\.length > 0\)/);
-  const modifiedPathsBlock = agentLoop.match(/const modifiedPaths = uniquePaths\([\s\S]*?\n\s*\);\n\s*let legacyValidationOutcome/);
-
-  assert.ok(autoValidationBlock, 'agent-loop must compute auto-validation paths from written files in one visible block');
-  assert.ok(modifiedPathsBlock, 'agent-loop must compute modifiedPaths for validation in one visible block');
-  assertContains(agentLoop, 'Validation must be evidence-backed', 'agent-loop must document evidence-backed validation');
-  assertContains(agentLoop, 'runAgentAutoValidationForWrites', 'final validation must use shared written-file auto-validation');
-  assertContains(autoValidationBlock[0], 'editedFileRecords', 'auto-validation must be anchored to files actually written this run');
-  assertContains(modifiedPathsBlock[0], 'editedFileRecords', 'final validation must be anchored to files actually written this run');
-  assert.doesNotMatch(
-    autoValidationBlock[0],
-    /\btasks\b/,
-    'auto-validation must not inspect planned task targets when no file was written',
-  );
-  assert.doesNotMatch(
-    modifiedPathsBlock[0],
-    /\btasks\b/,
-    'final validation must not compile planned task targets when no file was written',
-  );
 });
 
 test('Architecture: C/C++ validation and execution share one stable project build layout', () => {
@@ -3797,7 +3672,6 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   const agentHistoryCompaction = src('src/agent/agent-history-compaction.ts');
   const agenticContextCompaction = src('src/agent/agentic-context-compaction.ts');
   const runDisplay = src('src/agent/agent-run-display.ts');
-  const loop = src('src/agent-loop.ts');
   const agenticLoop = src('src/agent/agentic-loop.ts');
   const loopTypes = src('src/agent/loop-types.ts');
   const idempotency = src('src/agent/idempotency-guard.ts');
@@ -3821,7 +3695,7 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   assertContains(runDisplay, 'function isLiteralToolProtocolPrompt', 'literal protocol display detection must live in a display classifier');
   assertContains(runDisplay, "initialTaskAction: 'respond'", 'literal protocol display must start as a safe response, not exploration');
   assertContains(loopTypes, 'runDisplayAction?: AgentTask', 'agent loop must treat initial display action as display-only metadata');
-  assertContains(loop, "task.action === 'respond'", 'agent loop must handle safe response tasks before model/tool execution');
+  assertContains(agenticLoop, "callbacks.runDisplayAction || 'explore'", 'agentic loop must project safe display actions without creating fake work');
   assertContains(agenticLoop, '!literalToolProtocolPrompt', 'literal protocol prompts must not infer fallback file/tool todos');
   assertContains(reliability, 'class ResponseIntegrityChecker', 'DeepSeek Web provider must have response integrity checks');
   assertContains(reliability, 'class StreamWatchdog', 'DeepSeek Web provider must have stream watchdog semantics');
@@ -4042,22 +3916,17 @@ test('Agentic loop: visible correction and context convergence are owned by Agen
   assertContains(autoValidation, 'JSON 示例必须使用标准 Markdown 三反引号代码块', 'Markdown quality feedback must reject malformed fenced examples');
 });
 
-test('Architecture: Markdown deliverables bypass the generic editor tool loop', () => {
-  const loop = src('src/agent-loop.ts');
+test('Architecture: grounded Markdown deliverables use their dedicated verified route', () => {
+  const agenticLoop = src('src/agent/agentic-loop.ts');
+  const groundedRoute = src('src/agent/grounded-markdown-agentic-task.ts');
   const deliverable = src('src/agent/markdown-deliverable-task.ts');
-  const routeIndex = loop.indexOf('tryExecuteMarkdownDeliverableTask({');
-  const editorPromptIndex = loop.indexOf('const editorPrompt = buildEditorPrompt');
-  const finalWriteAuthorizationIndex = loop.indexOf('const targetAuthorization = authorizeAgentFileWriteContract({');
-  const fullFileApplyIndex = loop.indexOf('await applyGeneratedArtifactPathWithPrompt(');
   const baselineCaptureIndex = deliverable.indexOf('const initialTargetSnapshot = tryCaptureTextFileBaseline(');
   const canonicalMutationIndex = deliverable.indexOf('workspaceMutation.executeTextFileWrite({');
 
-  assert.ok(routeIndex >= 0, 'agent-loop must route Markdown deliverables through the dedicated executor');
-  assert.ok(editorPromptIndex >= 0, 'agent-loop must still have the generic editor prompt path');
-  assert.ok(routeIndex < editorPromptIndex, 'Markdown deliverables must be settled before the generic Editor/tool loop');
-  assert.ok(finalWriteAuthorizationIndex >= 0, 'generic full-file writes must have a current-request authorization boundary');
-  assert.ok(fullFileApplyIndex >= 0, 'generic full-file application path must remain visible to the architecture guard');
-  assert.ok(finalWriteAuthorizationIndex < fullFileApplyIndex, 'authorization must run before generic full-file application');
+  assertContains(agenticLoop, 'tryRunGroundedMarkdownAgenticTask(', 'agentic execution must attempt the grounded Markdown route first');
+  assertContains(agenticLoop, 'if (groundedMarkdown) return groundedMarkdown', 'verified Markdown settlement must bypass the general agentic loop');
+  assertContains(groundedRoute, 'tryExecuteMarkdownDeliverableTask({', 'grounded route must delegate to the dedicated executor');
+  assertContains(groundedRoute, 'hasSourceClaimArtifactContract(contract)', 'grounded route must require a source-claim contract');
   assertContains(deliverable, 'collectMarkdownEvidence', 'Markdown deliverables must collect local evidence deterministically');
   assertContains(deliverable, 'classifyProviderOutputIntegrity', 'Markdown deliverables must gate provider output completeness');
   assertContains(deliverable, 'Provider 未返回可用的完整报告', 'Markdown deliverables must preserve provider failure facts in fallback artifacts');
@@ -4079,7 +3948,6 @@ test('Architecture: ARCH-16 duplicate judgment domains have explicit owners', ()
   const extension = src('src/extension.ts');
   const agentTurnPresenter = src('src/ui/agent-turn-presenter.ts');
   const projectRules = src('src/project-rules.ts');
-  const agentLoop = src('src/agent-loop.ts');
   const agenticLoop = src('src/agent/agentic-loop.ts');
   const simpleFileTask = src('src/agent/simple-file-task.ts');
   for (const id of [
@@ -4108,7 +3976,6 @@ test('Architecture: ARCH-16 duplicate judgment domains have explicit owners', ()
   assertContains(agentTurnPresenter, 'new AgentDisplayPresenter()', 'turn presenter must project statuses through AgentDisplayPresenter');
   assertContains(agentTurnPresenter, 'this.display.presentStatus(message)', 'turn presenter must not post raw agent status messages to the webview');
   assertContains(projectRules, 'new ContextScopeResolver().resolve', 'project context assembly must be scoped before prompt assembly');
-  assertContains(agentLoop, "from './agent/task-state-machine'", 'agent-loop must use the task state machine boundary');
   assertContains(agenticLoop, "from './task-state-machine'", 'agentic loop must use the task state machine boundary');
   assertContains(simpleFileTask, "from './task-state-machine'", 'simple file task runner must use the task state machine boundary');
 });
@@ -4307,7 +4174,7 @@ test('R3-03 Steering: IntentRevisionLineage owns semantic contract revision and 
   const writeAuthority = src('src/agent/write-authority.ts');
   const userSteer = src('src/agent/user-steer.ts');
   const lineageTests = src('test/unit/intent-revision-lineage.test.mjs');
-  const taskStateTests = src('test/unit/agent-loop-task-state.test.mjs');
+  const agenticRouteTests = src('test/unit/markdown-deliverable-flow.test.mjs');
 
   assertContains(lineage, "version: 'devseek.intent-revision-lineage/v1'", 'R3-03 must keep lineage as the revision owner');
   assertContains(lineage, 'devseek.semantic-contract-revision/v1', 'R3-03 must expose a versioned semantic contract revision');
@@ -4323,7 +4190,7 @@ test('R3-03 Steering: IntentRevisionLineage owns semantic contract revision and 
   assertDoesNotContain(agenticLoop, 'writeAuthority.writeRevoked && loopRes.workToolCallsMade', 'read-only exploration must not be misclassified as revoked writes');
   assertContains(userSteer, 'consumeUserSteerTexts', 'user steer parsing must expose raw steer text for contract revision');
   assertContains(lineageTests, 'R3-03 IntentRevisionLineage: steer creates semantic contract revision', 'R3-03 must keep the lineage oracle');
-  assertContains(taskStateTests, 'R3-03 shared write authority publishes steer semantic contract revision receipts', 'R3-03 must keep the runtime steer oracle');
+  assertContains(agenticRouteTests, 'steer revokes write authority before provider tools execute', 'R3-03 must keep the canonical runtime steer oracle');
 });
 
 test('Extension apply gate: unfenced target-scoped source can enter applier', () => {
@@ -4334,6 +4201,24 @@ test('Extension apply gate: unfenced target-scoped source can enter applier', ()
     'looksLikeTargetScopedSourceResponse(finalResponseForArtifacts, prompt, effectiveFiles)',
     'plain source fallback must not require markdown code fences before applying',
   );
+});
+
+test('Architecture: prepared Surfaces constrain tools but only the Kernel issues authority', () => {
+  const loopTypes = src('src/agent/loop-types.ts');
+  const loop = src('src/agent/tool-loop.ts');
+  const canonicalSession = src('src/agent/tool-loop-canonical-session.ts');
+  const terminal = src('src/app/terminal-permission-coordinator.ts');
+  const productAdapter = src('src/app/prepared-product-tool-adapter.ts');
+  const sharedAuthority = src('../shared/src/coding-tool-authority.ts');
+
+  assertContains(loopTypes, 'readonly constraint: CodingToolSurfaceConstraint', 'prepared tools must expose a Surface constraint');
+  assertDoesNotContain(loopTypes, 'readonly authority: CodingToolAuthorityReceipt', 'prepared tools must not expose final authority');
+  assertDoesNotContain(loop, 'prepared.authority', 'tool loop must not consume a Surface-issued authority receipt');
+  assertContains(canonicalSession, 'this.authority.authorize({', 'canonical session must issue final authority before dispatch');
+  assertDoesNotContain(terminal, 'CodingToolAuthorityReceipt', 'terminal preparation must not construct final authority receipts');
+  assertDoesNotContain(terminal, 'onAuthoritySettled', 'retired terminal authority callback must stay deleted');
+  assertDoesNotContain(productAdapter, 'CodingToolAuthorityReceipt', 'product adapters must project constraints instead of authority');
+  assertContains(sharedAuthority, 'surface-cannot-issue-authority', 'shared authority must reject forged Surface status');
 });
 
 test('Release packaging: VSIX package scripts compile the extension before zipping dist', () => {

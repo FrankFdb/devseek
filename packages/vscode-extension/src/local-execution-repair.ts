@@ -14,7 +14,11 @@ import type { AppliedChangeRecord, ApplyWorkflowStatus } from './workspace-appli
 import { MemoryService } from './app/memory-service';
 import { AgentDisplayPresenter } from './app/agent-display-presenter';
 import type { ToolPolicy } from './app/permission-service';
-import { decideAgentFileWrite, type AgentFileWriteContext } from './app/agent-file-write-policy';
+import {
+  decideAgentFileWrite,
+  projectAgentFileWriteConstraint,
+  type AgentFileWriteContext,
+} from './app/agent-file-write-policy';
 import type { TerminalPermissionCoordinator } from './app/terminal-permission-coordinator';
 import { listCppBuildOutputDirNames } from './cpp-build-layout';
 import { isFileProtected } from './protected-files';
@@ -40,7 +44,12 @@ export interface LocalExecutionRepairCallbacksDeps {
   traceEvidenceParticipantToken: string;
   onTraceEvidenceError: (error: unknown) => void;
   consumeAgentSteer: () => string[];
-  confirmTerminal: (command: string, workdir?: string) => Promise<{ allow: boolean; alwaysAllow?: boolean; reason?: string }>;
+  confirmTerminal: (command: string, workdir?: string) => Promise<{
+    allow: boolean;
+    alwaysAllow?: boolean;
+    reason?: string;
+    confirmationRef?: string;
+  }>;
   registerAppliedChange: (change: AppliedChangeRecord) => Promise<void>;
   registerToMemory: (absPath: string) => void;
   sessionRecentFiles: Map<string, string>;
@@ -296,7 +305,7 @@ export function buildLocalExecutionAgentCallbacks(deps: LocalExecutionRepairCall
       const result = await runCommand({ command: 'git status --short && git diff --stat', cwd: workspaceRoot, timeoutMs: 15000 });
       return result.output || '（无变更或非 git 工作区）';
     },
-    onBeforeFileWrite: async (absPath, context?: AgentFileWriteContext) => {
+    onResolveFileWriteConstraint: async (absPath, context?: AgentFileWriteContext) => {
       const decision = decideAgentFileWrite({
         absPath,
         workspaceRoot,
@@ -305,17 +314,20 @@ export function buildLocalExecutionAgentCallbacks(deps: LocalExecutionRepairCall
         protectedPath: isFileProtected(absPath, workspaceRoot),
         context: context || { purpose: 'local-repair', displayName: relPathFromRepairWorkspace(workspaceRoot, absPath) ?? nodePath.basename(absPath) },
       });
-      if (decision.action === 'allow') return true;
+      if (decision.action === 'allow') return projectAgentFileWriteConstraint(decision);
       if (decision.action === 'deny') {
         postWebviewMessage(webview, {
           type: 'agentNotice',
           kind: 'warn',
           text: decision.notice || `写入被权限策略阻止：${decision.reason}`,
         });
-        return false;
+        return projectAgentFileWriteConstraint(decision);
       }
       const confirmResult = await confirmTerminal(decision.confirmationTitle || `确认写入文件：${nodePath.basename(absPath)}`, '');
-      return confirmResult.allow;
+      return projectAgentFileWriteConstraint(
+        decision,
+        confirmResult.allow ? confirmResult.confirmationRef : undefined,
+      );
     },
     onMemoryWrite: async (proposal) => {
       new MemoryService({ workspaceRoot }).acceptWriteProposal(proposal);

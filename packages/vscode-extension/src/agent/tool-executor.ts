@@ -3,13 +3,16 @@ import {
   buildCodingToolAction,
   classifyCodingTerminalEffects,
   type CodingToolAuthorityReceipt,
+  type CodingToolAuthoritySessionPort,
   type CodingToolExecutionOutcome,
   type CodingToolHostResult,
   type CodingToolEffect,
+  type CodingToolPurpose,
   type ToolExecutorPort,
 } from '@devseek-netai/shared';
 import type { ToolPolicy, ToolPermissionDecision } from '../app/permission-service';
 import { decideToolPermission } from '../app/permission-service';
+import { decideTerminalCommandPermission } from '../app/terminal-command-policy';
 import type { ToolKind } from '../intent/intent-types';
 import type { FakeTool } from './fake-tool-parser';
 import type { ToolCall } from './tool-call-normalizer';
@@ -49,6 +52,9 @@ export interface AgentToolExecutionPlan {
   activity: AgentToolActivity | null;
   call: ToolCall;
   definition?: AgentToolDefinition;
+  effects: readonly CodingToolEffect[];
+  purpose: CodingToolPurpose;
+  protectedPath: boolean;
   /** Display/audit intent only. These are not execution evidence and never enter EvidenceStore. */
   plannedRefs: EvidenceRef[];
   permission?: ToolPermissionDecision;
@@ -63,11 +69,13 @@ export interface AgentToolCanonicalExecutionInput<TResult> {
   readonly runId: string;
   readonly sequence: number;
   readonly actionId: string;
-  readonly authorityEvidenceRefs: readonly string[];
-  readonly confirmationRef?: string;
-  readonly authority?: CodingToolAuthorityReceipt;
+  readonly authority: CodingToolAuthorityReceipt;
+  readonly authoritySession: CodingToolAuthoritySessionPort;
   readonly host: {
-    execute(plan: AgentToolExecutionPlan): Promise<CodingToolHostResult<TResult>>;
+    execute(
+      plan: AgentToolExecutionPlan,
+      authority: CodingToolAuthorityReceipt,
+    ): Promise<CodingToolHostResult<TResult>>;
   };
 }
 
@@ -78,6 +86,7 @@ export class AgentToolExecutor {
     const call = isNormalizedToolCall(tool) ? tool : normalizeToolCall(tool, 'fake-tool');
     const definition = call.definition ?? getToolDefinition(call.name);
     const normalizedTool = toolCallToFakeTool(call);
+    const risk = projectToolRisk(call, definition);
     const permission = call.rejectionReason
       ? { action: 'deny' as const, reason: `tool-call-rejected:${call.rejectionReason}` }
       : definition
@@ -85,21 +94,25 @@ export class AgentToolExecutor {
         ? decideToolPermission(policy, {
           kind: call.kind,
           toolName: call.name,
-          risk: call.risk,
+          risk,
           mutatesWorkspace: definition.mutatesWorkspace,
           protectedPath: hasProtectedWorkspacePath(call.input),
         })
         : undefined
       : { action: 'deny' as const, reason: `tool-not-registered:${call.name || 'unknown'}` };
 
+    const effects = projectToolEffects({ call, definition });
     return {
       tool: normalizedTool,
       kind: call.kind,
-      risk: call.risk,
+      risk,
       registered: Boolean(definition),
       activity: getToolActivity(normalizedTool),
       call,
       definition,
+      effects,
+      purpose: projectToolPurpose(call, definition),
+      protectedPath: hasProtectedWorkspacePath(call.input),
       plannedRefs: buildPlannedRefs(call),
       permission,
     };
@@ -148,19 +161,19 @@ export class AgentToolExecutor {
     plan: AgentToolExecutionPlan,
     input: AgentToolCanonicalExecutionInput<TResult>,
   ): Promise<CodingToolExecutionOutcome<TResult>> {
-    if (!plan.permission) throw new Error('agent-tool-execution:missing-permission-decision');
     const action = buildCodingToolAction({
       runId: input.runId,
       sequence: input.sequence,
       actionId: input.actionId,
       tool: plan.tool.name,
-      effects: projectToolEffects(plan),
+      purpose: plan.purpose,
+      effects: plan.effects,
       input: plan.call.input,
-      authority: input.authority ?? projectToolAuthority(plan.permission, input),
+      authority: input.authority,
     });
     return this.canonicalExecutor.execute(action, {
-      execute: () => input.host.execute(plan),
-    });
+      execute: () => input.host.execute(plan, input.authority),
+    }, input.authoritySession);
   }
 }
 
@@ -184,25 +197,11 @@ export function classifyToolKind(name: string): ToolKind {
   return getToolDefinition(name)?.kind ?? 'plan';
 }
 
-function projectToolAuthority<TResult>(
-  permission: ToolPermissionDecision,
-  input: AgentToolCanonicalExecutionInput<TResult>,
-): CodingToolAuthorityReceipt {
-  const confirmationRef = input.confirmationRef?.trim();
-  const authorized = permission.action === 'allow'
-    || (permission.action === 'requireConfirm' && Boolean(confirmationRef));
-  return {
-    decision: permission.action === 'requireConfirm' ? 'require-confirmation' : permission.action,
-    status: authorized ? 'authorized' : 'denied',
-    reason: permission.reason,
-    ...(confirmationRef ? { confirmationRef } : {}),
-    evidenceRefs: input.authorityEvidenceRefs,
-  };
-}
-
-function projectToolEffects(plan: AgentToolExecutionPlan): readonly CodingToolEffect[] {
+export function projectToolEffects(
+  plan: Pick<AgentToolExecutionPlan, 'call' | 'definition'>,
+): readonly CodingToolEffect[] {
   if (plan.definition?.mutatesWorkspace) return ['workspace-mutation'];
-  switch (plan.kind) {
+  switch (plan.call.kind) {
     case 'terminal': {
       const command = stringField(plan.call.input, 'command', 'cmd');
       return classifyCodingTerminalEffects(command);
@@ -216,6 +215,31 @@ function projectToolEffects(plan: AgentToolExecutionPlan): readonly CodingToolEf
     default:
       return ['read'];
   }
+}
+
+function projectToolPurpose(
+  call: ToolCall,
+  definition: AgentToolDefinition | undefined,
+): CodingToolPurpose {
+  if (definition?.mutatesWorkspace) return 'workspace-mutation';
+  if (call.kind === 'network') return 'observe';
+  if (call.kind === 'terminal') return 'verify';
+  if (call.kind === 'mcp' || call.kind === 'vscode' || call.kind === 'vscode-command') {
+    return 'external-effect';
+  }
+  return 'observe';
+}
+
+function projectToolRisk(
+  call: ToolCall,
+  definition: AgentToolDefinition | undefined,
+): ToolCall['risk'] {
+  if (call.kind !== 'terminal' || definition?.name !== 'run_terminal') return call.risk;
+  const command = stringField(call.input, 'command', 'cmd');
+  const risk = decideTerminalCommandPermission({ command }).risk;
+  if (risk === 'destructive') return 'destructive';
+  if (risk === 'mutating' || risk === 'unknown') return 'high';
+  return risk === 'validation' ? 'medium' : 'low';
 }
 
 function buildPlannedRefs(call: ToolCall): EvidenceRef[] {

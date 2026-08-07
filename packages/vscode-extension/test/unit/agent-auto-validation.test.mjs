@@ -46,15 +46,15 @@ test('Agent auto validation: successful project validation becomes completion ev
   };
 
   const result = await runAgentAutoValidationForWrites(
-    [{ path: '/repo/packages/vscode-extension/src/agent-loop.ts', basename: 'agent-loop.ts', linesAdded: 1, linesRemoved: 0, action: 'modify' }],
+    [{ path: '/repo/packages/vscode-extension/src/agent/agentic-loop.ts', basename: 'agentic-loop.ts', linesAdded: 1, linesRemoved: 0, action: 'modify' }],
     '/repo',
-    '修复 packages/vscode-extension/src/agent-loop.ts 中的问题',
+    '修复 packages/vscode-extension/src/agent/agentic-loop.ts 中的问题',
     makeCallbacks(statuses, activities),
     'conservative',
     { validationService },
   );
 
-  assert.deepEqual(inputSeen.changedPaths, ['packages/vscode-extension/src/agent-loop.ts']);
+  assert.deepEqual(inputSeen.changedPaths, ['packages/vscode-extension/src/agent/agentic-loop.ts']);
   assert.equal(result.evidence.ok, true);
   assert.equal(result.evidence.kind, 'compile');
   assert.match(result.feedbackForAI, /npm run compile/);
@@ -66,7 +66,7 @@ test('Agent auto validation: successful project validation becomes completion ev
   ]);
   assert.equal(new Set(statuses.map(status => status.evidenceOperationId)).size, 1);
   assert.equal(result.evidenceOperationId, statuses[0].evidenceOperationId);
-  assert.match(result.evidenceOperationId, /^auto-validation-\d+-packages\/vscode-extension\/src\/agent-loop\.ts$/);
+  assert.match(result.evidenceOperationId, /^auto-validation-\d+-packages\/vscode-extension\/src\/agent\/agentic-loop\.ts$/);
   assert.equal(result.verificationReceipt.status, 'passed');
   assert.equal(result.verificationReceipt.acceptance[0].status, 'passed');
   assert.deepEqual(activities, [{ kind: 'terminal', label: '自动验证: npm run compile' }]);

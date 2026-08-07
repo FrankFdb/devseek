@@ -81,12 +81,12 @@ export function createWriteAuthority(
     return messages;
   };
   const guardedCallbacks: AgentLoopCallbacks = { ...callbacks };
-  const onBeforeFileWrite = callbacks.onBeforeFileWrite;
-  if (onBeforeFileWrite) {
-    guardedCallbacks.onBeforeFileWrite = async (absPath, context) => {
+  const resolveFileWriteConstraint = callbacks.onResolveFileWriteConstraint;
+  if (resolveFileWriteConstraint) {
+    guardedCallbacks.onResolveFileWriteConstraint = async (absPath, context) => {
       // A correction can arrive while an earlier provider/tool operation awaits I/O.
       pendingMessages.push(...drain());
-      return onBeforeFileWrite(absPath, { ...context, requestPrompt: currentPrompt });
+      return resolveFileWriteConstraint(absPath, { ...context, requestPrompt: currentPrompt });
     };
   }
   return {

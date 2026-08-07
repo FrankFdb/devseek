@@ -7,6 +7,7 @@ import { VsCodeWorkspaceMutationAdapter } from '../workspace/coding-workspace-mu
 import { decideProjectInstructionFileWrite } from '../workspace/instruction-file-safety';
 import type { WrittenFileEvidence } from './completion-evidence';
 import type { AgentLoopCallbacks } from './loop-types';
+import { isAgentFileWriteConstraintSatisfied } from '../app/agent-file-write-policy';
 import {
   detectNestedFilePayloadDrift,
   shouldBlockUnverifiedSourceOverwrite,
@@ -139,17 +140,18 @@ export async function applyMarkdownFileArtifactsForLoop(
         continue;
       }
     }
-    if (callbacks.onBeforeFileWrite) {
-      const allowed = await callbacks.onBeforeFileWrite(resolvedAbs, {
-        purpose: 'tool-write',
-        userRequested: false,
-        displayName: resolvedWrite.relPath,
-        requestPrompt: userPrompt,
-      });
-      if (!allowed) {
-        feedback.push(`[generated_file: ${artifact.path}] 跳过（写入权限策略阻止）`);
-        continue;
-      }
+    const resolveConstraint = callbacks.onResolveFileWriteConstraint;
+    const fileWriteConstraint = resolveConstraint
+      ? await resolveConstraint(resolvedAbs, {
+          purpose: 'tool-write',
+          userRequested: false,
+          displayName: resolvedWrite.relPath,
+          requestPrompt: userPrompt,
+        })
+      : undefined;
+    if (!fileWriteConstraint || !isAgentFileWriteConstraintSatisfied(fileWriteConstraint)) {
+      feedback.push(`[generated_file: ${artifact.path}] 跳过（写入权限策略阻止）`);
+      continue;
     }
     callbacks.onToolActivity?.('write', resolvedWrite.relPath);
     let mutationOutcome;

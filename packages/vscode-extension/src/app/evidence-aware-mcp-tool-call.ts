@@ -36,7 +36,7 @@ export function createEvidenceAwareMcpToolCallFactory(deps: {
       });
       return adaptPreparedProductTool({
         prepared,
-        authorityRef: `mcp-tool-authority:${runContext.runId}:${fakeName}`,
+        constraintRef: `mcp-tool-constraint:${runContext.runId}:${fakeName}`,
         completedEvidenceRef: `mcp-tool-result:${runContext.runId}:${fakeName}`,
         formatResult: result => result,
       });

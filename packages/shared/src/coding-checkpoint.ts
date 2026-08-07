@@ -6,12 +6,17 @@ import type { CodingKernelTaskContract } from './coding-task-contract';
 export const CODING_CHECKPOINT_VERSION = 'devseek.coding-checkpoint/v1' as const;
 
 export type CodingCheckpointReason = 'progress' | 'paused' | 'failed' | 'cancelled' | 'compaction';
+export type CodingCheckpointEffectClass = 'read' | 'workspace-mutation' | 'external-effect' | 'verification';
 
 export interface CodingCheckpointPendingUnitInput {
   readonly id: string;
   readonly description: string;
   readonly action?: string;
   readonly target?: string;
+  /** Structured effect semantics. Omitted only by legacy v1 checkpoints. */
+  readonly effectClass?: CodingCheckpointEffectClass;
+  /** Exact logical operation identity required for effect-aware replay. */
+  readonly operationSha256?: string;
 }
 
 export interface CodingCheckpointPendingUnit extends CodingCheckpointPendingUnitInput {
@@ -248,6 +253,10 @@ function createPendingUnit(input: CodingCheckpointPendingUnitInput): CodingCheck
     description: requireText(input.description, 'missing-pending-unit-description'),
     ...(input.action?.trim() ? { action: input.action.trim() } : {}),
     ...(input.target?.trim() ? { target: input.target.trim() } : {}),
+    ...(input.effectClass ? { effectClass: requireEffectClass(input.effectClass) } : {}),
+    ...(input.operationSha256 ? {
+      operationSha256: requireSha256(input.operationSha256, 'invalid-operation-sha256'),
+    } : {}),
   };
   return Object.freeze({ ...unit, fingerprint: codingSemanticDigest(unit) });
 }
@@ -285,6 +294,13 @@ function requireReason(value: unknown): CodingCheckpointReason {
     checkpointFailure('invalid-reason');
   }
   return value as CodingCheckpointReason;
+}
+
+function requireEffectClass(value: unknown): CodingCheckpointEffectClass {
+  if (value !== 'read' && value !== 'workspace-mutation' && value !== 'external-effect' && value !== 'verification') {
+    checkpointFailure('invalid-effect-class');
+  }
+  return value;
 }
 
 function requireText(value: unknown, reason: string): string {

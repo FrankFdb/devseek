@@ -18,6 +18,7 @@ import {
 } from './coding-kernel-recovery';
 import { VsCodeCompletionAdapter } from './coding-completion-adapter';
 import { correlateVsCodeCodingConformanceReceipts } from './vscode-coding-conformance-correlation';
+import { projectAgentTaskCheckpointEffect } from './coding-checkpoint-effect';
 
 type AgentRunMode = 'fast' | 'r1' | undefined;
 
@@ -95,6 +96,9 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
     const originalCheckpoint = request.callbacks.onTaskCheckpoint;
     const callbacks: AgentLoopCallbacks = {
       ...request.callbacks,
+      traceRunId: request.callbacks.traceRunId ?? kernelRequest.runId,
+      canonicalToolAuthority: kernelRequest.toolAuthority,
+      canonicalExternalEffects: kernelRequest.externalEffects,
       ...(originalCheckpoint ? {
         onTaskCheckpoint: async (firstUnfinishedIndex, remainingTasks, reason) => {
           if (firstUnfinishedIndex === null || reason === 'paused' || reason === 'completed') {
@@ -109,6 +113,7 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
                   description: task.desc,
                   action: task.action,
                   target: task.visibleTarget || task.file || 'Agent task',
+                  effectClass: projectAgentTaskCheckpointEffect(task.action),
                 })),
                 reason: reason === 'paused' ? 'paused' : 'progress',
                 evidenceRefs: kernelRequest.resume?.evidenceRefs ?? [],

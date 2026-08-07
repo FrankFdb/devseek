@@ -41,7 +41,7 @@ devseek_governance:
 5. **先 evidence，后 claim**：原始工具结果、变更、验证、artifact 和运行事实先进入不可变证据，再由独立规则派生结论。模型自述和 Markdown 不能成为事实源。
 6. **deterministic 不等于 live/qualification**：unit、replay、Headless、同机签名、本地 CAS 和 Phase 全绿只证明对应本地范围；不能外推真实 UI、Provider 稳定或资格等级。
 7. **未知默认 fail closed**：未知事件、命令、副作用、权限、Schema 版本、资格字段、环境或恢复状态不得隐式通过；产品可显式 fail-soft，但资格聚合必须把证据缺口视为 veto/不可聚合。
-8. **禁止平行 owner 与长期双轨**：不得通过新 loop、fallback、case 特判或 feature flag 长期保留两套 writer/verifier/settlement。迁移期旧 API 只能无语义委托，并有删除门禁。
+8. **禁止平行 owner 与长期双轨**：不得通过新 loop、fallback、case 特判或 feature flag 长期保留两套 writer/verifier/settlement。迁移期旧 API 只能无语义委托并有删除门禁；新边界达成行为等价后，同轮删除旧实现、旧测试和活动引用，不保留“也许以后有用”的不可达代码。
 9. **用户权限与外部动作分离**：只读调查、workspace mutation、终端/MCP、网络、账号、发布和破坏性操作分层授权；模型不能扩大用户授权。
 10. **比较可观察行为，不臆测内部**：对标 Codex/Claude 时记录任务契约、上下文发现、工具执行、变更边界、验证恢复和交付体验；结论必须落到 DevSeek 的 owner、contract、测试和删除项。
 11. **失败事实粘性**：后续成功不能覆盖旧失败；解除 adverse state 必须有新的 committed effect、matching verification、quality gate 和显式 recovery 因果链。
@@ -51,8 +51,8 @@ devseek_governance:
 15. **小上下文、可恢复 checkpoint**：定向读取任务直接依赖；工具输出保留必要证据。接近压缩时先记录 task id、baseline、dirty、首个失败、已改路径、验证与下一步，再切窗口，禁止重新扫全仓。
 16. **元数据不是执行证据**：catalog、profile、prompt、Skill 或 runner inventory 的存在不证明语义已执行；每个声明语义必须有绑定输入、真实 executor、oracle、receipt 和 terminal evidence。
 17. **旧文档不得复活执行权**：`docs/requirements`、`docs/architecture` 和本包 01～13 中的“当前、下一轮、已完成、stable、Phase”只作历史/设计证据；当前任务只由 `PLAN-当前收敛迭代计划.md` 发放，已归档的 14/18 只保留历史计划与承接映射。
-18. **授权绑定且不继承**：用户/外部授权必须绑定当前窗口、atomic ID、candidate、action/scope、有效期和撤销源；旧聊天、旧窗口、另一个 slot 或一般性“继续”不能替代高影响动作的明确授权。
-19. **设计原则优先，规模指标从属**：代码优化先确定行为契约、唯一 owner、单一职责、依赖方向和可测试边界，再查看行数、diff 和复杂度。规模预算只阻止职责回流；删说明、压格式、空壳拆分或无契约迁移不计收敛。
+18. **授权精确绑定且不继承**：用户/外部授权必须绑定当前窗口、atomic ID、candidate、run/action、tool、不可变 input digest、effect facets、sandbox policy、target scope、有效期和撤销源，并由当前 authority session 签发和验真；字段结构正确不能替代签发事实。journal、checkpoint 或 resume receipt 只能重放同一精确 operation；任一绑定缺失或漂移都 fail closed。旧聊天、旧窗口、另一个 slot 或一般性“继续”不能替代高影响动作的明确授权。
+19. **设计原则优先，规模指标从属**：代码优化先确定行为契约、唯一 owner、单一职责、依赖方向和可测试边界，再查看行数、diff 和复杂度。如果缺陷暴露了错误边界，应重构或删除该边界，不在其上叠加补丁。规模预算只阻止职责回流；删说明、压格式、空壳拆分或无契约迁移不计收敛。
 
 ## 2. 生命周期质量标准与 Definition of Done
 
