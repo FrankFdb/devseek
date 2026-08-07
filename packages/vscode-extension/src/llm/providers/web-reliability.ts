@@ -1,4 +1,4 @@
-import { listAgentToolNames } from '../../agent/tool-registry';
+import { listCodingToolNames as listAgentToolNames } from '@devseek-netai/shared';
 import { hasIncompleteFakeToolCallProtocol, parseFakeToolCalls } from '../../agent/fake-tool-parser';
 import {
   looksLikeProviderLoginGate,

@@ -1,5 +1,6 @@
 import {
   CanonicalExternalEffectService,
+  CanonicalToolDispatchService,
   CanonicalToolAuthorityService,
   resolveCodingKernelTaskContract,
   type CodingTaskMode,
@@ -11,9 +12,12 @@ import {
   type CodingToolExecutionReceipt,
   type CodingToolHostResult,
   type CodingToolSurfaceConstraint,
+  type CodingToolCall,
+  type ToolDispatchPort,
 } from '@devseek-netai/shared';
 import type { AgentLoopCallbacks } from './loop-types';
-import type { AgentFileWriteInput } from './tool-registry';
+import type { ToolPolicy } from '../app/permission-service';
+import type { FakeTool } from './fake-tool-parser';
 import {
   AgentToolExecutor,
   type AgentToolExecutionPlan,
@@ -47,16 +51,17 @@ export function createToolLoopCanonicalSession(input: {
   readonly evidenceRefs: EvidenceRef[];
 }): ToolLoopCanonicalSession {
   const { callbacks, workspaceRoot } = input;
-  if (callbacks.canonicalToolAuthority && callbacks.canonicalExternalEffects) {
+  if (callbacks.canonicalToolAuthority && callbacks.canonicalExternalEffects && callbacks.canonicalToolDispatch) {
     return new ToolLoopCanonicalSession(
       callbacks.traceRunId?.trim() || 'vscode-kernel-tool-loop',
       input.receipts,
       input.evidenceRefs,
       callbacks.canonicalToolAuthority,
       callbacks.canonicalExternalEffects,
+      callbacks.canonicalToolDispatch,
     );
   }
-  if (callbacks.canonicalToolAuthority || callbacks.canonicalExternalEffects) {
+  if (callbacks.canonicalToolAuthority || callbacks.canonicalExternalEffects || callbacks.canonicalToolDispatch) {
     throw new Error('vscode-tool-loop:incomplete-canonical-tool-sessions');
   }
 
@@ -80,12 +85,14 @@ export function createToolLoopCanonicalSession(input: {
     input.evidenceRefs,
     authority,
     new CanonicalExternalEffectService().bind({ runId, authority }),
+    new CanonicalToolDispatchService(),
   );
 }
 
 /** Owns canonical authority and receipt settlement for one ToolLoop invocation. */
 export class ToolLoopCanonicalSession {
   private sequence = 0;
+  private readonly executor: AgentToolExecutor;
 
   constructor(
     private readonly runId: string,
@@ -93,8 +100,19 @@ export class ToolLoopCanonicalSession {
     private readonly evidenceRefs: EvidenceRef[],
     private readonly authority: CodingToolAuthoritySessionPort,
     private readonly externalEffects: CodingExternalEffectSessionPort,
-    private readonly executor = new AgentToolExecutor(),
-  ) {}
+    dispatch: ToolDispatchPort,
+    executor?: AgentToolExecutor,
+  ) {
+    this.executor = executor ?? new AgentToolExecutor(undefined, dispatch);
+  }
+
+  plan(tool: FakeTool | CodingToolCall, policy?: ToolPolicy, workspaceRoot?: string): AgentToolExecutionPlan {
+    return this.executor.plan(tool, policy, workspaceRoot);
+  }
+
+  validateInput(plan: AgentToolExecutionPlan): { readonly ok: boolean; readonly error?: string } {
+    return this.executor.validateInput(plan);
+  }
 
   nextContext(plan: AgentToolExecutionPlan): CanonicalToolContext {
     this.sequence += 1;
@@ -165,7 +183,7 @@ export class ToolLoopCanonicalSession {
       input: plan.call.input,
       risk: plan.risk,
       protectedPath: plan.protectedPath,
-      targetPaths: projectTargetPaths(plan),
+      targetPaths: plan.call.targetPaths,
       surfaceConstraint,
     });
     const outcome = await this.executor.executeCanonical(plan, {
@@ -249,18 +267,6 @@ function projectCodingTaskMode(mode: AgentLoopCallbacks['executionMode']): Codin
   return 'explain';
 }
 
-export function projectFileWriteActionPlan(
-  plan: AgentToolExecutionPlan,
-  fileWrite: AgentFileWriteInput,
-): AgentToolExecutionPlan {
-  const input = { path: fileWrite.rawPath, content: fileWrite.content };
-  return {
-    ...plan,
-    tool: { ...plan.tool, input },
-    call: { ...plan.call, input },
-  };
-}
-
 function mergeSurfaceConstraints(
   plan: AgentToolExecutionPlan,
   context: CanonicalToolContext,
@@ -294,12 +300,4 @@ function mergeSurfaceConstraints(
     return { decision: 'require-confirmation', reason, confirmationRef, evidenceRefs };
   }
   return { decision: 'allow', reason, evidenceRefs };
-}
-
-function projectTargetPaths(plan: AgentToolExecutionPlan): string[] {
-  const input = plan.call.input;
-  return [...new Set(['path', 'filePath', 'targetPath']
-    .map(key => input[key])
-    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-    .map(value => value.trim()))];
 }

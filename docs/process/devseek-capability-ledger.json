@@ -2155,10 +2155,47 @@
         },
         "contract_sha256": "76f9d9aa48d6845fc06fddba998fa9534f46fe446c9a875f97f955c9736b1067"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-provider-events.ts"
+        },
+        {
+          "role": "canonical-kernel-binding",
+          "path": "packages/shared/src/coding-kernel.ts"
+        },
+        {
+          "role": "cli-product-binding",
+          "path": "packages/cli/src/cli-coding-kernel-runtime.ts"
+        },
+        {
+          "role": "headless-product-binding",
+          "path": "packages/headless/src/headless-coding-kernel.ts"
+        },
+        {
+          "role": "vscode-provider-adapter",
+          "path": "packages/vscode-extension/src/llm/provider-events.ts"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/coding-tool-schema-dispatch.test.mjs"
+        },
+        {
+          "role": "cross-surface-user-journey-tests",
+          "path": "packages/headless/test/headless-provider-tool-dispatch-journeys.test.mjs"
+        },
+        {
+          "role": "vscode-user-journey-tests",
+          "path": "packages/vscode-extension/test/unit/provider-events.test.mjs"
+        },
+        {
+          "role": "iteration-user-journey-evidence",
+          "path": "docs/process/devseek-iteration-user-journeys.json"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C1-RUN-LIFECYCLE",
@@ -2166,7 +2203,17 @@
           "required_implementation_state": "wired",
           "contract_sha256": "040103dbdd9acb186583edf610e521d7d88e88be58a2a62b551ff1d3d8f83a4e"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run shared:test",
+          "npm run cli:test",
+          "npm run headless:test",
+          "npm test --workspace=packages/vscode-extension",
+          "npm run verify:iteration-user-journeys"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C6-TOOL-SCHEMA",
@@ -2192,10 +2239,51 @@
         },
         "contract_sha256": "08a390eea1ecb473dc09da20671fbaafa2df634719176ba9dcc8ee66e230b268"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-tool-schema.ts"
+        },
+        {
+          "role": "canonical-kernel-binding",
+          "path": "packages/shared/src/coding-kernel.ts"
+        },
+        {
+          "role": "shared-dispatch-consumer",
+          "path": "packages/shared/src/coding-tool-dispatch.ts"
+        },
+        {
+          "role": "cli-product-binding",
+          "path": "packages/cli/src/cli-coding-kernel-runtime.ts"
+        },
+        {
+          "role": "headless-product-binding",
+          "path": "packages/headless/src/headless-coding-kernel.ts"
+        },
+        {
+          "role": "vscode-product-adapter",
+          "path": "packages/vscode-extension/src/agent/tool-executor.ts"
+        },
+        {
+          "role": "webview-generated-adapter",
+          "path": "scripts/generate-webview-tool-manifest.mjs"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/coding-tool-schema-dispatch.test.mjs"
+        },
+        {
+          "role": "cross-surface-user-journey-tests",
+          "path": "packages/headless/test/headless-provider-tool-dispatch-journeys.test.mjs"
+        },
+        {
+          "role": "iteration-user-journey-evidence",
+          "path": "docs/process/devseek-iteration-user-journeys.json"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C1-RUN-LIFECYCLE",
@@ -2203,7 +2291,17 @@
           "required_implementation_state": "wired",
           "contract_sha256": "040103dbdd9acb186583edf610e521d7d88e88be58a2a62b551ff1d3d8f83a4e"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run shared:test",
+          "npm run cli:test",
+          "npm run headless:test",
+          "npm test --workspace=packages/vscode-extension",
+          "npm run verify:iteration-user-journeys"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C6-TOOL-DISPATCH",
@@ -2229,10 +2327,59 @@
         },
         "contract_sha256": "4cb5a7114370be7a4e3810970e0989a480445527a5cff7d959b853603cb8b74c"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-tool-dispatch.ts"
+        },
+        {
+          "role": "canonical-kernel-binding",
+          "path": "packages/shared/src/coding-kernel.ts"
+        },
+        {
+          "role": "cli-product-adapter",
+          "path": "packages/cli/src/cli-coding-kernel-runtime.ts"
+        },
+        {
+          "role": "headless-product-binding",
+          "path": "packages/headless/src/headless-coding-kernel.ts"
+        },
+        {
+          "role": "vscode-provider-adapter",
+          "path": "packages/vscode-extension/src/llm/provider-events.ts"
+        },
+        {
+          "role": "vscode-tool-adapter",
+          "path": "packages/vscode-extension/src/agent/tool-executor.ts"
+        },
+        {
+          "role": "vscode-canonical-session",
+          "path": "packages/vscode-extension/src/agent/tool-loop-canonical-session.ts"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/coding-tool-schema-dispatch.test.mjs"
+        },
+        {
+          "role": "cross-surface-user-journey-tests",
+          "path": "packages/headless/test/headless-provider-tool-dispatch-journeys.test.mjs"
+        },
+        {
+          "role": "cli-user-journey-tests",
+          "path": "packages/cli/test/cli-coding-kernel-runtime.test.mjs"
+        },
+        {
+          "role": "vscode-user-journey-tests",
+          "path": "packages/vscode-extension/test/unit/provider-events.test.mjs"
+        },
+        {
+          "role": "iteration-user-journey-evidence",
+          "path": "docs/process/devseek-iteration-user-journeys.json"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C6-TOOL-SCHEMA",
@@ -2246,7 +2393,17 @@
           "required_implementation_state": "wired",
           "contract_sha256": "1cdf7be1d9b1b6830bd533e8b9a7aecdf34d2b0c4f43d8abaf7fe7415949daad"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run shared:test",
+          "npm run cli:test",
+          "npm run headless:test",
+          "npm test --workspace=packages/vscode-extension",
+          "npm run verify:iteration-user-journeys"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C6-TOOL-EXECUTION",
@@ -4900,5 +5057,5 @@
       ]
     }
   ],
-  "ledger_sha256": "ec0581c90d8a1de71eecc8bd324d9722c22c6ec5aec3dd515a3300a39b855c78"
+  "ledger_sha256": "e3c48709c0328d6ccd3a0cd9595e64aae5a7d4300b43e91e1ea79c3292514950"
 }

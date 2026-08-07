@@ -308,6 +308,127 @@
           }
         }
       ]
+    },
+    {
+      "iteration_id": "I13",
+      "status": "verified-local",
+      "goal": "Converge provider events, tool schemas, and tool dispatch into shared Kernel-owned ports consumed by every product Surface.",
+      "delta_from_baseline": "Adds provider-buffer immutability, canonical schema aliases, fake/native dispatch equivalence, malformed-call rejection, run-scoped workspace dispatch context, protected CLI artifact projection, and conservative unknown-terminal effects; none are exercised by the five fixed coding fixtures.",
+      "fixture_path": "scripts/test/fixtures/user-simulations/i13-provider-dispatch.json",
+      "local_artifact_root": "code/devseek-tests/provider-dispatch",
+      "capability_ids": [
+        "C6-PROVIDER-NORMALIZATION",
+        "C6-TOOL-SCHEMA",
+        "C6-TOOL-DISPATCH",
+        "C7-PERMISSION-DECISION",
+        "C7-WORKSPACE-MUTATION"
+      ],
+      "cases": [
+        {
+          "case_id": "I13-PRV-01",
+          "capability_ids": [
+            "C6-PROVIDER-NORMALIZATION",
+            "C6-TOOL-DISPATCH"
+          ],
+          "surface": "headless",
+          "user_action": "Accept a native provider read request, then let the provider mutate its original response buffer before dispatch.",
+          "expected_outcomes": [
+            "The accepted provider event retains the original path as an immutable snapshot.",
+            "The canonical dispatcher consumes that snapshot and cannot observe the substituted path."
+          ],
+          "evidence": {
+            "test_path": "packages/headless/test/headless-provider-tool-dispatch-journeys.test.mjs",
+            "test_name": "I13-PRV-01 user journey: provider event snapshot survives later provider-buffer mutation"
+          }
+        },
+        {
+          "case_id": "I13-SCH-01",
+          "capability_ids": [
+            "C6-TOOL-SCHEMA"
+          ],
+          "surface": "headless",
+          "user_action": "Use the provider alias search_content with query, directory, and fileTypes arguments.",
+          "expected_outcomes": [
+            "One shared registry resolves the alias to grep_search and normalizes every argument alias.",
+            "The internal apply_workspace_artifacts capability stays hidden from the model-visible list."
+          ],
+          "evidence": {
+            "test_path": "packages/headless/test/headless-provider-tool-dispatch-journeys.test.mjs",
+            "test_name": "I13-SCH-01 user journey: provider alias resolves through one shared schema registry"
+          }
+        },
+        {
+          "case_id": "I13-DSP-01",
+          "capability_ids": [
+            "C6-TOOL-SCHEMA",
+            "C6-TOOL-DISPATCH"
+          ],
+          "surface": "headless",
+          "user_action": "Submit equivalent fake and native search calls followed by a read call missing its required path.",
+          "expected_outcomes": [
+            "Both dialects converge to identical canonical name, input, risk, purpose, and effects.",
+            "The incomplete call is rejected with its missing field before any host is called."
+          ],
+          "evidence": {
+            "test_path": "packages/headless/test/headless-provider-tool-dispatch-journeys.test.mjs",
+            "test_name": "I13-DSP-01 user journey: fake and native calls converge while incomplete input stops before host"
+          }
+        },
+        {
+          "case_id": "I13-VSC-01",
+          "capability_ids": [
+            "C6-PROVIDER-NORMALIZATION",
+            "C6-TOOL-DISPATCH"
+          ],
+          "surface": "vscode",
+          "user_action": "Receive a truncated native write call, attempt partial normalization wiring, then validate absolute paths inside and outside the current workspace.",
+          "expected_outcomes": [
+            "Malformed arguments produce a rejected non-executable call with no execution evidence.",
+            "Partial provider/dispatch wiring fails closed instead of silently selecting a Surface-local fallback.",
+            "Fake and native validation calls inherit the same run workspace; an in-workspace absolute path stays validation while an outside path remains high risk."
+          ],
+          "evidence": {
+            "test_path": "packages/vscode-extension/test/unit/provider-events.test.mjs",
+            "test_name": "I13-VSC-01 user journey: VS Code rejects invalid wiring and preserves workspace dispatch context"
+          }
+        },
+        {
+          "case_id": "I13-CLI-01",
+          "capability_ids": [
+            "C6-TOOL-DISPATCH",
+            "C7-PERMISSION-DECISION",
+            "C7-WORKSPACE-MUTATION"
+          ],
+          "surface": "cli",
+          "user_action": "Return a CLI file artifact targeting .env.local without protected-path approval.",
+          "expected_outcomes": [
+            "The internal artifact dispatch projects .env.local as a protected target before authority evaluation.",
+            "The mutation host and verifier are never called."
+          ],
+          "evidence": {
+            "test_path": "packages/cli/test/cli-coding-kernel-runtime.test.mjs",
+            "test_name": "I13-CLI-01 user journey: CLI protected artifact path is denied before workspace mutation"
+          }
+        },
+        {
+          "case_id": "I13-CLI-02",
+          "capability_ids": [
+            "C6-TOOL-DISPATCH",
+            "C7-PERMISSION-DECISION",
+            "C7-WORKSPACE-MUTATION"
+          ],
+          "surface": "cli",
+          "user_action": "Return an unfamiliar Ruby maintenance command from the CLI model response.",
+          "expected_outcomes": [
+            "Unknown terminal behavior is conservatively projected as process plus workspace mutation.",
+            "CLI authority denies the request and no terminal or workspace host runs."
+          ],
+          "evidence": {
+            "test_path": "packages/cli/test/cli-coding-kernel-runtime.test.mjs",
+            "test_name": "I13-CLI-02 user journey: CLI unknown terminal command is conservatively denied as a workspace effect"
+          }
+        }
+      ]
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { listAgentToolNames } from './tool-registry';
+import { listCodingToolNames as listAgentToolNames } from '@devseek-netai/shared';
 
 export interface ModelToolProtocolDialect<TTool> {
   name: string;

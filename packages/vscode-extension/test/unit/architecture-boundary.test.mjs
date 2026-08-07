@@ -84,9 +84,8 @@ test('Phase 0: domain roots expose explicit public boundaries', () => {
       './fake-tool-parser',
       './idempotency-guard',
       './task-timeline-service',
-      './tool-call-normalizer',
+      './tool-activity',
       './tool-executor',
-      './tool-registry',
     ],
     'src/workspace/index.ts': [
       './change-set',

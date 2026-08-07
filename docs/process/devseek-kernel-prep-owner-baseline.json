@@ -1,6 +1,6 @@
 {
-  "schema_version": "devseek.kernel-prep-owner-baseline/v21",
-  "baseline_id": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v21",
+  "schema_version": "devseek.kernel-prep-owner-baseline/v22",
+  "baseline_id": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v22",
   "purpose": "Track product-route and semantic-owner convergence without asserting qualification or coupling local iteration to Gate 0.",
   "qualification_eligible": false,
   "qualification_effect": "NONE",
@@ -287,6 +287,63 @@
       "convergence_status": "converged"
     },
     {
+      "domain_id": "provider-normalization",
+      "target_port": "ProviderEventPort",
+      "target_owner_count": 1,
+      "current_owner_count": 1,
+      "current_owners": [
+        {
+          "owner_id": "shared-CanonicalProviderEventService",
+          "surfaces": [
+            "vscode",
+            "cli",
+            "headless"
+          ],
+          "source_ref": "packages/shared/src/coding-provider-events.ts"
+        }
+      ],
+      "missing_surfaces": [],
+      "convergence_status": "converged"
+    },
+    {
+      "domain_id": "tool-schema",
+      "target_port": "ToolSchemaRegistryPort",
+      "target_owner_count": 1,
+      "current_owner_count": 1,
+      "current_owners": [
+        {
+          "owner_id": "shared-CanonicalToolSchemaRegistry",
+          "surfaces": [
+            "vscode",
+            "cli",
+            "headless"
+          ],
+          "source_ref": "packages/shared/src/coding-tool-schema.ts"
+        }
+      ],
+      "missing_surfaces": [],
+      "convergence_status": "converged"
+    },
+    {
+      "domain_id": "tool-dispatch",
+      "target_port": "ToolDispatchPort",
+      "target_owner_count": 1,
+      "current_owner_count": 1,
+      "current_owners": [
+        {
+          "owner_id": "shared-CanonicalToolDispatchService",
+          "surfaces": [
+            "vscode",
+            "cli",
+            "headless"
+          ],
+          "source_ref": "packages/shared/src/coding-tool-dispatch.ts"
+        }
+      ],
+      "missing_surfaces": [],
+      "convergence_status": "converged"
+    },
+    {
       "domain_id": "tool-execution",
       "target_port": "ToolExecutorPort",
       "target_owner_count": 1,
@@ -467,9 +524,9 @@
     "legacy_recovery_routes": 0,
     "legacy_execution_owners": 0,
     "cross_surface_kernel_routes": 4,
-    "semantic_domains": 20,
-    "converged_semantic_domains": 20,
-    "source_checks": 108,
+    "semantic_domains": 23,
+    "converged_semantic_domains": 23,
+    "source_checks": 111,
     "failed_source_checks": 0
   },
   "source_checks": [
@@ -538,6 +595,9 @@
         "new CanonicalCheckpointService()",
         "new CanonicalContextCompactionService()",
         "new CanonicalResumeIdempotencyService()",
+        "new CanonicalProviderEventService()",
+        "new CanonicalToolSchemaRegistry()",
+        "new CanonicalToolDispatchService(TOOL_SCHEMAS)",
         "TASK_CONTRACT.snapshot(request.taskContract)",
         "CONTEXT_GRAPH.build({",
         "MEMORY_POLICY.selectContext({",
@@ -545,6 +605,9 @@
         "CHECKPOINT.restore(request.resumeCheckpoint",
         "CONTEXT_COMPACTION.bind({",
         "RESUME_IDEMPOTENCY.bind({ restore: resume, receipts: request.resumeReceipts })",
+        "providerEvents: PROVIDER_EVENTS",
+        "toolSchemas: TOOL_SCHEMAS",
+        "toolDispatch: TOOL_DISPATCH",
         "assertCodingOrientationPrompt(taskContract.orientation, request.userPrompt)",
         "lifecycle.beginExecution()",
         "lifecycle.settle(runtimeOutput.status)",
@@ -580,6 +643,62 @@
       "excludes": [
         "from 'vscode'",
         "MemoryService"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "shared-canonical-provider-event-owner",
+      "path": "packages/shared/src/coding-provider-events.ts",
+      "includes": [
+        "CODING_PROVIDER_EVENT_VERSION = 'devseek.coding-provider-event/v1'",
+        "export interface ProviderEventPort",
+        "export class CanonicalProviderEventService implements ProviderEventPort",
+        "accept(event: CodingProviderEventInput)",
+        "snapshotCodingValue(event.call, 'provider-tool-call')",
+        "providerEventFailure('invalid-event-list')"
+      ],
+      "excludes": [
+        "from 'vscode'",
+        "LLMProviderType"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "shared-canonical-tool-schema-owner",
+      "path": "packages/shared/src/coding-tool-schema.ts",
+      "includes": [
+        "CODING_TOOL_SCHEMA_VERSION = 'devseek.coding-tool-schema/v1'",
+        "export interface ToolSchemaRegistryPort",
+        "export class CanonicalToolSchemaRegistry implements ToolSchemaRegistryPort",
+        "export const CODING_TOOL_DESCRIPTORS",
+        "export const CODING_TOOL_ALIASES",
+        "modelVisible: input.modelVisible ?? true",
+        "normalizeCodingFileWriteInputs"
+      ],
+      "excludes": [
+        "from 'vscode'",
+        "allowedModes",
+        "getToolActivity"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "shared-canonical-tool-dispatch-owner",
+      "path": "packages/shared/src/coding-tool-dispatch.ts",
+      "includes": [
+        "CODING_TOOL_DISPATCH_VERSION = 'devseek.coding-tool-dispatch/v1'",
+        "export interface ToolDispatchPort",
+        "export class CanonicalToolDispatchService implements ToolDispatchPort",
+        "'malformed-tool-arguments'",
+        "'partial-tool-call'",
+        "'unknown-tool'",
+        "'invalid-tool-input'",
+        "projectWorkspaceArtifactPaths(input.proposal)",
+        "decideTerminalCommandPermission({"
+      ],
+      "excludes": [
+        "from 'vscode'",
+        "ToolPermissionDecision"
       ],
       "passed": true
     },
@@ -1050,8 +1169,11 @@
         "export * from './coding-checkpoint';",
         "export * from './coding-context-compaction';",
         "export * from './coding-resume-idempotency';",
+        "export * from './coding-provider-events';",
         "export * from './coding-semantic-digest';",
         "export * from './coding-tool-execution';",
+        "export * from './coding-tool-dispatch';",
+        "export * from './coding-tool-schema';",
         "export * from './coding-workspace-mutation';",
         "export * from './coding-verification';",
         "export * from './coding-completion';",
@@ -2177,8 +2299,9 @@
         "const outcome = await this.executor.execute(action, {",
         "mutationPlan = buildCodingWorkspaceMutationPlan({",
         "this.transaction.execute(mutationPlan, this.mutation)",
-        "collectCliWorkspaceMutationPaths(settledAction.input.proposal)",
-        "classifyCodingTerminalEffects(input.command)",
+        "paths: input.call.targetPaths",
+        "assertDispatchedOperation(input.call, 'apply_workspace_artifacts')",
+        "assertDispatchedOperation(input.call, 'run_terminal')",
         "? 'indeterminate'"
       ],
       "excludes": [
@@ -2255,5 +2378,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "aefb2a1776050326906999f088d08406b183065ebd62246c96d1d8a21f2aa90e"
+  "baseline_sha256": "ef8dd1e09a81c997d85fdeb4cc87cd48c2aa215cb995cea54f695aed8d279821"
 }

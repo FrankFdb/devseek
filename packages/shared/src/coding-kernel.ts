@@ -53,6 +53,18 @@ import {
   type CodingExternalEffectReceipt,
   type CodingExternalEffectSessionPort,
 } from './coding-external-effect';
+import {
+  CanonicalProviderEventService,
+  type ProviderEventPort,
+} from './coding-provider-events';
+import {
+  CanonicalToolSchemaRegistry,
+  type ToolSchemaRegistryPort,
+} from './coding-tool-schema';
+import {
+  CanonicalToolDispatchService,
+  type ToolDispatchPort,
+} from './coding-tool-dispatch';
 
 export {
   CODING_KERNEL_TASK_CONTRACT_VERSION,
@@ -91,6 +103,9 @@ export interface CodingKernelRuntimeRequest<TRuntimeContext>
   readonly memoryPolicy: CodingMemoryContextDecision;
   readonly checkpoint: CodingCheckpointSessionPort;
   readonly contextCompaction: CodingContextCompactionSessionPort;
+  readonly providerEvents: ProviderEventPort;
+  readonly toolSchemas: ToolSchemaRegistryPort;
+  readonly toolDispatch: ToolDispatchPort;
   readonly toolAuthority: CodingToolAuthoritySessionPort;
   readonly externalEffects: CodingExternalEffectSessionPort;
   readonly resume?: CodingCheckpointRestoreDecision;
@@ -174,6 +189,9 @@ const MEMORY_POLICY = new CanonicalMemoryPolicyService();
 const CHECKPOINT = new CanonicalCheckpointService();
 const CONTEXT_COMPACTION = new CanonicalContextCompactionService();
 const RESUME_IDEMPOTENCY = new CanonicalResumeIdempotencyService();
+const PROVIDER_EVENTS = new CanonicalProviderEventService();
+const TOOL_SCHEMAS = new CanonicalToolSchemaRegistry();
+const TOOL_DISPATCH = new CanonicalToolDispatchService(TOOL_SCHEMAS);
 const TOOL_AUTHORITY = new CanonicalToolAuthorityService();
 const EXTERNAL_EFFECT = new CanonicalExternalEffectService();
 
@@ -272,6 +290,9 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       memoryPolicy,
       checkpoint,
       contextCompaction,
+      providerEvents: PROVIDER_EVENTS,
+      toolSchemas: TOOL_SCHEMAS,
+      toolDispatch: TOOL_DISPATCH,
       toolAuthority,
       externalEffects,
       ...(resume ? { resume } : {}),

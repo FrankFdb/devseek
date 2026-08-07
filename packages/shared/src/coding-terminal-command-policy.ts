@@ -1,4 +1,4 @@
-import * as nodePath from 'path';
+import * as nodePath from 'node:path';
 
 export type TerminalCommandRiskClass =
   | 'read-only'

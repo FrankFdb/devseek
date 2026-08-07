@@ -1,8 +1,12 @@
 import * as crypto from 'crypto';
+import type { CodingToolCall } from '@devseek-netai/shared';
 import { getActiveProvider } from '../llm/provider-router';
 import { type ChatMessage } from '../llm/types';
+import {
+  normalizeProviderMessage,
+  type ProviderNormalizationBoundary,
+} from '../llm/provider-events';
 import { invokeProviderWithRunEvidence } from '../app/provider-run-evidence';
-import { parseFakeToolCalls, type FakeTool } from './fake-tool-parser';
 export { consumeUserSteerMessages } from './user-steer';
 
 export async function chatWithMessages(
@@ -15,7 +19,8 @@ export async function chatWithMessages(
   traceWorkspaceRoot?: string,
   traceEvidenceParticipantToken?: string,
   onTraceEvidenceError?: (error: unknown) => void,
-): Promise<{ text: string; tools: FakeTool[] }> {
+  normalization?: ProviderNormalizationBoundary,
+): Promise<{ text: string; tools: CodingToolCall[] }> {
   const provider = getActiveProvider();
   const traceOperationId = crypto.randomUUID();
   const text = await invokeProviderWithRunEvidence({
@@ -43,7 +48,13 @@ export async function chatWithMessages(
         : {}),
     }),
   });
-  return { text, tools: parseFakeToolCalls(text) };
+  const normalized = normalizeProviderMessage({
+    type: 'message',
+    provider: provider.type,
+    content: text,
+    ...(traceRunId ? { workflowId: traceRunId } : {}),
+  }, normalization);
+  return { text: normalized.event.type === 'message' ? normalized.event.content : text, tools: [...normalized.tools] };
 }
 
 export async function chatViaProvider(
@@ -57,7 +68,8 @@ export async function chatViaProvider(
   traceWorkspaceRoot?: string,
   traceEvidenceParticipantToken?: string,
   onTraceEvidenceError?: (error: unknown) => void,
-): Promise<{ text: string; tools: FakeTool[] }> {
+  normalization?: ProviderNormalizationBoundary,
+): Promise<{ text: string; tools: CodingToolCall[] }> {
   const provider = getActiveProvider();
   const messages: ChatMessage[] = [
     ...(history ?? []),
@@ -89,5 +101,11 @@ export async function chatViaProvider(
         : {}),
     }),
   });
-  return { text, tools: parseFakeToolCalls(text) };
+  const normalized = normalizeProviderMessage({
+    type: 'message',
+    provider: provider.type,
+    content: text,
+    ...(traceRunId ? { workflowId: traceRunId } : {}),
+  }, normalization);
+  return { text: normalized.event.type === 'message' ? normalized.event.content : text, tools: [...normalized.tools] };
 }

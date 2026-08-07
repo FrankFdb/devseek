@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const extensionRoot = path.resolve(__dirname, '../../');
+const repositoryRoot = path.resolve(extensionRoot, '../..');
 const bundlePath = path.join(extensionRoot, 'test/unit/judgment-owners.bundle.cjs');
 
 execSync(
@@ -35,6 +36,16 @@ function readExtensionFile(relPath) {
 
 function extensionFileExists(relPath) {
   return existsSync(path.join(extensionRoot, relPath));
+}
+
+function readRepositoryFile(relPath) {
+  return readFileSync(path.join(repositoryRoot, relPath), 'utf8');
+}
+
+function governanceOwnerFileExists(relPath) {
+  return relPath.startsWith('packages/') || relPath.startsWith('scripts/')
+    ? existsSync(path.join(repositoryRoot, relPath))
+    : extensionFileExists(relPath);
 }
 
 function collectFiles(relDir, predicate) {
@@ -79,7 +90,7 @@ test('ARCH-16 owner registry covers every duplicate-judgment domain', () => {
   const required = [
     ['task-semantic-intent', 'src/task-semantic-contract.ts'],
     ['architecture-decision', 'src/app/judgment-owners.ts'],
-    ['tool-protocol', 'src/agent/tool-registry.ts'],
+    ['tool-protocol', 'packages/shared/src/coding-tool-schema.ts'],
     ['response-integrity', 'src/llm/providers/web-reliability.ts'],
     ['execution-outcome', 'src/execution-outcome-classifier.ts'],
     ['validation-orchestration', 'src/app/verification-planner.ts'],
@@ -93,7 +104,7 @@ test('ARCH-16 owner registry covers every duplicate-judgment domain', () => {
   for (const [id, ownerModule] of required) {
     assert.ok(registry.includes(`id: '${id}'`), `${id} must have an owner record`);
     assert.ok(registry.includes(`ownerModule: '${ownerModule}'`), `${id} owner must be ${ownerModule}`);
-    assert.ok(extensionFileExists(ownerModule), `${id} owner module must exist`);
+    assert.ok(governanceOwnerFileExists(ownerModule), `${id} owner module must exist`);
   }
 
   assert.ok(registry.includes('contractTests'), 'owner records must name contract tests');
@@ -248,16 +259,14 @@ test('R2-05C plan revisions fail closed on unmapped evidence and dependency reac
   assert.ok(report.reasons.includes('revision-guard-evidence-missing'));
 });
 
-test('ARCH-16 tool alias search_content is owned by ToolRegistry and generated manifest only', () => {
+test('ARCH-16 tool alias search_content is owned by shared schema and generated manifest only', () => {
   const hits = decisionFilesContaining('search_content');
-  assert.deepEqual(hits, [
-    'media/webview-agent-tool-manifest.js',
-    'src/agent/tool-registry.ts',
-  ]);
-  assert.ok(readExtensionFile('src/agent/tool-registry.ts').includes("search_content: 'grep_search'"));
+  assert.deepEqual(hits, ['media/webview-agent-tool-manifest.js']);
+  assert.ok(readRepositoryFile('packages/shared/src/coding-tool-schema.ts').includes("search_content: 'grep_search'"));
+  assert.ok(!extensionFileExists('src/agent/tool-registry.ts'));
 });
 
-test('ARCH-16 webview tool manifest is generated from ToolRegistry', () => {
+test('ARCH-16 webview tool manifest is generated from shared coding tool schema', () => {
   const packageJson = readExtensionFile('package.json');
   const packageVsix = readFileSync(path.resolve(extensionRoot, '../../scripts/package-vsix.mjs'), 'utf8');
   const manifest = readExtensionFile('media/webview-agent-tool-manifest.js');
@@ -267,7 +276,7 @@ test('ARCH-16 webview tool manifest is generated from ToolRegistry', () => {
   assert.ok(packageJson.includes('generate-webview-tool-manifest.mjs'), 'compile must refresh generated webview tool manifest');
   assert.ok(packageVsix.includes('generateWebviewToolManifest'), 'VSIX packaging must refresh generated webview tool manifest');
   assert.ok(runtime.indexOf('webview-agent-tool-manifest.js') < runtime.indexOf('webview-agent-sanitizer.js'));
-  assert.ok(manifest.includes('Source of truth: packages/vscode-extension/src/agent/tool-registry.ts'));
+  assert.ok(manifest.includes('Source of truth: packages/shared/src/coding-tool-schema.ts'));
   assert.ok(manifest.includes('"search_content"'));
   assert.ok(sanitizer.includes('DevSeekAgentToolManifest'), 'sanitizer must read generated tool manifest');
   assert.ok(sanitizer.includes('makeWebviewToolNamePattern'), 'sanitizer regexes must derive tool names from generated manifest');

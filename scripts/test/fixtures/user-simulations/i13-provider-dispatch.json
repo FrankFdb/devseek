@@ -1,0 +1,84 @@
+{
+  "schema_version": "devseek.user-simulation-scenario/v1",
+  "iteration_id": "I13",
+  "name": "provider-dispatch",
+  "purpose": "Exercise provider events, shared tool schemas, and canonical dispatch across Headless, VS Code, and CLI with scenarios distinct from the fixed coding baseline.",
+  "cases": [
+    {
+      "case_id": "I13-PRV-01",
+      "input": {
+        "prompt": "Inspect src/index.ts from the provider's native tool request and do not let later provider-buffer mutation change the accepted request.",
+        "provider": "deepseek",
+        "tool_call": {
+          "id": "provider-read-1",
+          "name": "read_file",
+          "input": { "path": "src/index.ts" }
+        },
+        "post_accept_path": "src/substituted.ts"
+      }
+    },
+    {
+      "case_id": "I13-SCH-01",
+      "input": {
+        "prompt": "Search C++ sources for mouse handlers using the provider alias search_content.",
+        "tool_name": "search_content",
+        "arguments": {
+          "query": "glutMouseFunc|mouse",
+          "directory": "code/shape_manager",
+          "fileTypes": ".cpp,.h"
+        }
+      }
+    },
+    {
+      "case_id": "I13-DSP-01",
+      "input": {
+        "prompt": "Treat equivalent text and native search requests identically, then reject a read request with no path before any host is called.",
+        "fake_call": {
+          "name": "search_content",
+          "input": { "query": "dispatch", "directory": "packages/shared/src" }
+        },
+        "native_call": {
+          "id": "native-search-1",
+          "function": {
+            "name": "search_content",
+            "arguments": "{\"query\":\"dispatch\",\"directory\":\"packages/shared/src\"}"
+          }
+        },
+        "invalid_call": { "name": "read_file", "input": {} }
+      }
+    },
+    {
+      "case_id": "I13-VSC-01",
+      "input": {
+        "prompt": "Handle a truncated VS Code provider tool call, reject partial normalization wiring, and classify absolute validation paths against the current workspace boundary.",
+        "provider": "deepseek",
+        "workspace_root": "/workspace/devseek",
+        "inside_validation_command": "npx tsc --noEmit -p /workspace/devseek/tsconfig.json",
+        "outside_validation_command": "npx tsc --noEmit -p /opt/other/tsconfig.json",
+        "malformed_call": {
+          "id": "bad-write-1",
+          "function": {
+            "name": "write_file",
+            "arguments": "{\"path\":\"src/app.ts\","
+          }
+        }
+      }
+    },
+    {
+      "case_id": "I13-CLI-01",
+      "input": {
+        "prompt": "Update .env.local from a CLI model artifact, but do not mutate the protected path without explicit protected-path authority.",
+        "attempted_path": ".env.local",
+        "content": "TOKEN=must-not-be-written\n"
+      }
+    },
+    {
+      "case_id": "I13-CLI-02",
+      "input": {
+        "prompt": "Run an unfamiliar Ruby maintenance script from a CLI model response, but require the conservative workspace-effect boundary and do not invoke a terminal host.",
+        "command": "ruby custom_task.rb",
+        "workdir": "/workspace"
+      }
+    }
+  ]
+}

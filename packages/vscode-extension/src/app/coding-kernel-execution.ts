@@ -97,6 +97,8 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
     const callbacks: AgentLoopCallbacks = {
       ...request.callbacks,
       traceRunId: request.callbacks.traceRunId ?? kernelRequest.runId,
+      canonicalProviderEvents: kernelRequest.providerEvents,
+      canonicalToolDispatch: kernelRequest.toolDispatch,
       canonicalToolAuthority: kernelRequest.toolAuthority,
       canonicalExternalEffects: kernelRequest.externalEffects,
       ...(originalCheckpoint ? {

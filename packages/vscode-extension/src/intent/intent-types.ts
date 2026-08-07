@@ -1,3 +1,5 @@
+import type { CodingToolKind, CodingToolRisk } from '@devseek-netai/shared';
+
 export type ExecutionMode =
   | 'smalltalk'
   | 'qa'
@@ -7,21 +9,9 @@ export type ExecutionMode =
   | 'run'
   | 'destructive';
 
-export type ToolKind =
-  | 'control'
-  | 'read'
-  | 'search'
-  | 'diagnostics'
-  | 'network'
-  | 'plan'
-  | 'memory'
-  | 'edit'
-  | 'terminal'
-  | 'vscode'
-  | 'vscode-command'
-  | 'mcp';
+export type ToolKind = CodingToolKind;
 
-export type ToolRisk = 'low' | 'medium' | 'high' | 'destructive';
+export type ToolRisk = CodingToolRisk;
 
 export interface IntentClassification {
   mode: ExecutionMode;

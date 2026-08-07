@@ -7,11 +7,13 @@
 
 import * as vscode from 'vscode';
 import type {
+  CodingToolCall,
   CodingToolExecutionReceipt,
   CodingVerificationReceipt,
   CodingWorkspaceMutationReceipt,
 } from '@devseek-netai/shared';
 import { type ChatMessage } from '../llm/types';
+import { bindProviderNormalizationBoundary } from '../llm/provider-events';
 import type { ExecutionMode } from '../intent/intent-types';
 import type { CppValidationPolicy } from '../validation-planner';
 import { routeTaskSemanticContract } from '../task-intent-router';
@@ -182,11 +184,14 @@ const FILE_WRITE_PROGRESS_TOOL_NAMES = new Set([
   'create_directory',
 ]);
 
-function makeContextToolSignature(tool: ReturnType<typeof parseFakeToolCalls>[number]): string {
+function makeContextToolSignature(tool: { readonly name: string; readonly input: Readonly<Record<string, unknown>> }): string {
   return `${tool.name}:${stableStringify(tool.input ?? {})}`;
 }
 
-function buildRepeatedContextToolFeedback(tool: ReturnType<typeof parseFakeToolCalls>[number], count: number): string {
+function buildRepeatedContextToolFeedback(
+  tool: { readonly name: string; readonly input: Readonly<Record<string, unknown>> },
+  count: number,
+): string {
   return [
     `【系统反馈】检测到上下文工具重复 ${count} 次：${tool.name}`,
     '这批读取/搜索已经执行过，且期间没有新的写盘或验证进展。',
@@ -475,7 +480,7 @@ export async function runAgenticLoop(
       evidenceRefs: allEvidenceRefs,
     });
     let text = '';
-    let tools: ReturnType<typeof parseFakeToolCalls> = [];
+    let tools: CodingToolCall[] = [];
     const useFreshProviderSession = roundCount === 1 || forceProviderNewSessionNextTurn;
     if (forceProviderNewSessionNextTurn) {
       callbacks.onToolActivity?.('label', '重建模型会话并从任务事实恢复');
@@ -489,6 +494,11 @@ export async function runAgenticLoop(
         callbacks.signal,
         useFreshProviderSession,
         callbacks.traceRunId, callbacks.traceWorkspaceRoot, callbacks.traceEvidenceParticipantToken, callbacks.onTraceEvidenceError,
+        bindProviderNormalizationBoundary(
+          callbacks.canonicalProviderEvents,
+          callbacks.canonicalToolDispatch,
+          { workspaceRoot },
+        ),
       );
       text = providerTurn.text;
       tools = providerTurn.tools;

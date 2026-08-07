@@ -276,7 +276,12 @@ test('Mutation guard: tool planning consumes policy before every execution branc
   const toolLoop = source('src/agent/tool-loop.ts');
   const agenticLoop = source('src/agent/agentic-loop.ts');
   const writeAuthority = source('src/agent/write-authority.ts');
-  assert.match(toolLoop, /agentToolExecutor\.plan\([\s\S]*?buildToolPolicy\(callbacks\.executionMode \?\? 'inspect'\)/);
+  assert.equal(
+    [...toolLoop.matchAll(/canonicalTools\.plan\([\s\S]*?buildToolPolicy\(callbacks\.executionMode \?\? 'inspect'\)/g)].length,
+    2,
+    'initial and batched file-write dispatch must both consume the surface policy',
+  );
+  assert.doesNotMatch(toolLoop, /agentToolExecutor/);
   assert.match(toolLoop, /toolPlan\.permission\?\.action === 'deny'/);
   assert.match(toolLoop, /toolPlan\.permission\?\.action === 'requireConfirm'/);
   assert.match(toolLoop, /hasEvidenceAwareToolAuthority\(toolPlan\.kind, callbacks\)/);

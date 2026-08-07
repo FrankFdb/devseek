@@ -19,7 +19,7 @@ devseek_governance:
 
 - 首要产品目标：按本目录 01～20 的需求、审计、目标架构和能力路线，以 Codex 和 Claude Code 的官方公开能力与可观察优秀行为为主要对标，持续优化 DevSeek，使其达到顶级编程智能体的任务理解、自主实施、工具使用、故障恢复、结果验证和跨 Surface 一致性。
 - 文档作用：01～20 是实现输入和验收依据，不是产品目标本身；文档收敛和归档只是对应能力真实完成后的治理结果，不得反向驱动实现取舍。
-- 当前结论：顶级编程智能体目标尚未达成；三 Surface canonical Kernel 已新增共享 `PermissionDecisionPort`/`SandboxPolicyPort` 产品接线，Surface 约束与 Kernel 最终 authority 已分离，授权、tool journal 与 checkpoint/resume 均绑定 exact operation digest；`ToolExecutionPort`、`WorkspaceMutationPort`、`ExternalEffectPort` 已完成共享实现与主路径组合，`ResumeIdempotencyPort` 已能由结构化 effect class 和真实 external-effect receipt 直接结算。旧 VS Code executor 及零生产可达依赖已物理删除，但 sibling 入口和跨重启对账尚未全部证明，后四项仍保持 `implemented`。五类固定回归和 I10～I12 共 15 个能力增量用户案例已通过本地验证。C1～C14 当前为 17/69 项 `wired`、4 项 `implemented`、48 项 `proposed`，剩余核心工作是 C6 上游 schema/dispatch、C7 sibling 无旁路证明、长任务完整产品恢复与受保护资格。
+- 当前结论：顶级编程智能体目标尚未达成；三 Surface canonical Kernel 已共用版本化 `ProviderEventPort`、`ToolSchemaRegistryPort` 和 `ToolDispatchPort`，Provider 缓冲快照、工具名称/Schema/别名、fake/native 调用归一、风险/effect/目标路径投影均有 shared 唯一 owner；授权、tool journal 与 checkpoint/resume 继续绑定 exact operation digest。VS Code 旧工具 registry、normalizer 和终端命令策略 owner 已物理删除，但 C7 sibling 入口和 C11 跨重启对账尚未全部证明，tool execution、workspace mutation、external effect 和 resume idempotency 仍保持 `implemented`。五类固定回归之外，I10～I13 共 21 个能力增量用户案例已通过本地验证。C1～C14 当前为 20/69 项 `wired`、4 项 `implemented`、45 项 `proposed`，剩余核心工作是 C7 sibling 无旁路证明、C11 长任务完整产品恢复、C4/C5 契约规划、C8～C10 实施验证交付与受保护资格。
 - 状态词：`completed`、`in_progress`、`pending`、`blocked_external`。
 - 更新规则：本文只记录完成状态、待办任务、依赖和验收条件；执行日志、命令输出、时间线和历史回执不写入本文。
 
@@ -50,15 +50,15 @@ devseek_governance:
 | 范围 | 状态 | 当前事实 |
 | --- | --- | --- |
 | C0 本地实现与机器裁决前置 | `completed` | 7/7 implementation requirements satisfied，repository blockers=0，local conformance=`PASSED` |
-| Extension 类型与发布门禁 | `completed` | TypeScript 基线零错误；删除旧 loop 专属测试后的 164/164 extension suite 通过；行为变更必须提交后重新编译、打包、安装并精确核对 source/artifact/install/runtime，上一稳定 `de2768c` 仅作回退基线，`realistic-product` 继续作为发版门禁 |
+| Extension 类型与发布门禁 | `completed` | TypeScript 基线零错误；旧专属 owner/测试清退并新增 shared 边界测试后 163/163 extension suite 通过；行为变更必须提交后重新编译、打包、安装并精确核对 source/artifact/install/runtime，上一稳定 `de2768c` 仅作回退基线，`realistic-product` 继续作为发版门禁 |
 | Surface 入口盘点 | `completed` | 88/88 入口受 inventory 覆盖，其中 Headless product entry=1；未知入口与未声明 legacy owner 可达性均为 0 |
-| Kernel owner 收敛基线 | `completed` | v21 将本地产品迭代与资格晋级解耦；4 条活跃路由均通过 shared `CanonicalCodingKernel`，legacy execution owner=0；20 个语义域均为 shared 单一 owner、missing Surface=0；108/108 源码断言通过 |
+| Kernel owner 收敛基线 | `completed` | v22 将本地产品迭代与资格晋级解耦；4 条活跃路由均通过 shared `CanonicalCodingKernel`，legacy execution owner=0；23 个语义域均为 shared 单一 owner、missing Surface=0；111/111 源码断言通过 |
 | VS Code 旧执行 owner 清退 | `completed` | 零生产可达性确认后，旧 `agent-loop.ts`、16 个传递模块、旧 UI 最终授权 owner 和孤立 `llm-agent-loop.ts` 已连同专属测试物理删除；现役执行只保留 `agentic-loop`、canonical tool session 与 shared authority/effect owner |
 | 01：VS Code 新任务与恢复路由收敛 | `completed` | `AgentKernelService` 统一决定 fresh/checkpoint 路由；附件只作为 Context；durable checkpoint 与 local validation repair 均通过 typed recovery 输入进入 canonical loop，失败保留待办、成功唯一清除 checkpoint；产品 adapter 不再拥有 `runLegacyPlanned` |
 | 01：CLI canonical Kernel 路由 | `completed` | shared 层拥有版本化 request/output、TaskContract 与唯一 `CanonicalCodingKernel`；VS Code/CLI product adapter 只组合 runtime；CLI Surface 不再 import parser、mutation、verification 或 loop，`CliLegacyCodingLoop` 源码与测试均已删除；非 mutation TaskContract 对意外写入 fail closed |
 | 01：Headless canonical 产品路由 | `completed` | `@devseek-netai/headless` 提供公开 programmatic entry；只组合 shared `CanonicalCodingKernel` 与 runtime port，不依赖 `vscode`、Surface UI、CLI runtime 或 agent loop；预取消在 runtime dispatch 前失败 |
 | 01：Headless 五维证据边界 | `completed` | create、modify、repair、permission-denied、policy-refusal 五类场景均由 Headless 产品输出完整 TaskContract、tool execution、change receipt、verification 与 completion；缺维、身份/契约/终态/evidence/risk 漂移均 fail closed；该结论不替代 VS Code/CLI 产品证据或 qualification |
-| canonical 语义 owner | `completed` | Orientation、TaskContract、EngineeringOrientation、CodebaseExploration、ContextGraph、ContextProvenance、InstructionPrecedence、RunLifecycle、AgentCommand、Settlement、SurfaceAdapterConformance、Tool、Mutation、Verification、Completion、RunEvidenceRetention、MemoryPolicy、Checkpoint、ContextCompaction、ResumeIdempotency 均由 shared 唯一 owner 裁决；Surface 只组合宿主能力；语义域收敛数=20 |
+| canonical 语义 owner | `completed` | Orientation、TaskContract、EngineeringOrientation、CodebaseExploration、ContextGraph、ContextProvenance、InstructionPrecedence、RunLifecycle、AgentCommand、Settlement、SurfaceAdapterConformance、ProviderNormalization、ToolSchema、ToolDispatch、ToolExecution、Mutation、Verification、Completion、RunEvidenceRetention、MemoryPolicy、Checkpoint、ContextCompaction、ResumeIdempotency 均由 shared 唯一 owner 裁决；Surface 只组合宿主能力；语义域收敛数=23 |
 | 01：三 Surface 五维 development projection | `completed` | create、modify、repair、permission-denied、policy-refusal 五类对标场景通过同一 settled projection owner 联合评估；CLI/VS Code 不再复制投影语义，缺证据和未决 mutation fail closed |
 | 01：三 Surface 五场景产品契约 | `completed` | 同批真实工作区经 VS Code 精确安装 VSIX、CLI 和 Headless 产品入口完成五类场景；五个维度均有 product-route evidence，repair 保留失败→修复→重验证，两个拒绝场景零 mutation；该结论不产生 qualification claim |
 | C1：运行生命周期 | `completed` | shared `RunLifecyclePort` 唯一裁决 accepted/running/waiting/terminal 转换；VS Code、CLI、Headless 保留同一不可变生命周期，blocked/cancelled 不再被 Surface 降格为 failed |
@@ -73,10 +73,11 @@ devseek_governance:
 | I10 用户仿真增量 | `completed` | 固定 5 例只作回归；I10 新增 5 例均直接消费版本化 fixture `scripts/test/fixtures/user-simulations/i10-memory-checkpoint.json`；治理门禁拒绝重复 case ID、重复用户场景、重复测试证据和未绑定 test name；原始 TAP、fixture SHA、精确 VSIX 与三 Surface 产品报告仅在本地 `code/devseek-tests/memory-checkpoint/runs/i10-local-20260806-g379efbd/` 保留，不进入 Git |
 | I11 用户仿真增量 | `completed` | 新增 4 例覆盖三次连续压缩、VS Code 密封收据、已完成 workspace effect 二次恢复跳过和 indeterminate external effect 运行前阻断；版本化输入位于 `scripts/test/fixtures/user-simulations/i11-context-resume.json`，逐例 TAP 与汇总仅在本地 `code/devseek-tests/context-resume/runs/i11-context-resume-20260806/` 保留，qualification effect=`NONE` |
 | I12 用户仿真增量 | `completed` | 新增 6 例：只读任务拒绝 Surface 越权写入、Surface 字段和非当前 session receipt 均不能伪造最终 authority、已批准输入不能被替换、已确认远程变更在对账后仅执行一次、真实 external-effect receipt 驱动二次 resume 零宿主调用、completed resume receipt 不能为替换后的输入授权；版本化输入位于 `scripts/test/fixtures/user-simulations/i12-effect-authority.json`，fixture SHA256=`52c84a7b111b289745fab2aaedb950bdf90f3e51876c9de98e16b7f2768aeb85`，原始回执只保留在本地 `code/devseek-tests/effect-authority/runs/i12-session-authority-final-20260807/`，不进入 Git |
+| I13 用户仿真增量 | `completed` | 新增 6 例覆盖 Provider 缓冲事后篡改隔离、Schema 别名与 internal tool 隐藏、fake/native 调用等价、缺失字段与部分端口接线 fail closed、VS Code 工作区内外绝对路径风险分类、CLI 受保护 `.env.local` 路径投影、未分类 Ruby 维护命令保守拒绝；版本化输入位于 `scripts/test/fixtures/user-simulations/i13-provider-dispatch.json`，fixture SHA256=`fe768ac5019a0e6bdc97604f69175f2f60dea8c2ad1af62887cbe6aff8736e65`，原始回执只保留在本地 `code/devseek-tests/provider-dispatch/runs/i13-provider-dispatch-workspace-boundary-20260807/`，qualification effect=`NONE`，不进入 Git |
 | Intent Semantic Contract 产品纵切 | `completed` | `TaskSemanticContract/v3` 统一任务形态、作用域、mutation/read、验证、质量义务、`done_iff`、歧义、跨轮修订与项目指令；session、Kernel、canonical agentic/tool loop 与受约束 artifact flow 只消费该契约；48 条外部形式自然输入覆盖 12 类任务。非 Web Provider candidate 与隔离 semantic channel 仍属后续责任 |
 | 语义执行职责重构 | `completed` | Agentic 系统提示词、双阶段分析提示词、项目指令绑定、跨轮路由和 Agent Surface 展示均有独立 owner；Headless Kernel 不依赖 `vscode`；三项大型入口上限仅在职责、依赖和测试迁移后下调 |
 | R4 非资格本地工作 | `completed` | v2 清单冻结 `4f8a567`；原 `a034e5e` v1 JSON/schema/view 按字节归档；冻结时 artifact/install/runtime 精确一致，stable runtime=1；6/6 leaf completed、blocked=0、qualification effect=`NONE` |
-| 能力账本 | `in_progress` | 76 项能力：共 24 项 `wired`、4 项 `implemented`、48 项 `proposed`；其中 C1～C14 为 17/69 项 `wired`、4 项 `implemented`、48 项 `proposed`，qualification claims=0 |
+| 能力账本 | `in_progress` | 76 项能力：共 27 项 `wired`、4 项 `implemented`、45 项 `proposed`；其中 C1～C14 为 20/69 项 `wired`、4 项 `implemented`、45 项 `proposed`，qualification claims=0 |
 | Gate 0 / 后续资格 | `blocked_external` | Gate 0=`NOT_PASSED`，6 个外部 authority blocker，exact claims=0；本地工作不得自行提升资格 |
 | 顶级编程智能体综合验收 | `pending` | 尚未完成 Codex / Claude Code 同类行为对标下的 C1～C14 产品接线、黄金用户旅程、长任务与受保护资格验收 |
 | 01、10～15、17～20 文档治理结果 | `completed` | 对应限定责任或历史交接责任完成后，完整文档已归档，根目录无同名尾页 |
@@ -108,14 +109,14 @@ devseek_governance:
 | 20 | `DOC01-KERNEL-VERIFICATION-05C` | `completed` | `DOC01-KERNEL-MUTATION-05B` | 验证回执绑定 acceptance；失败、unverified、repair 后 supersede 与工具回执归属由 shared owner 裁决 |
 | 21 | `DOC01-KERNEL-COMPLETION-05D` | `completed` | `DOC01-KERNEL-VERIFICATION-05C` | 完成判定统一消费工具、mutation、verification、直接验收与风险；拒绝、缺证据、人工复核和恢复后的终态 fail closed |
 | 22 | `SURFACE-CONTRACT-01` | `completed` | `KERNEL-02` | 同一批真实工作区经 VS Code、CLI、Headless 产品入口完成五类场景；TaskContract、工具、变更、验证和完成结果联合等价，拒绝零副作用，repair 证据链完整 |
-| 23 | `CAP-C1-C14-WIRING` | `in_progress` | `SURFACE-CONTRACT-01` | C1～C14 当前 17 项 `wired`、4 项 `implemented`、48 项 `proposed`；按 capability DAG 逐项提升，每项均有 owner、产品入口、失败恢复和机器证据 |
-| 24 | `USER-SIM-01` | `in_progress` | 每个产品切片 | 五个固定 fixture 仅作为永久回归基线；I10 的 5 例、I11 的 4 例与 I12 的 6 例已分别持久化输入、唯一测试证据和原始运行回执；后续每轮继续在 `code/devseek-tests/<scenario>` 新增或扩展样本，real Provider、自然 UI 与 sealed holdout 仍待相应前置 |
+| 23 | `CAP-C1-C14-WIRING` | `in_progress` | `SURFACE-CONTRACT-01` | C1～C14 当前 20 项 `wired`、4 项 `implemented`、45 项 `proposed`；按 capability DAG 逐项提升，每项均有 owner、产品入口、失败恢复和机器证据 |
+| 24 | `USER-SIM-01` | `in_progress` | 每个产品切片 | 五个固定 fixture 仅作为永久回归基线；I10～I13 共 21 例已分别持久化输入、唯一测试证据和本地原始运行回执；后续每轮继续在 `code/devseek-tests/<scenario>` 新增或扩展样本，real Provider、自然 UI 与 sealed holdout 仍待相应前置 |
 | 25 | `QUAL-EXT-01` | `blocked_external` | 独立授权、受保护身份/设施、holdout 和不可变保留 | 6 个外部 blocker 由授权主体关闭，7 个 C0 exact tuple claims 可复算，机器 decision 自主达到 `PASS`；只约束资格晋级，不阻塞本地产品迭代 |
 | 26 | `TOP-AGENT-ACCEPTANCE-01` | `pending` | `CAP-C1-C14-WIRING`、`USER-SIM-01` | 按 01～09 的需求与黄金旅程，对照 Codex 和 Claude Code 在同类问题上的可观察行为；所有适用产品能力、长任务、故障恢复、结果验证和跨 Surface 验收通过 |
 
 ## 剩余任务分类与合批策略
 
-69 项 C1～C14 能力中已有 17 项 `wired`、4 项 `implemented`、48 项 `proposed`；逐项 ID、owner、依赖和机器状态以 `docs/process/devseek-capability-ledger.json` 为唯一明细源，本表只做可执行分类，不建立第二份状态账本。
+69 项 C1～C14 能力中已有 20 项 `wired`、4 项 `implemented`、45 项 `proposed`；逐项 ID、owner、依赖和机器状态以 `docs/process/devseek-capability-ledger.json` 为唯一明细源，本表只做可执行分类，不建立第二份状态账本。
 
 | 类别 | 覆盖的剩余任务 | 执行方式 | 联合验收 | 归档影响 |
 | --- | --- | --- | --- | --- |
@@ -123,7 +124,7 @@ devseek_governance:
 | B. 跨 Surface 产品契约（已完成） | `SURFACE-CONTRACT-01`、VS Code/CLI 五维 product projection、Headless 等价回放 | 后续作为每个能力切片的共享产品验收边界 | create/modify/repair/permission-denied/policy-refusal 在同一 fixture 上的 TaskContract、tool、mutation、verification、completion 等价 | 与 A 一起完成 01 的限定责任；01 已整份归档 |
 | C. 基础能力波次 | C1/C2/C3 与 C12 三项均已 `wired`；C11 checkpoint 已 `wired`、resume idempotency 为 `implemented` | 已完成部分只作共享基础和回归门；resume 已接入真实 external receipt，下批补 workspace receipt、VS Code/CLI 恢复映射和跨重启对账 | 断线重放、checkpoint、重复 resume、上下文预算、多次压缩和证据保留 | 推进 03、04、08、16，不因个别 capability wired 提前归档 |
 | D. 契约与规划波次 | C4 requirements/acceptance、C5 design/plan | 在 C2/C3 稳定后合批，共用 TaskContract revision 与 plan schema | 否定、作用域、非目标、验收可执行性、影响分析反例 | 推进 02、03、04、07、16 |
-| E. 执行与安全波次 | C6 provider/tool、C7 authority/effect、C8 implementation/integration | 复用 A/B 的唯一执行链；terminal/network/MCP/Git/release 按 effect facet 分类，不建平行旁路 | schema 拒绝、明示审批、sandbox、幂等、补偿、作用域和 sibling 入口 | 推进 01～04、07、08、16 |
+| E. 执行与安全波次 | C6 provider normalization/tool schema/tool dispatch 已 `wired`；剩余 C6 tool execution、C7 authority/effect 与 C8 implementation/integration | 复用 A/B 的唯一执行链；terminal/network/MCP/Git/release 按 effect facet 分类，不建平行旁路 | schema 拒绝、明示审批、sandbox、幂等、补偿、作用域和 sibling 入口 | 推进 02～04、07、08、16 |
 | F. 验证与交付波次 | C9 verification/repair/review、C10 Git/CI/release | 可共享 verifier/review evidence；真实外部发布单独受权限约束 | 失败→诊断→修复→重验证，independent review，dirty tree/release/rollback | 推进 01～05、08、09、16 |
 | G. 长任务与扩展波次 | C11 steering/collaboration、C13 skills/hooks/MCP/subagents/headless | 共用 typed command/event/registry；并行写冲突和子代理隔离分开压测 | steer/resume/cancel 幂等、扩展旁路=0、并行冲突=0、长任务恢复 | 推进 03～05、08、09、16 |
 | H. 用户仿真与资格 | `USER-SIM-01`、C14、`QUAL-EXT-01`、`TOP-AGENT-ACCEPTANCE-01` | 每个产品切片先跑本地用户路径；real Provider/holdout/受保护签署只在外部前置满足后独立执行 | 精确 VSIX、多轮、故障恢复、正式项目 holdout、不可变候选与机器 Gate | 最终判定 02～09、16 是否能整份归档；外部 blocker 不得伪装成本地实现失败 |
@@ -141,7 +142,7 @@ devseek_governance:
 | Batch C3-B | `completed` | 上下文来源与指令优先级已由 shared owner 裁决；用户请求高于工作区指令，Codex/Claude 分层文件、冲突赢家和内容哈希均进入上下文图 | C3 5/5 wired；Surface 不能伪造 user/runtime authority，来源记录不保留正文 |
 | Batch C11/C12-A | `completed` | `C12-MEMORY-POLICY` 与 `C11-CHECKPOINT` 已由 shared owner 收口并接入产品路径；I10 五个增量用户案例通过 | 外部内容不提权；恢复只执行 pending 单元；固定五场景不冒充本轮增量证据 |
 | Batch C11/C12-B | `completed` | `C12-CONTEXT-COMPACTION` 已接入 VS Code 活跃路径；`C11-RESUME-IDEMPOTENCY` 已完成 shared/Kernel/Headless 实现，并按依赖诚实停在 `implemented` | I11 四条独立用户旅程及原始回执通过；压缩连续性、敏感信息清理、重复 effect 跳过与不确定 effect 阻断均有确定性证据 |
-| Batch C6/C7-C11 | `in_progress` | `PermissionDecisionPort`/`SandboxPolicyPort` 已 `wired`；Surface constraint、Kernel authority 和 input-bound receipt 已分层；tool execution、workspace mutation、external effect 已 `implemented`；external receipt 已打通 Headless resume | 补齐 C6 schema/dispatch 上游；证明 C7 sibling 入口无旁路；workspace/external receipt 在适用 Surface 与跨重启恢复中均零重复 effect，未知状态 fail closed |
+| Batch C6/C7-C11 | `in_progress` | `ProviderEventPort`/`ToolSchemaRegistryPort`/`ToolDispatchPort` 与 `PermissionDecisionPort`/`SandboxPolicyPort` 已 `wired`；Surface constraint、Kernel authority 和 input-bound receipt 已分层；tool execution、workspace mutation、external effect 与 resume idempotency 仍为 `implemented` | 证明 C7 workspace/external sibling 入口无旁路；workspace/external receipt 在 VS Code/CLI 适用恢复路径与跨重启对账中均零重复 effect，未知状态 fail closed |
 
 ## 伴随治理结果
 
@@ -153,10 +154,10 @@ devseek_governance:
 
 `CAP-C1-C14-WIRING`（`in_progress`，前置 `SURFACE-CONTRACT-01` 已完成）
 
-- 当前条件：三 Surface 已共用 canonical Kernel、20 个收敛语义域和同一产品契约；能力账本当前为 24 项 `wired`、4 项 `implemented`、48 项 `proposed`、claims=0，其中 C7 permission/sandbox 已接线，C6 tool execution、C7 workspace/external 与 C11 resume 已实现。
-- 接下来需要：优先合批 C6 provider normalization/tool schema/tool dispatch，盘点并关闭 C7 workspace/external sibling 旁路，将 workspace/external receipt 与 VS Code/CLI 恢复单元、持久化对账直接绑定；随后推进 C4/C5、C8～C10、C11 其余协作能力、C13 与本地 C14 前置，并且只在证明不可达后删除旧执行路径。
+- 当前条件：三 Surface 已共用 canonical Kernel、23 个收敛语义域和同一产品契约；能力账本当前为 27 项 `wired`、4 项 `implemented`、45 项 `proposed`、claims=0，其中 C6 provider normalization/tool schema/tool dispatch 和 C7 permission/sandbox 已接线，C6 tool execution、C7 workspace/external 与 C11 resume 已实现。
+- 接下来需要：优先盘点并关闭 C7 workspace/external sibling 旁路，将 workspace/external receipt 与 VS Code/CLI 恢复单元、持久化对账直接绑定；随后合批推进 C4/C5、C8～C10、C11 其余协作能力、C13 与本地 C14 前置，并且只在证明不可达后删除旧执行路径。
 - 当前验收：每项能力必须在所有适用 Surface 可达，不能绕过 Kernel、authority、mutation、verification 或 completion owner；成功、拒绝、失败、恢复和取消路径均有可复算证据。
-- 本地迭代估算：I12 后，当前 C6/C7-C11 批次还需约 1～2 次集中迭代；其余 48 项 `proposed` 可按契约规划、实现验证、长任务扩展三大批并行审计，但不能在未读取实际可达性前承诺固定轮次。real Provider、外部 authority 与 sealed holdout 仍不属于本地实现完成计数。
+- 本地迭代估算：I13 后，当前 C7-C11 批次还需约 1～2 次集中迭代；其余 45 项 `proposed` 可按契约规划、实现验证、长任务扩展三大批并行审计，但不能在未读取实际可达性前承诺固定轮次。real Provider、外部 authority 与 sealed holdout 仍不属于本地实现完成计数。
 - 文档收敛：01 已整份移入 `archive/` 且根目录无副本；02～09、16 继续承担对标、目标架构、能力、资格和工程准则责任，不按局部卡完成提前归档。
 - 资格边界：Gate 0=`NOT_PASSED`、6 个外部 blocker 和 claims=0 保持不变；它们只阻止 qualification promotion。已授权的 headed DeepSeek 路径仍须等待外部前置满足。
 

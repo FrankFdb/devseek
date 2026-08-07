@@ -3,8 +3,8 @@ import {
   sha256Object,
 } from './devseek-capability-ledger.mjs';
 
-export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v21';
-export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v21';
+export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v22';
+export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v22';
 
 const SOURCE_PATHS = Object.freeze({
   gate0: 'docs/process/devseek-gate0-decision-report.json',
@@ -39,6 +39,9 @@ const SOURCE_PATHS = Object.freeze({
   sharedCheckpoint: 'packages/shared/src/coding-checkpoint.ts',
   sharedContextCompaction: 'packages/shared/src/coding-context-compaction.ts',
   sharedResumeIdempotency: 'packages/shared/src/coding-resume-idempotency.ts',
+  sharedProviderEvents: 'packages/shared/src/coding-provider-events.ts',
+  sharedToolSchema: 'packages/shared/src/coding-tool-schema.ts',
+  sharedToolDispatch: 'packages/shared/src/coding-tool-dispatch.ts',
   sharedToolExecution: 'packages/shared/src/coding-tool-execution.ts',
   sharedWorkspaceMutation: 'packages/shared/src/coding-workspace-mutation.ts',
   sharedVerification: 'packages/shared/src/coding-verification.ts',
@@ -151,6 +154,9 @@ const SOURCE_CHECKS = Object.freeze([
     'new CanonicalCheckpointService()',
     'new CanonicalContextCompactionService()',
     'new CanonicalResumeIdempotencyService()',
+    'new CanonicalProviderEventService()',
+    'new CanonicalToolSchemaRegistry()',
+    'new CanonicalToolDispatchService(TOOL_SCHEMAS)',
     'TASK_CONTRACT.snapshot(request.taskContract)',
     'CONTEXT_GRAPH.build({',
     'MEMORY_POLICY.selectContext({',
@@ -158,6 +164,9 @@ const SOURCE_CHECKS = Object.freeze([
     'CHECKPOINT.restore(request.resumeCheckpoint',
     'CONTEXT_COMPACTION.bind({',
     'RESUME_IDEMPOTENCY.bind({ restore: resume, receipts: request.resumeReceipts })',
+    'providerEvents: PROVIDER_EVENTS',
+    'toolSchemas: TOOL_SCHEMAS',
+    'toolDispatch: TOOL_DISPATCH',
     'assertCodingOrientationPrompt(taskContract.orientation, request.userPrompt)',
     'lifecycle.beginExecution()',
     'lifecycle.settle(runtimeOutput.status)',
@@ -181,6 +190,34 @@ const SOURCE_CHECKS = Object.freeze([
     "reasons.push('sensitive-content')",
     'decisionSha256: codingSemanticDigest({',
   ], ["from 'vscode'", 'MemoryService']),
+  check('shared-canonical-provider-event-owner', SOURCE_PATHS.sharedProviderEvents, [
+    "CODING_PROVIDER_EVENT_VERSION = 'devseek.coding-provider-event/v1'",
+    'export interface ProviderEventPort',
+    'export class CanonicalProviderEventService implements ProviderEventPort',
+    'accept(event: CodingProviderEventInput)',
+    "snapshotCodingValue(event.call, 'provider-tool-call')",
+    "providerEventFailure('invalid-event-list')",
+  ], ["from 'vscode'", 'LLMProviderType']),
+  check('shared-canonical-tool-schema-owner', SOURCE_PATHS.sharedToolSchema, [
+    "CODING_TOOL_SCHEMA_VERSION = 'devseek.coding-tool-schema/v1'",
+    'export interface ToolSchemaRegistryPort',
+    'export class CanonicalToolSchemaRegistry implements ToolSchemaRegistryPort',
+    'export const CODING_TOOL_DESCRIPTORS',
+    'export const CODING_TOOL_ALIASES',
+    'modelVisible: input.modelVisible ?? true',
+    'normalizeCodingFileWriteInputs',
+  ], ["from 'vscode'", 'allowedModes', 'getToolActivity']),
+  check('shared-canonical-tool-dispatch-owner', SOURCE_PATHS.sharedToolDispatch, [
+    "CODING_TOOL_DISPATCH_VERSION = 'devseek.coding-tool-dispatch/v1'",
+    'export interface ToolDispatchPort',
+    'export class CanonicalToolDispatchService implements ToolDispatchPort',
+    "'malformed-tool-arguments'",
+    "'partial-tool-call'",
+    "'unknown-tool'",
+    "'invalid-tool-input'",
+    'projectWorkspaceArtifactPaths(input.proposal)',
+    'decideTerminalCommandPermission({',
+  ], ["from 'vscode'", 'ToolPermissionDecision']),
   check('shared-canonical-checkpoint-owner', SOURCE_PATHS.sharedCheckpoint, [
     "CODING_CHECKPOINT_VERSION = 'devseek.coding-checkpoint/v1'",
     'export interface CheckpointPort',
@@ -435,8 +472,11 @@ const SOURCE_CHECKS = Object.freeze([
     "export * from './coding-checkpoint';",
     "export * from './coding-context-compaction';",
     "export * from './coding-resume-idempotency';",
+    "export * from './coding-provider-events';",
     "export * from './coding-semantic-digest';",
     "export * from './coding-tool-execution';",
+    "export * from './coding-tool-dispatch';",
+    "export * from './coding-tool-schema';",
     "export * from './coding-workspace-mutation';",
     "export * from './coding-verification';",
     "export * from './coding-completion';",
@@ -1089,8 +1129,9 @@ const SOURCE_CHECKS = Object.freeze([
     'const outcome = await this.executor.execute(action, {',
     'mutationPlan = buildCodingWorkspaceMutationPlan({',
     'this.transaction.execute(mutationPlan, this.mutation)',
-    'collectCliWorkspaceMutationPaths(settledAction.input.proposal)',
-    'classifyCodingTerminalEffects(input.command)',
+    'paths: input.call.targetPaths',
+    "assertDispatchedOperation(input.call, 'apply_workspace_artifacts')",
+    "assertDispatchedOperation(input.call, 'run_terminal')",
     "? 'indeterminate'",
   ], [
     'CanonicalCodingKernel',
@@ -1404,6 +1445,15 @@ function buildSemanticDomains() {
     ], []),
     domain('settlement-decision', 'SettlementDecisionPort', [
       owner('shared-CanonicalSettlementDecisionService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedSettlement),
+    ], []),
+    domain('provider-normalization', 'ProviderEventPort', [
+      owner('shared-CanonicalProviderEventService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedProviderEvents),
+    ], []),
+    domain('tool-schema', 'ToolSchemaRegistryPort', [
+      owner('shared-CanonicalToolSchemaRegistry', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedToolSchema),
+    ], []),
+    domain('tool-dispatch', 'ToolDispatchPort', [
+      owner('shared-CanonicalToolDispatchService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedToolDispatch),
     ], []),
     domain('tool-execution', 'ToolExecutorPort', [
       owner('shared-CanonicalToolExecutor', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedToolExecution),

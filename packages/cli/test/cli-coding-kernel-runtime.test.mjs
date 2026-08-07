@@ -12,6 +12,7 @@ import {
   CanonicalCodingKernel,
   buildCodingKernelTaskContract,
 } from '../../shared/dist/index.js';
+import { loadUserSimulationCase } from '../../../scripts/lib/devseek-user-simulation-fixture.mjs';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const cliRoot = path.resolve(testDir, '..');
@@ -39,6 +40,7 @@ function createHarness({
   repairResult = 'repaired response',
   usesBridge = false,
   mode = 'change',
+  prompt = 'Change the value, but intentionally fail the first response.',
 } = {}) {
   const interpreted = [];
   const mutations = [];
@@ -105,7 +107,6 @@ function createHarness({
       return verificationOutcome(request, result);
     },
   };
-  const prompt = 'Change the value, but intentionally fail the first response.';
   const kernel = new CanonicalCodingKernel(new CliCodingKernelRuntimeAdapter(
     artifactInterpreter,
     workspaceMutation,
@@ -396,4 +397,50 @@ test('canonical CLI runtime closes recovery as failed when the repair provider f
     length: 'repair provider unavailable'.length,
     sha256: createHash('sha256').update('repair provider unavailable').digest('hex'),
   });
+});
+
+test('I13-CLI-01 user journey: CLI protected artifact path is denied before workspace mutation', async () => {
+  const scenario = loadUserSimulationCase('I13', 'I13-CLI-01');
+  const harness = createHarness({
+    prompt: scenario.input.prompt,
+    changedFiles: [[scenario.input.attempted_path]],
+  });
+
+  await assert.rejects(
+    harness.kernel.execute(harness.request),
+    /none could be applied/u,
+  );
+
+  assert.equal(harness.mutations.length, 0);
+  assert.equal(harness.verifications.length, 0);
+  assert.equal(harness.repairRequests.length, 0);
+});
+
+test('I13-CLI-02 user journey: CLI unknown terminal command is conservatively denied as a workspace effect', async () => {
+  const scenario = loadUserSimulationCase('I13', 'I13-CLI-02');
+  const harness = createHarness({
+    prompt: scenario.input.prompt,
+    responses: [{
+      candidateCount: 1,
+      fileToolCalls: [],
+      terminalToolCalls: [{
+        name: 'run_terminal',
+        command: scenario.input.command,
+        workdir: scenario.input.workdir,
+      }],
+    }],
+  });
+
+  const output = await harness.kernel.execute(harness.request);
+
+  assert.equal(harness.mutations.length, 0);
+  assert.equal(harness.verifications.length, 0);
+  assert.equal(output.status, 'blocked');
+  assert.equal(output.result.toolExecutions[0].status, 'denied');
+  assert.deepEqual(output.result.toolExecutions[0].effects, ['process', 'workspace-mutation']);
+  assert.equal(output.result.toolExecutions[0].permission.decision, 'deny');
+  assert.equal(
+    output.result.toolExecutions[0].evidenceRefs.some(ref => ref.includes('cli-terminal-policy')),
+    true,
+  );
 });

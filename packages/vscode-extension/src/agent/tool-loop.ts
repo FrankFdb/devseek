@@ -4,6 +4,10 @@ import * as vscode from 'vscode';
 import {
   codingToolExecutionFailureReason,
   createDevSeekTraceLogger,
+  decideTerminalCommandPermission,
+  isFileWriteToolName,
+  normalizeCodingFileWriteInputs,
+  type CodingToolCall,
   type CodingToolExecutionReceipt,
   type CodingWorkspaceMutationReceipt,
   type DevSeekTraceLogger,
@@ -13,10 +17,8 @@ import {
   type WorkspaceDeleteResult,
 } from '../workspace/edit-service';
 import { VsCodeWorkspaceMutationAdapter } from '../workspace/coding-workspace-mutation-adapter';
-import {
-  AgentToolExecutor,
-  type EvidenceRef,
-} from './tool-executor';
+import type { EvidenceRef } from './tool-executor';
+import { getAgentToolActivity } from './tool-activity';
 import { ToolReadEvidenceRecorder } from './tool-read-evidence';
 import { containsFakeToolCallProtocol, type FakeTool } from './fake-tool-parser';
 import {
@@ -37,13 +39,10 @@ import {
   detectTaskOutputScopeDrift,
 } from './task-output-scope';
 import { resolveTerminalCommandCapabilities } from '../app/environment-capability-resolver';
-import { decideTerminalCommandPermission } from '../app/terminal-command-policy';
 import { buildToolPolicy } from '../app/permission-service';
 import type { ToolKind } from '../intent/intent-types';
-import { normalizeAgentFileWriteInputs } from './tool-registry';
 import {
   createToolLoopCanonicalSession,
-  projectFileWriteActionPlan,
 } from './tool-loop-canonical-session';
 import { ToolLoopFileWriter } from './tool-loop-file-writer';
 import { analyzeTerminalEvidence } from './tool-loop-terminal-evidence';
@@ -52,7 +51,6 @@ export { analyzeTerminalEvidence } from './tool-loop-terminal-evidence';
 
 const workspaceEditService = new WorkspaceEditService();
 const workspaceMutation = new VsCodeWorkspaceMutationAdapter(workspaceEditService);
-const agentToolExecutor = new AgentToolExecutor();
 const NON_WORK_TOOL_NAMES = new Set(['manage_todo_list', 'task_complete', 'memory_write']);
 const TOOL_TRACE_LOGGERS = new Map<string, DevSeekTraceLogger>();
 
@@ -103,7 +101,7 @@ function getToolTraceLogger(workspaceRoot: string | undefined, runId: string | u
 }
 
 export function describeAgentToolActivity(tool: FakeTool): { kind: string; label: string } | undefined {
-  return agentToolExecutor.plan(tool).activity ?? undefined;
+  return getAgentToolActivity(tool) ?? undefined;
 }
 
 // ── Multi-round tool executor ─────────────────────────────────────────────────
@@ -209,7 +207,7 @@ function inferWorkspaceRootForAgentTool(defaultWorkdir?: string): string {
 }
 
 export async function executeFakeToolsForLoop(
-  tools: FakeTool[],
+  tools: Array<FakeTool | CodingToolCall>,
   callbacks: AgentLoopCallbacks,
   defaultWorkdir?: string,
   taskContext?: {
@@ -319,13 +317,14 @@ export async function executeFakeToolsForLoop(
       });
       break;
     }
-    const toolPlan = agentToolExecutor.plan(
+    const toolPlan = canonicalTools.plan(
       tools[toolIndex],
       buildToolPolicy(callbacks.executionMode ?? 'inspect'),
+      workspaceRoot,
     );
     const canonicalContext = canonicalTools.nextContext(toolPlan);
     const tool = toolPlan.tool;
-    const inputValidation = agentToolExecutor.validateInput(toolPlan);
+    const inputValidation = canonicalTools.validateInput(toolPlan);
     if (!inputValidation.ok) {
       markToolCall(isAgentWorkToolName(tool.name));
       await canonicalTools.settle(toolPlan, canonicalContext, {
@@ -995,10 +994,10 @@ export async function executeFakeToolsForLoop(
         recordToolFailure('replace_in_file', 'replace', rawPath, msg);
         parts.push(`[replace_in_file: ${rawPath}] 错误: ${msg}`);
       }
-    } else if (agentToolExecutor.isFileWrite(tool)) {
+    } else if (isFileWriteToolName(tool.name)) {
       // Unified file create/overwrite — works for new files AND full rewrites.
       // Matching Copilot's #edit/editFiles for the agentic free-explore loop.
-      const fileWrites = normalizeAgentFileWriteInputs(tool.input);
+      const fileWrites = normalizeCodingFileWriteInputs(tool.input);
       markToolCall();
       if (fileWrites.length === 0) {
         await canonicalTools.fail(toolPlan, canonicalContext, 'missing-file-write-payload');
@@ -1009,7 +1008,10 @@ export async function executeFakeToolsForLoop(
       for (let fileIndex = 0; fileIndex < fileWrites.length; fileIndex++) {
         const fileWrite = fileWrites[fileIndex];
         const { rawPath, content } = fileWrite;
-        const filePlan = projectFileWriteActionPlan(toolPlan, fileWrite);
+        const filePlan = canonicalTools.plan({
+          ...tool,
+          input: { path: rawPath, content },
+        }, buildToolPolicy(callbacks.executionMode ?? 'inspect'), workspaceRoot);
         const fileContext = fileIndex === 0
           ? canonicalContext
           : canonicalTools.nextContext(filePlan);

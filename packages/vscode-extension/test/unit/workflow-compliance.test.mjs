@@ -19,10 +19,17 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '../../');
+const repositoryRoot = path.resolve(root, '../..');
 
 /** Read a file relative to the extension root. */
 function src(relPath) {
   const absPath = path.join(root, relPath);
+  if (!existsSync(absPath)) throw new Error(`File not found: ${absPath}`);
+  return readFileSync(absPath, 'utf8');
+}
+
+function repoSrc(relPath) {
+  const absPath = path.join(repositoryRoot, relPath);
   if (!existsSync(absPath)) throw new Error(`File not found: ${absPath}`);
   return readFileSync(absPath, 'utf8');
 }
@@ -156,7 +163,7 @@ test('§3 Tools: task_complete handler present', () => {
 });
 
 test('§3 Tools: memory_write handler present', () => {
-  const registry = src('src/agent/tool-registry.ts');
+  const registry = repoSrc('packages/shared/src/coding-tool-schema.ts');
   const prompt = src('src/agent/agentic-system-prompt.ts');
   assertContains(registry, 'memory_write', '§3 memory write tool registry');
   assertContains(prompt, 'memory_write', '§3 memory write tool prompt');
@@ -168,7 +175,7 @@ test('§3 Tools: run_terminal handler present', () => {
 });
 
 test('§3 Tools: mcp__ routing present', () => {
-  const registry = src('src/agent/tool-registry.ts');
+  const registry = repoSrc('packages/shared/src/coding-tool-schema.ts');
   assertContains(registry, 'mcp__', '§3 MCP tool routing registry');
 });
 
@@ -1980,18 +1987,18 @@ test('Agent loop: explicit-content validation conflicts stop autonomous rewrite 
 test('Tool loop: file tools use canonical ground-truth outcomes', () => {
   const toolLoop = src('src/agent/tool-loop.ts');
   const fileWriter = src('src/agent/tool-loop-file-writer.ts');
-  const registry = src('src/agent/tool-registry.ts');
+  const registry = repoSrc('packages/shared/src/coding-tool-schema.ts');
   const executor = src('src/agent/tool-executor.ts');
   assertContains(registry, 'replace_file', 'replace_file tool calls must be registered as file writes, not prose');
-  assertContains(executor, 'isFileWriteTool', 'tool executor must use ToolRegistry file-write classification');
-  assertContains(toolLoop, 'agentToolExecutor.isFileWrite(tool)', 'tool loop must use ToolExecutor file-write classification');
+  assertContains(executor, 'isFileWriteToolName', 'tool executor must use shared file-write classification');
+  assertContains(toolLoop, 'isFileWriteToolName(tool.name)', 'tool loop must use shared file-write classification');
   assertContains(toolLoop, 'ToolLoopFileWriter', 'tool loop must delegate file-write execution to its semantic owner');
   assertContains(fileWriter, 'looksLikeRawToolCallText(content)', 'file write tools must block raw tool transcript content');
   assertContains(registry, "['path', 'filePath', 'filepath', 'filename', 'targetPath']", 'ToolRegistry must own common path aliases from DeepSeek/Copilot-style schemas');
   assertContains(registry, "'content', 'contents', 'text', 'body'", 'ToolRegistry must own common content aliases');
   assertContains(registry, 'FILE_WRITE_CONTENT_KEYS', 'file write tools must centralize content aliases in one schema owner');
-  assertContains(registry, 'normalizeAgentFileWriteInputs', 'ToolRegistry must normalize single-file and batch payloads');
-  assertContains(toolLoop, 'normalizeAgentFileWriteInputs(tool.input)', 'ToolLoop must consume normalized file-write inputs');
+  assertContains(registry, 'normalizeCodingFileWriteInputs', 'shared schema must normalize single-file and batch payloads');
+  assertContains(toolLoop, 'normalizeCodingFileWriteInputs(tool.input)', 'ToolLoop must consume normalized file-write inputs');
   assertContains(toolLoop, 'files:[{path,content}]', 'malformed batch file writes must return actionable feedback');
   assertContains(toolLoop, '缺少 path/filePath', 'malformed file write calls must return explicit feedback instead of silently doing nothing');
 });
@@ -2968,22 +2975,25 @@ test('R2-07A: ProviderConfigService owns secret refs and capability negotiation'
   assertContains(providerRuntime, 'primary: undefined', 'blocked provider routes must not fall back to Bridge');
 });
 
-test('R2-07B: ToolCallNormalizer owns tool call/result envelopes and fail-closed native dialects', () => {
-  const normalizer = src('src/agent/tool-call-normalizer.ts');
+test('R2-07B: shared ToolDispatch owns tool call/result envelopes and fail-closed provider dialects', () => {
+  const dispatch = repoSrc('packages/shared/src/coding-tool-dispatch.ts');
   const executor = src('src/agent/tool-executor.ts');
   const providerEvents = src('src/llm/provider-events.ts');
 
-  assertContains(normalizer, "TOOL_CALL_NORMALIZATION_PROTOCOL_VERSION = 'devseek.tool-call-normalization/v1'", 'tool call normalization owner must expose a versioned contract');
-  assertContains(normalizer, 'ToolCallNormalizationEnvelope', 'tool call/result envelope must be part of the normalizer owner contract');
-  assertContains(normalizer, 'normalizeToolCallEnvelope', 'normalizer must expose the single tool-call envelope builder');
-  assertContains(normalizer, 'toolCallToRejectedResult', 'normalizer must own rejected result envelope creation');
-  assertContains(normalizer, "'malformed-tool-arguments'", 'malformed native JSON must fail closed in the normalizer');
-  assertContains(normalizer, "'partial-tool-call'", 'partial native tool calls must fail closed in the normalizer');
-  assertContains(normalizer, "'unknown-tool'", 'unknown native tools must fail closed in the normalizer');
-  assertContains(executor, 'call.rejectionReason', 'executor must consume normalizer rejection before permission/effect');
-  assertContains(executor, 'tool-call-rejected', 'executor denial reason must preserve the normalizer rejection');
+  assertContains(dispatch, "CODING_TOOL_DISPATCH_VERSION = 'devseek.coding-tool-dispatch/v1'", 'tool dispatch owner must expose a versioned contract');
+  assertContains(dispatch, 'CodingToolDispatchEnvelope', 'tool call/result envelope must be part of the dispatch contract');
+  assertContains(dispatch, 'class CanonicalToolDispatchService', 'shared dispatch must own canonical tool-call projection');
+  assertContains(dispatch, 'codingToolCallToRejectedResult', 'dispatch must own rejected result envelope creation');
+  assertContains(dispatch, "'malformed-tool-arguments'", 'malformed native JSON must fail closed in dispatch');
+  assertContains(dispatch, "'partial-tool-call'", 'partial native tool calls must fail closed in dispatch');
+  assertContains(dispatch, "'unknown-tool'", 'unknown native tools must fail closed in dispatch');
+  assertContains(executor, 'call.rejectionReason', 'executor must consume dispatch rejection before permission/effect');
+  assertContains(executor, 'tool-call-rejected', 'executor denial reason must preserve dispatch rejection');
   assertContains(providerEvents, 'llmEventsToToolCallEnvelopes', 'provider event conversion must expose normalized envelopes for native/text dialects');
-  assertContains(providerEvents, 'normalizeToolCallEnvelope', 'provider event conversion must delegate normalization to the normalizer owner');
+  assertContains(providerEvents, 'boundary.toolDispatch.dispatch', 'provider event conversion must delegate normalization to shared dispatch');
+  assertContains(providerEvents, 'boundary.dispatchContext', 'provider normalization must preserve run-scoped dispatch context');
+  assertDoesNotContain(providerEvents, 'ProviderNormalizationPorts', 'the obsolete dependency-only normalization boundary must stay deleted');
+  assert.equal(existsSync(path.join(root, 'src/agent/tool-call-normalizer.ts')), false, 'obsolete surface normalizer must stay deleted');
 });
 
 test('R2-07C: ProviderRuntime owns fallback continuity and fresh request replay policy', () => {
@@ -3263,8 +3273,10 @@ test('Architecture: canonical tool execution details have explicit owners', () =
   assertContains(summary, 'export function cleanAgentFinalSummaryForUser', 'summary sanitizer must live in agentic summary module');
 });
 
-test('Architecture: ToolRegistry owns agent tool metadata', () => {
-  const registry = src('src/agent/tool-registry.ts');
+test('Architecture: shared schema and dispatch own tool protocol; VS Code owns presentation only', () => {
+  const registry = repoSrc('packages/shared/src/coding-tool-schema.ts');
+  const dispatch = repoSrc('packages/shared/src/coding-tool-dispatch.ts');
+  const activity = src('src/agent/tool-activity.ts');
   const executor = src('src/agent/tool-executor.ts');
   const agenticLoop = src('src/agent/agentic-loop.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
@@ -3272,16 +3284,18 @@ test('Architecture: ToolRegistry owns agent tool metadata', () => {
   const sanitizer = src('media/webview-agent-sanitizer.js');
   const manifest = src('media/webview-agent-tool-manifest.js');
   const extensionPackage = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
-  assertContains(registry, 'AGENT_TOOL_DEFINITIONS', 'tool registry must expose tool definitions');
-  assertContains(registry, 'isFileWriteTool', 'tool registry must identify file write tools');
-  assertContains(registry, 'getToolActivity', 'tool registry must own activity metadata');
-  assertContains(registry, 'AGENT_TOOL_ALIASES', 'tool registry must expose tool aliases');
-  assertContains(registry, 'search_content', 'ToolRegistry must own search_content alias');
+  assertContains(registry, 'CODING_TOOL_DESCRIPTORS', 'shared schema must expose tool definitions');
+  assertContains(registry, 'isFileWriteToolName', 'shared schema must identify file write tools');
+  assertContains(registry, 'CODING_TOOL_ALIASES', 'shared schema must expose tool aliases');
+  assertContains(registry, 'search_content', 'shared schema must own search_content alias');
+  assertContains(dispatch, 'CanonicalToolDispatchService', 'shared dispatch must own canonical call facts');
+  assertContains(activity, 'getAgentToolActivity', 'VS Code presenter must own activity labels only');
   assertContains(executor, 'class AgentToolExecutor', 'tool executor must expose execution boundary');
   assertContains(executor, 'classifyToolKind', 'tool executor must classify tool kind for permission policy');
+  assertContains(executor, 'this.dispatch.dispatch', 'tool executor must consume shared dispatch');
   assertContains(toolLoop, "from './tool-executor'", 'tool loop must import tool executor module');
-  assertContains(toolLoop, 'agentToolExecutor.isFileWrite(tool)', 'file write branch must use tool executor helper');
-  assertContains(toolLoop, 'agentToolExecutor.plan(tool).activity', 'early activity display must use tool executor helper');
+  assertContains(toolLoop, 'canonicalTools.plan(', 'tool loop must plan through the canonical session');
+  assertContains(toolLoop, 'isFileWriteToolName(tool.name)', 'file write branch must use shared schema classification');
   assertContains(agenticLoop, 'describeAgentToolActivity(t)', 'agentic loop must call the tool-loop activity service');
   assertContains(webview, 'DevSeekAgentToolManifest', 'webview runtime must load generated tool manifest');
   assertContains(manifest, 'search_content', 'generated webview manifest must include ToolRegistry aliases');
@@ -3292,6 +3306,7 @@ test('Architecture: ToolRegistry owns agent tool metadata', () => {
   assert.ok(existsSync(path.join(root, 'test/fixtures/deepseek-tool-transcripts.mjs')), 'DeepSeek transcript fixtures must exist');
   assert.ok(existsSync(path.join(root, 'test/unit/tool-protocol-contract.test.mjs')), 'tool protocol replay contract must exist');
   assert.doesNotMatch(sanitizer, /search_content/, 'webview sanitizer must not keep hand-written tool aliases');
+  assert.equal(existsSync(path.join(root, 'src/agent/tool-registry.ts')), false, 'obsolete VS Code registry must stay deleted');
 });
 
 test('Architecture: AgentEvent union lives in agent layer', () => {

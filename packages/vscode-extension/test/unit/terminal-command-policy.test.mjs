@@ -17,7 +17,7 @@ const rootDir = path.resolve(__dirname, '../../');
 const bundlePath = path.join(rootDir, 'test/unit/terminal-command-policy.bundle.cjs');
 
 execSync(
-  `npx esbuild src/app/terminal-command-policy.ts --bundle ` +
+  `npx esbuild ../shared/src/coding-terminal-command-policy.ts --bundle ` +
   `--outfile=${bundlePath} --format=cjs --platform=node --external:vscode`,
   { cwd: rootDir, stdio: 'pipe' },
 );

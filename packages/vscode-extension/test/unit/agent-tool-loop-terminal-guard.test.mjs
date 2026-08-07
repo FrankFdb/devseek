@@ -150,7 +150,7 @@ test('ToolLoop work-tool classifier keeps meta tools separate from real work', (
   assert.equal(isAgentWorkToolName('run_terminal'), true);
 });
 
-test('R3-05A ToolLoop memory_write emits an approval-required structured proposal', async () => {
+test('R3-05A ToolLoop memory_write blocks unconfirmed persistence before the host runs', async () => {
   let proposal;
   const result = await executeFakeToolsForLoop(
     [{ name: 'memory_write', input: { content: '本仓库默认使用 npm test 做回归验证。' } }],
@@ -165,11 +165,17 @@ test('R3-05A ToolLoop memory_write emits an approval-required structured proposa
     { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: '/tmp/project' },
   );
 
-  assert.equal(proposal.type, 'verified-experience');
-  assert.equal(proposal.scope, 'repository');
-  assert.equal(proposal.source.kind, 'agent');
-  assert.equal(proposal.requiresUserApproval, true);
-  assert.match(result.feedbackForAI, /用户审批/);
+  assert.equal(proposal, undefined);
+  assert.match(result.feedbackForAI, /external-effect-requires-confirmation/);
+  assert.deepEqual(
+    result.toolExecutionReceipts?.map(receipt => ({
+      tool: receipt.tool,
+      purpose: receipt.purpose,
+      effects: receipt.effects,
+      status: receipt.status,
+    })),
+    [{ tool: 'memory_write', purpose: 'external-effect', effects: ['process'], status: 'denied' }],
+  );
 });
 
 test('ToolLoop fails closed when an execution policy is missing', async () => {
@@ -305,7 +311,6 @@ test('ToolLoop settles every observation and control tool through canonical rece
       { name: 'vscode_listCodeUsages', input: { symbol: 'Owner' } },
       { name: 'manage_todo_list', input: { todoList: [{ id: 1, title: 'verify', status: 'in-progress' }] } },
       { name: 'task_complete', input: { summary: 'candidate only' } },
-      { name: 'memory_write', input: { content: 'Use canonical receipts.' } },
     ];
     const result = await executeFakeToolsForLoop(tools, {
       onReadFile: async () => 'file',
@@ -316,7 +321,6 @@ test('ToolLoop settles every observation and control tool through canonical rece
       onGetChangedFiles: async () => 'changes',
       onFetchWebpage: async () => 'webpage',
       onListCodeUsages: async () => 'usages',
-      onMemoryWrite: async () => {},
       onAgentStatus: async () => {},
     }, projectRoot, { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: projectRoot });
 

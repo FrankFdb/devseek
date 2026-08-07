@@ -1,4 +1,4 @@
-import type { ToolCall } from '../agent/tool-call-normalizer';
+import type { CodingToolCall } from '@devseek-netai/shared';
 import type { ChatMessage, ContentPart, LLMChatOptions, LLMProviderCapability, LLMProviderHealth, LLMProviderType } from './types';
 import {
   negotiateProviderCapabilities,
@@ -38,7 +38,7 @@ export interface ProviderOperationFact {
   effectState?: ProviderEffectState;
   description?: string;
   mutatesWorkspace?: boolean;
-  toolCalls?: ToolCall[];
+  toolCalls?: CodingToolCall[];
 }
 
 export type ProviderEffectState = 'planned' | 'committed' | 'failed' | 'rejected';
@@ -224,7 +224,7 @@ function hasCapabilities(
 function isDestructiveOperation(fact: ProviderOperationFact): boolean {
   if (fact.mutatesWorkspace) return true;
   return (fact.toolCalls ?? []).some(call => {
-    return call.definition?.mutatesWorkspace === true
+    return call.descriptor?.mutatesWorkspace === true
       || call.risk === 'high'
       || call.kind === 'edit'
       || call.kind === 'terminal'

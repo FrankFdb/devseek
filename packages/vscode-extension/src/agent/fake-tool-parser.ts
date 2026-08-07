@@ -1,8 +1,8 @@
 import {
-  listAgentToolNames,
-  normalizeAgentToolInput,
-  normalizeAgentToolName,
-} from './tool-registry';
+  listCodingToolNames as listAgentToolNames,
+  normalizeCodingToolInput as normalizeAgentToolInput,
+  normalizeCodingToolName as normalizeAgentToolName,
+} from '@devseek-netai/shared';
 import {
   findFirstModelToolProtocolStart,
   isolateModelToolRequestText,
@@ -191,7 +191,7 @@ function isShellTranscriptName(name: string): boolean {
 function normalizeToolInput(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
   return unwrapNestedFileWriteContentEnvelope(
     normalizeAgentToolName(toolName),
-    normalizeAgentToolInput(toolName, input),
+    { ...normalizeAgentToolInput(toolName, input) },
   );
 }
 

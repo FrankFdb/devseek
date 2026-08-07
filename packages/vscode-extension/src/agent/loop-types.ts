@@ -15,6 +15,8 @@ import type {
   CodingCheckpoint,
   CodingExternalEffectReconciliation,
   CodingExternalEffectSessionPort,
+  ProviderEventPort,
+  ToolDispatchPort,
   CodingToolAuthoritySessionPort,
   CodingToolExecutionReceipt,
   CodingToolHostResult,
@@ -64,6 +66,8 @@ export interface AgentLoopCallbacks {
   /** Kernel-owned authority/effect sessions. Product execution always supplies both together. */
   canonicalToolAuthority?: CodingToolAuthoritySessionPort;
   canonicalExternalEffects?: CodingExternalEffectSessionPort;
+  canonicalProviderEvents?: ProviderEventPort;
+  canonicalToolDispatch?: ToolDispatchPort;
   /** Unified filesystem root for this run's provider/tool trace files. */
   traceWorkspaceRoot?: string;
   /** Run-scoped participant capability used by provider/Bridge evidence adapters. */

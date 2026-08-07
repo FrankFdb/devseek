@@ -10,7 +10,10 @@ import {
   type CodingToolSurfaceConstraint,
   type RunEvidenceJson,
 } from '@devseek-netai/shared';
-import { decideTerminalCommandPermission, type TerminalCommandRiskClass } from './terminal-command-policy';
+import {
+  decideTerminalCommandPermission,
+  type TerminalCommandRiskClass,
+} from '@devseek-netai/shared';
 import { buildToolPolicy, decideToolPermission, type ToolPolicy } from './permission-service';
 import { shouldUseManualReviewLaunchMode } from './terminal-launch-classifier';
 import {

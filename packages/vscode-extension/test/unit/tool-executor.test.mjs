@@ -12,23 +12,16 @@ import path from 'node:path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
 const bundlePath = path.join(rootDir, 'test/unit/tool-executor.bundle.cjs');
-const normalizerBundlePath = path.join(rootDir, 'test/unit/tool-call-normalizer.executor-test.bundle.cjs');
 
 execSync(
   `npx esbuild src/agent/tool-executor.ts --bundle ` +
   `--outfile=${bundlePath} --format=cjs --platform=node --external:vscode`,
   { cwd: rootDir, stdio: 'pipe' },
 );
-execSync(
-  `npx esbuild src/agent/tool-call-normalizer.ts --bundle ` +
-  `--outfile=${normalizerBundlePath} --format=cjs --platform=node --external:vscode`,
-  { cwd: rootDir, stdio: 'pipe' },
-);
-
 const req = createRequire(import.meta.url);
 const { AgentToolExecutor, classifyToolKind } = req(bundlePath);
-const { normalizeToolCallEnvelope } = req(normalizerBundlePath);
 const {
+  CanonicalToolDispatchService,
   CanonicalToolAuthorityService,
   resolveCodingKernelTaskContract,
 } = req(path.join(rootDir, '../shared/dist/index.js'));
@@ -124,14 +117,14 @@ test('AgentToolExecutor: rejects unregistered tools before execution', () => {
   assert.equal(plan.permission.reason, 'tool-call-rejected:unknown-tool');
 });
 
-test('AgentToolExecutor: consumes normalizer rejection before permission and effects', () => {
+test('AgentToolExecutor: consumes shared dispatch rejection before permission and effects', () => {
   const executor = new AgentToolExecutor();
-  const envelope = normalizeToolCallEnvelope({
+  const envelope = new CanonicalToolDispatchService().dispatch({
     function: {
       name: 'write_file',
       arguments: '{"path":',
     },
-  }, 'native');
+  }, { source: 'native' });
   const plan = executor.plan(
     envelope.call,
     {

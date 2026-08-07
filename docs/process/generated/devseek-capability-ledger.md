@@ -4,7 +4,7 @@
 
 - Schema: `devseek.capability-ledger/v1`
 - Capabilities: 76
-- Ledger SHA-256: `ec0581c90d8a1de71eecc8bd324d9722c22c6ec5aec3dd515a3300a39b855c78`
+- Ledger SHA-256: `e3c48709c0328d6ccd3a0cd9595e64aae5a7d4300b43e91e1ea79c3292514950`
 - Qualification claim policy: `deny-until-signed-evidence-validator`
 
 | Capability | Priority | Applicability | Claim scopes | Implementation | Qualification | Authority port | Typed dependencies |
@@ -65,10 +65,10 @@
 | `C5-DESIGN-DECISION` | P1 | active | core-coding | proposed | — | `DesignDecisionPort` | C4-ACCEPTANCE-CONTRACT (semantic/wired) |
 | `C6-CAPABILITY-NEGOTIATION` | P0 | active | core-coding | proposed | — | `ProviderCapabilityPort` | C6-PROVIDER-NORMALIZATION (execution/wired)<br>C6-TOOL-SCHEMA (execution/wired) |
 | `C6-DEEPSEEK-WEB-CONNECTOR` | P0 | active | core-coding | proposed | — | `DeepSeekWebConnectorPort` | C6-PROVIDER-NORMALIZATION (execution/wired)<br>C7-EXTERNAL-EFFECT (authority/wired)<br>C7-SECRETS-REDACTION (authority/wired) |
-| `C6-PROVIDER-NORMALIZATION` | P0 | active | core-coding | proposed | — | `ProviderEventPort` | C1-RUN-LIFECYCLE (control/wired) |
-| `C6-TOOL-DISPATCH` | P0 | active | core-coding | proposed | — | `ToolDispatchPort` | C6-TOOL-SCHEMA (execution/wired)<br>C1-AGENT-COMMAND (control/wired) |
+| `C6-PROVIDER-NORMALIZATION` | P0 | active | core-coding | wired | — | `ProviderEventPort` | C1-RUN-LIFECYCLE (control/wired) |
+| `C6-TOOL-DISPATCH` | P0 | active | core-coding | wired | — | `ToolDispatchPort` | C6-TOOL-SCHEMA (execution/wired)<br>C1-AGENT-COMMAND (control/wired) |
 | `C6-TOOL-EXECUTION` | P0 | active | core-coding | implemented | — | `ToolExecutionPort` | C6-TOOL-DISPATCH (execution/wired) |
-| `C6-TOOL-SCHEMA` | P0 | active | core-coding | proposed | — | `ToolSchemaRegistryPort` | C1-RUN-LIFECYCLE (control/wired) |
+| `C6-TOOL-SCHEMA` | P0 | active | core-coding | wired | — | `ToolSchemaRegistryPort` | C1-RUN-LIFECYCLE (control/wired) |
 | `C6-VISUAL-COMPUTER-USE` | P2 | conditional | visual-computer-use | proposed | — | `VisualComputerUsePort` | C6-TOOL-EXECUTION (execution/wired)<br>C7-EXTERNAL-EFFECT (authority/wired)<br>C7-SECRETS-REDACTION (authority/wired) |
 | `C7-DIRTY-WORKTREE` | P0 | active | core-coding | proposed | — | `DirtyWorktreePolicyPort` | C7-WORKSPACE-MUTATION (authority/wired) |
 | `C7-EXTERNAL-EFFECT` | P0 | active | core-coding | implemented | — | `ExternalEffectPort` | C7-PERMISSION-DECISION (authority/wired)<br>C7-SANDBOX-POLICY (authority/wired)<br>C6-TOOL-EXECUTION (execution/wired) |

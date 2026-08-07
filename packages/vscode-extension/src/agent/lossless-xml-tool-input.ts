@@ -1,4 +1,4 @@
-import { normalizeAgentToolName } from './tool-registry';
+import { normalizeCodingToolName as normalizeAgentToolName } from '@devseek-netai/shared';
 
 const FULL_FILE_WRITE_NAMES = new Set(['create_file', 'write_file', 'replace_file']);
 const PATH_KEYS = ['path', 'filePath', 'filepath', 'filename', 'targetPath'];

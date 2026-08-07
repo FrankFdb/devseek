@@ -76,6 +76,24 @@
 
 ---
 
+**变更标题**：I13 Provider 事件、工具 Schema 与调度唯一 owner 收敛（2026-08-07）
+- **需求归因**：架构债务 + 安全边界缺口 — VS Code 曾同时拥有 Provider 归一、工具注册/Schema/别名、调度及终端风险判定，CLI 另行投影 artifact 和 terminal effect；同一模型调用会因 Surface 不同而得到不同名称、风险、路径和拒绝语义。
+- **影响能力层**：C6 provider normalization/tool schema/tool dispatch，C7 permission/workspace mutation，以及 VS Code、CLI、Headless 产品适配。
+- **架构影响**：
+  - shared 新增版本化 `ProviderEventPort`、`ToolSchemaRegistryPort` 与 `ToolDispatchPort`，并由 `CanonicalCodingKernel` 组合同一实例；Provider message/delta/tool/usage/error 在边界深快照，部分端口接线直接 fail closed。
+  - 工具 canonical name、Schema、required field、别名、internal visibility、purpose/risk/effects、protected path 和 target paths 仅由 shared registry/dispatcher 投影；fake tool、native function call、Surface 输入和 internal artifact 均进入同一 envelope。
+  - CLI 只消费 canonical call；VS Code canonical session 同时持有 dispatch、authority 和 external-effect 端口，批量文件每个成员重新独立调度与结算，未确认持久记忆在宿主前拒绝。
+  - 生产引用清零后，物理删除 VS Code `tool-registry.ts`、`tool-call-normalizer.ts`、Surface 本地 `terminal-command-policy.ts` 及对应专属测试；模型可见 manifest 改由 shared Schema 生成。
+- **方案选择理由**：Claude Code 将权限和 hooks 绑定到精确 canonical tool name，Codex 将工具调用置于继承 sandbox/approval 边界的宿主运行时；DevSeek 因此把“Provider 说了什么”与“这个调用能否执行”拆成 immutable event、schema/dispatch 和 authority 三个单一职责，而不在每个 Surface 继续复制解析与风险词表。
+- **备选方案**：保留 VS Code registry/normalizer，只让 CLI 调用它们；未采用，因为 shared/Headless 会反向依赖 Surface，无法保证 native/fake 调用等价，也会保留第二 risk/effect owner。
+- **主链路验证**：Shared 348/348、CLI 74/74、Headless 26/26、Extension 163/163；Kernel owner baseline v22 的 111/111 source checks 通过，23 个 semantic domain 均为 shared 唯一 owner，missing Surface=0。
+- **回退/攻击链路验证**：Provider 原缓冲事后篡改、截断 JSON、缺少 required field、部分 provider/dispatch 接线、VS Code 工作区外绝对路径、受保护 `.env.local`、未分类 Ruby 维护命令、未确认 memory external effect 均在宿主副作用前 fail closed；I13 六个独立用户仿真 6/6，fixture SHA256=`fe768ac5019a0e6bdc97604f69175f2f60dea8c2ad1af62887cbe6aff8736e65`，原始 TAP 仅保留在 ignored 本地目录 `code/devseek-tests/provider-dispatch/runs/i13-provider-dispatch-workspace-boundary-20260807/`。
+- **结果判据变化**：C6 provider normalization/tool schema/tool dispatch 由 `proposed` 提升为 `wired`；账本当前为 27 `wired` / 4 `implemented` / 45 `proposed`，claims=0。tool execution、workspace mutation、external effect 和 resume idempotency 仍保持 `implemented`，Gate 0 仍为 `NOT_PASSED`。
+- **文档更新**：当前 PLAN、收敛 README、capability ledger、Kernel baseline、I13 user-journey manifest 与本文件；02～09、16 的当前产品/验收责任未全部完成，本轮不新增归档文档。
+- **备份/发布动作**：本变更提交后执行 extension compile、debug VSIX package 和本地覆盖安装；包身份绑定该提交，不改写 `4f8a567` 冻结候选或 `a034e5e` 历史候选。
+
+---
+
 **变更标题**：I12 工具最终授权、外部副作用与旧执行 owner 物理收敛（2026-08-07）
 - **需求归因**：安全边界缺口 + 架构债务 — Surface 曾能携带近似最终授权的字段，authority receipt 未完整绑定工具输入，external effect 与 resume 对账缺少统一 owner；已切出的旧 executor 和孤立历史 loop 继续增加误用与维护成本。
 - **影响能力层**：C6 tool execution、C7 permission/sandbox/workspace/external effect、C11 checkpoint/resume，以及 VS Code/CLI/Headless 产品适配。

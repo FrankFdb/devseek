@@ -11,9 +11,14 @@ import {
   type CodingCompletionAcceptanceDecision,
   type CodingCompletionDecision,
   type CodingConformanceProjection,
+  type CodingRawToolCall,
+  type CodingToolCall,
+  type CodingToolCallSource,
   type CodingToolExecutionReceipt,
   type CodingVerificationReceipt,
   type CodingWorkspaceMutationReceipt,
+  type ProviderEventPort,
+  type ToolDispatchPort,
   productRunEvidenceIdempotencyKey,
   summarizeTraceText,
   type ProductRunEvidenceRecordInput,
@@ -94,7 +99,12 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
     request: CodingKernelRuntimeRequest<CliCodingKernelRuntimeContext>,
   ): Promise<CodingKernelRuntimeOutput<CliCodingKernelResult>> {
     const input = request.runtimeContext;
-    let response = input.response;
+    let response = acceptCliProviderMessage(
+      request.providerEvents,
+      input.usesBridge ? 'cli-bridge' : 'cli-provider',
+      input.response,
+      request.runId,
+    );
     const changedPaths = new Set<string>();
     const toolExecutions: CodingToolExecutionReceipt<unknown>[] = [];
     const changeReceipts: CodingWorkspaceMutationReceipt<readonly string[]>[] = [];
@@ -110,12 +120,19 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
         if (terminalToolCalls.length > 0) {
           for (let index = 0; index < terminalToolCalls.length; index++) {
             const terminalCall = terminalToolCalls[index];
+            const actionId = `cli-terminal-${index + 1}`;
+            const call = dispatchCliTool(request.toolDispatch, {
+              id: actionId,
+              name: terminalCall.name,
+              input: {
+                command: terminalCall.command,
+                ...(terminalCall.workdir ? { workdir: terminalCall.workdir } : {}),
+              },
+            }, 'surface', request.workspaceRoot);
             const terminalOutcome = await this.toolExecution.executeDeniedTerminal({
               runId: request.runId,
               sequence: index + 1,
-              actionId: `cli-terminal-${index + 1}`,
-              command: terminalCall.command,
-              workdir: terminalCall.workdir,
+              call,
               authority: request.toolAuthority,
             });
             toolExecutions.push(terminalOutcome.receipt);
@@ -183,13 +200,19 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
         const recoveryCorrelation: Record<string, string> = recovery
           ? { recovery_operation_id: recovery.operationId }
           : {};
+        const workspaceCall = dispatchCliTool(request.toolDispatch, {
+          id: sideEffectOperationId,
+          name: 'apply_workspace_artifacts',
+          input: {
+            workspaceRoot: request.workspaceRoot,
+            proposal: artifactProposal,
+          },
+        }, 'internal', request.workspaceRoot);
         if (request.taskContract.mode !== 'change' && request.taskContract.mode !== 'release') {
           const denied = await this.toolExecution.executeWorkspaceMutation({
             runId: request.runId,
             sequence: sideEffectSequence,
-            actionId: sideEffectOperationId,
-            workspaceRoot: request.workspaceRoot,
-            proposal: artifactProposal,
+            call: workspaceCall,
             authority: request.toolAuthority,
           });
           toolExecutions.push(denied.outcome.receipt);
@@ -263,9 +286,7 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
         const toolExecution = await this.toolExecution.executeWorkspaceMutation({
           runId: request.runId,
           sequence: sideEffectSequence,
-          actionId: sideEffectOperationId,
-          workspaceRoot: request.workspaceRoot,
-          proposal: artifactProposal,
+          call: workspaceCall,
           authority: request.toolAuthority,
         });
         toolExecutions.push(toolExecution.outcome.receipt);
@@ -506,12 +527,18 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
           payload: { provider: 'repair', attempt: providerAttempt },
         }, repairProviderOperationId, 'cli-provider-client');
         try {
-          response = await input.requestRepair({
+          const repairResponse = await input.requestRepair({
             prompt: repairPrompt,
             files,
             operationId: repairProviderOperationId,
             signal: request.signal ?? new AbortController().signal,
           });
+          response = acceptCliProviderMessage(
+            request.providerEvents,
+            input.usesBridge ? 'cli-bridge' : 'cli-provider',
+            repairResponse,
+            request.runId,
+          );
         } catch (error) {
           noteCliRecoveryAdverse(recovery, repairProviderOperationId);
           input.recordOperationEvidence({
@@ -562,6 +589,30 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
       }
     }
   }
+}
+
+function acceptCliProviderMessage(
+  providerEvents: ProviderEventPort,
+  provider: string,
+  content: string,
+  workflowId: string,
+): string {
+  const event = providerEvents.accept({ type: 'message', provider, content, workflowId });
+  if (event.type !== 'message') throw new Error('cli-provider-event:unexpected-event-type');
+  return event.content;
+}
+
+function dispatchCliTool(
+  dispatch: ToolDispatchPort,
+  raw: CodingRawToolCall,
+  source: CodingToolCallSource,
+  workspaceRoot: string,
+): CodingToolCall {
+  const envelope = dispatch.dispatch(raw, { source, workspaceRoot });
+  if (envelope.decision !== 'accepted') {
+    throw new Error(`cli-tool-dispatch:${envelope.reason ?? 'rejected'}`);
+  }
+  return envelope.call;
 }
 
 function cliWorkspaceToolFailureMessage(errorCode: string | undefined): string {

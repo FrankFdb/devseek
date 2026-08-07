@@ -36,6 +36,9 @@
 | instruction-precedence | shared-CanonicalInstructionPrecedenceService | - | 1 | converged |
 | run-lifecycle | shared-CanonicalRunLifecycleService | - | 1 | converged |
 | settlement-decision | shared-CanonicalSettlementDecisionService | - | 1 | converged |
+| provider-normalization | shared-CanonicalProviderEventService | - | 1 | converged |
+| tool-schema | shared-CanonicalToolSchemaRegistry | - | 1 | converged |
+| tool-dispatch | shared-CanonicalToolDispatchService | - | 1 | converged |
 | tool-execution | shared-CanonicalToolExecutor | - | 1 | converged |
 | workspace-mutation | shared-CanonicalWorkspaceMutationTransaction | - | 1 | converged |
 | verification | shared-CanonicalVerificationService | - | 1 | converged |

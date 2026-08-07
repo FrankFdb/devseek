@@ -3,8 +3,8 @@ import {
   CanonicalWorkspaceMutationTransaction,
   buildCodingToolAction,
   buildCodingWorkspaceMutationPlan,
-  classifyCodingTerminalEffects,
   type CodingToolAuthoritySessionPort,
+  type CodingToolCall,
   type CodingToolExecutionOutcome,
   type CodingWorkspaceMutationReceipt,
   type ToolExecutorPort,
@@ -12,16 +12,13 @@ import {
 } from '@devseek-netai/shared';
 import type { CliCodingArtifactProposal } from './cli-coding-artifact-interpreter';
 import {
-  collectCliWorkspaceMutationPaths,
   type CliWorkspaceMutationHostAdapter,
 } from './cli-workspace-mutation-service';
 
 export interface CliWorkspaceToolExecutionInput {
   readonly runId: string;
   readonly sequence: number;
-  readonly actionId: string;
-  readonly workspaceRoot: string;
-  readonly proposal: CliCodingArtifactProposal;
+  readonly call: CodingToolCall;
   readonly authority: CodingToolAuthoritySessionPort;
 }
 
@@ -32,9 +29,7 @@ export interface CliWorkspaceToolExecutionResult {
 export interface CliDeniedTerminalToolInput {
   readonly runId: string;
   readonly sequence: number;
-  readonly actionId: string;
-  readonly command: string;
-  readonly workdir?: string;
+  readonly call: CodingToolCall;
   readonly authority: CodingToolAuthoritySessionPort;
 }
 
@@ -49,26 +44,28 @@ export class CliToolExecutionAdapter {
   async executeWorkspaceMutation(
     input: CliWorkspaceToolExecutionInput,
   ): Promise<CliWorkspaceToolExecutionResult> {
-    const actionInput = {
-      workspaceRoot: input.workspaceRoot,
-      proposal: input.proposal,
-    };
+    assertDispatchedOperation(input.call, 'apply_workspace_artifacts');
+    const actionInput = input.call.input as Readonly<{
+      workspaceRoot: string;
+      proposal: CliCodingArtifactProposal;
+    }>;
     const authority = input.authority.authorize({
-      actionId: input.actionId,
-      tool: 'cli-workspace-artifact-apply',
-      purpose: 'workspace-mutation',
-      effects: ['workspace-mutation'],
+      actionId: input.call.id,
+      tool: input.call.name,
+      purpose: input.call.purpose,
+      effects: input.call.effects,
       input: actionInput,
-      risk: 'medium',
-      targetPaths: collectCliWorkspaceMutationPaths(input.proposal),
+      risk: input.call.risk,
+      protectedPath: input.call.protectedPath,
+      targetPaths: input.call.targetPaths,
     });
     const action = buildCodingToolAction({
       runId: input.runId,
       sequence: input.sequence,
-      actionId: input.actionId,
-      tool: 'cli-workspace-artifact-apply',
-      purpose: 'workspace-mutation',
-      effects: ['workspace-mutation'],
+      actionId: input.call.id,
+      tool: input.call.name,
+      purpose: input.call.purpose,
+      effects: input.call.effects,
       input: actionInput,
       authority: authority.receipt,
     });
@@ -81,7 +78,7 @@ export class CliToolExecutionAdapter {
             sequence: settledAction.sequence,
             actionId: settledAction.actionId,
             idempotencyKey: `${settledAction.runId}:${settledAction.actionId}`,
-            paths: collectCliWorkspaceMutationPaths(settledAction.input.proposal),
+            paths: input.call.targetPaths,
             payload: settledAction.input,
             evidenceRefs: [
               ...settledAction.authority.evidenceRefs,
@@ -117,31 +114,30 @@ export class CliToolExecutionAdapter {
   executeDeniedTerminal(
     input: CliDeniedTerminalToolInput,
   ): Promise<CodingToolExecutionOutcome<never>> {
-    const effects = classifyCodingTerminalEffects(input.command);
-    const actionInput = {
-      command: input.command,
-      ...(input.workdir ? { workdir: input.workdir } : {}),
-    };
+    assertDispatchedOperation(input.call, 'run_terminal');
+    const actionInput = input.call.input;
     const authority = input.authority.authorize({
-      actionId: input.actionId,
-      tool: 'run_terminal',
-      purpose: 'external-effect',
-      effects,
+      actionId: input.call.id,
+      tool: input.call.name,
+      purpose: input.call.purpose,
+      effects: input.call.effects,
       input: actionInput,
-      risk: 'high',
+      risk: input.call.risk,
+      protectedPath: input.call.protectedPath,
+      targetPaths: input.call.targetPaths,
       surfaceConstraint: {
         decision: 'deny',
         reason: 'cli-model-terminal-requires-explicit-authorization',
-        evidenceRefs: [`cli-terminal-policy:${input.actionId}:denied`],
+        evidenceRefs: [`cli-terminal-policy:${input.call.id}:denied`],
       },
     });
     const action = buildCodingToolAction({
       runId: input.runId,
       sequence: input.sequence,
-      actionId: input.actionId,
-      tool: 'run_terminal',
-      purpose: 'external-effect',
-      effects,
+      actionId: input.call.id,
+      tool: input.call.name,
+      purpose: input.call.purpose,
+      effects: input.call.effects,
       input: actionInput,
       authority: authority.receipt,
     });
@@ -150,6 +146,12 @@ export class CliToolExecutionAdapter {
         throw new Error('denied CLI terminal host must not execute');
       },
     }, input.authority);
+  }
+}
+
+function assertDispatchedOperation(call: CodingToolCall, expectedTool: string): void {
+  if (!call.executable || !call.descriptor || call.name !== expectedTool) {
+    throw new Error(`cli-tool-execution:invalid-dispatch:${call.rejectionReason ?? call.name ?? 'unknown'}`);
   }
 }
 

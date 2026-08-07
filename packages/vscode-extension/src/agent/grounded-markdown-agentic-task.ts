@@ -6,6 +6,10 @@ import type { TaskSemanticContract } from '../task-semantic-contract';
 import { resolveTaskSemanticContract } from '../intent/task-semantic-contract-service';
 import type { ChatMessage } from '../llm/types';
 import type { ExecutionMode } from '../intent/intent-types';
+import {
+  bindProviderNormalizationBoundary,
+  type ProviderNormalizationBoundary,
+} from '../llm/provider-events';
 import { buildAgenticHistoryText, buildAgenticQualityGateForHistory } from './agentic-history';
 import { ArtifactGroundingCollector } from './artifact-grounding-lifecycle';
 import { coalesceWrittenFileEvidence } from './completion-evidence';
@@ -28,6 +32,7 @@ type GroundedMarkdownChatWithMessages = (
   traceWorkspaceRoot?: string,
   traceEvidenceParticipantToken?: string,
   onTraceEvidenceError?: (error: unknown) => void,
+  normalization?: ProviderNormalizationBoundary,
 ) => Promise<{ text: string }>;
 
 export async function tryRunGroundedMarkdownAgenticTask(
@@ -90,6 +95,11 @@ export async function tryRunGroundedMarkdownAgenticTask(
       callbacks.traceWorkspaceRoot,
       callbacks.traceEvidenceParticipantToken,
       callbacks.onTraceEvidenceError,
+      bindProviderNormalizationBoundary(
+        callbacks.canonicalProviderEvents,
+        callbacks.canonicalToolDispatch,
+        { workspaceRoot },
+      ),
     )).text,
   });
   if (!result) {

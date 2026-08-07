@@ -48,9 +48,9 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    semantic_domains: 20,
-    converged_semantic_domains: 20,
-    source_checks: 108,
+    semantic_domains: 23,
+    converged_semantic_domains: 23,
+    source_checks: 111,
     failed_source_checks: 0,
   });
   assert.deepEqual(
@@ -87,6 +87,9 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     'instruction-precedence',
     'run-lifecycle',
     'settlement-decision',
+    'provider-normalization',
+    'tool-schema',
+    'tool-dispatch',
     'tool-execution',
     'workspace-mutation',
     'verification',
@@ -313,7 +316,7 @@ test('kernel prep owner baseline checker validates the current generated artifac
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    converged_semantic_domains: 20,
+    converged_semantic_domains: 23,
     failed_source_checks: 0,
     qualification_effect: 'NONE',
   });
