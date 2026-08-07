@@ -701,7 +701,18 @@ function standaloneAuthority(runId, mode) {
       goal: `${mode} the headless workspace`,
       mode,
       deliverables: [{ id: 'change', kind: 'source-change' }],
-      acceptance: [{ id: 'settled', statement: 'The operation is settled.' }],
+      acceptance: [{
+        id: 'settled',
+        statement: 'The operation is settled.',
+        deliverableIds: ['change'],
+        oracle: {
+          kind: 'verification',
+          verifier: 'headless-test-adapter',
+          scope: ['workspace'],
+          evidenceKinds: ['verification-receipt'],
+        },
+        externalBoundaryRefs: [],
+      }],
       provenanceRefs: ['headless-test'],
     }),
   });
@@ -719,11 +730,28 @@ function runInput(fixture, workspaceRoot) {
       exclude: fixture.expected.taskContract.scope.exclude,
       deliverables: fixture.expected.taskContract.deliverables,
       constraints: fixture.expected.taskContract.constraints,
-      acceptance: fixture.expected.taskContract.acceptance,
+      acceptance: executableAcceptance(fixture),
       provenanceRefs: fixture.expected.taskContract.provenanceRefs,
     }),
     runtimeContext: { provider: 'deterministic' },
   };
+}
+
+function executableAcceptance(fixture) {
+  const deliverableIds = fixture.expected.taskContract.deliverables.map(deliverable => deliverable.id);
+  return fixture.expected.taskContract.acceptance.map(criterion => ({
+    ...criterion,
+    deliverableIds,
+    oracle: {
+      kind: 'verification',
+      verifier: 'headless-conformance-adapter',
+      scope: fixture.expected.taskContract.scope.include.length > 0
+        ? fixture.expected.taskContract.scope.include
+        : ['workspace'],
+      evidenceKinds: ['verification-receipt'],
+    },
+    externalBoundaryRefs: [],
+  }));
 }
 
 function findFixture(fixtureId) {

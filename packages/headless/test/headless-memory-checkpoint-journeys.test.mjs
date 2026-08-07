@@ -114,7 +114,18 @@ function reviewContract(goal) {
     goal,
     mode: 'review',
     deliverables: [{ id: 'report', kind: 'report' }],
-    acceptance: [{ id: 'reported', statement: 'Verified findings are reported.' }],
+    acceptance: [{
+      id: 'reported',
+      statement: 'Verified findings are reported.',
+      deliverableIds: ['report'],
+      oracle: {
+        kind: 'response-evidence',
+        verifier: 'headless-review-adapter',
+        scope: ['response'],
+        evidenceKinds: ['response-evidence'],
+      },
+      externalBoundaryRefs: [],
+    }],
     provenanceRefs: ['user:current'],
   });
 }

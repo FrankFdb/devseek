@@ -17,7 +17,20 @@ function contract(mode = 'change') {
       id: mode === 'explain' || mode === 'review' ? 'report' : 'change',
       kind: mode === 'explain' || mode === 'review' ? 'report' : 'source-change',
     }],
-    acceptance: [{ id: 'done', statement: 'The operation is settled.' }],
+    acceptance: [{
+      id: 'done',
+      statement: 'The operation is settled.',
+      deliverableIds: [mode === 'explain' || mode === 'review' ? 'report' : 'change'],
+      oracle: {
+        kind: mode === 'explain' || mode === 'review' ? 'response-evidence' : 'verification',
+        verifier: 'external-effect-test-adapter',
+        scope: ['operation'],
+        evidenceKinds: [mode === 'explain' || mode === 'review'
+          ? 'response-evidence'
+          : 'verification-receipt'],
+      },
+      externalBoundaryRefs: [],
+    }],
     provenanceRefs: ['test:user'],
   });
 }

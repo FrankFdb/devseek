@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -253,6 +253,34 @@ test('CLI bridge text mode streams SSE, propagates one run identity, and seals p
   });
 });
 
+test('CLI applies a natural model-selected target through the canonical plan revision boundary', async () => {
+  await withTestBridge(async ({ port }) => {
+    await withTempCwdAsync(async (cwd) => {
+      const result = await runCli([bin, 'exec', '--jsonl', 'Implement the requested behavior and run tests'], {
+        cwd,
+        env: {
+          ...process.env,
+          DEVSEEK_BRIDGE_PORT: String(port),
+          DEVSEEK_CLI_PROGRESS_DELAY_MS: '1',
+        },
+        timeout: 10000,
+      });
+
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(readFileSync(path.join(cwd, 'src/unplanned.cpp'), 'utf8'), 'int main() { return 0; }\n');
+      const events = readProductEvidenceRecords(cwd)
+        .filter(record => record.record_kind === 'event')
+        .map(record => record.event);
+      assert.ok(events.some(event => (
+        event.type === 'side_effect.committed'
+        && event.payload.operation_id === 'cli-file-write-1'
+      )));
+    });
+  }, () => ({
+    content: '[TOOL:create_file {"filePath":"src/unplanned.cpp","content":"int main() { return 0; }\\n"}]',
+  }));
+});
+
 test('CLI applies loose file tool JSON and emits coding evidence events', async () => {
   const marker = 'DEVSEEK_CLI_LOOSE_TOOL_TEST_OK';
   const source = [
@@ -268,7 +296,7 @@ test('CLI applies loose file tool JSON and emits coding evidence events', async 
 
   await withTestBridge(async ({ port, seenBodies }) => {
     await withTempCwdAsync(async (cwd) => {
-      const result = await runCli([bin, 'exec', '--jsonl', 'apply loose tool json'], {
+      const result = await runCli([bin, 'exec', '--jsonl', 'apply loose tool json to src/main.cpp'], {
         cwd,
         env: {
           ...process.env,
@@ -497,7 +525,7 @@ test('CLI records recovery.failed and preserves an unsafe repair apply error', a
         event.type === 'side_effect.failed' && event.payload.operation_id === 'cli-file-write-2'
       ));
       assert.ok(rejectedWrite);
-      assert.equal(rejectedWrite.payload.reason, 'workspace-path-outside-root');
+      assert.equal(rejectedWrite.payload.reason, 'workspace-path-outside-root:../escape.cpp');
       assert.equal(events.some(event => event.type === 'side_effect.indeterminate'), false);
       assert.equal(events.some(event => event.type === 'recovery.completed'), false);
       assert.equal(events.at(-1)?.type, 'run.settled');
@@ -668,7 +696,7 @@ test('CLI accepts compatible tests verifier schema with stdin stdout assertions'
 
   await withTestBridge(async ({ port }) => {
     await withTempCwdAsync(async (cwd) => {
-      const result = await runCli([bin, 'exec', '--jsonl', 'Create an interactive Python greeter and tests verifier'], {
+      const result = await runCli([bin, 'exec', '--jsonl', 'Create src/greeter.py and devseek.verify.json for an interactive Python greeter'], {
         cwd,
         env: {
           ...process.env,
@@ -701,7 +729,7 @@ test('CLI rejects invalid devseek.verify.json instead of silently passing Python
 
   await withTestBridge(async ({ port }) => {
     await withTempCwdAsync(async (cwd) => {
-      const result = await runCli([bin, 'exec', '--jsonl', 'Create a Python app with verifier'], {
+      const result = await runCli([bin, 'exec', '--jsonl', 'Create src/app.py and devseek.verify.json for a Python app verifier'], {
         cwd,
         env: {
           ...process.env,
@@ -753,7 +781,7 @@ test('CLI requires verifier evidence for explicit requested stdout outputs', asy
   await withTestBridge(async ({ port, seenBodies }) => {
     await withTempCwdAsync(async (cwd) => {
       const result = await runCli([bin, 'exec', '--jsonl', [
-        'Update devseek.verify.json so validation checks both outputs:',
+        'Create or update src/stats.py and devseek.verify.json so validation checks both outputs:',
         'RDW9_MEAN:4.0',
         'RDW9_MEDIAN:4',
         '- Return the minimal DevSeek replace_file tool call(s) needed to pass validation.',
@@ -1054,7 +1082,7 @@ test('CLI allows python verifier commands from devseek.verify.json', async () =>
 
   await withTestBridge(async ({ port }) => {
     await withTempCwdAsync(async (cwd) => {
-      const result = await runCli([bin, 'exec', '--jsonl', 'Create a Python word counter and verify it'], {
+      const result = await runCli([bin, 'exec', '--jsonl', 'Create src/word_stats.py and devseek.verify.json for a Python word counter, then verify it'], {
         cwd,
         env: {
           ...process.env,

@@ -16,7 +16,18 @@ function taskContract(goal = 'Implement durable resume') {
     goal,
     mode: 'change',
     deliverables: [{ id: 'source', kind: 'source-change', path: 'src/resume.ts' }],
-    acceptance: [{ id: 'tests', statement: 'Interrupted work resumes without replay.' }],
+    acceptance: [{
+      id: 'tests',
+      statement: 'Interrupted work resumes without replay.',
+      deliverableIds: ['source'],
+      oracle: {
+        kind: 'verification',
+        verifier: 'resume-test-suite',
+        scope: ['src/resume.ts'],
+        evidenceKinds: ['verification-receipt'],
+      },
+      externalBoundaryRefs: [],
+    }],
     provenanceRefs: ['user:current'],
   });
 }

@@ -3,8 +3,8 @@ import {
   sha256Object,
 } from './devseek-capability-ledger.mjs';
 
-export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v23';
-export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v23';
+export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v25';
+export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v25';
 
 const SOURCE_PATHS = Object.freeze({
   gate0: 'docs/process/devseek-gate0-decision-report.json',
@@ -26,6 +26,10 @@ const SOURCE_PATHS = Object.freeze({
   sharedContextGraph: 'packages/shared/src/coding-context-graph.ts',
   sharedContextProvenance: 'packages/shared/src/coding-context-provenance.ts',
   sharedInstructionPrecedence: 'packages/shared/src/coding-instruction-precedence.ts',
+  sharedRequirements: 'packages/shared/src/coding-requirements.ts',
+  sharedDesignPlan: 'packages/shared/src/coding-design-plan.ts',
+  sharedChangePlanRevision: 'packages/shared/src/coding-change-plan-revision.ts',
+  sharedWorkspaceScope: 'packages/shared/src/coding-workspace-scope.ts',
   sharedTaskContractResolver: 'packages/shared/src/coding-task-contract-resolver.ts',
   sharedOrientation: 'packages/shared/src/coding-orientation.ts',
   sharedTerminalEffects: 'packages/shared/src/coding-terminal-effects.ts',
@@ -42,6 +46,7 @@ const SOURCE_PATHS = Object.freeze({
   sharedProviderEvents: 'packages/shared/src/coding-provider-events.ts',
   sharedToolSchema: 'packages/shared/src/coding-tool-schema.ts',
   sharedToolDispatch: 'packages/shared/src/coding-tool-dispatch.ts',
+  sharedToolAuthority: 'packages/shared/src/coding-tool-authority.ts',
   sharedToolExecution: 'packages/shared/src/coding-tool-execution.ts',
   sharedOperationJournal: 'packages/shared/src/coding-operation-journal.ts',
   sharedWorkspaceMutation: 'packages/shared/src/coding-workspace-mutation.ts',
@@ -60,6 +65,7 @@ const SOURCE_PATHS = Object.freeze({
   viewProvider: 'packages/vscode-extension/src/ui/deepseek-view-provider.ts',
   productExecutor: 'packages/vscode-extension/src/product-coding-kernel-executor.ts',
   vscodeCodingContextSeed: 'packages/vscode-extension/src/app/coding-kernel-context-seed.ts',
+  vscodeRequirementQualityGate: 'packages/vscode-extension/src/app/coding-requirement-quality-gate.ts',
   vscodeRunEvidenceRetention: 'packages/vscode-extension/src/app/coding-run-evidence-retention.ts',
   settlementState: 'packages/vscode-extension/src/app/settlement-state.ts',
   agentRunSettlement: 'packages/vscode-extension/src/app/agent-run-settlement.ts',
@@ -154,6 +160,9 @@ const SOURCE_CHECKS = Object.freeze([
     'new CanonicalSettlementDecisionService()',
     'new CanonicalTaskContractService()',
     'new CanonicalContextGraphService()',
+    'new CanonicalRequirementDecisionService()',
+    'new CanonicalDesignDecisionService()',
+    'new CanonicalChangePlanService()',
     'new CanonicalMemoryPolicyService()',
     'new CanonicalCheckpointService()',
     'new CanonicalContextCompactionService()',
@@ -163,6 +172,9 @@ const SOURCE_CHECKS = Object.freeze([
     'new CanonicalToolDispatchService(TOOL_SCHEMAS)',
     'TASK_CONTRACT.snapshot(request.taskContract)',
     'CONTEXT_GRAPH.build({',
+    'REQUIREMENTS.decide({ taskContract, contextGraph })',
+    'DESIGN.decide({',
+    'CHANGE_PLAN.create({',
     'MEMORY_POLICY.selectContext({',
     'CHECKPOINT.bind({',
     'CHECKPOINT.restore(request.resumeCheckpoint',
@@ -171,6 +183,7 @@ const SOURCE_CHECKS = Object.freeze([
     'providerEvents: PROVIDER_EVENTS',
     'toolSchemas: TOOL_SCHEMAS',
     'toolDispatch: TOOL_DISPATCH',
+    'changePlan,',
     'readonly operationJournal: CodingOperationJournalPort',
     'new CanonicalWorkspaceMutationTransaction(',
     'request.operationJournal,',
@@ -259,7 +272,7 @@ const SOURCE_CHECKS = Object.freeze([
     "resumeFailure('invalid-operation-receipt-transition')",
   ], ["from 'vscode'", 'IdempotencyGuard']),
   check('shared-canonical-task-contract-owner', SOURCE_PATHS.sharedTaskContract, [
-    "CODING_KERNEL_TASK_CONTRACT_VERSION = 'devseek.coding-kernel-task-contract/v1'",
+    "CODING_KERNEL_TASK_CONTRACT_VERSION = 'devseek.coding-kernel-task-contract/v2'",
     'export interface TaskContractPort',
     'export class CanonicalTaskContractService implements TaskContractPort',
     'build(input: BuildCodingKernelTaskContractInput)',
@@ -295,12 +308,13 @@ const SOURCE_CHECKS = Object.freeze([
     'coding-codebase-exploration:',
   ], ["from 'vscode'", 'CanonicalCodingKernel']),
   check('shared-canonical-context-graph-owner', SOURCE_PATHS.sharedContextGraph, [
-    "CODING_CONTEXT_GRAPH_VERSION = 'devseek.coding-context-graph/v1'",
+    "CODING_CONTEXT_GRAPH_VERSION = 'devseek.coding-context-graph/v2'",
     'export interface ContextGraphPort',
     'export class CanonicalContextGraphService implements ContextGraphPort',
     'const orientation = this.orientation.orient({',
     'const exploration = this.exploration.explore({',
     'const instructionPrecedence = this.instructionPrecedence.resolve({',
+    'const externalSources = snapshotExternalSources(seed.externalSources ?? [])',
     'const provenance = buildContextProvenance(',
     'renderCodingContextGraphSummary(graph: CodingContextGraph)',
     'coding-context-graph:',
@@ -322,6 +336,69 @@ const SOURCE_CHECKS = Object.freeze([
     'winningSourceId:',
     'coding-instruction-precedence:',
   ], ["from 'vscode'", 'CanonicalCodingKernel']),
+  check('shared-canonical-requirements-owner', SOURCE_PATHS.sharedRequirements, [
+    "CODING_REQUIREMENT_DECISION_VERSION = 'devseek.coding-requirement-decision/v1'",
+    'export interface ExternalBoundaryPort',
+    'export interface SourceGroundingPort',
+    'export interface AcceptanceContractPort',
+    'export interface RequirementDecisionPort',
+    'export class CanonicalExternalBoundaryService implements ExternalBoundaryPort',
+    'export class CanonicalSourceGroundingService implements SourceGroundingPort',
+    'export class CanonicalAcceptanceContractService implements AcceptanceContractPort',
+    'export class CanonicalRequirementDecisionService implements RequirementDecisionPort',
+    "? 'clarification-required' as const",
+    "? 'exploration-required' as const",
+    'parentRevisionId',
+  ], ["from 'vscode'", 'requirement-contract.ts']),
+  check('shared-canonical-design-plan-owner', SOURCE_PATHS.sharedDesignPlan, [
+    "CODING_DESIGN_DECISION_VERSION = 'devseek.coding-design-decision/v1'",
+    "CODING_CHANGE_PLAN_VERSION = 'devseek.coding-change-plan/v1'",
+    'export interface DesignDecisionPort',
+    'export interface ChangePlanPort',
+    'export class CanonicalDesignDecisionService implements DesignDecisionPort',
+    'export class CanonicalChangePlanService implements ChangePlanPort',
+    'export function evaluateCodingChangePlanEffect(',
+    "change-plan-target-outside-scope:",
+    'parentPlanId',
+  ], ["from 'vscode'", 'ArchitectureDecisionContract']),
+  check('shared-canonical-change-plan-revision-owner', SOURCE_PATHS.sharedChangePlanRevision, [
+    "CODING_CHANGE_PLAN_REVISION_DECISION_VERSION = 'devseek.coding-change-plan-revision-decision/v1'",
+    'export interface CodingChangePlanRevisionSessionPort',
+    'export interface ChangePlanRevisionPort',
+    'export class CanonicalChangePlanRevisionService implements ChangePlanRevisionPort',
+    "revisionReason: 'tool-proposed-targets'",
+    'projectCodingWorkspaceTargets(candidate?.targetPaths ?? [], workspaceRoot)',
+    'change-plan-target-outside-scope:',
+  ], ["from 'vscode'", 'SurfaceChangePlanRevision']),
+  check('shared-canonical-workspace-scope-owner', SOURCE_PATHS.sharedWorkspaceScope, [
+    'export function projectCodingWorkspaceTargets(',
+    'export function codingWorkspaceTargetMatchesScope(',
+    'nodePath.relative(root, resolved)',
+    'workspace-path-outside-root:',
+    "pattern[patternIndex] === '**'",
+  ], ["from 'vscode'", 'SurfaceWorkspaceScope']),
+  check('shared-change-plan-revision-kernel-wiring', SOURCE_PATHS.sharedCodingKernel, [
+    'const CHANGE_PLAN_REVISION = new CanonicalChangePlanRevisionService(DESIGN, CHANGE_PLAN)',
+    'const changePlanRevision = CHANGE_PLAN_REVISION.bind({',
+    'changePlanRevision,',
+    'designDecisionHistory: changePlanRevision.designHistory()',
+    'changePlanHistory: changePlanRevision.planHistory()',
+    'changePlanRevisionDecisions: changePlanRevision.decisions()',
+  ], ['SurfaceChangePlanRevision']),
+  check('shared-tool-authority-consumes-current-change-plan', SOURCE_PATHS.sharedToolAuthority, [
+    'input.changePlanRevision?.ensureTargets({',
+    'changePlan: input.changePlanRevision?.currentPlan() ?? input.changePlan',
+    "revision?.status === 'denied'",
+    'projectCodingWorkspaceTargets(request.targetPaths ?? [], input.workspaceRoot)',
+  ], ['SurfaceChangePlanRevision', 'changePlan =']),
+  check('vscode-canonical-requirement-quality-gate-projection', SOURCE_PATHS.vscodeRequirementQualityGate, [
+    'CanonicalContextGraphService',
+    'CanonicalRequirementDecisionService',
+    'resolveCodingKernelTaskContract',
+    'export function evaluateCodingRequirementQualityGate(',
+    "reason: 'canonical-requirement-decision-ready'",
+    '`canonical-requirement-${decision.status}`',
+  ], ['requirement-contract', 'evaluateRequirementContract']),
   check('shared-canonical-agent-command-owner', SOURCE_PATHS.sharedAgentCommand, [
     "AGENT_COMMAND_VERSION = 'devseek.agent-command/v1'",
     'export interface AgentCommandPort',
@@ -1494,6 +1571,27 @@ function buildSemanticDomains() {
     ], []),
     domain('instruction-precedence', 'InstructionPrecedencePort', [
       owner('shared-CanonicalInstructionPrecedenceService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedInstructionPrecedence),
+    ], []),
+    domain('requirements', 'RequirementDecisionPort', [
+      owner('shared-CanonicalRequirementDecisionService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedRequirements),
+    ], []),
+    domain('external-boundary', 'ExternalBoundaryPort', [
+      owner('shared-CanonicalExternalBoundaryService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedRequirements),
+    ], []),
+    domain('source-grounding', 'SourceGroundingPort', [
+      owner('shared-CanonicalSourceGroundingService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedRequirements),
+    ], []),
+    domain('acceptance-contract', 'AcceptanceContractPort', [
+      owner('shared-CanonicalAcceptanceContractService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedRequirements),
+    ], []),
+    domain('design-decision', 'DesignDecisionPort', [
+      owner('shared-CanonicalDesignDecisionService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedDesignPlan),
+    ], []),
+    domain('change-plan', 'ChangePlanPort', [
+      owner('shared-CanonicalChangePlanService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedDesignPlan),
+    ], []),
+    domain('change-plan-revision', 'ChangePlanRevisionPort', [
+      owner('shared-CanonicalChangePlanRevisionService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedChangePlanRevision),
     ], []),
     domain('run-lifecycle', 'RunLifecyclePort', [
       owner('shared-CanonicalRunLifecycleService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedRunLifecycle),

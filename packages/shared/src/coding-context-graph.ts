@@ -27,7 +27,19 @@ import {
 } from './coding-instruction-precedence';
 import type { WorkspaceFileCandidate } from './engineering-context';
 
-export const CODING_CONTEXT_GRAPH_VERSION = 'devseek.coding-context-graph/v1' as const;
+export const CODING_CONTEXT_GRAPH_VERSION = 'devseek.coding-context-graph/v2' as const;
+
+export interface CodingExternalSourceSeed {
+  readonly sourceId: string;
+  readonly boundaryIds: readonly string[];
+  readonly locator: string;
+  readonly accessedAt: string;
+  readonly contentSha256: string;
+  readonly toolExecutionRef: string;
+  readonly externalEffectRef: string;
+}
+
+export interface CodingExternalSourceEvidence extends CodingExternalSourceSeed {}
 
 export interface CodingContextSeed {
   readonly files?: readonly WorkspaceFileCandidate[];
@@ -37,6 +49,7 @@ export interface CodingContextSeed {
   readonly gitignore?: string;
   readonly userExcludes?: readonly string[];
   readonly maxFileBytes?: number;
+  readonly externalSources?: readonly CodingExternalSourceSeed[];
 }
 
 export interface CodingWorkspaceInstructionSeed {
@@ -48,7 +61,14 @@ export interface CodingWorkspaceInstructionSeed {
   readonly sourcePriority?: number;
 }
 
-export type CodingContextNodeKind = 'task' | 'workspace' | 'file' | 'language' | 'command' | 'instruction';
+export type CodingContextNodeKind =
+  | 'task'
+  | 'workspace'
+  | 'file'
+  | 'language'
+  | 'command'
+  | 'instruction'
+  | 'external-source';
 export type CodingContextNodeStatus = 'available' | 'referenced' | 'excluded' | 'unknown';
 
 export interface CodingContextNode {
@@ -63,7 +83,7 @@ export interface CodingContextEdge {
   readonly id: string;
   readonly from: string;
   readonly to: string;
-  readonly relation: 'scoped-to' | 'contains' | 'references' | 'uses' | 'verifies-with' | 'instructs';
+  readonly relation: 'scoped-to' | 'contains' | 'references' | 'uses' | 'verifies-with' | 'instructs' | 'grounds';
 }
 
 export interface CodingContextGraph {
@@ -72,6 +92,7 @@ export interface CodingContextGraph {
   readonly orientation: EngineeringOrientationDecision;
   readonly exploration: CodebaseExplorationResult;
   readonly instructionPrecedence: CodingInstructionPrecedenceDecision;
+  readonly externalSources: readonly CodingExternalSourceEvidence[];
   readonly provenance: readonly CodingContextProvenanceRecord[];
   readonly nodes: readonly CodingContextNode[];
   readonly edges: readonly CodingContextEdge[];
@@ -103,6 +124,7 @@ export class CanonicalContextGraphService implements ContextGraphPort {
     const taskContract = snapshotCodingKernelTaskContract(input.taskContract);
     const userPrompt = requireText(input.userPrompt, 'missing-user-prompt');
     const seed = input.seed ?? {};
+    const externalSources = snapshotExternalSources(seed.externalSources ?? []);
     const candidateFiles = seed.files ?? [];
     const orientation = this.orientation.orient({
       workspaceRoot: input.workspaceRoot,
@@ -140,6 +162,7 @@ export class CanonicalContextGraphService implements ContextGraphPort {
       exploration,
       files,
       instructionPrecedence,
+      externalSources,
     );
     const nodes = new Map<string, CodingContextNode>();
     const edges = new Map<string, CodingContextEdge>();
@@ -201,6 +224,11 @@ export class CanonicalContextGraphService implements ContextGraphPort {
       );
       addEdge(edges, instructionId, taskId, 'instructs');
     }
+    for (const source of externalSources) {
+      const sourceNodeId = `external-source:${source.sourceId}`;
+      addNode(nodes, sourceNodeId, 'external-source', source.locator, 'available', [source.sourceId]);
+      addEdge(edges, sourceNodeId, taskId, 'grounds');
+    }
     const provenanceRefs = Object.freeze(unique([
       ...taskContract.provenanceRefs,
       ...orientation.evidenceRefs,
@@ -214,6 +242,7 @@ export class CanonicalContextGraphService implements ContextGraphPort {
       orientation,
       exploration,
       instructionPrecedence,
+      externalSources,
       provenance,
       nodes: Object.freeze([...nodes.values()]),
       edges: Object.freeze([...edges.values()]),
@@ -235,6 +264,7 @@ export function renderCodingContextGraphSummary(graph: CodingContextGraph): stri
     `task files: ${referencedFiles.join(', ') || 'none'}`,
     `instruction sources: ${graph.instructionPrecedence.instructions.length}`,
     `instruction conflicts: ${graph.instructionPrecedence.conflicts.length}`,
+    `grounded external sources: ${graph.externalSources.length}`,
     `build commands: ${graph.orientation.environment.buildCommands.join(' | ') || 'unknown'}`,
     `test commands: ${graph.orientation.environment.testCommands.join(' | ') || 'unknown'}`,
   ].join('\n');
@@ -247,6 +277,7 @@ function buildContextProvenance(
   exploration: CodebaseExplorationResult,
   files: readonly WorkspaceFileCandidate[],
   instructionPrecedence: CodingInstructionPrecedenceDecision,
+  externalSources: readonly CodingExternalSourceEvidence[],
 ): readonly CodingContextProvenanceRecord[] {
   const workspaceSourceId = 'workspace-root:current';
   const filesByPath = new Map(files.map(file => [file.path, file]));
@@ -280,6 +311,12 @@ function buildContextProvenance(
       content: JSON.stringify(orientation.environment),
       parentSourceIds: [workspaceSourceId],
     },
+    ...externalSources.map(source => ({
+      sourceId: source.sourceId,
+      kind: 'external-source' as const,
+      locator: source.locator,
+      contentSha256: source.contentSha256,
+    })),
   ];
   const base = service.captureMany(inputs);
   const all = [...base, ...instructionPrecedence.provenance];
@@ -287,6 +324,32 @@ function buildContextProvenance(
     graphFailure('duplicate-provenance-source');
   }
   return Object.freeze(all);
+}
+
+function snapshotExternalSources(
+  sources: readonly CodingExternalSourceSeed[],
+): readonly CodingExternalSourceEvidence[] {
+  if (!Array.isArray(sources)) graphFailure('invalid-external-sources');
+  const snapshots = sources.map(source => {
+    if (!source || typeof source !== 'object') graphFailure('invalid-external-source');
+    const accessedAt = requireText(source.accessedAt, 'invalid-external-source-accessed-at');
+    if (!Number.isFinite(Date.parse(accessedAt))) graphFailure('invalid-external-source-accessed-at');
+    const contentSha256 = requireText(source.contentSha256, 'invalid-external-source-content-sha256').toLowerCase();
+    if (!/^[a-f0-9]{64}$/u.test(contentSha256)) graphFailure('invalid-external-source-content-sha256');
+    return Object.freeze({
+      sourceId: requireText(source.sourceId, 'invalid-external-source-id'),
+      boundaryIds: Object.freeze(unique(source.boundaryIds ?? [])),
+      locator: requireText(source.locator, 'invalid-external-source-locator'),
+      accessedAt,
+      contentSha256,
+      toolExecutionRef: requireText(source.toolExecutionRef, 'invalid-external-source-tool-execution-ref'),
+      externalEffectRef: requireText(source.externalEffectRef, 'invalid-external-source-effect-ref'),
+    });
+  });
+  if (new Set(snapshots.map(source => source.sourceId)).size !== snapshots.length) {
+    graphFailure('duplicate-external-source-id');
+  }
+  return Object.freeze(snapshots);
 }
 
 function fileContentProvenance(

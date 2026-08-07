@@ -3083,50 +3083,48 @@ test('R2-04C: Evidence grounding owns external doc, MCP, and network source grou
   assertContains(evidenceGrounding, "privilegeEffect: 'none'", 'external grounding must not promote external content into local authority');
 });
 
-test('R2-05A: Judgment owners own Architecture Decision lifecycle governance', () => {
+test('R2-05A: shared DesignDecisionPort owns architecture alternatives and failure models', () => {
   const owners = src('src/app/judgment-owners.ts');
+  const design = repoSrc('packages/shared/src/coding-design-plan.ts');
 
-  assertContains(owners, "ARCHITECTURE_DECISION_PROTOCOL_VERSION = 'devseek.architecture-decision/v1'", 'architecture decisions must expose a versioned contract');
-  assertContains(owners, 'validateArchitectureDecisionLifecycle', 'architecture decision lifecycle must have one validator owner');
-  assertContains(owners, 'ArchitectureDecisionState', 'ADR lifecycle state must be typed');
-  assertContains(owners, 'failureModes', 'ADR must carry a failure model');
-  assertContains(owners, 'ports', 'ADR must declare affected ports');
-  assertContains(owners, 'nonGoals', 'ADR must declare non-goals');
-  assertContains(owners, "'parallel-owner'", 'parallel owners must veto architecture decisions');
-  assertContains(owners, "'surface-business-rule'", 'Surface-owned business rules must veto architecture decisions');
-  assertContains(owners, "'dual-write-owner'", 'dual write owners must veto architecture decisions');
+  assertContains(design, "CODING_DESIGN_DECISION_VERSION = 'devseek.coding-design-decision/v1'", 'architecture decisions must expose a shared versioned contract');
+  assertContains(design, 'DesignDecisionPort', 'architecture decisions must have one shared port');
+  assertContains(design, 'CanonicalDesignDecisionService', 'architecture decisions must have one shared service');
+  assertContains(design, 'failureModes', 'design alternatives must carry failure models');
+  assertContains(design, 'ports', 'design alternatives must declare affected ports');
+  assertContains(design, 'nonGoals', 'design alternatives must preserve non-goals');
+  assertContains(design, "id: 'semantic-owner-change'", 'the selected design must target a semantic owner');
+  assertContains(design, "id: 'surface-local-patch'", 'surface-local patches must be represented and rejected');
   assertContains(owners, "id: 'architecture-decision'", 'architecture decision governance must be registered as an owner domain');
+  assertContains(owners, "ownerModule: 'packages/shared/src/coding-design-plan.ts'", 'the registry must point to the executable shared owner');
 });
 
 test('R2-05B: Architecture decisions own impact, migration, rollback, and acceptance closure', () => {
-  const owners = src('src/app/judgment-owners.ts');
+  const design = repoSrc('packages/shared/src/coding-design-plan.ts');
 
-  assertContains(owners, 'validateArchitectureDecisionImpactClosure', 'architecture impact closure must stay with the architecture decision owner');
-  assertContains(owners, 'ArchitectureImpactSet', 'architecture decisions must carry an ImpactSet');
-  assertContains(owners, 'migrationPlan', 'architecture decisions must carry migration steps or explicit N/A evidence');
-  assertContains(owners, 'deletePlan', 'architecture decisions must carry delete steps or explicit N/A evidence');
-  assertContains(owners, 'rollbackPlan', 'architecture decisions must carry rollback steps or explicit N/A evidence');
-  assertContains(owners, 'acceptanceMapping', 'architecture decisions must map impacts to acceptance verification');
-  assertContains(owners, "'missing-caller-impact'", 'caller impacts must be explicit');
-  assertContains(owners, "'missing-generated-impact'", 'generated impacts must be explicit');
-  assertContains(owners, "'missing-schema-impact'", 'schema impacts must be explicit');
-  assertContains(owners, "'missing-release-impact'", 'release impacts must be explicit');
-  assertContains(owners, "'rollback-evidence-missing'", 'rollback plans must be evidence-bound');
+  assertContains(design, 'CodingImpactAssessment', 'architecture decisions must carry a typed ImpactSet');
+  assertContains(design, 'migration: CodingDesignPlanSection', 'architecture decisions must carry migration closure');
+  assertContains(design, 'deletion: CodingDesignPlanSection', 'architecture decisions must carry deletion closure');
+  assertContains(design, 'rollback: CodingDesignPlanSection', 'architecture decisions must carry rollback closure');
+  assertContains(design, 'acceptanceMapping', 'architecture decisions must map impacts to executable acceptance');
+  assertContains(design, "'caller'", 'caller impacts must be explicit');
+  assertContains(design, "'generated'", 'generated impacts must be explicit');
+  assertContains(design, "'schema'", 'schema impacts must be explicit');
+  assertContains(design, "'release'", 'release impacts must be explicit');
+  assertContains(design, "reason === 'rollback-unresolved'", 'unresolved rollback must block the design');
 });
 
 test('R2-05C: Architecture decisions guard plan revisions against unbound new evidence', () => {
-  const owners = src('src/app/judgment-owners.ts');
+  const design = repoSrc('packages/shared/src/coding-design-plan.ts');
 
-  assertContains(owners, 'validateArchitecturePlanRevisionGuard', 'plan revision guard must stay with the architecture decision owner');
-  assertContains(owners, 'ArchitecturePlanRevisionGuardInput', 'plan revision input must be typed');
-  assertContains(owners, 'newEvidenceIds', 'new evidence must be declared before it can change implementation');
-  assertContains(owners, 'implementationChanges', 'implementation changes must cite revision evidence');
-  assertContains(owners, 'dependencyChecks', 'dependency direction checks must be part of plan revision');
-  assertContains(owners, 'importReachabilityChecks', 'import reachability checks must be part of plan revision');
-  assertContains(owners, "'missing-plan-revision'", 'missing plan revision must block implementation changes');
-  assertContains(owners, "'unmapped-evidence-change'", 'new implementation changes must map to new evidence');
-  assertContains(owners, "'dependency-direction-violation'", 'dependency direction violations must block');
-  assertContains(owners, "'import-reachability-violation'", 'import reachability violations must block');
+  assertContains(design, 'ChangePlanPort', 'plan revision must stay with the shared change-plan owner');
+  assertContains(design, 'previousPlan: CodingChangePlan', 'plan revisions must name their parent plan');
+  assertContains(design, 'newEvidenceRefs', 'new evidence must be declared before it can revise a plan');
+  assertContains(design, "designFailure('unbound-plan-revision-evidence')", 'unbound evidence must fail closed');
+  assertContains(design, 'dependencyChecks', 'dependency direction checks must be part of the design');
+  assertContains(design, "dependency-direction-violation:", 'dependency direction violations must block');
+  assertContains(design, 'evaluateCodingChangePlanEffect', 'workspace effects must consume the accepted plan');
+  assertContains(design, 'change-plan-effect-not-authorized', 'effects absent from the plan must be denied');
 });
 
 test('Architecture: smalltalk cannot inherit restored session context or apply artifacts', () => {
@@ -4085,23 +4083,29 @@ test('DOC01 Kernel route: attached context cannot select a parallel executor', (
   assertDoesNotContain(execution, 'runLegacyPlanned', 'Kernel execution must expose one product loop port');
 });
 
-test('Architecture: R2-02 requirement contract owns acceptance and external-boundary semantics', () => {
-  const requirementContract = src('src/agent/requirement-contract.ts');
-  const agentKernel = src('src/app/agent-kernel-service.ts');
-  const runContext = src('src/app/run-context.ts');
+test('Architecture: R2-02 shared requirement ports own acceptance and external-boundary semantics', () => {
+  const taskContract = repoSrc('packages/shared/src/coding-task-contract.ts');
+  const requirements = repoSrc('packages/shared/src/coding-requirements.ts');
+  const contextGraph = repoSrc('packages/shared/src/coding-context-graph.ts');
+  const sharedKernel = repoSrc('packages/shared/src/coding-kernel.ts');
+  const qualityProjection = src('src/app/coding-requirement-quality-gate.ts');
   const workspaceApplier = src('src/workspace-applier.ts');
   const autoValidation = src('src/agent/auto-validation.ts');
 
-  assertContains(requirementContract, 'devseek.requirement-contract/v1', 'RequirementContract must expose a versioned schema');
-  assertContains(requirementContract, 'buildTaskContract(', 'RequirementContract must absorb the existing TaskContract owner');
-  assertContains(requirementContract, 'acceptanceCriteria', 'RequirementContract must own deliverable acceptance mapping');
-  assertContains(requirementContract, 'externalBoundaries', 'RequirementContract must own external boundary attribution');
-  assertContains(requirementContract, 'weak-oracle', 'RequirementContract must model weak acceptance oracles');
-  assertContains(requirementContract, 'external-source-required', 'RequirementContract must model missing external-source evidence');
-  assertContains(agentKernel, 'requirementContract', 'Kernel runs must carry the RequirementContract');
-  assertContains(runContext, 'requirementContractFingerprint', 'RunContext evidence must fingerprint the RequirementContract');
-  assertContains(workspaceApplier, 'evaluateRequirementContractAcceptance(', 'workspace apply QualityGate must consume RequirementContract acceptance');
-  assertContains(autoValidation, 'evaluateRequirementContractQuality(', 'agent auto-validation must consume RequirementContract acceptance');
+  assertContains(taskContract, "CODING_KERNEL_TASK_CONTRACT_VERSION = 'devseek.coding-kernel-task-contract/v2'", 'TaskContract must expose rich acceptance and external boundaries');
+  assertContains(requirements, 'RequirementDecisionPort', 'requirements must have one shared decision port');
+  assertContains(requirements, 'AcceptanceContractPort', 'acceptance must have one shared executable owner');
+  assertContains(requirements, 'ExternalBoundaryPort', 'external attribution must have one shared owner');
+  assertContains(requirements, 'SourceGroundingPort', 'source grounding must have one shared owner');
+  assertContains(requirements, "'weak-oracle'", 'subjective acceptance must be blocked');
+  assertContains(requirements, "'external-source-required'", 'missing external evidence must be explicit');
+  assertContains(contextGraph, 'toolExecutionRef', 'grounded sources must cite tool execution evidence');
+  assertContains(contextGraph, 'externalEffectRef', 'grounded sources must cite external-effect evidence');
+  assertContains(sharedKernel, 'requirementDecision', 'all Kernel runs must carry the shared requirement decision');
+  assertContains(qualityProjection, 'CanonicalRequirementDecisionService', 'VS QualityGate must be a projection of the shared owner');
+  assertContains(workspaceApplier, 'evaluateCodingRequirementQualityGate(', 'workspace apply must consume the canonical projection');
+  assertContains(autoValidation, 'evaluateCanonicalRequirementQuality(', 'agent validation must consume the canonical projection');
+  assert.equal(existsSync(path.join(root, 'src/agent/requirement-contract.ts')), false, 'parallel VS requirement owner must stay deleted');
 });
 
 test('Architecture: run traces and bridge lifecycle are build-aware', () => {

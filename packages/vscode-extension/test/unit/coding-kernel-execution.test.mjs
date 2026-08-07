@@ -101,7 +101,13 @@ test('canonical Kernel envelope is the only VS Code prompt and workspace authori
       goal: 'canonical prompt',
       mode: 'review',
       deliverables: [{ id: 'result', kind: 'report' }],
-      acceptance: [{ id: 'completed', statement: 'The requested work is complete.' }],
+      acceptance: [{
+        id: 'completed',
+        statement: 'The requested work is complete.',
+        deliverableIds: ['result'],
+        oracle: responseOracle(),
+        externalBoundaryRefs: [],
+      }],
       provenanceRefs: ['vscode-test'],
     }),
     operationJournal: new InMemoryCodingOperationJournal(),
@@ -255,7 +261,13 @@ test('resumed progress retains the completed prefix across rebased pending queue
         mode: 'change',
         include: [],
         deliverables: [{ id: 'result', kind: 'source-change' }],
-        acceptance: [{ id: 'completed', statement: 'The requested work is complete.' }],
+        acceptance: [{
+          id: 'completed',
+          statement: 'The requested work is complete.',
+          deliverableIds: ['result'],
+          oracle: verificationOracle('workspace'),
+          externalBoundaryRefs: [],
+        }],
         provenanceRefs: ['vscode-test'],
       }),
     }),
@@ -312,7 +324,15 @@ function execute(kernel, runtimeContext) {
     mode: runtimeContext.workflowMode === 'inspect' ? 'review' : 'change',
     include: runtimeContext.contextFiles,
     deliverables: [{ id: 'result', kind: 'source-change' }],
-    acceptance: [{ id: 'completed', statement: 'The requested work is complete.' }],
+    acceptance: [{
+      id: 'completed',
+      statement: 'The requested work is complete.',
+      deliverableIds: ['result'],
+      oracle: verificationOracle(...(runtimeContext.contextFiles.length > 0
+        ? runtimeContext.contextFiles
+        : ['workspace'])),
+      externalBoundaryRefs: [],
+    }],
     provenanceRefs: ['vscode-test'],
   });
   const recovery = runtimeContext.recovery?.kind === 'checkpoint-resume'
@@ -347,6 +367,24 @@ function execute(kernel, runtimeContext) {
     runtimeContext: effectiveRuntimeContext,
     signal: runtimeContext.callbacks?.signal,
   });
+}
+
+function verificationOracle(...scope) {
+  return {
+    kind: 'verification',
+    verifier: 'vscode-test-adapter',
+    scope,
+    evidenceKinds: ['verification-receipt'],
+  };
+}
+
+function responseOracle() {
+  return {
+    kind: 'response-evidence',
+    verifier: 'vscode-test-adapter',
+    scope: ['response'],
+    evidenceKinds: ['response-evidence'],
+  };
 }
 
 function assertCheckpointCall(calls, firstUnfinishedIndex, tasks, reason, completedUnitCount) {

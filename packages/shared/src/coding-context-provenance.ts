@@ -9,8 +9,9 @@ export type CodingContextProvenanceKind =
   | 'workspace-root'
   | 'workspace-file'
   | 'project-instruction'
-  | 'derived-environment';
-export type CodingContextAuthority = 'runtime' | 'user' | 'kernel' | 'workspace';
+  | 'derived-environment'
+  | 'external-source';
+export type CodingContextAuthority = 'runtime' | 'user' | 'kernel' | 'workspace' | 'external';
 export type CodingContextTrust = 'authoritative' | 'workspace-controlled' | 'observed' | 'derived';
 
 export interface CodingContextProvenanceInput {
@@ -93,13 +94,14 @@ function classifySource(kind: CodingContextProvenanceKind): { authority: CodingC
   if (kind === 'task-contract') return { authority: 'kernel', trust: 'authoritative' };
   if (kind === 'project-instruction') return { authority: 'workspace', trust: 'workspace-controlled' };
   if (kind === 'derived-environment') return { authority: 'kernel', trust: 'derived' };
+  if (kind === 'external-source') return { authority: 'external', trust: 'observed' };
   return { authority: 'workspace', trust: 'observed' };
 }
 
 function requireKind(value: unknown): CodingContextProvenanceKind {
   const kinds: readonly CodingContextProvenanceKind[] = [
     'runtime-policy', 'user-request', 'task-contract', 'workspace-root',
-    'workspace-file', 'project-instruction', 'derived-environment',
+    'workspace-file', 'project-instruction', 'derived-environment', 'external-source',
   ];
   if (!kinds.includes(value as CodingContextProvenanceKind)) provenanceFailure('invalid-kind');
   return value as CodingContextProvenanceKind;

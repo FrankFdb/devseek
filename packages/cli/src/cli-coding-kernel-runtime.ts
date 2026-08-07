@@ -1,6 +1,7 @@
 import {
   CanonicalCompletionDecisionService,
   buildSecretHarvestingRefusalAcceptanceEvidence,
+  codingToolExecutionFailureReason,
   hasUnsafeSecretHarvestingRefusalEvidence,
   isSecretHarvestingRefusalTaskContract,
   projectSettledCodingConformanceRun,
@@ -286,6 +287,7 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
         toolExecutions.push(workspaceExecution.outcome.receipt);
         const toolReceipt = workspaceExecution.outcome.receipt;
         if (toolReceipt.status !== 'completed') {
+          const failureReason = codingToolExecutionFailureReason(toolReceipt);
           noteCliRecoveryAdverse(recovery, sideEffectOperationId);
           input.recordOperationEvidence({
             type: toolReceipt.status === 'indeterminate' ? 'side_effect.indeterminate' : 'side_effect.failed',
@@ -299,11 +301,11 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
             payload: {
               kind: 'workspace-file-write',
               attempt: executionAttempt,
-              reason: toolReceipt.errorCode ?? 'workspace-tool-execution-failed',
+              reason: failureReason,
               ...recoveryCorrelation,
             },
           }, sideEffectOperationId);
-          throw new Error(cliWorkspaceToolFailureMessage(toolReceipt.errorCode));
+          throw new Error(cliWorkspaceToolFailureMessage(failureReason));
         }
         const changeReceipt = toolReceipt.result;
         if (!changeReceipt || changeReceipt.status !== 'committed') {
@@ -616,8 +618,15 @@ function dispatchCliTool(
 }
 
 function cliWorkspaceToolFailureMessage(errorCode: string | undefined): string {
-  if (errorCode === 'workspace-path-outside-root') {
+  if (errorCode === 'workspace-path-outside-root'
+    || errorCode?.startsWith('workspace-path-outside-root:')) {
     return 'Refusing to write outside workspace';
+  }
+  if (errorCode?.startsWith('change-plan-target-outside-scope:')) {
+    return `Refusing to write outside authorized change plan: ${errorCode.slice('change-plan-target-outside-scope:'.length)}`;
+  }
+  if (errorCode === 'change-plan-blocked') {
+    return 'Task requires an exact implementation target before workspace mutation';
   }
   return 'Model returned workspace artifacts, but none could be applied';
 }

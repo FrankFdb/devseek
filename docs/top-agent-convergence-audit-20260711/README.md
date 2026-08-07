@@ -33,14 +33,14 @@ devseek_governance:
 <!-- DEVSEEK-GOVERNANCE-STATUS:END -->
 
 - 本次复核日期：2026-08-07
-- Extension 身份规则：当前开发候选以每轮 release loop 生成的 source/artifact/install/runtime 精确回执为准；`de2768c` 是上一稳定候选，R4 v2 冻结候选仍为 `4f8a567`，原 `a034e5e` v1 清单仍是历史不可变候选，三者不得互相覆盖身份或资格效力
+- Extension 身份规则：当前开发候选以每轮 release loop 生成的 source/artifact/install/runtime 精确回执为准；`bf19be1` 是上一稳定候选，R4 v2 冻结候选仍为 `4f8a567`，原 `a034e5e` v1 清单仍是历史不可变候选，三者不得互相覆盖身份或资格效力
 - 复核原则：文档声明只作索引；结论以 `docs/process` 机器源、实际代码可达性、当前工作树和本轮重跑验证为准
 
 ## 1. 本次结论
 
 **最开始的最终目的尚未达成。**
 
-文档包已经完成诊断、对标、目标架构和资格方法设计，C0 本地可证地基也已接线。VS Code、CLI、Headless 已共用 canonical Coding Kernel、23 个收敛语义域与不可变磁盘 operation journal，Provider event、tool schema、tool dispatch、tool execution 和 workspace/external effect 不再由 Surface 各自解释；五类场景的真实工作区产品路径也已通过跨 Surface 联合验收。C1～C14 已有 24 项 `wired`。其余 45 项能力、完整长任务路线和密封 holdout 资格尚未完成，因此当前不能宣称 DevSeek 已达到顶级编程智能体目标。
+文档包已经完成诊断、对标、目标架构和资格方法设计，C0 本地可证地基也已接线。VS Code、CLI、Headless 已共用 canonical Coding Kernel、30 个收敛语义域与不可变磁盘 operation journal，Provider、tool、workspace/external effect，以及 requirement/external-source/acceptance/design/change-plan/revision 不再由 Surface 各自解释；五类固定场景和 I10～I16 增量用户路径也已通过本地验收。C1～C14 已有 30 项 `wired`。其余 39 项能力、完整长任务路线和密封 holdout 资格尚未完成，因此当前不能宣称 DevSeek 已达到顶级编程智能体目标。
 
 | 原始目的 | 当前判定 | 主要证据 |
 | --- | --- | --- |
@@ -49,19 +49,19 @@ devseek_governance:
 | 定义单一执行内核与完整生命周期 | `已完成设计` | 03、04、08 已定义目标、能力 DAG 和里程碑 |
 | 建立机器账本、证据协议和 fail-closed 裁决 | `本地实现完成，未取得资格` | C0 `7/7 wired`；Gate 0 local conformance `PASSED`；claims `0` |
 | 将 VS Code、CLI、Headless 切到同一 Coding Kernel | `本地产品责任已完成` | 三 Surface 共用 canonical Kernel、TaskContract、Tool、Mutation、Verification、Completion；五类真实工作区产品场景联合等价，legacy execution owner=0 |
-| 让 C1～C14 产品能力达到可声明等级 | `进行中` | 69 项中 24 项已 `wired`，其余 45 项为 `proposed`；C6 provider/schema/dispatch/execution 与 C7 permission/sandbox/workspace/external 已接线，无 qualification claim |
+| 让 C1～C14 产品能力达到可声明等级 | `进行中` | 69 项中 30 项已 `wired`，其余 39 项为 `proposed`；C4/C5 六项契约与规划能力，以及 C6 provider/schema/dispatch/execution、C7 permission/sandbox/workspace/external 已接线，无 qualification claim |
 | 完成正式项目、真实 Provider 与 holdout 顶级资格 | `未完成` | Gate 0 `NOT_PASSED`，6 个外部 authority blocker，R1 qualification `NOT_STARTED` |
 
 ## 2. 当前机器事实
 
 | 范围 | 2026-08-07 观测 |
 | --- | --- |
-| Capability ledger | 76 项能力、15 个域；共 31 项 `wired`、45 项 `proposed`；其中 C1～C14 为 24/69 `wired`；claims=0 |
+| Capability ledger | 76 项能力、15 个域；共 37 项 `wired`、39 项 `proposed`；其中 C1～C14 为 30/69 `wired`；claims=0 |
 | Gate 0 | local conformance `PASSED`；implementation `7/7`；repository blocker `0`；external blocker `6`；最终 `NOT_PASSED` |
 | Qualification runner | 19 个入口；1 个本地非资格 runner、10 个 catalog fixture、4 个 production disabled、4 个 historical disabled |
 | R4 | 6/6 原始 leaf completed，blocked=0；冻结时 artifact/install/runtime 与 v2 候选精确绑定，stable runtime=1、window-sensitive leaf=0；当前开发候选另由 current identity 管理 |
 | Frozen R4 candidate | 当前 `R4-RELEASE-CANDIDATE-MANIFEST/v2` 冻结 `4f8a567` VSIX；原 `a034e5e` v1 JSON/schema/view 以固定文件哈希归档为历史不可变候选；两者均无资格效力 |
-| Current local development receipt | `379efbd` 精确 VSIX 的五场景 VS Code 产品路径继续作为历史稳定回执；I10～I14 共 26 个增量案例均在本地保留原始 TAP，不进入 Git，其中 I14 新增 5 个 tool/effect restart 场景。当前精确 VSIX 身份以本轮提交后 release loop 为准，不改写 `4f8a567` 冻结候选，也不是 qualification receipt |
+| Current local development receipt | `bf19be1` 精确 VSIX 作为上一稳定本地回执；I10～I16 共 35 个增量案例均在本地保留原始 TAP，不进入 Git，其中 I15 为 5 个 requirements/design-plan 场景，I16 为 4 个 pre-effect plan-revision 场景。当前精确 VSIX 身份以本轮提交后 release loop 为准，不改写 `4f8a567` 冻结候选，也不是 qualification receipt |
 | Post-R4 local track | NP-05/06/07 manifest 已在 `5c32551` 提交；检查覆盖 16 个 source、17/17 anchors、8 个 local-only command，6/6 通过 |
 | Surface inventory | 88 个入口分母全部 covered，无 unknown、重复或待 cutover；source hash 对账通过 |
 | Architecture budget | 设计优先门禁通过，仍有 6 个明确债务热点；`extension.ts` 为 1679/1683 行；大小只作回退护栏，不替代职责、依赖和 owner 判定 |
@@ -69,7 +69,7 @@ devseek_governance:
 必须同时保留三个事实：
 
 1. R1～R3 的大量产品侧原子卡确实有本地测试、发包和 controlled VSIX 回执，不能抹消这些实现进展。
-2. 这些回执一直声明 `qualification_effect=NONE`；能力账本只将具备 owner、产品接线和机器证据的 24 项 C1～C14 能力提升为 `wired`，不能从“作业卡 PASS”批量推导其余能力已完成。
+2. 这些回执一直声明 `qualification_effect=NONE`；能力账本只将具备 owner、产品接线和机器证据的 30 项 C1～C14 能力提升为 `wired`，不能从“作业卡 PASS”批量推导其余能力已完成。
 3. 当前 process baseline 已由简短 `PLAN-当前收敛迭代计划.md` 唯一承接；14 号只保留历史回执并已归档，计划与日志责任不再混写。
 
 ## 3. 核心缺口
@@ -84,7 +84,9 @@ devseek_governance:
 ### 3.2 单内核本地产品责任已完成
 
 - VS Code、CLI、Headless 产品入口只向 shared `CanonicalCodingKernel` 提交版本化 request；Surface 不再拥有第二套完成、mutation 或 verification 语义。
-- Orientation、TaskContract、EngineeringOrientation、CodebaseExploration、ContextGraph、ContextProvenance、InstructionPrecedence、RunLifecycle、AgentCommand、Settlement、SurfaceAdapter、ProviderNormalization、ToolSchema、ToolDispatch、ToolExecution、Mutation、Verification、Completion、RunEvidenceRetention、MemoryPolicy、Checkpoint、ContextCompaction、ResumeIdempotency 23 个语义域均由 shared 单一 owner 裁决，legacy execution owner 已删除或封死。
+- Orientation、TaskContract、EngineeringOrientation、CodebaseExploration、ContextGraph、ContextProvenance、InstructionPrecedence、Requirements、ExternalBoundary、SourceGrounding、AcceptanceContract、DesignDecision、ChangePlan、ChangePlanRevision、RunLifecycle、AgentCommand、Settlement、SurfaceAdapter、ProviderNormalization、ToolSchema、ToolDispatch、ToolExecution、Mutation、Verification、Completion、RunEvidenceRetention、MemoryPolicy、Checkpoint、ContextCompaction、ResumeIdempotency 30 个语义域均由 shared 单一 owner 裁决，legacy execution owner 已删除或封死。
+- TaskContract v2 明确区分 deliverable、constraint、non-goal、assumption/conflict 和 acceptance oracle；shared C4 owner 对外部来源做 boundary、locator、content digest、tool/effect receipt 精确绑定，弱 oracle、缺来源和冲突在实现前 fail closed。
+- shared C5 owner 生成可复算的 design alternative/trade-off、impact set、migration/deletion/rollback 和 acceptance mapping；`ChangePlanRevisionPort` 在模型提出具体文件后、任何宿主 effect 前生成证据绑定的设计/计划 revision，保留 parent lineage，并由低层 authority 统一拒绝工作区逃逸、显式用户范围外目标或未授权 effect。旧 VS Code requirement contract owner 及其专属测试已删除。
 - shared filesystem journal 在宿主 effect 前写入 immutable preparation、宿主后写入 terminal settlement，并对文件和目录执行 no-follow、regular-file、hash 与 fsync 校验；VS Code、CLI、Headless 从产品组合根注入，workspace/external effect 跨重启只做可证明对账，不猜测未知远端状态。
 - 在确认生产可达性为零后，旧 `agent-loop.ts`、只服务该 executor 的 16 个传递模块、旧 UI 最终授权 owner，以及零生产引用的 `llm-agent-loop.ts` 均已物理删除；对应专属测试同步删除，静态架构守卫禁止重新导入。
 - Surface 现在只能提交 deny/allow/require-confirmation 约束和真实确认引用；最终 authority receipt 只由 Kernel session 签发，并绑定 action、effect、sandbox 与输入摘要，获批后的参数替换在宿主调用前 fail closed。
@@ -93,7 +95,7 @@ devseek_governance:
 
 ### 3.3 产品能力和资格尚未对齐
 
-- C1～C14 尚未 `wired` 的 45 项 `proposed` 能力需逐项回填“实现 owner 可达、全入口接线、失败语义、测试证据”，再由账本判定 `proposed -> implemented -> wired`。
+- C1～C14 尚未 `wired` 的 39 项 `proposed` 能力需逐项回填“实现 owner 可达、全入口接线、失败语义、测试证据”，再由账本判定 `proposed -> implemented -> wired`。C4/C5 已完成工具目标触发的同 run plan revision；后续仍需补齐实时外部来源获取、用户 clarification/steer、外部新证据驱动的 requirement/design revision、用户可审阅 plan 状态和正式资格证据，但不再另建契约或计划 owner。
 - Gate 0 缺少独立受保护 profile、aggregator、签名 evidence digest binding、WORM/retention、trusted time 和 7 个 exact claims。
 - R4 headed 真实用户路线已获得“外部资格前置满足后执行一次并保留窗口/页面”的条件授权；前置尚未满足，RC smoke 和 L6 holdout 均未执行，不能用 deterministic 或 controlled fake Bridge 结果替代。
 
@@ -134,7 +136,7 @@ devseek_governance:
 
 | ID | 任务 | 完成条件 |
 | --- | --- | --- |
-| `CAP-01` | 对 C1～C14 尚未 `wired` 的 45 项产品能力逐项反查 | 每项有 owner、入口可达性、失败/恢复语义、验证证据和真实 implementation state；不按历史卡名批量提升 |
+| `CAP-01` | 对 C1～C14 尚未 `wired` 的 39 项产品能力逐项反查 | 每项有 owner、入口可达性、失败/恢复语义、验证证据和真实 implementation state；不按历史卡名批量提升 |
 | `CAP-02` | 补齐 P0 黄金旅程 | D-G01～D-G10 的写入、修改、运行、失败、权限拒绝、cancel/resume、CAS 冲突在共享 conformance suite 下通过 |
 | `CAP-03` | 补齐 P1 软件工程能力 | 指令优先级、repo/symbol map、source grounding、设计影响、Provider normalization、review/delivery、memory/skills/hooks/MCP 分别有验收 profile |
 | `CAP-04` | 完成 Surface 和平台矩阵 | VS Code/CLI/Headless 与 Linux/macOS/Windows/WSL 的适用边界和降级都有机器证据 |
@@ -158,16 +160,18 @@ devseek_governance:
 | VS Code extension full unit runner | `PASS`，163/163 suites |
 | Intent / Surface permission focused suites | `PASS`，52/52；未分类 terminal、否定 external-effect 与 duplicate-owner 反例受保护 |
 | Natural intent UI corpus | `PASS`，48/48，12 类任务各 4 条自然输入 |
-| Shared / CLI / Headless regression | `PASS`，Shared 348/348 tests、CLI 74/74 tests、Headless 26/26 tests |
+| Shared / CLI / Headless regression | `PASS`，Shared 380/380 tests、CLI 77/77 tests、Headless 26/26 tests |
 | I10 增量用户仿真 | `PASS`，memory/checkpoint 5/5；版本化场景位于 `scripts/test/fixtures/user-simulations/i10-memory-checkpoint.json`，fixture SHA、逐例原始 TAP 与汇总仅在本地 `code/devseek-tests/memory-checkpoint/runs/i10-local-20260806-g379efbd/` 保留，不进入 Git；固定五场景不计作本轮增量 |
 | I11 增量用户仿真 | `PASS`，context/resume 4/4；版本化场景位于 `scripts/test/fixtures/user-simulations/i11-context-resume.json`，三次连续压缩、VS Code 密封收据、completed effect 跳过和 indeterminate effect 阻断均使用独立 case；原始 TAP 仅在本地 `code/devseek-tests/context-resume/runs/i11-context-resume-20260806/` 保留 |
 | I12 增量用户仿真 | `PASS`，effect/authority 6/6；版本化场景位于 `scripts/test/fixtures/user-simulations/i12-effect-authority.json`，fixture SHA256=`52c84a7b111b289745fab2aaedb950bdf90f3e51876c9de98e16b7f2768aeb85`；分别验证只读越权拒绝、Surface 字段和非当前 session receipt 伪造拒绝、授权输入替换拒绝、对账后远程变更仅执行一次、真实回执驱动 resume 跳过、completed resume receipt 拒绝替换后的 operation；原始 TAP 仅在本地 `code/devseek-tests/effect-authority/runs/i12-session-authority-final-20260807/` 保留，不进入 Git |
 | I13 增量用户仿真 | `PASS`，provider/dispatch 6/6；版本化场景位于 `scripts/test/fixtures/user-simulations/i13-provider-dispatch.json`，fixture SHA256=`fe768ac5019a0e6bdc97604f69175f2f60dea8c2ad1af62887cbe6aff8736e65`；分别验证 Provider snapshot 不受事后篡改、Schema 别名与 internal visibility、fake/native 调用等价、缺字段与部分端口 fail closed、VS Code 工作区内外绝对路径风险分类、受保护路径和未分类终端命令在宿主前拒绝；原始 TAP 仅在本地 `code/devseek-tests/provider-dispatch/runs/i13-provider-dispatch-workspace-boundary-20260807/` 保留，不进入 Git |
 | I14 增量用户仿真 | `PASS`，effect/restart 5/5；版本化场景位于 `scripts/test/fixtures/user-simulations/i14-effect-restart.json`，fixture SHA256=`cebf436847b99f44ff907519c5169714cd717b441c4e05bbae95ad4b3a58a511`；分别验证 tool identity 跨重启、VS Code/CLI mutation 已提交恢复、process-local external reconciliation fail closed 与 journal symlink containment；原始 TAP 仅在本地 `code/devseek-tests/effect-restart/runs/i14-effect-restart-20260807/` 保留，不进入 Git |
-| Kernel owner convergence baseline | `PASS`，v23、115/115 source checks、23 semantic domains converged、missing Surface=0 |
+| I15 增量用户仿真 | `PASS`，requirements/design-plan 5/5；版本化场景位于 `scripts/test/fixtures/user-simulations/i15-requirements-plan.json`，fixture SHA256=`98406978c4ef725b858b33dfe8cbd51dbe64716d46c7b5f8b0bdd15b3ba120da`；分别验证非目标隔离、external source 精确归属、弱 oracle 阻断、design/change-plan authority 和 requirement revision lineage；原始 TAP 仅在本地 `code/devseek-tests/requirements-plan/runs/i15-requirements-plan-20260807/` 保留，不进入 Git |
+| I16 增量用户仿真 | `PASS`，plan-revision 4/4；版本化场景位于 `scripts/test/fixtures/user-simulations/i16-plan-revision.json`，fixture SHA256=`110fc55ae2213dcde591b1a28ccdb5fff69cd4e6ef56a0736e1725baa3709367`；分别验证自然多文件目标发现、严格用户文件范围、工作区逃逸拒绝和 glob 范围；原始 TAP/JSON 仅在本地 `code/devseek-tests/plan-revision/runs/i16-plan-revision-20260807/` 保留，不进入 Git |
+| Kernel owner convergence baseline | `PASS`，v25、122/122 source checks、30 semantic domains converged、missing Surface=0；baseline SHA256=`2456297ba5e1801275b880cfa7382ae489f5e00417c73948a4fdee8806edae7a` |
 | Lifecycle focused/static suites | `PASS`；blocked 保真、flush 异常、证据保留与职责防绕过均覆盖 |
 | Workspace TypeScript `--noEmit` audit | `PASS`，既存 extension 类型债务已清零 |
-| Capability ledger | `PASS`，76 capabilities / 138 dependency edges；31 `wired`、45 `proposed`、claims=0 |
+| Capability ledger | `PASS`，76 capabilities / 138 dependency edges；37 `wired`、39 `proposed`、claims=0 |
 | Gate 0 decision | checker `PASS`，决策仍为 `NOT_PASSED` |
 | External authority readiness | `PASS`，10/10 请求均保持精确 blocker 与可执行下一授权动作；approved=0、local-unblockable=0、live runs=0 |
 | R4 versioned candidate manifest | `PASS`，v2 冻结 `4f8a567`；v1 `a034e5e` JSON/schema/view 与两份 VSIX 字节哈希受守卫 |
@@ -180,11 +184,11 @@ devseek_governance:
 | Legacy doc inventory | `PASS`，5/5 tests；40 个 legacy 文档全覆盖，archive 明确排除，root duplicate=0 |
 | Doc governance | `PASS`，4/4 tests；43 个受治理文档，3 个 active baseline、40 个 legacy/reference |
 | Surface product conformance | `PASS`，`379efbd` 精确 VSIX 的 VS Code create/modify/repair/permission-denied/policy-refusal 5/5 通过，并与 CLI、Headless 形成 5/5 三 Surface product-route conformance；qualification eligible=false |
-| Previous stable VSIX receipt | `PASS`，`1.0.0-debug.20260806.t180307.gde2768c`；SHA256 `56e617798efd161b37ac99d1d30f8bd63ca36a0e2350625633046310498b77f7`；该回执是本轮 release loop 前的回退基线，不冒充当前源码候选 |
-| Candidate identity rule | 当前 source/artifact/install/runtime 必须由同一轮 release loop 精确绑定；禁止从上一稳定 `de2768c` 或 R4 冻结候选继承当前候选 PASS |
+| Previous stable VSIX receipt | `PASS`，`devseek-netai-1.0.0-debug.20260807.t195224.gbf19be1.vsix`；SHA256 `ef2321650cc089e0a24b19d75ce39734a0c8a8dc77ec8be7678dcb8fc0801813`；该回执是本轮 release loop 前的回退基线，不冒充当前源码候选 |
+| Candidate identity rule | 当前 source/artifact/install/runtime 必须由同一轮 release loop 精确绑定；禁止从上一稳定 `bf19be1` 或 R4 冻结候选继承当前候选 PASS |
 | 本地用户闭环 | `PASS`，精确已安装 VSIX 的受控普通用户路径与五场景产品路径通过；Bridge 为 `session-missing`，real DeepSeek 因资格前置未满足而未执行 |
 | R4 frozen candidate identity | `PASS`，11/11；冻结验证时 stable=1、stale/unknown/unreadable=0；qualification effect=`NONE` |
-| Phase 0-12 | `PASS`，32/32；run id `2026-08-06T10-05-12-844Z`；前置失败 run `2026-08-06T09-03-17-068Z`、`2026-08-06T09-25-42-512Z`、`2026-08-06T09-31-50-408Z` 均保留诊断；Gate 0 仍为 `NOT_PASSED` |
+| Phase 0-12 | `PASS`，32/32；最终 run id `2026-08-07T14-55-58-842Z`；本轮 source-binding 诊断 run `2026-08-07T14-19-17-065Z`、`2026-08-07T14-28-23-425Z` 均保留；deterministic=`passed`，real CLI/plugin Provider=`not-run`，Gate 0 仍为 `NOT_PASSED` |
 
 受控 T3 使用真实已安装 VSIX、隔离 Extension Host 与确定性 fake Bridge，并通过测试专用消息和程序化 intent approval 驱动。它不是自然 UI、real Provider、RC smoke、T4/T5 或 qualification 证据，`qualification_effect=NONE`。
 

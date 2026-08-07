@@ -503,7 +503,18 @@ function taskContract(goal, mode) {
     goal,
     mode,
     deliverables: [{ id: 'result', kind: 'report' }],
-    acceptance: [{ id: 'settled', statement: 'The requested operation is settled safely.' }],
+    acceptance: [{
+      id: 'settled',
+      statement: 'The requested operation is settled safely.',
+      deliverableIds: ['result'],
+      oracle: {
+        kind: 'response-evidence',
+        verifier: 'headless-effect-adapter',
+        scope: ['response'],
+        evidenceKinds: ['response-evidence'],
+      },
+      externalBoundaryRefs: [],
+    }],
     provenanceRefs: ['user:current'],
   });
 }

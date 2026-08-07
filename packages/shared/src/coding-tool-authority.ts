@@ -10,7 +10,13 @@ import {
   uniqueCodingRefs,
 } from './coding-contract-utils';
 import { codingSemanticDigest } from './coding-semantic-digest';
+import {
+  evaluateCodingChangePlanEffect,
+  type CodingChangePlan,
+} from './coding-design-plan';
+import type { CodingChangePlanRevisionSessionPort } from './coding-change-plan-revision';
 import type { CodingKernelTaskContract } from './coding-task-contract';
+import { projectCodingWorkspaceTargets } from './coding-workspace-scope';
 
 export const CODING_SANDBOX_POLICY_VERSION = 'devseek.coding-sandbox-policy/v1' as const;
 export const CODING_TOOL_AUTHORITY_RECEIPT_VERSION = 'devseek.coding-tool-authority-receipt/v1' as const;
@@ -82,6 +88,7 @@ export interface CodingSandboxPolicy {
 export interface CodingPermissionDecision {
   readonly decision: CodingToolPermissionDecision;
   readonly reason: string;
+  readonly evidenceRefs?: readonly string[];
 }
 
 export interface CodingToolAuthorization {
@@ -108,6 +115,8 @@ export interface PermissionDecisionPort {
     readonly taskContract: CodingKernelTaskContract;
     readonly request: CodingToolAuthorityRequest;
     readonly sandbox: CodingSandboxPolicy;
+    readonly changePlan?: CodingChangePlan;
+    readonly workspaceRoot: string;
   }): CodingPermissionDecision;
 }
 
@@ -140,6 +149,8 @@ export interface ToolAuthorityPort {
     readonly surface: CodingConformanceSurface;
     readonly workspaceRoot: string;
     readonly taskContract: CodingKernelTaskContract;
+    readonly changePlan?: CodingChangePlan;
+    readonly changePlanRevision?: CodingChangePlanRevisionSessionPort;
   }): CodingToolAuthoritySessionPort;
 }
 
@@ -154,6 +165,25 @@ export class CanonicalPermissionDecisionService implements PermissionDecisionPor
 
     const purposeFailure = validatePurpose(request);
     if (purposeFailure) return freezeDecision('deny', purposeFailure);
+    const directWorkspaceMutation = request.purpose === 'workspace-mutation'
+      && request.effects.includes('workspace-mutation');
+    const targetProjection = directWorkspaceMutation
+      ? projectCodingWorkspaceTargets(request.targetPaths ?? [], input.workspaceRoot)
+      : undefined;
+    if (targetProjection?.decision === 'denied') {
+      return freezeDecision('deny', targetProjection.reason ?? 'workspace-path-invalid');
+    }
+    if (input.changePlan) {
+      const planDecision = evaluateCodingChangePlanEffect(input.changePlan, {
+        effects: request.purpose === 'verify'
+          ? request.effects.filter(effect => effect !== 'workspace-mutation')
+          : request.effects,
+        targetPaths: targetProjection?.targets ?? request.targetPaths ?? [],
+      });
+      if (planDecision.decision === 'deny') {
+        return freezeDecision('deny', planDecision.reason, planDecision.evidenceRefs);
+      }
+    }
     if ((input.taskContract.mode === 'explain' || input.taskContract.mode === 'review')
       && request.purpose === 'external-effect') {
       return freezeDecision('deny', `task-contract-${input.taskContract.mode}-denies-external-effect`);
@@ -236,7 +266,24 @@ export class CanonicalToolAuthorityService implements ToolAuthorityPort {
           return existing.authorization;
         }
 
-        const decision = this.permission.decide({ taskContract, request, sandbox });
+        const revision = request.purpose === 'workspace-mutation'
+          && request.effects.includes('workspace-mutation')
+          && sandbox.allowedEffects.includes('workspace-mutation')
+          && request.surfaceConstraint?.decision !== 'deny'
+          ? input.changePlanRevision?.ensureTargets({
+              actionId: request.actionId,
+              targetPaths: request.targetPaths ?? [],
+            })
+          : undefined;
+        const decision = revision?.status === 'denied'
+          ? freezeDecision('deny', revision.reason, revision.evidenceRefs)
+          : this.permission.decide({
+              taskContract,
+              request,
+              sandbox,
+              changePlan: input.changePlanRevision?.currentPlan() ?? input.changePlan,
+              workspaceRoot,
+            });
         const authorization = settleAuthorization(runId, request, decision, sandbox);
         settled.set(key, { canonicalRequest, authorization });
         return authorization;
@@ -272,6 +319,7 @@ function settleAuthorization(
     `authority-policy:${runId}:${request.actionId}:${permission.decision}`,
     `sandbox-policy:${sandbox.policySha256}`,
     ...(request.surfaceConstraint?.evidenceRefs ?? []),
+    ...(permission.evidenceRefs ?? []),
     ...(surfaceConfirmationRef ? [`authority-confirmation:${surfaceConfirmationRef}`] : []),
   ]);
   const receipt = snapshotCodingToolAuthorityReceipt({
@@ -508,6 +556,8 @@ function uniqueEffects(effects: readonly CodingToolEffect[]): readonly CodingToo
 function freezeDecision(
   decision: CodingToolPermissionDecision,
   reason: string,
+  evidenceRefs: readonly string[] = [],
 ): CodingPermissionDecision {
-  return Object.freeze({ decision, reason });
+  const refs = uniqueCodingRefs(evidenceRefs);
+  return Object.freeze({ decision, reason, ...(refs.length > 0 ? { evidenceRefs: Object.freeze(refs) } : {}) });
 }

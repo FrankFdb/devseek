@@ -292,7 +292,7 @@ test('workspace-applier: passing file check cannot override missing external att
     assert.equal(result.qualityGate.status, 'blocked');
     assert.equal(result.verificationReceipt.status, 'unverified');
     assert.equal(result.qualityGate.contractAcceptanceStatus, 'pending');
-    assert.match(result.qualityGate.summary, /external-boundary-attribution-required/);
+    assert.match(result.qualityGate.summary, /canonical-requirement-exploration-required/);
     assert.ok(statuses.some((status) => (
       status.phase === 'quality' && status.state === 'failed' && /QualityGate 阻塞/.test(status.title)
     )));

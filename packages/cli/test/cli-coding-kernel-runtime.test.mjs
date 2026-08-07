@@ -50,6 +50,12 @@ function createHarness({
   const evidence = [];
   const events = [];
   const bridgeAssertions = [];
+  const plannedFiles = [...new Set(changedFiles.flat())];
+  const deliverables = plannedFiles.map((filePath, index) => ({
+    id: `source-${index + 1}`,
+    kind: 'source-change',
+    path: filePath,
+  }));
 
   const artifactInterpreter = {
     interpret(response) {
@@ -124,8 +130,20 @@ function createHarness({
     taskContract: buildCodingKernelTaskContract({
       goal: prompt,
       mode,
-      deliverables: [{ id: 'source', kind: 'source-change' }],
-      acceptance: [{ id: 'verified', statement: 'The change passes verification.' }],
+      include: plannedFiles,
+      deliverables,
+      acceptance: [{
+        id: 'verified',
+        statement: 'The change passes verification.',
+        deliverableIds: deliverables.map(deliverable => deliverable.id),
+        oracle: {
+          kind: 'verification',
+          verifier: 'cli-test-adapter',
+          scope: plannedFiles,
+          evidenceKinds: ['verification-receipt'],
+        },
+        externalBoundaryRefs: [],
+      }],
       provenanceRefs: ['test-prompt'],
     }),
     operationJournal: new InMemoryCodingOperationJournal(),
@@ -265,6 +283,17 @@ test('canonical CLI runtime records one committed and verified edit', async () =
   assert.equal(output.result.verificationReceipts.length, 1);
   assert.equal(output.result.verificationReceipts[0].status, 'passed');
   assert.equal(output.result.completion.status, 'completed');
+});
+
+test('canonical CLI runtime reports a proposed workspace escape before mutation', async () => {
+  const harness = createHarness({ changedFiles: [['../escaped.ts']] });
+
+  await assert.rejects(
+    harness.kernel.execute(harness.request),
+    /Refusing to write outside workspace/u,
+  );
+  assert.equal(harness.mutations.length, 0);
+  assert.equal(harness.verifications.length, 0);
 });
 
 function verificationOutcome(request, result) {

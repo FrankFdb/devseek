@@ -17,7 +17,18 @@ function taskContract() {
     mode: 'change',
     include: ['src/value.ts', 'src/missing.ts', '.env'],
     deliverables: [{ id: 'source', kind: 'source-change', path: 'src/value.ts' }],
-    acceptance: [{ id: 'verified', statement: 'The source change passes verification.' }],
+    acceptance: [{
+      id: 'verified',
+      statement: 'The source change passes verification.',
+      deliverableIds: ['source'],
+      oracle: {
+        kind: 'verification',
+        verifier: 'focused-test-suite',
+        scope: ['src/value.ts'],
+        evidenceKinds: ['verification-receipt'],
+      },
+      externalBoundaryRefs: [],
+    }],
     provenanceRefs: ['user-prompt'],
   });
 }

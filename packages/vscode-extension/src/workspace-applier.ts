@@ -36,10 +36,7 @@ import {
   type ValidationCommandRunner,
 } from './workspace/validation-service';
 import { QualityGateService, type QualityGateContractAcceptance, type QualityGateDecision } from './app/quality-gate-service';
-import {
-  buildRequirementContract,
-  evaluateRequirementContractAcceptance,
-} from './agent/requirement-contract';
+import { evaluateCodingRequirementQualityGate } from './app/coding-requirement-quality-gate';
 import { shouldBlockProjectInstructionFileWrite } from './workspace/instruction-file-safety';
 import { findGeneratedSourceSanityIssue, repairGeneratedSourceTransportEscapes } from './workspace/source-sanity';
 import { createWorkspaceFilePathTokenRegExp } from './workspace/path-patterns';
@@ -241,7 +238,11 @@ async function applyPreparedChanges(
   const workspaceMutation = new VsCodeWorkspaceBatchMutationAdapter();
   const qualityGateService = new QualityGateService();
   const canonicalVerification = new VsCodeVerificationAdapter();
-  const contractAcceptance = buildRequirementQualityGateAcceptance(requestPrompt);
+  const contractAcceptance = buildRequirementQualityGateAcceptance(
+    requestPrompt,
+    root?.fsPath ?? '/',
+    prepared.map(change => change.relPath),
+  );
   ledger.recordChangeSet(changeSet);
   const summary = changeSet.summary();
   if (!autoApply) {
@@ -1212,10 +1213,12 @@ function renderQualityGateDetail(qualityGate: QualityGateDecision): string {
 
 function buildRequirementQualityGateAcceptance(
   requestPrompt?: string,
+  workspaceRoot = '/',
+  targetPaths: readonly string[] = [],
 ): QualityGateContractAcceptance | undefined {
   const promptText = requestPrompt?.trim();
   if (!promptText) return undefined;
-  return evaluateRequirementContractAcceptance(buildRequirementContract({ promptText }));
+  return evaluateCodingRequirementQualityGate({ prompt: promptText, workspaceRoot, targetPaths });
 }
 
 function getWorkspaceRoot(requestPrompt?: string, preferredAbsolutePaths?: string[]): vscode.Uri | undefined {

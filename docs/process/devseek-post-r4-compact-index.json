@@ -29,7 +29,7 @@
     },
     "top_agent_quality_principles_16": {
       "path": "docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md",
-      "source_sha256": "ba749cf4eafeddcf6c679f3a164a03306ad70116d0a3d603f9b6d1fb4f0e5028"
+      "source_sha256": "26f302d1931b6cfa0c87f0381e5b9072c401a0b7030ff61209af692eae43afe8"
     },
     "r3_closeout_next_phase_20": {
       "path": "docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md",
@@ -64,8 +64,8 @@
     },
     "post_r4_local_regression_manifest": {
       "path": "docs/process/devseek-post-r4-local-regression-manifest.json",
-      "source_sha256": "2b9f132daa795e672edea15541acd14c2df4cfd1850469598abd072c0a9a506c",
-      "manifest_sha256": "96f1a5fafc2e30abe82c4d97908d3b62f03c25526dc33f2736445ff490f837ec",
+      "source_sha256": "8062c2b52d3233e4b485d18799dc72012ff479f8fbdd99133f16a4386db87a86",
+      "manifest_sha256": "4856583bf9ed4bf40b3c25e2876b44f957a15d861bedbc3b5bb7e25079b5b6ba",
       "covered_nonpermission_items": [
         "NP-05",
         "NP-06",
@@ -80,8 +80,8 @@
     },
     "external_authority_requests": {
       "path": "docs/process/devseek-external-authority-requests.json",
-      "source_sha256": "bba52a1ebda066d379bb73f057f2b3feafb022595d614d42080fee75d6958772",
-      "request_set_sha256": "04c74fc63d51086303e9ebc8d02d3e27ce88455019877a2b007ac70367ca90bf",
+      "source_sha256": "3df22b43b09aa4bd7097e936f8b477b7f520a4287904b06915d0be687c0202ae",
+      "request_set_sha256": "445543cefffd44dfc6a7da9a94a85a9deae402b3e62a03b6553f6d48c019b8fd",
       "blocked_requests": 5
     },
     "r4_live_qualification_request_packet": {
@@ -164,7 +164,7 @@
       "document_id": "quality-principles-16",
       "path": "docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md",
       "role": "iteration-principles-quality-standards-and-skills-plan",
-      "source_sha256": "ba749cf4eafeddcf6c679f3a164a03306ad70116d0a3d603f9b6d1fb4f0e5028"
+      "source_sha256": "26f302d1931b6cfa0c87f0381e5b9072c401a0b7030ff61209af692eae43afe8"
     },
     {
       "document_id": "r3-handoff-20",
@@ -441,5 +441,5 @@
     "gate_pass_assertions": 0,
     "bypasses": 0
   },
-  "index_sha256": "2d1f3d04be0f492ac6fee22a4d349c67f15490e25f71b7fddbbdfe02eacd24fe"
+  "index_sha256": "fd9046246c407a1340761ec581c8aacdb6faae3316481c7f8b416f5a5dd0b4be"
 }

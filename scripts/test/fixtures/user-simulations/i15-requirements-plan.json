@@ -1,0 +1,65 @@
+{
+  "schema_version": "devseek.user-simulation-scenario/v1",
+  "iteration_id": "I15",
+  "name": "requirements-plan",
+  "purpose": "Exercise canonical requirements, exact external-source grounding, executable acceptance, design impact assessment, effect-authorizing plans, and evidence-bound revision lineage.",
+  "cases": [
+    {
+      "case_id": "I15-REQ-01",
+      "input": {
+        "prompt": "Change src/value.ts and verify the result. Do not modify src/auth.ts or add dependencies.",
+        "target_path": "src/value.ts",
+        "non_goals": [
+          "Do not modify src/auth.ts.",
+          "Do not add dependencies."
+        ]
+      }
+    },
+    {
+      "case_id": "I15-EXT-01",
+      "input": {
+        "prompt": "Report the current API version from the official source.",
+        "boundary_id": "api-version",
+        "wrong_boundary_id": "license",
+        "source_id": "source:official-api",
+        "source_locator": "https://api.example.test/version",
+        "accessed_at": "2026-08-07T10:00:00.000Z",
+        "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tool_execution_ref": "tool-execution:fetch-api:completed",
+        "external_effect_ref": "external-effect:fetch-api:committed"
+      }
+    },
+    {
+      "case_id": "I15-ACC-01",
+      "input": {
+        "prompt": "Change src/value.ts and make the implementation look good.",
+        "target_path": "src/value.ts",
+        "acceptance_id": "looks-good",
+        "acceptance_statement": "The implementation looks good.",
+        "verifier": "human-impression"
+      }
+    },
+    {
+      "case_id": "I15-DSN-01",
+      "input": {
+        "prompt": "Refactor src/value.ts through the shared semantic owner and run focused verification.",
+        "target_path": "src/value.ts",
+        "outside_target_path": "src/auth.ts",
+        "dependency_from": "packages/vscode-extension",
+        "dependency_to": "packages/shared",
+        "dependency_evidence_ref": "workspace-file:src/value.ts"
+      }
+    },
+    {
+      "case_id": "I15-REV-01",
+      "input": {
+        "prompt": "Revise the current API requirement and change plan only after official evidence arrives.",
+        "revision_reason": "Official API evidence arrived.",
+        "plan_revision_reason": "Architecture evidence confirmed the target.",
+        "grounding_evidence_ref": "source:official-api",
+        "plan_evidence_ref": "workspace-file:src/value.ts",
+        "unbound_evidence_ref": "source:invented"
+      }
+    }
+  ]
+}

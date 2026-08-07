@@ -21,7 +21,18 @@ function fixture(pendingUnits = defaultPendingUnits()) {
     mode: 'change',
     deliverables: [{ id: 'source', kind: 'source-change', path: 'src/resume.ts' }],
     constraints: ['Do not publish artifacts.'],
-    acceptance: [{ id: 'tests', statement: 'The resume tests pass.' }],
+    acceptance: [{
+      id: 'tests',
+      statement: 'The resume tests pass.',
+      deliverableIds: ['source'],
+      oracle: {
+        kind: 'verification',
+        verifier: 'resume-test-suite',
+        scope: ['src/resume.ts'],
+        evidenceKinds: ['verification-receipt'],
+      },
+      externalBoundaryRefs: [],
+    }],
     provenanceRefs: ['user:current'],
   });
   const contextGraph = new CanonicalContextGraphService().build({

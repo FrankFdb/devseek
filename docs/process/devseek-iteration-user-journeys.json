@@ -516,6 +516,166 @@
           }
         }
       ]
+    },
+    {
+      "iteration_id": "I15",
+      "status": "verified-local",
+      "goal": "Converge requirements, external-source grounding, executable acceptance, design decisions, and effect-authorizing change plans into shared Kernel-owned ports.",
+      "delta_from_baseline": "Adds explicit non-goal preservation, exact source-to-boundary receipts, subjective-oracle blocking, immutable design impact and rollback decisions, target/effect plan enforcement, and evidence-bound requirement/plan revision; none are exercised by the fixed coding baseline or I10-I14 journeys.",
+      "fixture_path": "scripts/test/fixtures/user-simulations/i15-requirements-plan.json",
+      "local_artifact_root": "code/devseek-tests/requirements-plan",
+      "capability_ids": [
+        "C4-REQUIREMENTS",
+        "C4-EXTERNAL-BOUNDARY",
+        "C4-SOURCE-GROUNDING",
+        "C4-ACCEPTANCE-CONTRACT",
+        "C5-DESIGN-DECISION",
+        "C5-CHANGE-PLAN"
+      ],
+      "cases": [
+        {
+          "case_id": "I15-REQ-01",
+          "capability_ids": ["C4-REQUIREMENTS"],
+          "surface": "headless",
+          "user_action": "Request one exact source change while explicitly forbidding an authentication edit and dependency additions.",
+          "expected_outcomes": [
+            "The requested source change remains a functional requirement.",
+            "Both prohibitions remain immutable non-goals and cannot become deliverables."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-requirements.test.mjs",
+            "test_name": "I15-REQ-01 keeps explicit non-goals out of functional deliverables"
+          }
+        },
+        {
+          "case_id": "I15-EXT-01",
+          "capability_ids": ["C4-EXTERNAL-BOUNDARY", "C4-SOURCE-GROUNDING"],
+          "surface": "headless",
+          "user_action": "Ask for a current API fact, first with no source receipt, then with a source bound to the wrong boundary, and finally with exact official-source receipts.",
+          "expected_outcomes": [
+            "Missing or mismatched source evidence leaves the requirement in exploration-required state.",
+            "Only an exact boundary/source match with tool and external-effect receipts becomes grounded and ready."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-requirements.test.mjs",
+            "test_name": "I15-EXT-01 requires exact external-source attribution and preserves effect receipts"
+          }
+        },
+        {
+          "case_id": "I15-ACC-01",
+          "capability_ids": ["C4-ACCEPTANCE-CONTRACT"],
+          "surface": "vscode",
+          "user_action": "Ask for a code change whose only stated completion test is that it looks good.",
+          "expected_outcomes": [
+            "The subjective oracle is marked weak and requires clarification.",
+            "A scoped verification oracle remains executable and ready under the same authority."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-requirements.test.mjs",
+            "test_name": "I15-ACC-01 blocks subjective completion while executable oracles remain ready"
+          }
+        },
+        {
+          "case_id": "I15-DSN-01",
+          "capability_ids": ["C5-DESIGN-DECISION", "C5-CHANGE-PLAN"],
+          "surface": "vscode",
+          "user_action": "Request a shared-owner refactor with one exact target, focused verification, rollback, and a declared dependency direction.",
+          "expected_outcomes": [
+            "The selected design records alternatives, impact, dependency direction, rollback, and acceptance mappings without mutating the workspace.",
+            "The change plan authorizes only the declared target and effects; sibling writes and undeclared git effects are denied."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-design-plan.test.mjs",
+            "test_name": "I15-DSN-01 produces an immutable impact, rollback, acceptance, and effect plan"
+          }
+        },
+        {
+          "case_id": "I15-REV-01",
+          "capability_ids": ["C4-REQUIREMENTS", "C5-CHANGE-PLAN"],
+          "surface": "headless",
+          "user_action": "Revise an unresolved requirement and plan after new evidence, then attempt another revision with an invented evidence reference.",
+          "expected_outcomes": [
+            "A semantic revision retains immutable parent lineage and the exact revision reason.",
+            "A no-op revision reuses identity while unbound evidence is rejected."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-requirements.test.mjs",
+            "test_name": "I15-REV-01 requirement revisions require bound evidence and retain parent lineage"
+          }
+        }
+      ]
+    },
+    {
+      "iteration_id": "I16",
+      "status": "verified-local",
+      "goal": "Let natural coding requests discover concrete targets without weakening workspace containment or explicit user scope.",
+      "delta_from_baseline": "Adds a shared evidence-bound plan-revision session at Tool Authority: targetless and multi-file proposals become immutable design/plan revisions before effects, while strict scope and workspace escapes fail closed; I10-I15 do not exercise this pre-effect target-discovery path.",
+      "fixture_path": "scripts/test/fixtures/user-simulations/i16-plan-revision.json",
+      "local_artifact_root": "code/devseek-tests/plan-revision",
+      "capability_ids": [
+        "C5-DESIGN-DECISION",
+        "C5-CHANGE-PLAN",
+        "C7-SANDBOX-POLICY",
+        "C7-WORKSPACE-MUTATION"
+      ],
+      "cases": [
+        {
+          "case_id": "I16-RPL-01",
+          "capability_ids": ["C5-DESIGN-DECISION", "C5-CHANGE-PLAN"],
+          "surface": "cli",
+          "user_action": "Request a feature and focused test without naming files, then let the tool propose two concrete workspace targets.",
+          "expected_outcomes": [
+            "The targetless initial design and plan are revised before workspace authority is issued.",
+            "The final plan retains parent lineage and authorizes exactly both proposed files."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-change-plan-revision.test.mjs",
+            "test_name": "I16-RPL-01 tool-proposed targets revise a targetless plan before workspace authority"
+          }
+        },
+        {
+          "case_id": "I16-SCP-01",
+          "capability_ids": ["C5-CHANGE-PLAN", "C7-WORKSPACE-MUTATION"],
+          "surface": "vscode",
+          "user_action": "Explicitly allow only one file, then receive a tool proposal for a sibling file.",
+          "expected_outcomes": [
+            "The explicit no-other-files scope cannot be widened by provider output.",
+            "No new design or plan revision is recorded for the denied proposal."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-change-plan-revision.test.mjs",
+            "test_name": "I16-SCP-01 strict user scope cannot be widened by a tool proposal"
+          }
+        },
+        {
+          "case_id": "I16-BND-01",
+          "capability_ids": ["C7-SANDBOX-POLICY", "C7-WORKSPACE-MUTATION"],
+          "surface": "headless",
+          "user_action": "Receive a model-proposed path that lexically escapes the active workspace.",
+          "expected_outcomes": [
+            "Workspace projection rejects the path before plan-scope evaluation or host mutation.",
+            "The blocked initial plan remains unchanged and the exact outside path is auditable."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-change-plan-revision.test.mjs",
+            "test_name": "I16-BND-01 workspace escape is rejected before plan scope evaluation"
+          }
+        },
+        {
+          "case_id": "I16-GLO-01",
+          "capability_ids": ["C5-CHANGE-PLAN", "C7-SANDBOX-POLICY"],
+          "surface": "cli",
+          "user_action": "Limit implementation to src/**, propose one nested source target, then propose a test target outside that glob.",
+          "expected_outcomes": [
+            "The nested source target produces an evidence-bound ready plan revision.",
+            "The later target outside src/** is denied without widening the current plan."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-change-plan-revision.test.mjs",
+            "test_name": "I16-GLO-01 strict glob scope admits only matching concrete proposals"
+          }
+        }
+      ]
     }
   ]
 }

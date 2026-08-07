@@ -110,7 +110,18 @@ async function runReviewJourney(scenario, execute) {
     goal: scenario.input.prompt,
     mode: 'review',
     deliverables: [{ id: 'report', kind: 'report' }],
-    acceptance: [{ id: 'reported', statement: 'The requested protocol behavior is reported.' }],
+    acceptance: [{
+      id: 'reported',
+      statement: 'The requested protocol behavior is reported.',
+      deliverableIds: ['report'],
+      oracle: {
+        kind: 'response-evidence',
+        verifier: 'headless-provider-adapter',
+        scope: ['response'],
+        evidenceKinds: ['response-evidence'],
+      },
+      externalBoundaryRefs: [],
+    }],
     provenanceRefs: ['user:current'],
   });
   try {

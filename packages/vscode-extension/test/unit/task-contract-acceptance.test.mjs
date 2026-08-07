@@ -41,10 +41,26 @@ test('Kernel completion and runtime verification share one TaskContract acceptan
   }
   assert.deepEqual(projectTaskContractAcceptance(makeTaskContract([])), [{
     id: 'requested-outcome',
-    statement: 'The requested workspace outcome is applied.',
+    statement: 'The requested workspace outcome is applied and read back.',
+    deliverableIds: ['source-change', 'verification-result'],
+    oracle: {
+      kind: 'workspace-readback',
+      verifier: 'workspace-mutation-readback',
+      scope: ['workspace'],
+      evidenceKinds: ['workspace-mutation-receipt', 'workspace-readback'],
+    },
+    externalBoundaryRefs: [],
   }, {
     id: 'verified',
     statement: 'Applicable verification passes before completion.',
+    deliverableIds: ['source-change', 'verification-result'],
+    oracle: {
+      kind: 'verification',
+      verifier: 'project-verification',
+      scope: ['workspace'],
+      evidenceKinds: ['verification-receipt'],
+    },
+    externalBoundaryRefs: [],
   }]);
 });
 

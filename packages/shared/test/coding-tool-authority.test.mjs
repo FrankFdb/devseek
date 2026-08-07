@@ -15,7 +15,20 @@ function contract(mode = 'change') {
       kind: mode === 'change' || mode === 'release' ? 'source-change' : 'report',
       ...(mode === 'change' || mode === 'release' ? { path: 'src/value.ts' } : {}),
     }],
-    acceptance: [{ id: 'settled', statement: 'The requested task is settled.' }],
+    acceptance: [{
+      id: 'settled',
+      statement: 'The requested task is settled.',
+      deliverableIds: [mode === 'change' || mode === 'release' ? 'change' : 'report'],
+      oracle: {
+        kind: mode === 'change' || mode === 'release' ? 'verification' : 'response-evidence',
+        verifier: 'test-settlement-adapter',
+        scope: ['src/value.ts'],
+        evidenceKinds: [mode === 'change' || mode === 'release'
+          ? 'verification-receipt'
+          : 'response-evidence'],
+      },
+      externalBoundaryRefs: [],
+    }],
     provenanceRefs: ['test:user-prompt'],
   });
 }

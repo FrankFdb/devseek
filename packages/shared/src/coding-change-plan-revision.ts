@@ -1,0 +1,253 @@
+import {
+  CanonicalChangePlanService,
+  CanonicalDesignDecisionService,
+  evaluateCodingChangePlanEffect,
+  type ChangePlanPort,
+  type CodingChangePlan,
+  type CodingDesignDecision,
+  type CodingDesignImpact,
+  type DesignDecisionPort,
+} from './coding-design-plan';
+import type { CodingContextGraph } from './coding-context-graph';
+import type { CodingRequirementDecision } from './coding-requirements';
+import { codingSemanticDigest } from './coding-semantic-digest';
+import {
+  snapshotCodingKernelTaskContract,
+  type CodingKernelTaskContract,
+} from './coding-task-contract';
+import {
+  codingWorkspaceTargetMatchesScope,
+  projectCodingWorkspaceTargets,
+} from './coding-workspace-scope';
+
+export const CODING_CHANGE_PLAN_REVISION_DECISION_VERSION = 'devseek.coding-change-plan-revision-decision/v1' as const;
+
+export interface CodingChangePlanRevisionDecision {
+  readonly version: typeof CODING_CHANGE_PLAN_REVISION_DECISION_VERSION;
+  readonly status: 'unchanged' | 'revised' | 'denied';
+  readonly actionId: string;
+  readonly reason: string;
+  readonly targetPaths: readonly string[];
+  readonly planId: string;
+  readonly evidenceRefs: readonly string[];
+  readonly decisionSha256: string;
+}
+
+export interface CodingChangePlanSourcePort {
+  currentPlan(): CodingChangePlan;
+}
+
+export interface CodingChangePlanRevisionSessionPort extends CodingChangePlanSourcePort {
+  currentDesign(): CodingDesignDecision;
+  ensureTargets(input: {
+    readonly actionId: string;
+    readonly targetPaths: readonly string[];
+  }): CodingChangePlanRevisionDecision;
+  decisions(): readonly CodingChangePlanRevisionDecision[];
+  designHistory(): readonly CodingDesignDecision[];
+  planHistory(): readonly CodingChangePlan[];
+}
+
+export interface ChangePlanRevisionPort {
+  bind(input: {
+    readonly workspaceRoot: string;
+    readonly taskContract: CodingKernelTaskContract;
+    readonly contextGraph: CodingContextGraph;
+    readonly requirements: CodingRequirementDecision;
+    readonly design: CodingDesignDecision;
+    readonly plan: CodingChangePlan;
+  }): CodingChangePlanRevisionSessionPort;
+}
+
+/** Owns evidence-bound target discovery between provider output and tool authority. */
+export class CanonicalChangePlanRevisionService implements ChangePlanRevisionPort {
+  constructor(
+    private readonly designs: DesignDecisionPort = new CanonicalDesignDecisionService(),
+    private readonly plans: ChangePlanPort = new CanonicalChangePlanService(),
+  ) {}
+
+  bind(input: Parameters<ChangePlanRevisionPort['bind']>[0]): CodingChangePlanRevisionSessionPort {
+    const workspaceRoot = requireText(input.workspaceRoot, 'workspace-root');
+    const taskContract = snapshotCodingKernelTaskContract(input.taskContract);
+    const designHistory: CodingDesignDecision[] = [input.design];
+    const planHistory: CodingChangePlan[] = [input.plan];
+    const decisions: CodingChangePlanRevisionDecision[] = [];
+    let currentDesign = input.design;
+    let currentPlan = input.plan;
+
+    return Object.freeze({
+      currentDesign: () => currentDesign,
+      currentPlan: () => currentPlan,
+      ensureTargets: (candidate: Parameters<CodingChangePlanRevisionSessionPort['ensureTargets']>[0]) => {
+        const actionId = requireText(candidate?.actionId, 'action-id');
+        const projection = projectCodingWorkspaceTargets(candidate?.targetPaths ?? [], workspaceRoot);
+        if (projection.decision === 'denied') {
+          return recordDecision(decisions, {
+            status: 'denied',
+            actionId,
+            reason: projection.reason ?? 'workspace-path-invalid',
+            targetPaths: projection.targets,
+            planId: currentPlan.planId,
+            evidenceRefs: [currentPlan.planId],
+          });
+        }
+        const targetPaths = projection.targets;
+        const scopeFailure = validateTargetScopes(taskContract, targetPaths);
+        if (scopeFailure) {
+          return recordDecision(decisions, {
+            status: 'denied',
+            actionId,
+            reason: scopeFailure,
+            targetPaths,
+            planId: currentPlan.planId,
+            evidenceRefs: [currentPlan.planId],
+          });
+        }
+
+        const currentEffect = evaluateCodingChangePlanEffect(currentPlan, {
+          effects: ['workspace-mutation'],
+          targetPaths,
+        });
+        if (currentEffect.decision === 'allow') {
+          return recordDecision(decisions, {
+            status: 'unchanged',
+            actionId,
+            reason: 'change-plan-already-authorizes-targets',
+            targetPaths,
+            planId: currentPlan.planId,
+            evidenceRefs: currentEffect.evidenceRefs,
+          });
+        }
+
+        const proposalEvidenceRef = proposedTargetEvidenceRef(actionId, targetPaths);
+        const proposedImpacts = buildProposedImpacts(
+          currentDesign.impactSet.primary.impacts,
+          targetPaths,
+          proposalEvidenceRef,
+        );
+        const revisedDesign = this.designs.decide({
+          taskContract,
+          contextGraph: input.contextGraph,
+          requirements: input.requirements,
+          evidence: {
+            impacts: proposedImpacts,
+            dependencyChecks: currentDesign.dependencyChecks,
+            migration: currentDesign.migration,
+            deletion: currentDesign.deletion,
+            rollback: revisedRollback(currentDesign, targetPaths, proposalEvidenceRef),
+            evidenceRefs: [...currentDesign.evidenceRefs, proposalEvidenceRef],
+          },
+        });
+        const revisedPlan = this.plans.revise({
+          previousPlan: currentPlan,
+          taskContract,
+          requirements: input.requirements,
+          design: revisedDesign,
+          revisionReason: 'tool-proposed-targets',
+          newEvidenceRefs: [proposalEvidenceRef],
+        });
+        if (revisedDesign.decisionSha256 !== currentDesign.decisionSha256) {
+          designHistory.push(revisedDesign);
+          currentDesign = revisedDesign;
+        }
+        if (revisedPlan.planSha256 !== currentPlan.planSha256) {
+          planHistory.push(revisedPlan);
+          currentPlan = revisedPlan;
+        }
+        return recordDecision(decisions, {
+          status: 'revised',
+          actionId,
+          reason: currentPlan.status === 'ready'
+            ? 'change-plan-revised-for-proposed-targets'
+            : `change-plan-${currentPlan.status}`,
+          targetPaths,
+          planId: currentPlan.planId,
+          evidenceRefs: [proposalEvidenceRef, revisedDesign.decisionSha256, currentPlan.planSha256],
+        });
+      },
+      decisions: () => Object.freeze([...decisions]),
+      designHistory: () => Object.freeze([...designHistory]),
+      planHistory: () => Object.freeze([...planHistory]),
+    });
+  }
+}
+
+function validateTargetScopes(
+  contract: CodingKernelTaskContract,
+  targets: readonly string[],
+): string | undefined {
+  const excluded = targets.find(target => contract.scope.exclude.some(scope => (
+    codingWorkspaceTargetMatchesScope(target, scope)
+  )));
+  if (excluded) return `change-plan-target-excluded:${excluded}`;
+  if (!contract.constraints.includes('no-other-files')) return undefined;
+  const outside = targets.find(target => !contract.scope.include.some(scope => (
+    codingWorkspaceTargetMatchesScope(target, scope)
+  )));
+  return outside ? `change-plan-target-outside-scope:${outside}` : undefined;
+}
+
+function buildProposedImpacts(
+  existing: readonly CodingDesignImpact[],
+  targets: readonly string[],
+  evidenceRef: string,
+): CodingDesignImpact[] {
+  const byTarget = new Map(existing.map(item => [item.target, item]));
+  for (const target of targets) {
+    if (byTarget.has(target)) continue;
+    byTarget.set(target, Object.freeze({
+      id: `primary:tool-proposal:${codingSemanticDigest(target).slice(0, 20)}`,
+      kind: 'primary',
+      target,
+      owner: 'tool-proposed-semantic-owner',
+      evidenceRefs: Object.freeze([evidenceRef]),
+    }));
+  }
+  return [...byTarget.values()];
+}
+
+function revisedRollback(
+  design: CodingDesignDecision,
+  targets: readonly string[],
+  evidenceRef: string,
+): CodingDesignDecision['rollback'] {
+  const steps = new Map(design.rollback.steps.map(step => [step.target, step]));
+  for (const target of targets) {
+    if (steps.has(target)) continue;
+    steps.set(target, Object.freeze({
+      target,
+      action: 'restore-baseline-receipt',
+      evidenceRefs: Object.freeze(['workspace-mutation-transaction', evidenceRef]),
+    }));
+  }
+  return Object.freeze({
+    status: 'planned',
+    rationale: 'Restore each proposed mutation through its baseline-bound workspace receipt.',
+    steps: Object.freeze([...steps.values()]),
+  });
+}
+
+function proposedTargetEvidenceRef(actionId: string, targets: readonly string[]): string {
+  return `tool-target-proposal:${actionId}:${codingSemanticDigest({ actionId, targets }).slice(0, 24)}`;
+}
+
+function recordDecision(
+  decisions: CodingChangePlanRevisionDecision[],
+  input: Omit<CodingChangePlanRevisionDecision, 'version' | 'decisionSha256'>,
+): CodingChangePlanRevisionDecision {
+  const payload = {
+    version: CODING_CHANGE_PLAN_REVISION_DECISION_VERSION,
+    ...input,
+    targetPaths: Object.freeze([...input.targetPaths]),
+    evidenceRefs: Object.freeze([...new Set(input.evidenceRefs)]),
+  };
+  const decision = Object.freeze({ ...payload, decisionSha256: codingSemanticDigest(payload) });
+  decisions.push(decision);
+  return decision;
+}
+
+function requireText(value: unknown, label: string): string {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) throw new Error(`coding-change-plan-revision:missing-${label}`);
+  return text;
+}

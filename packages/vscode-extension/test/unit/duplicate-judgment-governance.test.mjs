@@ -7,8 +7,6 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execSync } from 'node:child_process';
-import { createRequire } from 'node:module';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,20 +14,6 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const extensionRoot = path.resolve(__dirname, '../../');
 const repositoryRoot = path.resolve(extensionRoot, '../..');
-const bundlePath = path.join(extensionRoot, 'test/unit/judgment-owners.bundle.cjs');
-
-execSync(
-  `npx esbuild src/app/judgment-owners.ts --bundle --outfile=${bundlePath} --format=cjs --platform=node`,
-  { cwd: extensionRoot, stdio: 'pipe' },
-);
-
-const {
-  ARCHITECTURE_DECISION_PROTOCOL_VERSION,
-  validateArchitectureDecisionImpactClosure,
-  validateArchitectureDecisionLifecycle,
-  validateArchitecturePlanRevisionGuard,
-} = createRequire(import.meta.url)(bundlePath);
-
 function readExtensionFile(relPath) {
   return readFileSync(path.join(extensionRoot, relPath), 'utf8');
 }
@@ -89,7 +73,7 @@ test('ARCH-16 owner registry covers every duplicate-judgment domain', () => {
   const registry = readExtensionFile('src/app/judgment-owners.ts');
   const required = [
     ['task-semantic-intent', 'src/task-semantic-contract.ts'],
-    ['architecture-decision', 'src/app/judgment-owners.ts'],
+    ['architecture-decision', 'packages/shared/src/coding-design-plan.ts'],
     ['tool-protocol', 'packages/shared/src/coding-tool-schema.ts'],
     ['response-integrity', 'src/llm/providers/web-reliability.ts'],
     ['execution-outcome', 'src/execution-outcome-classifier.ts'],
@@ -116,147 +100,23 @@ test('ARCH-16 app boundary exports the duplicate-judgment owner registry', () =>
   assert.ok(appIndex.includes("export * from './judgment-owners';"));
 });
 
-test('R2-05A architecture decisions require owner, lifecycle, failure model, ports, and non-goals', () => {
-  const report = validateArchitectureDecisionLifecycle({
-    id: 'adr-r2-05a',
-    ownerModule: 'src/app/judgment-owners.ts',
-    state: 'accepted',
-    failureModes: ['parallel-owner', 'surface-business-rule', 'dual-write-owner'],
-    ports: ['DesignAuthority->ImplementationPlanner'],
-    nonGoals: ['Surface-owned business rules'],
-    ownerClaims: [{ domain: 'task-state', ownerModule: 'src/agent/task-state-machine.ts' }],
-    writeEffects: [{ target: 'architecture-decision-record', ownerModule: 'src/app/judgment-owners.ts' }],
-  });
+test('ARCH-16 architecture behavior belongs to the shared design and plan ports', () => {
+  const registry = readExtensionFile('src/app/judgment-owners.ts');
+  const owner = readRepositoryFile('packages/shared/src/coding-design-plan.ts');
 
-  assert.equal(report.version, ARCHITECTURE_DECISION_PROTOCOL_VERSION);
-  assert.equal(report.decision, 'allow');
-  assert.deepEqual(report.reasons, []);
-  assert.equal(report.ownerModule, 'src/app/judgment-owners.ts');
-  assert.equal(report.state, 'accepted');
-});
-
-test('R2-05A architecture decisions veto parallel owners, Surface rules, and dual writes', () => {
-  const report = validateArchitectureDecisionLifecycle({
-    id: 'adr-r2-05a-bad',
-    ownerModule: '',
-    state: 'accepted',
-    failureModes: [],
-    ports: [],
-    nonGoals: [],
-    ownerClaims: [
-      { domain: 'task-state', ownerModule: 'src/agent/task-state-machine.ts' },
-      { domain: 'task-state', ownerModule: 'src/agent/agentic-loop.ts' },
-    ],
-    surfaceBusinessRules: ['extension.ts decides task completion'],
-    writeEffects: [
-      { target: 'task-settlement', ownerModule: 'src/app/agent-run-settlement.ts' },
-      { target: 'task-settlement', ownerModule: 'src/extension.ts' },
-    ],
-  });
-
-  assert.equal(report.decision, 'blocked');
-  assert.ok(report.reasons.includes('missing-owner'));
-  assert.ok(report.reasons.includes('missing-failure-model'));
-  assert.ok(report.reasons.includes('missing-port'));
-  assert.ok(report.reasons.includes('missing-non-goal'));
-  assert.ok(report.reasons.includes('parallel-owner'));
-  assert.ok(report.reasons.includes('surface-business-rule'));
-  assert.ok(report.reasons.includes('dual-write-owner'));
-});
-
-test('R2-05B architecture impact plans require migration, delete, rollback, and acceptance mapping', () => {
-  const report = validateArchitectureDecisionImpactClosure({
-    id: 'adr-r2-05b',
-    impactSet: {
-      callers: { items: [{ id: 'caller-extension', target: 'src/extension.ts', evidenceId: 'ev-caller' }] },
-      generated: { notApplicableReason: 'no generated files touched', evidenceId: 'ev-generated-na' },
-      schemas: { items: [{ id: 'schema-command', target: 'package.json contributes.commands', evidenceId: 'ev-schema' }] },
-      releases: { notApplicableReason: 'no Extension/Bridge runtime release required', evidenceId: 'ev-release-na' },
-    },
-    migrationPlan: { steps: [{ target: 'src/app/old-owner.ts', action: 'delegate-to-judgment-owner', evidenceId: 'ev-migrate' }] },
-    deletePlan: { steps: [{ target: 'src/app/parallel-owner.ts', action: 'delete', evidenceId: 'ev-delete' }] },
-    rollbackPlan: { steps: [{ target: 'src/app/old-owner.ts', action: 'restore-baseline', evidenceId: 'ev-rollback' }] },
-    acceptanceMapping: [{ acceptanceId: 'A1', impactIds: ['caller-extension'], verification: 'npm test', evidenceId: 'ev-accept' }],
-  });
-
-  assert.equal(report.version, ARCHITECTURE_DECISION_PROTOCOL_VERSION);
-  assert.equal(report.decision, 'allow');
-  assert.deepEqual(report.reasons, []);
-  assert.equal(report.impactSet.callers.items[0].target, 'src/extension.ts');
-});
-
-test('R2-05B architecture impact plans fail closed on partial impact and unverified rollback', () => {
-  const report = validateArchitectureDecisionImpactClosure({
-    id: 'adr-r2-05b-partial',
-    impactSet: {
-      callers: { items: [{ id: 'caller-extension', target: 'src/extension.ts' }] },
-      generated: {},
-      schemas: {},
-      releases: {},
-    },
-    migrationPlan: { steps: [] },
-    deletePlan: {},
-    rollbackPlan: { steps: [{ target: 'src/app/old-owner.ts', action: 'restore-baseline' }] },
-    acceptanceMapping: [],
-  });
-
-  assert.equal(report.decision, 'blocked');
-  assert.ok(report.reasons.includes('impact-evidence-missing'));
-  assert.ok(report.reasons.includes('missing-generated-impact'));
-  assert.ok(report.reasons.includes('missing-schema-impact'));
-  assert.ok(report.reasons.includes('missing-release-impact'));
-  assert.ok(report.reasons.includes('missing-migration-plan'));
-  assert.ok(report.reasons.includes('missing-delete-plan'));
-  assert.ok(report.reasons.includes('rollback-evidence-missing'));
-  assert.ok(report.reasons.includes('missing-acceptance-mapping'));
-});
-
-test('R2-05C plan revisions bind new evidence to implementation changes and static guards', () => {
-  const report = validateArchitecturePlanRevisionGuard({
-    basePlanId: 'plan-r2-05b',
-    revisionId: 'plan-r2-05c',
-    revisionRationale: 'new source evidence changes the integration target',
-    newEvidenceIds: ['ev-source-new', 'ev-import-check'],
-    implementationChanges: [
-      { target: 'src/app/integration-owner.ts', evidenceIds: ['ev-source-new'] },
-    ],
-    dependencyChecks: [
-      { from: 'src/app/integration-owner.ts', to: 'src/agent/task-state-machine.ts', status: 'allowed', evidenceId: 'ev-import-check' },
-    ],
-    importReachabilityChecks: [
-      { from: 'src/extension.ts', to: 'src/app/integration-owner.ts', reachable: true, evidenceId: 'ev-import-check' },
-    ],
-  });
-
-  assert.equal(report.version, ARCHITECTURE_DECISION_PROTOCOL_VERSION);
-  assert.equal(report.decision, 'allow');
-  assert.deepEqual(report.reasons, []);
-  assert.equal(report.implementationChanges[0].target, 'src/app/integration-owner.ts');
-});
-
-test('R2-05C plan revisions fail closed on unmapped evidence and dependency reachability violations', () => {
-  const report = validateArchitecturePlanRevisionGuard({
-    basePlanId: 'plan-r2-05b',
-    newEvidenceIds: ['ev-source-new'],
-    implementationChanges: [
-      { target: 'src/extension.ts', evidenceIds: ['ev-unknown'] },
-      { target: 'src/app/owner.ts', evidenceIds: [] },
-    ],
-    dependencyChecks: [
-      { from: 'src/extension.ts', to: 'src/agent/task-state-machine.ts', status: 'violation', evidenceId: 'ev-dep' },
-    ],
-    importReachabilityChecks: [
-      { from: 'src/extension.ts', to: 'src/app/owner.ts', reachable: false },
-    ],
-  });
-
-  assert.equal(report.decision, 'blocked');
-  assert.ok(report.reasons.includes('missing-plan-revision'));
-  assert.ok(report.reasons.includes('missing-revision-rationale'));
-  assert.ok(report.reasons.includes('unmapped-evidence-change'));
-  assert.ok(report.reasons.includes('dependency-direction-violation'));
-  assert.ok(report.reasons.includes('import-reachability-violation'));
-  assert.ok(report.reasons.includes('revision-guard-evidence-missing'));
+  for (const symbol of [
+    'DesignDecisionPort',
+    'ChangePlanPort',
+    'CanonicalDesignDecisionService',
+    'CanonicalChangePlanService',
+    'evaluateCodingChangePlanEffect',
+  ]) {
+    assert.ok(owner.includes(symbol), `shared architecture owner must expose ${symbol}`);
+  }
+  assert.ok(!registry.includes('validateArchitectureDecisionLifecycle'));
+  assert.ok(!registry.includes('validateArchitectureDecisionImpactClosure'));
+  assert.ok(!registry.includes('validateArchitecturePlanRevisionGuard'));
+  assert.equal(extensionFileExists('src/agent/requirement-contract.ts'), false);
 });
 
 test('ARCH-16 tool alias search_content is owned by shared schema and generated manifest only', () => {

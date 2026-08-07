@@ -209,7 +209,18 @@ function decide(result, mode = 'change') {
       mode,
       include: ['src/main.ts'],
       deliverables: [{ id: 'result', kind: mode === 'review' ? 'report' : 'source-change' }],
-      acceptance: [{ id: 'completed', statement: 'The requested work is complete.' }],
+      acceptance: [{
+        id: 'completed',
+        statement: 'The requested work is complete.',
+        deliverableIds: ['result'],
+        oracle: {
+          kind: mode === 'review' ? 'response-evidence' : 'verification',
+          verifier: 'vscode-completion-adapter',
+          scope: ['src/main.ts'],
+          evidenceKinds: [mode === 'review' ? 'response-evidence' : 'verification-receipt'],
+        },
+        externalBoundaryRefs: [],
+      }],
       provenanceRefs: ['vscode-test'],
     }),
     result: {

@@ -21,7 +21,18 @@ export function createCanonicalCheckpointFixture({
     mode,
     include: contextFiles,
     deliverables: [{ id: 'result', kind: mode === 'review' ? 'report' : 'source-change' }],
-    acceptance: [{ id: 'completed', statement: 'The requested work is complete.' }],
+    acceptance: [{
+      id: 'completed',
+      statement: 'The requested work is complete.',
+      deliverableIds: ['result'],
+      oracle: {
+        kind: mode === 'review' ? 'response-evidence' : 'verification',
+        verifier: 'checkpoint-fixture-adapter',
+        scope: contextFiles.length > 0 ? contextFiles : ['workspace'],
+        evidenceKinds: [mode === 'review' ? 'response-evidence' : 'verification-receipt'],
+      },
+      externalBoundaryRefs: [],
+    }],
     provenanceRefs: ['checkpoint-fixture'],
   }),
   contextGraph = new CanonicalContextGraphService().build({

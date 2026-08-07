@@ -31,10 +31,7 @@ import {
   type VerificationAuthorityResult,
   type VerificationResultStatus,
 } from '../app/verification-result-authority';
-import {
-  buildRequirementContract,
-  evaluateRequirementContractAcceptance,
-} from './requirement-contract';
+import { evaluateCodingRequirementQualityGate } from '../app/coding-requirement-quality-gate';
 import {
   evaluateArtifactQualityOracle,
   readWrittenMarkdownFilesForQuality,
@@ -446,16 +443,24 @@ function buildAutoValidationQualityGate(
   };
 }
 
-function evaluateRequirementContractQuality(userPrompt: string): AgentAutoValidationResult | undefined {
+function evaluateCanonicalRequirementQuality(
+  userPrompt: string,
+  workspaceRoot: string,
+  targetPaths: readonly string[],
+): AgentAutoValidationResult | undefined {
   const promptText = userPrompt.trim();
   if (!promptText) return undefined;
-  const acceptance = evaluateRequirementContractAcceptance(buildRequirementContract({ promptText }));
+  const acceptance = evaluateCodingRequirementQualityGate({
+    prompt: promptText,
+    workspaceRoot,
+    targetPaths,
+  });
   if (acceptance.status === 'accepted') return undefined;
   const status = acceptance.status === 'adverse' ? 'fail' : 'blocked';
   const reason = acceptance.reason || acceptance.status;
   return {
     feedbackForAI: [
-      '[requirement_contract]',
+      '[canonical_requirement_decision]',
       `status=${acceptance.status}`,
       `reason=${reason}`,
       acceptance.risks?.length ? `risks:\n${acceptance.risks.map(risk => `- ${risk}`).join('\n')}` : '',
@@ -536,7 +541,11 @@ export async function runAgentAutoValidationForWrites(
       workspaceRootFsPath,
       userPrompt,
     );
-    const requirementQuality = evaluateRequirementContractQuality(userPrompt);
+    const requirementQuality = evaluateCanonicalRequirementQuality(
+      userPrompt,
+      workspaceRootFsPath,
+      changedPaths,
+    );
     const policyQuality = combineAgentQualityResults([formalProjectQuality, artifactQuality, requirementQuality]);
     const policyQualityTitle = formalProjectQuality
       ? '正式项目质量门禁未通过'

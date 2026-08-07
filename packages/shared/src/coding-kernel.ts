@@ -75,6 +75,21 @@ import {
   CanonicalWorkspaceMutationTransaction,
   type WorkspaceMutationTransactionPort,
 } from './coding-workspace-mutation';
+import {
+  CanonicalRequirementDecisionService,
+  type CodingRequirementDecision,
+} from './coding-requirements';
+import {
+  CanonicalChangePlanService,
+  CanonicalDesignDecisionService,
+  type CodingChangePlan,
+  type CodingDesignDecision,
+} from './coding-design-plan';
+import {
+  CanonicalChangePlanRevisionService,
+  type CodingChangePlanRevisionDecision,
+  type CodingChangePlanRevisionSessionPort,
+} from './coding-change-plan-revision';
 
 export {
   CODING_KERNEL_TASK_CONTRACT_VERSION,
@@ -111,6 +126,10 @@ export interface CodingKernelExecutionRequest<TRuntimeContext> {
 export interface CodingKernelRuntimeRequest<TRuntimeContext>
   extends CodingKernelExecutionRequest<TRuntimeContext> {
   readonly contextGraph: CodingContextGraph;
+  readonly requirementDecision: CodingRequirementDecision;
+  readonly designDecision: CodingDesignDecision;
+  readonly changePlan: CodingChangePlan;
+  readonly changePlanRevision: CodingChangePlanRevisionSessionPort;
   readonly memoryPolicy: CodingMemoryContextDecision;
   readonly checkpoint: CodingCheckpointSessionPort;
   readonly contextCompaction: CodingContextCompactionSessionPort;
@@ -143,6 +162,12 @@ export interface CodingKernelExecutionOutput<TResult> {
   readonly orientation: CodingOrientationDecision;
   readonly taskContract: CodingKernelTaskContract;
   readonly contextGraph: CodingContextGraph;
+  readonly requirementDecision: CodingRequirementDecision;
+  readonly designDecision: CodingDesignDecision;
+  readonly changePlan: CodingChangePlan;
+  readonly designDecisionHistory: readonly CodingDesignDecision[];
+  readonly changePlanHistory: readonly CodingChangePlan[];
+  readonly changePlanRevisionDecisions: readonly CodingChangePlanRevisionDecision[];
   readonly memoryPolicy: CodingMemoryContextDecision;
   readonly resume?: CodingCheckpointRestoreDecision;
   readonly contextCompactions: readonly CodingContextCompactionReceipt[];
@@ -212,6 +237,10 @@ const TOOL_DISPATCH = new CanonicalToolDispatchService(TOOL_SCHEMAS);
 const TOOL_EXECUTION = new CanonicalToolExecutionService();
 const TOOL_AUTHORITY = new CanonicalToolAuthorityService();
 const EXTERNAL_EFFECT = new CanonicalExternalEffectService();
+const REQUIREMENTS = new CanonicalRequirementDecisionService();
+const DESIGN = new CanonicalDesignDecisionService();
+const CHANGE_PLAN = new CanonicalChangePlanService();
+const CHANGE_PLAN_REVISION = new CanonicalChangePlanRevisionService(DESIGN, CHANGE_PLAN);
 
 /**
  * The product-level execution owner shared by every Surface. Runtime adapters
@@ -232,6 +261,25 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       userPrompt: request.userPrompt,
       taskContract,
       seed: request.contextSeed,
+    });
+    const requirementDecision = REQUIREMENTS.decide({ taskContract, contextGraph });
+    const designDecision = DESIGN.decide({
+      taskContract,
+      contextGraph,
+      requirements: requirementDecision,
+    });
+    const changePlan = CHANGE_PLAN.create({
+      taskContract,
+      requirements: requirementDecision,
+      design: designDecision,
+    });
+    const changePlanRevision = CHANGE_PLAN_REVISION.bind({
+      workspaceRoot: request.workspaceRoot,
+      taskContract,
+      contextGraph,
+      requirements: requirementDecision,
+      design: designDecision,
+      plan: changePlan,
     });
     const memoryPolicy = MEMORY_POLICY.selectContext({
       candidates: request.memoryCandidates ?? [],
@@ -269,6 +317,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       surface: request.surface,
       workspaceRoot: request.workspaceRoot,
       taskContract,
+      changePlanRevision,
     });
     const toolExecution = TOOL_EXECUTION.bind({ runId: request.runId });
     const workspaceMutations = new CanonicalWorkspaceMutationTransaction(
@@ -315,6 +364,10 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       ...request,
       taskContract,
       contextGraph,
+      requirementDecision,
+      designDecision,
+      changePlan,
+      changePlanRevision,
       memoryPolicy,
       checkpoint,
       contextCompaction,
@@ -343,6 +396,8 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         evidenceRefs: runtimeOutput.evidenceRefs,
         residualRisks: runtimeOutput.residualRisks,
       });
+      const settledDesignDecision = changePlanRevision.currentDesign();
+      const settledChangePlan = changePlanRevision.currentPlan();
       return {
         version: CODING_KERNEL_OUTPUT_VERSION,
         route: 'canonical',
@@ -354,6 +409,12 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         orientation: taskContract.orientation,
         taskContract,
         contextGraph,
+        requirementDecision,
+        designDecision: settledDesignDecision,
+        changePlan: settledChangePlan,
+        designDecisionHistory: changePlanRevision.designHistory(),
+        changePlanHistory: changePlanRevision.planHistory(),
+        changePlanRevisionDecisions: changePlanRevision.decisions(),
         memoryPolicy,
         ...(resume ? { resume } : {}),
         contextCompactions: contextCompaction.receipts(),

@@ -30,7 +30,18 @@ function session() {
     goal: 'Refactor src/resume.ts and run focused tests',
     mode: 'change',
     deliverables: [{ id: 'source', kind: 'source-change', path: 'src/resume.ts' }],
-    acceptance: [{ id: 'tests', statement: 'Focused tests pass.' }],
+    acceptance: [{
+      id: 'tests',
+      statement: 'Focused tests pass.',
+      deliverableIds: ['source'],
+      oracle: {
+        kind: 'verification',
+        verifier: 'resume-test-suite',
+        scope: ['src/resume.ts'],
+        evidenceKinds: ['verification-receipt'],
+      },
+      externalBoundaryRefs: [],
+    }],
     provenanceRefs: ['user:current'],
   });
   const contextGraph = new CanonicalContextGraphService().build({

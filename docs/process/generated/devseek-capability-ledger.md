@@ -4,7 +4,7 @@
 
 - Schema: `devseek.capability-ledger/v1`
 - Capabilities: 76
-- Ledger SHA-256: `d22d4df0454ea184aa9d2529492c72ee5f0747a1e9495e9acccd913589cea1ac`
+- Ledger SHA-256: `85e7f728d80f75ce1421f2e41eb9c22ce70feb5be6f41bc454bf4b671ef7c771`
 - Qualification claim policy: `deny-until-signed-evidence-validator`
 
 | Capability | Priority | Applicability | Claim scopes | Implementation | Qualification | Authority port | Typed dependencies |
@@ -57,12 +57,12 @@
 | `C3-CONTEXT-PROVENANCE` | P1 | active | core-coding | wired | — | `ContextProvenancePort` | C3-CONTEXT-GRAPH (semantic/wired) |
 | `C3-ENGINEERING-ORIENTATION` | P1 | active | core-coding | wired | — | `EngineeringOrientationPort` | C2-TASK-CONTRACT (semantic/wired) |
 | `C3-INSTRUCTION-PRECEDENCE` | P1 | active | core-coding | wired | — | `InstructionPrecedencePort` | C3-CONTEXT-GRAPH (semantic/wired) |
-| `C4-ACCEPTANCE-CONTRACT` | P1 | active | core-coding | proposed | — | `AcceptanceContractPort` | C4-REQUIREMENTS (semantic/wired)<br>C4-EXTERNAL-BOUNDARY (semantic/wired) |
-| `C4-EXTERNAL-BOUNDARY` | P0 | active | core-coding, safety | proposed | — | `ExternalBoundaryPort` | C4-REQUIREMENTS (semantic/wired)<br>C3-CONTEXT-PROVENANCE (semantic/wired) |
-| `C4-REQUIREMENTS` | P1 | active | core-coding | proposed | — | `RequirementDecisionPort` | C3-CONTEXT-GRAPH (semantic/wired) |
-| `C4-SOURCE-GROUNDING` | P1 | active | core-coding | proposed | — | `SourceGroundingPort` | C4-EXTERNAL-BOUNDARY (semantic/wired)<br>C6-TOOL-EXECUTION (execution/wired)<br>C7-EXTERNAL-EFFECT (authority/wired) |
-| `C5-CHANGE-PLAN` | P1 | active | core-coding | proposed | — | `ChangePlanPort` | C5-DESIGN-DECISION (semantic/wired) |
-| `C5-DESIGN-DECISION` | P1 | active | core-coding | proposed | — | `DesignDecisionPort` | C4-ACCEPTANCE-CONTRACT (semantic/wired) |
+| `C4-ACCEPTANCE-CONTRACT` | P1 | active | core-coding | wired | — | `AcceptanceContractPort` | C4-REQUIREMENTS (semantic/wired)<br>C4-EXTERNAL-BOUNDARY (semantic/wired) |
+| `C4-EXTERNAL-BOUNDARY` | P0 | active | core-coding, safety | wired | — | `ExternalBoundaryPort` | C4-REQUIREMENTS (semantic/wired)<br>C3-CONTEXT-PROVENANCE (semantic/wired) |
+| `C4-REQUIREMENTS` | P1 | active | core-coding | wired | — | `RequirementDecisionPort` | C3-CONTEXT-GRAPH (semantic/wired) |
+| `C4-SOURCE-GROUNDING` | P1 | active | core-coding | wired | — | `SourceGroundingPort` | C4-EXTERNAL-BOUNDARY (semantic/wired)<br>C6-TOOL-EXECUTION (execution/wired)<br>C7-EXTERNAL-EFFECT (authority/wired) |
+| `C5-CHANGE-PLAN` | P1 | active | core-coding | wired | — | `ChangePlanPort` | C5-DESIGN-DECISION (semantic/wired) |
+| `C5-DESIGN-DECISION` | P1 | active | core-coding | wired | — | `DesignDecisionPort` | C4-ACCEPTANCE-CONTRACT (semantic/wired) |
 | `C6-CAPABILITY-NEGOTIATION` | P0 | active | core-coding | proposed | — | `ProviderCapabilityPort` | C6-PROVIDER-NORMALIZATION (execution/wired)<br>C6-TOOL-SCHEMA (execution/wired) |
 | `C6-DEEPSEEK-WEB-CONNECTOR` | P0 | active | core-coding | proposed | — | `DeepSeekWebConnectorPort` | C6-PROVIDER-NORMALIZATION (execution/wired)<br>C7-EXTERNAL-EFFECT (authority/wired)<br>C7-SECRETS-REDACTION (authority/wired) |
 | `C6-PROVIDER-NORMALIZATION` | P0 | active | core-coding | wired | — | `ProviderEventPort` | C1-RUN-LIFECYCLE (control/wired) |

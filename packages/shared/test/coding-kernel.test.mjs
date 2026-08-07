@@ -20,7 +20,13 @@ function taskContract() {
     mode: 'change',
     include: ['src/value.ts', 'src/value.ts'],
     deliverables: [{ id: 'source', kind: 'source-change', path: 'src/value.ts' }],
-    acceptance: [{ id: 'verified', statement: 'The requested behavior passes verification.' }],
+    acceptance: [{
+      id: 'verified',
+      statement: 'The requested behavior passes verification.',
+      deliverableIds: ['source'],
+      oracle: verificationOracle('src/value.ts'),
+      externalBoundaryRefs: [],
+    }],
     provenanceRefs: ['user-prompt'],
   });
 }
@@ -51,6 +57,27 @@ test('CanonicalCodingKernel preserves one versioned request and terminal output 
       calls.push(input);
       assert.throws(() => input.taskContract.scope.include.push('runtime-owned-path.ts'), TypeError);
       assert.throws(() => input.contextGraph.nodes.push({}), TypeError);
+      assert.equal(input.requirementDecision.status, 'ready');
+      assert.equal(input.designDecision.status, 'ready');
+      assert.equal(input.changePlan.status, 'ready');
+      assert.equal(input.toolAuthority.authorize({
+        actionId: 'write-planned-target',
+        tool: 'write_file',
+        purpose: 'workspace-mutation',
+        effects: ['workspace-mutation'],
+        input: { path: 'src/value.ts' },
+        targetPaths: ['/workspace/src/value.ts'],
+        risk: 'low',
+      }).permission.decision, 'allow');
+      assert.equal(input.toolAuthority.authorize({
+        actionId: 'write-outside-plan',
+        tool: 'write_file',
+        purpose: 'workspace-mutation',
+        effects: ['workspace-mutation'],
+        input: { path: 'src/auth.ts' },
+        targetPaths: ['/workspace/src/auth.ts'],
+        risk: 'low',
+      }).permission.reason, 'task-contract-change-allows-workspace-mutation');
       return {
         status: 'completed',
         result: { changedPaths: ['src/value.ts'] },
@@ -72,6 +99,18 @@ test('CanonicalCodingKernel preserves one versioned request and terminal output 
   assert.equal(output.orientation.mode, 'change');
   assert.equal(output.contextGraph.version, CODING_CONTEXT_GRAPH_VERSION);
   assert.equal(output.contextGraph, calls[0].contextGraph);
+  assert.equal(output.requirementDecision, calls[0].requirementDecision);
+  assert.notEqual(output.designDecision, calls[0].designDecision);
+  assert.notEqual(output.changePlan, calls[0].changePlan);
+  assert.equal(output.changePlan.parentPlanId, calls[0].changePlan.planId);
+  assert.deepEqual(output.changePlan.authorizedTargets, ['src/value.ts', 'src/auth.ts']);
+  assert.deepEqual(output.changePlanRevisionDecisions.map(item => item.status), ['unchanged', 'revised']);
+  assert.equal(output.designDecisionHistory.length, 2);
+  assert.equal(output.changePlanHistory.length, 2);
+  assert.equal(Object.isFrozen(output.requirementDecision), true);
+  assert.equal(Object.isFrozen(output.designDecision), true);
+  assert.equal(Object.isFrozen(output.changePlan), true);
+  assert.deepEqual(output.toolAuthorizations.map(item => item.permission.decision), ['allow', 'allow']);
   assert.equal(output.contextGraph.orientation.environment.languages.includes('typescript'), true);
   assert.equal(output.contextGraph.nodes.some(node => node.id === 'file:src/value.ts'), true);
   assert.equal(output.contextGraph.instructionPrecedence.instructions.at(-1).sourceId, 'user:current');
@@ -132,7 +171,13 @@ test('CanonicalCodingKernel fails closed before invoking runtime for invalid rou
     goal: 'Fix src/other.ts and verify it',
     mode: 'change',
     deliverables: [{ id: 'source', kind: 'source-change', path: 'src/other.ts' }],
-    acceptance: [{ id: 'verified', statement: 'The other source change passes verification.' }],
+    acceptance: [{
+      id: 'verified',
+      statement: 'The other source change passes verification.',
+      deliverableIds: ['source'],
+      oracle: verificationOracle('src/other.ts'),
+      externalBoundaryRefs: [],
+    }],
     provenanceRefs: ['user-prompt'],
   });
   await assert.rejects(
@@ -199,7 +244,13 @@ test('task contract rejects missing provenance and ambiguous acceptance ids', ()
     goal: 'Inspect the project',
     mode: 'review',
     deliverables: [{ id: 'report', kind: 'report' }],
-    acceptance: [{ id: 'reviewed', statement: 'Findings are grounded.' }],
+    acceptance: [{
+      id: 'reviewed',
+      statement: 'Findings are grounded.',
+      deliverableIds: ['report'],
+      oracle: responseOracle(),
+      externalBoundaryRefs: [],
+    }],
     provenanceRefs: [],
   }), /missing-provenance/u);
 
@@ -208,8 +259,20 @@ test('task contract rejects missing provenance and ambiguous acceptance ids', ()
     mode: 'review',
     deliverables: [{ id: 'report', kind: 'report' }],
     acceptance: [
-      { id: 'reviewed', statement: 'Findings are grounded.' },
-      { id: 'reviewed', statement: 'Risks are listed.' },
+      {
+        id: 'reviewed',
+        statement: 'Findings are grounded.',
+        deliverableIds: ['report'],
+        oracle: responseOracle(),
+        externalBoundaryRefs: [],
+      },
+      {
+        id: 'reviewed',
+        statement: 'Risks are listed.',
+        deliverableIds: ['report'],
+        oracle: responseOracle(),
+        externalBoundaryRefs: [],
+      },
     ],
     provenanceRefs: ['user-prompt'],
   }), /invalid-acceptance/u);
@@ -220,10 +283,34 @@ test('task contract rejects a mode that contradicts canonical prompt orientation
     goal: 'Fix src/value.ts.',
     mode: 'review',
     deliverables: [{ id: 'report', kind: 'report' }],
-    acceptance: [{ id: 'reviewed', statement: 'The file is reviewed.' }],
+    acceptance: [{
+      id: 'reviewed',
+      statement: 'The file is reviewed.',
+      deliverableIds: ['report'],
+      oracle: responseOracle(),
+      externalBoundaryRefs: [],
+    }],
     provenanceRefs: ['user-prompt'],
   }), /coding-kernel-task-contract:orientation-mode-mismatch/u);
 });
+
+function verificationOracle(...scope) {
+  return {
+    kind: 'verification',
+    verifier: 'focused-test-suite',
+    scope,
+    evidenceKinds: ['verification-receipt'],
+  };
+}
+
+function responseOracle() {
+  return {
+    kind: 'response-evidence',
+    verifier: 'completion-adapter',
+    scope: ['response'],
+    evidenceKinds: ['response-evidence'],
+  };
+}
 
 test('canonical TaskContract projection has one immutable shared owner', () => {
   const contract = taskContract();
@@ -236,7 +323,7 @@ test('canonical TaskContract projection has one immutable shared owner', () => {
     scope: contract.scope,
     deliverables: contract.deliverables,
     constraints: contract.constraints,
-    acceptance: contract.acceptance,
+    acceptance: contract.acceptance.map(({ id, statement }) => ({ id, statement })),
     provenanceRefs: contract.provenanceRefs,
   });
   assert.equal(Object.isFrozen(projection), true);

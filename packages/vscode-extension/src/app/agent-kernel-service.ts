@@ -1,4 +1,3 @@
-import { buildRequirementContract, type RequirementContract } from '../agent/requirement-contract';
 import type { TaskContract } from '../agent/task-contract';
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import { resolveTaskSemanticContract } from '../intent/task-semantic-contract-service';
@@ -38,7 +37,6 @@ export interface AgentKernelRun {
   readonly runContext: DevSeekRunContext;
   readonly semanticContract: TaskSemanticContract;
   readonly taskContract: TaskContract;
-  readonly requirementContract: RequirementContract;
   readonly contextRefs: readonly KernelContextRef[];
   settleAgentLoopResult(result: AgentLoopResult, changedPaths?: readonly string[]): AgentRunSettlement;
   cancelRun(data?: Record<string, unknown>): RunContextStatus;
@@ -80,23 +78,17 @@ export class AgentKernelService {
       ],
     }).semanticContract;
     const taskContract = input.taskContract ?? semanticContract.taskContract;
-    const requirementContract = input.requirementContract ?? buildRequirementContract({
-      promptText: input.userPrompt,
-      taskContract,
-    });
     const runContext = createDevSeekRunContext({
       ...input,
       source: input.source ?? 'vscode-extension.agent-kernel',
       semanticContract,
       taskContract,
-      requirementContract,
     });
     return new DefaultAgentKernelRun(
       this.terminalPermissions,
       runContext,
       semanticContract,
       taskContract,
-      requirementContract,
       input.contextRefs ?? [],
     );
   }
@@ -108,7 +100,6 @@ class DefaultAgentKernelRun implements AgentKernelRun {
     readonly runContext: DevSeekRunContext,
     readonly semanticContract: TaskSemanticContract,
     readonly taskContract: TaskContract,
-    readonly requirementContract: RequirementContract,
     readonly contextRefs: readonly KernelContextRef[],
   ) {}
 

@@ -143,7 +143,18 @@ test('I11-CMP-02 user journey: VS Code delivers a sealed context compaction rece
       'Reuse IntentRevisionLineage as the only owner.',
       'Never replay committed operation receipts.',
     ],
-    acceptance: [{ id: 'tests', statement: 'Cache tests pass after the refactor.' }],
+    acceptance: [{
+      id: 'tests',
+      statement: 'Cache tests pass after the refactor.',
+      deliverableIds: ['cache'],
+      oracle: {
+        kind: 'verification',
+        verifier: 'cache-test-suite',
+        scope: ['src/cache.ts'],
+        evidenceKinds: ['verification-receipt'],
+      },
+      externalBoundaryRefs: [],
+    }],
     provenanceRefs: ['user:current'],
   });
   const contextGraph = new CanonicalContextGraphService().build({

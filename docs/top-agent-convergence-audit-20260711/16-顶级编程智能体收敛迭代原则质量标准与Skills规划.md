@@ -21,7 +21,7 @@ devseek_governance:
 
 # 顶级编程智能体收敛迭代原则、质量标准与 Skills 规划
 
-- 更新日期：2026-08-03
+- 更新日期：2026-08-07
 - 文档性质：模型无关的工程执行规范、GPT-5.5 原子作业协议与候选 Skills backlog
 - 当前状态：规范已定义；Skills 矩阵中的候选均未因本文而自动实现或取得资格
 - 审计包入口：[README.md](README.md)
@@ -37,7 +37,7 @@ devseek_governance:
 1. **单一 semantic authority**：每类事实只能有一个语义 owner。Surface、Provider、parser、UI、history 和兼容层只能适配，不能自行判定完成、权限、mutation、验证或资格。
 2. **修缺陷类，不修截图**：复现当前路径后必须审计 sibling entrypoint、状态流、工具/协议边界、持久化、恢复和 UI 投影；重复逻辑应收口为服务、契约或静态 guard。
 3. **覆盖完整软件生命周期**：意图、需求、外部边界、设计、实现、编译测试、恢复结算、发布、文档和资格都必须有明确输入、输出、authority 与证据。
-4. **最小原子 capability**：每轮只提升一个可独立验收的 capability 或关闭一个失败类别；不得用“大重构完成”代替逐项退出证据。
+4. **最小可联合验收批次**：默认提升一个可独立验收的 capability；当多项能力共享同一上游契约、依赖连续、修改无冲突且能分别给出退出证据时，可在一张批次卡中联合实现和验证。不得用“大重构完成”代替逐项状态与证据。
 5. **先 evidence，后 claim**：原始工具结果、变更、验证、artifact 和运行事实先进入不可变证据，再由独立规则派生结论。模型自述和 Markdown 不能成为事实源。
 6. **deterministic 不等于 live/qualification**：unit、replay、Headless、同机签名、本地 CAS 和 Phase 全绿只证明对应本地范围；不能外推真实 UI、Provider 稳定或资格等级。
 7. **未知默认 fail closed**：未知事件、命令、副作用、权限、Schema 版本、资格字段、环境或恢复状态不得隐式通过；产品可显式 fail-soft，但资格聚合必须把证据缺口视为 veto/不可聚合。
@@ -47,12 +47,13 @@ devseek_governance:
 11. **失败事实粘性**：后续成功不能覆盖旧失败；解除 adverse state 必须有新的 committed effect、matching verification、quality gate 和显式 recovery 因果链。
 12. **发布身份是实现的一部分**：Extension/Bridge 行为改变后，compile、package、packaged Bridge verify、hash、local install 和 installed identity 缺一不可。
 13. **模型不是 authority**：从 GPT-5.6 Sol Ultra 切换到 GPT-5.5 只改变执行者，不改变 SSOT、权限、profile、claim、质量门或完成定义；模型自信度永远不是证据。
-14. **WIP=1、窗口=一张卡**：一个窗口只认领一个 atomic ID 和一个 semantic authority。并行只允许只读复审或无写冲突验证，提交权仍归集成 owner。
+14. **WIP=1、窗口=一张卡**：一个窗口只认领一张 atomic/batch card 和一个集成 owner。批次可覆盖多个明确 semantic authority，但必须预先列出依赖、允许路径、独立验收和删除项；并行只允许无写冲突的实现/验证，不能借合批建立跨 owner 旁路，提交权仍归集成 owner。
 15. **小上下文、可恢复 checkpoint**：定向读取任务直接依赖；工具输出保留必要证据。接近压缩时先记录 task id、baseline、dirty、首个失败、已改路径、验证与下一步，再切窗口，禁止重新扫全仓。
 16. **元数据不是执行证据**：catalog、profile、prompt、Skill 或 runner inventory 的存在不证明语义已执行；每个声明语义必须有绑定输入、真实 executor、oracle、receipt 和 terminal evidence。
 17. **旧文档不得复活执行权**：`docs/requirements`、`docs/architecture` 和本包 01～13 中的“当前、下一轮、已完成、stable、Phase”只作历史/设计证据；当前任务只由 `PLAN-当前收敛迭代计划.md` 发放，已归档的 14/18 只保留历史计划与承接映射。
 18. **授权精确绑定且不继承**：用户/外部授权必须绑定当前窗口、atomic ID、candidate、run/action、tool、不可变 input digest、effect facets、sandbox policy、target scope、有效期和撤销源，并由当前 authority session 签发和验真；字段结构正确不能替代签发事实。journal、checkpoint 或 resume receipt 只能重放同一精确 operation；任一绑定缺失或漂移都 fail closed。旧聊天、旧窗口、另一个 slot 或一般性“继续”不能替代高影响动作的明确授权。
 19. **设计原则优先，规模指标从属**：代码优化先确定行为契约、唯一 owner、单一职责、依赖方向和可测试边界，再查看行数、diff 和复杂度。如果缺陷暴露了错误边界，应重构或删除该边界，不在其上叠加补丁。规模预算只阻止职责回流；删说明、压格式、空壳拆分或无契约迁移不计收敛。
+20. **计划可修订，范围不可偷换**：探索或工具调用发现新具体目标时，必须在副作用前由唯一 plan-revision authority 封存证据、父计划、影响与验收映射；执行 authority 只消费当前修订。显式 `allowed_paths`、`no_touch_paths`、`non_goals`、`no-other-files` 和 workspace 边界不得被模型提议改写，不能用“动态规划”伪装越权。
 
 ## 2. 生命周期质量标准与 Definition of Done
 
@@ -61,9 +62,9 @@ devseek_governance:
 | 阶段 | 输入与输出 | 唯一 authority | 机器门与攻击反例 | 真实 UI / 停止回退 |
 | --- | --- | --- | --- | --- |
 | 意图识别 | 输入为用户原文、会话修订、项目规则和上下文证据；输出版本化 `TaskSemanticContract/TaskContract` 或 `devseek.semantic-intent/v1` 候选，不是自由文本标签；字段必须覆盖任务形态、工程上下文、mutation scope、验证/运行义务、副作用等级、完成 `done_iff` 和歧义状态 | TaskSemanticContract builder/merger + semantic intent governor；LLM 可产出自然语言理解候选，本地 governor 负责安全边界、no-write/destructive/external-effect/Bridge 可见通道约束；下游 validation、terminal、completion、QualityGate 和 UI route 只消费合并后的 contract 字段，不重新解析原始 prompt | 中英文否定、作用域、后续更正、resume/destructive、standalone/existing-project、print/stdout、compile-only/compile-run、run-only/no-write、Bridge hidden-prompt pollution 反例；每个 semantic task_kind 必须有外部来源用户输入 corpus 覆盖；duplicate intent owner 为硬失败；未知歧义必须提问或 blocked | 简单任务可无 UI 且走最短闭环；目标/禁止项冲突立即停止写入；可见 Web/Bridge Provider 未隔离前不得发送隐藏分类 prompt |
-| 需求分析 | 输入 TaskContract 与证据；输出 objectives、deliverables、constraints、acceptance、applicability | Requirement Contract authority | 每个验收项可执行；禁止固定领域关键词、固定文档数、把“只读源码”扩大成“不写报告” | 关键选择会改变结果时请求用户；不得自行扩需求 |
-| 外部边界发现 | 输入用户路径和规则；输出 repo root、入口、依赖、构建/发布、账号/网络/法规边界 EvidenceRefs | Context Discovery service | AGENTS/CLAUDE、构建文件、调用者/注册点、workspace 边界缺失测试；路径逃逸/大目录扫描反例 | 网络/账号/外部系统前必须授权；边界未知时 fail closed |
-| 软件设计 | 输入需求与 context graph；输出 ADR/ChangePlan、authority、状态迁移、删除项和验证设计 | Architecture Decision authority | 单 owner、依赖方向、故障模型、幂等/恢复、跨平台；平行 loop/双写/Surface 业务规则为硬失败 | 重大架构取舍超出范围时请求确认；否则按最小设计执行 |
+| 需求分析 | 输入 TaskContract 与 context evidence；输出 objectives、deliverables、constraints、non-goals、assumptions/conflicts、acceptance oracle 和不可变 revision | `RequirementDecisionPort` + `AcceptanceContractPort` | 每个验收项必须绑定 deliverable、verifier/scope/evidence kind；禁止固定领域关键词、固定文档数、把非目标变成交付物或把“只读源码”扩大成“不写报告” | 弱 oracle、冲突或关键未确认假设必须 clarification-required；不得自行扩需求 |
+| 外部边界发现 | 输入用户路径、规则和外部来源证据；输出 repo root、入口、依赖、构建/发布、账号/网络/法规 boundary 与 source grounding | `ExternalBoundaryPort` + `SourceGroundingPort` | 来源必须精确绑定 boundary、locator、content digest、tool/effect receipt；覆盖 AGENTS/CLAUDE、构建文件、调用者/注册点、workspace 边界缺失、路径逃逸和来源冒名反例 | 网络/账号/外部系统前必须授权；边界或来源未知时 exploration-required/fail closed |
+| 软件设计 | 输入 requirement revision 与 context graph；输出 design alternatives/trade-off、ImpactSet、ChangePlan、dependency checks、migration/deletion/rollback 和 acceptance mapping | `DesignDecisionPort` + `ChangePlanPort` | 单 owner、依赖方向、故障模型、幂等/恢复、跨平台、计划外 target/effect；平行 loop/双写/Surface 业务规则为硬失败 | 重大架构取舍超出范围时请求确认；新证据或实现偏离必须创建同 owner revision，不得旁路旧计划 |
 | 代码实现 | 输入已批准 ChangePlan；输出最小 diff、迁移/删除、EvidenceRef 与 read-back | 对应 domain service；workspace 写盘仅 Mutation authority | compile/type/schema、diff budget、sibling guard、CAS/dirty/ABA/fault injection；禁止隐藏 writer | 发现需扩大 capability 时停止并拆新任务；不顺手扩功能 |
 | 权限与副作用 | 输入 operation intent/identity/policy；输出 durable request/authorization/started/terminal receipt | Permission + SideEffect authority | deny-before-callback、unknown mutable、idempotency、timeout/indeterminate、secret non-observation、MCP/command/undo 旁路 | 高风险/网络/破坏性动作需用户授权；拒绝或身份漂移立即停止 |
 | 编译与测试 | 输入变更、项目规则和 acceptance；输出 VerificationPlan 与原始结果 | Validation Planner + runner；模型无权自判 pass | focused→package full→replay→architecture→Phase；测试未执行、弱 oracle、环境失败误标 pass 为硬失败 | GUI/交互项显式 manual review；早层失败不跳后层 |
@@ -152,6 +153,7 @@ sibling_entrypoints:
 state_protocol_persistence_recovery_ui_audit:
 minimal_change:
 replaced_or_deleted_paths:
+plan_revision_evidence_and_scope_invariants:
 
 focused_commands_and_expected_counts:
 affected_package_commands:
@@ -174,7 +176,7 @@ terminal_state: PASS | BLOCKED | FAIL
 next_atomic_id_or_blocked_reason:
 ```
 
-GPT-5.5 必须在写代码前补齐所有字段。`allowed_paths` 不是搜索提示而是变更上限；`no_touch_paths`、`non_goals` 和 `stop_if` 不能在执行中静默删除。如果发现需要第二个 authority，应登记新卡并以当前卡 `BLOCKED` 或限定 `PASS` 结束。
+GPT-5.5 必须在写代码前补齐所有字段。`allowed_paths` 不是搜索提示而是变更上限；`no_touch_paths`、`non_goals` 和 `stop_if` 不能在执行中静默删除。执行中发现新具体目标时，只能在预先允许的语义 authority 与用户范围内通过证据化 plan revision 纳入；新的第二 authority 或范围外目标不得静默扩入。批次卡必须在实施前列明全部 semantic authorities、依赖和逐项 oracle；边界变化应登记新卡并以当前卡 `BLOCKED` 或限定 `PASS` 结束。
 
 ## 4. Skills 规划原则
 
@@ -254,7 +256,7 @@ Skill 不能：自行写盘、绕过 permission、自己宣称 task complete、�
 ### 7.2 GPT-5.5 微循环
 
 1. **Resolve**：按 15 复算 Git、dirty、Phase、runner/decision，并按 applicability 复算 artifact/stable installed；仅当 Surface/runtime 在 scope 时观察 active runtime。机器事实与聊天冲突时机器优先。
-2. **Claim one leaf**：按 15 的当前卡和 14 的依赖注册表，只选前置已满足且明确 claimable 的一个 leaf，补齐第 3.4 节作业卡；parent/program group 不可领取。
+2. **Claim one card**：按当前计划和 capability DAG，选择一个前置已满足的 leaf，或一组依赖连续、修改无冲突且可逐项验收的 cohesive batch，补齐第 3.4 节作业卡；无边界的 parent/program group 不可领取。
 3. **Reproduce first**：建立最小失败/攻击证据，记录首个根因；没有可证伪 oracle 时不实施。
 4. **Change owner only**：修改事实 owner，审计 sibling/state/protocol/persistence/recovery/UI；删除旧 owner或加不可绕过 guard。
 5. **Verify outward**：focused→affected package→replay/headless→architecture/generated drift；任何失败立即回 owner。

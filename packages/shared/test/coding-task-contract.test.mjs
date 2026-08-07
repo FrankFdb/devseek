@@ -13,7 +13,18 @@ function validInput(overrides = {}) {
     include: [' src/value.ts ', 'src/value.ts'],
     deliverables: [{ id: ' source-change ', kind: 'source-change', path: ' src/value.ts ' }],
     constraints: [' workspace-scoped ', 'workspace-scoped'],
-    acceptance: [{ id: ' changed ', statement: ' The requested source change is present. ' }],
+    acceptance: [{
+      id: ' changed ',
+      statement: ' The requested source change is present. ',
+      deliverableIds: [' source-change '],
+      oracle: {
+        kind: 'verification',
+        verifier: ' focused-test-suite ',
+        scope: [' src/value.ts '],
+        evidenceKinds: ['verification-receipt'],
+      },
+      externalBoundaryRefs: [],
+    }],
     provenanceRefs: [' user-prompt ', 'user-prompt'],
     ...overrides,
   };
@@ -34,6 +45,8 @@ test('TaskContractPort owns canonical construction and immutable projection', ()
     path: 'src/value.ts',
   }]);
   assert.deepEqual(contract.constraints, ['workspace-scoped']);
+  assert.deepEqual(contract.acceptance[0].deliverableIds, ['source-change']);
+  assert.equal(contract.acceptance[0].oracle.verifier, 'focused-test-suite');
   assert.deepEqual(contract.provenanceRefs, ['user-prompt']);
   assert.equal(Object.isFrozen(contract), true);
   assert.equal(Object.isFrozen(contract.scope.include), true);
@@ -60,6 +73,18 @@ test('TaskContractPort fails closed on malformed, contradictory, and spoofed con
     goal: 'Review src/value.ts.',
     mode: 'review',
     deliverables: [{ id: 'report', kind: 'report' }],
+    acceptance: [{
+      id: 'reviewed',
+      statement: 'The review findings are grounded.',
+      deliverableIds: ['report'],
+      oracle: {
+        kind: 'response-evidence',
+        verifier: 'review-completion-adapter',
+        scope: ['response'],
+        evidenceKinds: ['response-evidence'],
+      },
+      externalBoundaryRefs: [],
+    }],
   })).orientation;
   assert.throws(
     () => service.build(validInput({ orientation: reviewOrientation })),

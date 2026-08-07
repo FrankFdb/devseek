@@ -34,6 +34,13 @@
 | context-graph | shared-CanonicalContextGraphService | - | 1 | converged |
 | context-provenance | shared-CanonicalContextProvenanceService | - | 1 | converged |
 | instruction-precedence | shared-CanonicalInstructionPrecedenceService | - | 1 | converged |
+| requirements | shared-CanonicalRequirementDecisionService | - | 1 | converged |
+| external-boundary | shared-CanonicalExternalBoundaryService | - | 1 | converged |
+| source-grounding | shared-CanonicalSourceGroundingService | - | 1 | converged |
+| acceptance-contract | shared-CanonicalAcceptanceContractService | - | 1 | converged |
+| design-decision | shared-CanonicalDesignDecisionService | - | 1 | converged |
+| change-plan | shared-CanonicalChangePlanService | - | 1 | converged |
+| change-plan-revision | shared-CanonicalChangePlanRevisionService | - | 1 | converged |
 | run-lifecycle | shared-CanonicalRunLifecycleService | - | 1 | converged |
 | settlement-decision | shared-CanonicalSettlementDecisionService | - | 1 | converged |
 | provider-normalization | shared-CanonicalProviderEventService | - | 1 | converged |

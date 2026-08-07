@@ -407,7 +407,7 @@ function settledRun(fixture) {
     exclude: fixture.expected.taskContract.scope.exclude,
     deliverables: fixture.expected.taskContract.deliverables,
     constraints: fixture.expected.taskContract.constraints,
-    acceptance: fixture.expected.taskContract.acceptance,
+    acceptance: executableAcceptance(fixture),
     provenanceRefs: fixture.expected.taskContract.provenanceRefs,
   });
   const toolExecutions = fixture.expected.toolExecutions.map(receipt => ({
@@ -468,6 +468,25 @@ function settledRun(fixture) {
     evidenceRefs: fixture.expected.completion.evidenceRefs,
   };
   return { fixtureId: fixture.fixtureId, taskContract, toolExecutions, changeReceipts, verifications, completion };
+}
+
+function executableAcceptance(fixture) {
+  const deliverableIds = fixture.expected.taskContract.deliverables.map(deliverable => deliverable.id);
+  const responseOnly = fixture.expected.taskContract.mode === 'review'
+    || fixture.expected.taskContract.mode === 'explain';
+  return fixture.expected.taskContract.acceptance.map(criterion => ({
+    ...criterion,
+    deliverableIds,
+    oracle: {
+      kind: responseOnly ? 'response-evidence' : 'verification',
+      verifier: 'conformance-fixture-adapter',
+      scope: fixture.expected.taskContract.scope.include.length > 0
+        ? fixture.expected.taskContract.scope.include
+        : ['workspace'],
+      evidenceKinds: [responseOnly ? 'response-evidence' : 'verification-receipt'],
+    },
+    externalBoundaryRefs: [],
+  }));
 }
 
 function unavailable(dimension) {

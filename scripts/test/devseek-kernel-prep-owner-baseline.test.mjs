@@ -48,9 +48,9 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    semantic_domains: 23,
-    converged_semantic_domains: 23,
-    source_checks: 115,
+    semantic_domains: 30,
+    converged_semantic_domains: 30,
+    source_checks: 122,
     failed_source_checks: 0,
   });
   assert.deepEqual(
@@ -101,6 +101,13 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     'context-graph',
     'context-provenance',
     'instruction-precedence',
+    'requirements',
+    'external-boundary',
+    'source-grounding',
+    'acceptance-contract',
+    'design-decision',
+    'change-plan',
+    'change-plan-revision',
     'run-lifecycle',
     'settlement-decision',
     'provider-normalization',
@@ -195,6 +202,20 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
   assert.equal(checkpointDomain.current_owners[0].owner_id, 'shared-CanonicalCheckpointService');
   assert.deepEqual(checkpointDomain.current_owners[0].surfaces, ['vscode', 'cli', 'headless']);
   assert.equal(checkpointDomain.convergence_status, 'converged');
+  for (const [domainId, ownerId] of [
+    ['requirements', 'shared-CanonicalRequirementDecisionService'],
+    ['external-boundary', 'shared-CanonicalExternalBoundaryService'],
+    ['source-grounding', 'shared-CanonicalSourceGroundingService'],
+    ['acceptance-contract', 'shared-CanonicalAcceptanceContractService'],
+    ['design-decision', 'shared-CanonicalDesignDecisionService'],
+    ['change-plan', 'shared-CanonicalChangePlanService'],
+    ['change-plan-revision', 'shared-CanonicalChangePlanRevisionService'],
+  ]) {
+    const domain = actual.semantic_domains.find(item => item.domain_id === domainId);
+    assert.equal(domain.current_owners[0].owner_id, ownerId);
+    assert.deepEqual(domain.current_owners[0].surfaces, ['vscode', 'cli', 'headless']);
+    assert.equal(domain.convergence_status, 'converged');
+  }
   assert.equal(actual.semantic_domains.every(domain => domain.convergence_status === 'converged'), true);
   assert.equal(actual.source_checks.every(assertion => assertion.passed), true);
   assert.equal(fs.existsSync(path.join(repoRoot, 'packages/cli/src/cli-legacy-coding-loop.ts')), false);
@@ -332,7 +353,7 @@ test('kernel prep owner baseline checker validates the current generated artifac
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    converged_semantic_domains: 23,
+    converged_semantic_domains: 30,
     failed_source_checks: 0,
     qualification_effect: 'NONE',
   });

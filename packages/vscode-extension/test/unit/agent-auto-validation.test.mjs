@@ -140,7 +140,7 @@ test('Agent auto validation: passing verifier cannot settle a weak requirement o
     assert.equal(result.qualityGate.status, 'blocked');
     assert.equal(result.verificationReceipt.status, 'unverified');
     assert.match(result.qualityGate.summary, /acceptance-not-bound-to-executable-oracle/);
-    assert.match(result.feedbackForAI, /requirement_contract/);
+    assert.match(result.feedbackForAI, /canonical_requirement_decision/);
     assert.deepEqual(statuses.map(status => `${status.phase}:${status.state}`), [
       'validate:started',
       'validate:skipped',

@@ -257,7 +257,19 @@ function routeInput(recovery, fixture) {
     exclude: fixture.expected.taskContract.scope.exclude,
     deliverables: fixture.expected.taskContract.deliverables,
     constraints: fixture.expected.taskContract.constraints,
-    acceptance: fixture.expected.taskContract.acceptance,
+    acceptance: fixture.expected.taskContract.acceptance.map(criterion => ({
+      ...criterion,
+      deliverableIds: fixture.expected.taskContract.deliverables.map(deliverable => deliverable.id),
+      oracle: {
+        kind: 'verification',
+        verifier: 'vscode-conformance-adapter',
+        scope: fixture.expected.taskContract.scope.include.length > 0
+          ? fixture.expected.taskContract.scope.include
+          : ['workspace'],
+        evidenceKinds: ['verification-receipt'],
+      },
+      externalBoundaryRefs: [],
+    })),
     provenanceRefs: fixture.expected.taskContract.provenanceRefs,
   });
   const canonicalCheckpoint = recovery

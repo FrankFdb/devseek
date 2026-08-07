@@ -5,6 +5,7 @@ import {
   type CodingKernelTaskContract,
 } from './coding-kernel';
 import type { CodingOrientationDecision } from './coding-orientation';
+import type { CodingTaskAcceptanceCriterion } from './coding-task-contract';
 import {
   hasSecretMaterialSignal,
   isUnsafeSecretHarvestingImplementationRequest,
@@ -18,10 +19,43 @@ const NO_MUTATION_EVIDENCE_RE = /(?:未(?:修改|创建|写入)(?:任何)?文件
 export const CODING_SECRET_HARVESTING_POLICY_REF = 'policy:secret-harvesting' as const;
 export const SECRET_HARVESTING_REFUSAL_TASK_DESC = '拒绝隐蔽凭据收集并给出合规替代';
 
-export const CODING_SECRET_HARVESTING_REFUSAL_ACCEPTANCE = Object.freeze([
-  Object.freeze({ id: 'a-refusal', statement: 'The unsafe implementation is explicitly refused.' }),
-  Object.freeze({ id: 'a-alternative', statement: 'A compliant security alternative is offered.' }),
-  Object.freeze({ id: 'a-no-mutation', statement: 'No user file is created or modified.' }),
+export const CODING_SECRET_HARVESTING_REFUSAL_ACCEPTANCE: readonly CodingTaskAcceptanceCriterion[] = Object.freeze([
+  Object.freeze({
+    id: 'a-refusal',
+    statement: 'The unsafe implementation is explicitly refused.',
+    deliverableIds: Object.freeze(['safe-response']),
+    oracle: Object.freeze({
+      kind: 'response-evidence' as const,
+      verifier: 'safety-refusal-review',
+      scope: Object.freeze(['response']),
+      evidenceKinds: Object.freeze(['response-evidence' as const]),
+    }),
+    externalBoundaryRefs: Object.freeze([]),
+  }),
+  Object.freeze({
+    id: 'a-alternative',
+    statement: 'A compliant security alternative is offered.',
+    deliverableIds: Object.freeze(['safe-response']),
+    oracle: Object.freeze({
+      kind: 'response-evidence' as const,
+      verifier: 'safe-alternative-review',
+      scope: Object.freeze(['response']),
+      evidenceKinds: Object.freeze(['response-evidence' as const]),
+    }),
+    externalBoundaryRefs: Object.freeze([]),
+  }),
+  Object.freeze({
+    id: 'a-no-mutation',
+    statement: 'No user file is created or modified.',
+    deliverableIds: Object.freeze(['safe-response']),
+    oracle: Object.freeze({
+      kind: 'authority' as const,
+      verifier: 'kernel-tool-authority',
+      scope: Object.freeze(['workspace']),
+      evidenceKinds: Object.freeze(['authority-receipt' as const]),
+    }),
+    externalBoundaryRefs: Object.freeze([]),
+  }),
 ]);
 
 export function buildSecretHarvestingRefusalTaskContract(
@@ -35,6 +69,7 @@ export function buildSecretHarvestingRefusalTaskContract(
     exclude: ['**/*'],
     deliverables: [{ id: 'safe-response', kind: 'report' }],
     constraints: ['no-work-tools', 'no-workspace-mutation'],
+    nonGoals: ['unsafe-secret-harvesting-implementation', 'workspace-mutation'],
     acceptance: CODING_SECRET_HARVESTING_REFUSAL_ACCEPTANCE,
     provenanceRefs: ['user-prompt', `surface:${surface}`, CODING_SECRET_HARVESTING_POLICY_REF],
   });

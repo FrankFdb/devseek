@@ -1,6 +1,8 @@
 import {
   projectSettledCodingConformanceRun,
+  renderCodingChangePlanSummary,
   renderCodingContextGraphSummary,
+  renderCodingRequirementDecisionSummary,
   renderCodingMemoryContext,
   type CodingConformanceProjection,
   type CodingContextCompactionSessionPort,
@@ -140,6 +142,8 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
         sessionContextText: mergeContextText(
           request.sessionContextText,
           renderCodingContextGraphSummary(kernelRequest.contextGraph),
+          renderCodingRequirementDecisionSummary(kernelRequest.requirementDecision),
+          renderCodingChangePlanSummary(kernelRequest.changePlan),
         ),
         workflowMode: request.workflowMode,
         memoryRelatedPaths: request.memoryRelatedPaths ?? [],

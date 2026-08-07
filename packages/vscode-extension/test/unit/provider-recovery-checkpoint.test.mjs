@@ -40,7 +40,18 @@ test('ProviderRecoveryCheckpoint seals provider failure facts into a scoped resu
     goal: '修改 src/main.ts 并验证',
     mode: 'change',
     deliverables: [{ id: 'source', kind: 'source-change', path: 'src/main.ts' }],
-    acceptance: [{ id: 'tests', statement: 'The focused verification passes.' }],
+    acceptance: [{
+      id: 'tests',
+      statement: 'The focused verification passes.',
+      deliverableIds: ['source'],
+      oracle: {
+        kind: 'verification',
+        verifier: 'provider-recovery-test-suite',
+        scope: ['src/main.ts'],
+        evidenceKinds: ['verification-receipt'],
+      },
+      externalBoundaryRefs: [],
+    }],
     provenanceRefs: ['user:current'],
   });
   const contextGraph = new CanonicalContextGraphService().build({

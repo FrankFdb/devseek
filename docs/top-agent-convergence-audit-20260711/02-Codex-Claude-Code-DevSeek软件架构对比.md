@@ -66,7 +66,13 @@ Anthropic 官方把 Claude Code 的核心循环明确描述为“获取上下文
 
 因此 Claude Code 公开定义的也不是“必须依次生成六份工件”，而是一个能按任务复杂度折叠、能观察环境、能执行工具、能验证并继续修复的反馈循环。
 
-### 2.3 从公开事实抽象出的共同架构
+### 2.3 2026-08-07 规划行为增量复核
+
+- Claude Code 官方 [`permission modes`](https://code.claude.com/docs/en/permission-modes) 将 Plan Mode 定义为可分析代码库并形成计划、但不修改文件或执行命令的受限模式；[`permissions`](https://code.claude.com/docs/en/permissions) 继续把工具许可与 OS sandbox 分层。DevSeek 因而应把“探索/设计”和“有副作用执行”做成宿主可强制的状态与 authority 边界，而不是仅在 prompt 中要求先规划。
+- Codex 开源的 [`default instructions`](https://github.com/openai/codex/blob/main/codex-rs/protocol/src/prompts/base_instructions/default.md) 要求较长任务用 `update_plan` 维护 `pending`、`in_progress`、`completed`，且任一时刻恰有一个步骤处于 `in_progress`；简单任务可以跳过计划。DevSeek 对标的是这种按复杂度折叠、可持续更新并与执行状态一致的可观察行为，不推测 Codex 私有实现。
+- 本轮据此把需求 revision、验收 oracle、设计决策和 change plan 建成 shared typed owner，并让 mutation/external-effect authority 消费当前计划。当自然任务中的模型/工具提出新具体目标时，shared `ChangePlanRevisionPort` 会在副作用前封存证据、父计划和修订决策；显式用户范围和 workspace 边界不可扩大。实时外部调研、clarification/steer、外部新证据驱动的 requirement/design revision 和可审阅计划状态仍是后续差距。
+
+### 2.4 从公开事实抽象出的共同架构
 
 两者产品形态不同，但公开机制呈现出相同的工程原则：
 
@@ -130,12 +136,12 @@ Anthropic 官方把 Claude Code 的核心循环明确描述为“获取上下文
 | --- | --- | --- | --- | --- |
 | 会话与项目指令 | 分层指令、项目记忆、任务上下文进入每次行动 | `ProjectInstructionService` 已实现，但主要接入 VS Code 路径，CLI/Core 不对等 | D/I/W部分，Q✗ | P1 |
 | 意图与模式识别 | 结合对话、仓库观察和工具反馈持续校准；必要时澄清、规划或行动 | Intent、Router、Workflow、Decomposer、TaskContract、Completion 多处解释同一语义；附件会改变引擎 | D/I/W，Q✗ | P0 |
-| 需求与验收契约 | 目标、范围、约束、非目标和验证方式可持续修订 | `TaskContract` 有基础概念，但没有成为所有入口唯一契约，部分规则被领域词驱动 | D/I/W部分 | P1 |
+| 需求与验收契约 | 目标、范围、约束、非目标和验证方式可持续修订 | TaskContract v2 由 shared `RequirementDecisionPort` 与 `AcceptanceContractPort` 转成不可变 revision；deliverable、non-goal、assumption/conflict 和 executable oracle 精确绑定，三 Surface 共用 | D/I/W，Q✗ | P1 |
 | 工程环境识别 | 识别语言、构建系统、测试、仓库规则、依赖和风险 | `EngineeringContextService` 存在，但没有进入统一 Runtime | D/I，W✗ | P1 |
 | 代码库探索 | 按需文件搜索、诊断、符号/引用查询；观察结果反馈给循环 | VS Code 工具较多，所谓 semantic search 仍偏文本 grep；CLI 使用另一套能力 | I/W部分 | P1 |
-| 外部资料与边界 | Web/MCP/官方文档按需使用，来源可追踪，受网络权限约束 | Web/MCP 已有，但没有统一进入 Context/Requirement；MCP 权限服务未接真实调用 | D/I/W部分 | P0-安全 |
-| 设计与规划 | 复杂任务先探索和规划，可审阅、可因新证据重规划 | 有代码附件才更可能进入 Architect+Editor；纯创建和 CLI 走不同流程 | D/I/W分叉，Q✗ | P0 |
-| 架构一致性 | 依据仓库规则、责任边界和影响分析约束修改 | 设计文档丰富，运行时依赖规则主要靠 prompt、grep 和人工纪律 | D/I部分 | P1 |
+| 外部资料与边界 | Web/MCP/官方文档按需使用，来源可追踪，受网络权限约束 | shared `ExternalBoundaryPort` / `SourceGroundingPort` 要求 source 精确绑定 boundary、locator、内容摘要及 tool/effect evidence；缺来源时 Kernel 返回 exploration-required。实时 Web/MCP 获取循环仍待接线 | D/I/W本地，Q✗ | P0-安全 |
+| 设计与规划 | 复杂任务先探索和规划，可审阅、可因新证据重规划 | shared `DesignDecisionPort` / `ChangePlanPort` 统一备选方案、trade-off、影响集、迁移/删除/回退和验收映射；`ChangePlanRevisionPort` 将工具提议的具体目标在执行前收口为证据化修订，authority 只消费当前计划。用户 review、clarification/steer 和外部证据触发的需求/设计修订仍待产品化 | D/I/W本地，Q✗ | P0 |
+| 架构一致性 | 依据仓库规则、责任边界和影响分析约束修改 | change plan 已声明 owner/dependency checks、删除项和 acceptance mapping，并由 v25 静态 owner 基线以 30 个语义域防止 Surface 旁路；跨语言完整影响图和正式项目资格仍未完成 | D/I/W部分，Q✗ | P1 |
 | Provider 协议 | 模型方言在 Adapter 归一，Core 只消费结构化 ToolCall | Extension 有大型 fake/parser 兼容层，CLI 又维护 JSON/XML/diff 解析 | D/I/W分叉 | P1 |
 | 工具注册与执行 | 单一注册表、策略判定、执行器和结果协议 | ToolRegistry/Executor 已有，但 Extension 大循环仍自行调度，CLI 不复用 | D/I/W部分 | P0 |
 | 文件 mutation | edit/delete/mkdir/undo 经同一受控、可回滚事务 | 新 baseline/CAS/atomic commit 主要只接入 Markdown；旧写入入口仍广泛存在 | D/I，W很少 | P0 |
@@ -158,6 +164,8 @@ Anthropic 官方把 Claude Code 的核心循环明确描述为“获取上下文
 | Trace/replay | 行动、证据和失败可回放并定位到阶段 | RunContext/trace/replay 是已有优势，但多 Loop 使事实不一致 | D/I/W部分 | P0 |
 | 行为资格 | 从小任务到真实项目逐级验证真实入口和 Provider | PA benchmark 主要走 CLI+Fake Bridge；当前真实 VS Code 配额为 `0/3、0/2、0/1` | D/I，Q✗ | P0 |
 | 架构防漂移 | 限制 owner、旁路、依赖方向、执行引擎和 mutation API 数量 | drift gate 只检查少量文件行数，新千行热点不在预算 | D/I弱 | P0-治理 |
+
+> 2026-08-07 状态注记：上表大部分行仍保留 2026-07-11 物理审计快照；本轮只重核并改写 C4/C5 相关行。完整当前状态、计数和下一任务只以 `PLAN-当前收敛迭代计划.md` 与 capability ledger 为准。C4/C5 的 `wired` 只表示本地 owner、产品接线和确定性证据已满足，不产生 qualification claim。
 
 ### 4.3 公开能力差异附录
 

@@ -1,6 +1,6 @@
 {
-  "schema_version": "devseek.kernel-prep-owner-baseline/v23",
-  "baseline_id": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v23",
+  "schema_version": "devseek.kernel-prep-owner-baseline/v25",
+  "baseline_id": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v25",
   "purpose": "Track product-route and semantic-owner convergence without asserting qualification or coupling local iteration to Gate 0.",
   "qualification_eligible": false,
   "qualification_effect": "NONE",
@@ -243,6 +243,139 @@
             "headless"
           ],
           "source_ref": "packages/shared/src/coding-instruction-precedence.ts"
+        }
+      ],
+      "missing_surfaces": [],
+      "convergence_status": "converged"
+    },
+    {
+      "domain_id": "requirements",
+      "target_port": "RequirementDecisionPort",
+      "target_owner_count": 1,
+      "current_owner_count": 1,
+      "current_owners": [
+        {
+          "owner_id": "shared-CanonicalRequirementDecisionService",
+          "surfaces": [
+            "vscode",
+            "cli",
+            "headless"
+          ],
+          "source_ref": "packages/shared/src/coding-requirements.ts"
+        }
+      ],
+      "missing_surfaces": [],
+      "convergence_status": "converged"
+    },
+    {
+      "domain_id": "external-boundary",
+      "target_port": "ExternalBoundaryPort",
+      "target_owner_count": 1,
+      "current_owner_count": 1,
+      "current_owners": [
+        {
+          "owner_id": "shared-CanonicalExternalBoundaryService",
+          "surfaces": [
+            "vscode",
+            "cli",
+            "headless"
+          ],
+          "source_ref": "packages/shared/src/coding-requirements.ts"
+        }
+      ],
+      "missing_surfaces": [],
+      "convergence_status": "converged"
+    },
+    {
+      "domain_id": "source-grounding",
+      "target_port": "SourceGroundingPort",
+      "target_owner_count": 1,
+      "current_owner_count": 1,
+      "current_owners": [
+        {
+          "owner_id": "shared-CanonicalSourceGroundingService",
+          "surfaces": [
+            "vscode",
+            "cli",
+            "headless"
+          ],
+          "source_ref": "packages/shared/src/coding-requirements.ts"
+        }
+      ],
+      "missing_surfaces": [],
+      "convergence_status": "converged"
+    },
+    {
+      "domain_id": "acceptance-contract",
+      "target_port": "AcceptanceContractPort",
+      "target_owner_count": 1,
+      "current_owner_count": 1,
+      "current_owners": [
+        {
+          "owner_id": "shared-CanonicalAcceptanceContractService",
+          "surfaces": [
+            "vscode",
+            "cli",
+            "headless"
+          ],
+          "source_ref": "packages/shared/src/coding-requirements.ts"
+        }
+      ],
+      "missing_surfaces": [],
+      "convergence_status": "converged"
+    },
+    {
+      "domain_id": "design-decision",
+      "target_port": "DesignDecisionPort",
+      "target_owner_count": 1,
+      "current_owner_count": 1,
+      "current_owners": [
+        {
+          "owner_id": "shared-CanonicalDesignDecisionService",
+          "surfaces": [
+            "vscode",
+            "cli",
+            "headless"
+          ],
+          "source_ref": "packages/shared/src/coding-design-plan.ts"
+        }
+      ],
+      "missing_surfaces": [],
+      "convergence_status": "converged"
+    },
+    {
+      "domain_id": "change-plan",
+      "target_port": "ChangePlanPort",
+      "target_owner_count": 1,
+      "current_owner_count": 1,
+      "current_owners": [
+        {
+          "owner_id": "shared-CanonicalChangePlanService",
+          "surfaces": [
+            "vscode",
+            "cli",
+            "headless"
+          ],
+          "source_ref": "packages/shared/src/coding-design-plan.ts"
+        }
+      ],
+      "missing_surfaces": [],
+      "convergence_status": "converged"
+    },
+    {
+      "domain_id": "change-plan-revision",
+      "target_port": "ChangePlanRevisionPort",
+      "target_owner_count": 1,
+      "current_owner_count": 1,
+      "current_owners": [
+        {
+          "owner_id": "shared-CanonicalChangePlanRevisionService",
+          "surfaces": [
+            "vscode",
+            "cli",
+            "headless"
+          ],
+          "source_ref": "packages/shared/src/coding-change-plan-revision.ts"
         }
       ],
       "missing_surfaces": [],
@@ -524,9 +657,9 @@
     "legacy_recovery_routes": 0,
     "legacy_execution_owners": 0,
     "cross_surface_kernel_routes": 4,
-    "semantic_domains": 23,
-    "converged_semantic_domains": 23,
-    "source_checks": 115,
+    "semantic_domains": 30,
+    "converged_semantic_domains": 30,
+    "source_checks": 122,
     "failed_source_checks": 0
   },
   "source_checks": [
@@ -591,6 +724,9 @@
         "new CanonicalSettlementDecisionService()",
         "new CanonicalTaskContractService()",
         "new CanonicalContextGraphService()",
+        "new CanonicalRequirementDecisionService()",
+        "new CanonicalDesignDecisionService()",
+        "new CanonicalChangePlanService()",
         "new CanonicalMemoryPolicyService()",
         "new CanonicalCheckpointService()",
         "new CanonicalContextCompactionService()",
@@ -600,6 +736,9 @@
         "new CanonicalToolDispatchService(TOOL_SCHEMAS)",
         "TASK_CONTRACT.snapshot(request.taskContract)",
         "CONTEXT_GRAPH.build({",
+        "REQUIREMENTS.decide({ taskContract, contextGraph })",
+        "DESIGN.decide({",
+        "CHANGE_PLAN.create({",
         "MEMORY_POLICY.selectContext({",
         "CHECKPOINT.bind({",
         "CHECKPOINT.restore(request.resumeCheckpoint",
@@ -608,6 +747,7 @@
         "providerEvents: PROVIDER_EVENTS",
         "toolSchemas: TOOL_SCHEMAS",
         "toolDispatch: TOOL_DISPATCH",
+        "changePlan,",
         "readonly operationJournal: CodingOperationJournalPort",
         "new CanonicalWorkspaceMutationTransaction(",
         "request.operationJournal,",
@@ -769,7 +909,7 @@
       "check_id": "shared-canonical-task-contract-owner",
       "path": "packages/shared/src/coding-task-contract.ts",
       "includes": [
-        "CODING_KERNEL_TASK_CONTRACT_VERSION = 'devseek.coding-kernel-task-contract/v1'",
+        "CODING_KERNEL_TASK_CONTRACT_VERSION = 'devseek.coding-kernel-task-contract/v2'",
         "export interface TaskContractPort",
         "export class CanonicalTaskContractService implements TaskContractPort",
         "build(input: BuildCodingKernelTaskContractInput)",
@@ -842,12 +982,13 @@
       "check_id": "shared-canonical-context-graph-owner",
       "path": "packages/shared/src/coding-context-graph.ts",
       "includes": [
-        "CODING_CONTEXT_GRAPH_VERSION = 'devseek.coding-context-graph/v1'",
+        "CODING_CONTEXT_GRAPH_VERSION = 'devseek.coding-context-graph/v2'",
         "export interface ContextGraphPort",
         "export class CanonicalContextGraphService implements ContextGraphPort",
         "const orientation = this.orientation.orient({",
         "const exploration = this.exploration.explore({",
         "const instructionPrecedence = this.instructionPrecedence.resolve({",
+        "const externalSources = snapshotExternalSources(seed.externalSources ?? [])",
         "const provenance = buildContextProvenance(",
         "renderCodingContextGraphSummary(graph: CodingContextGraph)",
         "coding-context-graph:"
@@ -890,6 +1031,131 @@
       "excludes": [
         "from 'vscode'",
         "CanonicalCodingKernel"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "shared-canonical-requirements-owner",
+      "path": "packages/shared/src/coding-requirements.ts",
+      "includes": [
+        "CODING_REQUIREMENT_DECISION_VERSION = 'devseek.coding-requirement-decision/v1'",
+        "export interface ExternalBoundaryPort",
+        "export interface SourceGroundingPort",
+        "export interface AcceptanceContractPort",
+        "export interface RequirementDecisionPort",
+        "export class CanonicalExternalBoundaryService implements ExternalBoundaryPort",
+        "export class CanonicalSourceGroundingService implements SourceGroundingPort",
+        "export class CanonicalAcceptanceContractService implements AcceptanceContractPort",
+        "export class CanonicalRequirementDecisionService implements RequirementDecisionPort",
+        "? 'clarification-required' as const",
+        "? 'exploration-required' as const",
+        "parentRevisionId"
+      ],
+      "excludes": [
+        "from 'vscode'",
+        "requirement-contract.ts"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "shared-canonical-design-plan-owner",
+      "path": "packages/shared/src/coding-design-plan.ts",
+      "includes": [
+        "CODING_DESIGN_DECISION_VERSION = 'devseek.coding-design-decision/v1'",
+        "CODING_CHANGE_PLAN_VERSION = 'devseek.coding-change-plan/v1'",
+        "export interface DesignDecisionPort",
+        "export interface ChangePlanPort",
+        "export class CanonicalDesignDecisionService implements DesignDecisionPort",
+        "export class CanonicalChangePlanService implements ChangePlanPort",
+        "export function evaluateCodingChangePlanEffect(",
+        "change-plan-target-outside-scope:",
+        "parentPlanId"
+      ],
+      "excludes": [
+        "from 'vscode'",
+        "ArchitectureDecisionContract"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "shared-canonical-change-plan-revision-owner",
+      "path": "packages/shared/src/coding-change-plan-revision.ts",
+      "includes": [
+        "CODING_CHANGE_PLAN_REVISION_DECISION_VERSION = 'devseek.coding-change-plan-revision-decision/v1'",
+        "export interface CodingChangePlanRevisionSessionPort",
+        "export interface ChangePlanRevisionPort",
+        "export class CanonicalChangePlanRevisionService implements ChangePlanRevisionPort",
+        "revisionReason: 'tool-proposed-targets'",
+        "projectCodingWorkspaceTargets(candidate?.targetPaths ?? [], workspaceRoot)",
+        "change-plan-target-outside-scope:"
+      ],
+      "excludes": [
+        "from 'vscode'",
+        "SurfaceChangePlanRevision"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "shared-canonical-workspace-scope-owner",
+      "path": "packages/shared/src/coding-workspace-scope.ts",
+      "includes": [
+        "export function projectCodingWorkspaceTargets(",
+        "export function codingWorkspaceTargetMatchesScope(",
+        "nodePath.relative(root, resolved)",
+        "workspace-path-outside-root:",
+        "pattern[patternIndex] === '**'"
+      ],
+      "excludes": [
+        "from 'vscode'",
+        "SurfaceWorkspaceScope"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "shared-change-plan-revision-kernel-wiring",
+      "path": "packages/shared/src/coding-kernel.ts",
+      "includes": [
+        "const CHANGE_PLAN_REVISION = new CanonicalChangePlanRevisionService(DESIGN, CHANGE_PLAN)",
+        "const changePlanRevision = CHANGE_PLAN_REVISION.bind({",
+        "changePlanRevision,",
+        "designDecisionHistory: changePlanRevision.designHistory()",
+        "changePlanHistory: changePlanRevision.planHistory()",
+        "changePlanRevisionDecisions: changePlanRevision.decisions()"
+      ],
+      "excludes": [
+        "SurfaceChangePlanRevision"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "shared-tool-authority-consumes-current-change-plan",
+      "path": "packages/shared/src/coding-tool-authority.ts",
+      "includes": [
+        "input.changePlanRevision?.ensureTargets({",
+        "changePlan: input.changePlanRevision?.currentPlan() ?? input.changePlan",
+        "revision?.status === 'denied'",
+        "projectCodingWorkspaceTargets(request.targetPaths ?? [], input.workspaceRoot)"
+      ],
+      "excludes": [
+        "SurfaceChangePlanRevision",
+        "changePlan ="
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-canonical-requirement-quality-gate-projection",
+      "path": "packages/vscode-extension/src/app/coding-requirement-quality-gate.ts",
+      "includes": [
+        "CanonicalContextGraphService",
+        "CanonicalRequirementDecisionService",
+        "resolveCodingKernelTaskContract",
+        "export function evaluateCodingRequirementQualityGate(",
+        "reason: 'canonical-requirement-decision-ready'",
+        "`canonical-requirement-${decision.status}`"
+      ],
+      "excludes": [
+        "requirement-contract",
+        "evaluateRequirementContract"
       ],
       "passed": true
     },
@@ -2461,5 +2727,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "8754b97caef4315e24a8f1eb7dc9412549e4d33c6159ceee1ec8ea07d44c5b4b"
+  "baseline_sha256": "2456297ba5e1801275b880cfa7382ae489f5e00417c73948a4fdee8806edae7a"
 }

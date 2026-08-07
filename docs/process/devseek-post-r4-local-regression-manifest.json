@@ -189,7 +189,7 @@
         {
           "path": "packages/vscode-extension/src/app/run-context.ts",
           "role": "durable-run-settlement-owner",
-          "source_sha256": "b8fac2aea7b12e0b7d2c0463da095afe96e6ed6b6358a6d1b5b7a25496d1bdcd"
+          "source_sha256": "68132df56aa4ff55bd87a5f420c4a99550fd483cd574bb8251a12d104980add2"
         },
         {
           "path": "packages/vscode-extension/src/app/settlement-state.ts",
@@ -214,7 +214,7 @@
         {
           "path": "packages/vscode-extension/test/unit/workflow-compliance.test.mjs",
           "role": "workflow-static-contract-oracle",
-          "source_sha256": "f2c458a42ad4fa9a61e8ed12118a3d6f15a5310167d8cf4a19dcc76e3b4ae1f7"
+          "source_sha256": "1d95e0207367fbd5349695175237f7a9f4e7ae573094828dfb70b78b76095c92"
         }
       ],
       "anchor_checks": [
@@ -414,5 +414,5 @@
     "gate_pass_assertions": 0,
     "bypasses": 0
   },
-  "manifest_sha256": "96f1a5fafc2e30abe82c4d97908d3b62f03c25526dc33f2736445ff490f837ec"
+  "manifest_sha256": "4856583bf9ed4bf40b3c25e2876b44f957a15d861bedbc3b5bb7e25079b5b6ba"
 }
