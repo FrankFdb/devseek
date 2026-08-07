@@ -13,7 +13,7 @@
       "path": "docs/process/devseek-capability-ledger.json",
       "schema_version": "devseek.capability-ledger/v1",
       "ledger_id": "DEVSEEK-CAPABILITY-LEDGER/v1",
-      "source_sha256": "ec0581c90d8a1de71eecc8bd324d9722c22c6ec5aec3dd515a3300a39b855c78",
+      "source_sha256": "e3c48709c0328d6ccd3a0cd9595e64aae5a7d4300b43e91e1ea79c3292514950",
       "qualification_claim_authority": {
         "mode": "deny-until-signed-evidence-validator",
         "profile_registry_sha256": null,
@@ -57,8 +57,8 @@
       "path": "docs/process/devseek-external-authority-adapter.json",
       "schema_version": "devseek.external-authority-adapter/v1",
       "adapter_id": "DEVSEEK-GATE0-EXTERNAL-AUTHORITY-ADAPTER/v1",
-      "adapter_sha256": "c59b8d17b0332ec3e0e52cb7b915a3c2a2a022ed1581296633f233cb5f707a4d",
-      "source_sha256": "c59b8d17b0332ec3e0e52cb7b915a3c2a2a022ed1581296633f233cb5f707a4d",
+      "adapter_sha256": "7c87744910be179dd7f66dc04807071ed906b2dfcda9fa1918d87812a0a2ef60",
+      "source_sha256": "7c87744910be179dd7f66dc04807071ed906b2dfcda9fa1918d87812a0a2ef60",
       "source_status": "unconfigured",
       "trust_roots": 0,
       "qualification_eligible": false
@@ -345,5 +345,5 @@
     "checker_pass_meaning": "report-schema-source-binding-and-decision-invariants-only",
     "gate_pass_requires_protected_qualification": true
   },
-  "decision_sha256": "fe383bbafb30c40d9353a96f847d30ae240de8145df7fc570463f0eee7e44186"
+  "decision_sha256": "66e811968320fd279764da285ae1d86d50c17f0072a4cd2f90879d6263747d26"
 }
