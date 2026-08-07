@@ -64,8 +64,8 @@
     },
     "post_r4_local_regression_manifest": {
       "path": "docs/process/devseek-post-r4-local-regression-manifest.json",
-      "source_sha256": "be5b12e7a8b680022459be48d426874ac595b74aa8e2fc0e6919c0b4ca24c815",
-      "manifest_sha256": "cf8eab7f949748a2aa3f5f4e2c991e863f0d1c0ed75e72d5ed3e93bab90b9ad3",
+      "source_sha256": "118a6130937c368bfcfa2c134a63ab0b73f30c3c34a651f8ee88d162aa77e724",
+      "manifest_sha256": "631f39cf07b008fe56bb241360d14c90595b38e3a7169211e311d0a873a43895",
       "covered_nonpermission_items": [
         "NP-05",
         "NP-06",
@@ -80,8 +80,8 @@
     },
     "external_authority_requests": {
       "path": "docs/process/devseek-external-authority-requests.json",
-      "source_sha256": "11be1533cb90479cf67377cd029acfa8e0b819fdfe399fbdcabb69c63eaa5e36",
-      "request_set_sha256": "5bea7a5c5dcd88899e05e9dd782a69ba22a425b004dd24e1452bf74c286beb48",
+      "source_sha256": "595adb2e2c033caf126956006267bfeebae70f7ec8bac709ba63f421748580f7",
+      "request_set_sha256": "28a1bb1d2c731170147edb88c2f54a1013e0594c3b4384b60b388c840314656c",
       "blocked_requests": 5
     },
     "r4_live_qualification_request_packet": {
@@ -441,5 +441,5 @@
     "gate_pass_assertions": 0,
     "bypasses": 0
   },
-  "index_sha256": "6638d8bdf4bf586b8ed4b86faf344132bea718045e9709ef4e43f496979cd8d8"
+  "index_sha256": "1143e685cb4d2d9ba932e9d8d620be23d016372634856834fe1d862cc38cdace"
 }

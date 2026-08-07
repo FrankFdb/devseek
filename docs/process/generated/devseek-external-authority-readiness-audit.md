@@ -52,13 +52,13 @@
 
 ## Source Bindings
 
-- `external_authority_requests`: `docs/process/devseek-external-authority-requests.json` -> `11be1533cb90479cf67377cd029acfa8e0b819fdfe399fbdcabb69c63eaa5e36`
+- `external_authority_requests`: `docs/process/devseek-external-authority-requests.json` -> `595adb2e2c033caf126956006267bfeebae70f7ec8bac709ba63f421748580f7`
 - `r4_live_qualification_request_packet`: `docs/process/devseek-r4-live-qualification-request-packet.json` -> `8efb7b899a44b81ab3965e757ec5a38549da4369512a9150f4c2628f6dba4fc7`
 - `r4_live_user_way_holdout_matrix`: `docs/process/devseek-r4-live-user-way-holdout-matrix.json` -> `000a82523ebeb1047518c7ca32f232d1416cfccf8ec6418599428b642ed783cf`
 - `r4_real_provider_failure_taxonomy`: `docs/process/devseek-r4-real-provider-failure-taxonomy.json` -> `f600782836dcd78b8050870f72cdee8e5ae8fecfe6eab9e9410edd439e22ed35`
 - `r4_authorization_and_permission_guide`: `docs/process/devseek-r4-authorization-and-permission-guide.md` -> `826240c4a2cfcae0c6fb1068ed199b1ffed99d64857fd8053d70e3790f40ada5`
 - `r4_process_artifacts_aggregate`: `docs/process/devseek-r4-process-artifacts-aggregate.json` -> `6dac45a810f112a5599ccb1347e58c9430c11a49cafe00255184d344cfd6a06e`
-- `gate0_decision`: `docs/process/devseek-gate0-decision-report.json` -> `bcb6cf4bc5537002c9e8212022b00ef89bcbdab95a96550a194fa204614a4d2d`
+- `gate0_decision`: `docs/process/devseek-gate0-decision-report.json` -> `85d6802bf536378139bb865b991fa18f464abf3e86aa7b786c5e99e2fc282b02`
 - `package_scripts`: `package.json` -> `d31cab51401797bdb7f501f833a396f2fbdf23172e67623025bd9e1180a05ffa`
 - `phase_gate_source`: `scripts/devseek-phase0-12-verify.mjs` -> `db927db5c6d2bf78ba78e62075bdde17a39c26ccdb41fef9f1847bd496b48702`
 - `checker_source`: `scripts/devseek-external-authority-readiness-audit-check.mjs` -> `07bcdf406f21ca21f930a1b84b9a06d24f2a2e94ebb34dd1e61ce76f7a7e6944`
@@ -66,4 +66,4 @@
 
 ## Audit Identity
 
-- Audit SHA-256: `6c1ba2ee21d4e6f6a209e4c52e7a960a94a433775a1fd0ba1e9d214fd89e1e98`
+- Audit SHA-256: `254410f18df0fc7d9a3c30bd80aa1546f1926bb3b316e1155794e6bcf0efd657`

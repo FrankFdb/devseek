@@ -64,8 +64,8 @@
       "schema_version": "devseek.c0-preregistration-wiring/v1",
       "expected_schema_version": "devseek.c0-preregistration-wiring/v1",
       "hash_field": "wiring_sha256",
-      "reported_sha256": "01feb23e0c23750b6a4e3fc6576996844960fc834f6e10a6656ef5575c176005",
-      "computed_sha256": "01feb23e0c23750b6a4e3fc6576996844960fc834f6e10a6656ef5575c176005",
+      "reported_sha256": "75c1971ef56ec635302b2142b203e9317cce8ec796f3cc63f71bbc2fc39e65e1",
+      "computed_sha256": "75c1971ef56ec635302b2142b203e9317cce8ec796f3cc63f71bbc2fc39e65e1",
       "hash_status": "matched",
       "package_script": "verify:c0-preregistration-wiring",
       "package_script_present": true,
@@ -76,7 +76,7 @@
       "generated_view": {
         "path": "docs/process/generated/devseek-c0-preregistration-wiring.md",
         "status": "current",
-        "source_sha256": "66c53498f8ccf2f22e30947c09eeb10f63f2140b00eaa6aed76f6e4bd49f155d"
+        "source_sha256": "1d0742c8ae7c9043786bfe2b2086f93f8455b0cfe4e00b79ac5962fae0b63b80"
       }
     },
     {
@@ -213,5 +213,5 @@
     "observed_claims": 0,
     "bypasses": 0
   },
-  "reconciliation_sha256": "34b2e3840a88cf560affb0333e7aca5afafd5690841b43454ba0d1c12af192e7"
+  "reconciliation_sha256": "9d6d4b8490e7479ff2f313a9942615d7df6a724fd4168eabf0ddef241458e654"
 }

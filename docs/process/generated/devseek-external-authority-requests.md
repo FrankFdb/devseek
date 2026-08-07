@@ -34,4 +34,4 @@
 - Blocked requests: `5`
 - Approved requests: `0`
 - Bypasses: `0`
-- SHA-256: `5bea7a5c5dcd88899e05e9dd782a69ba22a425b004dd24e1452bf74c286beb48`
+- SHA-256: `28a1bb1d2c731170147edb88c2f54a1013e0594c3b4384b60b388c840314656c`
