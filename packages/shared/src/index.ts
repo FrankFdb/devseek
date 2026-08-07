@@ -24,6 +24,7 @@ export * from './coding-task-contract-resolver';
 export * from './coding-terminal-effects';
 export * from './coding-kernel';
 export * from './coding-memory-policy';
+export * from './coding-operation-journal';
 export * from './coding-resume-idempotency';
 export * from './coding-orientation';
 export * from './coding-provider-events';

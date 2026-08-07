@@ -85,6 +85,9 @@ test('Tool guard: terminal, VS Code, and MCP effects require prepared canonical 
   assert.match(toolLoop, /prepared\.execute\(\)/);
   assert.match(toolLoop, /canonicalTools\.settle\s*\(/);
   assert.match(canonicalSession, /this\.executor\.executeCanonical\s*\(/);
+  assert.match(canonicalSession, /vscode-tool-loop:incomplete-canonical-tool-sessions/);
+  assert.doesNotMatch(canonicalSession, /InMemoryCodingOperationJournal/);
+  assert.doesNotMatch(canonicalSession, /new Canonical(?:Tool|Workspace|External)/);
   assert.doesNotMatch(toolLoop, /\.executeCanonical\s*\(/);
 });
 
@@ -117,8 +120,14 @@ test('Mutation guard: workspace writes in audited flows route through the writer
   }
   assert.match(source('src/agent/agent-host-tools.ts'), /directoryMutations\.execute\(\{/);
   assert.match(source('src/agent/tool-loop.ts'), /changeReceipts\.push\(result\.changeReceipt\)/);
-  assert.match(source('src/workspace/coding-workspace-directory-mutation-adapter.ts'), /CanonicalWorkspaceMutationTransaction/);
-  assert.match(source('src/workspace/coding-workspace-directory-mutation-adapter.ts'), /rollbackWorkspaceDirectoryCommit/);
+  const directoryMutationAdapter = source('src/workspace/coding-workspace-directory-mutation-adapter.ts');
+  assert.match(directoryMutationAdapter, /transaction: WorkspaceMutationTransactionPort/);
+  assert.match(directoryMutationAdapter, /input\.transaction\.execute\(/);
+  assert.doesNotMatch(directoryMutationAdapter, /new CanonicalWorkspaceMutationTransaction/);
+  assert.match(directoryMutationAdapter, /rollbackWorkspaceDirectoryCommit/);
+  const productMutationSession = source('src/workspace/product-workspace-mutation-transaction.ts');
+  assert.match(productMutationSession, /new CanonicalWorkspaceMutationTransaction/);
+  assert.match(productMutationSession, /FileSystemCodingOperationJournal\.forWorkspace/);
   assert.doesNotMatch(source('src/app/product-mutation-coordinator.ts'), /workspace-directory/);
   assert.match(source('src/agent/tool-loop.ts'), /workspaceMutation\.executeTextFileDelete\(\{/);
   assert.match(source('src/pending-edit-coordinator.ts'), /kind:\s*'pending-edit-undo'/);

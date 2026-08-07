@@ -72,7 +72,7 @@ test('CLI runtime adapter keeps context, interpretation, mutation, and verificat
   assert.match(codingRuntime, /class CliCodingKernelRuntimeAdapter/);
   assert.match(codingRuntime, /implements CodingKernelRuntimePort/);
   assert.match(codingRuntime, /this\.artifactInterpreter\.interpret\(/);
-  assert.match(codingRuntime, /this\.toolExecution\.executeWorkspaceMutation\(/);
+  assert.match(codingRuntime, /toolExecution\.executeWorkspaceMutation\(/);
   assert.match(codingRuntime, /this\.verification\.verify\(/);
   assert.match(codingRuntime, /function buildRepairPrompt\b/);
   assert.doesNotMatch(codingRuntime, /(?:AgentApplicationService|CliSurfaceAdapter|bridgeChat)/);

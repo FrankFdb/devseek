@@ -26,6 +26,11 @@ export interface WorkspaceEditProposal {
   content: string;
 }
 
+export interface WorkspacePreparedEditProposal {
+  proposal: WorkspaceEditProposal;
+  normalization?: WorkspaceWriteNormalization;
+}
+
 export interface WorkspaceFileSnapshot {
   absPath: string;
   existed: boolean;
@@ -424,15 +429,10 @@ export class WorkspaceEditService {
     }
   }
 
-  commitTextFileProposal(
+  prepareTextFileProposal(
     proposal: WorkspaceEditProposal,
-    baseline: WorkspaceTextFileBaseline,
     options: WorkspaceEditApplyOptions = {},
-  ): WorkspaceCommittedEdit {
-    if (nodePath.resolve(proposal.absPath) !== baseline.absPath) {
-      throw new WorkspaceEditConflictError(proposal.absPath, 'workspace-edit-boundary: proposal path does not match its captured baseline');
-    }
-
+  ): WorkspacePreparedEditProposal {
     let appliedProposal = proposal;
     let normalization: WorkspaceWriteNormalization | undefined;
     if (options.repairSourceTransportEscapes) {
@@ -446,6 +446,23 @@ export class WorkspaceEditService {
       }
     }
     if (options.validateSourceSanity) this.validateTextFileProposal(appliedProposal);
+    return {
+      proposal: appliedProposal,
+      ...(normalization ? { normalization } : {}),
+    };
+  }
+
+  commitTextFileProposal(
+    proposal: WorkspaceEditProposal,
+    baseline: WorkspaceTextFileBaseline,
+    options: WorkspaceEditApplyOptions = {},
+  ): WorkspaceCommittedEdit {
+    if (nodePath.resolve(proposal.absPath) !== baseline.absPath) {
+      throw new WorkspaceEditConflictError(proposal.absPath, 'workspace-edit-boundary: proposal path does not match its captured baseline');
+    }
+
+    const prepared = this.prepareTextFileProposal(proposal, options);
+    const appliedProposal = prepared.proposal;
 
     const current = this.captureTextFileBaseline(baseline.absPath, baseline.workspaceRoot);
     if (!sameTextFileBaseline(baseline, current)) {
@@ -505,7 +522,7 @@ export class WorkspaceEditService {
         existed: baseline.snapshot.existed,
         oldContent: baseline.snapshot.content,
         newContent: appliedProposal.content,
-        ...(normalization ? { normalization } : {}),
+        ...(prepared.normalization ? { normalization: prepared.normalization } : {}),
       };
       committed = true;
       return {

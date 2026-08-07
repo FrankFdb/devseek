@@ -3323,6 +3323,7 @@ test('Architecture: shared mutation transaction owns migrated writes and Workspa
   const service = src('src/workspace/edit-service.ts');
   const mutationAdapter = src('src/workspace/coding-workspace-mutation-adapter.ts');
   const batchMutationAdapter = src('src/workspace/coding-workspace-batch-mutation-adapter.ts');
+  const productMutationSession = src('src/workspace/product-workspace-mutation-transaction.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
   const fileWriter = src('src/agent/tool-loop-file-writer.ts');
   const applier = src('src/workspace-applier.ts');
@@ -3338,11 +3339,15 @@ test('Architecture: shared mutation transaction owns migrated writes and Workspa
   assertDoesNotContain(service, 'writeTextFileSync(', 'unsafe legacy text write API must stay deleted');
   assertDoesNotContain(service, 'snapshotTextFile(', 'unscoped legacy snapshot API must stay deleted');
   assertDoesNotContain(service, 'applyTextFileProposal(', 'unsafe legacy apply API must stay deleted');
-  assertContains(mutationAdapter, 'CanonicalWorkspaceMutationTransaction', 'VS Code writes must compose the shared mutation owner');
+  assertContains(mutationAdapter, 'input.transaction.execute', 'VS Code writes must receive the shared mutation owner');
+  assertDoesNotContain(mutationAdapter, 'new CanonicalWorkspaceMutationTransaction', 'VS Code host adapters must not create private transactions');
   assertContains(mutationAdapter, 'class VsCodeWorkspaceMutationAdapter', 'VS Code mutation host adapter must exist');
   assertContains(mutationAdapter, 'workspace-baseline-conflict', 'shared adapter must fail closed on stale authorized baselines');
   assertContains(mutationAdapter, 'rollbackTextFileCommit', 'shared adapter must compensate failed readback through commit tokens');
-  assertContains(batchMutationAdapter, 'CanonicalWorkspaceMutationTransaction', 'multi-file writes must compose the shared mutation owner');
+  assertContains(batchMutationAdapter, 'input.transaction.execute', 'multi-file writes must receive the shared mutation owner');
+  assertDoesNotContain(batchMutationAdapter, 'new CanonicalWorkspaceMutationTransaction', 'multi-file host adapters must not create private transactions');
+  assertContains(productMutationSession, 'new CanonicalWorkspaceMutationTransaction', 'the product composition boundary must own non-Kernel transactions');
+  assertContains(productMutationSession, 'FileSystemCodingOperationJournal.forWorkspace', 'non-Kernel transactions must use durable workspace journals');
   assertContains(batchMutationAdapter, 'class VsCodeWorkspaceBatchMutationAdapter', 'multi-file mutation host adapter must exist');
   assertContains(batchMutationAdapter, 'commitTextFileProposal', 'multi-file adapter must commit through the atomic CAS boundary');
   assertContains(batchMutationAdapter, 'rollbackTextFileCommit', 'multi-file adapter must compensate partial commits by token');

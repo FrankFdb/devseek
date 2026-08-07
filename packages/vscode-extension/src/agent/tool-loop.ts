@@ -278,8 +278,6 @@ export async function executeFakeToolsForLoop(
     ?? new ToolReadEvidenceRecorder(workspaceRoot, callbacks.traceRunId);
   const canonicalTools = createToolLoopCanonicalSession({
     callbacks,
-    workspaceRoot,
-    userPrompt: taskContext?.userPrompt,
     receipts: toolExecutionReceipts,
     evidenceRefs,
   });
@@ -322,9 +320,21 @@ export async function executeFakeToolsForLoop(
       buildToolPolicy(callbacks.executionMode ?? 'inspect'),
       workspaceRoot,
     );
-    const canonicalContext = canonicalTools.nextContext(toolPlan);
     const tool = toolPlan.tool;
     const inputValidation = canonicalTools.validateInput(toolPlan);
+    const expandedFileWritePlans = inputValidation.ok
+      && isFileWriteToolName(tool.name)
+      && tool.name !== 'replace_in_file'
+      ? normalizeCodingFileWriteInputs(tool.input).map(({ rawPath, content }) => ({
+          rawPath,
+          content,
+          plan: canonicalTools.plan({
+            ...tool,
+            input: { path: rawPath, content },
+          }, buildToolPolicy(callbacks.executionMode ?? 'inspect'), workspaceRoot),
+        }))
+      : [];
+    const canonicalContext = canonicalTools.nextContext(expandedFileWritePlans[0]?.plan ?? toolPlan);
     if (!inputValidation.ok) {
       markToolCall(isAgentWorkToolName(tool.name));
       await canonicalTools.settle(toolPlan, canonicalContext, {
@@ -862,6 +872,7 @@ export async function executeFakeToolsForLoop(
         const toolOutcome = await canonicalTools.settle(toolPlan, canonicalContext, {
           execute: async (_plan, authority) => {
             const mutationOutcome = await workspaceMutation.executeTextFileDelete({
+              transaction: canonicalTools.workspaceMutations,
               runId: canonicalContext.runId,
               sequence: canonicalContext.sequence,
               actionId: canonicalContext.actionId,
@@ -997,7 +1008,7 @@ export async function executeFakeToolsForLoop(
     } else if (isFileWriteToolName(tool.name)) {
       // Unified file create/overwrite — works for new files AND full rewrites.
       // Matching Copilot's #edit/editFiles for the agentic free-explore loop.
-      const fileWrites = normalizeCodingFileWriteInputs(tool.input);
+      const fileWrites = expandedFileWritePlans;
       markToolCall();
       if (fileWrites.length === 0) {
         await canonicalTools.fail(toolPlan, canonicalContext, 'missing-file-write-payload');
@@ -1006,12 +1017,7 @@ export async function executeFakeToolsForLoop(
         continue;
       }
       for (let fileIndex = 0; fileIndex < fileWrites.length; fileIndex++) {
-        const fileWrite = fileWrites[fileIndex];
-        const { rawPath, content } = fileWrite;
-        const filePlan = canonicalTools.plan({
-          ...tool,
-          input: { path: rawPath, content },
-        }, buildToolPolicy(callbacks.executionMode ?? 'inspect'), workspaceRoot);
+        const { rawPath, content, plan: filePlan } = fileWrites[fileIndex];
         const fileContext = fileIndex === 0
           ? canonicalContext
           : canonicalTools.nextContext(filePlan);
@@ -1077,6 +1083,7 @@ export async function executeFakeToolsForLoop(
               }
               const result = await callbacks.onCreateDirectory(absPath, {
                 policyPreauthorized: true,
+                transaction: canonicalTools.workspaceMutations,
                 runId: canonicalContext.runId,
                 sequence: canonicalContext.sequence,
                 actionId: canonicalContext.actionId,

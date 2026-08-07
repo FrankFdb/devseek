@@ -11,6 +11,7 @@ import {
   CODING_VERIFICATION_RECEIPT_VERSION,
   CODING_WORKSPACE_MUTATION_RECEIPT_VERSION,
   CanonicalCodingKernel,
+  InMemoryCodingOperationJournal,
   buildCodingKernelTaskContract,
 } from '../../../shared/dist/index.js';
 import { createCanonicalCheckpointFixture } from '../helpers/canonical-checkpoint-fixture.mjs';
@@ -103,6 +104,7 @@ test('canonical Kernel envelope is the only VS Code prompt and workspace authori
       acceptance: [{ id: 'completed', statement: 'The requested work is complete.' }],
       provenanceRefs: ['vscode-test'],
     }),
+    operationJournal: new InMemoryCodingOperationJournal(),
     runtimeContext: {
       ...baseRequest(),
       callbacks: { executionMode: 'inspect' },
@@ -339,6 +341,7 @@ function execute(kernel, runtimeContext) {
     workspaceRoot: runtimeContext.workspaceRoot,
     taskContract,
     contextSeed,
+    operationJournal: new InMemoryCodingOperationJournal(),
     ...(runtimeContext.memoryCandidates ? { memoryCandidates: runtimeContext.memoryCandidates } : {}),
     ...(recovery?.kind === 'checkpoint-resume' ? { resumeCheckpoint: recovery.checkpoint } : {}),
     runtimeContext: effectiveRuntimeContext,

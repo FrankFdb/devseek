@@ -1,6 +1,7 @@
 import {
   CODING_KERNEL_REQUEST_VERSION,
   CanonicalCodingKernel,
+  FileSystemCodingOperationJournal,
   type CodingKernelExecutionOutput,
 } from '@devseek-netai/shared';
 import { CliCodingArtifactInterpreter } from './cli-coding-artifact-interpreter';
@@ -59,6 +60,7 @@ export const productCliCodingKernelExecutor = {
       workspaceRoot,
       taskContract: buildCliCodingKernelTaskContract(userPrompt, contextFiles),
       contextSeed: { files: contextFiles.map(path => ({ path })) },
+      operationJournal: FileSystemCodingOperationJournal.forWorkspace(workspaceRoot),
       runtimeContext,
       signal,
     });

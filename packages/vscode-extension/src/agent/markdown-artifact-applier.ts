@@ -4,6 +4,7 @@ import { parseGeneratedArtifacts } from '../generated-file-parser';
 import { resolveGeneratedArtifactPathForPrompt, resolveWorkspaceWritePath } from '../workspace/path-resolver';
 import { WorkspaceEditService } from '../workspace/edit-service';
 import { VsCodeWorkspaceMutationAdapter } from '../workspace/coding-workspace-mutation-adapter';
+import { resolveProductWorkspaceMutationSession } from '../workspace/product-workspace-mutation-transaction';
 import { decideProjectInstructionFileWrite } from '../workspace/instruction-file-safety';
 import type { WrittenFileEvidence } from './completion-evidence';
 import type { AgentLoopCallbacks } from './loop-types';
@@ -83,7 +84,7 @@ export async function applyMarkdownFileArtifactsForLoop(
   const changeReceipts: CodingWorkspaceMutationReceipt<unknown>[] = [];
   const seen = new Set<string>();
 
-  for (const artifact of candidates) {
+  for (const [candidateIndex, artifact] of candidates.entries()) {
     if (!artifact.path || !artifact.content.trim()) continue;
     const resolvedWrite = resolveWorkspaceWritePath(artifact.path, {
       requestPrompt: userPrompt,
@@ -154,10 +155,24 @@ export async function applyMarkdownFileArtifactsForLoop(
       continue;
     }
     callbacks.onToolActivity?.('write', resolvedWrite.relPath);
+    const mutationSession = resolveProductWorkspaceMutationSession({
+      workspaceRoot,
+      canonicalTransaction: callbacks.canonicalWorkspaceMutations,
+      canonicalRunId: callbacks.traceRunId,
+      owner: 'markdown-artifact-applier',
+      operationIdentity: {
+        path: resolvedWrite.relPath,
+        content: artifact.content,
+        userPrompt,
+      },
+    });
     let mutationOutcome;
     try {
       mutationOutcome = await workspaceMutation.executeTextFileWrite({
-        runId: callbacks.traceRunId,
+        transaction: mutationSession.transaction,
+        runId: mutationSession.runId,
+        sequence: candidateIndex + 1,
+        actionId: `markdown-artifact:${resolvedWrite.relPath}`,
         absPath: resolvedAbs,
         workspaceRoot,
         content: artifact.content,

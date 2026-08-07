@@ -76,6 +76,23 @@
 
 ---
 
+**变更标题**：I14 跨重启操作事实与产品工具会话唯一 owner 收敛（2026-08-07）
+- **需求归因**：架构债务 + 安全边界缺口 — Workspace mutation、external effect 和工具调用曾依赖进程内事实或由 Surface 隐式补建 owner；扩展/CLI 重启后可能无法区分“尚未执行”“已提交但未回执”和“提交后外部漂移”，同一语义工具调用的身份也随随机 run/sequence 改变。
+- **影响能力层**：C6 tool execution，C7 workspace mutation/external effect，C11 context resume/idempotency，以及 VS Code、CLI、Headless 产品组合边界。
+- **架构影响**：
+  - shared 新增不可变 `CodingOperationJournalPort` 及 filesystem/in-memory 实现；prepared/settled 记录分离、内容哈希校验、原子创建、文件与目录 `fsync`、逐级拒绝符号链接，持久化职责不再散落在 Surface。
+  - workspace transaction 在执行前记录基线和意图，重启后依据当前状态、原状态与目标后置条件判定重放、证明已提交或 fail closed；external effect 明确区分 durable 与 process-local reconciliation，后者跨进程不得猜测或重复派发。
+  - `CanonicalToolExecutionService` 以语义摘要和同 run occurrence 生成稳定身份；VS Code、CLI、Headless 必须由产品 composition root 显式注入同一工具会话和 workspace transaction。删除 VS Code tool loop、adapter 内隐式创建的内存 fallback 和旧 workspace journal 别名。
+  - VS Code 新增 `product-workspace-mutation-transaction` 组合边界，直接文件写入、markdown 交付、pending edit、batch/directory mutation 共用相同 owner；batch 先展开子写入并为每个 effect 分配独立语义身份，避免 sibling 路径绕开幂等契约。
+- **方案选择理由**：对标 Claude Code/Codex，恢复不能依赖 UI 进程尚存或重复执行“碰碰运气”；可变副作用需要先写意图、再执行、最后写终态，并由产品根显式持有 authority。备选的 Surface 私有日志或自动补建内存 owner 会制造多套真相，因此删除而不兼容保留。
+- **主链路验证**：I14 fixture 驱动的 5 条新用户路径全部通过：同语义工具身份跨重启稳定且同 run 重复可区分、VS Code 已提交写入不二次执行、CLI 已提交写入不二次执行、process-local external effect 跨重启拒绝重复派发、workspace metadata 符号链接逃逸被阻断。原始结果保存在忽略目录 `code/devseek-tests/effect-restart/runs/i14-effect-restart-20260807/`。
+- **回退链路验证**：prepared-but-not-started 可安全重试；目标已满足可证明 settled；原值与目标均不匹配时以 indeterminate 失败；journal 内容篡改、非普通文件、目录或文件符号链接、缺失 canonical session 均 fail closed。
+- **结果判据变化**：副作用恢复以持久化事实和 host reconciliation 为准，不以“请求再次到达”推断可重试；生产 Surface 不得自行创建第二套工具执行、workspace mutation 或 external effect owner。
+- **文档更新**：`03-顶级编程智能体目标软件架构.md`、`PLAN-当前收敛迭代计划.md`、目录 `README.md`、capability ledger、I14 user journeys、kernel owner baseline v23（115 项 source checks）、本文件。编号文档仍承担 45 项 proposed capability 与外部资格闭环，本轮不提前归档。
+- **备份/发布动作**：shared 360 tests、CLI 75 tests、Headless 26 tests、VS Code 163 suites、capability/user-journey/architecture/doc governance 均通过；提交后执行 debug VSIX 编译、打包和本地强制安装。产品一致性资格仍须绑定精确 VSIX report，裸校验的 fail-closed 结果不作为通过证据。
+
+---
+
 **变更标题**：I13 Provider 事件、工具 Schema 与调度唯一 owner 收敛（2026-08-07）
 - **需求归因**：架构债务 + 安全边界缺口 — VS Code 曾同时拥有 Provider 归一、工具注册/Schema/别名、调度及终端风险判定，CLI 另行投影 artifact 和 terminal effect；同一模型调用会因 Surface 不同而得到不同名称、风险、路径和拒绝语义。
 - **影响能力层**：C6 provider normalization/tool schema/tool dispatch，C7 permission/workspace mutation，以及 VS Code、CLI、Headless 产品适配。

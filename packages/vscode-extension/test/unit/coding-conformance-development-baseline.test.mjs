@@ -13,6 +13,7 @@ import {
   CODING_VERIFICATION_RECEIPT_VERSION,
   CODING_WORKSPACE_MUTATION_RECEIPT_VERSION,
   CanonicalCodingKernel,
+  InMemoryCodingOperationJournal,
   bindSettledCodingConformanceObservation,
   buildSecretHarvestingRefusalAcceptanceEvidence,
   buildCodingKernelTaskContract,
@@ -294,6 +295,7 @@ function routeInput(recovery, fixture) {
     userPrompt: fixture.prompt,
     workspaceRoot: '/workspace',
     taskContract,
+    operationJournal: new InMemoryCodingOperationJournal(),
     ...(canonicalCheckpoint ? { resumeCheckpoint: canonicalCheckpoint } : {}),
     runtimeContext,
   };

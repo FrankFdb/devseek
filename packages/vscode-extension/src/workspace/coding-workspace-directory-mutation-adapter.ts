@@ -1,5 +1,4 @@
 import {
-  CanonicalWorkspaceMutationTransaction,
   buildCodingWorkspaceMutationPlan,
   type CodingWorkspaceMutationOutcome,
   type WorkspaceMutationPort,
@@ -29,34 +28,33 @@ export type VsCodeDirectoryReadbackVerifier = (input: {
 
 export interface VsCodeDirectoryMutationInput extends VsCodeDirectoryMutationPayload {
   readonly baseline: WorkspaceDirectoryBaseline;
-  readonly runId?: string;
-  readonly sequence?: number;
-  readonly actionId?: string;
+  readonly transaction: WorkspaceMutationTransactionPort;
+  readonly runId: string;
+  readonly sequence: number;
+  readonly actionId: string;
   readonly evidenceRefs: readonly string[];
   readonly verifyReadback?: VsCodeDirectoryReadbackVerifier;
 }
 
 /** VS Code host adapter for the shared directory mutation transaction. */
 export class VsCodeWorkspaceDirectoryMutationAdapter {
-  private sequence = 0;
-
   constructor(
     private readonly edits: Pick<
       WorkspaceEditService,
+      | 'captureWorkspaceDirectoryBaseline'
       | 'isWorkspaceDirectoryBaselineCurrent'
       | 'createWorkspaceDirectory'
       | 'rollbackWorkspaceDirectoryCommit'
     > = new WorkspaceEditService(),
-    private readonly transaction: WorkspaceMutationTransactionPort = new CanonicalWorkspaceMutationTransaction(),
   ) {}
 
   execute(
     input: VsCodeDirectoryMutationInput,
   ): Promise<CodingWorkspaceMutationOutcome<WorkspaceDirectoryCreateResult>> {
-    this.sequence += 1;
-    const sequence = input.sequence ?? this.sequence;
-    const runId = input.runId?.trim() || 'vscode-workspace-directory-mutation';
-    const actionId = input.actionId?.trim() || `create-directory-${sequence}`;
+    const sequence = input.sequence;
+    const runId = input.runId.trim();
+    const actionId = input.actionId.trim();
+    assertMutationIdentity(runId, sequence, actionId);
     assertDirectoryBaselineScope(input, input.baseline);
     const relativePath = nodePath.relative(input.workspaceRoot, input.absPath).replace(/\\/g, '/');
     const plan = buildCodingWorkspaceMutationPlan({
@@ -71,7 +69,7 @@ export class VsCodeWorkspaceDirectoryMutationAdapter {
       },
       evidenceRefs: input.evidenceRefs,
     });
-    return this.transaction.execute(plan, this.createHost(input.baseline, input.verifyReadback));
+    return input.transaction.execute(plan, this.createHost(input.baseline, input.verifyReadback));
   }
 
   private createHost(
@@ -84,6 +82,42 @@ export class VsCodeWorkspaceDirectoryMutationAdapter {
     WorkspaceDirectoryCreateResult
   > {
     return {
+      reconcile: async (plan, baseline) => {
+        const current = this.edits.captureWorkspaceDirectoryBaseline(
+          plan.payload.absPath,
+          plan.payload.workspaceRoot,
+        );
+        if (current.snapshot.existed) {
+          const result: WorkspaceDirectoryCreateResult = {
+            created: !baseline.state.snapshot.existed,
+            canonicalPath: current.snapshot.canonicalPath!,
+            commitToken: {
+              absPath: baseline.state.absPath,
+              workspaceRoot: baseline.state.workspaceRoot,
+              before: baseline.state,
+              after: current,
+              createdDirectories: [],
+            },
+          };
+          return {
+            status: 'committed',
+            result,
+            readbackRef: `vscode-directory-reconcile:${plan.actionId}`,
+            evidenceRefs: [`workspace-directory-reconcile:${plan.actionId}:committed`],
+          };
+        }
+        if (this.edits.isWorkspaceDirectoryBaselineCurrent(baseline.state)) {
+          return {
+            status: 'not-started',
+            evidenceRefs: [`workspace-directory-reconcile:${plan.actionId}:not-started`],
+          };
+        }
+        return {
+          status: 'indeterminate',
+          readbackRef: `vscode-directory-reconcile:${plan.actionId}`,
+          evidenceRefs: [`workspace-directory-reconcile:${plan.actionId}:indeterminate`],
+        };
+      },
       captureBaseline: async plan => {
         assertDirectoryBaselineScope(plan.payload, authorizedBaseline);
         return {
@@ -171,6 +205,12 @@ export class VsCodeWorkspaceDirectoryMutationAdapter {
         };
       },
     };
+  }
+}
+
+function assertMutationIdentity(runId: string, sequence: number, actionId: string): void {
+  if (!runId || !actionId || !Number.isInteger(sequence) || sequence < 1) {
+    throw new Error('vscode-workspace-directory-mutation:invalid-operation-identity');
   }
 }
 

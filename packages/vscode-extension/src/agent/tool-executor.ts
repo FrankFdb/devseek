@@ -1,5 +1,4 @@
 import {
-  CanonicalToolExecutor,
   CanonicalToolDispatchService,
   buildCodingToolAction,
   codingToolCallToRejectedResult,
@@ -77,7 +76,7 @@ export interface AgentToolCanonicalExecutionInput<TResult> {
 
 export class AgentToolExecutor {
   constructor(
-    private readonly canonicalExecutor: ToolExecutorPort = new CanonicalToolExecutor(),
+    private readonly canonicalExecutor: ToolExecutorPort,
     private readonly dispatch: ToolDispatchPort = new CanonicalToolDispatchService(),
   ) {}
 

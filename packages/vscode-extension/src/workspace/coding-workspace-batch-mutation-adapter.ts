@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
 import {
-  CanonicalWorkspaceMutationTransaction,
   buildCodingWorkspaceMutationPlan,
   type CodingWorkspaceMutationOutcome,
   type WorkspaceMutationPort,
@@ -27,6 +26,7 @@ export interface VsCodeWorkspaceBatchReadbackVerification {
 }
 
 export interface VsCodeWorkspaceBatchMutationInput {
+  readonly transaction: WorkspaceMutationTransactionPort;
   readonly runId: string;
   readonly sequence: number;
   readonly actionId: string;
@@ -57,12 +57,13 @@ export class VsCodeWorkspaceBatchMutationAdapter {
   constructor(
     private readonly edits: Pick<
       WorkspaceEditService,
+      | 'captureTextFileBaseline'
       | 'isTextFileBaselineCurrent'
       | 'proposeTextFileWrite'
+      | 'prepareTextFileProposal'
       | 'commitTextFileProposal'
       | 'rollbackTextFileCommit'
     > = new WorkspaceEditService(),
-    private readonly transaction: WorkspaceMutationTransactionPort = new CanonicalWorkspaceMutationTransaction(),
   ) {}
 
   execute(
@@ -85,7 +86,7 @@ export class VsCodeWorkspaceBatchMutationAdapter {
       payload,
       evidenceRefs: input.evidenceRefs,
     });
-    return this.transaction.execute(
+    return input.transaction.execute(
       plan,
       this.createHost(input.items.map(item => item.baseline), input.verifyReadback),
     );
@@ -101,6 +102,56 @@ export class VsCodeWorkspaceBatchMutationAdapter {
     readonly WorkspaceCommittedEdit[]
   > {
     return {
+      reconcile: async (plan, baseline) => {
+        const current = plan.payload.items.map(item => this.edits.captureTextFileBaseline(
+          item.absPath,
+          plan.payload.workspaceRoot,
+        ));
+        const prepared = plan.payload.items.map(item => this.edits.prepareTextFileProposal(
+          this.edits.proposeTextFileWrite(item.absPath, item.content),
+          { validateSourceSanity: true, repairSourceTransportEscapes: true },
+        ));
+        const allCommitted = current.every((item, index) => (
+          item.snapshot.existed && item.snapshot.content === prepared[index].proposal.content
+        ));
+        if (allCommitted) {
+          const committed = current.map((item, index): WorkspaceCommittedEdit => ({
+            proposal: prepared[index].proposal,
+            snapshot: baseline.state[index].snapshot,
+            result: {
+              existed: baseline.state[index].snapshot.existed,
+              oldContent: baseline.state[index].snapshot.content,
+              newContent: prepared[index].proposal.content,
+              ...(prepared[index].normalization
+                ? { normalization: prepared[index].normalization }
+                : {}),
+            },
+            commitToken: {
+              absPath: baseline.state[index].absPath,
+              workspaceRoot: baseline.state[index].workspaceRoot,
+              before: baseline.state[index],
+              after: item,
+            },
+          }));
+          return {
+            status: 'committed',
+            result: committed,
+            readbackRef: `vscode-batch-reconcile:${plan.actionId}`,
+            evidenceRefs: [`workspace-batch-reconcile:${plan.actionId}:committed`],
+          };
+        }
+        if (baseline.state.every(item => this.edits.isTextFileBaselineCurrent(item))) {
+          return {
+            status: 'not-started',
+            evidenceRefs: [`workspace-batch-reconcile:${plan.actionId}:not-started`],
+          };
+        }
+        return {
+          status: 'indeterminate',
+          readbackRef: `vscode-batch-reconcile:${plan.actionId}`,
+          evidenceRefs: [`workspace-batch-reconcile:${plan.actionId}:indeterminate`],
+        };
+      },
       captureBaseline: async plan => {
         assertBatchMatchesBaselines(plan.payload, authorizedBaselines);
         return {

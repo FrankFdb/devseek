@@ -99,7 +99,9 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
       traceRunId: request.callbacks.traceRunId ?? kernelRequest.runId,
       canonicalProviderEvents: kernelRequest.providerEvents,
       canonicalToolDispatch: kernelRequest.toolDispatch,
+      canonicalToolExecution: kernelRequest.toolExecution,
       canonicalToolAuthority: kernelRequest.toolAuthority,
+      canonicalWorkspaceMutations: kernelRequest.workspaceMutations,
       canonicalExternalEffects: kernelRequest.externalEffects,
       ...(originalCheckpoint ? {
         onTaskCheckpoint: async (firstUnfinishedIndex, remainingTasks, reason) => {

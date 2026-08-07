@@ -5,6 +5,11 @@ import {
   snapshotCodingValue,
   uniqueCodingRefs,
 } from './coding-contract-utils';
+import {
+  type CodingOperationJournalPort,
+  type CodingOperationJournalRecord,
+} from './coding-operation-journal';
+import { codingSemanticDigest } from './coding-semantic-digest';
 
 export const CODING_WORKSPACE_MUTATION_PLAN_VERSION = 'devseek.coding-workspace-mutation-plan/v1' as const;
 export const CODING_WORKSPACE_MUTATION_RECEIPT_VERSION = 'devseek.coding-workspace-mutation-receipt/v1' as const;
@@ -15,7 +20,10 @@ export type CodingWorkspaceMutationFailure =
   | 'apply-failed'
   | 'apply-evidence-missing'
   | 'readback-failed'
-  | 'readback-mismatch';
+  | 'readback-mismatch'
+  | 'reconciliation-failed'
+  | 'reconciliation-indeterminate'
+  | 'reconciliation-unavailable';
 
 export interface CodingWorkspaceMutationPlan<TPayload> {
   readonly version: typeof CODING_WORKSPACE_MUTATION_PLAN_VERSION;
@@ -79,7 +87,18 @@ export interface CodingWorkspaceRollback {
   readonly evidenceRefs: readonly string[];
 }
 
+export interface CodingWorkspaceMutationReconciliation<TResult> {
+  readonly status: 'not-started' | 'committed' | 'indeterminate';
+  readonly result?: TResult;
+  readonly readbackRef?: string;
+  readonly evidenceRefs: readonly string[];
+}
+
 export interface WorkspaceMutationPort<TPayload, TBaseline, TApplied, TResult> {
+  reconcile?(
+    plan: CodingWorkspaceMutationPlan<TPayload>,
+    baseline: CodingWorkspaceBaseline<TBaseline>,
+  ): Promise<CodingWorkspaceMutationReconciliation<TResult>>;
   captureBaseline(
     plan: CodingWorkspaceMutationPlan<TPayload>,
   ): Promise<CodingWorkspaceBaseline<TBaseline>>;
@@ -121,14 +140,9 @@ export interface CodingWorkspaceMutationOutcome<TResult> {
   readonly replayed: boolean;
 }
 
-export interface CodingWorkspaceMutationJournalRecord {
+export interface CodingWorkspaceMutationJournalPreparation {
   readonly plan: CodingWorkspaceMutationPlan<unknown>;
-  readonly receipt: CodingWorkspaceMutationReceipt<unknown>;
-}
-
-export interface CodingWorkspaceMutationJournalPort {
-  load(runId: string, actionId: string): Promise<CodingWorkspaceMutationJournalRecord | undefined>;
-  append(record: CodingWorkspaceMutationJournalRecord): Promise<void>;
+  readonly baseline: CodingWorkspaceBaseline<unknown>;
 }
 
 export interface WorkspaceMutationTransactionPort {
@@ -147,7 +161,10 @@ interface ActiveMutation {
 export class CanonicalWorkspaceMutationTransaction implements WorkspaceMutationTransactionPort {
   private readonly executions = new Map<string, ActiveMutation>();
 
-  constructor(private readonly journal?: CodingWorkspaceMutationJournalPort) {}
+  constructor(
+    private readonly journal?: CodingOperationJournalPort,
+    private readonly replayRunId?: string,
+  ) {}
 
   async execute<TPayload, TBaseline, TApplied, TResult>(
     plan: CodingWorkspaceMutationPlan<TPayload>,
@@ -178,20 +195,175 @@ export class CanonicalWorkspaceMutationTransaction implements WorkspaceMutationT
     host: WorkspaceMutationPort<TPayload, TBaseline, TApplied, TResult>,
     canonicalPlan: string,
   ): Promise<CodingWorkspaceMutationOutcome<TResult>> {
-    const replay = await this.journal?.load(plan.runId, plan.actionId);
-    if (replay) {
-      assertSamePlan(canonicalCodingJson(replay.plan), canonicalPlan);
+    const operationSha256 = codingWorkspaceMutationOperationSha256(plan);
+    const recovered = await this.loadRecovery<TBaseline, TResult>(plan, canonicalPlan, operationSha256);
+    if (recovered?.record.state === 'settled'
+      && (recovered.runId === plan.runId || recovered.record.receipt.status === 'committed'
+        || recovered.record.receipt.status === 'indeterminate')) {
+      const receipt = projectRecoveredReceipt<TResult>(
+        plan,
+        recovered.record.receipt,
+        recovered.runId,
+      );
+      if (recovered.runId !== plan.runId) {
+        return this.persistOutcome(plan, recovered.preparation.baseline, operationSha256, receipt, true);
+      }
+      return { receipt, replayed: true };
+    }
+
+    if (recovered) {
+      return this.reconcileRecovery(
+        plan,
+        host,
+        recovered.preparation.baseline as CodingWorkspaceBaseline<TBaseline>,
+        operationSha256,
+      );
+    }
+
+    let baseline: CodingWorkspaceBaseline<TBaseline>;
+    try {
+      baseline = snapshotBaseline(await host.captureBaseline(plan));
+    } catch {
       return {
-        receipt: snapshotMutationReceipt(replay.receipt) as CodingWorkspaceMutationReceipt<TResult>,
+        receipt: failedMutationReceipt(plan, 'baseline-capture-failed', [
+          `mutation-baseline:${plan.actionId}:failed`,
+        ]),
+        replayed: false,
+      };
+    }
+    if (this.journal) {
+      try {
+        await this.prepareJournal(plan, baseline, operationSha256);
+      } catch {
+        return {
+          receipt: failedMutationReceipt(plan, 'mutation-preparation-journal-failed', [
+            `mutation-journal:${plan.actionId}:prepare-failed`,
+          ]),
+          replayed: false,
+        };
+      }
+    }
+    const receipt = await executeMutationFromBaseline(plan, host, baseline);
+    return this.persistOutcome(plan, baseline, operationSha256, receipt, false);
+  }
+
+  private async loadRecovery<TBaseline, TResult>(
+    plan: CodingWorkspaceMutationPlan<unknown>,
+    canonicalPlan: string,
+    operationSha256: string,
+  ): Promise<{
+    readonly runId: string;
+    readonly record: CodingOperationJournalRecord<CodingWorkspaceMutationJournalPreparation, CodingWorkspaceMutationReceipt<TResult>>;
+    readonly preparation: CodingWorkspaceMutationJournalPreparation;
+  } | undefined> {
+    if (!this.journal) return undefined;
+    const runIds = [plan.runId];
+    const replayRunId = this.replayRunId?.trim();
+    if (replayRunId && replayRunId !== plan.runId) runIds.push(replayRunId);
+    for (const runId of runIds) {
+      const record = await this.journal.load<
+        CodingWorkspaceMutationJournalPreparation,
+        CodingWorkspaceMutationReceipt<TResult>
+      >('workspace-mutation', runId, plan.actionId);
+      if (!record) continue;
+      if (record.operationSha256 !== operationSha256) {
+        throw new Error('coding-workspace-mutation:conflicting-action-identity');
+      }
+      const preparation = snapshotJournalPreparation(record.preparation);
+      if (runId === plan.runId) {
+        assertSamePlan(canonicalCodingJson(preparation.plan), canonicalPlan);
+      } else if (codingWorkspaceMutationOperationSha256(preparation.plan) !== operationSha256) {
+        throw new Error('coding-workspace-mutation:replay-operation-mismatch');
+      }
+      return { runId, record, preparation };
+    }
+    return undefined;
+  }
+
+  private async reconcileRecovery<TPayload, TBaseline, TApplied, TResult>(
+    plan: CodingWorkspaceMutationPlan<TPayload>,
+    host: WorkspaceMutationPort<TPayload, TBaseline, TApplied, TResult>,
+    baseline: CodingWorkspaceBaseline<TBaseline>,
+    operationSha256: string,
+  ): Promise<CodingWorkspaceMutationOutcome<TResult>> {
+    if (!host.reconcile) {
+      const receipt = indeterminateMutationReceipt<TResult>(plan, baseline, 'reconciliation-unavailable', [
+        `mutation-reconcile:${plan.actionId}:unavailable`,
+      ]);
+      return this.persistOutcome(plan, baseline, operationSha256, receipt, true);
+    }
+    let reconciliation: CodingWorkspaceMutationReconciliation<TResult>;
+    try {
+      reconciliation = snapshotReconciliation(await host.reconcile(plan, baseline));
+    } catch {
+      const receipt = indeterminateMutationReceipt<TResult>(plan, baseline, 'reconciliation-failed', [
+        `mutation-reconcile:${plan.actionId}:failed`,
+      ]);
+      return this.persistOutcome(plan, baseline, operationSha256, receipt, true);
+    }
+    if (reconciliation.status === 'committed') {
+      const receipt = recoveredCommittedReceipt(plan, baseline, reconciliation);
+      return this.persistOutcome(plan, baseline, operationSha256, receipt, true);
+    }
+    if (reconciliation.status === 'indeterminate') {
+      const receipt = indeterminateMutationReceipt<TResult>(
+        plan,
+        baseline,
+        'reconciliation-indeterminate',
+        reconciliation.evidenceRefs,
+        reconciliation.readbackRef,
+      );
+      return this.persistOutcome(plan, baseline, operationSha256, receipt, true);
+    }
+    try {
+      await this.prepareJournal(plan, baseline, operationSha256);
+    } catch {
+      return {
+        receipt: failedMutationReceipt(plan, 'mutation-preparation-journal-failed', [
+          ...reconciliation.evidenceRefs,
+          `mutation-journal:${plan.actionId}:prepare-failed`,
+        ]),
         replayed: true,
       };
     }
+    const receipt = await executeMutationFromBaseline(plan, host, baseline);
+    return this.persistOutcome(plan, baseline, operationSha256, receipt, false);
+  }
 
-    const receipt = await executeMutation(plan, host);
-    if (!this.journal) return { receipt, replayed: false };
+  private prepareJournal<TPayload, TBaseline>(
+    plan: CodingWorkspaceMutationPlan<TPayload>,
+    baseline: CodingWorkspaceBaseline<TBaseline>,
+    operationSha256: string,
+  ): Promise<void> {
+    if (!this.journal) return Promise.resolve();
+    return this.journal.prepare({
+      kind: 'workspace-mutation',
+      runId: plan.runId,
+      actionId: plan.actionId,
+      operationSha256,
+      preparation: { plan, baseline },
+    });
+  }
+
+  private async persistOutcome<TPayload, TBaseline, TResult>(
+    plan: CodingWorkspaceMutationPlan<TPayload>,
+    baseline: CodingWorkspaceBaseline<TBaseline>,
+    operationSha256: string,
+    receipt: CodingWorkspaceMutationReceipt<TResult>,
+    replayed: boolean,
+  ): Promise<CodingWorkspaceMutationOutcome<TResult>> {
+    if (!this.journal) return { receipt, replayed };
     try {
-      await this.journal.append({ plan, receipt });
-      return { receipt, replayed: false };
+      await this.prepareJournal(plan, baseline, operationSha256);
+      await this.journal.settle({
+        kind: 'workspace-mutation',
+        runId: plan.runId,
+        actionId: plan.actionId,
+        operationSha256,
+        preparation: { plan, baseline },
+        receipt,
+      });
+      return { receipt, replayed };
     } catch {
       return {
         receipt: snapshotMutationReceipt({
@@ -200,41 +372,105 @@ export class CanonicalWorkspaceMutationTransaction implements WorkspaceMutationT
           errorCode: 'mutation-receipt-journal-failed',
           evidenceRefs: uniqueCodingRefs([
             ...receipt.evidenceRefs,
-            `mutation-journal:${plan.actionId}:failed`,
+            `mutation-journal:${plan.actionId}:settle-failed`,
           ]),
         }),
-        replayed: false,
+        replayed,
       };
     }
   }
 }
 
-export class InMemoryCodingWorkspaceMutationJournal implements CodingWorkspaceMutationJournalPort {
-  private readonly records = new Map<string, CodingWorkspaceMutationJournalRecord>();
-
-  async load(runId: string, actionId: string): Promise<CodingWorkspaceMutationJournalRecord | undefined> {
-    const record = this.records.get(mutationIdentity({ runId, actionId }));
-    if (!record) return undefined;
-    return {
-      plan: snapshotMutationPlan(record.plan),
-      receipt: snapshotMutationReceipt(record.receipt),
-    };
+function snapshotJournalPreparation(
+  value: CodingWorkspaceMutationJournalPreparation,
+): CodingWorkspaceMutationJournalPreparation {
+  if (!value || typeof value !== 'object') {
+    throw new Error('coding-workspace-mutation:invalid-journal-preparation');
   }
+  return Object.freeze({
+    plan: snapshotMutationPlan(value.plan),
+    baseline: snapshotBaseline(value.baseline),
+  });
+}
 
-  async append(record: CodingWorkspaceMutationJournalRecord): Promise<void> {
-    const plan = snapshotMutationPlan(record.plan);
-    const receipt = snapshotMutationReceipt(record.receipt);
-    const key = mutationIdentity(plan);
-    const existing = this.records.get(key);
-    if (existing) {
-      assertSamePlan(canonicalCodingJson(existing.plan), canonicalCodingJson(plan));
-      if (canonicalCodingJson(existing.receipt) !== canonicalCodingJson(receipt)) {
-        throw new Error('coding-workspace-mutation:conflicting-terminal-receipt');
-      }
-      return;
-    }
-    this.records.set(key, Object.freeze({ plan, receipt }));
+export function codingWorkspaceMutationOperationSha256(
+  plan: Pick<CodingWorkspaceMutationPlan<unknown>, 'paths' | 'payload'>,
+): string {
+  return codingSemanticDigest({
+    protocol: CODING_WORKSPACE_MUTATION_RECEIPT_VERSION,
+    paths: normalizeMutationPaths(plan.paths),
+    payload: snapshotCodingValue(plan.payload, 'mutation-operation-payload'),
+  });
+}
+
+function projectRecoveredReceipt<TResult>(
+  plan: CodingWorkspaceMutationPlan<unknown>,
+  receipt: CodingWorkspaceMutationReceipt<TResult>,
+  sourceRunId: string,
+): CodingWorkspaceMutationReceipt<TResult> {
+  const recovered = snapshotMutationReceipt(receipt);
+  return snapshotMutationReceipt({
+    ...recovered,
+    runId: plan.runId,
+    sequence: plan.sequence,
+    actionId: plan.actionId,
+    idempotencyKey: plan.idempotencyKey,
+    paths: plan.paths,
+    evidenceRefs: uniqueCodingRefs([
+      ...recovered.evidenceRefs,
+      `mutation-replay:${sourceRunId}:${plan.actionId}`,
+    ]),
+  });
+}
+
+function recoveredCommittedReceipt<TResult>(
+  plan: CodingWorkspaceMutationPlan<unknown>,
+  baseline: CodingWorkspaceBaseline<unknown>,
+  reconciliation: CodingWorkspaceMutationReconciliation<TResult>,
+): CodingWorkspaceMutationReceipt<TResult> {
+  if (!reconciliation.readbackRef) {
+    throw new Error('coding-workspace-mutation:missing-reconciliation-readback');
   }
+  return snapshotMutationReceipt({
+    version: CODING_WORKSPACE_MUTATION_RECEIPT_VERSION,
+    runId: plan.runId,
+    sequence: plan.sequence,
+    actionId: plan.actionId,
+    idempotencyKey: plan.idempotencyKey,
+    status: 'committed',
+    paths: plan.paths,
+    baselineRef: baseline.baselineRef,
+    readbackRef: reconciliation.readbackRef,
+    ...(reconciliation.result === undefined ? {} : { result: reconciliation.result }),
+    evidenceRefs: uniqueCodingRefs([
+      ...plan.evidenceRefs,
+      ...baseline.evidenceRefs,
+      ...reconciliation.evidenceRefs,
+      `mutation-reconcile:${plan.actionId}:committed`,
+    ]),
+  });
+}
+
+function snapshotReconciliation<TResult>(
+  value: CodingWorkspaceMutationReconciliation<TResult>,
+): CodingWorkspaceMutationReconciliation<TResult> {
+  if (!value || !['not-started', 'committed', 'indeterminate'].includes(value.status)) {
+    throw new Error('coding-workspace-mutation:invalid-reconciliation');
+  }
+  const evidenceRefs = uniqueCodingRefs(value.evidenceRefs ?? []);
+  if (evidenceRefs.length === 0) throw new Error('coding-workspace-mutation:missing-reconciliation-evidence');
+  const readbackRef = value.readbackRef?.trim();
+  if (value.status === 'committed' && !readbackRef) {
+    throw new Error('coding-workspace-mutation:missing-reconciliation-readback');
+  }
+  return Object.freeze({
+    status: value.status,
+    ...(value.result === undefined
+      ? {}
+      : { result: snapshotCodingValue(value.result, 'mutation-reconciliation-result') as TResult }),
+    ...(readbackRef ? { readbackRef } : {}),
+    evidenceRefs: Object.freeze(evidenceRefs),
+  });
 }
 
 export function buildCodingWorkspaceMutationPlan<TPayload>(
@@ -246,19 +482,11 @@ export function buildCodingWorkspaceMutationPlan<TPayload>(
   });
 }
 
-async function executeMutation<TPayload, TBaseline, TApplied, TResult>(
+async function executeMutationFromBaseline<TPayload, TBaseline, TApplied, TResult>(
   plan: CodingWorkspaceMutationPlan<TPayload>,
   host: WorkspaceMutationPort<TPayload, TBaseline, TApplied, TResult>,
+  baseline: CodingWorkspaceBaseline<TBaseline>,
 ): Promise<CodingWorkspaceMutationReceipt<TResult>> {
-  let baseline: CodingWorkspaceBaseline<TBaseline>;
-  try {
-    baseline = snapshotBaseline(await host.captureBaseline(plan));
-  } catch {
-    return failedMutationReceipt(plan, 'baseline-capture-failed', [
-      `mutation-baseline:${plan.actionId}:failed`,
-    ]);
-  }
-
   let applyOutcome: CodingWorkspaceApplyOutcome<TApplied, TResult>;
   try {
     applyOutcome = snapshotApplyOutcome(await host.apply(plan, baseline));

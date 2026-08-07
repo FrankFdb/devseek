@@ -1,14 +1,48 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { loadUserSimulationCase } from '../../../scripts/lib/devseek-user-simulation-fixture.mjs';
 import {
   CODING_TOOL_ACTION_VERSION,
   CanonicalToolExecutor,
+  CanonicalToolExecutionService,
   CanonicalToolAuthorityService,
   InMemoryCodingToolExecutionJournal,
   buildCodingToolAction,
   codingToolExecutionFailureReason,
   resolveCodingKernelTaskContract,
 } from '../dist/index.js';
+
+test('I14-ID-01 user journey: tool identity survives restart and distinguishes same-run repeats', () => {
+  const scenario = loadUserSimulationCase('I14', 'I14-ID-01');
+  const candidate = {
+    tool: scenario.input.tool,
+    purpose: 'observe',
+    effects: ['read'],
+    input: { path: scenario.input.path },
+  };
+  const firstSession = new CanonicalToolExecutionService().bind({
+    runId: scenario.input.first_run_id,
+  });
+  const first = firstSession.nextAction(candidate);
+  const repeated = firstSession.nextAction(candidate);
+  const different = firstSession.nextAction({
+    ...candidate,
+    input: { path: 'src/other.ts' },
+  });
+  const restarted = new CanonicalToolExecutionService().bind({
+    runId: scenario.input.resumed_run_id,
+  })
+    .nextAction(candidate);
+
+  assert.equal(first.sequence, 1);
+  assert.equal(repeated.sequence, 2);
+  assert.equal(different.sequence, 3);
+  assert.notEqual(first.actionId, repeated.actionId);
+  assert.notEqual(repeated.actionId, different.actionId);
+  assert.equal(first.operationSha256, restarted.operationSha256);
+  assert.equal(first.actionId, restarted.actionId);
+  assert.match(first.actionId, /^tool-read_file-[a-f0-9]{20}-1$/u);
+});
 
 const authorityByAction = new WeakMap();
 

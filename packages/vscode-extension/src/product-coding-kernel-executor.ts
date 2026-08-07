@@ -2,6 +2,7 @@ import {
   CODING_KERNEL_REQUEST_VERSION,
   CanonicalCodingKernel,
   CodingKernelExecutionError,
+  FileSystemCodingOperationJournal,
   createProductRunEvidenceId,
 } from '@devseek-netai/shared';
 import { runAgenticLoop } from './agent/agentic-loop';
@@ -74,6 +75,7 @@ export const productCodingKernelExecutor: CodingKernelExecutionPort = {
         resumeCheckpoint: request.recovery?.kind === 'checkpoint-resume'
           ? request.recovery.checkpoint
           : undefined,
+        operationJournal: FileSystemCodingOperationJournal.forWorkspace(request.workspaceRoot),
         runtimeContext: {
           contextFiles: request.contextFiles,
           mode: request.mode,

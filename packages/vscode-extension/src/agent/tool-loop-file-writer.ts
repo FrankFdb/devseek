@@ -176,6 +176,7 @@ export class ToolLoopFileWriter {
         execute: async (_plan, authority) => {
           try {
             const mutationOutcome = await workspaceMutation.executeTextFileWrite({
+              transaction: canonical.workspaceMutations,
               runId: canonicalContext.runId,
               sequence: canonicalContext.sequence,
               actionId: canonicalContext.actionId,

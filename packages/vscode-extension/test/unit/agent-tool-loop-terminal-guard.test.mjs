@@ -12,6 +12,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { withCanonicalToolLoopFixture } from '../helpers/canonical-tool-loop-fixture.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
@@ -87,9 +88,18 @@ const CONFIRMED_FILE_WRITE = Object.freeze({
 });
 
 function executeFakeToolsForLoop(tools, callbacks, ...args) {
+  const [defaultWorkdir, taskContext] = args;
+  const executionMode = callbacks.executionMode ?? 'edit';
   return executeFakeToolsWithoutFixturePolicy(
     tools,
-    { executionMode: 'edit', ...callbacks },
+    withCanonicalToolLoopFixture(
+      { executionMode, ...callbacks },
+      {
+        workspaceRoot: taskContext?.workspaceRoot ?? defaultWorkdir ?? process.cwd(),
+        userPrompt: taskContext?.userPrompt,
+        executionMode,
+      },
+    ),
     ...args,
   );
 }
@@ -182,13 +192,16 @@ test('ToolLoop fails closed when an execution policy is missing', async () => {
   let terminalCalled = false;
   const result = await executeFakeToolsWithoutFixturePolicy(
     [{ name: 'run_terminal', input: { command: 'echo must-not-run' } }],
-    {
-      ...preparedTerminalCallbacks(async () => {
-        terminalCalled = true;
-        return 'must-not-run';
-      }),
-      onAgentStatus: async () => {},
-    },
+    withCanonicalToolLoopFixture(
+      {
+        ...preparedTerminalCallbacks(async () => {
+          terminalCalled = true;
+          return 'must-not-run';
+        }),
+        onAgentStatus: async () => {},
+      },
+      { workspaceRoot: '/tmp/project' },
+    ),
     '/tmp/project',
     { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: '/tmp/project' },
   );

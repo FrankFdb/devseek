@@ -50,7 +50,7 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     cross_surface_kernel_routes: 4,
     semantic_domains: 23,
     converged_semantic_domains: 23,
-    source_checks: 111,
+    source_checks: 115,
     failed_source_checks: 0,
   });
   assert.deepEqual(
@@ -74,6 +74,22 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
   assert.equal(
     actual.source_checks.some(assertion => assertion.check_id === 'vscode-coding-conformance-product-output-probe'),
     true,
+  );
+  assert.deepEqual(
+    actual.source_checks
+      .filter(assertion => [
+        'shared-immutable-operation-journal-owner',
+        'shared-canonical-external-effect-owner',
+        'vscode-tool-loop-requires-kernel-sessions',
+        'vscode-product-workspace-mutation-transaction',
+      ].includes(assertion.check_id))
+      .map(assertion => assertion.check_id),
+    [
+      'shared-immutable-operation-journal-owner',
+      'shared-canonical-external-effect-owner',
+      'vscode-tool-loop-requires-kernel-sessions',
+      'vscode-product-workspace-mutation-transaction',
+    ],
   );
   assert.deepEqual(actual.semantic_domains.map(domain => domain.domain_id), [
     'agent-command',

@@ -1,18 +1,20 @@
 import {
-  CanonicalToolExecutor,
   buildCodingToolAction,
   type BuildCodingToolActionInput,
   type CodingToolAuthoritySessionPort,
   type CodingToolExecutionOutcome,
+  type CodingToolExecutionSessionPort,
   type CodingToolPurpose,
   type CodingToolRisk,
   type CodingToolSurfaceConstraint,
   type ToolExecutionHostPort,
-  type ToolExecutorPort,
 } from '@devseek-netai/shared';
 
 export interface HeadlessToolExecutionInput<TInput, TResult> {
-  readonly action: Omit<BuildCodingToolActionInput<TInput>, 'authority' | 'purpose'>;
+  readonly action: Omit<
+    BuildCodingToolActionInput<TInput>,
+    'authority' | 'purpose' | 'runId' | 'sequence' | 'actionId'
+  >;
   readonly authority: CodingToolAuthoritySessionPort;
   readonly purpose: CodingToolPurpose;
   readonly risk?: CodingToolRisk;
@@ -24,13 +26,19 @@ export interface HeadlessToolExecutionInput<TInput, TResult> {
 
 /** Programmatic Surface composition for caller-supplied host capabilities. */
 export class HeadlessToolExecutionAdapter {
-  constructor(private readonly executor: ToolExecutorPort = new CanonicalToolExecutor()) {}
+  constructor(private readonly executor: CodingToolExecutionSessionPort) {}
 
   execute<TInput, TResult>(
     input: HeadlessToolExecutionInput<TInput, TResult>,
   ): Promise<CodingToolExecutionOutcome<TResult>> {
+    const context = this.executor.nextAction({
+      tool: input.action.tool,
+      purpose: input.purpose,
+      effects: input.action.effects,
+      input: input.action.input,
+    });
     const authorization = input.authority.authorize({
-      actionId: input.action.actionId,
+      actionId: context.actionId,
       tool: input.action.tool,
       purpose: input.purpose,
       effects: input.action.effects,
@@ -42,6 +50,9 @@ export class HeadlessToolExecutionAdapter {
     });
     return this.executor.execute(buildCodingToolAction({
       ...input.action,
+      runId: context.runId,
+      sequence: context.sequence,
+      actionId: context.actionId,
       purpose: input.purpose,
       authority: authorization.receipt,
     }), input.host, input.authority);

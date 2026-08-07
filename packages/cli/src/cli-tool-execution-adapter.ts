@@ -1,13 +1,11 @@
 import {
-  CanonicalToolExecutor,
-  CanonicalWorkspaceMutationTransaction,
   buildCodingToolAction,
   buildCodingWorkspaceMutationPlan,
   type CodingToolAuthoritySessionPort,
   type CodingToolCall,
   type CodingToolExecutionOutcome,
+  type CodingToolExecutionSessionPort,
   type CodingWorkspaceMutationReceipt,
-  type ToolExecutorPort,
   type WorkspaceMutationTransactionPort,
 } from '@devseek-netai/shared';
 import type { CliCodingArtifactProposal } from './cli-coding-artifact-interpreter';
@@ -16,8 +14,6 @@ import {
 } from './cli-workspace-mutation-service';
 
 export interface CliWorkspaceToolExecutionInput {
-  readonly runId: string;
-  readonly sequence: number;
   readonly call: CodingToolCall;
   readonly authority: CodingToolAuthoritySessionPort;
 }
@@ -27,8 +23,6 @@ export interface CliWorkspaceToolExecutionResult {
 }
 
 export interface CliDeniedTerminalToolInput {
-  readonly runId: string;
-  readonly sequence: number;
   readonly call: CodingToolCall;
   readonly authority: CodingToolAuthoritySessionPort;
 }
@@ -37,8 +31,8 @@ export interface CliDeniedTerminalToolInput {
 export class CliToolExecutionAdapter {
   constructor(
     private readonly mutation: CliWorkspaceMutationHostAdapter,
-    private readonly executor: ToolExecutorPort = new CanonicalToolExecutor(),
-    private readonly transaction: WorkspaceMutationTransactionPort = new CanonicalWorkspaceMutationTransaction(),
+    private readonly executor: CodingToolExecutionSessionPort,
+    private readonly transaction: WorkspaceMutationTransactionPort,
   ) {}
 
   async executeWorkspaceMutation(
@@ -49,8 +43,14 @@ export class CliToolExecutionAdapter {
       workspaceRoot: string;
       proposal: CliCodingArtifactProposal;
     }>;
+    const context = this.executor.nextAction({
+      tool: input.call.name,
+      purpose: input.call.purpose,
+      effects: input.call.effects,
+      input: actionInput,
+    });
     const authority = input.authority.authorize({
-      actionId: input.call.id,
+      actionId: context.actionId,
       tool: input.call.name,
       purpose: input.call.purpose,
       effects: input.call.effects,
@@ -60,9 +60,9 @@ export class CliToolExecutionAdapter {
       targetPaths: input.call.targetPaths,
     });
     const action = buildCodingToolAction({
-      runId: input.runId,
-      sequence: input.sequence,
-      actionId: input.call.id,
+      runId: context.runId,
+      sequence: context.sequence,
+      actionId: context.actionId,
       tool: input.call.name,
       purpose: input.call.purpose,
       effects: input.call.effects,
@@ -116,8 +116,14 @@ export class CliToolExecutionAdapter {
   ): Promise<CodingToolExecutionOutcome<never>> {
     assertDispatchedOperation(input.call, 'run_terminal');
     const actionInput = input.call.input;
+    const context = this.executor.nextAction({
+      tool: input.call.name,
+      purpose: input.call.purpose,
+      effects: input.call.effects,
+      input: actionInput,
+    });
     const authority = input.authority.authorize({
-      actionId: input.call.id,
+      actionId: context.actionId,
       tool: input.call.name,
       purpose: input.call.purpose,
       effects: input.call.effects,
@@ -132,9 +138,9 @@ export class CliToolExecutionAdapter {
       },
     });
     const action = buildCodingToolAction({
-      runId: input.runId,
-      sequence: input.sequence,
-      actionId: input.call.id,
+      runId: context.runId,
+      sequence: context.sequence,
+      actionId: context.actionId,
       tool: input.call.name,
       purpose: input.call.purpose,
       effects: input.call.effects,

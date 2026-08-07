@@ -1,11 +1,18 @@
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import test from 'node:test';
+import { loadUserSimulationCase } from '../../../../scripts/lib/devseek-user-simulation-fixture.mjs';
+import {
+  CanonicalWorkspaceMutationTransaction,
+  FileSystemCodingOperationJournal,
+  buildCodingWorkspaceMutationPlan,
+  codingWorkspaceMutationOperationSha256,
+} from '../../../shared/dist/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
@@ -36,6 +43,7 @@ test('VS Code workspace adapter commits and independently reads back exact conte
     const adapter = new VsCodeWorkspaceMutationAdapter(edits);
     const baseline = edits.captureTextFileBaseline(target, root);
     const outcome = await adapter.executeTextFileWrite({
+      transaction: new CanonicalWorkspaceMutationTransaction(),
       runId: 'run-1',
       sequence: 1,
       actionId: 'write-main',
@@ -67,6 +75,7 @@ test('VS Code workspace adapter rejects a stale authorized baseline without over
     writeFileSync(target, 'export const userValue = 7;\n');
 
     const outcome = await adapter.executeTextFileWrite({
+      transaction: new CanonicalWorkspaceMutationTransaction(),
       runId: 'run-2',
       sequence: 1,
       actionId: 'write-stale-main',
@@ -95,6 +104,7 @@ test('VS Code workspace adapter rolls back when the caller-owned readback oracle
     const adapter = new VsCodeWorkspaceMutationAdapter(edits);
     let observedContent = '';
     const outcome = await adapter.executeTextFileWrite({
+      transaction: new CanonicalWorkspaceMutationTransaction(),
       runId: 'run-oracle',
       sequence: 1,
       actionId: 'write-report',
@@ -127,7 +137,9 @@ test('VS Code workspace adapter replays a settled write without applying it twic
   try {
     const edits = new WorkspaceEditService();
     const adapter = new VsCodeWorkspaceMutationAdapter(edits);
+    const transaction = new CanonicalWorkspaceMutationTransaction();
     const request = {
+      transaction,
       runId: 'run-3',
       sequence: 1,
       actionId: 'write-replay',
@@ -151,6 +163,78 @@ test('VS Code workspace adapter replays a settled write without applying it twic
   }
 });
 
+test('I14-VSC-01 user journey: VS Code restart proves the persisted write without applying it twice', async () => {
+  const scenario = loadUserSimulationCase('I14', 'I14-VSC-01');
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-vscode-mutation-restart-'));
+  const target = path.join(root, scenario.input.path);
+  mkdirSync(path.dirname(target), { recursive: true });
+  writeFileSync(target, scenario.input.before);
+  try {
+    class CountingWorkspaceEditService extends WorkspaceEditService {
+      commitCalls = 0;
+
+      commitTextFileProposal(...args) {
+        this.commitCalls += 1;
+        return super.commitTextFileProposal(...args);
+      }
+    }
+
+    const edits = new CountingWorkspaceEditService();
+    const authorizedBaseline = edits.captureTextFileBaseline(target, root);
+    const plan = buildCodingWorkspaceMutationPlan({
+      runId: 'run-restart',
+      sequence: 1,
+      actionId: 'write-restart',
+      idempotencyKey: 'run-restart:write-restart',
+      paths: [scenario.input.path],
+      payload: {
+        absPath: target,
+        workspaceRoot: root,
+        content: scenario.input.after,
+        applyOptions: {},
+      },
+      evidenceRefs: ['authority:file-write'],
+    });
+    const baseline = {
+      baselineRef: 'vscode-text-baseline:write-restart',
+      state: authorizedBaseline,
+      evidenceRefs: ['workspace-baseline:write-restart'],
+    };
+    const journal = FileSystemCodingOperationJournal.forWorkspace(root);
+    await journal.prepare({
+      kind: 'workspace-mutation',
+      runId: plan.runId,
+      actionId: plan.actionId,
+      operationSha256: codingWorkspaceMutationOperationSha256(plan),
+      preparation: { plan, baseline },
+    });
+
+    writeFileSync(target, scenario.input.after);
+    const outcome = await new VsCodeWorkspaceMutationAdapter(edits).executeTextFileWrite({
+      transaction: new CanonicalWorkspaceMutationTransaction(
+        FileSystemCodingOperationJournal.forWorkspace(root),
+      ),
+      runId: plan.runId,
+      sequence: plan.sequence,
+      actionId: plan.actionId,
+      absPath: target,
+      workspaceRoot: root,
+      content: scenario.input.after,
+      applyOptions: {},
+      baseline: authorizedBaseline,
+      evidenceRefs: ['authority:file-write'],
+    });
+
+    assert.equal(outcome.receipt.status, 'committed');
+    assert.equal(outcome.replayed, true);
+    assert.equal(edits.commitCalls, 0);
+    assert.match(outcome.receipt.readbackRef, /^vscode-text-reconcile:/);
+    assert.equal(readFileSync(target, 'utf8'), scenario.input.after);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('VS Code workspace adapter deletes through baseline, readback, and receipt settlement', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-vscode-delete-'));
   const target = path.join(root, 'obsolete.ts');
@@ -159,6 +243,7 @@ test('VS Code workspace adapter deletes through baseline, readback, and receipt 
     const edits = new WorkspaceEditService();
     const adapter = new VsCodeWorkspaceMutationAdapter(edits);
     const outcome = await adapter.executeTextFileDelete({
+      transaction: new CanonicalWorkspaceMutationTransaction(),
       runId: 'run-delete-1',
       sequence: 1,
       actionId: 'delete-obsolete',
@@ -187,6 +272,7 @@ test('VS Code workspace adapter rejects stale delete authority without removing 
     const baseline = edits.captureTextFileBaseline(target, root);
     writeFileSync(target, 'export const userReplacement = 2;\n');
     const outcome = await adapter.executeTextFileDelete({
+      transaction: new CanonicalWorkspaceMutationTransaction(),
       runId: 'run-delete-2',
       sequence: 1,
       actionId: 'delete-stale',

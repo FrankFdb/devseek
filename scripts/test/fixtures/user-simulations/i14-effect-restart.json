@@ -1,0 +1,55 @@
+{
+  "schema_version": "devseek.user-simulation-scenario/v1",
+  "iteration_id": "I14",
+  "name": "effect-restart",
+  "purpose": "Exercise process-independent operation identity, durable workspace reconciliation, fail-closed external recovery, and workspace metadata containment after an interrupted side effect.",
+  "cases": [
+    {
+      "case_id": "I14-ID-01",
+      "input": {
+        "prompt": "Resume the same file-read intent in a new agent process; retain its semantic operation identity while keeping repeated reads in one run independently addressable.",
+        "tool": "read_file",
+        "path": "src/main.ts",
+        "first_run_id": "agent-run-before-restart",
+        "resumed_run_id": "agent-run-after-restart"
+      }
+    },
+    {
+      "case_id": "I14-VSC-01",
+      "input": {
+        "prompt": "Resume a VS Code edit after the file reached the requested content but the process stopped before recording its receipt; do not write the file twice.",
+        "path": "src/main.ts",
+        "before": "export const value = 1;\n",
+        "after": "export const value = 2;\n",
+        "interruption": "process exited after atomic rename and before terminal receipt"
+      }
+    },
+    {
+      "case_id": "I14-CLI-01",
+      "input": {
+        "prompt": "Resume a CLI file creation after its content is already durable but its receipt is missing; prove the postcondition and skip a second apply.",
+        "path": "value.txt",
+        "content": "agent edit\n",
+        "interruption": "CLI stopped after file commit and before receipt settlement"
+      }
+    },
+    {
+      "case_id": "I14-EXT-01",
+      "input": {
+        "prompt": "Resume an interrupted remote publish when only a process-local reconciler is available; do not ask it or the publish host to guess the remote state.",
+        "channel": "stable",
+        "interruption": "provider disconnected after remote dispatch",
+        "reconciliation_scope": "process-local"
+      }
+    },
+    {
+      "case_id": "I14-JRN-01",
+      "input": {
+        "prompt": "Open a workspace whose .devseek metadata path is a symbolic link to an external directory; do not write operation evidence outside the workspace.",
+        "workspace_entry": ".devseek",
+        "entry_type": "directory-symlink",
+        "expected_external_files": 0
+      }
+    }
+  ]
+}

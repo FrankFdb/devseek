@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildSync } from 'esbuild';
+import { loadUserSimulationCase } from '../../../scripts/lib/devseek-user-simulation-fixture.mjs';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const cliRoot = path.resolve(testDir, '..');
@@ -21,7 +22,9 @@ buildSync({
       } from './src/cli-workspace-mutation-service';
       export {
         CanonicalWorkspaceMutationTransaction,
+        FileSystemCodingOperationJournal,
         buildCodingWorkspaceMutationPlan,
+        codingWorkspaceMutationOperationSha256,
       } from '@devseek-netai/shared';
     `,
     resolveDir: cliRoot,
@@ -38,8 +41,10 @@ buildSync({
 const require = createRequire(import.meta.url);
 const {
   CanonicalWorkspaceMutationTransaction,
+  FileSystemCodingOperationJournal,
   CliWorkspaceMutationHostAdapter,
   buildCodingWorkspaceMutationPlan,
+  codingWorkspaceMutationOperationSha256,
   collectCliWorkspaceMutationPaths,
 } = require(bundlePath);
 
@@ -163,6 +168,57 @@ test('CLI baseline CAS preserves a concurrent user edit without rollback', async
     assert.equal(outcome.receipt.errorCode, 'workspace-baseline-changed');
     assert.equal(outcome.receipt.rollbackRef, undefined);
     assert.equal(readFileSync(target, 'utf8'), 'user edit\n');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('I14-CLI-01 user journey: CLI restart recognizes a committed file and skips a second apply', async () => {
+  const scenario = loadUserSimulationCase('I14', 'I14-CLI-01');
+  const { root, workspace } = createWorkspace('restart-reconcile');
+  const target = path.join(workspace, scenario.input.path);
+  const proposal = {
+    fileToolCalls: [{
+      name: 'create_file',
+      filePath: scenario.input.path,
+      content: scenario.input.content,
+    }],
+    unifiedDiffs: [],
+  };
+  try {
+    const mutationPlan = plan(workspace, proposal, 'restart-1');
+    const host = new CliWorkspaceMutationHostAdapter();
+    const baseline = await host.captureBaseline(mutationPlan);
+    const journal = FileSystemCodingOperationJournal.forWorkspace(workspace);
+    await journal.prepare({
+      kind: 'workspace-mutation',
+      runId: mutationPlan.runId,
+      actionId: mutationPlan.actionId,
+      operationSha256: codingWorkspaceMutationOperationSha256(mutationPlan),
+      preparation: { plan: mutationPlan, baseline },
+    });
+    writeFileSync(target, scenario.input.content, 'utf8');
+
+    let applyCalls = 0;
+    const recoveryHost = {
+      reconcile: host.reconcile.bind(host),
+      captureBaseline: host.captureBaseline.bind(host),
+      async apply(...args) {
+        applyCalls += 1;
+        return host.apply(...args);
+      },
+      readback: host.readback.bind(host),
+      rollback: host.rollback.bind(host),
+    };
+    const outcome = await new CanonicalWorkspaceMutationTransaction(
+      FileSystemCodingOperationJournal.forWorkspace(workspace),
+    ).execute(mutationPlan, recoveryHost);
+
+    assert.equal(outcome.receipt.status, 'committed');
+    assert.equal(outcome.replayed, true);
+    assert.equal(applyCalls, 0);
+    assert.match(outcome.receipt.readbackRef, /^cli-workspace-reconcile:sha256:/);
+    assert.equal(readFileSync(target, 'utf8'), scenario.input.content);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

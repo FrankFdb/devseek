@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   CanonicalWorkspaceMutationTransaction,
-  InMemoryCodingWorkspaceMutationJournal,
+  InMemoryCodingOperationJournal,
   buildCodingWorkspaceMutationPlan,
+  codingWorkspaceMutationOperationSha256,
 } from '../dist/index.js';
 
 function plan(overrides = {}) {
@@ -137,7 +138,7 @@ test('CanonicalWorkspaceMutationTransaction reports indeterminate when rollback 
 });
 
 test('CanonicalWorkspaceMutationTransaction journal replays across instances without host effects', async () => {
-  const journal = new InMemoryCodingWorkspaceMutationJournal();
+  const journal = new InMemoryCodingOperationJournal();
   const capability = host();
   await new CanonicalWorkspaceMutationTransaction(journal).execute(plan(), capability);
   const replay = await new CanonicalWorkspaceMutationTransaction(journal).execute(plan(), capability);
@@ -159,4 +160,141 @@ test('Workspace mutation plans reject path escape and conflicting action identit
     transaction.execute(plan({ payload: { content: 'different' } }), capability),
     /coding-workspace-mutation:conflicting-action-identity/,
   );
+});
+
+async function prepareInterruptedMutation(journal, originPlan, baseline) {
+  await journal.prepare({
+    kind: 'workspace-mutation',
+    runId: originPlan.runId,
+    actionId: originPlan.actionId,
+    operationSha256: codingWorkspaceMutationOperationSha256(originPlan),
+    preparation: { plan: originPlan, baseline },
+  });
+}
+
+test('workspace recovery proves a committed postcondition without applying twice', async () => {
+  const journal = new InMemoryCodingOperationJournal();
+  const origin = plan();
+  const baseline = {
+    baselineRef: 'baseline:src/value.ts:v0',
+    state: { content: '' },
+    evidenceRefs: ['baseline:captured'],
+  };
+  await prepareInterruptedMutation(journal, origin, baseline);
+  const calls = [];
+  const recoveryHost = {
+    async reconcile() {
+      calls.push('reconcile');
+      return {
+        status: 'committed',
+        result: ['src/value.ts'],
+        readbackRef: 'readback:recovered',
+        evidenceRefs: ['workspace:desired-content-present'],
+      };
+    },
+    async captureBaseline() { throw new Error('must not recapture'); },
+    async apply() { calls.push('apply'); throw new Error('must not apply twice'); },
+    async readback() { throw new Error('must not read back through apply path'); },
+    async rollback() { throw new Error('must not roll back'); },
+  };
+  const resumedPlan = plan({ runId: 'mutation-run-2', idempotencyKey: 'mutation-run-2:write-1' });
+  const outcome = await new CanonicalWorkspaceMutationTransaction(
+    journal,
+    origin.runId,
+  ).execute(resumedPlan, recoveryHost);
+
+  assert.deepEqual(calls, ['reconcile']);
+  assert.equal(outcome.replayed, true);
+  assert.equal(outcome.receipt.status, 'committed');
+  assert.equal(outcome.receipt.readbackRef, 'readback:recovered');
+});
+
+test('workspace recovery retries only a proven not-started operation', async () => {
+  const journal = new InMemoryCodingOperationJournal();
+  const origin = plan();
+  const baseline = {
+    baselineRef: 'baseline:src/value.ts:v0',
+    state: { content: '' },
+    evidenceRefs: ['baseline:captured'],
+  };
+  await prepareInterruptedMutation(journal, origin, baseline);
+  const capability = host();
+  capability.reconcile = async () => {
+    capability.calls.push('reconcile');
+    return { status: 'not-started', evidenceRefs: ['workspace:baseline-still-current'] };
+  };
+  const resumedPlan = plan({ runId: 'mutation-run-2', idempotencyKey: 'mutation-run-2:write-1' });
+  const outcome = await new CanonicalWorkspaceMutationTransaction(
+    journal,
+    origin.runId,
+  ).execute(resumedPlan, capability);
+
+  assert.deepEqual(capability.calls, ['reconcile', 'apply', 'readback']);
+  assert.equal(outcome.receipt.status, 'committed');
+});
+
+test('workspace recovery does not apply when the resumed journal cannot record intent', async () => {
+  const backingJournal = new InMemoryCodingOperationJournal();
+  const origin = plan();
+  const baseline = {
+    baselineRef: 'baseline:src/value.ts:v0',
+    state: { content: '' },
+    evidenceRefs: ['baseline:captured'],
+  };
+  await prepareInterruptedMutation(backingJournal, origin, baseline);
+  const resumedPlan = plan({ runId: 'mutation-run-2', idempotencyKey: 'mutation-run-2:write-1' });
+  const journal = {
+    load: (...args) => backingJournal.load(...args),
+    prepare: async input => {
+      if (input.runId === resumedPlan.runId) throw new Error('journal unavailable');
+      return backingJournal.prepare(input);
+    },
+    settle: input => backingJournal.settle(input),
+  };
+  const capability = host();
+  capability.reconcile = async () => {
+    capability.calls.push('reconcile');
+    return { status: 'not-started', evidenceRefs: ['workspace:baseline-still-current'] };
+  };
+
+  const outcome = await new CanonicalWorkspaceMutationTransaction(
+    journal,
+    origin.runId,
+  ).execute(resumedPlan, capability);
+
+  assert.deepEqual(capability.calls, ['reconcile']);
+  assert.equal(outcome.replayed, true);
+  assert.equal(outcome.receipt.status, 'failed');
+  assert.equal(outcome.receipt.errorCode, 'mutation-preparation-journal-failed');
+});
+
+test('workspace recovery fails closed on post-crash drift', async () => {
+  const journal = new InMemoryCodingOperationJournal();
+  const origin = plan();
+  const baseline = {
+    baselineRef: 'baseline:src/value.ts:v0',
+    state: { content: '' },
+    evidenceRefs: ['baseline:captured'],
+  };
+  await prepareInterruptedMutation(journal, origin, baseline);
+  let applyCalls = 0;
+  const outcome = await new CanonicalWorkspaceMutationTransaction(
+    journal,
+    origin.runId,
+  ).execute(
+    plan({ runId: 'mutation-run-2', idempotencyKey: 'mutation-run-2:write-1' }),
+    {
+      async reconcile() {
+        return { status: 'indeterminate', evidenceRefs: ['workspace:unexpected-drift'] };
+      },
+      async captureBaseline() { throw new Error('must not recapture'); },
+      async apply() { applyCalls++; throw new Error('must not overwrite drift'); },
+      async readback() { throw new Error('must not read back'); },
+      async rollback() { throw new Error('must not roll back'); },
+    },
+  );
+
+  assert.equal(applyCalls, 0);
+  assert.equal(outcome.receipt.status, 'indeterminate');
+  assert.equal(outcome.receipt.errorCode, 'reconciliation-indeterminate');
 });

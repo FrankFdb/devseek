@@ -1,5 +1,4 @@
 import {
-  CanonicalWorkspaceMutationTransaction,
   buildCodingWorkspaceMutationPlan,
   type CodingWorkspaceMutationOutcome,
   type WorkspaceMutationPort,
@@ -25,9 +24,10 @@ interface VsCodeTextFileMutationPayload {
 
 export interface VsCodeTextFileMutationInput extends VsCodeTextFileMutationPayload {
   readonly baseline: WorkspaceTextFileBaseline;
-  readonly runId?: string;
-  readonly sequence?: number;
-  readonly actionId?: string;
+  readonly transaction: WorkspaceMutationTransactionPort;
+  readonly runId: string;
+  readonly sequence: number;
+  readonly actionId: string;
   readonly evidenceRefs: readonly string[];
   readonly verifyReadback?: VsCodeTextFileReadbackVerifier;
 }
@@ -49,36 +49,35 @@ interface VsCodeTextFileDeletePayload {
 
 export interface VsCodeTextFileDeleteInput extends VsCodeTextFileDeletePayload {
   readonly baseline: WorkspaceTextFileBaseline;
-  readonly runId?: string;
-  readonly sequence?: number;
-  readonly actionId?: string;
+  readonly transaction: WorkspaceMutationTransactionPort;
+  readonly runId: string;
+  readonly sequence: number;
+  readonly actionId: string;
   readonly evidenceRefs: readonly string[];
 }
 
 /** VS Code host adapter for the shared text-file mutation transaction. */
 export class VsCodeWorkspaceMutationAdapter {
-  private sequence = 0;
-
   constructor(
     private readonly edits: Pick<
       WorkspaceEditService,
       | 'captureTextFileBaseline'
       | 'isTextFileBaselineCurrent'
       | 'proposeTextFileWrite'
+      | 'prepareTextFileProposal'
       | 'commitTextFileProposal'
       | 'deleteTextFile'
       | 'rollbackTextFileCommit'
     > = new WorkspaceEditService(),
-    private readonly transaction: WorkspaceMutationTransactionPort = new CanonicalWorkspaceMutationTransaction(),
   ) {}
 
   executeTextFileWrite(
     input: VsCodeTextFileMutationInput,
   ): Promise<CodingWorkspaceMutationOutcome<WorkspaceCommittedEdit>> {
-    this.sequence += 1;
-    const sequence = input.sequence ?? this.sequence;
-    const runId = input.runId?.trim() || 'vscode-workspace-mutation';
-    const actionId = input.actionId?.trim() || `text-file-write-${sequence}`;
+    const sequence = input.sequence;
+    const runId = input.runId.trim();
+    const actionId = input.actionId.trim();
+    assertMutationIdentity(runId, sequence, actionId);
     const relativePath = nodePath.relative(input.workspaceRoot, input.absPath).replace(/\\/g, '/');
     const plan = buildCodingWorkspaceMutationPlan({
       runId,
@@ -94,16 +93,16 @@ export class VsCodeWorkspaceMutationAdapter {
       },
       evidenceRefs: input.evidenceRefs,
     });
-    return this.transaction.execute(plan, this.createHost(input.baseline, input.verifyReadback));
+    return input.transaction.execute(plan, this.createHost(input.baseline, input.verifyReadback));
   }
 
   executeTextFileDelete(
     input: VsCodeTextFileDeleteInput,
   ): Promise<CodingWorkspaceMutationOutcome<WorkspaceDeleteResult>> {
-    this.sequence += 1;
-    const sequence = input.sequence ?? this.sequence;
-    const runId = input.runId?.trim() || 'vscode-workspace-mutation';
-    const actionId = input.actionId?.trim() || `text-file-delete-${sequence}`;
+    const sequence = input.sequence;
+    const runId = input.runId.trim();
+    const actionId = input.actionId.trim();
+    assertMutationIdentity(runId, sequence, actionId);
     const relativePath = nodePath.relative(input.workspaceRoot, input.absPath).replace(/\\/g, '/');
     const plan = buildCodingWorkspaceMutationPlan({
       runId,
@@ -117,7 +116,7 @@ export class VsCodeWorkspaceMutationAdapter {
       },
       evidenceRefs: input.evidenceRefs,
     });
-    return this.transaction.execute(plan, this.createDeleteHost(input.baseline));
+    return input.transaction.execute(plan, this.createDeleteHost(input.baseline));
   }
 
   private createHost(
@@ -130,6 +129,51 @@ export class VsCodeWorkspaceMutationAdapter {
     WorkspaceCommittedEdit
   > {
     return {
+      reconcile: async (plan, baseline) => {
+        const prepared = this.edits.prepareTextFileProposal(
+          this.edits.proposeTextFileWrite(plan.payload.absPath, plan.payload.content),
+          plan.payload.applyOptions,
+        );
+        const current = this.edits.captureTextFileBaseline(
+          plan.payload.absPath,
+          plan.payload.workspaceRoot,
+        );
+        if (current.snapshot.existed && current.snapshot.content === prepared.proposal.content) {
+          const committed: WorkspaceCommittedEdit = {
+            proposal: prepared.proposal,
+            snapshot: baseline.state.snapshot,
+            result: {
+              existed: baseline.state.snapshot.existed,
+              oldContent: baseline.state.snapshot.content,
+              newContent: prepared.proposal.content,
+              ...(prepared.normalization ? { normalization: prepared.normalization } : {}),
+            },
+            commitToken: {
+              absPath: baseline.state.absPath,
+              workspaceRoot: baseline.state.workspaceRoot,
+              before: baseline.state,
+              after: current,
+            },
+          };
+          return {
+            status: 'committed',
+            result: committed,
+            readbackRef: `vscode-text-reconcile:${plan.actionId}`,
+            evidenceRefs: [`workspace-reconcile:${plan.actionId}:committed`],
+          };
+        }
+        if (this.edits.isTextFileBaselineCurrent(baseline.state)) {
+          return {
+            status: 'not-started',
+            evidenceRefs: [`workspace-reconcile:${plan.actionId}:not-started`],
+          };
+        }
+        return {
+          status: 'indeterminate',
+          readbackRef: `vscode-text-reconcile:${plan.actionId}`,
+          evidenceRefs: [`workspace-reconcile:${plan.actionId}:indeterminate`],
+        };
+      },
       captureBaseline: async plan => {
         assertPlanMatchesBaseline(plan.payload, authorizedBaseline);
         return {
@@ -229,6 +273,40 @@ export class VsCodeWorkspaceMutationAdapter {
     WorkspaceDeleteResult
   > {
     return {
+      reconcile: async (plan, baseline) => {
+        const current = this.edits.captureTextFileBaseline(
+          plan.payload.absPath,
+          plan.payload.workspaceRoot,
+        );
+        if (baseline.state.snapshot.existed && !current.snapshot.existed) {
+          const result: WorkspaceDeleteResult = {
+            deleted: true,
+            commitToken: {
+              absPath: baseline.state.absPath,
+              workspaceRoot: baseline.state.workspaceRoot,
+              before: baseline.state,
+              after: current,
+            },
+          };
+          return {
+            status: 'committed',
+            result,
+            readbackRef: `vscode-delete-reconcile:${plan.actionId}`,
+            evidenceRefs: [`workspace-delete-reconcile:${plan.actionId}:committed`],
+          };
+        }
+        if (this.edits.isTextFileBaselineCurrent(baseline.state)) {
+          return {
+            status: 'not-started',
+            evidenceRefs: [`workspace-delete-reconcile:${plan.actionId}:not-started`],
+          };
+        }
+        return {
+          status: 'indeterminate',
+          readbackRef: `vscode-delete-reconcile:${plan.actionId}`,
+          evidenceRefs: [`workspace-delete-reconcile:${plan.actionId}:indeterminate`],
+        };
+      },
       captureBaseline: async plan => {
         assertPlanMatchesBaseline(plan.payload, authorizedBaseline);
         return {
@@ -306,6 +384,12 @@ export class VsCodeWorkspaceMutationAdapter {
         };
       },
     };
+  }
+}
+
+function assertMutationIdentity(runId: string, sequence: number, actionId: string): void {
+  if (!runId || !actionId || !Number.isInteger(sequence) || sequence < 1) {
+    throw new Error('vscode-workspace-mutation:invalid-operation-identity');
   }
 }
 

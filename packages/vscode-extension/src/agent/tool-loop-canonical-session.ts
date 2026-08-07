@@ -1,19 +1,16 @@
 import {
-  CanonicalExternalEffectService,
-  CanonicalToolDispatchService,
-  CanonicalToolAuthorityService,
-  resolveCodingKernelTaskContract,
-  type CodingTaskMode,
   type CodingExternalEffectReconciliation,
   type CodingExternalEffectSessionPort,
   type CodingToolAuthorityReceipt,
   type CodingToolAuthoritySessionPort,
   type CodingToolExecutionOutcome,
   type CodingToolExecutionReceipt,
+  type CodingToolExecutionSessionPort,
   type CodingToolHostResult,
   type CodingToolSurfaceConstraint,
   type CodingToolCall,
   type ToolDispatchPort,
+  type WorkspaceMutationTransactionPort,
 } from '@devseek-netai/shared';
 import type { AgentLoopCallbacks } from './loop-types';
 import type { ToolPolicy } from '../app/permission-service';
@@ -28,9 +25,11 @@ export interface CanonicalToolContext {
   readonly runId: string;
   readonly sequence: number;
   readonly actionId: string;
+  readonly operationSha256: string;
 }
 
 interface CanonicalToolHost<TResult> {
+  readonly reconciliationScope?: 'process-local' | 'durable';
   execute(
     plan: AgentToolExecutionPlan,
     authority: CodingToolAuthorityReceipt,
@@ -41,69 +40,45 @@ interface CanonicalToolHost<TResult> {
   ): Promise<CodingExternalEffectReconciliation<TResult>>;
 }
 
-let directToolLoopRunSequence = 0;
-
 export function createToolLoopCanonicalSession(input: {
   readonly callbacks: AgentLoopCallbacks;
-  readonly workspaceRoot: string;
-  readonly userPrompt?: string;
   readonly receipts: CodingToolExecutionReceipt<unknown>[];
   readonly evidenceRefs: EvidenceRef[];
 }): ToolLoopCanonicalSession {
-  const { callbacks, workspaceRoot } = input;
-  if (callbacks.canonicalToolAuthority && callbacks.canonicalExternalEffects && callbacks.canonicalToolDispatch) {
-    return new ToolLoopCanonicalSession(
-      callbacks.traceRunId?.trim() || 'vscode-kernel-tool-loop',
-      input.receipts,
-      input.evidenceRefs,
-      callbacks.canonicalToolAuthority,
-      callbacks.canonicalExternalEffects,
-      callbacks.canonicalToolDispatch,
-    );
-  }
-  if (callbacks.canonicalToolAuthority || callbacks.canonicalExternalEffects || callbacks.canonicalToolDispatch) {
+  const { callbacks } = input;
+  if (!callbacks.canonicalToolAuthority
+    || !callbacks.canonicalToolExecution
+    || !callbacks.canonicalWorkspaceMutations
+    || !callbacks.canonicalExternalEffects
+    || !callbacks.canonicalToolDispatch) {
     throw new Error('vscode-tool-loop:incomplete-canonical-tool-sessions');
   }
-
-  // Direct loop tests still exercise the same authority owners as product execution.
-  directToolLoopRunSequence += 1;
-  const runId = `${callbacks.traceRunId?.trim() || 'vscode-direct-tool-loop'}-${directToolLoopRunSequence}`;
-  const taskContract = resolveCodingKernelTaskContract({
-    prompt: input.userPrompt?.trim() || 'Execute the requested VS Code tool loop safely.',
-    surface: 'vscode',
-    modeHint: projectCodingTaskMode(callbacks.executionMode),
-  });
-  const authority = new CanonicalToolAuthorityService().bind({
-    runId,
-    surface: 'vscode',
-    workspaceRoot,
-    taskContract,
-  });
   return new ToolLoopCanonicalSession(
-    runId,
     input.receipts,
     input.evidenceRefs,
-    authority,
-    new CanonicalExternalEffectService().bind({ runId, authority }),
-    new CanonicalToolDispatchService(),
+    callbacks.canonicalToolAuthority,
+    callbacks.canonicalToolExecution,
+    callbacks.canonicalWorkspaceMutations,
+    callbacks.canonicalExternalEffects,
+    callbacks.canonicalToolDispatch,
   );
 }
 
 /** Owns canonical authority and receipt settlement for one ToolLoop invocation. */
 export class ToolLoopCanonicalSession {
-  private sequence = 0;
   private readonly executor: AgentToolExecutor;
 
   constructor(
-    private readonly runId: string,
     private readonly receipts: CodingToolExecutionReceipt<unknown>[],
     private readonly evidenceRefs: EvidenceRef[],
     private readonly authority: CodingToolAuthoritySessionPort,
+    private readonly toolExecution: CodingToolExecutionSessionPort,
+    readonly workspaceMutations: WorkspaceMutationTransactionPort,
     private readonly externalEffects: CodingExternalEffectSessionPort,
     dispatch: ToolDispatchPort,
     executor?: AgentToolExecutor,
   ) {
-    this.executor = executor ?? new AgentToolExecutor(undefined, dispatch);
+    this.executor = executor ?? new AgentToolExecutor(toolExecution, dispatch);
   }
 
   plan(tool: FakeTool | CodingToolCall, policy?: ToolPolicy, workspaceRoot?: string): AgentToolExecutionPlan {
@@ -115,14 +90,12 @@ export class ToolLoopCanonicalSession {
   }
 
   nextContext(plan: AgentToolExecutionPlan): CanonicalToolContext {
-    this.sequence += 1;
-    const normalizedTool = plan.tool.name.trim().replace(/[^a-z0-9_-]+/giu, '-').replace(/^-|-$/gu, '') || 'unknown';
-    const actionId = `vscode-tool-${this.sequence}-${normalizedTool}`;
-    return {
-      runId: this.runId,
-      sequence: this.sequence,
-      actionId,
-    };
+    return this.toolExecution.nextAction({
+      tool: plan.tool.name,
+      purpose: plan.purpose,
+      effects: plan.effects,
+      input: plan.call.input,
+    });
   }
 
   async settle<TResult>(
@@ -149,6 +122,7 @@ export class ToolLoopCanonicalSession {
           surfaceConstraint,
         },
         {
+          ...(host.reconciliationScope ? { reconciliationScope: host.reconciliationScope } : {}),
           ...(host.reconcile ? {
             reconcile: action => host.reconcile!(plan, action.authority),
           } : {}),
@@ -259,12 +233,6 @@ export class ToolLoopCanonicalSession {
     return { receipt: outcome.receipt, ...(error ? { error } : {}) };
   }
 
-}
-
-function projectCodingTaskMode(mode: AgentLoopCallbacks['executionMode']): CodingTaskMode {
-  if (mode === 'inspect') return 'review';
-  if (mode === 'edit' || mode === 'run' || mode === 'destructive') return 'change';
-  return 'explain';
 }
 
 function mergeSurfaceConstraints(

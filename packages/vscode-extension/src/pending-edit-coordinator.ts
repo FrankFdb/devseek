@@ -1,7 +1,10 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
 import * as vscode from 'vscode';
-import type { CodingWorkspaceMutationReceipt } from '@devseek-netai/shared';
+import type {
+  CodingWorkspaceMutationReceipt,
+  WorkspaceMutationTransactionPort,
+} from '@devseek-netai/shared';
 import type { AgentLoopResult } from './agent/loop-types';
 import { decideAgentAutopilotAccept } from './app/agent-autopilot-policy';
 import { settleRunContextDirect } from './app/agent-run-settlement';
@@ -30,6 +33,7 @@ import { closePendingEditDiffTabAsync, DeepSeekOriginalContentProvider } from '.
 import { openWorkspacePathInEditor, revealEditorLine } from './ui/generated-artifact-ui';
 import { WorkspaceEditService, type WorkspaceTextFileCommitToken } from './workspace/edit-service';
 import { VsCodeWorkspaceMutationAdapter } from './workspace/coding-workspace-mutation-adapter';
+import { resolveProductWorkspaceMutationTransaction } from './workspace/product-workspace-mutation-transaction';
 
 export interface PendingEditRecord {
   id: string;
@@ -58,6 +62,7 @@ export interface PendingEditCoordinatorOptions {
 interface PendingEditMutationHost {
   editService: WorkspaceEditService;
   workspaceMutation: VsCodeWorkspaceMutationAdapter;
+  transaction: WorkspaceMutationTransactionPort;
   runId: string;
 }
 
@@ -435,6 +440,7 @@ export class PendingEditCoordinator {
       await this.runPendingEditMutation(record, 'undo pending edit by deleting the generated file', async (host) => {
         const baseline = host.editService.captureTextFileBaseline(target.fsPath, workspaceRoot);
         const outcome = await host.workspaceMutation.executeTextFileDelete({
+          transaction: host.transaction,
           runId: host.runId,
           sequence: 1,
           actionId: `pending-edit-delete:${record.id}`,
@@ -456,6 +462,7 @@ export class PendingEditCoordinator {
     await this.runPendingEditMutation(record, 'undo pending edit hunk by restoring the selected snapshot', async (host) => {
       const baseline = host.editService.captureTextFileBaseline(target.fsPath, workspaceRoot);
       const outcome = await host.workspaceMutation.executeTextFileWrite({
+        transaction: host.transaction,
         runId: host.runId,
         sequence: 1,
         actionId: `pending-edit-hunk-restore:${record.id}:${selectedHunk?.id ?? 'file'}`,
@@ -486,6 +493,7 @@ export class PendingEditCoordinator {
       await this.runPendingEditMutation(record, 'undo pending edit by restoring the original file', async (host) => {
         const baseline = host.editService.captureTextFileBaseline(target.fsPath, workspaceRoot);
         const outcome = await host.workspaceMutation.executeTextFileWrite({
+          transaction: host.transaction,
           runId: host.runId,
           sequence: 1,
           actionId: `pending-edit-file-restore:${record.id}`,
@@ -509,6 +517,7 @@ export class PendingEditCoordinator {
     await this.runPendingEditMutation(record, 'undo pending edit by deleting the generated file', async (host) => {
       const baseline = host.editService.captureTextFileBaseline(target.fsPath, workspaceRoot);
       const outcome = await host.workspaceMutation.executeTextFileDelete({
+        transaction: host.transaction,
         runId: host.runId,
         sequence: 1,
         actionId: `pending-edit-file-delete:${record.id}`,
@@ -608,12 +617,13 @@ export class PendingEditCoordinator {
     const mutation = new ProductMutationCoordinator(runContext, 'vscode-pending-edit');
     const editService = new WorkspaceEditService();
     const workspaceMutation = new VsCodeWorkspaceMutationAdapter(editService);
+    const transaction = resolveProductWorkspaceMutationTransaction(workspaceRoot);
     try {
       await mutation.run({
         kind: 'pending-edit-undo',
         label,
         authorize: () => ({ allowed: true, source: 'explicit-user-action' }),
-        invoke: () => invoke({ editService, workspaceMutation, runId: runContext.runId }),
+        invoke: () => invoke({ editService, workspaceMutation, transaction, runId: runContext.runId }),
         completionEvidence: {
           kind: 'verified-postcondition',
           verify,

@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { loadUserSimulationCase } from '../../../scripts/lib/devseek-user-simulation-fixture.mjs';
 import {
   CanonicalExternalEffectService,
   CanonicalTaskContractService,
   CanonicalToolAuthorityService,
+  InMemoryCodingOperationJournal,
   codingExternalEffectOperationSha256,
 } from '../dist/index.js';
 
@@ -318,4 +320,131 @@ test('external effect service rejects purpose and mutation-nature disguises', ()
     effects: ['network'],
     input: { body: 'unexpected' },
   }, host), /purpose-nature-mismatch/u);
+});
+
+function confirmedMutationInput() {
+  return {
+    sequence: 1,
+    actionId: 'publish-stable',
+    tool: 'publish',
+    purpose: 'external-effect',
+    nature: 'mutating',
+    effects: ['release'],
+    input: { channel: 'stable' },
+    risk: 'high',
+    surfaceConstraint: {
+      decision: 'require-confirmation',
+      reason: 'user-confirmed',
+      confirmationRef: 'confirm-release',
+      evidenceRefs: ['ui:confirmed'],
+    },
+  };
+}
+
+async function prepareInterruptedExternalEffect(journal, runId, input) {
+  await journal.prepare({
+    kind: 'external-effect',
+    runId,
+    actionId: input.actionId,
+    operationSha256: codingExternalEffectOperationSha256(input),
+    preparation: { input },
+  });
+}
+
+test('I14-EXT-01 user journey: restart blocks process-local reconciliation before duplicate dispatch', async () => {
+  const scenario = loadUserSimulationCase('I14', 'I14-EXT-01');
+  const journal = new InMemoryCodingOperationJournal();
+  const input = {
+    ...confirmedMutationInput(),
+    input: { channel: scenario.input.channel },
+  };
+  await prepareInterruptedExternalEffect(journal, 'origin-release-run', input);
+  let reconcileCalls = 0;
+  let executeCalls = 0;
+  const effects = new CanonicalExternalEffectService().bind({
+    runId: 'resumed-release-run',
+    authority: authority('resumed-release-run', 'release'),
+    journal,
+    replayRunId: 'origin-release-run',
+  });
+  const outcome = await effects.execute(input, {
+    reconciliationScope: scenario.input.reconciliation_scope,
+    async reconcile() {
+      reconcileCalls++;
+      return { status: 'not-started', evidenceRefs: ['memory:not-started'] };
+    },
+    async execute() {
+      executeCalls++;
+      return { status: 'committed', evidenceRefs: ['must-not-run'] };
+    },
+  });
+
+  assert.equal(reconcileCalls, 0);
+  assert.equal(executeCalls, 0);
+  assert.equal(outcome.receipt.status, 'indeterminate');
+  assert.equal(outcome.receipt.errorCode, 'external-effect-durable-reconciliation-unavailable');
+});
+
+test('external recovery does not repeat an observational process with unresolved prepared evidence', async () => {
+  const journal = new InMemoryCodingOperationJournal();
+  const input = {
+    sequence: 1,
+    actionId: 'verify-after-restart',
+    tool: 'run_terminal',
+    purpose: 'verify',
+    nature: 'observational',
+    effects: ['process'],
+    input: { command: 'npm test' },
+    risk: 'medium',
+  };
+  await prepareInterruptedExternalEffect(journal, 'origin-verify-run', input);
+  let executeCalls = 0;
+  const effects = new CanonicalExternalEffectService().bind({
+    runId: 'resumed-verify-run',
+    authority: authority('resumed-verify-run'),
+    journal,
+    replayRunId: 'origin-verify-run',
+  });
+
+  const outcome = await effects.execute(input, {
+    async execute() {
+      executeCalls++;
+      return { status: 'committed', evidenceRefs: ['must-not-run'] };
+    },
+  });
+
+  assert.equal(executeCalls, 0);
+  assert.equal(outcome.receipt.status, 'indeterminate');
+  assert.equal(outcome.receipt.errorCode, 'external-effect-durable-reconciliation-unavailable');
+});
+
+test('external recovery accepts a durable committed postcondition without dispatch', async () => {
+  const journal = new InMemoryCodingOperationJournal();
+  const input = confirmedMutationInput();
+  await prepareInterruptedExternalEffect(journal, 'origin-release-run', input);
+  let executeCalls = 0;
+  const effects = new CanonicalExternalEffectService().bind({
+    runId: 'resumed-release-run',
+    authority: authority('resumed-release-run', 'release'),
+    journal,
+    replayRunId: 'origin-release-run',
+  });
+  const outcome = await effects.execute(input, {
+    reconciliationScope: 'durable',
+    async reconcile() {
+      return {
+        status: 'committed',
+        result: { releaseId: 'release-42' },
+        evidenceRefs: ['registry:release-42'],
+      };
+    },
+    async execute() {
+      executeCalls++;
+      return { status: 'committed', evidenceRefs: ['must-not-run'] };
+    },
+  });
+
+  assert.equal(executeCalls, 0);
+  assert.equal(outcome.receipt.status, 'committed');
+  assert.deepEqual(outcome.receipt.result, { releaseId: 'release-42' });
 });

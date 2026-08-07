@@ -10,6 +10,7 @@ import { buildSync } from 'esbuild';
 import {
   CODING_KERNEL_REQUEST_VERSION,
   CanonicalCodingKernel,
+  InMemoryCodingOperationJournal,
   buildCodingKernelTaskContract,
 } from '../../shared/dist/index.js';
 import { loadUserSimulationCase } from '../../../scripts/lib/devseek-user-simulation-fixture.mjs';
@@ -127,6 +128,7 @@ function createHarness({
       acceptance: [{ id: 'verified', statement: 'The change passes verification.' }],
       provenanceRefs: ['test-prompt'],
     }),
+    operationJournal: new InMemoryCodingOperationJournal(),
     runtimeContext: {
       response: 'initial response',
       usesBridge,

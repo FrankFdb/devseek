@@ -16,7 +16,9 @@ import {
   CODING_CONFORMANCE_DEVELOPMENT_FIXTURES,
   CODING_CONFORMANCE_DIMENSIONS,
   CODING_KERNEL_OUTPUT_VERSION,
+  CanonicalToolExecutionService,
   CanonicalToolAuthorityService,
+  CanonicalWorkspaceMutationTransaction,
   bindSettledCodingConformanceObservation,
   buildSecretHarvestingRefusalAcceptanceEvidence,
   buildCodingKernelTaskContract,
@@ -167,12 +169,11 @@ test('Headless product entry fails before runtime dispatch when cancellation is 
 
 test('Headless tool adapter composes host capability without bypassing shared authority', async () => {
   let calls = 0;
-  const adapter = new HeadlessToolExecutionAdapter();
+  const adapter = new HeadlessToolExecutionAdapter(
+    new CanonicalToolExecutionService().bind({ runId: 'headless-tool-run' }),
+  );
   const denied = await adapter.execute({
     action: {
-      runId: 'headless-tool-run',
-      sequence: 1,
-      actionId: 'network-denied',
       tool: 'fetch_webpage',
       effects: ['network'],
       input: { url: 'https://example.com' },
@@ -199,7 +200,9 @@ test('Headless tool adapter composes host capability without bypassing shared au
 
 test('Headless mutation adapter commits only caller-host readback evidence', async () => {
   const calls = [];
-  const outcome = await new HeadlessWorkspaceMutationAdapter().execute({
+  const outcome = await new HeadlessWorkspaceMutationAdapter(
+    new CanonicalWorkspaceMutationTransaction(),
+  ).execute({
     plan: {
       runId: 'headless-mutation-run',
       sequence: 1,
@@ -305,11 +308,8 @@ async function executeHeadlessProductRoute(request, scenario) {
   const failedVerificationActionIds = [];
 
   if (scenario.fixtureId === 'permission-denied-no-effect') {
-    const denied = await new HeadlessToolExecutionAdapter().execute({
+    const denied = await new HeadlessToolExecutionAdapter(request.toolExecution).execute({
       action: {
-        runId: request.runId,
-        sequence: 1,
-        actionId: 'headless-install-dependency',
         tool: 'run_terminal',
         effects: classifyCodingTerminalEffects('npm install left-pad'),
         input: { command: 'npm install left-pad' },
@@ -350,7 +350,7 @@ async function executeHeadlessProductRoute(request, scenario) {
       toolExecutions.push(verification.toolReceipt);
       verifications.push(verification.verificationReceipt);
       if (verification.verificationReceipt.status === 'failed') {
-        failedVerificationActionIds.push(verificationActionId);
+        failedVerificationActionIds.push(verification.verificationReceipt.actionId);
       }
     }
   }
@@ -402,11 +402,8 @@ async function executeHeadlessProductRoute(request, scenario) {
 
 async function executeHeadlessMutationTool(input) {
   let changeReceipt;
-  const tool = await new HeadlessToolExecutionAdapter().execute({
+  const tool = await new HeadlessToolExecutionAdapter(input.request.toolExecution).execute({
     action: {
-      runId: input.request.runId,
-      sequence: input.sequence,
-      actionId: input.actionId,
       tool: 'replace_file',
       effects: ['workspace-mutation'],
       input: { path: input.path, content: input.content },
@@ -416,13 +413,15 @@ async function executeHeadlessMutationTool(input) {
     risk: 'medium',
     targetPaths: [input.path],
     host: {
-      async execute() {
-        const mutation = await new HeadlessWorkspaceMutationAdapter().execute({
+      async execute(action) {
+        const mutation = await new HeadlessWorkspaceMutationAdapter(
+          input.request.workspaceMutations,
+        ).execute({
           plan: {
-            runId: input.request.runId,
-            sequence: input.sequence,
-            actionId: input.actionId,
-            idempotencyKey: `${input.request.runId}:${input.actionId}`,
+            runId: action.runId,
+            sequence: action.sequence,
+            actionId: action.actionId,
+            idempotencyKey: `${action.runId}:${action.actionId}`,
             paths: [input.path],
             payload: { path: input.path, content: input.content },
             evidenceRefs: [`headless-plan:${input.actionId}`],
@@ -448,9 +447,15 @@ async function executeHeadlessMutationTool(input) {
 
 async function executeHeadlessVerificationTool(input) {
   let verificationReceipt;
+  const context = input.request.toolExecution.nextAction({
+    tool: 'run_terminal',
+    purpose: 'verify',
+    effects: ['process'],
+    input: input.scenario.verifier,
+  });
   const effect = await input.request.externalEffects.execute({
-    sequence: input.sequence,
-    actionId: input.actionId,
+    sequence: context.sequence,
+    actionId: context.actionId,
     tool: 'run_terminal',
     purpose: 'verify',
     nature: 'observational',
@@ -461,10 +466,10 @@ async function executeHeadlessVerificationTool(input) {
     async execute() {
         const verification = await new HeadlessVerificationAdapter().verify({
           plan: {
-            runId: input.request.runId,
-            sequence: input.sequence,
-            actionId: input.actionId,
-            idempotencyKey: `${input.request.runId}:${input.actionId}`,
+            runId: context.runId,
+            sequence: context.sequence,
+            actionId: context.actionId,
+            idempotencyKey: `${context.runId}:${context.actionId}`,
             scopePaths: [input.scenario.targetPath],
             acceptance: input.request.taskContract.acceptance,
             payload: input.scenario.verifier,
@@ -477,7 +482,7 @@ async function executeHeadlessVerificationTool(input) {
               return {
                 verifier: input.scenario.verifier.name,
                 checks: [{
-                  checkId: `${input.actionId}:behavior`,
+                  checkId: `${context.actionId}:behavior`,
                   status,
                   acceptanceIds: input.request.taskContract.acceptance.map(criterion => criterion.id),
                   summary: result.summary,

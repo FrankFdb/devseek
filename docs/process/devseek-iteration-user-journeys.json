@@ -429,6 +429,93 @@
           }
         }
       ]
+    },
+    {
+      "iteration_id": "I14",
+      "status": "verified-local",
+      "goal": "Make tool and side-effect identity process-independent, reconcile durable workspace effects after interruption, and fail closed when only process-local external evidence exists.",
+      "delta_from_baseline": "Adds immutable on-disk prepare/settle records, restart-time VS Code and CLI postcondition reconciliation, process-local external-effect refusal, run-global semantic tool identities, and metadata symlink containment; none are exercised by the fixed coding baseline or I10-I13 journeys.",
+      "fixture_path": "scripts/test/fixtures/user-simulations/i14-effect-restart.json",
+      "local_artifact_root": "code/devseek-tests/effect-restart",
+      "capability_ids": [
+        "C6-TOOL-EXECUTION",
+        "C7-WORKSPACE-MUTATION",
+        "C7-EXTERNAL-EFFECT",
+        "C7-SANDBOX-POLICY",
+        "C11-RESUME-IDEMPOTENCY"
+      ],
+      "cases": [
+        {
+          "case_id": "I14-ID-01",
+          "capability_ids": ["C6-TOOL-EXECUTION", "C11-RESUME-IDEMPOTENCY"],
+          "surface": "headless",
+          "user_action": "Resume the same file-read intent in a new agent process, then repeat that intent within one run.",
+          "expected_outcomes": [
+            "The semantic operation digest and first-occurrence action identity remain stable across different run IDs.",
+            "Repeated identical actions within one run receive distinct occurrence identities and a run-global sequence."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-tool-execution.test.mjs",
+            "test_name": "I14-ID-01 user journey: tool identity survives restart and distinguishes same-run repeats"
+          }
+        },
+        {
+          "case_id": "I14-VSC-01",
+          "capability_ids": ["C7-WORKSPACE-MUTATION", "C11-RESUME-IDEMPOTENCY"],
+          "surface": "vscode",
+          "user_action": "Resume a VS Code write after the requested content reached disk but the process stopped before recording its terminal receipt.",
+          "expected_outcomes": [
+            "The immutable preparation is loaded by a new transaction instance and the current file is reconciled against the exact desired content.",
+            "The result is committed with reconciliation evidence and the host commit method is never called again."
+          ],
+          "evidence": {
+            "test_path": "packages/vscode-extension/test/unit/coding-workspace-mutation-adapter.test.mjs",
+            "test_name": "I14-VSC-01 user journey: VS Code restart proves the persisted write without applying it twice"
+          }
+        },
+        {
+          "case_id": "I14-CLI-01",
+          "capability_ids": ["C7-WORKSPACE-MUTATION", "C11-RESUME-IDEMPOTENCY"],
+          "surface": "cli",
+          "user_action": "Resume a CLI file creation whose content is durable while its receipt is still only prepared.",
+          "expected_outcomes": [
+            "A new filesystem journal and transaction recover the prepared baseline and prove the exact final content.",
+            "The CLI apply host is not invoked a second time and the recovered receipt is committed."
+          ],
+          "evidence": {
+            "test_path": "packages/cli/test/cli-workspace-mutation-service.test.mjs",
+            "test_name": "I14-CLI-01 user journey: CLI restart recognizes a committed file and skips a second apply"
+          }
+        },
+        {
+          "case_id": "I14-EXT-01",
+          "capability_ids": ["C7-EXTERNAL-EFFECT", "C11-RESUME-IDEMPOTENCY"],
+          "surface": "headless",
+          "user_action": "Resume an interrupted remote publish when its reconciler remembers only process-local state.",
+          "expected_outcomes": [
+            "The stale process-local reconciler is not consulted after restart.",
+            "The remote host is not called again and the effect settles indeterminate with a durable-reconciliation-unavailable reason."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-external-effect.test.mjs",
+            "test_name": "I14-EXT-01 user journey: restart blocks process-local reconciliation before duplicate dispatch"
+          }
+        },
+        {
+          "case_id": "I14-JRN-01",
+          "capability_ids": ["C7-SANDBOX-POLICY", "C11-RESUME-IDEMPOTENCY"],
+          "surface": "headless",
+          "user_action": "Open a workspace whose .devseek metadata entry redirects to an external directory through a symbolic link.",
+          "expected_outcomes": [
+            "Journal preparation rejects the unsafe directory before creating a record.",
+            "The external target remains empty."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-operation-journal.test.mjs",
+            "test_name": "I14-JRN-01 user journey: workspace metadata symlink cannot redirect durable evidence"
+          }
+        }
+      ]
     }
   ]
 }

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import test from 'node:test';
+import { CanonicalWorkspaceMutationTransaction } from '../../../shared/dist/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
@@ -34,6 +35,7 @@ test('VS Code directory adapter creates nested parents under one canonical recei
     const edits = new WorkspaceEditService();
     const adapter = new VsCodeWorkspaceDirectoryMutationAdapter(edits);
     const outcome = await adapter.execute({
+      transaction: new CanonicalWorkspaceMutationTransaction(),
       runId: 'directory-run-1',
       sequence: 1,
       actionId: 'create-output-directory',
@@ -63,6 +65,7 @@ test('VS Code directory adapter rejects a stale baseline without deleting the us
     mkdirSync(target);
 
     const outcome = await adapter.execute({
+      transaction: new CanonicalWorkspaceMutationTransaction(),
       runId: 'directory-run-2',
       sequence: 1,
       actionId: 'reject-stale-directory',
@@ -87,6 +90,7 @@ test('VS Code directory adapter rolls back the target and created parents after 
     const edits = new WorkspaceEditService();
     const adapter = new VsCodeWorkspaceDirectoryMutationAdapter(edits);
     const outcome = await adapter.execute({
+      transaction: new CanonicalWorkspaceMutationTransaction(),
       runId: 'directory-run-3',
       sequence: 1,
       actionId: 'rollback-directory',

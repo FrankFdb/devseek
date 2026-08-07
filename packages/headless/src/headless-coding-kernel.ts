@@ -3,6 +3,7 @@ import {
   CODING_KERNEL_REQUEST_VERSION,
   CanonicalCodingKernel,
   CodingKernelExecutionError,
+  FileSystemCodingOperationJournal,
   projectCodingKernelTaskContract,
   validateCodingConformanceProjection,
   type CodingConformanceObservedProjection,
@@ -95,6 +96,7 @@ export class HeadlessCodingKernelExecutor<TRuntimeContext, TResult> {
         memoryCandidates: input.memoryCandidates,
         resumeCheckpoint: input.resumeCheckpoint,
         resumeReceipts: input.resumeReceipts,
+        operationJournal: FileSystemCodingOperationJournal.forWorkspace(input.workspaceRoot),
         runtimeContext: input.runtimeContext,
         signal: command.request.signal,
       });

@@ -15,6 +15,7 @@ import type {
   CodingCheckpoint,
   CodingExternalEffectReconciliation,
   CodingExternalEffectSessionPort,
+  CodingToolExecutionSessionPort,
   ProviderEventPort,
   ToolDispatchPort,
   CodingToolAuthoritySessionPort,
@@ -23,6 +24,7 @@ import type {
   CodingToolSurfaceConstraint,
   CodingVerificationReceipt,
   CodingWorkspaceMutationReceipt,
+  WorkspaceMutationTransactionPort,
 } from '@devseek-netai/shared';
 
 export type AgentStatusMessage = AgentStatusEvent;
@@ -30,6 +32,7 @@ export type AgentStatusMessage = AgentStatusEvent;
 export interface AgentPreparedToolExecution<TResult = string> {
   /** Surface-local policy/confirmation constraint; the Kernel remains the authority issuer. */
   readonly constraint: CodingToolSurfaceConstraint;
+  readonly reconciliationScope?: 'process-local' | 'durable';
   reconcile?(): Promise<CodingExternalEffectReconciliation<TResult>>;
   execute(): Promise<CodingToolHostResult<TResult>>;
 }
@@ -63,8 +66,10 @@ export interface AgentLoopCallbacks {
   onAgentAnnouncement?: (text: string) => void | Promise<void>;
   /** One diagnostic trace id shared by all provider/tool rounds in this top-level run. */
   traceRunId?: string;
-  /** Kernel-owned authority/effect sessions. Product execution always supplies both together. */
+  /** Kernel-owned execution sessions. Product execution always supplies the complete set. */
   canonicalToolAuthority?: CodingToolAuthoritySessionPort;
+  canonicalToolExecution?: CodingToolExecutionSessionPort;
+  canonicalWorkspaceMutations?: WorkspaceMutationTransactionPort;
   canonicalExternalEffects?: CodingExternalEffectSessionPort;
   canonicalProviderEvents?: ProviderEventPort;
   canonicalToolDispatch?: ToolDispatchPort;
@@ -173,6 +178,7 @@ export interface AgentLoopCallbacks {
     path: string,
     authorization: {
       readonly policyPreauthorized: true;
+      readonly transaction: WorkspaceMutationTransactionPort;
       readonly runId: string;
       readonly sequence: number;
       readonly actionId: string;

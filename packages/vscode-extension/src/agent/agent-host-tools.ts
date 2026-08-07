@@ -201,6 +201,7 @@ export function createAgentHostToolCallbacks(context: AgentHostToolContext): Hos
         throw new Error('agent file-write policy did not authorize directory creation');
       }
       const outcome = await directoryMutations.execute({
+        transaction: authorization.transaction,
         runId: authorization.runId,
         sequence: authorization.sequence,
         actionId: authorization.actionId,

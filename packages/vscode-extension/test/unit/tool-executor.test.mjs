@@ -21,10 +21,15 @@ execSync(
 const req = createRequire(import.meta.url);
 const { AgentToolExecutor, classifyToolKind } = req(bundlePath);
 const {
+  CanonicalToolExecutor,
   CanonicalToolDispatchService,
   CanonicalToolAuthorityService,
   resolveCodingKernelTaskContract,
 } = req(path.join(rootDir, '../shared/dist/index.js'));
+
+function createExecutor() {
+  return new AgentToolExecutor(new CanonicalToolExecutor());
+}
 
 function issueAuthorization(plan, scope, surfaceConstraint) {
   const taskContract = resolveCodingKernelTaskContract({
@@ -62,7 +67,7 @@ test('AgentToolExecutor: classifies mutating and terminal tools', () => {
 });
 
 test('AgentToolExecutor: keeps validation risk classifier-owned while Surface policy may narrow it', () => {
-  const executor = new AgentToolExecutor();
+  const executor = createExecutor();
   const plan = executor.plan(
     { name: 'run_terminal', input: { command: 'npm test' } },
     {
@@ -83,7 +88,7 @@ test('AgentToolExecutor: keeps validation risk classifier-owned while Surface po
 });
 
 test('AgentToolExecutor: maps control tools to non-execution plan refs', () => {
-  const executor = new AgentToolExecutor();
+  const executor = createExecutor();
   const todoPlan = executor.plan({
     name: 'manage_todo_list',
     input: { todoList: [{ id: 'task-1', status: 'in-progress', title: 'Fix contract' }] },
@@ -100,7 +105,7 @@ test('AgentToolExecutor: maps control tools to non-execution plan refs', () => {
 });
 
 test('AgentToolExecutor: rejects unregistered tools before execution', () => {
-  const executor = new AgentToolExecutor();
+  const executor = createExecutor();
   const plan = executor.plan(
     { name: 'unknown_magic', input: {} },
     {
@@ -118,7 +123,7 @@ test('AgentToolExecutor: rejects unregistered tools before execution', () => {
 });
 
 test('AgentToolExecutor: consumes shared dispatch rejection before permission and effects', () => {
-  const executor = new AgentToolExecutor();
+  const executor = createExecutor();
   const envelope = new CanonicalToolDispatchService().dispatch({
     function: {
       name: 'write_file',
@@ -152,7 +157,7 @@ test('AgentToolExecutor: consumes shared dispatch rejection before permission an
 });
 
 test('AgentToolExecutor: validates required schema fields', () => {
-  const executor = new AgentToolExecutor();
+  const executor = createExecutor();
   const invalid = executor.plan({ name: 'read_file', input: {} });
   const valid = executor.plan({ name: 'read_file', input: { path: 'src/index.ts' } });
 
@@ -162,7 +167,7 @@ test('AgentToolExecutor: validates required schema fields', () => {
 });
 
 test('AgentToolExecutor: only successful host results can emit evidence refs', () => {
-  const executor = new AgentToolExecutor();
+  const executor = createExecutor();
   const plan = executor.plan(
     { name: 'fetch_webpage', input: { url: 'https://example.com' } },
     {
@@ -186,13 +191,13 @@ test('AgentToolExecutor: only successful host results can emit evidence refs', (
 });
 
 test('AgentToolExecutor: detects file write tools', () => {
-  const executor = new AgentToolExecutor();
+  const executor = createExecutor();
   assert.equal(executor.isFileWrite({ name: 'write_file', input: {} }), true);
   assert.equal(executor.isFileWrite({ name: 'read_file', input: {} }), false);
 });
 
 test('AgentToolExecutor: registers delete_file as an audited high-risk edit', () => {
-  const executor = new AgentToolExecutor();
+  const executor = createExecutor();
   const plan = executor.plan({ name: 'delete_file', input: { path: 'src/obsolete.cpp' } });
 
   assert.equal(plan.registered, true);
@@ -203,7 +208,7 @@ test('AgentToolExecutor: registers delete_file as an audited high-risk edit', ()
 
 test('AgentToolExecutor: delegates terminal settlement to the shared canonical owner', async () => {
   let calls = 0;
-  const executor = new AgentToolExecutor();
+  const executor = createExecutor();
   const toolPolicy = {
     mode: 'edit',
     allowedToolKinds: ['terminal'],

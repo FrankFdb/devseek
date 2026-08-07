@@ -1,6 +1,6 @@
 {
-  "schema_version": "devseek.kernel-prep-owner-baseline/v22",
-  "baseline_id": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v22",
+  "schema_version": "devseek.kernel-prep-owner-baseline/v23",
+  "baseline_id": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v23",
   "purpose": "Track product-route and semantic-owner convergence without asserting qualification or coupling local iteration to Gate 0.",
   "qualification_eligible": false,
   "qualification_effect": "NONE",
@@ -526,7 +526,7 @@
     "cross_surface_kernel_routes": 4,
     "semantic_domains": 23,
     "converged_semantic_domains": 23,
-    "source_checks": 111,
+    "source_checks": 115,
     "failed_source_checks": 0
   },
   "source_checks": [
@@ -608,6 +608,10 @@
         "providerEvents: PROVIDER_EVENTS",
         "toolSchemas: TOOL_SCHEMAS",
         "toolDispatch: TOOL_DISPATCH",
+        "readonly operationJournal: CodingOperationJournalPort",
+        "new CanonicalWorkspaceMutationTransaction(",
+        "request.operationJournal,",
+        "journal: request.operationJournal",
         "assertCodingOrientationPrompt(taskContract.orientation, request.userPrompt)",
         "lifecycle.beginExecution()",
         "lifecycle.settle(runtimeOutput.status)",
@@ -1421,6 +1425,26 @@
       "passed": true
     },
     {
+      "check_id": "shared-immutable-operation-journal-owner",
+      "path": "packages/shared/src/coding-operation-journal.ts",
+      "includes": [
+        "CODING_OPERATION_JOURNAL_VERSION = 'devseek.coding-operation-journal/v1'",
+        "export interface CodingOperationJournalPort",
+        "export class FileSystemCodingOperationJournal implements CodingOperationJournalPort",
+        "ensureSecureJournalDirectory(this.workspaceRoot, true)",
+        "`${digest}.prepared.json`",
+        "`${digest}.settled.json`",
+        "fs.constants.O_EXCL",
+        "fs.constants.O_NOFOLLOW",
+        "fs.fsyncSync(descriptor)",
+        "operationJournalFailure('unsafe-journal-directory')"
+      ],
+      "excludes": [
+        "from 'vscode'"
+      ],
+      "passed": true
+    },
+    {
       "check_id": "shared-canonical-workspace-mutation-owner",
       "path": "packages/shared/src/coding-workspace-mutation.ts",
       "includes": [
@@ -1438,6 +1462,24 @@
         "CliWorkspaceMutationHostAdapter",
         "HeadlessWorkspaceMutationAdapter",
         "WorkspaceEditService"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "shared-canonical-external-effect-owner",
+      "path": "packages/shared/src/coding-external-effect.ts",
+      "includes": [
+        "export class CanonicalExternalEffectService implements ExternalEffectPort",
+        "return journal.prepare({",
+        "await journal.settle({",
+        "host.reconciliationScope !== 'durable'",
+        "errorCode: 'external-effect-durable-reconciliation-unavailable'",
+        "codingExternalEffectOperationSha256(preparedInput)"
+      ],
+      "excludes": [
+        "from 'vscode'",
+        "CliCodingKernelRuntimeAdapter",
+        "HeadlessCodingKernelExecutor"
       ],
       "passed": true
     },
@@ -1519,6 +1561,7 @@
         "userPrompt: command.request.prompt",
         "route: 'canonical'",
         "surface: 'headless'",
+        "operationJournal: FileSystemCodingOperationJournal.forWorkspace(input.workspaceRoot)",
         "taskContract: input.taskContract",
         "contextSeed: input.contextSeed",
         "validateCodingConformanceProjection(snapshot, 'headless')",
@@ -1573,7 +1616,8 @@
       "path": "packages/headless/src/headless-tool-execution.ts",
       "includes": [
         "export class HeadlessToolExecutionAdapter",
-        "private readonly executor: ToolExecutorPort = new CanonicalToolExecutor()",
+        "constructor(private readonly executor: CodingToolExecutionSessionPort)",
+        "const context = this.executor.nextAction({",
         "readonly authority: CodingToolAuthoritySessionPort",
         "const authorization = input.authority.authorize({",
         "return this.executor.execute(buildCodingToolAction({",
@@ -1591,7 +1635,7 @@
       "path": "packages/headless/src/headless-workspace-mutation.ts",
       "includes": [
         "export class HeadlessWorkspaceMutationAdapter",
-        "private readonly transaction: WorkspaceMutationTransactionPort = new CanonicalWorkspaceMutationTransaction()",
+        "private readonly transaction: WorkspaceMutationTransactionPort",
         "readonly authority: CodingToolAuthoritySessionPort",
         "purpose: 'workspace-mutation'",
         "effects: ['workspace-mutation']",
@@ -1894,6 +1938,7 @@
         "surface: 'vscode'",
         "taskContract: projectVsCodeCodingKernelTaskContract({",
         "contextSeed: projectVsCodeCodingContextSeed(request.contextFiles, request.semanticContract)",
+        "operationJournal: FileSystemCodingOperationJournal.forWorkspace(request.workspaceRoot)",
         "retainVsCodeCodingRunLifecycle({",
         "retainLifecycle(output.lifecycle)",
         "error instanceof CodingKernelExecutionError"
@@ -2143,6 +2188,7 @@
       "path": "packages/vscode-extension/src/agent/tool-executor.ts",
       "includes": [
         "export class AgentToolExecutor",
+        "private readonly canonicalExecutor: ToolExecutorPort,",
         "executeCanonical<TResult>(",
         "const action = buildCodingToolAction({",
         "return this.canonicalExecutor.execute(action, {"
@@ -2151,11 +2197,31 @@
       "passed": true
     },
     {
+      "check_id": "vscode-tool-loop-requires-kernel-sessions",
+      "path": "packages/vscode-extension/src/agent/tool-loop-canonical-session.ts",
+      "includes": [
+        "if (!callbacks.canonicalToolAuthority",
+        "|| !callbacks.canonicalToolExecution",
+        "|| !callbacks.canonicalWorkspaceMutations",
+        "|| !callbacks.canonicalExternalEffects",
+        "|| !callbacks.canonicalToolDispatch",
+        "throw new Error('vscode-tool-loop:incomplete-canonical-tool-sessions')"
+      ],
+      "excludes": [
+        "InMemoryCodingOperationJournal",
+        "new CanonicalToolExecutionService",
+        "new CanonicalWorkspaceMutationTransaction",
+        "new CanonicalExternalEffectService"
+      ],
+      "passed": true
+    },
+    {
       "check_id": "vscode-workspace-mutation",
       "path": "packages/vscode-extension/src/workspace/coding-workspace-mutation-adapter.ts",
       "includes": [
         "export class VsCodeWorkspaceMutationAdapter",
-        "private readonly transaction: WorkspaceMutationTransactionPort = new CanonicalWorkspaceMutationTransaction()",
+        "readonly transaction: WorkspaceMutationTransactionPort",
+        "return input.transaction.execute(",
         "executeTextFileWrite(",
         "executeTextFileDelete(",
         "rollbackTextFileCommit("
@@ -2168,8 +2234,8 @@
       "path": "packages/vscode-extension/src/workspace/coding-workspace-batch-mutation-adapter.ts",
       "includes": [
         "export class VsCodeWorkspaceBatchMutationAdapter",
-        "private readonly transaction: WorkspaceMutationTransactionPort = new CanonicalWorkspaceMutationTransaction()",
-        "return this.transaction.execute(",
+        "readonly transaction: WorkspaceMutationTransactionPort",
+        "return input.transaction.execute(",
         "rollbackTextFileCommit("
       ],
       "excludes": [],
@@ -2180,11 +2246,26 @@
       "path": "packages/vscode-extension/src/workspace/coding-workspace-directory-mutation-adapter.ts",
       "includes": [
         "export class VsCodeWorkspaceDirectoryMutationAdapter",
-        "private readonly transaction: WorkspaceMutationTransactionPort = new CanonicalWorkspaceMutationTransaction()",
-        "return this.transaction.execute(plan, this.createHost(",
+        "readonly transaction: WorkspaceMutationTransactionPort",
+        "return input.transaction.execute(plan, this.createHost(",
         "rollbackWorkspaceDirectoryCommit("
       ],
       "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-product-workspace-mutation-transaction",
+      "path": "packages/vscode-extension/src/workspace/product-workspace-mutation-transaction.ts",
+      "includes": [
+        "export function resolveProductWorkspaceMutationTransaction(",
+        "export function resolveProductWorkspaceMutationSession(",
+        "new CanonicalWorkspaceMutationTransaction(",
+        "FileSystemCodingOperationJournal.forWorkspace(workspaceRoot)",
+        "codingSemanticDigest({"
+      ],
+      "excludes": [
+        "InMemoryCodingOperationJournal"
+      ],
       "passed": true
     },
     {
@@ -2255,7 +2336,8 @@
         "route: 'canonical'",
         "surface: 'cli'",
         "taskContract: buildCliCodingKernelTaskContract(userPrompt, contextFiles)",
-        "contextSeed: { files: contextFiles.map(path => ({ path })) }"
+        "contextSeed: { files: contextFiles.map(path => ({ path })) }",
+        "operationJournal: FileSystemCodingOperationJournal.forWorkspace(workspaceRoot)"
       ],
       "excludes": [
         "CliLegacyCodingLoop",
@@ -2272,8 +2354,8 @@
         "export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<",
         "async executeCanonical(",
         "this.artifactInterpreter.interpret(response)",
-        "this.toolExecution.executeWorkspaceMutation({",
-        "toolExecutions.push(toolExecution.outcome.receipt)",
+        "toolExecution.executeWorkspaceMutation({",
+        "toolExecutions.push(workspaceExecution.outcome.receipt)",
         "verificationReceipts.push(verificationReceipt)",
         "private readonly completion = new CanonicalCompletionDecisionService()",
         "const codingConformance = projectSettledCodingConformanceRun({",
@@ -2294,7 +2376,8 @@
       "path": "packages/cli/src/cli-tool-execution-adapter.ts",
       "includes": [
         "export class CliToolExecutionAdapter",
-        "private readonly executor: ToolExecutorPort = new CanonicalToolExecutor()",
+        "private readonly executor: CodingToolExecutionSessionPort",
+        "const context = this.executor.nextAction({",
         "const action = buildCodingToolAction({",
         "const outcome = await this.executor.execute(action, {",
         "mutationPlan = buildCodingWorkspaceMutationPlan({",
@@ -2378,5 +2461,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "ef8dd1e09a81c997d85fdeb4cc87cd48c2aa215cb995cea54f695aed8d279821"
+  "baseline_sha256": "8754b97caef4315e24a8f1eb7dc9412549e4d33c6159ceee1ec8ea07d44c5b4b"
 }

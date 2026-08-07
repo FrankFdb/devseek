@@ -25,11 +25,8 @@ test('I12-AUT-01 user journey: read-only task rejects a Surface-authorized write
   try {
     const executor = new HeadlessCodingKernelExecutor({
       async executeCanonical(request) {
-        const denied = await new HeadlessToolExecutionAdapter().execute({
+        const denied = await new HeadlessToolExecutionAdapter(request.toolExecution).execute({
           action: {
-            runId: request.runId,
-            sequence: 1,
-            actionId: 'attempt-read-only-write',
             tool: 'replace_file',
             effects: ['workspace-mutation'],
             input: { path: scenario.input.attempted_path, content: 'must not be written' },
@@ -78,11 +75,8 @@ test('I12-AUT-02 user journey: a writable task rejects Surface-issued final auth
   try {
     const executor = new HeadlessCodingKernelExecutor({
       async executeCanonical(request) {
-        assert.throws(() => new HeadlessToolExecutionAdapter().execute({
+        assert.throws(() => new HeadlessToolExecutionAdapter(request.toolExecution).execute({
           action: {
-            runId: request.runId,
-            sequence: 1,
-            actionId: 'attempt-forged-authority-write',
             tool: 'replace_file',
             effects: ['workspace-mutation'],
             input: { path: scenario.input.attempted_path, content: 'must not be written' },
@@ -229,6 +223,7 @@ test('I12-EFX-01 user journey: confirmed remote mutation reconciles and executes
     const executor = new HeadlessCodingKernelExecutor({
       async executeCanonical(request) {
         const effectInput = externalEffectInput(request.runId, scenario);
+        const issuedEffect = issueExternalEffect(request, effectInput);
         const host = {
           async reconcile() {
             reconcileCalls += 1;
@@ -243,8 +238,8 @@ test('I12-EFX-01 user journey: confirmed remote mutation reconciles and executes
             };
           },
         };
-        const first = await request.externalEffects.execute(effectInput, host);
-        const replay = await request.externalEffects.execute(effectInput, host);
+        const first = await request.externalEffects.execute(issuedEffect, host);
+        const replay = await request.externalEffects.execute(issuedEffect, host);
         assert.equal(first.replayed, false);
         assert.equal(replay.replayed, true);
         assert.ok(first.receipt.toolReceipt);
@@ -301,7 +296,10 @@ test('I12-RSM-01 user journey: external effect receipt settles resume and skips 
     };
     const firstExecutor = new HeadlessCodingKernelExecutor({
       async executeCanonical(request) {
-        const outcome = await request.externalEffects.execute(effectInput(), host);
+        const outcome = await request.externalEffects.execute(
+          issueExternalEffect(request, effectInput()),
+          host,
+        );
         assert.equal(outcome.replayed, false);
         assert.ok(outcome.receipt.toolReceipt);
         return settleTask(request, { hostCalls, replayed: outcome.replayed }, [outcome.receipt.toolReceipt]);
@@ -320,7 +318,10 @@ test('I12-RSM-01 user journey: external effect receipt settles resume and skips 
       async executeCanonical(request) {
         const unit = request.resumeIdempotency.plan.units.find(item => item.id === scenario.input.pending_unit.id);
         assert.equal(unit.disposition, 'skip-completed');
-        const outcome = await request.externalEffects.execute(effectInput(), host);
+        const outcome = await request.externalEffects.execute(
+          issueExternalEffect(request, effectInput()),
+          host,
+        );
         assert.equal(outcome.replayed, true);
         assert.equal(outcome.receipt.toolReceipt, undefined);
         return settleTask(request, { hostCalls, replayed: outcome.replayed });
@@ -365,7 +366,7 @@ test('I12-RSM-02 user journey: completed resume receipt cannot authorize substit
     const firstExecutor = new HeadlessCodingKernelExecutor({
       async executeCanonical(request) {
         const outcome = await request.externalEffects.execute(
-          resumeEffectInput(scenario, scenario.input.approved_body),
+          issueExternalEffect(request, resumeEffectInput(scenario, scenario.input.approved_body)),
           host,
         );
         return settleTask(request, { hostCalls }, [outcome.receipt.toolReceipt]);
@@ -383,7 +384,7 @@ test('I12-RSM-02 user journey: completed resume receipt cannot authorize substit
     const secondExecutor = new HeadlessCodingKernelExecutor({
       async executeCanonical(request) {
         await request.externalEffects.execute(
-          resumeEffectInput(scenario, scenario.input.substituted_body),
+          issueExternalEffect(request, resumeEffectInput(scenario, scenario.input.substituted_body)),
           host,
         );
         throw new Error('substituted resume input must not settle');
@@ -480,6 +481,20 @@ function resumeEffectInput(scenario, body) {
     input: { target: scenario.input.pending_unit.target, body },
     surfaceConstraint: confirmedConstraint(scenario.input.confirmation_ref),
     resumeUnitId: scenario.input.pending_unit.id,
+  };
+}
+
+function issueExternalEffect(request, input) {
+  const context = request.toolExecution.nextAction({
+    tool: input.tool,
+    purpose: input.purpose,
+    effects: input.effects,
+    input: input.input,
+  });
+  return {
+    ...input,
+    sequence: context.sequence,
+    actionId: context.actionId,
   };
 }
 

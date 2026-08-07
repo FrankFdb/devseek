@@ -4,6 +4,7 @@ import * as crypto from 'crypto';
 import type {
   CodingVerificationReceipt,
   CodingWorkspaceMutationReceipt,
+  WorkspaceMutationTransactionPort,
 } from '@devseek-netai/shared';
 import { ChangeAction, createChangeAction, ResolvedGeneratedArtifact } from './change-plan';
 import { GeneratedArtifact, GeneratedFile, looksLikeRawToolCallText, parseGeneratedArtifacts } from './generated-file-parser';
@@ -27,6 +28,7 @@ import {
   type WorkspaceTextFileCommitToken,
 } from './workspace/edit-service';
 import { VsCodeWorkspaceBatchMutationAdapter } from './workspace/coding-workspace-batch-mutation-adapter';
+import { resolveProductWorkspaceMutationTransaction } from './workspace/product-workspace-mutation-transaction';
 import { ReviewLedger, type ReviewLedgerSnapshot } from './workspace/review-ledger';
 import {
   ValidationService,
@@ -95,6 +97,7 @@ export interface ApplyGeneratedArtifactsOptions {
   mutationRunId?: string;
   mutationSequence?: number;
   mutationActionId?: string;
+  mutationTransaction?: WorkspaceMutationTransactionPort;
 }
 
 interface WorkspaceApplyValidationOutcome {
@@ -112,6 +115,14 @@ interface PreparedChange {
   oldContent: string;
   newContent: string;
   baseline: WorkspaceTextFileBaseline;
+}
+
+function preparedMutationDigest(prepared: readonly PreparedChange[]): string {
+  const operation = prepared.map(change => ({
+    path: change.targetUri.fsPath,
+    content: change.newContent,
+  }));
+  return crypto.createHash('sha256').update(JSON.stringify(operation)).digest('hex').slice(0, 20);
 }
 
 export async function previewGeneratedArtifactsWithPrompt(raw: string, requestPrompt?: string): Promise<void> {
@@ -366,7 +377,7 @@ async function applyPreparedChanges(
     detail: `共 ${prepared.length} 个变更，新建 ${summary.creates}，覆盖 ${summary.overwrites}，补丁 ${summary.patches}${targetPathForMsg ? `\n目标: ${targetPathForMsg}` : ''}`,
   });
 
-  const mutationRunId = options?.mutationRunId?.trim() || `vscode-workspace-apply-${crypto.randomUUID()}`;
+  const mutationRunId = options?.mutationRunId?.trim() || `vscode-workspace-apply-${preparedMutationDigest(prepared)}`;
   const mutationSequence = options?.mutationSequence ?? 1;
   const mutationActionId = options?.mutationActionId?.trim() || 'apply-generated-artifacts';
   const validateWithinTransaction = autoApply && rollbackOnValidationFailure;
@@ -378,6 +389,10 @@ async function applyPreparedChanges(
     async () => {
       try {
         mutationOutcome = await workspaceMutation.execute({
+          transaction: resolveProductWorkspaceMutationTransaction(
+            root?.fsPath ?? prepared[0].baseline.workspaceRoot,
+            options?.mutationTransaction,
+          ),
           runId: mutationRunId,
           sequence: mutationSequence,
           actionId: mutationActionId,

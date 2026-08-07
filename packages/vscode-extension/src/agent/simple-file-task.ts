@@ -3,6 +3,7 @@ import * as nodePath from 'path';
 import { resolveWorkspaceWritePath } from '../workspace/path-resolver';
 import { WorkspaceEditService } from '../workspace/edit-service';
 import { VsCodeWorkspaceMutationAdapter } from '../workspace/coding-workspace-mutation-adapter';
+import { resolveProductWorkspaceMutationSession } from '../workspace/product-workspace-mutation-transaction';
 import { runAgentAutoValidationForWrites, type AgentAutoValidationOptions } from './auto-validation';
 import {
   buildAgenticHistoryText,
@@ -89,10 +90,22 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
   }
 
   input.callbacks.onToolActivity?.('write', resolved.relPath);
+  const mutationSession = resolveProductWorkspaceMutationSession({
+    workspaceRoot: input.workspaceRoot,
+    canonicalTransaction: input.callbacks.canonicalWorkspaceMutations,
+    canonicalRunId: input.callbacks.traceRunId,
+    owner: 'simple-file-task',
+    operationIdentity: {
+      path: resolved.relPath,
+      content: request.content,
+      userPrompt: input.userPrompt,
+    },
+  });
   let mutationOutcome;
   try {
     mutationOutcome = await workspaceMutation.executeTextFileWrite({
-      runId: input.callbacks.traceRunId,
+      transaction: mutationSession.transaction,
+      runId: mutationSession.runId,
       actionId: `simple-file-write:${resolved.relPath}`,
       sequence: 1,
       absPath: resolved.absPath,
@@ -116,15 +129,19 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
   }
   const committedEdit = mutationOutcome.receipt.result;
   if (mutationOutcome.receipt.status !== 'committed' || !committedEdit) {
-    const failure = mutationOutcome.receipt.errorCode === 'workspace-baseline-conflict'
+    const errorCode = mutationOutcome.receipt.errorCode;
+    const failure = errorCode === 'workspace-baseline-conflict'
       ? 'target changed after write authority was captured (workspace-baseline-conflict)'
-      : mutationOutcome.receipt.errorCode ?? mutationOutcome.receipt.status;
+      : errorCode ?? mutationOutcome.receipt.status;
+    const failureLabel = errorCode === 'workspace-proposal-invalid'
+      ? '源码语法护栏阻止写入'
+      : '工作区写入事务未提交';
     return finishSimpleFileTask({
       ...input,
       todos: failLinearAgentTodo(todos, 0),
       writtenFiles: [],
       terminalEvidence: [],
-      failedReason: `工作区写入事务未提交：${failure}`,
+      failedReason: `${failureLabel}：${failure}`,
       changeReceipt: mutationOutcome.receipt,
     });
   }

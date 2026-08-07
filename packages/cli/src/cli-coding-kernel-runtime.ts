@@ -84,16 +84,13 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
   CliCodingKernelRuntimeContext,
   CliCodingKernelResult
 > {
-  private readonly toolExecution: CliToolExecutionAdapter;
   private readonly completion = new CanonicalCompletionDecisionService();
 
   constructor(
     private readonly artifactInterpreter: Pick<CliCodingArtifactInterpreter, 'interpret'>,
-    workspaceMutation: CliWorkspaceMutationHostAdapter,
+    private readonly workspaceMutation: CliWorkspaceMutationHostAdapter,
     private readonly verification: Pick<CliVerificationAdapter, 'verify'>,
-  ) {
-    this.toolExecution = new CliToolExecutionAdapter(workspaceMutation);
-  }
+  ) {}
 
   async executeCanonical(
     request: CodingKernelRuntimeRequest<CliCodingKernelRuntimeContext>,
@@ -109,6 +106,11 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
     const toolExecutions: CodingToolExecutionReceipt<unknown>[] = [];
     const changeReceipts: CodingWorkspaceMutationReceipt<readonly string[]>[] = [];
     const verificationReceipts: CodingVerificationReceipt[] = [];
+    const toolExecution = new CliToolExecutionAdapter(
+      this.workspaceMutation,
+      request.toolExecution,
+      request.workspaceMutations,
+    );
     let recovery: CliRecoveryBoundary | undefined;
     let recoveryExitError: unknown;
     try {
@@ -129,9 +131,7 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
                 ...(terminalCall.workdir ? { workdir: terminalCall.workdir } : {}),
               },
             }, 'surface', request.workspaceRoot);
-            const terminalOutcome = await this.toolExecution.executeDeniedTerminal({
-              runId: request.runId,
-              sequence: index + 1,
+            const terminalOutcome = await toolExecution.executeDeniedTerminal({
               call,
               authority: request.toolAuthority,
             });
@@ -195,8 +195,6 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
         }
         const sideEffectOperationId = `cli-file-write-${executionAttempt}`;
         const verificationOperationId = `cli-verification-${executionAttempt}`;
-        const sideEffectSequence = ((executionAttempt - 1) * 2) + 1;
-        const verificationSequence = sideEffectSequence + 1;
         const recoveryCorrelation: Record<string, string> = recovery
           ? { recovery_operation_id: recovery.operationId }
           : {};
@@ -209,9 +207,7 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
           },
         }, 'internal', request.workspaceRoot);
         if (request.taskContract.mode !== 'change' && request.taskContract.mode !== 'release') {
-          const denied = await this.toolExecution.executeWorkspaceMutation({
-            runId: request.runId,
-            sequence: sideEffectSequence,
+          const denied = await toolExecution.executeWorkspaceMutation({
             call: workspaceCall,
             authority: request.toolAuthority,
           });
@@ -283,14 +279,12 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
             ...recoveryCorrelation,
           },
         }, sideEffectOperationId);
-        const toolExecution = await this.toolExecution.executeWorkspaceMutation({
-          runId: request.runId,
-          sequence: sideEffectSequence,
+        const workspaceExecution = await toolExecution.executeWorkspaceMutation({
           call: workspaceCall,
           authority: request.toolAuthority,
         });
-        toolExecutions.push(toolExecution.outcome.receipt);
-        const toolReceipt = toolExecution.outcome.receipt;
+        toolExecutions.push(workspaceExecution.outcome.receipt);
+        const toolReceipt = workspaceExecution.outcome.receipt;
         if (toolReceipt.status !== 'completed') {
           noteCliRecoveryAdverse(recovery, sideEffectOperationId);
           input.recordOperationEvidence({
@@ -343,9 +337,15 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
         }, verificationOperationId);
         let validation: CliValidationResult;
         try {
+          const verificationContext = request.toolExecution.nextAction({
+            tool: 'run_terminal',
+            purpose: 'verify',
+            effects: ['process'],
+            input: { files },
+          });
           const verificationEffect = await request.externalEffects.execute({
-            sequence: verificationSequence,
-            actionId: verificationOperationId,
+            sequence: verificationContext.sequence,
+            actionId: verificationContext.actionId,
             tool: 'run_terminal',
             purpose: 'verify',
             nature: 'observational',
@@ -356,8 +356,8 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
             execute: async () => {
               const verification = await this.verification.verify({
                 runId: request.runId,
-                sequence: verificationSequence,
-                actionId: verificationOperationId,
+                sequence: verificationContext.sequence,
+                actionId: verificationContext.actionId,
                 workspaceRoot: request.workspaceRoot,
                 files,
                 prompt: request.userPrompt,

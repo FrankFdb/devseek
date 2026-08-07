@@ -14,6 +14,7 @@ import {
   snapshotCodingValue,
   uniqueCodingRefs,
 } from './coding-contract-utils';
+import { codingSemanticDigest } from './coding-semantic-digest';
 
 export const CODING_TOOL_ACTION_VERSION = 'devseek.coding-tool-action/v1' as const;
 export const CODING_TOOL_RECEIPT_VERSION = 'devseek.coding-tool-receipt/v1' as const;
@@ -108,6 +109,32 @@ export interface ToolExecutorPort {
   ): Promise<CodingToolExecutionOutcome<TResult>>;
 }
 
+export interface CodingToolActionIdentityInput<TInput> {
+  readonly tool: string;
+  readonly purpose: CodingToolPurpose;
+  readonly effects: readonly CodingToolEffect[];
+  readonly input: TInput;
+}
+
+export interface CodingToolActionContext {
+  readonly runId: string;
+  readonly sequence: number;
+  readonly actionId: string;
+  readonly operationSha256: string;
+}
+
+export interface CodingToolExecutionSessionPort extends ToolExecutorPort {
+  nextAction<TInput>(input: CodingToolActionIdentityInput<TInput>): CodingToolActionContext;
+  receipts(): readonly CodingToolExecutionReceipt<unknown>[];
+}
+
+export interface ToolExecutionPort {
+  bind(input: {
+    readonly runId: string;
+    readonly executor?: ToolExecutorPort;
+  }): CodingToolExecutionSessionPort;
+}
+
 interface ActiveExecution {
   readonly canonicalAction: string;
   readonly outcome: Promise<CodingToolExecutionOutcome<unknown>>;
@@ -181,6 +208,70 @@ export class CanonicalToolExecutor implements ToolExecutorPort {
       };
     }
   }
+}
+
+interface IssuedToolAction {
+  readonly sequence: number;
+  readonly operationSha256: string;
+}
+
+/** Owns stable logical action identity and one executor for an entire Kernel run. */
+export class CanonicalToolExecutionService implements ToolExecutionPort {
+  bind(input: Parameters<ToolExecutionPort['bind']>[0]): CodingToolExecutionSessionPort {
+    const runId = normalizedCodingId(input.runId, 'tool-execution-run-id');
+    const executor = input.executor ?? new CanonicalToolExecutor();
+    const occurrences = new Map<string, number>();
+    const issued = new Map<string, IssuedToolAction>();
+    const receipts = new Map<string, CodingToolExecutionReceipt<unknown>>();
+    let sequence = 0;
+
+    return Object.freeze({
+      nextAction: <TInput>(candidate: CodingToolActionIdentityInput<TInput>): CodingToolActionContext => {
+        const operationSha256 = codingToolOperationSha256(candidate);
+        const occurrence = (occurrences.get(operationSha256) ?? 0) + 1;
+        occurrences.set(operationSha256, occurrence);
+        sequence += 1;
+        const tool = normalizedCodingId(candidate.tool, 'tool-name')
+          .toLowerCase()
+          .replace(/[^a-z0-9_-]+/gu, '-')
+          .replace(/^-|-$/gu, '') || 'unknown';
+        const actionId = `tool-${tool.slice(0, 36)}-${operationSha256.slice(0, 20)}-${occurrence}`;
+        issued.set(actionId, { sequence, operationSha256 });
+        return Object.freeze({ runId, sequence, actionId, operationSha256 });
+      },
+      execute: async <TInput, TResult>(
+        action: CodingToolAction<TInput>,
+        host: ToolExecutionHostPort<TInput, TResult>,
+        authority: CodingToolAuthorityReceiptVerifierPort,
+      ): Promise<CodingToolExecutionOutcome<TResult>> => {
+        const expected = issued.get(action.actionId);
+        if (!expected || action.runId !== runId || action.sequence !== expected.sequence) {
+          throw new Error('coding-tool-execution:unissued-action-identity');
+        }
+        if (codingToolOperationSha256(action) !== expected.operationSha256) {
+          throw new Error('coding-tool-execution:issued-operation-mismatch');
+        }
+        const outcome = await executor.execute(action, host, authority);
+        const existing = receipts.get(action.actionId);
+        if (existing && canonicalCodingJson(existing) !== canonicalCodingJson(outcome.receipt)) {
+          throw new Error('coding-tool-execution:conflicting-session-receipt');
+        }
+        receipts.set(action.actionId, outcome.receipt as CodingToolExecutionReceipt<unknown>);
+        return outcome;
+      },
+      receipts: () => Object.freeze([...receipts.values()].sort((left, right) => left.sequence - right.sequence)),
+    });
+  }
+}
+
+export function codingToolOperationSha256<TInput>(input: CodingToolActionIdentityInput<TInput>): string {
+  return codingSemanticDigest({
+    protocol: CODING_TOOL_ACTION_VERSION,
+    tool: normalizedCodingId(input.tool, 'tool-name'),
+    purpose: input.purpose,
+    effects: Object.freeze([...(input.effects ?? [])]),
+    input: snapshotCodingValue(input.input, 'tool-operation-input'),
+  });
 }
 
 function verifyCodingToolActionAuthority<TInput>(

@@ -9,6 +9,7 @@ import {
   CanonicalCodingKernel,
   CanonicalRunLifecycleService,
   CodingKernelExecutionError,
+  InMemoryCodingOperationJournal,
   buildCodingKernelTaskContract,
   projectCodingKernelTaskContract,
 } from '../dist/index.js';
@@ -33,6 +34,7 @@ function request(overrides = {}) {
     userPrompt: 'Create src/value.ts and verify it',
     workspaceRoot: '/workspace',
     taskContract: taskContract(),
+    operationJournal: new InMemoryCodingOperationJournal(),
     contextSeed: {
       files: [{ path: '/workspace/src/value.ts', sizeBytes: 120 }],
       manifests: { 'package.json': JSON.stringify({ scripts: { build: 'tsc', test: 'node --test' } }) },

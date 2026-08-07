@@ -11,6 +11,10 @@ import type {
   CodingResumeIdempotencySessionPort,
   CodingResumeReceiptStatus,
 } from './coding-resume-idempotency';
+import type {
+  CodingOperationJournalPort,
+  CodingOperationJournalRecord,
+} from './coding-operation-journal';
 import { codingSemanticDigest } from './coding-semantic-digest';
 import type {
   CodingToolAuthorityReceipt,
@@ -24,6 +28,7 @@ import {
   buildCodingToolAction,
   type CodingToolAction,
   type CodingToolExecutionReceipt,
+  type CodingToolHostResult,
   type ToolExecutorPort,
 } from './coding-tool-execution';
 
@@ -45,7 +50,10 @@ export interface CodingExternalEffectReconciliation<TResult> {
   readonly evidenceRefs: readonly string[];
 }
 
+export type CodingExternalEffectReconciliationScope = 'process-local' | 'durable';
+
 export interface ExternalEffectHostPort<TInput, TResult> {
+  readonly reconciliationScope?: CodingExternalEffectReconciliationScope;
   reconcile?(action: CodingToolAction<TInput>): Promise<CodingExternalEffectReconciliation<TResult>>;
   execute(action: CodingToolAction<TInput>): Promise<CodingExternalEffectHostResult<TResult>>;
 }
@@ -120,7 +128,14 @@ export interface ExternalEffectPort {
     readonly runId: string;
     readonly authority: CodingToolAuthoritySessionPort;
     readonly resume?: CodingResumeIdempotencySessionPort;
+    readonly executor?: ToolExecutorPort;
+    readonly journal?: CodingOperationJournalPort;
+    readonly replayRunId?: string;
   }): CodingExternalEffectSessionPort;
+}
+
+interface CodingExternalEffectJournalPreparation {
+  readonly input: CodingExternalEffectExecutionInput<unknown>;
 }
 
 interface SettledEffect {
@@ -136,7 +151,7 @@ export class CanonicalExternalEffectService implements ExternalEffectPort {
 
   bind(input: Parameters<ExternalEffectPort['bind']>[0]): CodingExternalEffectSessionPort {
     const runId = normalizedCodingId(input.runId, 'run-id');
-    const executor = this.createExecutor();
+    const executor = input.executor ?? this.createExecutor();
     const settled = new Map<string, SettledEffect>();
     const receipts: CodingExternalEffectReceipt<unknown>[] = [];
 
@@ -158,7 +173,16 @@ export class CanonicalExternalEffectService implements ExternalEffectPort {
           }));
         }
 
-        const outcome = this.executeOnce(runId, execution, host, executor, input.authority, input.resume)
+        const outcome = this.executeOnce(
+          runId,
+          execution,
+          host,
+          executor,
+          input.authority,
+          input.resume,
+          input.journal,
+          input.replayRunId,
+        )
           .then(value => {
             receipts.push(value.receipt as CodingExternalEffectReceipt<unknown>);
             return value;
@@ -180,6 +204,8 @@ export class CanonicalExternalEffectService implements ExternalEffectPort {
     executor: ToolExecutorPort,
     authority: CodingToolAuthoritySessionPort,
     resume?: CodingResumeIdempotencySessionPort,
+    journal?: CodingOperationJournalPort,
+    replayRunId?: string,
   ): Promise<CodingExternalEffectOutcome<TResult>> {
     const operationSha256 = codingExternalEffectOperationSha256(input);
     const resumed = resumeDisposition(resume, input.resumeUnitId, input.purpose, operationSha256);
@@ -238,13 +264,144 @@ export class CanonicalExternalEffectService implements ExternalEffectPort {
       input: input.input,
       authority: authorization.receipt,
     });
+    const recovery = authorization.receipt.status === 'authorized'
+      ? await loadExternalRecovery<TResult>(journal, runId, replayRunId, input, operationSha256)
+      : undefined;
+    let journalPrepared = false;
+    if (journal && authorization.receipt.status === 'authorized') {
+      try {
+        await prepareExternalJournal(journal, runId, input, operationSha256);
+        journalPrepared = true;
+      } catch {
+        const toolOutcome = await executor.execute<TInput, TResult>(action, {
+          execute: async () => ({
+            status: 'indeterminate',
+            errorCode: 'external-effect-journal-prepare-failed',
+            evidenceRefs: [`external-effect:${action.actionId}:journal-prepare-failed`],
+          }),
+        }, authority);
+        const receipt = externalReceipt(input, identity, toolOutcome.receipt);
+        settleResumeEffect(resume, input.resumeUnitId, input.purpose, operationSha256, receipt);
+        return { receipt, replayed: false };
+      }
+    }
+    const replayed = shouldReplayExternalRecovery(recovery, runId);
     const toolOutcome = await executor.execute(action, {
-      execute: settledAction => executeExternalHost(input.nature, settledAction, host),
+      execute: async settledAction => {
+        let result = replayed
+          ? replayExternalHostResult(recovery!, settledAction.actionId)
+          : await executeExternalHost(
+              input.nature,
+              settledAction,
+              host,
+              recovery?.record.state === 'prepared',
+            );
+        const alreadySettledHere = recovery?.runId === runId && recovery.record.state === 'settled';
+        if (journal && journalPrepared && !alreadySettledHere) {
+          try {
+            await journal.settle({
+              kind: 'external-effect',
+              runId,
+              actionId: input.actionId,
+              operationSha256,
+              preparation: { input },
+              receipt: result,
+            });
+          } catch {
+            result = {
+              status: 'indeterminate',
+              errorCode: 'external-effect-journal-settle-failed',
+              evidenceRefs: uniqueCodingRefs([
+                ...result.evidenceRefs,
+                `external-effect:${settledAction.actionId}:journal-settle-failed`,
+              ]),
+            };
+          }
+        }
+        return result;
+      },
     }, authority);
     const receipt = externalReceipt(input, identity, toolOutcome.receipt);
     settleResumeEffect(resume, input.resumeUnitId, input.purpose, operationSha256, receipt);
-    return { receipt, replayed: toolOutcome.replayed };
+    return { receipt, replayed: replayed || toolOutcome.replayed };
   }
+}
+
+async function loadExternalRecovery<TResult>(
+  journal: CodingOperationJournalPort | undefined,
+  runId: string,
+  replayRunId: string | undefined,
+  input: CodingExternalEffectExecutionInput<unknown>,
+  operationSha256: string,
+): Promise<{
+  readonly runId: string;
+  readonly record: CodingOperationJournalRecord<CodingExternalEffectJournalPreparation, CodingToolHostResult<TResult>>;
+} | undefined> {
+  if (!journal) return undefined;
+  const runIds = [runId];
+  const origin = replayRunId?.trim();
+  if (origin && origin !== runId) runIds.push(origin);
+  for (const candidateRunId of runIds) {
+    const record = await journal.load<
+      CodingExternalEffectJournalPreparation,
+      CodingToolHostResult<TResult>
+    >('external-effect', candidateRunId, input.actionId);
+    if (!record) continue;
+    if (record.operationSha256 !== operationSha256) {
+      throw new Error('coding-external-effect:journal-operation-mismatch');
+    }
+    const preparedInput = snapshotExecutionInput(record.preparation.input);
+    if (candidateRunId === runId && canonicalCodingJson(preparedInput) !== canonicalCodingJson(input)) {
+      throw new Error('coding-external-effect:conflicting-action-identity');
+    }
+    if (codingExternalEffectOperationSha256(preparedInput) !== operationSha256) {
+      throw new Error('coding-external-effect:journal-preparation-mismatch');
+    }
+    return { runId: candidateRunId, record };
+  }
+  return undefined;
+}
+
+function prepareExternalJournal(
+  journal: CodingOperationJournalPort,
+  runId: string,
+  input: CodingExternalEffectExecutionInput<unknown>,
+  operationSha256: string,
+): Promise<void> {
+  return journal.prepare({
+    kind: 'external-effect',
+    runId,
+    actionId: input.actionId,
+    operationSha256,
+    preparation: { input },
+  });
+}
+
+function shouldReplayExternalRecovery(
+  recovery: Awaited<ReturnType<typeof loadExternalRecovery>>,
+  currentRunId: string,
+): boolean {
+  if (!recovery || recovery.record.state !== 'settled') return false;
+  if (recovery.runId === currentRunId) return true;
+  return recovery.record.receipt.status === 'completed'
+    || recovery.record.receipt.status === 'indeterminate';
+}
+
+function replayExternalHostResult<TResult>(
+  recovery: NonNullable<Awaited<ReturnType<typeof loadExternalRecovery<TResult>>>>,
+  actionId: string,
+): CodingToolHostResult<TResult> {
+  if (recovery.record.state !== 'settled') {
+    throw new Error('coding-external-effect:unsettled-replay');
+  }
+  const receipt = snapshotToolHostResult(recovery.record.receipt);
+  return {
+    ...receipt,
+    evidenceRefs: uniqueCodingRefs([
+      ...receipt.evidenceRefs,
+      `external-effect-replay:${recovery.runId}:${actionId}`,
+    ]),
+  };
 }
 
 /** Stable logical identity used by checkpoints to bind an exact external operation. */
@@ -261,8 +418,18 @@ async function executeExternalHost<TInput, TResult>(
   nature: CodingExternalEffectNature,
   action: CodingToolAction<TInput>,
   host: ExternalEffectHostPort<TInput, TResult>,
+  requiresDurableReconciliation: boolean,
 ) {
-  if (nature === 'mutating') {
+  const requiresReconciliation = nature === 'mutating' || requiresDurableReconciliation;
+  if (requiresDurableReconciliation
+    && (!host.reconcile || host.reconciliationScope !== 'durable')) {
+    return {
+      status: 'indeterminate' as const,
+      errorCode: 'external-effect-durable-reconciliation-unavailable',
+      evidenceRefs: [`external-effect:${action.actionId}:durable-reconciliation-unavailable`],
+    };
+  }
+  if (requiresReconciliation) {
     if (!host.reconcile) {
       return {
         status: 'indeterminate' as const,
@@ -314,6 +481,24 @@ async function executeExternalHost<TInput, TResult>(
     ...(result.errorCode ? { errorCode: result.errorCode } : {}),
     evidenceRefs: result.evidenceRefs,
   };
+}
+
+function snapshotToolHostResult<TResult>(
+  value: CodingToolHostResult<TResult>,
+): CodingToolHostResult<TResult> {
+  if (!value || !['completed', 'failed', 'indeterminate'].includes(value.status)) {
+    throw new Error('coding-external-effect:invalid-journal-receipt');
+  }
+  const evidenceRefs = uniqueCodingRefs(value.evidenceRefs ?? []);
+  if (evidenceRefs.length === 0) throw new Error('coding-external-effect:missing-journal-evidence');
+  return Object.freeze({
+    status: value.status,
+    ...(value.result === undefined
+      ? {}
+      : { result: snapshotCodingValue(value.result, 'external-journal-result') as TResult }),
+    ...(value.errorCode ? { errorCode: normalizeCodingErrorCode(value.errorCode) } : {}),
+    evidenceRefs: Object.freeze(evidenceRefs),
+  });
 }
 
 function externalReceipt<TResult>(

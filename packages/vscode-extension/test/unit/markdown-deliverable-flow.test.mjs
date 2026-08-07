@@ -23,6 +23,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { withCanonicalToolLoopFixture } from '../helpers/canonical-tool-loop-fixture.mjs';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -134,7 +135,7 @@ Module._load = function loadWithVscodeMock(request, parent, isMain) {
 const req = createRequire(import.meta.url);
 const { decomposeTask } = req(decomposerBundlePath);
 const { tryExecuteMarkdownDeliverableTask } = req(markdownBundlePath);
-const { runAgenticLoop } = req(agenticBundlePath);
+const { runAgenticLoop: runAgenticLoopWithoutFixture } = req(agenticBundlePath);
 const { decideAgentFileWrite, projectAgentFileWriteConstraint } = req(fileWritePolicyBundlePath);
 
 const ALLOW_FILE_WRITE = Object.freeze({
@@ -142,6 +143,22 @@ const ALLOW_FILE_WRITE = Object.freeze({
   reason: 'test-file-write-allowed',
   evidenceRefs: Object.freeze(['test:file-write-allowed']),
 });
+
+function runAgenticLoop(userPrompt, contextFiles, workspaceRoot, mode, callbacks, ...args) {
+  const workflowMode = args[1] ?? 'edit';
+  return runAgenticLoopWithoutFixture(
+    userPrompt,
+    contextFiles,
+    workspaceRoot,
+    mode,
+    withCanonicalToolLoopFixture(callbacks, {
+      workspaceRoot,
+      userPrompt,
+      executionMode: workflowMode,
+    }),
+    ...args,
+  );
+}
 
 function createFormalMaintenanceWorkspace() {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-md-flow-huida-uav-'));

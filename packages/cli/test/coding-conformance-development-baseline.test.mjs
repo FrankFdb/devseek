@@ -17,6 +17,7 @@ import {
   CODING_KERNEL_REQUEST_VERSION,
   CODING_CONFORMANCE_DEVELOPMENT_FIXTURES,
   CanonicalCodingKernel,
+  InMemoryCodingOperationJournal,
   bindSettledCodingConformanceObservation,
   buildUnsafeSecretHarvestingRefusalMessage,
   evaluateCodingConformanceFixture,
@@ -109,6 +110,7 @@ async function runCliProductRoute(fixture, scenario, cwd) {
     userPrompt: fixture.prompt,
     workspaceRoot: cwd,
     signal: new AbortController().signal,
+    operationJournal: new InMemoryCodingOperationJournal(),
     taskContract: resolveCodingKernelTaskContract({ prompt: fixture.prompt, surface: 'cli' }),
     runtimeContext: {
       response: scenario.response,

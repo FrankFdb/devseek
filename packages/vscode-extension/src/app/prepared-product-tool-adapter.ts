@@ -17,6 +17,7 @@ export function adaptPreparedProductTool<T>(input: {
 }): AgentPreparedToolExecution<string> {
   return {
     constraint: projectProductToolConstraint(input.prepared, input.constraintRef),
+    reconciliationScope: 'process-local',
     reconcile: async () => {
       const reconciliation = await input.prepared.reconcile();
       return {

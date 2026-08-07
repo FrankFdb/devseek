@@ -53,6 +53,7 @@ import {
   type CodingExternalEffectReceipt,
   type CodingExternalEffectSessionPort,
 } from './coding-external-effect';
+import type { CodingOperationJournalPort } from './coding-operation-journal';
 import {
   CanonicalProviderEventService,
   type ProviderEventPort,
@@ -65,6 +66,15 @@ import {
   CanonicalToolDispatchService,
   type ToolDispatchPort,
 } from './coding-tool-dispatch';
+import {
+  CanonicalToolExecutionService,
+  type CodingToolExecutionReceipt,
+  type CodingToolExecutionSessionPort,
+} from './coding-tool-execution';
+import {
+  CanonicalWorkspaceMutationTransaction,
+  type WorkspaceMutationTransactionPort,
+} from './coding-workspace-mutation';
 
 export {
   CODING_KERNEL_TASK_CONTRACT_VERSION,
@@ -93,6 +103,7 @@ export interface CodingKernelExecutionRequest<TRuntimeContext> {
   readonly memoryCandidates?: readonly CodingMemoryCandidate[];
   readonly resumeCheckpoint?: CodingCheckpoint;
   readonly resumeReceipts?: readonly CodingResumeOperationReceipt[];
+  readonly operationJournal: CodingOperationJournalPort;
   readonly runtimeContext: TRuntimeContext;
   readonly signal?: AbortSignal;
 }
@@ -106,7 +117,9 @@ export interface CodingKernelRuntimeRequest<TRuntimeContext>
   readonly providerEvents: ProviderEventPort;
   readonly toolSchemas: ToolSchemaRegistryPort;
   readonly toolDispatch: ToolDispatchPort;
+  readonly toolExecution: CodingToolExecutionSessionPort;
   readonly toolAuthority: CodingToolAuthoritySessionPort;
+  readonly workspaceMutations: WorkspaceMutationTransactionPort;
   readonly externalEffects: CodingExternalEffectSessionPort;
   readonly resume?: CodingCheckpointRestoreDecision;
   readonly resumeIdempotency?: CodingResumeIdempotencySessionPort;
@@ -134,6 +147,7 @@ export interface CodingKernelExecutionOutput<TResult> {
   readonly resume?: CodingCheckpointRestoreDecision;
   readonly contextCompactions: readonly CodingContextCompactionReceipt[];
   readonly toolAuthorizations: readonly CodingToolAuthorization[];
+  readonly toolExecutionReceipts: readonly CodingToolExecutionReceipt<unknown>[];
   readonly externalEffectReceipts: readonly CodingExternalEffectReceipt<unknown>[];
   readonly resumeReceipts: readonly CodingResumeOperationReceipt[];
   readonly result: TResult;
@@ -153,6 +167,7 @@ export class CodingKernelExecutionError extends Error {
   readonly checkpoint: CodingCheckpointSessionPort;
   readonly contextCompactions: readonly CodingContextCompactionReceipt[];
   readonly toolAuthorizations: readonly CodingToolAuthorization[];
+  readonly toolExecutionReceipts: readonly CodingToolExecutionReceipt<unknown>[];
   readonly externalEffectReceipts: readonly CodingExternalEffectReceipt<unknown>[];
   readonly resumeReceipts: readonly CodingResumeOperationReceipt[];
   readonly runtimeCause: unknown;
@@ -164,6 +179,7 @@ export class CodingKernelExecutionError extends Error {
     checkpoint: CodingCheckpointSessionPort,
     contextCompactions: readonly CodingContextCompactionReceipt[],
     toolAuthorizations: readonly CodingToolAuthorization[],
+    toolExecutionReceipts: readonly CodingToolExecutionReceipt<unknown>[],
     externalEffectReceipts: readonly CodingExternalEffectReceipt<unknown>[],
     resumeReceipts: readonly CodingResumeOperationReceipt[],
     runtimeCause?: unknown,
@@ -175,6 +191,7 @@ export class CodingKernelExecutionError extends Error {
     this.checkpoint = checkpoint;
     this.contextCompactions = contextCompactions;
     this.toolAuthorizations = toolAuthorizations;
+    this.toolExecutionReceipts = toolExecutionReceipts;
     this.externalEffectReceipts = externalEffectReceipts;
     this.resumeReceipts = resumeReceipts;
     this.runtimeCause = runtimeCause;
@@ -192,6 +209,7 @@ const RESUME_IDEMPOTENCY = new CanonicalResumeIdempotencyService();
 const PROVIDER_EVENTS = new CanonicalProviderEventService();
 const TOOL_SCHEMAS = new CanonicalToolSchemaRegistry();
 const TOOL_DISPATCH = new CanonicalToolDispatchService(TOOL_SCHEMAS);
+const TOOL_EXECUTION = new CanonicalToolExecutionService();
 const TOOL_AUTHORITY = new CanonicalToolAuthorityService();
 const EXTERNAL_EFFECT = new CanonicalExternalEffectService();
 
@@ -252,9 +270,17 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       workspaceRoot: request.workspaceRoot,
       taskContract,
     });
+    const toolExecution = TOOL_EXECUTION.bind({ runId: request.runId });
+    const workspaceMutations = new CanonicalWorkspaceMutationTransaction(
+      request.operationJournal,
+      resume?.originRunId,
+    );
     const externalEffects = EXTERNAL_EFFECT.bind({
       runId: request.runId,
       authority: toolAuthority,
+      executor: toolExecution,
+      journal: request.operationJournal,
+      ...(resume ? { replayRunId: resume.originRunId } : {}),
       ...(resumeIdempotency ? { resume: resumeIdempotency } : {}),
     });
     const lifecycle = RUN_LIFECYCLE.start({ runId: request.runId, surface: request.surface });
@@ -266,6 +292,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         checkpoint,
         contextCompaction,
         toolAuthority,
+        toolExecution,
         externalEffects,
         resumeIdempotency,
       );
@@ -278,6 +305,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         checkpoint,
         contextCompaction,
         toolAuthority,
+        toolExecution,
         externalEffects,
         resumeIdempotency,
       );
@@ -293,7 +321,9 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       providerEvents: PROVIDER_EVENTS,
       toolSchemas: TOOL_SCHEMAS,
       toolDispatch: TOOL_DISPATCH,
+      toolExecution,
       toolAuthority,
+      workspaceMutations,
       externalEffects,
       ...(resume ? { resume } : {}),
       ...(resumeIdempotency ? { resumeIdempotency } : {}),
@@ -328,6 +358,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         ...(resume ? { resume } : {}),
         contextCompactions: contextCompaction.receipts(),
         toolAuthorizations: toolAuthority.authorizations(),
+        toolExecutionReceipts: toolExecution.receipts(),
         externalEffectReceipts: externalEffects.receipts(),
         resumeReceipts: resumeIdempotency?.receipts() ?? [],
         result: runtimeOutput.result,
@@ -345,6 +376,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         checkpoint,
         contextCompaction,
         toolAuthority,
+        toolExecution,
         externalEffects,
         resumeIdempotency,
         error,
@@ -359,6 +391,7 @@ function lifecycleError(
   checkpoint: CodingCheckpointSessionPort,
   contextCompaction: CodingContextCompactionSessionPort,
   toolAuthority: CodingToolAuthoritySessionPort,
+  toolExecution: CodingToolExecutionSessionPort,
   externalEffects: CodingExternalEffectSessionPort,
   resumeIdempotency?: CodingResumeIdempotencySessionPort,
   cause?: unknown,
@@ -377,6 +410,7 @@ function lifecycleError(
     checkpoint,
     contextCompaction.receipts(),
     toolAuthority.authorizations(),
+    toolExecution.receipts(),
     externalEffects.receipts(),
     resumeIdempotency?.receipts() ?? [],
     cause,
@@ -414,6 +448,12 @@ function assertCanonicalRequest(request: CodingKernelExecutionRequest<unknown>):
   }
   if (request.resumeReceipts && !request.resumeCheckpoint) {
     throw new Error('coding-kernel-execution:resume-receipts-without-checkpoint');
+  }
+  if (!request.operationJournal
+    || typeof request.operationJournal.load !== 'function'
+    || typeof request.operationJournal.prepare !== 'function'
+    || typeof request.operationJournal.settle !== 'function') {
+    throw new Error('coding-kernel-execution:missing-operation-journal');
   }
 }
 

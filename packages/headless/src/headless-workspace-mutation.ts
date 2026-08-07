@@ -1,5 +1,4 @@
 import {
-  CanonicalWorkspaceMutationTransaction,
   buildCodingWorkspaceMutationPlan,
   type BuildCodingWorkspaceMutationPlanInput,
   type CodingToolAuthoritySessionPort,
@@ -18,7 +17,7 @@ export interface HeadlessWorkspaceMutationInput<TPayload, TBaseline, TApplied, T
 /** Programmatic Surface adapter for caller-supplied workspace mutation capabilities. */
 export class HeadlessWorkspaceMutationAdapter {
   constructor(
-    private readonly transaction: WorkspaceMutationTransactionPort = new CanonicalWorkspaceMutationTransaction(),
+    private readonly transaction: WorkspaceMutationTransactionPort,
   ) {}
 
   execute<TPayload, TBaseline, TApplied, TResult>(

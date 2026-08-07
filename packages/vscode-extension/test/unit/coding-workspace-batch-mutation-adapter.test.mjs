@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import test from 'node:test';
+import { CanonicalWorkspaceMutationTransaction } from '../../../shared/dist/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
@@ -47,6 +48,7 @@ test('VS Code batch mutation commits every file under one canonical receipt', as
     const edits = new WorkspaceEditService();
     const adapter = new VsCodeWorkspaceBatchMutationAdapter(edits);
     const outcome = await adapter.execute({
+      transaction: new CanonicalWorkspaceMutationTransaction(),
       runId: 'batch-run-1',
       sequence: 1,
       actionId: 'apply-two-files',
@@ -84,6 +86,7 @@ test('VS Code batch mutation rejects one stale baseline before writing any file'
     writeFileSync(second, 'export const userSecond = 7;\n');
 
     const outcome = await adapter.execute({
+      transaction: new CanonicalWorkspaceMutationTransaction(),
       runId: 'batch-run-2',
       sequence: 1,
       actionId: 'reject-stale-batch',
@@ -111,6 +114,7 @@ test('VS Code batch mutation rolls back all files and new directories when readb
     const adapter = new VsCodeWorkspaceBatchMutationAdapter(edits);
     let observedCount = 0;
     const outcome = await adapter.execute({
+      transaction: new CanonicalWorkspaceMutationTransaction(),
       runId: 'batch-run-3',
       sequence: 1,
       actionId: 'rollback-rejected-batch',

@@ -11,6 +11,7 @@ import {
   type WorkspaceTextFileBaseline,
 } from '../workspace/edit-service';
 import { VsCodeWorkspaceMutationAdapter } from '../workspace/coding-workspace-mutation-adapter';
+import { resolveProductWorkspaceMutationSession } from '../workspace/product-workspace-mutation-transaction';
 import { isCanonicalPathInsideRoot } from '../workspace/path-containment';
 import { isAgentFileWriteConstraintSatisfied } from '../app/agent-file-write-policy';
 import {
@@ -496,10 +497,22 @@ export async function tryExecuteMarkdownDeliverableTask(
 
     markdownMutationSequence += 1;
     const mutationSequence = markdownMutationSequence;
+    const mutationSession = resolveProductWorkspaceMutationSession({
+      workspaceRoot: input.workspaceRoot.fsPath,
+      canonicalTransaction: callbacks.canonicalWorkspaceMutations,
+      canonicalRunId: callbacks.traceRunId,
+      owner: 'markdown-deliverable-task',
+      operationIdentity: {
+        taskId: task.id || input.taskIndex,
+        path: relPath,
+        content: finalContent,
+      },
+    });
     let committedGrounding: VerificationResult | undefined;
     let readbackFailureReason: string | undefined;
     const mutation = await workspaceMutation.executeTextFileWrite({
-      runId: callbacks.traceRunId?.trim() || `vscode-markdown-invocation-${mutationSequence}`,
+      transaction: mutationSession.transaction,
+      runId: mutationSession.runId,
       sequence: mutationSequence,
       actionId: `markdown-deliverable-${task.id || input.taskIndex}-${mutationSequence}`,
       absPath,

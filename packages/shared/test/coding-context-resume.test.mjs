@@ -4,6 +4,7 @@ import {
   CODING_KERNEL_REQUEST_VERSION,
   CanonicalCheckpointService,
   CanonicalCodingKernel,
+  InMemoryCodingOperationJournal,
   CanonicalContextCompactionService,
   CanonicalContextGraphService,
   CanonicalMemoryPolicyService,
@@ -274,6 +275,7 @@ test('CanonicalCodingKernel exposes compaction receipts and blocks indeterminate
     userPrompt: 'Refactor the resume path and verify it without publishing',
     workspaceRoot: '/repo',
     taskContract: fixture().taskContract,
+    operationJournal: new InMemoryCodingOperationJournal(),
     contextSeed: { files: [{ path: 'src/resume.ts', contentSample: 'export const resume = true;' }] },
     runtimeContext: {},
   };

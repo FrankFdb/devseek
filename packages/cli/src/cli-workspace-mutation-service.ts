@@ -15,6 +15,7 @@ import type {
   CodingWorkspaceBaseline,
   CodingWorkspaceMutationFailure,
   CodingWorkspaceMutationPlan,
+  CodingWorkspaceMutationReconciliation,
   CodingWorkspaceReadback,
   CodingWorkspaceRollback,
   WorkspaceMutationPort,
@@ -64,6 +65,46 @@ export class CliWorkspaceMutationHostAdapter implements WorkspaceMutationPort<
   CliWorkspaceAppliedState,
   readonly string[]
 > {
+  async reconcile(
+    plan: CodingWorkspaceMutationPlan<CliWorkspaceMutationPayload>,
+    baseline: CodingWorkspaceBaseline<CliWorkspaceBaselineState>,
+  ): Promise<CodingWorkspaceMutationReconciliation<readonly string[]>> {
+    assertPlanPathsMatchProposal(plan);
+    let expected: CliWorkspaceExpectedEntry[];
+    try {
+      expected = computeExpectedEntries(plan.payload.proposal, baseline.state.entries);
+    } catch {
+      return {
+        status: 'indeterminate',
+        evidenceRefs: [`cli-workspace-reconcile:${plan.actionId}:invalid-plan`],
+      };
+    }
+    const actual = await Promise.all(
+      expected.map(entry => readSnapshotEntry(baseline.state.workspaceRoot, entry.path)),
+    );
+    if (actual.every((entry, index) => (
+      entry.existed && entry.content === expected[index]?.content
+    ))) {
+      const readbackRef = contentRef('cli-workspace-reconcile', actual);
+      return {
+        status: 'committed',
+        result: expected.map(entry => entry.path),
+        readbackRef,
+        evidenceRefs: [readbackRef],
+      };
+    }
+    if (canonicalEntries(actual) === canonicalEntries(baseline.state.entries)) {
+      return {
+        status: 'not-started',
+        evidenceRefs: [`cli-workspace-reconcile:${plan.actionId}:not-started`],
+      };
+    }
+    return {
+      status: 'indeterminate',
+      evidenceRefs: [`cli-workspace-reconcile:${plan.actionId}:indeterminate`],
+    };
+  }
+
   async captureBaseline(
     plan: CodingWorkspaceMutationPlan<CliWorkspaceMutationPayload>,
   ): Promise<CodingWorkspaceBaseline<CliWorkspaceBaselineState>> {

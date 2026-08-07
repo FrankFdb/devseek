@@ -2429,7 +2429,7 @@
         },
         "contract_sha256": "09db09027c6d85500dae7784902ca36d51654aaee749f0066d04b975f534f878"
       },
-      "implementation_state": "implemented",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
       "implementation_components": [
@@ -2458,6 +2458,10 @@
           "path": "packages/vscode-extension/src/agent/tool-loop-canonical-session.ts"
         },
         {
+          "role": "vscode-kernel-session-binding",
+          "path": "packages/vscode-extension/src/app/coding-kernel-execution.ts"
+        },
+        {
           "role": "shared-contract-tests",
           "path": "packages/shared/test/coding-tool-execution.test.mjs"
         },
@@ -2468,6 +2472,10 @@
         {
           "role": "iteration-user-journey-evidence",
           "path": "docs/process/devseek-iteration-user-journeys.json"
+        },
+        {
+          "role": "machine-wiring-evidence",
+          "path": "docs/process/devseek-kernel-prep-owner-baseline.json"
         }
       ],
       "architecture_dependencies": [
@@ -2831,13 +2839,17 @@
         },
         "contract_sha256": "3d40c41d418c02213eacbcbce6f25bbb71b65c0c4bfe819ea3e43e8ef73566c6"
       },
-      "implementation_state": "implemented",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
       "implementation_components": [
         {
           "role": "semantic-authority",
           "path": "packages/shared/src/coding-workspace-mutation.ts"
+        },
+        {
+          "role": "durable-operation-journal",
+          "path": "packages/shared/src/coding-operation-journal.ts"
         },
         {
           "role": "permission-authority",
@@ -2864,12 +2876,28 @@
           "path": "packages/vscode-extension/src/agent/tool-loop-file-writer.ts"
         },
         {
+          "role": "vscode-product-transaction-owner",
+          "path": "packages/vscode-extension/src/workspace/product-workspace-mutation-transaction.ts"
+        },
+        {
           "role": "headless-user-journey-tests",
           "path": "packages/headless/test/headless-effect-authority-journeys.test.mjs"
         },
         {
           "role": "iteration-user-journey-evidence",
           "path": "docs/process/devseek-iteration-user-journeys.json"
+        },
+        {
+          "role": "cli-restart-reconciliation-tests",
+          "path": "packages/cli/test/cli-workspace-mutation-service.test.mjs"
+        },
+        {
+          "role": "vscode-restart-reconciliation-tests",
+          "path": "packages/vscode-extension/test/unit/coding-workspace-mutation-adapter.test.mjs"
+        },
+        {
+          "role": "machine-wiring-evidence",
+          "path": "docs/process/devseek-kernel-prep-owner-baseline.json"
         }
       ],
       "architecture_dependencies": [
@@ -2927,13 +2955,17 @@
         },
         "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
       },
-      "implementation_state": "implemented",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
       "implementation_components": [
         {
           "role": "semantic-authority",
           "path": "packages/shared/src/coding-external-effect.ts"
+        },
+        {
+          "role": "durable-operation-journal",
+          "path": "packages/shared/src/coding-operation-journal.ts"
         },
         {
           "role": "permission-authority",
@@ -2964,7 +2996,7 @@
           "path": "packages/vscode-extension/src/app/prepared-product-tool-adapter.ts"
         },
         {
-          "role": "shared-contract-tests",
+          "role": "shared-contract-and-restart-tests",
           "path": "packages/shared/test/coding-external-effect.test.mjs"
         },
         {
@@ -2978,6 +3010,10 @@
         {
           "role": "iteration-user-journey-evidence",
           "path": "docs/process/devseek-iteration-user-journeys.json"
+        },
+        {
+          "role": "machine-wiring-evidence",
+          "path": "docs/process/devseek-kernel-prep-owner-baseline.json"
         }
       ],
       "architecture_dependencies": [
@@ -3872,7 +3908,7 @@
         },
         "contract_sha256": "3da2e08b7262828bdd3d7bfdc28438caf62f0908cbbe8163baa35415cd428dad"
       },
-      "implementation_state": "implemented",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
       "implementation_components": [
@@ -3897,6 +3933,10 @@
           "path": "packages/shared/src/coding-external-effect.ts"
         },
         {
+          "role": "durable-operation-journal",
+          "path": "packages/shared/src/coding-operation-journal.ts"
+        },
+        {
           "role": "headless-product-adapter",
           "path": "packages/headless/src/headless-coding-kernel.ts"
         },
@@ -3911,6 +3951,14 @@
         {
           "role": "vscode-structured-effect-projection",
           "path": "packages/vscode-extension/src/app/coding-checkpoint-effect.ts"
+        },
+        {
+          "role": "cli-restart-reconciliation-tests",
+          "path": "packages/cli/test/cli-workspace-mutation-service.test.mjs"
+        },
+        {
+          "role": "vscode-restart-reconciliation-tests",
+          "path": "packages/vscode-extension/test/unit/coding-workspace-mutation-adapter.test.mjs"
         },
         {
           "role": "iteration-user-journey-evidence",
@@ -5057,5 +5105,5 @@
       ]
     }
   ],
-  "ledger_sha256": "e3c48709c0328d6ccd3a0cd9595e64aae5a7d4300b43e91e1ea79c3292514950"
+  "ledger_sha256": "d22d4df0454ea184aa9d2529492c72ee5f0747a1e9495e9acccd913589cea1ac"
 }
