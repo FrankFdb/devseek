@@ -17,7 +17,7 @@
       "path": "docs/process/devseek-gate0-decision-report.json",
       "schema_version": "devseek.gate0-decision/v1",
       "decision_id": "DEVSEEK-GATE0-INFRASTRUCTURE-DECISION/v1",
-      "source_sha256": "1ed84b8d2f1435d3db2ab213a6e8544531e2b4d03e6ebcd0db55f187f32c66ea"
+      "source_sha256": "a15335ec2b9bf71c568cd08e0bc6caed795c5d1215150879782e0258fda24d4b"
     },
     "external_authority_adapter": {
       "path": "docs/process/devseek-external-authority-adapter.json",
@@ -29,7 +29,7 @@
       "path": "docs/process/devseek-c0-wiring-reconciliation.json",
       "schema_version": "devseek.c0-wiring-reconciliation/v1",
       "reconciliation_id": "DEVSEEK-GATE0-C0-WIRING-RECONCILIATION/v1",
-      "source_sha256": "dae386c6b496ecdf6875da6b5cb55f626b3ff99d7901377339d213ca4901a78b"
+      "source_sha256": "77510745018a4b6c12b58d3361a0cee7c45d5782728ad423ac1687a21084fa7e"
     },
     "package_scripts": {
       "path": "package.json",
@@ -117,7 +117,7 @@
         {
           "input_id": "gate0-decision-report",
           "path": "docs/process/devseek-gate0-decision-report.json",
-          "sha256": "1ed84b8d2f1435d3db2ab213a6e8544531e2b4d03e6ebcd0db55f187f32c66ea",
+          "sha256": "a15335ec2b9bf71c568cd08e0bc6caed795c5d1215150879782e0258fda24d4b",
           "purpose": "current Gate 0 machine decision and blocker counts"
         },
         {
@@ -129,13 +129,13 @@
         {
           "input_id": "c0-wiring-reconciliation",
           "path": "docs/process/devseek-c0-wiring-reconciliation.json",
-          "sha256": "dae386c6b496ecdf6875da6b5cb55f626b3ff99d7901377339d213ca4901a78b",
+          "sha256": "77510745018a4b6c12b58d3361a0cee7c45d5782728ad423ac1687a21084fa7e",
           "purpose": "local C0 wiring and decision reconciliation"
         },
         {
           "input_id": "capability-ledger-source",
           "path": "docs/process/devseek-capability-ledger.json",
-          "sha256": "75339881eeb7f7bdabccaec27adc4c4bd4bcacf029f2a571d547b8def2df546d",
+          "sha256": "4e2faf1b579c049dd0cb8f51d393fcf2bda12b3ca695593c739efb3aded5286f",
           "purpose": "C0 capability source digest"
         },
         {
@@ -205,7 +205,7 @@
         {
           "input_id": "gate0-decision-report",
           "path": "docs/process/devseek-gate0-decision-report.json",
-          "sha256": "1ed84b8d2f1435d3db2ab213a6e8544531e2b4d03e6ebcd0db55f187f32c66ea",
+          "sha256": "a15335ec2b9bf71c568cd08e0bc6caed795c5d1215150879782e0258fda24d4b",
           "purpose": "current Gate 0 machine decision and blocker counts"
         },
         {
@@ -217,13 +217,13 @@
         {
           "input_id": "c0-wiring-reconciliation",
           "path": "docs/process/devseek-c0-wiring-reconciliation.json",
-          "sha256": "dae386c6b496ecdf6875da6b5cb55f626b3ff99d7901377339d213ca4901a78b",
+          "sha256": "77510745018a4b6c12b58d3361a0cee7c45d5782728ad423ac1687a21084fa7e",
           "purpose": "local C0 wiring and decision reconciliation"
         },
         {
           "input_id": "capability-ledger-source",
           "path": "docs/process/devseek-capability-ledger.json",
-          "sha256": "75339881eeb7f7bdabccaec27adc4c4bd4bcacf029f2a571d547b8def2df546d",
+          "sha256": "4e2faf1b579c049dd0cb8f51d393fcf2bda12b3ca695593c739efb3aded5286f",
           "purpose": "C0 capability source digest"
         },
         {
@@ -293,7 +293,7 @@
         {
           "input_id": "gate0-decision-report",
           "path": "docs/process/devseek-gate0-decision-report.json",
-          "sha256": "1ed84b8d2f1435d3db2ab213a6e8544531e2b4d03e6ebcd0db55f187f32c66ea",
+          "sha256": "a15335ec2b9bf71c568cd08e0bc6caed795c5d1215150879782e0258fda24d4b",
           "purpose": "current Gate 0 machine decision and blocker counts"
         },
         {
@@ -305,13 +305,13 @@
         {
           "input_id": "c0-wiring-reconciliation",
           "path": "docs/process/devseek-c0-wiring-reconciliation.json",
-          "sha256": "dae386c6b496ecdf6875da6b5cb55f626b3ff99d7901377339d213ca4901a78b",
+          "sha256": "77510745018a4b6c12b58d3361a0cee7c45d5782728ad423ac1687a21084fa7e",
           "purpose": "local C0 wiring and decision reconciliation"
         },
         {
           "input_id": "capability-ledger-source",
           "path": "docs/process/devseek-capability-ledger.json",
-          "sha256": "75339881eeb7f7bdabccaec27adc4c4bd4bcacf029f2a571d547b8def2df546d",
+          "sha256": "4e2faf1b579c049dd0cb8f51d393fcf2bda12b3ca695593c739efb3aded5286f",
           "purpose": "C0 capability source digest"
         },
         {
@@ -381,7 +381,7 @@
         {
           "input_id": "gate0-decision-report",
           "path": "docs/process/devseek-gate0-decision-report.json",
-          "sha256": "1ed84b8d2f1435d3db2ab213a6e8544531e2b4d03e6ebcd0db55f187f32c66ea",
+          "sha256": "a15335ec2b9bf71c568cd08e0bc6caed795c5d1215150879782e0258fda24d4b",
           "purpose": "current Gate 0 machine decision and blocker counts"
         },
         {
@@ -393,13 +393,13 @@
         {
           "input_id": "c0-wiring-reconciliation",
           "path": "docs/process/devseek-c0-wiring-reconciliation.json",
-          "sha256": "dae386c6b496ecdf6875da6b5cb55f626b3ff99d7901377339d213ca4901a78b",
+          "sha256": "77510745018a4b6c12b58d3361a0cee7c45d5782728ad423ac1687a21084fa7e",
           "purpose": "local C0 wiring and decision reconciliation"
         },
         {
           "input_id": "capability-ledger-source",
           "path": "docs/process/devseek-capability-ledger.json",
-          "sha256": "75339881eeb7f7bdabccaec27adc4c4bd4bcacf029f2a571d547b8def2df546d",
+          "sha256": "4e2faf1b579c049dd0cb8f51d393fcf2bda12b3ca695593c739efb3aded5286f",
           "purpose": "C0 capability source digest"
         },
         {
@@ -469,7 +469,7 @@
         {
           "input_id": "gate0-decision-report",
           "path": "docs/process/devseek-gate0-decision-report.json",
-          "sha256": "1ed84b8d2f1435d3db2ab213a6e8544531e2b4d03e6ebcd0db55f187f32c66ea",
+          "sha256": "a15335ec2b9bf71c568cd08e0bc6caed795c5d1215150879782e0258fda24d4b",
           "purpose": "current Gate 0 machine decision and blocker counts"
         },
         {
@@ -481,13 +481,13 @@
         {
           "input_id": "c0-wiring-reconciliation",
           "path": "docs/process/devseek-c0-wiring-reconciliation.json",
-          "sha256": "dae386c6b496ecdf6875da6b5cb55f626b3ff99d7901377339d213ca4901a78b",
+          "sha256": "77510745018a4b6c12b58d3361a0cee7c45d5782728ad423ac1687a21084fa7e",
           "purpose": "local C0 wiring and decision reconciliation"
         },
         {
           "input_id": "capability-ledger-source",
           "path": "docs/process/devseek-capability-ledger.json",
-          "sha256": "75339881eeb7f7bdabccaec27adc4c4bd4bcacf029f2a571d547b8def2df546d",
+          "sha256": "4e2faf1b579c049dd0cb8f51d393fcf2bda12b3ca695593c739efb3aded5286f",
           "purpose": "C0 capability source digest"
         },
         {
@@ -559,5 +559,5 @@
     "gate_pass_assertions": 0,
     "bypasses": 0
   },
-  "request_set_sha256": "675bfe9711ca3c1c70dd7c4437a74e15128f5ff7227581068319163f16081580"
+  "request_set_sha256": "9a74deda713fe6a952cca8342de888cfddae3c97ece7eaba2fb2453406d82a1e"
 }

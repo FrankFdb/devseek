@@ -26,9 +26,9 @@
   "source_bindings": {
     "external_authority_requests": {
       "path": "docs/process/devseek-external-authority-requests.json",
-      "source_sha256": "54d6fa76bd2aeed728e635007141d83af7b0743e9e1f422abfd15f8520225820",
+      "source_sha256": "ec06172dc5686c00d2db52ac5da5a94b78083aaab89b18e7fe5be1ce2a0e751a",
       "request_set_id": "DEVSEEK-GATE0-EXTERNAL-AUTHORITY-REQUESTS/v1",
-      "request_set_sha256": "675bfe9711ca3c1c70dd7c4437a74e15128f5ff7227581068319163f16081580",
+      "request_set_sha256": "9a74deda713fe6a952cca8342de888cfddae3c97ece7eaba2fb2453406d82a1e",
       "blocked_requests": 5
     },
     "r4_live_qualification_request_packet": {
@@ -62,7 +62,7 @@
     },
     "gate0_decision": {
       "path": "docs/process/devseek-gate0-decision-report.json",
-      "source_sha256": "d30be18647c06f32550f11d2c3ca4516b083436ec66634e094982de7923a3c3c",
+      "source_sha256": "d35c0e05ad483930342a0c88385590c6e0df20fd8634eccf20211e909459ecd9",
       "decision_id": "DEVSEEK-GATE0-INFRASTRUCTURE-DECISION/v1",
       "qualification_status": "NOT_PASSED",
       "external_authority_blockers": 6
@@ -443,5 +443,5 @@
     "ledger_writes": 0,
     "provider_actions_performed": 0
   },
-  "audit_sha256": "645099ea24f1fd3e42487fe9fe8265dd64b9491b8206d81c34bff14cd8f37cb6"
+  "audit_sha256": "7c4479a4061bbdec8ef4deeea339a0064bca3e6b48c5d29da47a1da16b801fc1"
 }

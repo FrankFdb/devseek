@@ -80,8 +80,8 @@
     },
     "external_authority_requests": {
       "path": "docs/process/devseek-external-authority-requests.json",
-      "source_sha256": "8852c49f3a6cad2d67e459805eb8496fc65dae9032dabf8ae891102aab9af71f",
-      "request_set_sha256": "41d78d1cbfccf70409a94b0d22b9b1680db20514c18e6800f99125ddb9f9f53c",
+      "source_sha256": "ec06172dc5686c00d2db52ac5da5a94b78083aaab89b18e7fe5be1ce2a0e751a",
+      "request_set_sha256": "9a74deda713fe6a952cca8342de888cfddae3c97ece7eaba2fb2453406d82a1e",
       "blocked_requests": 5
     },
     "r4_live_qualification_request_packet": {
@@ -441,5 +441,5 @@
     "gate_pass_assertions": 0,
     "bypasses": 0
   },
-  "index_sha256": "4b00929bac338e38960bfe20fbccb4cd582e9123468be6779c21e73f1b67a755"
+  "index_sha256": "b9d706746f6ccfb79c12a756fa4e9bbe5fb2890f507e514fbf1cbb42948613b7"
 }
