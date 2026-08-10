@@ -52,7 +52,7 @@
 
 ## Source Bindings
 
-- `external_authority_requests`: `docs/process/devseek-external-authority-requests.json` -> `8852c49f3a6cad2d67e459805eb8496fc65dae9032dabf8ae891102aab9af71f`
+- `external_authority_requests`: `docs/process/devseek-external-authority-requests.json` -> `54d6fa76bd2aeed728e635007141d83af7b0743e9e1f422abfd15f8520225820`
 - `r4_live_qualification_request_packet`: `docs/process/devseek-r4-live-qualification-request-packet.json` -> `8efb7b899a44b81ab3965e757ec5a38549da4369512a9150f4c2628f6dba4fc7`
 - `r4_live_user_way_holdout_matrix`: `docs/process/devseek-r4-live-user-way-holdout-matrix.json` -> `000a82523ebeb1047518c7ca32f232d1416cfccf8ec6418599428b642ed783cf`
 - `r4_real_provider_failure_taxonomy`: `docs/process/devseek-r4-real-provider-failure-taxonomy.json` -> `f600782836dcd78b8050870f72cdee8e5ae8fecfe6eab9e9410edd439e22ed35`
@@ -66,4 +66,4 @@
 
 ## Audit Identity
 
-- Audit SHA-256: `9bd845f8e1fe230b297dc8a9e8c85cf0b33f5bc59ab41c6040f4d5865535cd06`
+- Audit SHA-256: `645099ea24f1fd3e42487fe9fe8265dd64b9491b8206d81c34bff14cd8f37cb6`

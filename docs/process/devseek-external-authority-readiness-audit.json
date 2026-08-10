@@ -26,9 +26,9 @@
   "source_bindings": {
     "external_authority_requests": {
       "path": "docs/process/devseek-external-authority-requests.json",
-      "source_sha256": "8852c49f3a6cad2d67e459805eb8496fc65dae9032dabf8ae891102aab9af71f",
+      "source_sha256": "54d6fa76bd2aeed728e635007141d83af7b0743e9e1f422abfd15f8520225820",
       "request_set_id": "DEVSEEK-GATE0-EXTERNAL-AUTHORITY-REQUESTS/v1",
-      "request_set_sha256": "41d78d1cbfccf70409a94b0d22b9b1680db20514c18e6800f99125ddb9f9f53c",
+      "request_set_sha256": "675bfe9711ca3c1c70dd7c4437a74e15128f5ff7227581068319163f16081580",
       "blocked_requests": 5
     },
     "r4_live_qualification_request_packet": {
@@ -443,5 +443,5 @@
     "ledger_writes": 0,
     "provider_actions_performed": 0
   },
-  "audit_sha256": "9bd845f8e1fe230b297dc8a9e8c85cf0b33f5bc59ab41c6040f4d5865535cd06"
+  "audit_sha256": "645099ea24f1fd3e42487fe9fe8265dd64b9491b8206d81c34bff14cd8f37cb6"
 }

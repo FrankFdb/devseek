@@ -33,7 +33,7 @@ devseek_governance:
 <!-- DEVSEEK-GOVERNANCE-STATUS:END -->
 
 - 本次复核日期：2026-08-10
-- Extension 身份规则：当前开发候选以每轮 release loop 生成的 source/artifact/install/runtime 精确回执为准；`940d77e` 是本轮提交前的稳定候选，R4 v2 冻结候选仍为 `4f8a567`，原 `a034e5e` v1 清单仍是历史不可变候选，三者不得互相覆盖身份或资格效力
+- Extension 身份规则：当前开发候选以每轮 release loop 生成的 source/artifact/install/runtime 精确回执为准；当前为 `924f8af`，`940d77e` 是上一稳定回退候选，R4 v2 冻结候选仍为 `4f8a567`，原 `a034e5e` v1 清单仍是历史不可变候选，四者不得互相覆盖身份或资格效力
 - 复核原则：文档声明只作索引；结论以 `docs/process` 机器源、实际代码可达性、当前工作树和本轮重跑验证为准
 
 ## 1. 本次结论
@@ -61,7 +61,7 @@ devseek_governance:
 | Qualification runner | 19 个入口；1 个本地非资格 runner、10 个 catalog fixture、4 个 production disabled、4 个 historical disabled |
 | R4 | 6/6 原始 leaf completed，blocked=0；冻结时 artifact/install/runtime 与 v2 候选精确绑定，stable runtime=1、window-sensitive leaf=0；当前开发候选另由 current identity 管理 |
 | Frozen R4 candidate | 当前 `R4-RELEASE-CANDIDATE-MANIFEST/v2` 冻结 `4f8a567` VSIX；原 `a034e5e` v1 JSON/schema/view 以固定文件哈希归档为历史不可变候选；两者均无资格效力 |
-| Current local development receipt | `940d77e` 精确 VSIX 作为本轮提交前的稳定回执；I10～I18 共 46 个增量案例均在本地保留原始 TAP，不进入 Git，其中 I18 为 6 个验证管线场景。当前精确 VSIX 身份以本轮提交后 release loop 为准，不改写 `4f8a567` 冻结候选，也不是 qualification receipt |
+| Current local development receipt | `924f8af` 精确绑定 `devseek-netai-1.0.0-debug.20260810.t160917.g924f8af.vsix`、SHA256 `c28f46526d7e77f3feeefcf042b8ef5ea71f5a9fb79375961def884583dd9faa`、本地安装和单一 Bridge runtime；I10～I18 共 46 个增量案例的原始 TAP 仅在本地保留，不进入 Git。该回执不改写 `4f8a567` 冻结候选，也不是 qualification receipt |
 | Post-R4 local track | NP-05/06/07 manifest 已在 `5c32551` 提交；检查覆盖 16 个 source、17/17 anchors、8 个 local-only command，6/6 通过 |
 | Surface inventory | 88 个入口分母全部 covered，无 unknown、重复或待 cutover；source hash 对账通过 |
 | Architecture budget | 设计优先门禁通过，仍有 6 个明确债务热点；`extension.ts` 为 1679/1683 行；大小只作回退护栏，不替代职责、依赖和 owner 判定 |
@@ -190,7 +190,7 @@ devseek_governance:
 | Doc governance | `PASS`，4/4 tests；43 个受治理文档，3 个 active baseline、40 个 legacy/reference |
 | Surface product conformance | `PASS`，`379efbd` 精确 VSIX 的 VS Code create/modify/repair/permission-denied/policy-refusal 5/5 通过，并与 CLI、Headless 形成 5/5 三 Surface product-route conformance；qualification eligible=false |
 | Previous stable VSIX receipt | `PASS`，`devseek-netai-1.0.0-debug.20260810.t115039.g940d77e.vsix`；SHA256 `0e62babd31d1ee4f689f6e930b4873e35c9ef27bd2b8dd08370354b578113116`；该回执是本轮 release loop 前的回退基线，不冒充当前源码候选 |
-| Candidate identity rule | 当前 source/artifact/install/runtime 必须由同一轮 release loop 精确绑定；禁止从上一稳定 `940d77e` 或 R4 冻结候选继承当前候选 PASS |
+| Candidate identity rule | 当前 `924f8af` source/artifact/install/runtime 已由同一轮 release loop 精确绑定，stable runtime=1、stale/unknown/unreadable=0；禁止从上一稳定 `940d77e` 或 R4 冻结候选继承当前候选 PASS |
 | 本地用户闭环 | `PASS`，精确已安装 VSIX 的受控普通用户路径与五场景产品路径通过；Bridge 为 `session-missing`，real DeepSeek 因资格前置未满足而未执行 |
 | R4 frozen candidate identity | `PASS`，11/11；冻结验证时 stable=1、stale/unknown/unreadable=0；qualification effect=`NONE` |
 | Phase 0-12 | `PASS`，32/32；最终 run id `2026-08-07T14-55-58-842Z`；本轮 source-binding 诊断 run `2026-08-07T14-19-17-065Z`、`2026-08-07T14-28-23-425Z` 均保留；deterministic=`passed`，real CLI/plugin Provider=`not-run`，Gate 0 仍为 `NOT_PASSED` |

@@ -23,7 +23,7 @@
       "path": "docs/process/devseek-external-authority-adapter.json",
       "schema_version": "devseek.external-authority-adapter/v1",
       "adapter_id": "DEVSEEK-GATE0-EXTERNAL-AUTHORITY-ADAPTER/v1",
-      "source_sha256": "6adf598c4d44ff1611da9d009d3df91fcd412309268216e86f8136fe4ccb147a"
+      "source_sha256": "d8acd3c3fa6a8eeb51a29dd99d63b292a59db7530fee2db55c1eb7ba76e1d915"
     },
     "c0_wiring_reconciliation": {
       "path": "docs/process/devseek-c0-wiring-reconciliation.json",
@@ -123,7 +123,7 @@
         {
           "input_id": "external-authority-adapter",
           "path": "docs/process/devseek-external-authority-adapter.json",
-          "sha256": "6adf598c4d44ff1611da9d009d3df91fcd412309268216e86f8136fe4ccb147a",
+          "sha256": "d8acd3c3fa6a8eeb51a29dd99d63b292a59db7530fee2db55c1eb7ba76e1d915",
           "purpose": "fail-closed external authority import adapter"
         },
         {
@@ -211,7 +211,7 @@
         {
           "input_id": "external-authority-adapter",
           "path": "docs/process/devseek-external-authority-adapter.json",
-          "sha256": "6adf598c4d44ff1611da9d009d3df91fcd412309268216e86f8136fe4ccb147a",
+          "sha256": "d8acd3c3fa6a8eeb51a29dd99d63b292a59db7530fee2db55c1eb7ba76e1d915",
           "purpose": "fail-closed external authority import adapter"
         },
         {
@@ -299,7 +299,7 @@
         {
           "input_id": "external-authority-adapter",
           "path": "docs/process/devseek-external-authority-adapter.json",
-          "sha256": "6adf598c4d44ff1611da9d009d3df91fcd412309268216e86f8136fe4ccb147a",
+          "sha256": "d8acd3c3fa6a8eeb51a29dd99d63b292a59db7530fee2db55c1eb7ba76e1d915",
           "purpose": "fail-closed external authority import adapter"
         },
         {
@@ -387,7 +387,7 @@
         {
           "input_id": "external-authority-adapter",
           "path": "docs/process/devseek-external-authority-adapter.json",
-          "sha256": "6adf598c4d44ff1611da9d009d3df91fcd412309268216e86f8136fe4ccb147a",
+          "sha256": "d8acd3c3fa6a8eeb51a29dd99d63b292a59db7530fee2db55c1eb7ba76e1d915",
           "purpose": "fail-closed external authority import adapter"
         },
         {
@@ -475,7 +475,7 @@
         {
           "input_id": "external-authority-adapter",
           "path": "docs/process/devseek-external-authority-adapter.json",
-          "sha256": "6adf598c4d44ff1611da9d009d3df91fcd412309268216e86f8136fe4ccb147a",
+          "sha256": "d8acd3c3fa6a8eeb51a29dd99d63b292a59db7530fee2db55c1eb7ba76e1d915",
           "purpose": "fail-closed external authority import adapter"
         },
         {
@@ -559,5 +559,5 @@
     "gate_pass_assertions": 0,
     "bypasses": 0
   },
-  "request_set_sha256": "41d78d1cbfccf70409a94b0d22b9b1680db20514c18e6800f99125ddb9f9f53c"
+  "request_set_sha256": "675bfe9711ca3c1c70dd7c4437a74e15128f5ff7227581068319163f16081580"
 }

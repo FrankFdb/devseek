@@ -17,7 +17,7 @@
       "path": "docs/process/devseek-capability-ledger.json",
       "schema_version": "devseek.capability-ledger/v1",
       "ledger_id": "DEVSEEK-CAPABILITY-LEDGER/v1",
-      "source_sha256": "75339881eeb7f7bdabccaec27adc4c4bd4bcacf029f2a571d547b8def2df546d"
+      "source_sha256": "4e2faf1b579c049dd0cb8f51d393fcf2bda12b3ca695593c739efb3aded5286f"
     },
     "package_scripts": {
       "path": "package.json",
@@ -43,8 +43,8 @@
       "schema_version": "devseek.c0-ledger-wiring/v1",
       "expected_schema_version": "devseek.c0-ledger-wiring/v1",
       "hash_field": "wiring_sha256",
-      "reported_sha256": "550950473a1257ee61de2aa6b9725c2596ba2aa521668abcecb4713e97a0a752",
-      "computed_sha256": "550950473a1257ee61de2aa6b9725c2596ba2aa521668abcecb4713e97a0a752",
+      "reported_sha256": "820565a3a53590e0815aaba1dd0ff0a4c0cb5d3a93689839ddec1a2b622f5f44",
+      "computed_sha256": "820565a3a53590e0815aaba1dd0ff0a4c0cb5d3a93689839ddec1a2b622f5f44",
       "hash_status": "matched",
       "package_script": "verify:c0-ledger-wiring",
       "package_script_present": true,
@@ -55,7 +55,7 @@
       "generated_view": {
         "path": "docs/process/generated/devseek-c0-ledger-wiring.md",
         "status": "current",
-        "source_sha256": "0eb361b6821f0f4b884a9cd5f1f158d071ac6bb3d59bd96b9edff7a6aef327a5"
+        "source_sha256": "faeb5b52a879757da40f2745298f78b31313737118239ba7edd6d06c63f16793"
       }
     },
     {
@@ -64,8 +64,8 @@
       "schema_version": "devseek.c0-preregistration-wiring/v1",
       "expected_schema_version": "devseek.c0-preregistration-wiring/v1",
       "hash_field": "wiring_sha256",
-      "reported_sha256": "b1ee4a2d91190c50e69b254db3232fd8168a82b3758d199ef63940ca3191c980",
-      "computed_sha256": "b1ee4a2d91190c50e69b254db3232fd8168a82b3758d199ef63940ca3191c980",
+      "reported_sha256": "357408116cc2cb7e52df27f512929fc7a1601a3c089eb1c75c12ef102206c6ea",
+      "computed_sha256": "357408116cc2cb7e52df27f512929fc7a1601a3c089eb1c75c12ef102206c6ea",
       "hash_status": "matched",
       "package_script": "verify:c0-preregistration-wiring",
       "package_script_present": true,
@@ -76,7 +76,7 @@
       "generated_view": {
         "path": "docs/process/generated/devseek-c0-preregistration-wiring.md",
         "status": "current",
-        "source_sha256": "a3fae1d08ca755fa898f969fa8670ade0a898a0a7dfc2fafcae8720d89fb3c75"
+        "source_sha256": "ecf4bb4f49b24f19171e6d1be7c0b9b4f22b23baae0b7800f61cff67f1ba40a7"
       }
     },
     {
@@ -85,8 +85,8 @@
       "schema_version": "devseek.c0-run-evidence-wiring/v1",
       "expected_schema_version": "devseek.c0-run-evidence-wiring/v1",
       "hash_field": "wiring_sha256",
-      "reported_sha256": "196dddab0a30423fee36a09e7a836e1a566a35d7d3230491a84a9009fad730e4",
-      "computed_sha256": "196dddab0a30423fee36a09e7a836e1a566a35d7d3230491a84a9009fad730e4",
+      "reported_sha256": "ee7db6b523ff98c0522deee1fd1b6c5fe41357d0b7153fd7d26ba1823dc1f5ae",
+      "computed_sha256": "ee7db6b523ff98c0522deee1fd1b6c5fe41357d0b7153fd7d26ba1823dc1f5ae",
       "hash_status": "matched",
       "package_script": "verify:c0-run-evidence-wiring",
       "package_script_present": true,
@@ -97,7 +97,7 @@
       "generated_view": {
         "path": "docs/process/generated/devseek-c0-run-evidence-wiring.md",
         "status": "current",
-        "source_sha256": "a24472be284b99d772b696e118804efe6575040fbd704d87583e8b83b5da1c55"
+        "source_sha256": "8a3f84ec988426fc9eb830c427a783a83cb33e1d2559410dfa312e10db335818"
       }
     },
     {
@@ -106,8 +106,8 @@
       "schema_version": "devseek.c0-manifest-aggregator-wiring/v1",
       "expected_schema_version": "devseek.c0-manifest-aggregator-wiring/v1",
       "hash_field": "wiring_sha256",
-      "reported_sha256": "e219427828255ea90d5d62d3034fa100c1c35bc7da4a6f524375297202c1b9da",
-      "computed_sha256": "e219427828255ea90d5d62d3034fa100c1c35bc7da4a6f524375297202c1b9da",
+      "reported_sha256": "c16b5a0de347b7b0edacbad6c4ad9a5ebe5dfb50635f3f9580241326a5a1b6ba",
+      "computed_sha256": "c16b5a0de347b7b0edacbad6c4ad9a5ebe5dfb50635f3f9580241326a5a1b6ba",
       "hash_status": "matched",
       "package_script": "verify:c0-manifest-aggregator-wiring",
       "package_script_present": true,
@@ -118,7 +118,7 @@
       "generated_view": {
         "path": "docs/process/generated/devseek-c0-manifest-aggregator-wiring.md",
         "status": "current",
-        "source_sha256": "71383fd7360b55d2449f0c800cd5c23b080b268c3074aa68c2e7567e0e190784"
+        "source_sha256": "41f7a6fce774135f1e7ea19a2f09b2a8eb3e029c0789ef0f0772dc8680235d3f"
       }
     },
     {
@@ -127,8 +127,8 @@
       "schema_version": "devseek.external-authority-adapter/v1",
       "expected_schema_version": "devseek.external-authority-adapter/v1",
       "hash_field": "adapter_sha256",
-      "reported_sha256": "6adf598c4d44ff1611da9d009d3df91fcd412309268216e86f8136fe4ccb147a",
-      "computed_sha256": "6adf598c4d44ff1611da9d009d3df91fcd412309268216e86f8136fe4ccb147a",
+      "reported_sha256": "d8acd3c3fa6a8eeb51a29dd99d63b292a59db7530fee2db55c1eb7ba76e1d915",
+      "computed_sha256": "d8acd3c3fa6a8eeb51a29dd99d63b292a59db7530fee2db55c1eb7ba76e1d915",
       "hash_status": "matched",
       "package_script": "verify:external-authority-adapter",
       "package_script_present": true,
@@ -139,7 +139,7 @@
       "generated_view": {
         "path": "docs/process/generated/devseek-external-authority-adapter.md",
         "status": "current",
-        "source_sha256": "8bfec37be7ba2d429ca56a8409340c0974769b78a3a1d6e60d2abf0fc4210e95"
+        "source_sha256": "5c3b9f2fbdc703882c6ae3a53f12e1c34f2af49d08084dba0aa590d0892d39b6"
       }
     },
     {
@@ -148,8 +148,8 @@
       "schema_version": "devseek.gate0-decision/v1",
       "expected_schema_version": "devseek.gate0-decision/v1",
       "hash_field": "decision_sha256",
-      "reported_sha256": "1ed84b8d2f1435d3db2ab213a6e8544531e2b4d03e6ebcd0db55f187f32c66ea",
-      "computed_sha256": "1ed84b8d2f1435d3db2ab213a6e8544531e2b4d03e6ebcd0db55f187f32c66ea",
+      "reported_sha256": "a15335ec2b9bf71c568cd08e0bc6caed795c5d1215150879782e0258fda24d4b",
+      "computed_sha256": "a15335ec2b9bf71c568cd08e0bc6caed795c5d1215150879782e0258fda24d4b",
       "hash_status": "matched",
       "package_script": "verify:gate0-decision",
       "package_script_present": true,
@@ -180,14 +180,14 @@
     "source_bindings": [
       {
         "binding_id": "gate0-ledger-source",
-        "observed_sha256": "75339881eeb7f7bdabccaec27adc4c4bd4bcacf029f2a571d547b8def2df546d",
-        "expected_sha256": "75339881eeb7f7bdabccaec27adc4c4bd4bcacf029f2a571d547b8def2df546d",
+        "observed_sha256": "4e2faf1b579c049dd0cb8f51d393fcf2bda12b3ca695593c739efb3aded5286f",
+        "expected_sha256": "4e2faf1b579c049dd0cb8f51d393fcf2bda12b3ca695593c739efb3aded5286f",
         "status": "matched"
       },
       {
         "binding_id": "gate0-external-authority-adapter-source",
-        "observed_sha256": "6adf598c4d44ff1611da9d009d3df91fcd412309268216e86f8136fe4ccb147a",
-        "expected_sha256": "6adf598c4d44ff1611da9d009d3df91fcd412309268216e86f8136fe4ccb147a",
+        "observed_sha256": "d8acd3c3fa6a8eeb51a29dd99d63b292a59db7530fee2db55c1eb7ba76e1d915",
+        "expected_sha256": "d8acd3c3fa6a8eeb51a29dd99d63b292a59db7530fee2db55c1eb7ba76e1d915",
         "status": "matched"
       }
     ],
@@ -213,5 +213,5 @@
     "observed_claims": 0,
     "bypasses": 0
   },
-  "reconciliation_sha256": "dae386c6b496ecdf6875da6b5cb55f626b3ff99d7901377339d213ca4901a78b"
+  "reconciliation_sha256": "77510745018a4b6c12b58d3361a0cee7c45d5782728ad423ac1687a21084fa7e"
 }
