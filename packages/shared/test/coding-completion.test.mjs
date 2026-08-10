@@ -53,6 +53,7 @@ function failedVerificationTool(actionId = 'verify-1', sequence = 1) {
     sequence,
     actionId,
     tool: 'run_terminal',
+    purpose: 'verify',
     effects: ['process'],
     status: 'failed',
     permission: {
@@ -63,6 +64,15 @@ function failedVerificationTool(actionId = 'verify-1', sequence = 1) {
     },
     errorCode: 'verification-failed',
     evidenceRefs: [`verification-tool:${actionId}:failed`],
+  };
+}
+
+function completedVerificationTool(actionId = 'verify-2', sequence = 2) {
+  return {
+    ...failedVerificationTool(actionId, sequence),
+    status: 'completed',
+    errorCode: undefined,
+    evidenceRefs: [`verification-tool:${actionId}:completed`],
   };
 }
 
@@ -164,6 +174,39 @@ test('CanonicalCompletionDecisionService preserves but does not re-fail resolved
   assert.equal(decision.status, 'completed');
   assert.equal(decision.evidenceRefs.includes('build:not-passed'), true);
   assert.equal(decision.evidenceRefs.includes('repair-build:exit-0'), true);
+});
+
+test('CanonicalCompletionDecisionService requires a later verified tool action to settle a failed check', () => {
+  const failedTool = failedVerificationTool('focused-check-1', 1);
+  const recoveredTool = completedVerificationTool('focused-check-2', 2);
+  const recoveredVerification = {
+    ...verification('passed'),
+    sequence: 2,
+    actionId: recoveredTool.actionId,
+    idempotencyKey: `completion-run-1:${recoveredTool.actionId}`,
+    evidenceRefs: ['focused-check:exit-0'],
+    acceptance: [{ criterionId: 'builds', status: 'passed', evidenceRefs: ['focused-check:exit-0'] }],
+  };
+  const recovered = new CanonicalCompletionDecisionService().decide(input({
+    toolExecutions: [failedTool, recoveredTool],
+    verifications: [recoveredVerification],
+  }));
+  const unrelatedAutoPass = new CanonicalCompletionDecisionService().decide(input({
+    decisionId: 'completion-unrelated-auto-pass',
+    idempotencyKey: 'completion-run-1:completion-unrelated-auto-pass',
+    toolExecutions: [failedTool],
+    verifications: [{
+      ...recoveredVerification,
+      actionId: 'auto-validation-1',
+      idempotencyKey: 'completion-run-1:auto-validation-1',
+    }],
+  }));
+
+  assert.equal(recovered.status, 'completed');
+  assert.equal(recovered.reasonCodes.includes('failed-effect'), false);
+  assert.equal(recovered.evidenceRefs.includes('verification-tool:focused-check-1:failed'), true);
+  assert.equal(unrelatedAutoPass.status, 'failed');
+  assert.equal(unrelatedAutoPass.reasonCodes.includes('failed-effect'), true);
 });
 
 test('CanonicalCompletionDecisionService does not let a narrower pass erase a broader failure', () => {

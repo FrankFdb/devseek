@@ -107,7 +107,9 @@ function deriveCompletionDecision(input: CodingCompletionDecisionInput): CodingC
   ))
     || input.mutations.some(receipt => receipt.status === 'indeterminate');
   const hasFailedEffect = input.toolExecutions.some(receipt => (
-    receipt.status === 'failed' && !verificationActionIds.has(receipt.actionId)
+    receipt.status === 'failed'
+      && !verificationActionIds.has(receipt.actionId)
+      && !verificationToolFailureWasRecovered(receipt, input.toolExecutions, input.verifications)
   ))
     || input.mutations.some(receipt => receipt.status === 'failed' || receipt.status === 'rolled-back');
   const hasDeniedEffect = input.toolExecutions.some(receipt => receipt.status === 'denied');
@@ -168,6 +170,28 @@ function deriveCompletionDecision(input: CodingCompletionDecisionInput): CodingC
     residualRisks: input.residualRisks,
     evidenceRefs,
   }, 'completion-decision') as CodingCompletionDecision;
+}
+
+function verificationToolFailureWasRecovered(
+  failed: CodingToolExecutionReceipt<unknown>,
+  toolExecutions: readonly CodingToolExecutionReceipt<unknown>[],
+  verifications: readonly CodingVerificationReceipt[],
+): boolean {
+  if (failed.purpose !== 'verify' || !failed.effects.includes('process')) return false;
+  return toolExecutions.some(candidate => (
+    candidate.runId === failed.runId
+      && candidate.sequence > failed.sequence
+      && candidate.status === 'completed'
+      && candidate.purpose === 'verify'
+      && candidate.effects.includes('process')
+      && verifications.some(receipt => (
+        receipt.runId === failed.runId
+          && receipt.actionId === candidate.actionId
+          && receipt.status === 'passed'
+          && receipt.acceptance.length > 0
+          && receipt.acceptance.every(result => result.status === 'passed')
+      ))
+  ));
 }
 
 function unresolvedVerificationReceipts(
