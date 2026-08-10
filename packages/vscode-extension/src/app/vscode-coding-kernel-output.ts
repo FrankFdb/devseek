@@ -11,12 +11,16 @@ export function projectVsCodeCodingKernelOutput(
   if (output.completion.status !== output.settlement.status) {
     throw new Error('vscode-coding-kernel:settlement-binding-mismatch');
   }
+  const toolActionIds = new Set(output.toolExecutionReceipts.map(receipt => receipt.actionId));
+  const actionOwnedVerifications = output.verificationReceipts.filter(
+    receipt => toolActionIds.has(receipt.actionId),
+  );
   const codingConformance = projectSettledCodingConformanceRun({
     fixtureId: output.runId,
     taskContract: output.taskContract,
     toolExecutions: output.toolExecutionReceipts,
     changeReceipts: output.workspaceMutationReceipts,
-    verifications: output.verificationReceipts,
+    verifications: actionOwnedVerifications,
     completion: output.completion,
   });
   return {

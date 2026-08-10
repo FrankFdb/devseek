@@ -3662,6 +3662,7 @@ test('C9: Shared Kernel owns verifier selection, orchestration, and acceptance s
   assertContains(adapter, 'projectBuildOrchestrationHostResult', 'surface adapter must project raw orchestration facts into canonical verification');
   assertContains(terminalAdapter, 'toolReceipt.status === \'completed\'', 'terminal verification must require a completed canonical tool receipt');
   assertContains(terminalAdapter, 'action?.actionId === toolReceipt.actionId', 'terminal verification must bind the exact executing action');
+  assertContains(kernelOutput, 'toolActionIds.has(receipt.actionId)', 'conformance projection must include only exact action-owned verification receipts');
   assertDoesNotContain(kernelOutput, 'correlateVsCodeCodingConformanceReceipts', 'product projection must never guess receipt ownership after Completion');
   assert.equal(existsSync(path.join(root, 'src/app/vscode-coding-conformance-correlation.ts')), false, 'obsolete receipt correlation owner must be deleted');
   assertDoesNotContain(validationService, 'CanonicalVerifierSelectionService', 'VS Code host must not select its own verifier');

@@ -101,7 +101,7 @@ test('VS Code canonical Kernel probe exposes semantically conformant settled pro
   }
 });
 
-test('VS Code product projection preserves internal receipt identities instead of guessing ownership', async () => {
+test('VS Code product projection rejects unowned internal receipts instead of guessing ownership', async () => {
   const fixture = findFixture('create-and-verify');
   const input = routeInput(false, fixture);
   const kernel = new CanonicalCodingKernel(new VsCodeCodingKernelRuntimeAdapter({
@@ -121,14 +121,14 @@ test('VS Code product projection preserves internal receipt identities instead o
   const mutationTool = projection.toolExecutions.find(receipt => receipt.effects.includes('workspace-mutation'));
   const processTool = projection.toolExecutions.find(receipt => receipt.effects.includes('process'));
   assert.equal(projection.changeReceipts[0].actionId, 'vscode-text-transaction-1');
-  assert.equal(projection.verifications[0].actionId, 'vscode-auto-validation-1');
+  assert.deepEqual(projection.verifications, []);
   assert.notEqual(projection.changeReceipts[0].actionId, mutationTool.actionId);
-  assert.notEqual(projection.verifications[0].actionId, processTool.actionId);
   assert.equal(kernelOutput.workspaceMutationReceipts[0].actionId, 'vscode-text-transaction-1');
   assert.equal(kernelOutput.verificationReceipts[0].actionId, 'vscode-auto-validation-1');
+  assert.notEqual(kernelOutput.verificationReceipts[0].actionId, processTool.actionId);
 });
 
-test('VS Code product projection retains every canonical verification receipt', async () => {
+test('VS Code product projection includes only exact action-owned verification receipts', async () => {
   const fixture = findFixture('create-and-verify');
   const input = routeInput(false, fixture);
   const kernel = new CanonicalCodingKernel(new VsCodeCodingKernelRuntimeAdapter({
@@ -152,6 +152,9 @@ test('VS Code product projection retains every canonical verification receipt', 
     'vscode-auto-validation-internal',
   ]);
   assert.deepEqual(output.result.codingConformance.verifications.map(receipt => receipt.actionId), [
+    processTool.actionId,
+  ]);
+  assert.deepEqual(kernelOutput.verificationReceipts.map(receipt => receipt.actionId), [
     processTool.actionId,
     'vscode-auto-validation-internal',
   ]);
