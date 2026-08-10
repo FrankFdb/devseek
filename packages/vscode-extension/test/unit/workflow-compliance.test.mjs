@@ -2088,12 +2088,14 @@ test('Agentic loop: terminal completion evidence requires successful validation 
   );
 });
 
-test('Agentic loop: workspace writes use ValidationService for automatic validation evidence', () => {
+test('Agentic loop: workspace writes use the canonical verification pipeline', () => {
   const code = src('src/agent/agentic-loop.ts');
   const autoValidation = src('src/agent/auto-validation.ts');
   assertContains(code, 'runAgentAutoValidationForWrites', 'agent loop must run automatic validation after file writes');
-  assertContains(autoValidation, 'ValidationService', 'automatic validation boundary must depend on the unified validation service');
-  assertContains(autoValidation, 'validateWorkspaceChanges({', 'automatic validation must call ValidationService.validateWorkspaceChanges');
+  assertContains(autoValidation, 'new VsCodeVerificationAdapter(validationService)', 'automatic validation must use the VS Code host adapter');
+  assertContains(autoValidation, 'canonicalVerifierSelection', 'automatic validation must receive canonical selection authority');
+  assertContains(autoValidation, 'canonicalBuildOrchestration', 'automatic validation must receive canonical build orchestration');
+  assertContains(autoValidation, 'canonicalVerification', 'automatic validation must receive canonical acceptance authority');
   assertContains(autoValidation, 'validationResultToTerminalEvidence', 'automatic validation must be converted into completion evidence');
   assertContains(autoValidation, '自动验证命令未通过，不能把编译/运行/测试标记为完成', 'failed automatic validation must block task completion');
 });
@@ -2785,8 +2787,9 @@ test('R1-A2: TaskIntentRouter is the canonical task-family owner for downstream 
   assertDoesNotContain(workflow, 'function isPlanningOnlyRequest(', 'workflow must not own planning-only prompt regex routing');
 
   const verification = src('src/app/verification-planner.ts');
-  assertContains(verification, 'routeTaskIntent(prompt)', 'verification planner public prompt gates must consume TaskIntentRouter');
-  assertDoesNotContain(verification, 'buildTaskSemanticContract(prompt)', 'verification planner must not rebuild semantic contracts from raw prompt gates');
+  assertContains(verification, 'discoverCandidates(', 'verification planner must discover factual workspace capabilities');
+  assertDoesNotContain(verification, 'routeTaskIntent(', 'verification capability discovery must not interpret user prose');
+  assertDoesNotContain(verification, 'buildTaskSemanticContract(', 'verification capability discovery must not rebuild semantic intent');
 
   const completion = src('src/agent/completion-evidence.ts');
   assertContains(completion, 'routeTaskIntent(intentText)', 'completion evidence must consume TaskIntentRouter');
@@ -3416,21 +3419,27 @@ test('Architecture: Workspace review ledger owns apply result summary', () => {
   assertContains(applier, 'review: ledger.snapshot()', 'workspace applier must return ledger snapshots');
 });
 
-test('Architecture: ValidationService owns validation semantics and receives execution authority', () => {
+test('Architecture: shared services own verification decisions and VS Code supplies host facts', () => {
   const service = src('src/workspace/validation-service.ts');
   const planner = src('src/app/verification-planner.ts');
+  const adapter = src('src/app/coding-verification-adapter.ts');
   const qualityGate = src('src/app/quality-gate-service.ts');
   const applier = src('src/workspace-applier.ts');
   assertContains(service, 'class ValidationService', 'validation service class must exist');
-  assertContains(service, 'validateWorkspaceChanges', 'validation service must expose workspace validation entry');
+  assertContains(service, 'discover(', 'validation service must expose factual capability discovery');
+  assertContains(service, 'execute(', 'validation service must expose raw verification execution');
   assertContains(planner, 'class VerificationPlanner', 'verification planner class must exist');
-  assertContains(planner, 'planCppValidation', 'verification planner must own C++ validation planning integration');
+  assertContains(planner, 'discoverCandidates', 'verification planner must own capability discovery');
+  assertContains(adapter, 'ports.selection.select', 'shared verifier selection must choose capabilities');
+  assertContains(adapter, 'ports.orchestration.execute', 'shared build orchestration must run selected steps');
+  assertContains(adapter, 'ports.verification.verify', 'shared verification must settle acceptance');
   assertContains(qualityGate, 'class QualityGateService', 'quality gate service class must exist');
   assertContains(applier, 'new QualityGateService()', 'workspace applier must evaluate quality gate');
   assertContains(service, 'rejectMissingCommandAuthority', 'validation service must fail closed without injected command authority');
   assertDoesNotContain(service, /child_process|\bexec\s*\(/, 'validation service must not execute a process outside the terminal evidence boundary');
-  assertContains(applier, 'new ValidationService({ commandRunner: validationCommandRunner })', 'workspace applier must inject validation command authority');
-  assert.doesNotMatch(applier, /planCppValidation|child_process|runShell|runCppAutoValidation/, 'workspace applier must not own validation execution internals');
+  assertContains(applier, 'new ValidationService({ commandRunner: input.validationCommandRunner })', 'workspace applier must inject validation command authority');
+  assert.doesNotMatch(applier, /planCppValidation|child_process|runShell|runCppAutoValidation/, 'workspace applier must not own verifier discovery or execution internals');
+  assert.doesNotMatch(planner, /requestPrompt|userPrompt|routeTaskIntent/, 'verification discovery must not guess a verifier from prompt text');
 });
 
 test('Architecture: verification result authority normalizes runner facts before settlement', () => {
@@ -3447,14 +3456,13 @@ test('Architecture: verification result authority normalizes runner facts before
   assertContains(autoValidation, '[verification_result:', 'AI feedback must carry the normalized verification status');
 });
 
-test('Architecture: C/C++ validation and execution share one stable project build layout', () => {
+test('Architecture: C/C++ verification is read-only and terminal commands are not rewritten', () => {
   const layout = src('src/cpp-build-layout.ts');
   const execution = src('src/execution-planner.ts');
   const localExecution = src('src/local-execution.ts');
-  const validation = src('src/validation-planner.ts');
+  const validation = src('src/app/verification-planner.ts');
   const extension = src('src/extension.ts');
   const listDirService = src('src/workspace/list-dir-service.ts');
-  const cleanupService = src('src/workspace/cpp-build-cleanup-service.ts');
   const terminalPermission = src('src/app/terminal-permission-coordinator.ts');
 
   assertContains(layout, "export const CPP_BUILD_DIR_NAME = 'build'", 'C/C++ build root must be the project build directory');
@@ -3469,17 +3477,15 @@ test('Architecture: C/C++ validation and execution share one stable project buil
   assertContains(layout, 'getCmakeExecutableCandidatePaths', 'CMake executable candidates must be centralized');
   assertContains(execution, "from './cpp-build-layout'", 'local execution planner must use shared C++ build layout');
   assertContains(localExecution, "from './cpp-build-layout'", 'legacy local execution path must use shared C++ build layout');
-  assertContains(validation, "from './cpp-build-layout'", 'validation planner must use shared C++ build layout');
   assertContains(extension, "from './workspace/list-dir-service'", 'extension list_dir callbacks must use shared directory listing service');
   assertContains(listDirService, "from '../cpp-build-layout'", 'list_dir service must use shared C++ build layout aliases');
-  assertContains(cleanupService, "from '../cpp-build-layout'", 'legacy build cleanup must use shared C++ build layout aliases');
-  assertContains(cleanupService, 'normalizeLegacyCppBuildCommandForRun', 'legacy C++ build commands must be normalized before terminal execution');
-  assertContains(terminalPermission, 'cleanupLegacyCppBuildDirsForCommand', 'run_terminal must clean stale legacy C++ build dirs before build commands');
-  assertContains(terminalPermission, 'normalizeLegacyCppBuildCommandForRun', 'run_terminal must rewrite stale legacy C++ build dirs before execution');
+  assertContains(validation, "'-fsyntax-only'", 'C/C++ fallback verification must not create project artifacts');
+  assertDoesNotContain(terminalPermission, 'cleanupLegacyCppBuildDirsForCommand', 'run_terminal must not delete user directories as a hidden side effect');
+  assertDoesNotContain(terminalPermission, 'normalizeLegacyCppBuildCommandForRun', 'run_terminal must not rewrite user commands');
   assert.doesNotMatch(extension, /onListDir:[\s\S]{0,500}readdirSync/, 'extension must not hand-roll list_dir filesystem traversal');
   assert.doesNotMatch(execution, /\.devseek-build/, 'execution planner must not create legacy .devseek-build outputs');
   assert.doesNotMatch(localExecution, /\.devseek-build/, 'legacy local execution path must not create legacy .devseek-build outputs');
-  assert.doesNotMatch(validation, /\.devseek-build/, 'validation planner must not create legacy .devseek-build outputs');
+  assert.doesNotMatch(validation, /\.devseek-build/, 'verification discovery must not create legacy .devseek-build outputs');
 });
 
 test('Architecture: simple read-only file inspection bypasses agent loop', () => {
@@ -3637,20 +3643,24 @@ test('R2-07F: DeepSeek connector evidence is redacted and replay is explicitly n
   assertContains(server, 'summarizeTraceText(content)', 'Bridge server must record response summaries, not raw response text');
 });
 
-test('R2-08A: Verification planner owns focused, full, and release build-plan selection', () => {
+test('C9: Shared Kernel owns verifier selection, orchestration, and acceptance settlement', () => {
   const planner = src('src/app/verification-planner.ts');
   const validationService = src('src/workspace/validation-service.ts');
+  const adapter = src('src/app/coding-verification-adapter.ts');
+  const selection = repoSrc('packages/shared/src/coding-verifier-selection.ts');
+  const orchestration = repoSrc('packages/shared/src/coding-build-orchestration.ts');
+  const verification = repoSrc('packages/shared/src/coding-verification.ts');
 
-  assertContains(planner, 'VerificationBuildPlanStep', 'verification plan must expose structured build-plan steps');
-  assertContains(planner, 'buildDevSeekPackageVerificationPlan', 'DevSeek package validation must live in the existing planner owner');
-  assertContains(planner, 'vscode-extension-unit', 'extension source changes must include affected package unit tests');
-  assertContains(planner, 'bridge-unit', 'Bridge source changes must include affected package unit tests');
-  assertContains(planner, 'devseek-lint', 'missing lint command must be explicit instead of silently passing');
-  assertContains(planner, 'debug-vsix-package', 'release package follow-up must be represented in the plan');
-  assertContains(planner, 'packaged-bridge', 'packaged Bridge runtime verification must be represented in the plan');
-  assertContains(planner, 'controlled-vsix-realistic-product', 'exact-VSIX runtime/e2e follow-up must be represented in the plan');
-  assertContains(validationService, 'planWorkspaceChanges', 'ValidationService must consume the planner, not build commands locally');
-  assertDoesNotContain(validationService, 'debug-vsix-package', 'ValidationService must not duplicate release build-plan ownership');
+  assertContains(planner, 'discoverDevSeekCandidate', 'VS Code must discover affected DevSeek package capabilities');
+  assertContains(planner, 'vscode-devseek-extension-test', 'extension changes must discover their package test capability');
+  assertContains(planner, 'vscode-devseek-bridge-test', 'Bridge changes must discover their package test capability');
+  assertContains(selection, 'class CanonicalVerifierSelectionService', 'Shared Kernel must own acceptance-to-verifier selection');
+  assertContains(orchestration, 'class CanonicalBuildOrchestrationService', 'Shared Kernel must own ordered fail-fast execution');
+  assertContains(verification, 'class CanonicalVerificationService', 'Shared Kernel must own acceptance settlement');
+  assertContains(adapter, 'projectBuildOrchestrationHostResult', 'surface adapter must project raw orchestration facts into canonical verification');
+  assertDoesNotContain(validationService, 'CanonicalVerifierSelectionService', 'VS Code host must not select its own verifier');
+  assertDoesNotContain(validationService, 'CanonicalVerificationService', 'VS Code host must not settle acceptance');
+  assert.doesNotMatch(planner, /debug-vsix-package|controlled-vsix-realistic-product/, 'capability discovery must not fabricate future release evidence');
 });
 
 test('R2-08B: verification history vetoes prevent green reruns from erasing unresolved facts', () => {

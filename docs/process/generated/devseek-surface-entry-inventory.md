@@ -1,7 +1,7 @@
 # DevSeek Surface Entry Inventory
 
 - inventory_id: `DEVSEEK-R1-D1A-SURFACE-ENTRY-INVENTORY/v1`
-- inventory_sha256: `90141cc176f4458082433736fe6c8841904825a327ef62799f5fdc5f44a58b6a`
+- inventory_sha256: `a9618983ff55064fea73b79a8cd7083c331591d10b4150a14cfd6a0e7e330056`
 - qualification_effect: `NONE`
 - claims_permitted: `false`
 - asserts_gate_pass: `false`

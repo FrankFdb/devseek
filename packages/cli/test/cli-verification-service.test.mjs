@@ -1,12 +1,18 @@
 import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildSync } from 'esbuild';
-import { CanonicalVerificationService } from '../../shared/dist/index.js';
+import {
+  CanonicalBuildOrchestrationService,
+  CanonicalEngineeringOrientationService,
+  CanonicalVerificationService,
+  CanonicalVerifierSelectionService,
+  buildCodingKernelTaskContract,
+} from '../../shared/dist/index.js';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const cliRoot = path.resolve(testDir, '..');
@@ -32,7 +38,8 @@ buildSync({
 
 const require = createRequire(import.meta.url);
 const { CliVerificationAdapter, CliVerificationHostAdapter } = require(bundlePath);
-const service = new CliVerificationHostAdapter();
+const host = new CliVerificationHostAdapter();
+const adapter = new CliVerificationAdapter(host);
 
 after(() => rmSync(bundleRoot, { recursive: true, force: true }));
 
@@ -44,132 +51,238 @@ function writeVerifier(workspace, config) {
   writeFileSync(path.join(workspace, 'devseek.verify.json'), JSON.stringify(config), 'utf8');
 }
 
-test('CLI verification host reports unverified when no verifier applies', async () => {
-  const workspace = createWorkspace('fallback');
-  try {
-    const result = await service.verify(workspace, ['notes.txt'], 'Update notes.txt');
+function verificationPorts(workspace, files, runId = 'cli-verification-run') {
+  const acceptance = [{ id: 'verified', statement: 'Applicable project verification passes.' }];
+  const taskContract = buildCodingKernelTaskContract({
+    goal: 'Apply and verify the requested workspace change',
+    mode: 'change',
+    include: files,
+    deliverables: files.map((file, index) => ({
+      id: `source-${index + 1}`,
+      kind: 'source-change',
+      path: file,
+    })),
+    acceptance: [{
+      ...acceptance[0],
+      deliverableIds: files.map((_, index) => `source-${index + 1}`),
+      oracle: {
+        kind: 'verification',
+        verifier: 'project-verification',
+        scope: files,
+        evidenceKinds: ['verification-receipt'],
+      },
+      externalBoundaryRefs: [],
+    }],
+    provenanceRefs: ['test:user-request'],
+  });
+  const orientation = new CanonicalEngineeringOrientationService().orient({
+    workspaceRoot: workspace,
+    files: files.map(file => ({ path: file })),
+  });
+  return {
+    acceptance,
+    ports: {
+      selection: new CanonicalVerifierSelectionService().bind({
+        runId,
+        workspaceRoot: workspace,
+        taskContract,
+        orientation,
+      }),
+      orchestration: new CanonicalBuildOrchestrationService().bind({ runId }),
+      verification: new CanonicalVerificationService().bind({ runId, acceptance }),
+    },
+  };
+}
 
-    assert.equal(result.passed, false);
-    assert.equal(result.status, 'unverified');
-    assert.deepEqual(result.evidenceRefs, ['no verifier configured for changed file types']);
-    assert.equal(result.summary, 'No verifier configured for changed file types.');
+async function verifyWorkspace(workspace, files, actionId = 'verify-1') {
+  const { acceptance, ports } = verificationPorts(workspace, files);
+  return adapter.verify({
+    runId: 'cli-verification-run',
+    sequence: 1,
+    actionId,
+    workspaceRoot: workspace,
+    files,
+    acceptance,
+    evidenceRefs: files.map(file => `mutation:${file}:committed`),
+  }, ports);
+}
+
+test('CLI capability discovery leaves unknown files unverified instead of inventing a verifier', async () => {
+  const workspace = createWorkspace('unavailable');
+  try {
+    writeFileSync(path.join(workspace, 'asset.bin'), 'opaque', 'utf8');
+    assert.deepEqual(await host.discover(workspace, ['asset.bin']), []);
+
+    const outcome = await verifyWorkspace(workspace, ['asset.bin']);
+    assert.equal(outcome.receipt.status, 'unverified');
+    assert.equal(outcome.receipt.errorCode, 'verification-acceptance-uncovered');
+    assert.match(outcome.receipt.evidenceRefs.join('\n'), /verifier-selection:verified:unavailable/);
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }
 });
 
-test('CLI verification host preserves a passing package test for non-C++ changes', async () => {
-  const workspace = createWorkspace('package-test-pass');
+test('CLI shared pipeline selects and preserves a passing package test', async () => {
+  const workspace = createWorkspace('package-pass');
   try {
     writeFileSync(path.join(workspace, 'package.json'), JSON.stringify({
-      scripts: { test: 'node -e "console.log(\\\"PROJECT_TEST_OK\\\")"' },
+      scripts: { test: 'node -e "console.log(\\"PROJECT_TEST_OK\\")"' },
     }), 'utf8');
+    mkdirSync(path.join(workspace, 'src'));
+    writeFileSync(path.join(workspace, 'src/app.js'), 'export const value = 1;\n', 'utf8');
 
-    const result = await service.verify(workspace, ['src/app.js'], 'Update src/app.js and run tests');
-
-    assert.equal(result.passed, true);
-    assert.equal(result.status, 'passed');
-    assert.match(result.evidenceRefs.join('\n'), /npm test --silent: PROJECT_TEST_OK/);
-    assert.equal(result.summary, 'npm test --silent passed.');
+    const outcome = await verifyWorkspace(workspace, ['src/app.js']);
+    assert.equal(outcome.receipt.status, 'passed');
+    assert.match(outcome.receipt.evidenceRefs.join('\n'), /PROJECT_TEST_OK/);
+    assert.equal(outcome.receipt.checks[0].command, 'npm test --silent');
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }
 });
 
-test('CLI verification host preserves a failing package test for non-C++ changes', async () => {
-  const workspace = createWorkspace('package-test-fail');
+test('CLI shared pipeline preserves package failure and does not claim acceptance', async () => {
+  const workspace = createWorkspace('package-fail');
   try {
     writeFileSync(path.join(workspace, 'package.json'), JSON.stringify({
       scripts: { test: 'node -e "process.exit(2)"' },
     }), 'utf8');
+    mkdirSync(path.join(workspace, 'src'));
+    writeFileSync(path.join(workspace, 'src/app.ts'), 'export const value = 1;\n', 'utf8');
 
-    const result = await service.verify(workspace, ['src/app.ts'], 'Update src/app.ts and run tests');
-
-    assert.equal(result.passed, false);
-    assert.notEqual(result.status, 'unverified');
-    assert.match(result.evidenceRefs.join('\n'), /npm test --silent/);
+    const outcome = await verifyWorkspace(workspace, ['src/app.ts']);
+    assert.equal(outcome.receipt.status, 'failed');
+    assert.equal(outcome.receipt.acceptance[0].status, 'failed');
+    assert.equal(outcome.receipt.checks[0].exitCode, 2);
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }
 });
 
-test('CLI verification adapter emits an unverified shared receipt without acceptance coverage', async () => {
-  const workspace = createWorkspace('shared-receipt');
+test('CLI explicit verifier evaluates only configured stdout evidence', async () => {
+  const workspace = createWorkspace('configured-stdout');
   try {
-    const acceptance = [{ id: 'updated', statement: 'The requested update is verified.' }];
-    const verification = new CanonicalVerificationService().bind({
-      runId: 'cli-verification-run',
-      acceptance,
-    });
-    const outcome = await new CliVerificationAdapter(service).verify({
-      runId: 'cli-verification-run',
-      sequence: 1,
-      actionId: 'verify-1',
-      workspaceRoot: workspace,
-      files: ['notes.txt'],
-      prompt: 'Update notes.txt',
-      acceptance,
-      evidenceRefs: ['mutation:notes:committed'],
-    }, verification);
-
-    assert.equal(outcome.receipt.status, 'unverified');
-    assert.equal(outcome.receipt.acceptance[0].status, 'unverified');
-    assert.equal(outcome.receipt.errorCode, 'verification-acceptance-uncovered');
-    assert.equal(verification.receipts()[0], outcome.receipt);
-  } finally {
-    rmSync(workspace, { recursive: true, force: true });
-  }
-});
-
-test('CLI verification service fails closed on an invalid verifier document', async () => {
-  const workspace = createWorkspace('invalid-config');
-  try {
-    writeFileSync(path.join(workspace, 'devseek.verify.json'), '{invalid', 'utf8');
-
-    const result = await service.verify(workspace, ['src/app.py'], 'Create app.py');
-
-    assert.equal(result.passed, false);
-    assert.deepEqual(result.evidenceRefs, ['devseek.verify.json']);
-    assert.match(result.summary, /not valid JSON/);
-  } finally {
-    rmSync(workspace, { recursive: true, force: true });
-  }
-});
-
-test('CLI verification service binds requested stdout to configured verifier evidence', async () => {
-  const workspace = createWorkspace('stdout');
-  try {
+    mkdirSync(path.join(workspace, 'src'));
+    writeFileSync(path.join(workspace, 'src/app.js'), 'export const value = 1;\n', 'utf8');
     writeVerifier(workspace, {
       commands: [{
         cmd: 'node',
         args: ['-e', "process.stdout.write('ACTUAL')"],
-        expectStdoutIncludes: ['ACTUAL'],
+        expectStdoutIncludes: ['EXPECTED'],
       }],
     });
 
-    const result = await service.verify(
-      workspace,
-      ['src/app.js'],
-      'The program must print exactly one line: EXPECTED',
-    );
-
-    assert.equal(result.passed, false);
-    assert.match(result.summary, /did not provide evidence for requested stdout: EXPECTED/);
-    assert.match(result.evidenceRefs.join('\n'), /ACTUAL/);
+    const outcome = await verifyWorkspace(workspace, ['src/app.js']);
+    assert.equal(outcome.receipt.status, 'failed');
+    assert.match(outcome.receipt.checks[0].summary, /stdout missed "EXPECTED"/);
+    assert.match(outcome.receipt.evidenceRefs.join('\n'), /ACTUAL/);
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }
 });
 
-test('CLI verification service rejects executables outside its explicit capability allowlist', async () => {
-  const workspace = createWorkspace('command-policy');
+test('CLI configured verifier can compile and run a managed workspace-local executable with stdin evidence', async () => {
+  const workspace = createWorkspace('managed-local-verifier');
   try {
-    writeVerifier(workspace, { commands: [{ cmd: 'bash', args: ['-lc', 'true'] }] });
+    mkdirSync(path.join(workspace, 'src'));
+    writeFileSync(path.join(workspace, 'src/app.js'), 'export const value = 1;\n', 'utf8');
+    writeVerifier(workspace, {
+      commands: [{
+        cmd: 'node',
+        args: ['-e', [
+          "const fs = require('fs')",
+          "fs.writeFileSync('.devseek/bin/check', '#!/usr/bin/env node\\nprocess.stdin.resume(); process.stdin.on(\\\"end\\\", () => console.log(\\\"LOCAL_OK\\\"));\\n')",
+          "fs.chmodSync('.devseek/bin/check', 0o755)",
+        ].join('; ')],
+      }, {
+        cmd: './.devseek/bin/check',
+        stdin: 'input\n',
+        expectStdoutIncludes: ['LOCAL_OK'],
+      }],
+    });
+
+    const outcome = await verifyWorkspace(workspace, ['src/app.js']);
+    assert.equal(outcome.receipt.status, 'passed');
+    assert.ok(outcome.receipt.evidenceRefs.some(ref => ref.includes('stdin-sha256') && ref.includes('LOCAL_OK')));
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('CLI capability discovery fails closed on invalid or disallowed verifier documents', async () => {
+  const invalid = createWorkspace('invalid-config');
+  const disallowed = createWorkspace('disallowed-config');
+  const escaped = createWorkspace('escaped-config');
+  try {
+    writeFileSync(path.join(invalid, 'devseek.verify.json'), '{invalid', 'utf8');
+    await assert.rejects(host.discover(invalid, ['src/app.py']), /not valid JSON/);
+
+    writeVerifier(disallowed, { commands: [{ cmd: 'bash', args: ['-lc', 'true'] }] });
+    await assert.rejects(host.discover(disallowed, ['src/app.js']), /command is not allowed: bash/);
+
+    writeVerifier(escaped, { commands: [{ cmd: './.devseek/bin/../../outside', args: [] }] });
+    await assert.rejects(host.discover(escaped, ['src/app.js']), /command is not allowed/);
+  } finally {
+    rmSync(invalid, { recursive: true, force: true });
+    rmSync(disallowed, { recursive: true, force: true });
+    rmSync(escaped, { recursive: true, force: true });
+  }
+});
+
+test('CLI managed local verifier rejects symlink executables before dispatch', async () => {
+  const workspace = createWorkspace('local-verifier-symlink');
+  try {
+    mkdirSync(path.join(workspace, 'src'));
+    mkdirSync(path.join(workspace, '.devseek/bin'), { recursive: true });
+    writeFileSync(path.join(workspace, 'src/app.js'), 'export const value = 1;\n', 'utf8');
+    symlinkSync(process.execPath, path.join(workspace, '.devseek/bin/check'));
+    writeVerifier(workspace, { commands: [{ cmd: './.devseek/bin/check', args: [] }] });
 
     await assert.rejects(
-      service.verify(workspace, ['src/app.js'], 'Update app.js'),
-      /command is not allowed: bash/,
+      verifyWorkspace(workspace, ['src/app.js']),
+      /command is not allowed/,
     );
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('CLI configured verifier rejects a symlinked managed-verifier parent before dispatch', async () => {
+  const workspace = createWorkspace('local-verifier-parent-symlink');
+  const outside = createWorkspace('local-verifier-parent-outside');
+  try {
+    mkdirSync(path.join(workspace, 'src'));
+    writeFileSync(path.join(workspace, 'src/app.js'), 'export const value = 1;\n', 'utf8');
+    symlinkSync(outside, path.join(workspace, '.devseek'), 'dir');
+    writeVerifier(workspace, {
+      commands: [{ cmd: 'node', args: ['-e', "require('fs').writeFileSync('.devseek/dispatched', 'yes')"] }],
+    });
+
+    const outcome = await verifyWorkspace(workspace, ['src/app.js']);
+    assert.equal(outcome.receipt.status, 'indeterminate');
+    assert.equal(outcome.receipt.errorCode, 'verification-host-failed');
+    assert.equal(existsSync(path.join(outside, 'dispatched')), false);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('CLI shared orchestration rejects a verifier that rewrites source after exiting zero', async () => {
+  const workspace = createWorkspace('mutation');
+  try {
+    mkdirSync(path.join(workspace, 'src'));
+    writeFileSync(path.join(workspace, 'src/app.js'), 'export const value = 1;\n', 'utf8');
+    writeVerifier(workspace, {
+      commands: [{
+        cmd: 'node',
+        args: ['-e', "require('fs').writeFileSync('src/app.js', 'changed\\n')"],
+      }],
+    });
+
+    const outcome = await verifyWorkspace(workspace, ['src/app.js']);
+    assert.equal(outcome.receipt.status, 'indeterminate');
+    assert.equal(outcome.receipt.errorCode, 'verification-host-failed');
+    assert.notEqual(outcome.receipt.acceptance[0].status, 'passed');
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }

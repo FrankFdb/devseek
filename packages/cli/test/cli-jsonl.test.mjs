@@ -545,7 +545,7 @@ test('CLI records recovery.failed and preserves an unsafe repair apply error', a
   });
 });
 
-test('CLI validates explicit C++ stdout expectations before passing quality gate', async () => {
+test('I18-CLI-01 user journey: pre-existing project verifier cannot be weakened by generated source', async () => {
   const incompleteSource = [
     '#include <iostream>',
     '',
@@ -569,6 +569,21 @@ test('CLI validates explicit C++ stdout expectations before passing quality gate
 
   await withTestBridge(async ({ port, seenBodies }) => {
     await withTempCwdAsync(async (cwd) => {
+      writeFileSync(path.join(cwd, 'devseek.verify.json'), JSON.stringify({
+        commands: [{
+          cmd: 'python3',
+          args: [
+            '-c',
+            [
+              'import os, subprocess',
+              'output = os.path.join(os.environ["DEVSEEK_VERIFICATION_OUTPUT_DIR"], "todo")',
+              'subprocess.run(["g++", "-std=c++17", "src/todo.cpp", "-o", output], check=True)',
+              'print(subprocess.check_output([output], text=True), end="")',
+            ].join('; '),
+          ],
+          expectStdoutIncludes: ['TODO:alpha', 'TODO:beta'],
+        }],
+      }, null, 2));
       const result = await runCli([bin, 'exec', '--jsonl', [
         'Create src/todo.cpp as a C++17 program.',
         'Preserve the first line exactly: TODO:alpha.',
@@ -585,7 +600,7 @@ test('CLI validates explicit C++ stdout expectations before passing quality gate
 
       assert.equal(result.status, 0, result.stderr);
       assert.equal(seenBodies.length, 2);
-      assert.match(seenBodies[1].prompt, /Program output for src\/todo\.cpp did not match the requested stdout/);
+      assert.match(seenBodies[1].prompt, /stdout missed "TODO:beta"/);
       assert.match(seenBodies[1].prompt, /TODO:beta/);
 
       const written = readFileSync(path.join(cwd, 'src/todo.cpp'), 'utf8');
@@ -637,7 +652,7 @@ test('CLI applies DeepSeek XML tool_call responses with loose C++ JSON content',
   }, () => ({ content: response }));
 });
 
-test('CLI preserves single-quoted escaped newlines in loose XML tool content', async () => {
+test('CLI preserves loose XML Python escapes and verifies the repaired syntax', async () => {
   const response = '<tool_call>{"name": "create_file", "arguments": {"filePath": "src/greeter.py", "content": "import sys\\n\\ndef main():\\n    name = sys.stdin.readline().rstrip(\'\\n\')\\n    print(f"HELLO:{name}")\\n    print(**file**)\\n\\nif **name** == \\"**main**\\":\\n    main()\\n"}}</tool_call>';
 
   await withTestBridge(async ({ port }) => {
@@ -652,8 +667,7 @@ test('CLI preserves single-quoted escaped newlines in loose XML tool content', a
         timeout: 10000,
       });
 
-      assert.equal(result.status, 1, result.stderr);
-      assert.match(result.stderr, /verification-incomplete/);
+      assert.equal(result.status, 0, result.stderr);
       const written = readFileSync(path.join(cwd, 'src/greeter.py'), 'utf8');
       assert.match(written, /rstrip\('\\n'\)/);
       assert.doesNotMatch(written, /rstrip\('\n'\)/);
@@ -661,6 +675,8 @@ test('CLI preserves single-quoted escaped newlines in loose XML tool content', a
       assert.match(written, /print\(__file__\)/);
       assert.doesNotMatch(written, /\*\*name\*\*/);
       assert.doesNotMatch(written, /\*\*file\*\*/);
+      const events = result.stdout.trim().split(/\r?\n/).map(line => JSON.parse(line));
+      assert.equal(events.find(event => event.type === 'validation.completed')?.passed, true);
     });
   }, () => ({ content: response }));
 });
@@ -760,28 +776,28 @@ test('CLI requires verifier evidence for explicit requested stdout outputs', asy
     '    return ordered[len(ordered) // 2]',
     '',
   ].join('\n');
-  const meanOnlyVerifier = JSON.stringify({
-    tests: [
-      {
-        command: 'python3 -c "import sys; sys.path.insert(0, \'src\'); from stats import mean; print(f\'RDW9_MEAN:{mean([2, 4, 6])}\')"',
-        assert: { stdout_contains: 'RDW9_MEAN:4.0' },
-      },
-    ],
-  }, null, 2);
-  const completeVerifier = JSON.stringify({
-    tests: [
-      {
-        command: 'python3 -c "import sys; sys.path.insert(0, \'src\'); from stats import mean, median; print(f\'RDW9_MEAN:{mean([2, 4, 6])}\'); print(f\'RDW9_MEDIAN:{median([2, 4, 6])}\')"',
-        assert: { stdout_contains: ['RDW9_MEAN:4.0', 'RDW9_MEDIAN:4'] },
-      },
-    ],
-  }, null, 2);
   let turn = 0;
 
   await withTestBridge(async ({ port, seenBodies }) => {
     await withTempCwdAsync(async (cwd) => {
+      writeFileSync(path.join(cwd, 'devseek.verify.json'), JSON.stringify({
+        commands: [{
+          cmd: 'python3',
+          args: [
+            '-c',
+            [
+              'import sys',
+              'sys.path.insert(0, "src")',
+              'from stats import mean, median',
+              'print(f"RDW9_MEAN:{mean([2, 4, 6])}")',
+              'print(f"RDW9_MEDIAN:{median([2, 4, 6])}")',
+            ].join('; '),
+          ],
+          expectStdoutIncludes: ['RDW9_MEAN:4.0', 'RDW9_MEDIAN:4'],
+        }],
+      }, null, 2));
       const result = await runCli([bin, 'exec', '--jsonl', [
-        'Create or update src/stats.py and devseek.verify.json so validation checks both outputs:',
+        'Create or update src/stats.py so the existing project verifier checks both outputs:',
         'RDW9_MEAN:4.0',
         'RDW9_MEDIAN:4',
         '- Return the minimal DevSeek replace_file tool call(s) needed to pass validation.',
@@ -797,7 +813,7 @@ test('CLI requires verifier evidence for explicit requested stdout outputs', asy
 
       assert.equal(result.status, 0, result.stderr);
       assert.equal(seenBodies.length, 2);
-      assert.match(seenBodies[1].prompt, /did not provide evidence for requested stdout: RDW9_MEDIAN:4/);
+      assert.match(seenBodies[1].prompt, /median/);
 
       const events = result.stdout.trim().split(/\r?\n/).map(line => JSON.parse(line));
       assert.deepEqual(
@@ -809,17 +825,11 @@ test('CLI requires verifier evidence for explicit requested stdout outputs', asy
     turn += 1;
     if (turn === 1) {
       return {
-        content: [
-          `[TOOL:create_file ${JSON.stringify({ filePath: 'src/stats.py', content: meanOnlySource })}]`,
-          `[TOOL:create_file ${JSON.stringify({ filePath: 'devseek.verify.json', content: meanOnlyVerifier })}]`,
-        ].join('\n'),
+        content: `[TOOL:create_file ${JSON.stringify({ filePath: 'src/stats.py', content: meanOnlySource })}]`,
       };
     }
     return {
-      content: [
-        `[TOOL:replace_file ${JSON.stringify({ filePath: 'src/stats.py', content: completeSource })}]`,
-        `[TOOL:replace_file ${JSON.stringify({ filePath: 'devseek.verify.json', content: completeVerifier })}]`,
-      ].join('\n'),
+      content: `[TOOL:replace_file ${JSON.stringify({ filePath: 'src/stats.py', content: completeSource })}]`,
     };
   });
 });

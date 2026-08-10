@@ -89,7 +89,7 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
   constructor(
     private readonly artifactInterpreter: Pick<CliCodingArtifactInterpreter, 'interpret'>,
     private readonly workspaceMutation: CliWorkspaceMutationHostAdapter,
-    private readonly verification: Pick<CliVerificationAdapter, 'verify'>,
+    private readonly verification: Pick<CliVerificationAdapter, 'prepare' | 'execute'>,
   ) {}
 
   async executeCanonical(
@@ -334,6 +334,17 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
             effects: ['process'],
             input: { files },
           });
+          const verificationPreparation = await this.verification.prepare({
+            runId: request.runId,
+            sequence: verificationContext.sequence,
+            actionId: verificationContext.actionId,
+            workspaceRoot: request.workspaceRoot,
+            files,
+            acceptance: request.verificationAcceptance,
+            evidenceRefs: changeReceipt.evidenceRefs,
+          }, {
+            selection: request.verifierSelection,
+          });
           const verificationEffect = await request.externalEffects.execute({
             sequence: verificationContext.sequence,
             actionId: verificationContext.actionId,
@@ -345,16 +356,10 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
             risk: 'medium',
           }, {
             execute: async () => {
-              const verification = await this.verification.verify({
-                runId: request.runId,
-                sequence: verificationContext.sequence,
-                actionId: verificationContext.actionId,
-                workspaceRoot: request.workspaceRoot,
-                files,
-                prompt: request.userPrompt,
-                acceptance: request.taskContract.acceptance,
-                evidenceRefs: changeReceipt.evidenceRefs,
-              }, request.verification);
+              const verification = await this.verification.execute(verificationPreparation, {
+                orchestration: request.buildOrchestration,
+                verification: request.verification,
+              });
               const receipt = verification.receipt;
               return {
                 status: receipt.status === 'passed'

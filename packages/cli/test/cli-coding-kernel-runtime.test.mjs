@@ -112,10 +112,14 @@ function createHarness({
     },
   };
   const verification = {
-    async verify(request, canonicalVerification) {
+    async prepare(request) {
       verifications.push(request);
+      return { input: request };
+    },
+    async execute(preparation, ports) {
+      const request = preparation.input;
       const result = validations[Math.min(verifications.length - 1, validations.length - 1)];
-      return canonicalVerification.verify(buildCodingVerificationPlan({
+      return ports.verification.verify(buildCodingVerificationPlan({
         runId: request.runId,
         sequence: request.sequence,
         actionId: request.actionId,

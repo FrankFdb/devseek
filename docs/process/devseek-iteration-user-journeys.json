@@ -757,6 +757,106 @@
           }
         }
       ]
+    },
+    {
+      "iteration_id": "I18",
+      "status": "verified-local",
+      "goal": "Converge verifier selection, build orchestration, and independent verification into one factual, read-only, acceptance-bound pipeline across all product Surfaces.",
+      "delta_from_baseline": "Adds strongest scoped verifier selection, source-mutation detection, structural readback separation, immutable pre-existing verifier enforcement, unavailable-host suppression, and unknown-extension text classification; none are established by the fixed five coding fixtures or I10-I17.",
+      "fixture_path": "scripts/test/fixtures/user-simulations/i18-verification-pipeline.json",
+      "local_artifact_root": "code/devseek-tests/verification-pipeline",
+      "capability_ids": [
+        "C4-ACCEPTANCE-CONTRACT",
+        "C9-VERIFIER-SELECTION",
+        "C9-BUILD-ORCHESTRATION",
+        "C9-INDEPENDENT-VERIFICATION"
+      ],
+      "cases": [
+        {
+          "case_id": "I18-SEL-01",
+          "capability_ids": ["C9-VERIFIER-SELECTION"],
+          "surface": "headless",
+          "user_action": "Offer multiple verifier capabilities for one scoped source change, including a stronger read-only project check and weaker or mutable alternatives.",
+          "expected_outcomes": [
+            "The acceptance-bound selector chooses the strongest eligible read-only capability with exact scope coverage.",
+            "Candidate priority cannot bypass verifier identity, scope, or workspace-access constraints."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-verifier-orchestration.test.mjs",
+            "test_name": "I18-SEL-01 user journey: acceptance selects the strongest scoped read-only verifier"
+          }
+        },
+        {
+          "case_id": "I18-BLD-01",
+          "capability_ids": ["C9-BUILD-ORCHESTRATION", "C9-INDEPENDENT-VERIFICATION"],
+          "surface": "vscode",
+          "user_action": "Run a verifier that exits zero but rewrites the source file it is supposed to inspect.",
+          "expected_outcomes": [
+            "Build orchestration records the workspace mutation and settles indeterminate.",
+            "The zero exit code cannot be converted into passing independent verification."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-verifier-orchestration.test.mjs",
+            "test_name": "I18-BLD-01 user journey: source-mutating verifier cannot produce a passing receipt"
+          }
+        },
+        {
+          "case_id": "I18-ACC-01",
+          "capability_ids": ["C4-ACCEPTANCE-CONTRACT", "C9-INDEPENDENT-VERIFICATION"],
+          "surface": "headless",
+          "user_action": "Commit and independently read back the requested file while keeping project verification as a separate acceptance oracle.",
+          "expected_outcomes": [
+            "Committed path-bound readback satisfies only workspace structural acceptance.",
+            "No verification or external-source acceptance is fabricated from the mutation receipt."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-structural-acceptance.test.mjs",
+            "test_name": "I18-ACC-01 user journey: committed readback satisfies structural acceptance without claiming verification"
+          }
+        },
+        {
+          "case_id": "I18-CLI-01",
+          "capability_ids": ["C9-VERIFIER-SELECTION", "C9-BUILD-ORCHESTRATION", "C9-INDEPENDENT-VERIFICATION"],
+          "surface": "cli",
+          "user_action": "Ask CLI to repair a C++ program while a pre-existing project verifier requires exact stdout that the first generated source does not produce.",
+          "expected_outcomes": [
+            "The model cannot weaken or replace the pre-existing verifier configuration.",
+            "The first check fails, one bounded repair adds the missing behavior, and revalidation passes."
+          ],
+          "evidence": {
+            "test_path": "packages/cli/test/cli-jsonl.test.mjs",
+            "test_name": "I18-CLI-01 user journey: pre-existing project verifier cannot be weakened by generated source"
+          }
+        },
+        {
+          "case_id": "I18-HDL-01",
+          "capability_ids": ["C9-VERIFIER-SELECTION", "C9-BUILD-ORCHESTRATION", "C9-INDEPENDENT-VERIFICATION"],
+          "surface": "headless",
+          "user_action": "Invoke Headless verification for a required acceptance criterion without supplying an applicable verifier capability.",
+          "expected_outcomes": [
+            "Selection and orchestration remain unavailable without dispatching the host.",
+            "Independent verification settles unverified and cannot authorize completion."
+          ],
+          "evidence": {
+            "test_path": "packages/headless/test/headless-coding-kernel.test.mjs",
+            "test_name": "I18-HDL-01 user journey: unavailable Headless verifier never dispatches the host"
+          }
+        },
+        {
+          "case_id": "I18-VSC-01",
+          "capability_ids": ["C9-VERIFIER-SELECTION", "C9-BUILD-ORCHESTRATION", "C9-INDEPENDENT-VERIFICATION"],
+          "surface": "vscode",
+          "user_action": "Create an explicitly requested plain-text artifact whose filename uses an unknown extension.",
+          "expected_outcomes": [
+            "VS Code classifies the committed content from bytes instead of guessing from the extension.",
+            "Canonical file readback passes without inventing a build script or running a process."
+          ],
+          "evidence": {
+            "test_path": "packages/vscode-extension/test/unit/simple-file-task.test.mjs",
+            "test_name": "I18-VSC-01 user journey: unknown-extension text completes from factual readback"
+          }
+        }
+      ]
     }
   ]
 }

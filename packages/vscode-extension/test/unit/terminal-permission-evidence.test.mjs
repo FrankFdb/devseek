@@ -233,14 +233,14 @@ test('Terminal evidence: validation execution has one injected authority and no 
 
   assert.doesNotMatch(validationService, /child_process|\bexec\s*\(/);
   assert.match(validationService, /options\.commandRunner\s*\?\?\s*rejectMissingCommandAuthority/);
-  assert.match(validationService, /未配置验证命令授权边界/);
+  assert.match(validationService, /Validation command authority is unavailable; command was not executed\./);
   assert.match(coordinator, /createValidationCommandRunner\s*\(/);
   assert.match(coordinator, /executionProfile:\s*'validation'/);
   assert.match(coordinator, /stdout:\s*result\.stdout/);
   assert.match(coordinator, /stderr:\s*result\.stderr/);
 
   assert.match(autoValidation, /commandRunner:\s*callbacks\.onValidationCommand/);
-  assert.match(workspaceApplier, /commandRunner:\s*validationCommandRunner/);
+  assert.match(workspaceApplier, /commandRunner:\s*input\.validationCommandRunner/);
   assert.match(closedLoop, /validationCommandRunner:\s*input\.validationCommandRunner/);
   assert.equal((extension.match(/createValidationCommandRunner\s*\(\{/g) ?? []).length, 2);
   assert.doesNotMatch(viewProvider, /createValidationCommandRunner\s*\(\{/);

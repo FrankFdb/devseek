@@ -14,6 +14,7 @@ import {
   buildSecretHarvestingRefusalTaskContract,
   isUnsafeSecretHarvestingImplementationRequest,
 } from './coding-safety-policy';
+import { resolveCodingTaskPathIntent } from './coding-task-path-intent';
 
 const VERIFICATION_REQUEST_RE = /(?:\bverif(?:y|ied|ication)\b|\bvalidat(?:e|ed|ion)\b|\btests?\b|\bchecks?\b|\bcompile\b|\brun\b|验证|校验|测试|检查|编译|运行|自测)/iu;
 const SCOPED_CHANGE_RE = /(?:keep\s+the\s+change\s+scoped|do\s+not\s+(?:modify|change|touch)\s+(?:any\s+)?other\s+files?|only\s+[^.\n]{0,80}\s+changes?|不要(?:修改|改动|新增)(?:任何)?其他文件|只(?:修改|改动)[^，。；\n]{0,80})/iu;
@@ -24,8 +25,6 @@ const API_VERSION_BOUNDARY_RE = /(?:(?:latest|current|versioned)\s+[^.\n]{0,60}\
 const LICENSE_BOUNDARY_RE = /(?:(?<![/\\])\blicen[cs]e\b|许可证|授权协议|开源协议)/iu;
 const DEPLOYMENT_BOUNDARY_RE = /(?:\bdeploy(?:ment)?\b|\bproduction\b|\bstaging\b|部署|上线|生产环境|预发布环境)/iu;
 const SUBJECTIVE_ACCEPTANCE_RE = /(?:looks?\s+(?:good|professional|polished|nice)|看起来(?:专业|不错|很好|好看)|足够美观|令人满意|主观满意)/iu;
-const WORKSPACE_PATH_TOKEN_RE = /(?:^|[\s("'`])((?:\.{0,2}\/)?[A-Za-z0-9_.?*/-]+)(?=$|[\s,;:!?，。；：！？)"'`])/gu;
-const ROOT_WORKSPACE_FILE_RE = /(?:\.(?:bash|c|cc|cjs|cpp|css|cxx|env|go|h|hh|hpp|html|java|js|json|jsonc|jsx|local|lock|md|mdx|mjs|py|rs|scss|sh|sql|svelte|toml|ts|tsx|txt|vue|xml|ya?ml)|^(?:containerfile|dockerfile|license|makefile))$/iu;
 
 export interface ResolveCodingKernelTaskContractInput {
   readonly prompt: string;
@@ -50,14 +49,20 @@ export function resolveCodingKernelTaskContract(
   const networkEffect = dependencyEffect || NETWORK_EFFECT_RE.test(prompt);
   const mode = orientation.mode;
   const mutating = mode === 'change' || mode === 'release';
-  const explicitTargets = extractCodingWorkspacePaths(prompt);
-  const declaredTargets = uniquePaths([...explicitTargets, ...(input.targetPaths ?? [])]);
-  const include = dependencyEffect && declaredTargets.length === 0
+  const pathIntent = resolveCodingTaskPathIntent({ prompt, targetPaths: input.targetPaths });
+  const declaredTargets = [...pathIntent.mutationFileTargets];
+  const mutationScope = uniquePaths([
+    ...declaredTargets,
+    ...pathIntent.mutationDirectoryTargets.map(path => `${path}/**`),
+  ]);
+  const include = dependencyEffect && mutationScope.length === 0
     ? ['package.json', 'package-lock.json', 'src/**']
-    : uniquePaths([
-        ...declaredTargets,
-        ...(!mutating && declaredTargets.length === 0 ? input.contextFiles ?? [] : []),
-      ]);
+    : mutating
+      ? mutationScope
+      : uniquePaths([
+          ...pathIntent.mentionedPaths,
+          ...(pathIntent.mentionedPaths.length === 0 ? input.contextFiles ?? [] : []),
+        ]);
   const scopedChange = mutating && SCOPED_CHANGE_RE.test(prompt);
   const verificationRequired = mutating
     && (input.verificationRequired !== false || VERIFICATION_REQUEST_RE.test(prompt));
@@ -107,15 +112,6 @@ export function resolveCodingKernelAcceptance(
   input: Omit<ResolveCodingKernelTaskContractInput, 'surface'>,
 ): CodingCompletionAcceptanceCriterion[] {
   return [...resolveCodingKernelTaskContract({ ...input, surface: 'headless' }).acceptance];
-}
-
-export function extractCodingWorkspacePaths(prompt: string): string[] {
-  const paths: string[] = [];
-  for (const match of normalizePrompt(prompt).matchAll(WORKSPACE_PATH_TOKEN_RE)) {
-    const path = normalizeWorkspacePath((match[1] ?? '').replace(/\.+$/u, ''));
-    if (path && isWorkspacePathToken(path)) paths.push(path);
-  }
-  return uniquePaths(paths);
 }
 
 function resolveDeliverables(input: {
@@ -313,10 +309,6 @@ function normalizeWorkspacePath(value: string): string {
   const normalized = value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/{2,}/g, '/');
   if (!normalized || normalized.startsWith('../') || normalized.startsWith('/')) return '';
   return normalized;
-}
-
-function isWorkspacePathToken(path: string): boolean {
-  return path.includes('/') || ROOT_WORKSPACE_FILE_RE.test(path);
 }
 
 function isConcreteWorkspacePath(path: string): boolean {

@@ -16,7 +16,10 @@ import {
   CODING_CONFORMANCE_DEVELOPMENT_FIXTURES,
   CODING_CONFORMANCE_DIMENSIONS,
   CODING_KERNEL_OUTPUT_VERSION,
+  CanonicalBuildOrchestrationService,
+  CanonicalEngineeringOrientationService,
   CanonicalVerificationService,
+  CanonicalVerifierSelectionService,
   CanonicalToolExecutionService,
   CanonicalToolAuthorityService,
   CanonicalWorkspaceMutationTransaction,
@@ -289,26 +292,54 @@ test('Headless mutation adapter commits only caller-host readback evidence', asy
   assert.equal(outcome.receipt.readbackRef, 'headless-readback:value:v1');
 });
 
-test('Headless verification adapter keeps missing acceptance evidence unverified', async () => {
+test('I18-HDL-01 user journey: unavailable Headless verifier never dispatches the host', async () => {
   const acceptance = [{ id: 'builds', statement: 'Project builds' }];
+  const taskContract = buildCodingKernelTaskContract({
+    goal: 'Verify the headless workspace',
+    mode: 'change',
+    include: ['src/value.ts'],
+    deliverables: [{ id: 'source', kind: 'source-change', path: 'src/value.ts' }],
+    acceptance: [{
+      ...acceptance[0],
+      deliverableIds: ['source'],
+      oracle: {
+        kind: 'verification',
+        verifier: 'headless-test-adapter',
+        scope: ['src/value.ts'],
+        evidenceKinds: ['verification-receipt'],
+      },
+      externalBoundaryRefs: [],
+    }],
+    provenanceRefs: ['headless-test'],
+  });
   const verification = new CanonicalVerificationService().bind({
     runId: 'headless-verify-run',
     acceptance,
   });
-  const outcome = await new HeadlessVerificationAdapter(verification).verify({
-    plan: {
+  const outcome = await new HeadlessVerificationAdapter({
+    selection: new CanonicalVerifierSelectionService().bind({
       runId: 'headless-verify-run',
-      sequence: 1,
-      actionId: 'headless-verify-1',
-      idempotencyKey: 'headless-verify-run:headless-verify-1',
-      scopePaths: ['src/value.ts'],
-      acceptance,
-      payload: { workspaceRoot: '/workspace' },
-      evidenceRefs: ['headless-mutation:committed'],
-    },
+      workspaceRoot: '/workspace',
+      taskContract,
+      orientation: new CanonicalEngineeringOrientationService().orient({
+        workspaceRoot: '/workspace',
+        files: [{ path: 'src/value.ts' }],
+      }),
+    }),
+    orchestration: new CanonicalBuildOrchestrationService().bind({ runId: 'headless-verify-run' }),
+    verification,
+  }).verify({
+    runId: 'headless-verify-run',
+    sequence: 1,
+    actionId: 'headless-verify-1',
+    workspaceRoot: '/workspace',
+    scopePaths: ['src/value.ts'],
+    acceptance,
+    candidates: [],
+    evidenceRefs: ['headless-mutation:committed'],
     host: {
-      async verify() {
-        return { verifier: 'none', checks: [], evidenceRefs: ['headless-verifier:none'] };
+      async execute() {
+        throw new Error('unavailable selection must not execute a host step');
       },
     },
   });
@@ -347,6 +378,7 @@ test('Headless Kernel blocks a change without canonical verification evidence', 
 
 async function executeHeadlessProductRoute(request, scenario) {
   const toolExecutions = [];
+  const mutations = [];
   const verifications = [];
 
   if (scenario.fixtureId === 'permission-denied-no-effect') {
@@ -379,6 +411,7 @@ async function executeHeadlessProductRoute(request, scenario) {
         content,
       });
       toolExecutions.push(mutation.toolReceipt);
+      mutations.push(mutation.changeReceipt);
 
       const verificationActionId = `headless-verify-${index + 1}`;
       const verification = await executeHeadlessVerificationTool({
@@ -403,7 +436,13 @@ async function executeHeadlessProductRoute(request, scenario) {
           status: 'blocked',
           evidenceRefs: toolExecutions.flatMap(receipt => receipt.evidenceRefs),
         }))
-        : [],
+        : request.taskContract.acceptance
+          .filter(criterion => criterion.oracle.kind !== 'verification')
+          .map(criterion => ({
+            criterionId: criterion.id,
+            status: 'passed',
+            evidenceRefs: mutations.flatMap(receipt => receipt.evidenceRefs),
+          })),
     pendingRefs: [],
     adverseEvidenceRefs: [],
     residualRisks: scenario.fixtureId === 'permission-denied-no-effect'
@@ -481,30 +520,36 @@ async function executeHeadlessVerificationTool(input) {
     risk: 'medium',
   }, {
     async execute() {
-        const verification = await new HeadlessVerificationAdapter(input.request.verification).verify({
-          plan: {
-            runId: context.runId,
-            sequence: context.sequence,
-            actionId: context.actionId,
-            idempotencyKey: `${context.runId}:${context.actionId}`,
-            scopePaths: [input.scenario.targetPath],
-            acceptance: input.request.taskContract.acceptance,
-            payload: input.scenario.verifier,
-            evidenceRefs: input.mutationEvidenceRefs,
-          },
+        const candidate = headlessVerifierCandidate(
+          input.request.workspaceRoot,
+          input.scenario.targetPath,
+          input.request.taskContract.acceptance,
+          input.scenario.verifier,
+        );
+        const verification = await new HeadlessVerificationAdapter({
+          selection: input.request.verifierSelection,
+          orchestration: input.request.buildOrchestration,
+          verification: input.request.verification,
+        }).verify({
+          runId: context.runId,
+          sequence: context.sequence,
+          actionId: context.actionId,
+          workspaceRoot: input.request.workspaceRoot,
+          scopePaths: [input.scenario.targetPath],
+          acceptance: input.request.verificationAcceptance,
+          candidates: [candidate],
+          evidenceRefs: input.mutationEvidenceRefs,
           host: {
-            async verify() {
-              const result = runVerifier(input.request.workspaceRoot, input.scenario.verifier);
-              const status = result.passed ? 'passed' : 'failed';
+            async execute(step) {
+              const result = runVerifierStep(input.request.workspaceRoot, step);
               return {
-                verifier: input.scenario.verifier.name,
-                checks: [{
-                  checkId: `${context.actionId}:behavior`,
-                  status,
-                  acceptanceIds: input.request.taskContract.acceptance.map(criterion => criterion.id),
-                  summary: result.summary,
-                  evidenceRefs: result.evidenceRefs,
-                }],
+                stepId: step.id,
+                status: result.exitCode === 0 ? 'passed' : 'failed',
+                summary: result.summary,
+                exitCode: result.exitCode,
+                stdout: result.stdout,
+                stderr: result.stderr,
+                workspaceMutationPaths: [],
                 evidenceRefs: result.evidenceRefs,
               };
             },
@@ -571,16 +616,47 @@ function realWorkspaceMutationHost(workspaceRoot) {
   };
 }
 
-function runVerifier(cwd, verifier) {
-  const result = spawnSync(verifier.command, verifier.args, {
+function headlessVerifierCandidate(cwd, targetPath, acceptance, verifier) {
+  return {
+    id: `headless-${verifier.name}`,
+    source: `headless-capability:${verifier.name}`,
+    verifierIds: [...new Set(acceptance.map(criterion => criterion.oracle.verifier))],
+    strength: 'runtime',
+    priority: 10,
+    scopePaths: [targetPath],
+    workspaceAccess: 'read-only',
+    steps: [{
+      id: `headless-${verifier.name}:runtime`,
+      role: 'runtime',
+      invocation: {
+        kind: 'process',
+        command: verifier.command,
+        args: verifier.args,
+        ...(verifier.stdin ? { stdin: verifier.stdin } : {}),
+      },
+      cwd,
+      timeoutMs: 10_000,
+      outputPolicy: 'ephemeral',
+      evidenceRefs: [`headless-capability:${verifier.name}`],
+    }],
+    evidenceRefs: [`headless-capability:${verifier.name}`],
+  };
+}
+
+function runVerifierStep(cwd, step) {
+  assert.equal(step.invocation.kind, 'process');
+  const result = spawnSync(step.invocation.command, step.invocation.args, {
     cwd,
     encoding: 'utf8',
-    input: verifier.stdin ?? '',
-    timeout: 10000,
+    input: step.invocation.stdin ?? '',
+    timeout: step.timeoutMs,
   });
-  const evidenceRefs = [`${verifier.command} ${verifier.args.join(' ')}:exit=${result.status}`];
+  const display = `${step.invocation.command} ${step.invocation.args.join(' ')}`;
+  const evidenceRefs = [`${display}:exit=${result.status}`];
   return {
-    passed: result.status === 0,
+    exitCode: result.status,
+    stdout: result.stdout ?? '',
+    stderr: result.stderr ?? '',
     summary: (result.stderr || result.stdout || `exit ${result.status}`).trim(),
     evidenceRefs,
   };

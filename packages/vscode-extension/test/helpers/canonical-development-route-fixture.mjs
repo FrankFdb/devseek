@@ -4,6 +4,7 @@ import {
   buildCodingWorkspaceMutationPlan,
   buildSecretHarvestingRefusalAcceptanceEvidence,
   isSecretHarvestingRefusalTaskContract,
+  projectBuildOrchestrationHostResult,
 } from '../../../shared/dist/index.js';
 
 /**
@@ -11,7 +12,7 @@ import {
  * conformance scenario data separate from receipt settlement.
  */
 export async function exerciseCanonicalDevelopmentRoute(input) {
-  const { fixture, request, taskContract } = input;
+  const { fixture, request } = input;
   const callbacks = request.callbacks;
   assertCanonicalPorts(callbacks);
 
@@ -94,8 +95,10 @@ export async function exerciseCanonicalDevelopmentRoute(input) {
             ? `vscode-auto-validation-${expectedVerification.sequence}`
             : context.actionId;
           const outcome = await settleVerification({
+            verifierSelection: callbacks.canonicalVerifierSelection,
+            buildOrchestration: callbacks.canonicalBuildOrchestration,
             verification: callbacks.canonicalVerification,
-            taskContract,
+            acceptance: callbacks.canonicalVerificationAcceptance,
             expectedVerification,
             runId: context.runId,
             actionId,
@@ -128,8 +131,10 @@ export async function exerciseCanonicalDevelopmentRoute(input) {
     const expectedVerification = fixture.expected.verifications[0];
     if (!expectedVerification) throw new Error('vscode-conformance:missing-extra-verification-source');
     await settleVerification({
+      verifierSelection: callbacks.canonicalVerifierSelection,
+      buildOrchestration: callbacks.canonicalBuildOrchestration,
       verification: callbacks.canonicalVerification,
-      taskContract,
+      acceptance: callbacks.canonicalVerificationAcceptance,
       expectedVerification: {
         ...expectedVerification,
         sequence: expectedVerification.sequence + 100,
@@ -204,37 +209,60 @@ function committedMutationHost(expected, ownerEvidenceRef) {
   };
 }
 
-function settleVerification(input) {
+async function settleVerification(input) {
   const status = input.expectedVerification.status === 'blocked'
     ? 'unavailable'
     : input.expectedVerification.status;
   const evidenceRefs = [...input.expectedVerification.evidenceRefs, input.ownerEvidenceRef];
+  const candidate = {
+    id: input.expectedVerification.verifier,
+    source: 'vscode-development-conformance-fixture',
+    strength: 'test',
+    priority: 0,
+    verifierIds: ['project-verification'],
+    scopePaths: input.scopePaths,
+    workspaceAccess: 'read-only',
+    steps: [{
+      id: `check-${input.actionId}`,
+      role: 'test',
+      invocation: { kind: 'process', command: 'node', args: ['--test'] },
+      cwd: '/workspace',
+      timeoutMs: 10_000,
+      outputPolicy: 'ephemeral',
+      evidenceRefs,
+    }],
+    evidenceRefs,
+  };
+  const selection = input.verifierSelection.select({
+    sequence: input.expectedVerification.sequence,
+    actionId: input.actionId,
+    scopePaths: input.scopePaths,
+    candidates: [candidate],
+    evidenceRefs,
+  });
+  const orchestration = await input.buildOrchestration.execute(selection, {
+    async execute(step) {
+      return {
+        stepId: step.id,
+        status,
+        summary: `Development verification ${status}`,
+        exitCode: status === 'passed' ? 0 : status === 'failed' ? 1 : null,
+        workspaceMutationPaths: [],
+        evidenceRefs,
+      };
+    },
+  });
   return input.verification.verify(buildCodingVerificationPlan({
     runId: input.runId,
     sequence: input.expectedVerification.sequence,
     actionId: input.actionId,
     idempotencyKey: `${input.runId}:${input.actionId}`,
     scopePaths: input.scopePaths,
-    acceptance: input.taskContract.acceptance.map(criterion => ({
-      id: criterion.id,
-      statement: criterion.statement,
-    })),
-    payload: { verifier: input.expectedVerification.verifier },
-    evidenceRefs,
+    acceptance: input.acceptance,
+    payload: { verifier: input.expectedVerification.verifier, selection },
+    evidenceRefs: orchestration.evidenceRefs,
   }), {
-    async verify() {
-      return {
-        verifier: input.expectedVerification.verifier,
-        checks: [{
-          checkId: `check-${input.actionId}`,
-          status,
-          acceptanceIds: input.expectedVerification.acceptanceIds,
-          summary: `Development verification ${status}`,
-          evidenceRefs,
-        }],
-        evidenceRefs,
-      };
-    },
+    async verify() { return projectBuildOrchestrationHostResult(orchestration); },
   });
 }
 
@@ -259,6 +287,9 @@ function assertCanonicalPorts(callbacks) {
     callbacks.canonicalToolAuthority,
     callbacks.canonicalToolExecution,
     callbacks.canonicalWorkspaceMutations,
+    callbacks.canonicalVerifierSelection,
+    callbacks.canonicalBuildOrchestration,
+    callbacks.canonicalVerificationAcceptance,
     callbacks.canonicalVerification,
     callbacks.traceRunId,
   ];

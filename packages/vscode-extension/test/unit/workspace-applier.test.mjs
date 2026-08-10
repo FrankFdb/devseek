@@ -941,7 +941,7 @@ test('workspace-applier: explicit missing code subdirectory still wins over same
   }
 });
 
-test('workspace-applier: markdown writes include review ledger file-check validation', async () => {
+test('workspace-applier: markdown writes include canonical readback validation', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-applier-review-'));
   try {
     fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
@@ -977,12 +977,12 @@ test('workspace-applier: markdown writes include review ledger file-check valida
     });
     assert.equal(result.review?.validation.ran, true);
     assert.equal(result.review?.validation.ok, true);
-    assert.equal(result.review?.validation.mode, 'file-check');
-    assert.equal(result.review?.validation.reason, 'non-code-file-validation');
+    assert.equal(result.review?.validation.mode, 'readback');
+    assert.equal(result.review?.validation.reason, 'canonical-build-orchestration:passed');
     assert.equal(result.verificationReceipt?.status, 'passed');
     assert.equal(result.verificationReceipt?.checks[0]?.status, 'passed');
     assert.ok((result.verificationReceipt?.evidenceRefs.length ?? 0) > 0);
-    assert.match(result.review?.validation.command || '', /test -f/);
+    assert.equal(result.review?.validation.command, '');
     assert.deepEqual(result.review?.unfinishedItems, []);
     assert.match(readFileSync(path.join(root, 'notes', 'review.md'), 'utf8'), /Done\./);
     assert.equal(
@@ -994,7 +994,7 @@ test('workspace-applier: markdown writes include review ledger file-check valida
   }
 });
 
-test('workspace-applier: explicit unknown text writes pass file-check validation without inventing build scripts', async () => {
+test('workspace-applier: explicit unknown text writes pass content-classified readback without inventing scripts', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-applier-unknown-'));
   try {
     fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
@@ -1019,9 +1019,9 @@ test('workspace-applier: explicit unknown text writes pass file-check validation
     assert.equal(result.applied, true);
     assert.deepEqual(result.changedPaths, ['assets/manual-phase6.unknown']);
     assert.equal(result.validation?.status, 'passed');
-    assert.equal(result.validation?.mode, 'file-check');
-    assert.equal(result.validation?.reason, 'non-code-file-validation');
-    assert.match(result.validation?.command || '', /test -f/);
+    assert.equal(result.validation?.mode, 'readback');
+    assert.equal(result.validation?.reason, 'canonical-build-orchestration:passed');
+    assert.equal(result.validation?.command, '');
     assert.equal(result.qualityGate?.status, 'pass');
     assert.deepEqual(result.review?.unfinishedItems, []);
     assert.match(readFileSync(path.join(root, 'assets', 'manual-phase6.unknown'), 'utf8'), /phase6 unknown/);
@@ -1162,7 +1162,7 @@ test('workspace-applier: opted-in validation rollback settles through the canoni
   }
 });
 
-test('workspace-applier: requested CMake runtime validation catches segfault', { skip: !hasCommand('cmake') && 'cmake is not installed' }, async () => {
+test('workspace-applier: project-configured CMake runtime validation catches segfault', { skip: !hasCommand('cmake') && 'cmake is not installed' }, async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-applier-'));
   const projectDir = path.join(root, 'code', 'shape_manager');
   try {
@@ -1173,6 +1173,15 @@ test('workspace-applier: requested CMake runtime validation catches segfault', {
       'add_executable(shape_manager main.cpp)',
       '',
     ].join('\n'));
+    writeFileSync(path.join(root, 'devseek.verify.json'), JSON.stringify({
+      commands: [{
+        cmd: 'bash',
+        args: [
+          '-lc',
+          'build_dir=$(mktemp -d); trap \'rm -rf "$build_dir"\' EXIT; cmake -S code/shape_manager -B "$build_dir" >/dev/null && cmake --build "$build_dir" >/dev/null && "$build_dir/shape_manager"',
+        ],
+      }],
+    }, null, 2));
     fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
 
     const raw = [
@@ -1187,7 +1196,7 @@ test('workspace-applier: requested CMake runtime validation catches segfault', {
       '}',
       '```',
     ].join('\n');
-    const prompt = `请修改 ${projectDir}，然后编译和测试，看结果`;
+    const prompt = `请修改 ${projectDir}`;
     const statuses = [];
 
     const result = await applyGeneratedArtifactsWithPrompt(
@@ -1202,8 +1211,8 @@ test('workspace-applier: requested CMake runtime validation catches segfault', {
 
     assert.equal(result.applied, true);
     assert.equal(result.validation?.ok, false);
-    assert.equal(result.validation?.reason, 'cmake-build-and-run-requested');
-    assert.match(result.validation?.command || '', /if test -x/);
+    assert.equal(result.validation?.reason, 'canonical-build-orchestration:failed');
+    assert.match(result.validation?.command || '', /cmake -S code\/shape_manager/);
     assert.match(result.validation?.output || '', /before crash|Segmentation fault|core dumped/i);
     assert.equal(
       statuses.some((status) => status.phase === 'validate' && status.state === 'failed' && /自动验证失败/.test(status.title)),

@@ -103,7 +103,6 @@ test('Mutation guard: workspace writes in audited flows route through the writer
     'src/memory/memory-store.ts',
     'src/ui/real-plugin-harness.ts',
     'src/workspace/coding-workspace-batch-mutation-adapter.ts',
-    'src/workspace/cpp-build-cleanup-service.ts',
     'src/workspace/edit-service.ts',
   ]);
 
@@ -171,9 +170,14 @@ test('Verification guard: agentic validation projects through the shared receipt
   const autoValidation = source('src/agent/auto-validation.ts');
   const adapter = source('src/app/coding-verification-adapter.ts');
 
+  assert.match(adapter, /new CanonicalVerifierSelectionService\(\)/);
+  assert.match(adapter, /new CanonicalBuildOrchestrationService\(\)/);
   assert.match(adapter, /new CanonicalVerificationService\(\)/);
-  assert.match(autoValidation, /canonicalVerificationAdapter/);
-  assert.match(autoValidation, /verificationReceipt: outcome\.receipt/);
+  assert.match(autoValidation, /callbacks\.canonicalVerifierSelection/);
+  assert.match(autoValidation, /callbacks\.canonicalBuildOrchestration/);
+  assert.match(autoValidation, /callbacks\.canonicalVerification/);
+  assert.match(autoValidation, /adapter\.verify\(\{/);
+  assert.match(autoValidation, /verificationReceipt: execution\.outcome\.receipt/);
 });
 
 test('Mutation guard: MCP tools have one authorized product boundary and honest receipt semantics', () => {
@@ -271,7 +275,7 @@ test('Mutation guard: every ValidationService construction injects command autho
   }
   assert.deepEqual(
     constructors.map(constructor => constructor.relativePath).sort(),
-    ['src/agent/auto-validation.ts', 'src/workspace-applier.ts'],
+    ['src/agent/auto-validation.ts', 'src/workspace-applier.ts', 'src/workspace-applier.ts'],
   );
   for (const constructor of constructors) {
     assert.match(constructor.excerpt, /commandRunner\s*:/, `${constructor.relativePath} lacks validation command authority`);

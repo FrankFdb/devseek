@@ -23,10 +23,6 @@ import {
 } from './run-context';
 import type { ExecutionMode } from '../intent/intent-types';
 import type { ValidationCommandRunner } from '../workspace/validation-service';
-import {
-  cleanupLegacyCppBuildDirsForCommand,
-  normalizeLegacyCppBuildCommandForRun,
-} from '../workspace/cpp-build-cleanup-service';
 
 type TerminalConfirmResolver = (allow: boolean, alwaysAllow?: boolean) => void;
 
@@ -533,7 +529,7 @@ export class TerminalPermissionCoordinator {
   ): Promise<TerminalCommandExecutionResult> {
     input = this.attachPendingRecoveryToCommand(input);
     const { webview, command, workdir, workspaceRoot, mode, toolPolicy, traceRunId } = input;
-    const normalizedCommand = normalizeLegacyCppBuildCommandForRun({ command, workdir, workspaceRoot }).command;
+    const normalizedCommand = command;
     const runEvidence = attachTerminalRunEvidence(input);
     recordTerminalRunEvidence(runEvidence, input, 'side_effect.requested', {
       command: summarizeTraceText(normalizedCommand),
@@ -691,7 +687,6 @@ export class TerminalPermissionCoordinator {
 
     if (input.presentation === 'visible') {
       try {
-        cleanupLegacyCppBuildDirsForCommand({ command: normalizedCommand, workdir, workspaceRoot });
         const terminalName = input.terminalName ?? 'DevSeek Run';
         const terminal = (input.reuseTerminal
           ? vscode.window.terminals.find(candidate => candidate.name === terminalName)
@@ -737,7 +732,6 @@ export class TerminalPermissionCoordinator {
     try {
       terminalTools = await import('../tools/terminal');
       const manualReviewOnLongRunning = shouldUseManualReviewLaunchMode({ command: normalizedCommand, workdir, workspaceRoot });
-      cleanupLegacyCppBuildDirsForCommand({ command, workdir, workspaceRoot });
       result = await terminalTools.runCommand({
         command: normalizedCommand,
         cwd: workdir,

@@ -79,14 +79,24 @@ import {
 } from './coding-workspace-mutation';
 import {
   CanonicalVerificationService,
+  type CodingVerificationCriterion,
   type CodingVerificationReceipt,
   type CodingVerificationSessionPort,
 } from './coding-verification';
+import {
+  CanonicalVerifierSelectionService,
+  type VerifierSelectionPort,
+} from './coding-verifier-selection';
+import {
+  CanonicalBuildOrchestrationService,
+  type BuildOrchestrationPort,
+} from './coding-build-orchestration';
 import {
   CanonicalCompletionDecisionService,
   type CodingCompletionDecision,
   type CodingKernelCompletionEvidence,
 } from './coding-completion';
+import { CanonicalStructuralAcceptanceEvidenceService } from './coding-structural-acceptance';
 import {
   CanonicalRequirementDecisionService,
   type CodingRequirementDecision,
@@ -152,6 +162,9 @@ export interface CodingKernelRuntimeRequest<TRuntimeContext>
   readonly toolAuthority: CodingToolAuthoritySessionPort;
   readonly workspaceMutations: WorkspaceMutationTransactionSessionPort;
   readonly externalEffects: CodingExternalEffectSessionPort;
+  readonly verifierSelection: VerifierSelectionPort;
+  readonly buildOrchestration: BuildOrchestrationPort;
+  readonly verificationAcceptance: readonly CodingVerificationCriterion[];
   readonly verification: CodingVerificationSessionPort;
   readonly resume?: CodingCheckpointRestoreDecision;
   readonly resumeIdempotency?: CodingResumeIdempotencySessionPort;
@@ -260,7 +273,10 @@ const TOOL_DISPATCH = new CanonicalToolDispatchService(TOOL_SCHEMAS);
 const TOOL_EXECUTION = new CanonicalToolExecutionService();
 const TOOL_AUTHORITY = new CanonicalToolAuthorityService();
 const EXTERNAL_EFFECT = new CanonicalExternalEffectService();
+const VERIFIER_SELECTION = new CanonicalVerifierSelectionService();
+const BUILD_ORCHESTRATION = new CanonicalBuildOrchestrationService();
 const VERIFICATION = new CanonicalVerificationService();
+const STRUCTURAL_ACCEPTANCE = new CanonicalStructuralAcceptanceEvidenceService();
 const REQUIREMENTS = new CanonicalRequirementDecisionService();
 const DESIGN = new CanonicalDesignDecisionService();
 const CHANGE_PLAN = new CanonicalChangePlanService();
@@ -350,10 +366,20 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       request.operationJournal,
       resume?.originRunId,
     );
+    const verificationAcceptance = Object.freeze(taskContract.acceptance
+      .filter(criterion => criterion.oracle.kind === 'verification')
+      .map(criterion => Object.freeze({ id: criterion.id, statement: criterion.statement })));
     const verification = VERIFICATION.bind({
       runId: request.runId,
-      acceptance: taskContract.acceptance,
+      acceptance: verificationAcceptance,
     });
+    const verifierSelection = VERIFIER_SELECTION.bind({
+      runId: request.runId,
+      workspaceRoot: request.workspaceRoot,
+      taskContract,
+      orientation: contextGraph.orientation,
+    });
+    const buildOrchestration = BUILD_ORCHESTRATION.bind({ runId: request.runId });
     const externalEffects = EXTERNAL_EFFECT.bind({
       runId: request.runId,
       authority: toolAuthority,
@@ -410,6 +436,9 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       toolAuthority,
       workspaceMutations,
       externalEffects,
+      verifierSelection,
+      buildOrchestration,
+      verificationAcceptance,
       verification,
       ...(resume ? { resume } : {}),
       ...(resumeIdempotency ? { resumeIdempotency } : {}),
@@ -421,6 +450,10 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         throw new Error('coding-kernel-execution:missing-runtime-output');
       }
       const completionEvidence = assertRuntimeCompletionEvidence(runtimeOutput.completionEvidence);
+      const structuralAcceptanceEvidence = STRUCTURAL_ACCEPTANCE.project({
+        taskContract,
+        mutations: workspaceMutations.receipts(),
+      });
       const completion = this.completion.decide({
         runId: request.runId,
         decisionId: 'kernel-completion',
@@ -432,7 +465,10 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         toolExecutions: toolExecution.receipts(),
         mutations: workspaceMutations.receipts(),
         verifications: verification.receipts(),
-        acceptanceEvidence: completionEvidence.acceptanceEvidence,
+        acceptanceEvidence: [
+          ...structuralAcceptanceEvidence,
+          ...completionEvidence.acceptanceEvidence,
+        ],
         ...(completionEvidence.review ? { review: completionEvidence.review } : {}),
         pendingRefs: completionEvidence.pendingRefs,
         adverseEvidenceRefs: completionEvidence.adverseEvidenceRefs,

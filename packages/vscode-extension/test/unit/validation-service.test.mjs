@@ -1,212 +1,190 @@
-import { test } from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const rootDir = path.resolve(__dirname, '../../');
+const dirname = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(dirname, '../../');
 const bundlePath = path.join(rootDir, 'test/unit/validation-service.bundle.cjs');
 
 execSync(
-  `npx esbuild src/workspace/validation-service.ts --bundle ` +
-  `--outfile=${bundlePath} --format=cjs --platform=node`,
+  `npx esbuild src/workspace/validation-service.ts --bundle `
+    + `--outfile=${bundlePath} --format=cjs --platform=node`,
   { cwd: rootDir, stdio: 'pipe' },
 );
 
-const req = createRequire(import.meta.url);
-const {
-  PROJECT_BUILD_VALIDATION_TIMEOUT_MS,
-  ValidationService,
-} = req(bundlePath);
+const require = createRequire(import.meta.url);
+const { ValidationService, projectAutoValidationResult } = require(bundlePath);
 
-function makeRunner(invocations, result = {}) {
-  return async (invocation) => {
-    invocations.push(invocation);
-    return {
-      ran: true,
-      ok: result.ok ?? true,
-      command: invocation.command,
-      exitCode: result.exitCode ?? 0,
-      output: result.output ?? '',
-      cwd: invocation.cwd,
-    };
+function processStep(cwd, overrides = {}) {
+  return {
+    id: 'selected-test',
+    candidateId: 'project-test',
+    role: 'test',
+    invocation: { kind: 'process', command: 'npm', args: ['test', '--silent'] },
+    cwd,
+    timeoutMs: 30_000,
+    outputPolicy: 'ephemeral',
+    acceptanceIds: ['verified'],
+    scopePaths: ['src/value.ts'],
+    workspaceAccess: 'read-only',
+    evidenceRefs: ['manifest:package.json#scripts.test'],
+    ...overrides,
   };
 }
 
-test('ValidationService: selects extension TypeScript semantic check before compile', async () => {
-  const invocations = [];
-  const service = new ValidationService({ commandRunner: makeRunner(invocations) });
+function commandResult(overrides = {}) {
+  return {
+    ran: true,
+    ok: true,
+    command: 'npm test --silent',
+    exitCode: 0,
+    stdout: 'PASS\n',
+    stderr: '',
+    output: 'PASS\n',
+    cwd: '/repo',
+    ...overrides,
+  };
+}
 
-  const result = await service.validateWorkspaceChanges({
-    rootFsPath: '/repo',
-    changedPaths: ['packages/vscode-extension/src/extension.ts'],
+test('ValidationService discovers candidates without taking ownership of selection', () => {
+  const discovered = [{ id: 'candidate' }];
+  const service = new ValidationService({
+    verificationPlanner: {
+      discoverCandidates(input) {
+        assert.deepEqual(input.changedPaths, ['src/value.ts']);
+        return discovered;
+      },
+    },
   });
 
-  assert.equal(result.ok, true);
-  assert.match(result.command, /npx tsc --noEmit/);
-  assert.match(result.command, /src\/extension\.ts/);
-  assert.match(result.command, /&& npm run compile/);
-  assert.equal(result.reason, 'extension-ts-semantic-check');
-  assert.equal(result.cwd, path.join('/repo', 'packages', 'vscode-extension'));
-  assert.equal(invocations[0].timeoutMs, PROJECT_BUILD_VALIDATION_TIMEOUT_MS);
+  assert.equal(service.discover({ rootFsPath: '/repo', changedPaths: ['src/value.ts'] }), discovered);
 });
 
-test('ValidationService: DevSeek multi-package changes run affected build and unit steps', async () => {
+test('ValidationService executes only the selected structured process step', async () => {
   const invocations = [];
-  const service = new ValidationService({ commandRunner: makeRunner(invocations) });
-
-  const result = await service.validateWorkspaceChanges({
-    rootFsPath: '/repo',
-    changedPaths: ['packages/bridge/src/server.ts', 'packages/vscode-extension/src/extension.ts'],
+  const service = new ValidationService({
+    commandRunner: async invocation => {
+      invocations.push(invocation);
+      return commandResult({ command: invocation.command, cwd: invocation.cwd });
+    },
   });
+  const observation = await service.execute(processStep('/repo'));
 
-  assert.match(result.command, /packages\/bridge/);
-  assert.match(result.command, /npm run build/);
-  assert.match(result.command, /npm test/);
-  assert.match(result.command, /packages\/vscode-extension/);
-  assert.match(result.command, /npx tsc --noEmit/);
-  assert.equal(result.reason, 'devseek-multi-package-build-plan');
-  assert.equal(result.cwd, '/repo');
-  assert.equal(invocations.length, 1);
-  assert.deepEqual(
-    result.plan.buildPlan
-      .filter((step) => step.autoRun)
-      .map((step) => step.id),
-    [
-      'bridge-build',
-      'bridge-unit',
-      'vscode-extension-typecheck',
-      'vscode-extension-compile',
-      'vscode-extension-unit',
-    ],
-  );
+  assert.deepEqual(invocations, [{ command: 'npm test --silent', cwd: '/repo', timeoutMs: 30_000 }]);
+  assert.equal(observation.status, 'passed');
+  assert.equal(observation.exitCode, 0);
+  assert.match(observation.evidenceRefs.join('\n'), /PASS/);
 });
 
-test('ValidationService: returns blocked evidence for paths without automatic validation target', async () => {
-  const invocations = [];
-  const service = new ValidationService({ commandRunner: makeRunner(invocations) });
-
-  const result = await service.validateWorkspaceChanges({
-    rootFsPath: '/repo',
-    changedPaths: ['docs/readme.md'],
+test('ValidationService enforces configured stdout evidence', async () => {
+  const service = new ValidationService({ commandRunner: async () => commandResult({ stdout: 'ACTUAL' }) });
+  const step = processStep('/repo', {
+    invocation: {
+      kind: 'process',
+      command: 'node',
+      args: ['test.js'],
+      expectedStdoutIncludes: ['EXPECTED'],
+    },
   });
+  const observation = await service.execute(step);
 
-  assert.equal(result.ran, false);
-  assert.equal(result.ok, false);
-  assert.equal(result.status, 'blocked');
-  assert.equal(result.reason, 'no-auto-validation-target');
-  assert.ok(result.risks.some((risk) => /无法证明/.test(risk)));
-  assert.ok(result.alternativeChecks.some((check) => /人工/.test(check)));
-  assert.deepEqual(invocations, []);
+  assert.equal(observation.status, 'failed');
+  assert.match(observation.summary, /stdout missed "EXPECTED"/);
 });
 
-test('ValidationService: validates explicit unknown text writes with file checks', async () => {
-  const invocations = [];
-  const service = new ValidationService({ commandRunner: makeRunner(invocations) });
-
-  const result = await service.validateWorkspaceChanges({
-    rootFsPath: '/repo',
-    changedPaths: ['assets/manual-phase6.unknown'],
-    requestPrompt: '创建 assets/manual-phase6.unknown，内容为：phase6 unknown validation target，并验证文件创建成功。',
-  });
-
-  assert.equal(result.ok, true);
-  assert.equal(result.status, 'passed');
-  assert.equal(result.mode, 'file-check');
-  assert.equal(result.reason, 'non-code-file-validation');
-  assert.match(result.command, /test -f/);
-  assert.match(result.command, /manual-phase6\.unknown/);
-  assert.equal(invocations.length, 1);
-});
-
-test('ValidationService: validates requested markdown writes with file checks, not compile programs', async () => {
-  const invocations = [];
-  const service = new ValidationService({ commandRunner: makeRunner(invocations) });
-
-  const result = await service.validateWorkspaceChanges({
-    rootFsPath: '/repo',
-    changedPaths: ['docs/manual-phase5-summary.md'],
-    requestPrompt: '创建 docs/manual-phase5-summary.md，内容为 phase5 summary smoke，然后验证文件创建成功。',
-  });
-
-  assert.equal(result.ok, true);
-  assert.equal(result.status, 'passed');
-  assert.equal(result.mode, 'file-check');
-  assert.equal(result.reason, 'non-code-file-validation');
-  assert.match(result.command, /test -f/);
-  assert.match(result.command, /manual-phase5-summary\.md/);
-  assert.doesNotMatch(result.command, /\bgcc\b|\bg\+\+\b|\bclang\b|\bnode\b|\bnpm\b/);
-  assert.equal(invocations.length, 1);
-});
-
-test('ValidationService: plans requested C++ run with structured mode and reason', async () => {
-  const root = mkdtempSync(path.join(tmpdir(), 'devseek-validation-service-'));
-  const projectDir = path.join(root, 'code', 'demo');
-  const invocations = [];
+test('ValidationService hashes readback evidence without invoking a process', async () => {
+  const workspace = mkdtempSync(path.join(tmpdir(), 'devseek-vscode-readback-'));
   try {
-    mkdirSync(projectDir, { recursive: true });
-    writeFileSync(path.join(projectDir, 'main.cpp'), 'int main() { return 0; }\n');
-    const service = new ValidationService({ commandRunner: makeRunner(invocations) });
-
-    const result = await service.validateWorkspaceChanges({
-      rootFsPath: root,
-      changedPaths: ['code/demo/main.cpp'],
-      requestPrompt: '请修改后运行看看结果',
-      cppValidationPolicy: 'conservative',
+    mkdirSync(path.join(workspace, 'docs'));
+    writeFileSync(path.join(workspace, 'docs/result.md'), 'settled\n', 'utf8');
+    const service = new ValidationService({
+      commandRunner: async () => { throw new Error('readback must not run a command'); },
     });
+    const observation = await service.execute(processStep(workspace, {
+      role: 'file-readback',
+      invocation: { kind: 'file-readback', paths: ['docs/result.md'] },
+      scopePaths: ['docs/result.md'],
+    }));
 
-    assert.equal(result.mode, 'compile-run');
-    assert.equal(result.reason, 'single-main-run-requested');
-    assert.match(result.command, /deepseek_auto_exec/);
-    assert.equal(invocations.length, 1);
+    assert.equal(observation.status, 'passed');
+    assert.match(observation.evidenceRefs[0], /^file:docs\/result\.md:sha256:/);
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    rmSync(workspace, { recursive: true, force: true });
   }
 });
 
-test('ValidationService: preserves failed command evidence', async () => {
-  const invocations = [];
+test('ValidationService reports protected source mutation by a passing verifier', async () => {
+  const workspace = mkdtempSync(path.join(tmpdir(), 'devseek-vscode-mutation-'));
+  try {
+    mkdirSync(path.join(workspace, 'src'));
+    const sourcePath = path.join(workspace, 'src/value.ts');
+    writeFileSync(sourcePath, 'export const value = 1;\n', 'utf8');
+    const service = new ValidationService({
+      commandRunner: async invocation => {
+        writeFileSync(sourcePath, 'export const value = 2;\n', 'utf8');
+        return commandResult({ command: invocation.command, cwd: workspace });
+      },
+    });
+    const observation = await service.execute(processStep(workspace));
+
+    assert.equal(observation.status, 'passed');
+    assert.deepEqual(observation.workspaceMutationPaths, ['src/value.ts']);
+    assert.match(readFileSync(sourcePath, 'utf8'), /value = 2/);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('ValidationService executes registered in-process policy checks through an explicit host-check id', async () => {
   const service = new ValidationService({
-    commandRunner: makeRunner(invocations, { ok: false, exitCode: 2, output: 'compile failed' }),
+    hostChecks: {
+      'formal-source-quality': async () => ({
+        status: 'failed',
+        summary: 'Formal source quality failed.',
+        evidenceRefs: ['policy:formal-source:failed'],
+      }),
+    },
   });
+  const observation = await service.execute(processStep('/repo', {
+    role: 'lint',
+    invocation: { kind: 'host-check', checkId: 'formal-source-quality' },
+  }));
 
-  const result = await service.validateWorkspaceChanges({
-    rootFsPath: '/repo',
-    changedPaths: ['packages/vscode-extension/src/app.ts'],
-  });
+  assert.equal(observation.status, 'failed');
+  assert.deepEqual(observation.evidenceRefs, ['policy:formal-source:failed']);
+});
 
-  assert.equal(result.ok, false);
+test('projectAutoValidationResult preserves canonical orchestration status and commands', () => {
+  const step = processStep('/repo');
+  const selection = {
+    status: 'selected',
+    workspaceRoot: '/repo',
+    steps: [step],
+  };
+  const receipt = {
+    status: 'failed',
+    errorCode: 'verification-step-failed',
+    checks: [{ command: 'npm test --silent' }],
+    observations: [{
+      stepId: step.id,
+      status: 'failed',
+      summary: 'test failed',
+      exitCode: 2,
+      stdout: '',
+      stderr: 'failed',
+      workspaceMutationPaths: [],
+      evidenceRefs: ['command:test:exit-2'],
+    }],
+  };
+  const result = projectAutoValidationResult(selection, receipt);
+
   assert.equal(result.status, 'failed');
   assert.equal(result.exitCode, 2);
-  assert.equal(result.output, 'compile failed');
-});
-
-test('ValidationService: TypeScript semantic failure fails QualityGate evidence before bundle compile can pass', async () => {
-  const invocations = [];
-  const service = new ValidationService({
-    commandRunner: makeRunner(invocations, {
-      ok: false,
-      exitCode: 2,
-      output: "src/workspace/manual-phase6-quality-gate.ts(1,14): error TS2322: Type 'number' is not assignable to type 'string'.",
-    }),
-  });
-
-  const result = await service.validateWorkspaceChanges({
-    rootFsPath: '/repo',
-    changedPaths: ['packages/vscode-extension/src/workspace/manual-phase6-quality-gate.ts'],
-  });
-
+  assert.equal(result.command, 'npm test --silent');
   assert.equal(result.ok, false);
-  assert.equal(result.status, 'failed');
-  assert.equal(result.reason, 'extension-ts-semantic-check');
-  assert.match(result.command, /npx tsc --noEmit/);
-  assert.match(result.command, /manual-phase6-quality-gate\.ts/);
-  assert.match(result.output, /TS2322/);
-  assert.equal(invocations.length, 1);
 });
-
-console.log('\nValidation service tests passed.\n');

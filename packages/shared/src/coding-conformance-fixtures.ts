@@ -54,13 +54,13 @@ const CREATE_AND_VERIFY = defineFixture({
       actionId: 'verify-tool',
       verifier: 'python-behavior',
       status: 'passed',
-      acceptanceIds: ['requested-outcome', 'scoped-change', 'verified'],
+      acceptanceIds: ['verified'],
       evidenceRefs: ['verification:python-pass'],
     }],
     completion: {
       status: 'completed',
       acceptance: [
-        { criterionId: 'requested-outcome', status: 'passed', evidenceRefs: ['verification:python-pass'] },
+        { criterionId: 'requested-outcome', status: 'passed', evidenceRefs: ['mutation:write-tool'] },
         { criterionId: 'scoped-change', status: 'passed', evidenceRefs: ['mutation:write-tool'] },
         { criterionId: 'verified', status: 'passed', evidenceRefs: ['verification:python-pass'] },
       ],
@@ -103,13 +103,13 @@ const MODIFY_AND_VERIFY = defineFixture({
       actionId: 'verify-source',
       verifier: 'node-behavior',
       status: 'passed',
-      acceptanceIds: ['requested-outcome', 'scoped-change', 'verified'],
+      acceptanceIds: ['verified'],
       evidenceRefs: ['verification:node-pass'],
     }],
     completion: {
       status: 'completed',
       acceptance: [
-        { criterionId: 'requested-outcome', status: 'passed', evidenceRefs: ['verification:node-pass'] },
+        { criterionId: 'requested-outcome', status: 'passed', evidenceRefs: ['mutation:patch-source'] },
         { criterionId: 'scoped-change', status: 'passed', evidenceRefs: ['mutation:patch-source'] },
         { criterionId: 'verified', status: 'passed', evidenceRefs: ['verification:node-pass'] },
       ],
@@ -167,7 +167,7 @@ const VERIFY_REPAIR_REVERIFY = defineFixture({
         actionId: 'first-verify',
         verifier: 'focused-parser-test',
         status: 'failed',
-        acceptanceIds: ['requested-outcome', 'verified'],
+        acceptanceIds: ['verified'],
         evidenceRefs: ['verification:first-failure'],
       },
       {
@@ -175,14 +175,14 @@ const VERIFY_REPAIR_REVERIFY = defineFixture({
         actionId: 'second-verify',
         verifier: 'focused-parser-test',
         status: 'passed',
-        acceptanceIds: ['requested-outcome', 'verified'],
+        acceptanceIds: ['verified'],
         evidenceRefs: ['verification:repair-pass'],
       },
     ],
     completion: {
       status: 'completed',
       acceptance: [
-        { criterionId: 'requested-outcome', status: 'passed', evidenceRefs: ['verification:repair-pass'] },
+        { criterionId: 'requested-outcome', status: 'passed', evidenceRefs: ['mutation:repair-patch'] },
         { criterionId: 'verified', status: 'passed', evidenceRefs: ['verification:repair-pass'] },
       ],
       residualRisks: [],

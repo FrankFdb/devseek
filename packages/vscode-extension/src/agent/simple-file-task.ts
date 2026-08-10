@@ -17,7 +17,6 @@ import {
 } from './completion-evidence';
 import type { TodoItem } from './evidence-recovery';
 import type { AgentLoopCallbacks, AgentLoopResult } from './loop-types';
-import type { CppValidationPolicy } from '../validation-planner';
 import {
   advanceLinearAgentTodo,
   appendQualityGateTodo,
@@ -37,7 +36,6 @@ export interface SimpleFileTaskInput {
   userPrompt: string;
   workspaceRoot: string;
   callbacks: AgentLoopCallbacks;
-  cppValidationPolicy: CppValidationPolicy;
   options?: AgentAutoValidationOptions;
 }
 
@@ -183,7 +181,6 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
     input.workspaceRoot,
     input.userPrompt,
     input.callbacks,
-    input.cppValidationPolicy,
     input.options,
   );
   const terminalEvidence = validation.evidence ? [validation.evidence] : [];

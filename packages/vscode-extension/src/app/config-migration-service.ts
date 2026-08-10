@@ -10,7 +10,6 @@ const CONFIG_KEYS_TO_MIGRATE = [
   'autoApplyPolicy',
   'localExecutionFirst',
   'executionApproval',
-  'cppValidationPolicy',
   'completionEnabled',
   'completionTriggerDelay',
   'contextTokenBudget',

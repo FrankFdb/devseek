@@ -65,6 +65,7 @@ test('CLI runtime adapter keeps context, interpretation, mutation, and verificat
   const contextSelector = readSource('cli-legacy-workspace-context-selector.ts');
   const runEvidence = readSource('cli-run-evidence.ts');
   const mutation = readSource('cli-workspace-mutation-service.ts');
+  const verificationAdapter = readSource('cli-verification-adapter.ts');
   const verification = readSource('cli-verification-service.ts');
 
   assert.match(interpreter, /class CliCodingArtifactInterpreter/);
@@ -74,7 +75,16 @@ test('CLI runtime adapter keeps context, interpretation, mutation, and verificat
   assert.match(codingRuntime, /implements CodingKernelRuntimePort/);
   assert.match(codingRuntime, /this\.artifactInterpreter\.interpret\(/);
   assert.match(codingRuntime, /toolExecution\.executeWorkspaceMutation\(/);
-  assert.match(codingRuntime, /this\.verification\.verify\(/);
+  assert.match(codingRuntime, /this\.verification\.prepare\(/);
+  assert.match(codingRuntime, /this\.verification\.execute\(/);
+  assert.ok(
+    codingRuntime.indexOf('this.verification.prepare(') < codingRuntime.indexOf('request.externalEffects.execute('),
+    'read-only verifier discovery must finish before process authority executes',
+  );
+  assert.ok(
+    codingRuntime.indexOf('this.verification.execute(') > codingRuntime.indexOf('request.externalEffects.execute('),
+    'selected verifier execution must stay inside the external-effect boundary',
+  );
   assert.match(codingRuntime, /function buildRepairPrompt\b/);
   assert.doesNotMatch(codingRuntime, /(?:AgentApplicationService|CliSurfaceAdapter|bridgeChat)/);
 
@@ -100,6 +110,11 @@ test('CLI runtime adapter keeps context, interpretation, mutation, and verificat
   assert.match(mutation, /resolveCliWorkspacePath/);
   assert.doesNotMatch(mutation, /(?:spawnSync|devseek\.verify\.json)/);
 
+  assert.match(verificationAdapter, /async prepare\(/);
+  assert.match(verificationAdapter, /async execute\(/);
+  assert.match(verificationAdapter, /ports\.selection\.select\(/);
+  assert.match(verificationAdapter, /ports\.orchestration\.execute\(/);
+  assert.match(verificationAdapter, /ports\.verification\.verify\(/);
   assert.match(verification, /class CliVerificationHostAdapter/);
   assert.match(verification, /spawnSync/);
   assert.doesNotMatch(verification, /(?:create_file|replace_file|<tool_call>)/);

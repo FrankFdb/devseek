@@ -4,7 +4,7 @@
 
 - Schema: `devseek.capability-ledger/v1`
 - Capabilities: 76
-- Ledger SHA-256: `75339881eeb7f7bdabccaec27adc4c4bd4bcacf029f2a571d547b8def2df546d`
+- Ledger SHA-256: `4e2faf1b579c049dd0cb8f51d393fcf2bda12b3ca695593c739efb3aded5286f`
 - Qualification claim policy: `deny-until-signed-evidence-validator`
 
 | Capability | Priority | Applicability | Claim scopes | Implementation | Qualification | Authority port | Typed dependencies |
@@ -80,8 +80,8 @@
 | `C8-CODE-CHANGE` | P0 | active | core-coding | proposed | — | `CodeChangePort` | C5-CHANGE-PLAN (semantic/wired)<br>C7-WORKSPACE-MUTATION (authority/wired) |
 | `C8-INTEGRATION-CONFORMANCE` | P0 | active | core-coding | proposed | — | `IntegrationConformancePort` | C8-CODE-CHANGE (execution/wired)<br>C6-TOOL-DISPATCH (execution/wired) |
 | `C9-BOUNDED-REPAIR` | P0 | active | core-coding | proposed | — | `RepairDecisionPort` | C9-DIAGNOSTIC-NORMALIZATION (verification/wired)<br>C7-WORKSPACE-MUTATION (authority/wired) |
-| `C9-BUILD-ORCHESTRATION` | P0 | active | core-coding | proposed | — | `BuildOrchestrationPort` | C8-CODE-CHANGE (execution/wired)<br>C7-EXTERNAL-EFFECT (authority/wired) |
+| `C9-BUILD-ORCHESTRATION` | P0 | active | core-coding | wired | — | `BuildOrchestrationPort` | C8-CODE-CHANGE (execution/wired)<br>C7-EXTERNAL-EFFECT (authority/wired) |
 | `C9-DIAGNOSTIC-NORMALIZATION` | P0 | active | core-coding | proposed | — | `DiagnosticPort` | C9-INDEPENDENT-VERIFICATION (verification/wired) |
-| `C9-INDEPENDENT-VERIFICATION` | P0 | active | core-coding | proposed | — | `VerificationEvidencePort` | C9-VERIFIER-SELECTION (verification/wired)<br>C9-BUILD-ORCHESTRATION (verification/wired) |
+| `C9-INDEPENDENT-VERIFICATION` | P0 | active | core-coding | wired | — | `VerificationEvidencePort` | C9-VERIFIER-SELECTION (verification/wired)<br>C9-BUILD-ORCHESTRATION (verification/wired) |
 | `C9-REGRESSION-SELECTION` | P0 | active | core-coding | proposed | — | `RegressionSelectionPort` | C9-INDEPENDENT-VERIFICATION (verification/wired) |
-| `C9-VERIFIER-SELECTION` | P0 | active | core-coding | proposed | — | `VerifierSelectionPort` | C4-ACCEPTANCE-CONTRACT (semantic/wired) |
+| `C9-VERIFIER-SELECTION` | P0 | active | core-coding | wired | — | `VerifierSelectionPort` | C4-ACCEPTANCE-CONTRACT (semantic/wired) |

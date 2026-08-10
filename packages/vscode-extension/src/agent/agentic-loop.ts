@@ -15,7 +15,6 @@ import type {
 import { type ChatMessage } from '../llm/types';
 import { bindProviderNormalizationBoundary } from '../llm/provider-events';
 import type { ExecutionMode } from '../intent/intent-types';
-import type { CppValidationPolicy } from '../validation-planner';
 import { routeTaskSemanticContract } from '../task-intent-router';
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import {
@@ -122,7 +121,6 @@ import { createSemanticExecutionWriteAuthority } from './semantic-execution-cont
 import { createAgenticInitialPromptContext, type AgenticLoopExecutionContext } from './agentic-execution-context';
 import {
   classifyAgenticManualReviewEvidence,
-  projectTerminalVerificationReceipts,
 } from './terminal-evidence-settlement';
 const AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS = 3;
 
@@ -267,9 +265,6 @@ export async function runAgenticLoop(
     || requiresCommandEvidence(userPrompt, effectiveSemanticContract)
     || effectiveSemanticContract.obligations.sideEffects.length > 0
   );
-  const cppValidationPolicy = vscode.workspace
-    .getConfiguration('devseek')
-    .get<CppValidationPolicy>('cppValidationPolicy', 'conservative');
   // Full conversation history (Claude Code pattern: accumulate all rounds)
   const initialPromptContext = createAgenticInitialPromptContext(systemPrompt, userPrompt, sessionContextText, recoveryContextText);
   const messages = initialPromptContext.messages;
@@ -389,9 +384,9 @@ export async function runAgenticLoop(
       userPrompt,
       workspaceRoot,
       callbacks: writeAuthority.callbacks,
-      cppValidationPolicy,
       options: {
-        verificationAcceptance: projectTaskContractAcceptance(writeAuthority.semanticContract.taskContract),
+        verificationAcceptance: callbacks.canonicalVerificationAcceptance
+          ?? projectTaskContractAcceptance(writeAuthority.semanticContract.taskContract),
       },
     });
     if (simpleFileResult) return simpleFileResult;
@@ -661,10 +656,10 @@ export async function runAgenticLoop(
           workspaceRoot,
           writeAuthority.currentPrompt,
           writeAuthority.callbacks,
-          cppValidationPolicy,
           {
             qualityWrittenFiles: allWrittenFiles,
-            verificationAcceptance: projectTaskContractAcceptance(writeAuthority.semanticContract.taskContract),
+            verificationAcceptance: callbacks.canonicalVerificationAcceptance
+              ?? projectTaskContractAcceptance(writeAuthority.semanticContract.taskContract),
           },
         );
         if (autoValidation.verificationReceipt) allVerificationReceipts.push(autoValidation.verificationReceipt);
@@ -895,14 +890,6 @@ export async function runAgenticLoop(
         writtenFiles: allWrittenFiles,
       });
       allTerminalEvidence.push(...classifiedTerminalEvidence);
-      allVerificationReceipts.push(...await projectTerminalVerificationReceipts({
-        runId: callbacks.traceRunId,
-        workspaceRoot,
-        writtenFiles: allWrittenFiles,
-        terminalEvidence: loopRes.terminalEvidence,
-        acceptance: projectTaskContractAcceptance(writeAuthority.semanticContract.taskContract),
-        verification: callbacks.canonicalVerification,
-      }));
     }
     if (loopRes.evidenceRefs?.length) {
       allEvidenceRefs.push(...loopRes.evidenceRefs);
@@ -945,10 +932,10 @@ export async function runAgenticLoop(
       workspaceRoot,
       writeAuthority.currentPrompt,
       writeAuthority.callbacks,
-      cppValidationPolicy,
       {
         qualityWrittenFiles: allWrittenFiles,
-        verificationAcceptance: projectTaskContractAcceptance(writeAuthority.semanticContract.taskContract),
+        verificationAcceptance: callbacks.canonicalVerificationAcceptance
+          ?? projectTaskContractAcceptance(writeAuthority.semanticContract.taskContract),
       },
     );
     if (autoValidation.verificationReceipt) allVerificationReceipts.push(autoValidation.verificationReceipt);

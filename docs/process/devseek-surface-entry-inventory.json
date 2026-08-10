@@ -15,7 +15,7 @@
   "sources": {
     "packageJson": {
       "path": "packages/vscode-extension/package.json",
-      "source_sha256": "545be8c90166dc2a936ff3036c9f272a6d3f90ac2771641b38edf7b5e23f2d97"
+      "source_sha256": "ee05bf9c3ca81912ea8765b265a4db10c070cc0e2536f1fa4e939ffdcbbc8da9"
     },
     "extensionCommands": {
       "path": "packages/vscode-extension/src/ui/extension-command-registration.ts",
@@ -1490,5 +1490,5 @@
     "duplicate_webview_protocol_declarations": 0,
     "duplicate_webview_handler_registrations": 0
   },
-  "inventory_sha256": "90141cc176f4458082433736fe6c8841904825a327ef62799f5fdc5f44a58b6a"
+  "inventory_sha256": "a9618983ff55064fea73b79a8cd7083c331591d10b4150a14cfd6a0e7e330056"
 }

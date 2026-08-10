@@ -1,9 +1,11 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
 import type {
+  BuildOrchestrationPort,
   CodingVerificationCriterion,
   CodingVerificationReceipt,
   CodingVerificationSessionPort,
+  VerifierSelectionPort,
 } from '@devseek-netai/shared';
 import type { AgentStatusEvent } from './events';
 import {
@@ -17,10 +19,10 @@ import { assessFormalProjectSourceQuality } from './formal-project-source-qualit
 import { isInsideWorkspacePath } from './write-guard';
 import {
   ValidationService,
+  projectAutoValidationResult,
   type AutoValidationResult,
   type ValidationCommandRunner,
 } from '../workspace/validation-service';
-import type { CppValidationPolicy } from '../validation-planner';
 import {
   buildValidationFailureDiagnosis,
   type FailureDiagnosis,
@@ -39,7 +41,7 @@ import {
 } from './artifact-quality-oracle';
 import {
   VsCodeVerificationAdapter,
-  type VsCodeVerificationObservation,
+  type VsCodeVerificationExecution,
 } from '../app/coding-verification-adapter';
 
 export interface AgentAutoValidationCallbacks {
@@ -50,6 +52,9 @@ export interface AgentAutoValidationCallbacks {
   traceRunId?: string;
   signal?: AbortSignal;
   canonicalVerification?: CodingVerificationSessionPort;
+  canonicalVerifierSelection?: VerifierSelectionPort;
+  canonicalBuildOrchestration?: BuildOrchestrationPort;
+  canonicalVerificationAcceptance?: readonly CodingVerificationCriterion[];
 }
 
 export interface AgentAutoValidationResult {
@@ -70,15 +75,19 @@ export interface AgentAutoValidationResult {
 }
 
 export interface AgentAutoValidationOptions {
-  validationService?: Pick<ValidationService, 'validateWorkspaceChanges'>;
+  validationService?: Pick<ValidationService, 'discover' | 'execute'>;
   qualityWrittenFiles?: WrittenFileEvidence[];
   verificationAdapter?: Pick<VsCodeVerificationAdapter, 'verify'>;
+  verificationPorts?: {
+    readonly selection: VerifierSelectionPort;
+    readonly orchestration: BuildOrchestrationPort;
+    readonly verification: CodingVerificationSessionPort;
+  };
   verificationAcceptance?: readonly CodingVerificationCriterion[];
   verificationEvidenceRefs?: readonly string[];
 }
 
 let autoValidationOperationSequence = 0;
-const canonicalVerificationAdapter = new VsCodeVerificationAdapter();
 const DEFAULT_WORKSPACE_VALIDATION_ACCEPTANCE: readonly CodingVerificationCriterion[] = Object.freeze([{
   id: 'workspace-validation',
   statement: 'Applicable workspace validation and quality checks pass.',
@@ -154,13 +163,13 @@ export function validationResultToTerminalEvidence(result: AutoValidationResult)
   const verification = normalizeVerificationResult(result);
   if (!shouldEmitTerminalEvidenceForVerification(verification)) return undefined;
   const classified = classifyTerminalEvidenceCommand(result.command);
-  const kind: TerminalEvidenceKind = result.mode === 'compile-run'
-    ? 'compile-run'
-    : result.mode === 'file-check'
+  const kind: TerminalEvidenceKind = result.mode === 'readback'
       ? 'other'
     : classified !== 'other'
       ? classified
-      : result.mode
+      : result.mode === 'test'
+        ? 'test'
+        : result.mode
         ? 'compile'
         : 'other';
   const detail = [result.reason, result.output].filter(Boolean).join('\n').slice(0, 1200);
@@ -486,33 +495,28 @@ export async function runAgentAutoValidationForWrites(
   workspaceRootFsPath: string,
   userPrompt: string,
   callbacks: AgentAutoValidationCallbacks,
-  cppValidationPolicy: CppValidationPolicy,
   options: AgentAutoValidationOptions = {},
 ): Promise<AgentAutoValidationResult> {
   const changedPaths = workspaceRelativeValidationPaths(writtenFiles, workspaceRootFsPath);
   if (changedPaths.length === 0 || callbacks.signal?.aborted) return {};
   const evidenceOperationId = nextAutoValidationOperationId(changedPaths);
+  const acceptance = callbacks.canonicalVerificationAcceptance?.length
+    ? callbacks.canonicalVerificationAcceptance
+    : options.verificationAcceptance?.length
+      ? options.verificationAcceptance
+      : DEFAULT_WORKSPACE_VALIDATION_ACCEPTANCE;
   const verificationContext = {
-    adapter: options.verificationAdapter
-      ?? (callbacks.canonicalVerification
-        ? new VsCodeVerificationAdapter(callbacks.canonicalVerification)
-        : canonicalVerificationAdapter),
     runId: callbacks.traceRunId?.trim() || evidenceOperationId,
     sequence: autoValidationOperationSequence,
     actionId: evidenceOperationId,
     scopePaths: changedPaths,
-    acceptance: options.verificationAcceptance?.length
-      ? options.verificationAcceptance
-      : DEFAULT_WORKSPACE_VALIDATION_ACCEPTANCE,
+    acceptance,
     evidenceRefs: [
       ...(options.verificationEvidenceRefs ?? []),
       `verification-operation:${evidenceOperationId}`,
     ],
   };
-
-  const validationService = options.validationService ?? new ValidationService({
-    commandRunner: callbacks.onValidationCommand,
-  });
+  let execution: VsCodeVerificationExecution | undefined;
   try {
     await callbacks.onAgentStatus({
       type: 'agentStatus',
@@ -523,12 +527,6 @@ export async function runAgentAutoValidationForWrites(
       detail: changedPaths.join('\n'),
     });
     const qualityWrittenFiles = options.qualityWrittenFiles ?? writtenFiles;
-    const result = await validationService.validateWorkspaceChanges({
-      rootFsPath: workspaceRootFsPath,
-      changedPaths,
-      requestPrompt: userPrompt,
-      cppValidationPolicy,
-    });
     const formalProjectQuality = combineAgentQualityResults([
       evaluateFormalProjectMarkdownQuality(
         qualityWrittenFiles,
@@ -559,7 +557,58 @@ export async function runAgentAutoValidationForWrites(
         : requirementQuality
           ? '需求质量门禁未通过'
           : undefined;
+    const policyCheckId = policyQuality ? `${evidenceOperationId}:policy-quality` : undefined;
+    const validationService = options.validationService ?? new ValidationService({
+      commandRunner: callbacks.onValidationCommand,
+      ...(policyCheckId ? {
+        hostChecks: {
+          [policyCheckId]: async () => ({
+            status: policyQuality?.qualityGate?.status === 'fail' ? 'failed' : 'unavailable',
+            summary: policyQuality?.qualityGate?.summary ?? 'Policy quality check is unavailable.',
+            evidenceRefs: policyQuality?.qualityGate?.evidenceRefs
+              ?? [`host-check:${policyCheckId}:unavailable`],
+          }),
+        },
+      } : {}),
+    });
+    const ports = options.verificationPorts ?? (
+      callbacks.canonicalVerifierSelection
+      && callbacks.canonicalBuildOrchestration
+      && callbacks.canonicalVerification
+        ? {
+            selection: callbacks.canonicalVerifierSelection,
+            orchestration: callbacks.canonicalBuildOrchestration,
+            verification: callbacks.canonicalVerification,
+          }
+        : undefined
+    );
+    if (!ports) throw new Error('Canonical verifier selection and build orchestration ports are unavailable.');
+    const adapter = options.verificationAdapter ?? new VsCodeVerificationAdapter(validationService);
+    execution = await adapter.verify({
+      runId: verificationContext.runId,
+      sequence: verificationContext.sequence,
+      actionId: verificationContext.actionId,
+      workspaceRoot: workspaceRootFsPath,
+      scopePaths: verificationContext.scopePaths,
+      acceptance: verificationContext.acceptance,
+      evidenceRefs: verificationContext.evidenceRefs,
+      ...(policyCheckId ? {
+        hostChecks: [{
+          id: policyCheckId,
+          evidenceRefs: policyQuality?.qualityGate?.evidenceRefs ?? [`host-check:${policyCheckId}`],
+        }],
+      } : {}),
+    }, ports);
+    const result = projectAutoValidationResult(execution.selection, execution.orchestration);
     if (!result) {
+      const unavailableQuality = policyQuality?.qualityGate ?? {
+        status: 'blocked' as const,
+        summary: 'No applicable automatic verifier was available.',
+        risks: ['The changed scope has no configured project or language verifier.'],
+        evidenceRefs: verificationContext.evidenceRefs,
+        alternativeChecks: ['Configure devseek.verify.json or a project test script.'],
+        requiredActions: ['Add an applicable verifier and run verification again.'],
+      };
       await callbacks.onAgentStatus({
         type: 'agentStatus',
         phase: 'validate',
@@ -568,15 +617,13 @@ export async function runAgentAutoValidationForWrites(
         title: policyQualityTitle ?? '未识别到自动验证目标',
         detail: [changedPaths.join('\n'), policyQuality?.feedbackForAI].filter(Boolean).join('\n\n').slice(0, 1200),
       });
-      if (policyQuality?.qualityGate) {
-        await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, policyQuality.qualityGate);
-      }
-      const settled = { evidenceOperationId, ...(policyQuality ?? {}) };
-      return settleAgentAutoValidation(settled, verificationContext, {
-        status: policyQuality?.qualityGate?.status === 'fail' ? 'failed' : 'unverified',
-        summary: policyQuality?.qualityGate?.summary ?? 'No applicable automatic verifier was available.',
-        evidenceRefs: policyQuality?.qualityGate?.evidenceRefs ?? verificationContext.evidenceRefs,
-      });
+      await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, unavailableQuality);
+      const settled = {
+        evidenceOperationId,
+        feedbackForAI: policyQuality?.feedbackForAI ?? unavailableQuality.summary,
+        qualityGate: unavailableQuality,
+      };
+      return settleAgentAutoValidation(settled, execution);
     }
     const verification = normalizeVerificationResult(result);
     if (!shouldEmitTerminalEvidenceForVerification(verification)) {
@@ -598,13 +645,7 @@ export async function runAgentAutoValidationForWrites(
         feedbackForAI: [feedbackForAI, policyQuality?.feedbackForAI].filter(Boolean).join('\n\n'),
         qualityGate,
       };
-      return settleAgentAutoValidation(settled, verificationContext, {
-        status: qualityGate.status === 'fail' ? 'failed' : 'unverified',
-        summary: qualityGate.summary,
-        command: result.command || undefined,
-        exitCode: result.exitCode,
-        evidenceRefs: qualityGate.evidenceRefs ?? verificationContext.evidenceRefs,
-      });
+      return settleAgentAutoValidation(settled, execution);
     }
     callbacks.onToolActivity?.('terminal', `自动验证: ${result.command}`);
     const feedbackForAI = formatAutoValidationFeedback(result);
@@ -637,16 +678,7 @@ export async function runAgentAutoValidationForWrites(
       repairBlockedReason,
       qualityGate: finalQualityGate,
     };
-    return settleAgentAutoValidation(settled, verificationContext, {
-      status: validationPassed ? 'passed' : finalQualityGate.status === 'fail' ? 'failed' : 'unverified',
-      summary: finalQualityGate.summary,
-      command: result.command || undefined,
-      exitCode: result.exitCode,
-      evidenceRefs: [
-        ...verificationContext.evidenceRefs,
-        ...(finalQualityGate.evidenceRefs ?? []),
-      ],
-    });
+    return settleAgentAutoValidation(settled, execution);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await callbacks.onAgentStatus({
@@ -668,36 +700,15 @@ export async function runAgentAutoValidationForWrites(
       },
       feedbackForAI: `自动验证异常：${message}\n自动验证命令未通过，不能把编译/运行/测试标记为完成。`,
     };
-    return settleAgentAutoValidation(settled, verificationContext, {
-      status: 'indeterminate',
-      summary: `Automatic validation failed unexpectedly: ${message}`,
-      evidenceRefs: verificationContext.evidenceRefs,
-    });
+    return settleAgentAutoValidation(settled, execution);
   }
 }
 
-async function settleAgentAutoValidation(
+function settleAgentAutoValidation(
   result: AgentAutoValidationResult,
-  context: {
-    readonly adapter: Pick<VsCodeVerificationAdapter, 'verify'>;
-    readonly runId: string;
-    readonly sequence: number;
-    readonly actionId: string;
-    readonly scopePaths: readonly string[];
-    readonly acceptance: readonly CodingVerificationCriterion[];
-    readonly evidenceRefs: readonly string[];
-  },
-  observation: VsCodeVerificationObservation,
-): Promise<AgentAutoValidationResult> {
-  const outcome = await context.adapter.verify({
-    runId: context.runId,
-    sequence: context.sequence,
-    actionId: context.actionId,
-    scopePaths: context.scopePaths,
-    acceptance: context.acceptance,
-    evidenceRefs: context.evidenceRefs,
-    verifier: 'vscode-agent-quality-gate',
-    observe: async () => observation,
-  });
-  return { ...result, verificationReceipt: outcome.receipt };
+  execution: VsCodeVerificationExecution | undefined,
+): AgentAutoValidationResult {
+  return execution
+    ? { ...result, verificationReceipt: execution.outcome.receipt }
+    : result;
 }

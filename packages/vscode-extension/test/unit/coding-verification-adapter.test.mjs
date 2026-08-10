@@ -5,170 +5,182 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import test from 'node:test';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const rootDir = path.resolve(__dirname, '../../');
+const dirname = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(dirname, '../../');
 const bundlePath = path.join(rootDir, 'test/unit/coding-verification-adapter.bundle.cjs');
-const terminalBundlePath = path.join(rootDir, 'test/unit/terminal-verification-receipts.bundle.cjs');
 
 execSync(
-  `npx esbuild src/app/coding-verification-adapter.ts --bundle ` +
-  `--outfile=${bundlePath} --format=cjs --platform=node --external:vscode`,
-  { cwd: rootDir, stdio: 'pipe' },
-);
-execSync(
-  `npx esbuild src/agent/terminal-evidence-settlement.ts --bundle ` +
-  `--outfile=${terminalBundlePath} --format=cjs --platform=node --external:vscode`,
+  `npx esbuild src/app/coding-verification-adapter.ts --bundle `
+    + `--outfile=${bundlePath} --format=cjs --platform=node --external:vscode`,
   { cwd: rootDir, stdio: 'pipe' },
 );
 
-const req = createRequire(import.meta.url);
-const { VsCodeVerificationAdapter } = req(bundlePath);
-const { projectTerminalVerificationReceipts } = req(terminalBundlePath);
+const require = createRequire(import.meta.url);
+const {
+  VsCodeVerificationAdapter,
+  createStandaloneVsCodeVerificationPorts,
+} = require(bundlePath);
+
+const acceptance = [{ id: 'validated', statement: 'Applicable validation passes.' }];
+
+function candidate(overrides = {}) {
+  return {
+    id: 'vscode-project-test',
+    source: 'package.json#scripts.test',
+    verifierIds: ['project-verification'],
+    strength: 'test',
+    priority: 10,
+    scopePaths: ['workspace'],
+    workspaceAccess: 'read-only',
+    steps: [{
+      id: 'vscode-project-test:run',
+      role: 'test',
+      invocation: { kind: 'process', command: 'npm', args: ['test', '--silent'] },
+      cwd: '/workspace',
+      timeoutMs: 30_000,
+      outputPolicy: 'ephemeral',
+      evidenceRefs: ['manifest:package.json#scripts.test'],
+    }],
+    evidenceRefs: ['config:package.json'],
+    ...overrides,
+  };
+}
 
 function input(overrides = {}) {
   return {
     runId: 'run-vscode-verification',
     sequence: 1,
     actionId: 'verify-1',
+    workspaceRoot: '/workspace',
     scopePaths: ['src/main.ts'],
-    acceptance: [{ id: 'validated', statement: 'Applicable validation passes.' }],
+    acceptance,
     evidenceRefs: ['mutation:commit-1'],
-    verifier: 'vscode-quality-gate',
-    observe: async () => ({
-      status: 'passed',
-      summary: 'Typecheck passed.',
-      command: 'npm test',
-      exitCode: 0,
-      evidenceRefs: ['run-evidence:verify-1'],
-    }),
     ...overrides,
   };
 }
 
-test('VS Code verification adapter returns evidence-backed shared acceptance', async () => {
-  const outcome = await new VsCodeVerificationAdapter().verify(input());
+function ports() {
+  return createStandaloneVsCodeVerificationPorts({
+    runId: 'run-vscode-verification',
+    workspaceRoot: '/workspace',
+    scopePaths: ['src/main.ts'],
+    acceptance,
+  });
+}
 
-  assert.equal(outcome.receipt.status, 'passed');
-  assert.deepEqual(outcome.receipt.acceptance, [{
+function host(overrides = {}) {
+  return {
+    discover: () => [candidate()],
+    async execute(step) {
+      return {
+        stepId: step.id,
+        status: 'passed',
+        summary: 'Project test passed.',
+        exitCode: 0,
+        workspaceMutationPaths: [],
+        evidenceRefs: ['run-evidence:verify-1'],
+      };
+    },
+    ...overrides,
+  };
+}
+
+test('VS Code adapter composes discovery, shared selection, orchestration, and acceptance settlement', async () => {
+  const execution = await new VsCodeVerificationAdapter(host()).verify(input(), ports());
+
+  assert.equal(execution.selection.status, 'selected');
+  assert.equal(execution.orchestration.status, 'passed');
+  assert.equal(execution.outcome.receipt.status, 'passed');
+  assert.deepEqual(execution.outcome.receipt.acceptance, [{
     criterionId: 'validated',
     status: 'passed',
     evidenceRefs: ['run-evidence:verify-1'],
   }]);
-  assert.deepEqual(outcome.receipt.evidenceRefs, [
-    'mutation:commit-1',
-    'run-evidence:verify-1',
-  ]);
 });
 
-test('VS Code verification adapter never promotes an unavailable verifier', async () => {
-  const outcome = await new VsCodeVerificationAdapter().verify(input({
-    observe: async () => ({
-      status: 'unverified',
-      summary: 'No applicable verifier was available.',
-      evidenceRefs: ['run-evidence:verify-1:blocked'],
-    }),
-  }));
+test('VS Code adapter keeps missing capabilities unverified without executing a host step', async () => {
+  let executions = 0;
+  const execution = await new VsCodeVerificationAdapter(host({
+    discover: () => [],
+    async execute() { executions += 1; throw new Error('must not execute'); },
+  })).verify(input(), ports());
 
-  assert.equal(outcome.receipt.status, 'unverified');
-  assert.equal(outcome.receipt.acceptance[0].status, 'unverified');
+  assert.equal(executions, 0);
+  assert.equal(execution.selection.status, 'unavailable');
+  assert.equal(execution.outcome.receipt.status, 'unverified');
 });
 
-test('VS Code verification adapter turns evidence-free pass into indeterminate', async () => {
-  const outcome = await new VsCodeVerificationAdapter().verify(input({
-    observe: async () => ({
-      status: 'passed',
-      summary: 'Claimed pass without evidence.',
-      evidenceRefs: [],
-    }),
-  }));
-
-  assert.equal(outcome.receipt.status, 'indeterminate');
-  assert.equal(outcome.receipt.errorCode, 'verification-host-failed');
-});
-
-test('VS Code verification adapter replays one action identity without re-observing', async () => {
-  let observations = 0;
-  const adapter = new VsCodeVerificationAdapter();
-  const request = input({
-    observe: async () => {
-      observations += 1;
+test('VS Code adapter cannot turn a source-mutating verifier into a pass', async () => {
+  const execution = await new VsCodeVerificationAdapter(host({
+    async execute(step) {
       return {
+        stepId: step.id,
+        status: 'passed',
+        summary: 'Exited zero after rewriting source.',
+        exitCode: 0,
+        workspaceMutationPaths: ['src/main.ts'],
+        evidenceRefs: ['run-evidence:exit-0'],
+      };
+    },
+  })).verify(input(), ports());
+
+  assert.equal(execution.orchestration.status, 'indeterminate');
+  assert.equal(execution.orchestration.errorCode, 'verification-mutated-user-workspace');
+  assert.equal(execution.outcome.receipt.status, 'indeterminate');
+});
+
+test('VS Code adapter replays one action identity without re-executing the host', async () => {
+  let executions = 0;
+  const sharedHost = host({
+    async execute(step) {
+      executions += 1;
+      return {
+        stepId: step.id,
         status: 'failed',
         summary: 'Tests failed.',
-        command: 'npm test',
         exitCode: 1,
+        workspaceMutationPaths: [],
         evidenceRefs: ['run-evidence:verify-1'],
       };
     },
   });
+  const adapter = new VsCodeVerificationAdapter(sharedHost);
+  const sharedPorts = ports();
+  const first = await adapter.verify(input(), sharedPorts);
+  const replay = await adapter.verify(input(), sharedPorts);
 
-  const first = await adapter.verify(request);
-  const replay = await adapter.verify(request);
-
-  assert.equal(first.receipt.status, 'failed');
-  assert.equal(replay.replayed, true);
-  assert.equal(observations, 1);
+  assert.equal(first.outcome.receipt.status, 'failed');
+  assert.equal(replay.outcome.replayed, true);
+  assert.equal(executions, 1);
 });
 
-test('settled terminal validation actions project failed and repaired canonical receipts', async () => {
-  const commonEvidence = {
-    command: 'node --test src/main.test.js',
-    kind: 'test',
-    exitCode: 1,
-  };
-  const receipts = await projectTerminalVerificationReceipts({
-    runId: 'run-terminal-verification',
-    workspaceRoot: '/workspace',
-    writtenFiles: [{
-      path: '/workspace/src/main.ts',
-      basename: 'main.ts',
-      linesAdded: 1,
-      linesRemoved: 1,
-      action: 'modify',
-    }],
-    acceptance: [{ id: 'validated', statement: 'Applicable validation passes.' }],
-    terminalEvidence: [{
-      ...commonEvidence,
-      ok: false,
-      canonicalAction: {
-        actionId: 'terminal-failed',
-        sequence: 3,
-        evidenceRefs: ['terminal:failed'],
-      },
-    }, {
-      ...commonEvidence,
-      ok: true,
-      exitCode: 0,
-      canonicalAction: {
-        actionId: 'terminal-passed',
-        sequence: 5,
-        evidenceRefs: ['terminal:passed'],
-      },
-    }],
-  });
+test('VS Code adapter appends explicit in-process policy checks to the selected candidate', async () => {
+  const seen = [];
+  const execution = await new VsCodeVerificationAdapter(host({
+    async execute(step) {
+      seen.push(step.invocation.kind);
+      return {
+        stepId: step.id,
+        status: step.invocation.kind === 'host-check' ? 'failed' : 'passed',
+        summary: step.invocation.kind === 'host-check' ? 'Policy failed.' : 'Tests passed.',
+        ...(step.invocation.kind === 'process' ? { exitCode: 0 } : {}),
+        workspaceMutationPaths: [],
+        evidenceRefs: [`evidence:${step.invocation.kind}`],
+      };
+    },
+  })).verify(input({
+    hostChecks: [{ id: 'formal-source-quality', evidenceRefs: ['policy:formal-source'] }],
+  }), ports());
 
-  assert.deepEqual(receipts.map(receipt => ({
-    actionId: receipt.actionId,
-    sequence: receipt.sequence,
-    status: receipt.status,
-    verifier: receipt.verifier,
-    scopePaths: receipt.scopePaths,
-  })), [{
-    actionId: 'terminal-failed',
-    sequence: 3,
-    status: 'failed',
-    verifier: 'vscode-terminal-test',
-    scopePaths: ['src/main.ts'],
-  }, {
-    actionId: 'terminal-passed',
-    sequence: 5,
-    status: 'passed',
-    verifier: 'vscode-terminal-test',
-    scopePaths: ['src/main.ts'],
-  }]);
-  assert.deepEqual(receipts[1].acceptance, [{
-    criterionId: 'validated',
-    status: 'passed',
-    evidenceRefs: ['terminal:passed', 'terminal-verification:terminal-passed'],
-  }]);
+  assert.deepEqual(seen, ['process', 'host-check']);
+  assert.equal(execution.outcome.receipt.status, 'failed');
+});
+
+test('terminal evidence settlement no longer promotes prior terminal claims into verification receipts', () => {
+  const source = execSync('cat src/agent/terminal-evidence-settlement.ts', {
+    cwd: rootDir,
+    encoding: 'utf8',
+  });
+  assert.doesNotMatch(source, /projectTerminalVerificationReceipts|VsCodeVerificationAdapter/);
+  assert.match(source, /classifyAgenticManualReviewEvidence/);
 });

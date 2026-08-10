@@ -107,6 +107,9 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
       canonicalToolAuthority: kernelRequest.toolAuthority,
       canonicalWorkspaceMutations: kernelRequest.workspaceMutations,
       canonicalExternalEffects: kernelRequest.externalEffects,
+      canonicalVerifierSelection: kernelRequest.verifierSelection,
+      canonicalBuildOrchestration: kernelRequest.buildOrchestration,
+      canonicalVerificationAcceptance: kernelRequest.verificationAcceptance,
       canonicalVerification: kernelRequest.verification,
       ...(originalCheckpoint ? {
         onTaskCheckpoint: async (firstUnfinishedIndex, remainingTasks, reason) => {

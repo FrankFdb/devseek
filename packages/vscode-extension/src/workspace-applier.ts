@@ -8,7 +8,6 @@ import type {
 } from '@devseek-netai/shared';
 import { ChangeAction, createChangeAction, ResolvedGeneratedArtifact } from './change-plan';
 import { GeneratedArtifact, GeneratedFile, looksLikeRawToolCallText, parseGeneratedArtifacts } from './generated-file-parser';
-import type { CppValidationPolicy } from './validation-planner';
 import { getWorkspaceRootUri } from './workspace-roots';
 import { isFileProtected } from './protected-files';
 import {
@@ -32,6 +31,7 @@ import { resolveProductWorkspaceMutationTransaction } from './workspace/product-
 import { ReviewLedger, type ReviewLedgerSnapshot } from './workspace/review-ledger';
 import {
   ValidationService,
+  projectAutoValidationResult,
   type AutoValidationResult,
   type ValidationCommandRunner,
 } from './workspace/validation-service';
@@ -40,7 +40,10 @@ import { evaluateCodingRequirementQualityGate } from './app/coding-requirement-q
 import { shouldBlockProjectInstructionFileWrite } from './workspace/instruction-file-safety';
 import { findGeneratedSourceSanityIssue, repairGeneratedSourceTransportEscapes } from './workspace/source-sanity';
 import { createWorkspaceFilePathTokenRegExp } from './workspace/path-patterns';
-import { VsCodeVerificationAdapter } from './app/coding-verification-adapter';
+import {
+  VsCodeVerificationAdapter,
+  createStandaloneVsCodeVerificationPorts,
+} from './app/coding-verification-adapter';
 
 interface ApplyWorkflowStatusBase {
   state: 'started' | 'completed' | 'skipped' | 'passed' | 'failed';
@@ -237,7 +240,6 @@ async function applyPreparedChanges(
   const ledger = new ReviewLedger();
   const workspaceMutation = new VsCodeWorkspaceBatchMutationAdapter();
   const qualityGateService = new QualityGateService();
-  const canonicalVerification = new VsCodeVerificationAdapter();
   const contractAcceptance = buildRequirementQualityGateAcceptance(
     requestPrompt,
     root?.fsPath ?? '/',
@@ -416,7 +418,6 @@ async function applyPreparedChanges(
                 ledger,
                 qualityGateService,
                 contractAcceptance,
-                canonicalVerification,
               });
               return {
                 matches: !transactionalValidation.shouldRollback,
@@ -542,7 +543,6 @@ async function applyPreparedChanges(
     ledger,
     qualityGateService,
     contractAcceptance,
-    canonicalVerification,
   });
   if (validationOutcome.qualityGate.status === 'fail') {
     ledger.addUnfinishedItem('自动验证失败，需要根据验证输出继续修复');
@@ -1368,42 +1368,6 @@ function applyUnifiedDiff(original: string, diff: string, relPath: string): stri
   return ensureFinalNewline(result.join('\n'));
 }
 
-async function settleWorkspaceApplyVerification(input: {
-  adapter: Pick<VsCodeVerificationAdapter, 'verify'>;
-  operationId: string;
-  changedPaths: string[];
-  validation: AutoValidationResult | null;
-  qualityGate: QualityGateDecision;
-}): Promise<CodingVerificationReceipt> {
-  const evidenceRefs = input.qualityGate.evidenceRefs.length > 0
-    ? input.qualityGate.evidenceRefs
-    : [`quality-gate:${input.operationId}:${input.qualityGate.status}`];
-  const outcome = await input.adapter.verify({
-    runId: input.operationId,
-    sequence: 1,
-    actionId: 'workspace-apply-quality-gate',
-    scopePaths: input.changedPaths,
-    acceptance: [{
-      id: 'workspace-apply-quality-gate',
-      statement: 'The applied workspace changes satisfy the selected validation and requirement gates.',
-    }],
-    evidenceRefs,
-    verifier: 'vscode-workspace-applier-quality-gate',
-    observe: async () => ({
-      status: input.qualityGate.status === 'pass'
-        ? 'passed'
-        : input.qualityGate.status === 'fail'
-          ? 'failed'
-          : 'unverified',
-      summary: input.qualityGate.summary,
-      ...(input.validation?.command ? { command: input.validation.command } : {}),
-      ...(input.validation ? { exitCode: input.validation.exitCode } : {}),
-      evidenceRefs,
-    }),
-  });
-  return outcome.receipt;
-}
-
 async function evaluateWorkspaceApplyValidation(input: {
   changedPaths: string[];
   root?: vscode.Uri;
@@ -1413,9 +1377,19 @@ async function evaluateWorkspaceApplyValidation(input: {
   ledger: ReviewLedger;
   qualityGateService: Pick<QualityGateService, 'evaluate'>;
   contractAcceptance?: QualityGateContractAcceptance;
-  canonicalVerification: Pick<VsCodeVerificationAdapter, 'verify'>;
 }): Promise<WorkspaceApplyValidationOutcome> {
   const operationId = `vscode-workspace-validation-${crypto.randomUUID()}`;
+  const workspaceRoot = input.root?.fsPath ?? '/';
+  const acceptance = [{
+    id: 'workspace-apply-quality-gate',
+    statement: 'The applied workspace changes satisfy project verification and requirement gates.',
+  }];
+  const ports = createStandaloneVsCodeVerificationPorts({
+    runId: operationId,
+    workspaceRoot,
+    scopePaths: input.changedPaths,
+    acceptance,
+  });
   await reportWorkflow(input.reporter, {
     phase: 'validate',
     operationId,
@@ -1424,11 +1398,19 @@ async function evaluateWorkspaceApplyValidation(input: {
     detail: '根据变更路径自动选择构建命令',
   });
 
-  const validation = await runAutoValidation(
-    input.changedPaths,
-    input.root,
-    input.requestPrompt,
-    input.validationCommandRunner,
+  const validationHost = new ValidationService({ commandRunner: input.validationCommandRunner });
+  const technicalExecution = await new VsCodeVerificationAdapter(validationHost).verify({
+    runId: operationId,
+    sequence: 1,
+    actionId: 'workspace-apply-project-verification',
+    workspaceRoot,
+    scopePaths: input.changedPaths,
+    acceptance,
+    evidenceRefs: [`workspace-apply:${operationId}:committed`],
+  }, ports);
+  const validation = projectAutoValidationResult(
+    technicalExecution.selection,
+    technicalExecution.orchestration,
   );
   const unavailable = !validation || validation.status === 'blocked' || validation.ran === false;
   if (validation) input.ledger.recordValidation(validation);
@@ -1472,34 +1454,59 @@ async function evaluateWorkspaceApplyValidation(input: {
         : 'QualityGate 阻塞',
     detail: renderQualityGateDetail(qualityGate),
   });
-  const verificationReceipt = await settleWorkspaceApplyVerification({
-    adapter: input.canonicalVerification,
-    operationId,
-    changedPaths: input.changedPaths,
-    validation,
-    qualityGate,
+  const qualityEvidenceRefs = qualityGate.evidenceRefs.length > 0
+    ? qualityGate.evidenceRefs
+    : [`quality-gate:${operationId}:${qualityGate.status}`];
+  const qualityCheckId = `${operationId}:quality-gate`;
+  const qualityHost = new ValidationService({
+    commandRunner: input.validationCommandRunner,
+    verificationPlanner: {
+      discoverCandidates: () => [{
+        id: 'vscode-workspace-quality-gate',
+        source: 'vscode-quality-gate-service',
+        verifierIds: ['project-verification'],
+        strength: 'project-config',
+        priority: 0,
+        scopePaths: input.changedPaths,
+        workspaceAccess: 'read-only',
+        steps: [{
+          id: 'vscode-workspace-quality-gate-check',
+          role: 'lint',
+          invocation: { kind: 'host-check', checkId: qualityCheckId },
+          cwd: workspaceRoot,
+          timeoutMs: 10_000,
+          outputPolicy: 'none',
+          evidenceRefs: qualityEvidenceRefs,
+        }],
+        evidenceRefs: qualityEvidenceRefs,
+      }],
+    },
+    hostChecks: {
+      [qualityCheckId]: async () => ({
+        status: qualityGate.status === 'pass' && technicalExecution.outcome.receipt.status === 'passed'
+          ? 'passed'
+          : qualityGate.status === 'fail' || technicalExecution.outcome.receipt.status === 'failed'
+            ? 'failed'
+            : 'unavailable',
+        summary: qualityGate.summary,
+        evidenceRefs: qualityEvidenceRefs,
+      }),
+    },
   });
+  const qualityExecution = await new VsCodeVerificationAdapter(qualityHost).verify({
+    runId: operationId,
+    sequence: 2,
+    actionId: 'workspace-apply-quality-gate',
+    workspaceRoot,
+    scopePaths: input.changedPaths,
+    acceptance,
+    evidenceRefs: qualityEvidenceRefs,
+  }, ports);
+  const verificationReceipt = qualityExecution.outcome.receipt;
   return {
     ...(validation ? { validation } : {}),
     verificationReceipt,
     qualityGate,
     shouldRollback: Boolean(!unavailable && validation && !validation.ok),
   };
-}
-
-async function runAutoValidation(
-  changedPaths: string[],
-  root?: vscode.Uri,
-  requestPrompt?: string,
-  validationCommandRunner?: ValidationCommandRunner,
-): Promise<AutoValidationResult | null> {
-  if (!root) return null;
-  const config = vscode.workspace.getConfiguration('devseek');
-  const validationService = new ValidationService({ commandRunner: validationCommandRunner });
-  return validationService.validateWorkspaceChanges({
-    rootFsPath: root.fsPath,
-    changedPaths,
-    requestPrompt,
-    cppValidationPolicy: config.get<CppValidationPolicy>('cppValidationPolicy', 'conservative'),
-  });
 }

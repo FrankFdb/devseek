@@ -1,0 +1,62 @@
+{
+  "schema_version": "devseek.user-simulation-scenario/v1",
+  "iteration_id": "I18",
+  "name": "verification-pipeline",
+  "purpose": "Exercise factual verifier discovery, acceptance-owned selection, read-only fail-fast orchestration, structural readback evidence, and cross-Surface fail-closed delivery.",
+  "cases": [
+    {
+      "case_id": "I18-SEL-01",
+      "input": {
+        "surface": "shared-kernel",
+        "workspace_root": "/workspace",
+        "scope_paths": ["src/value.ts"],
+        "acceptance_verifier": "project-verification"
+      }
+    },
+    {
+      "case_id": "I18-BLD-01",
+      "input": {
+        "surface": "shared-kernel",
+        "workspace_root": "/workspace",
+        "scope_paths": ["src/value.ts"],
+        "host_exit_code": 0,
+        "host_mutation_paths": ["src/value.ts"]
+      }
+    },
+    {
+      "case_id": "I18-ACC-01",
+      "input": {
+        "surface": "shared-kernel",
+        "deliverable_path": "src/value.ts",
+        "mutation_status": "committed",
+        "readback_ref": "readback:src/value.ts"
+      }
+    },
+    {
+      "case_id": "I18-CLI-01",
+      "input": {
+        "surface": "cli",
+        "prompt": "Repair a C++ program whose requested stdout must include both alpha and beta.",
+        "preexisting_verifier": "devseek.verify.json",
+        "repair_attempts": 1
+      }
+    },
+    {
+      "case_id": "I18-HDL-01",
+      "input": {
+        "surface": "headless",
+        "scope_paths": ["src/value.ts"],
+        "candidates": [],
+        "host_dispatch_expected": false
+      }
+    },
+    {
+      "case_id": "I18-VSC-01",
+      "input": {
+        "surface": "vscode",
+        "prompt": "Create assets/model.bin with the exact text opaque.",
+        "expected_verifier": "file-readback"
+      }
+    }
+  ]
+}

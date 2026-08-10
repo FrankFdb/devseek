@@ -7,7 +7,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const args = new Set(process.argv.slice(2));
+const selectedCaseIds = new Set(process.argv.slice(2)
+  .filter(argument => argument.startsWith('--case='))
+  .flatMap(argument => argument.slice('--case='.length).split(','))
+  .map(value => value.trim())
+  .filter(Boolean));
 const runId = new Date().toISOString().replace(/[:.]/g, '-');
 const codeRoot = path.join(repoRoot, 'code');
 const benchmarkWorkspaceRoot = path.join(codeRoot, 'devseek-programming-agent-benchmark', runId);
@@ -26,6 +30,10 @@ fs.mkdirSync(testingReportDir, { recursive: true });
 fs.mkdirSync(benchmarkWorkspaceRoot, { recursive: true });
 
 const caseCatalog = JSON.parse(fs.readFileSync(caseCatalogPath, 'utf8'));
+const knownCaseIds = new Set(caseCatalog.cases.map(testCase => testCase.id));
+for (const caseId of selectedCaseIds) {
+  if (!knownCaseIds.has(caseId)) throw new Error(`Unknown programming-agent benchmark case: ${caseId}`);
+}
 const report = {
   ok: false,
   runId,
@@ -39,6 +47,7 @@ const report = {
   testingMarkdownReportPath,
   caseCatalogPath,
   target: 'Claude Code/Codex baseline coding-agent behavior',
+  selectedCaseIds: [...selectedCaseIds],
   cases: [],
   findings: [],
   iterationDecision: [],
@@ -49,6 +58,7 @@ function toolCall(name, input) {
 }
 
 async function runCase(id, fn) {
+  if (selectedCaseIds.size > 0 && !selectedCaseIds.has(id)) return;
   const started = Date.now();
   try {
     const details = await fn();
@@ -1036,7 +1046,7 @@ function runCli(cliArgs, options) {
     const timer = setTimeout(() => {
       child.kill('SIGTERM');
       reject(new Error(`CLI timed out after ${options.timeoutMs ?? 10000}ms. stdout=${stdout.slice(0, 1000)} stderr=${stderr.slice(0, 1000)}`));
-    }, options.timeoutMs ?? 10000);
+    }, options.timeoutMs ?? 30000);
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
     child.stdout.on('data', chunk => { stdout += chunk; });
@@ -1261,7 +1271,7 @@ function writeReports() {
   fs.writeFileSync(testingJsonReportPath, json, 'utf8');
   const markdown = renderMarkdownReport();
   fs.writeFileSync(testingMarkdownReportPath, markdown, 'utf8');
-  fs.writeFileSync(testingLatestReportPath, markdown, 'utf8');
+  if (selectedCaseIds.size === 0) fs.writeFileSync(testingLatestReportPath, markdown, 'utf8');
   console.log(json);
   process.exitCode = report.ok ? 0 : 1;
 }

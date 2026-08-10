@@ -282,16 +282,6 @@
           ],
           "description": "本地执行审批策略：auto=插件直接执行，confirm=执行前由用户确认"
         },
-        "devseek.cppValidationPolicy": {
-          "type": "string",
-          "default": "conservative",
-          "enum": [
-            "conservative",
-            "balanced",
-            "aggressive"
-          ],
-          "description": "C++ 自动验证策略：默认最小目标 compile-only；aggressive 才会优先运行"
-        },
         "devseek.completionEnabled": {
           "type": "boolean",
           "default": false,

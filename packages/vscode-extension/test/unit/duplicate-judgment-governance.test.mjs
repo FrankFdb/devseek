@@ -77,7 +77,7 @@ test('ARCH-16 owner registry covers every duplicate-judgment domain', () => {
     ['tool-protocol', 'packages/shared/src/coding-tool-schema.ts'],
     ['response-integrity', 'src/llm/providers/web-reliability.ts'],
     ['execution-outcome', 'src/execution-outcome-classifier.ts'],
-    ['validation-orchestration', 'src/app/verification-planner.ts'],
+    ['validation-orchestration', 'packages/shared/src/coding-verifier-selection.ts'],
     ['task-state', 'src/agent/task-state-machine.ts'],
     ['context-scope', 'src/app/context-scope-resolver.ts'],
     ['agent-display', 'src/app/agent-display-presenter.ts'],
@@ -165,7 +165,7 @@ test('ARCH-16 legacy .devseek-build paths stay limited to compatibility and excl
   assert.ok(readExtensionFile('src/cpp-build-layout.ts').includes('LEGACY_CPP_BUILD_DIR_NAMES'));
   assert.ok(!readExtensionFile('src/execution-planner.ts').includes('.devseek-build'));
   assert.ok(!readExtensionFile('src/local-execution.ts').includes('.devseek-build'));
-  assert.ok(!readExtensionFile('src/validation-planner.ts').includes('.devseek-build'));
+  assert.ok(!readExtensionFile('src/app/verification-planner.ts').includes('.devseek-build'));
 });
 
 test('ARCH-16 runtime build planners do not produce legacy .devseek-build paths', () => {

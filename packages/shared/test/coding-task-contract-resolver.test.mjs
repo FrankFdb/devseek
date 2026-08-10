@@ -105,3 +105,40 @@ test('context files remain evidence and cannot silently become mutation targets'
   assert.deepEqual(contract.scope.include, []);
   assert.equal(contract.deliverables.find(item => item.kind === 'source-change')?.path, undefined);
 });
+
+test('slash-delimited stdin values cannot become workspace deliverables', () => {
+  const prompt = 'Create an interactive CLI, run it with stdin Alice/3/4, and verify the output.';
+  const contract = resolveCodingKernelTaskContract({ prompt, surface: 'cli' });
+
+  assert.deepEqual(extractCodingWorkspacePaths(prompt), []);
+  assert.deepEqual(contract.scope.include, []);
+  assert.equal(contract.deliverables.find(item => item.kind === 'source-change')?.path, undefined);
+});
+
+test('reference files stay context while an explicitly named target directory owns mutation scope', () => {
+  const prompt = [
+    '参考 docs/requirement.md 和 src/reference.cpp。',
+    '代码实现，创建于：src/oam/zc_maintenance 目录下。',
+  ].join('');
+  const contract = resolveCodingKernelTaskContract({ prompt, surface: 'cli' });
+
+  assert.deepEqual(extractCodingWorkspacePaths(prompt), [
+    'docs/requirement.md',
+    'src/reference.cpp',
+    'src/oam/zc_maintenance',
+  ]);
+  assert.deepEqual(contract.scope.include, ['src/oam/zc_maintenance/**']);
+  assert.equal(contract.deliverables.find(item => item.kind === 'source-change')?.path, undefined);
+});
+
+test('host-declared target paths remain exact mutation deliverables', () => {
+  const contract = resolveCodingKernelTaskContract({
+    prompt: 'Implement the requested behavior and verify it.',
+    surface: 'vscode',
+    contextFiles: ['docs/reference.md'],
+    targetPaths: ['src/feature.ts'],
+  });
+
+  assert.deepEqual(contract.scope.include, ['src/feature.ts']);
+  assert.equal(contract.deliverables.find(item => item.kind === 'source-change')?.path, 'src/feature.ts');
+});

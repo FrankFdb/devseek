@@ -29,6 +29,7 @@
 | surface-adapter-conformance | shared-CanonicalSurfaceAdapterConformanceService | - | 1 | converged |
 | orientation-decision | shared-CanonicalOrientationDecisionService | - | 1 | converged |
 | canonical-task-contract | shared-CanonicalTaskContractService | - | 1 | converged |
+| task-path-intent | shared-CanonicalTaskPathIntentService | - | 1 | converged |
 | engineering-orientation | shared-CanonicalEngineeringOrientationService | - | 1 | converged |
 | codebase-exploration | shared-CanonicalCodebaseExplorationService | - | 1 | converged |
 | context-graph | shared-CanonicalContextGraphService | - | 1 | converged |
@@ -48,6 +49,8 @@
 | tool-dispatch | shared-CanonicalToolDispatchService | - | 1 | converged |
 | tool-execution | shared-CanonicalToolExecutor | - | 1 | converged |
 | workspace-mutation | shared-CanonicalWorkspaceMutationTransaction | - | 1 | converged |
+| verifier-selection | shared-CanonicalVerifierSelectionService | - | 1 | converged |
+| build-orchestration | shared-CanonicalBuildOrchestrationService | - | 1 | converged |
 | verification | shared-CanonicalVerificationService | - | 1 | converged |
 | completion-decision | shared-CanonicalCompletionDecisionService | - | 1 | converged |
 | run-evidence-retention | shared-CanonicalRunEvidenceRetentionService | - | 1 | converged |

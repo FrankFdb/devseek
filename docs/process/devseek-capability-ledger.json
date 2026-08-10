@@ -3468,10 +3468,47 @@
         },
         "contract_sha256": "a9ac15b5a6187d1a4a955b215af1ce36ad0fa8c71d4b6303fddc71a904d9284a"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-verifier-selection.ts"
+        },
+        {
+          "role": "canonical-kernel-binding",
+          "path": "packages/shared/src/coding-kernel.ts"
+        },
+        {
+          "role": "cli-capability-adapter",
+          "path": "packages/cli/src/cli-verification-adapter.ts"
+        },
+        {
+          "role": "headless-capability-adapter",
+          "path": "packages/headless/src/headless-verification.ts"
+        },
+        {
+          "role": "vscode-capability-adapter",
+          "path": "packages/vscode-extension/src/app/coding-verification-adapter.ts"
+        },
+        {
+          "role": "vscode-factual-discovery",
+          "path": "packages/vscode-extension/src/app/verification-planner.ts"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/coding-verifier-orchestration.test.mjs"
+        },
+        {
+          "role": "iteration-user-journey-evidence",
+          "path": "docs/process/devseek-iteration-user-journeys.json"
+        },
+        {
+          "role": "machine-wiring-evidence",
+          "path": "docs/process/devseek-kernel-prep-owner-baseline.json"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C4-ACCEPTANCE-CONTRACT",
@@ -3479,7 +3516,18 @@
           "required_implementation_state": "wired",
           "contract_sha256": "d7e501a88971dc52071f5da81c2e1763e6d9b0334a4012b3ff9a3a9f42597e73"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run verify:kernel-prep-owner-baseline",
+          "npm run shared:test",
+          "npm run cli:test",
+          "npm run headless:test",
+          "npm test --workspace=packages/vscode-extension",
+          "node scripts/run-devseek-iteration-user-journeys.mjs --iteration I18 --run-id <run-id>"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C9-BUILD-ORCHESTRATION",
@@ -3505,10 +3553,51 @@
         },
         "contract_sha256": "feeede9333ab637184a4c75ff5cfd5812f80dd0d989ec1524345ef11b5102e15"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-build-orchestration.ts"
+        },
+        {
+          "role": "canonical-kernel-binding",
+          "path": "packages/shared/src/coding-kernel.ts"
+        },
+        {
+          "role": "cli-execution-host",
+          "path": "packages/cli/src/cli-verification-service.ts"
+        },
+        {
+          "role": "cli-product-composition",
+          "path": "packages/cli/src/cli-verification-adapter.ts"
+        },
+        {
+          "role": "headless-product-composition",
+          "path": "packages/headless/src/headless-verification.ts"
+        },
+        {
+          "role": "vscode-execution-host",
+          "path": "packages/vscode-extension/src/workspace/validation-service.ts"
+        },
+        {
+          "role": "vscode-product-composition",
+          "path": "packages/vscode-extension/src/app/coding-verification-adapter.ts"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/coding-verifier-orchestration.test.mjs"
+        },
+        {
+          "role": "iteration-user-journey-evidence",
+          "path": "docs/process/devseek-iteration-user-journeys.json"
+        },
+        {
+          "role": "machine-wiring-evidence",
+          "path": "docs/process/devseek-kernel-prep-owner-baseline.json"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C8-CODE-CHANGE",
@@ -3522,7 +3611,18 @@
           "required_implementation_state": "wired",
           "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run verify:kernel-prep-owner-baseline",
+          "npm run shared:test",
+          "npm run cli:test",
+          "npm run headless:test",
+          "npm test --workspace=packages/vscode-extension",
+          "node scripts/run-devseek-iteration-user-journeys.mjs --iteration I18 --run-id <run-id>"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C9-INDEPENDENT-VERIFICATION",
@@ -3548,10 +3648,51 @@
         },
         "contract_sha256": "d195f446cfb96484eb54502164a98ea8f8b322ab1c5faede0d24d2abfbcc4bc8"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-verification.ts"
+        },
+        {
+          "role": "acceptance-evidence-owner",
+          "path": "packages/shared/src/coding-structural-acceptance.ts"
+        },
+        {
+          "role": "canonical-kernel-binding",
+          "path": "packages/shared/src/coding-kernel.ts"
+        },
+        {
+          "role": "cli-product-composition",
+          "path": "packages/cli/src/cli-verification-adapter.ts"
+        },
+        {
+          "role": "headless-product-composition",
+          "path": "packages/headless/src/headless-verification.ts"
+        },
+        {
+          "role": "vscode-product-composition",
+          "path": "packages/vscode-extension/src/app/coding-verification-adapter.ts"
+        },
+        {
+          "role": "shared-verification-tests",
+          "path": "packages/shared/test/coding-verifier-orchestration.test.mjs"
+        },
+        {
+          "role": "shared-settlement-tests",
+          "path": "packages/shared/test/coding-kernel-settlement-journeys.test.mjs"
+        },
+        {
+          "role": "iteration-user-journey-evidence",
+          "path": "docs/process/devseek-iteration-user-journeys.json"
+        },
+        {
+          "role": "machine-wiring-evidence",
+          "path": "docs/process/devseek-kernel-prep-owner-baseline.json"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C9-VERIFIER-SELECTION",
@@ -3565,7 +3706,18 @@
           "required_implementation_state": "wired",
           "contract_sha256": "feeede9333ab637184a4c75ff5cfd5812f80dd0d989ec1524345ef11b5102e15"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run verify:kernel-prep-owner-baseline",
+          "npm run shared:test",
+          "npm run cli:test",
+          "npm run headless:test",
+          "npm test --workspace=packages/vscode-extension",
+          "node scripts/run-devseek-iteration-user-journeys.mjs --iteration I18 --run-id <run-id>"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C9-DIAGNOSTIC-NORMALIZATION",
@@ -5293,5 +5445,5 @@
       ]
     }
   ],
-  "ledger_sha256": "75339881eeb7f7bdabccaec27adc4c4bd4bcacf029f2a571d547b8def2df546d"
+  "ledger_sha256": "4e2faf1b579c049dd0cb8f51d393fcf2bda12b3ca695593c739efb3aded5286f"
 }

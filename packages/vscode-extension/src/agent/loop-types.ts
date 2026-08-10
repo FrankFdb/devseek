@@ -23,7 +23,10 @@ import type {
   CodingToolHostResult,
   CodingToolSurfaceConstraint,
   CodingVerificationReceipt,
+  CodingVerificationCriterion,
   CodingVerificationSessionPort,
+  BuildOrchestrationPort,
+  VerifierSelectionPort,
   CodingWorkspaceMutationReceipt,
   WorkspaceMutationTransactionPort,
 } from '@devseek-netai/shared';
@@ -72,6 +75,9 @@ export interface AgentLoopCallbacks {
   canonicalToolExecution?: CodingToolExecutionSessionPort;
   canonicalWorkspaceMutations?: WorkspaceMutationTransactionPort;
   canonicalExternalEffects?: CodingExternalEffectSessionPort;
+  canonicalVerifierSelection?: VerifierSelectionPort;
+  canonicalBuildOrchestration?: BuildOrchestrationPort;
+  canonicalVerificationAcceptance?: readonly CodingVerificationCriterion[];
   canonicalVerification?: CodingVerificationSessionPort;
   canonicalProviderEvents?: ProviderEventPort;
   canonicalToolDispatch?: ToolDispatchPort;
