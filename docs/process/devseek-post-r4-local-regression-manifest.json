@@ -214,7 +214,7 @@
         {
           "path": "packages/vscode-extension/test/unit/workflow-compliance.test.mjs",
           "role": "workflow-static-contract-oracle",
-          "source_sha256": "0c7f9cb35ec269399890abfe7a1a8b745b0113a27d09e8845c62f7ce96d4fd0c"
+          "source_sha256": "6b160b748ab0cc8600d7e4a0c8dc07548f47d66e71afa5325045ed32e60f66f8"
         }
       ],
       "anchor_checks": [
@@ -314,7 +314,7 @@
         {
           "path": "packages/vscode-extension/src/agent/completion-evidence.ts",
           "role": "completion-evidence-deliverable-contract",
-          "source_sha256": "b422f5777d92a9390f65f3a43c96794fb8bf37ca74ac8aa08d47691824c5914e"
+          "source_sha256": "9ba3a82e37bae309857e0ae913476dbae6d96b1b3504740f1e871174467d83ef"
         },
         {
           "path": "packages/vscode-extension/test/unit/artifact-quality-oracle.test.mjs",
@@ -414,5 +414,5 @@
     "gate_pass_assertions": 0,
     "bypasses": 0
   },
-  "manifest_sha256": "cd1a3d186f93820612285eee719ab9a54dba37c34486c9834a359db09406c1e9"
+  "manifest_sha256": "4b2e8cc22fd9081feb2e676ec5fe8033108a28c45d690d655991626b5fd525c5"
 }

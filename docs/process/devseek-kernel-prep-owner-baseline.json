@@ -1938,8 +1938,11 @@
       "includes": [
         "export interface CompletionDecisionPort",
         "export class CanonicalCompletionDecisionService implements CompletionDecisionPort",
-        "const unresolvedVerifications = unresolvedVerificationReceipts(input.verifications)",
+        "const unresolvedVerifications = unresolvedVerificationReceipts(",
+        "input.verifications,",
+        "input.toolExecutions,",
         "function verificationSupersedes(",
+        "function matchingVerificationTool(",
         "assertReceiptRunIds(runId, input.verifications, 'verification')",
         "verification-not-run",
         "cancellation-unsettled",
@@ -2132,7 +2135,7 @@
       "path": "packages/vscode-extension/test/unit/coding-conformance-development-baseline.test.mjs",
       "includes": [
         "VS Code canonical Kernel probe exposes semantically conformant settled product output",
-        "VS Code product projection correlates internal host receipt ids to canonical tool actions",
+        "VS Code product projection includes only exact action-owned verification receipts",
         "adapterId: 'vscode-coding-kernel-execution-product-output'",
         "routeOutput.result.codingConformance",
         "vscodeResult.evidenceClass, 'product-route'",
@@ -2147,18 +2150,18 @@
       "passed": true
     },
     {
-      "check_id": "vscode-coding-conformance-receipt-correlation",
-      "path": "packages/vscode-extension/src/app/vscode-coding-conformance-correlation.ts",
+      "check_id": "vscode-coding-conformance-action-owned-projection",
+      "path": "packages/vscode-extension/src/app/vscode-coding-kernel-output.ts",
       "includes": [
-        "export function correlateVsCodeCodingConformanceReceipts",
-        "candidate.effects.includes('workspace-mutation')",
-        "candidate.effects.includes('process')",
-        "uniqueEvidenceOwner(",
-        "verificationStatusCompatible("
+        "export function projectVsCodeCodingKernelOutput",
+        "const toolActionIds = new Set(output.toolExecutionReceipts.map(receipt => receipt.actionId))",
+        "receipt => toolActionIds.has(receipt.actionId)",
+        "verifications: actionOwnedVerifications"
       ],
       "excludes": [
         "CODING_CONFORMANCE_DEVELOPMENT_FIXTURES",
-        "evaluateCodingConformanceFixture"
+        "evaluateCodingConformanceFixture",
+        "correlateVsCodeCodingConformanceReceipts"
       ],
       "passed": true
     },
@@ -2489,10 +2492,12 @@
       "includes": [
         "export function projectVsCodeCodingKernelOutput(",
         "output.completion.status !== output.settlement.status",
-        "correlateVsCodeCodingConformanceReceipts({",
+        "const toolActionIds = new Set(output.toolExecutionReceipts.map(receipt => receipt.actionId))",
+        "const actionOwnedVerifications = output.verificationReceipts.filter(",
+        "projectSettledCodingConformanceRun({",
         "toolExecutions: output.toolExecutionReceipts",
         "changeReceipts: output.workspaceMutationReceipts",
-        "verifications: output.verificationReceipts",
+        "verifications: actionOwnedVerifications",
         "completion: output.completion",
         "completionDecision: output.completion"
       ],
@@ -3005,5 +3010,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "746539b0fb9d9ccec6b813a3a7786e23f1d4b992b0ec5346159d8a47b453bd0f"
+  "baseline_sha256": "77d2f6ea788fbc05e9d2a71501857a5e3a80aa5b4caf1f55093e95169494a2c3"
 }

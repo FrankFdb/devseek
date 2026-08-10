@@ -33,14 +33,14 @@ devseek_governance:
 <!-- DEVSEEK-GOVERNANCE-STATUS:END -->
 
 - 本次复核日期：2026-08-10
-- Extension 身份规则：当前开发候选以每轮 release loop 生成的 source/artifact/install/runtime 精确回执为准；当前为 `924f8af`，`940d77e` 是上一稳定回退候选，R4 v2 冻结候选仍为 `4f8a567`，原 `a034e5e` v1 清单仍是历史不可变候选，四者不得互相覆盖身份或资格效力
+- Extension 身份规则：当前开发候选以每轮 release loop 生成的 source/artifact/install/runtime 精确回执为准；当前为 `2edc604`，`0ed2d7e` 是上一稳定回退候选，R4 v2 冻结候选仍为 `4f8a567`，原 `a034e5e` v1 清单仍是历史不可变候选，四者不得互相覆盖身份或资格效力
 - 复核原则：文档声明只作索引；结论以 `docs/process` 机器源、实际代码可达性、当前工作树和本轮重跑验证为准
 
 ## 1. 本次结论
 
 **最开始的最终目的尚未达成。**
 
-文档包已经完成诊断、对标、目标架构和资格方法设计，C0 本地可证地基也已接线。VS Code、CLI、Headless 已共用 canonical Coding Kernel、33 个收敛语义域与不可变磁盘 operation journal，Provider、tool、workspace/external effect，以及 task-path intent/requirement/external-source/acceptance/design/change-plan/revision 不再由 Surface 各自解释；C9 验证器选择、只读构建编排和独立验证证据也已形成 shared 唯一语义边界。五类固定场景和 I10～I18 共 46 个增量用户路径已通过本地验收。C1～C14 已有 33 项 `wired`；其余 36 项能力、完整长任务路线和密封 holdout 资格尚未完成，因此当前不能宣称 DevSeek 已达到顶级编程智能体目标。
+文档包已经完成诊断、对标、目标架构和资格方法设计，C0 本地可证地基也已接线。VS Code、CLI、Headless 已共用 canonical Coding Kernel、33 个收敛语义域与不可变磁盘 operation journal，Provider、tool、workspace/external effect，以及 task-path intent/requirement/external-source/acceptance/design/change-plan/revision 不再由 Surface 各自解释；C9 验证器选择、只读构建编排和独立验证证据也已形成 shared 唯一语义边界。VS Code terminal observation 现由独立 adapter 按精确 action ownership 投影，失败验证只有被后续同属已执行动作的成功验证取代后才允许完成，五类固定场景与 I10～I18 共 46 个增量用户路径已通过本地验收。C1～C14 已有 33 项 `wired`；其余 36 项能力、完整长任务路线和密封 holdout 资格尚未完成，因此当前不能宣称 DevSeek 已达到顶级编程智能体目标。
 
 | 原始目的 | 当前判定 | 主要证据 |
 | --- | --- | --- |
@@ -49,7 +49,7 @@ devseek_governance:
 | 定义单一执行内核与完整生命周期 | `已完成设计` | 03、04、08 已定义目标、能力 DAG 和里程碑 |
 | 建立机器账本、证据协议和 fail-closed 裁决 | `本地实现完成，未取得资格` | C0 `7/7 wired`；Gate 0 local conformance `PASSED`；claims `0` |
 | 将 VS Code、CLI、Headless 切到同一 Coding Kernel | `本地产品责任已完成` | 三 Surface 共用 canonical Kernel、TaskContract、Tool、Mutation、Verification、Completion；五类真实工作区产品场景联合等价，legacy execution owner=0 |
-| 让 C1～C14 产品能力达到可声明等级 | `进行中` | 69 项中 33 项已 `wired`，其余 36 项为 `proposed`；C9 verifier selection/build orchestration/independent verification 已接线，无 qualification claim |
+| 让 C1～C14 产品能力达到可声明等级 | `进行中` | 69 项中 33 项已 `wired`，其余 36 项为 `proposed`；C9 verifier selection/build orchestration/independent verification 已接线，动作级失败→修复→重验证因果链已加固，无 qualification claim |
 | 完成正式项目、真实 Provider 与 holdout 顶级资格 | `未完成` | Gate 0 `NOT_PASSED`，6 个外部 authority blocker，R1 qualification `NOT_STARTED` |
 
 ## 2. 当前机器事实
@@ -61,7 +61,7 @@ devseek_governance:
 | Qualification runner | 19 个入口；1 个本地非资格 runner、10 个 catalog fixture、4 个 production disabled、4 个 historical disabled |
 | R4 | 6/6 原始 leaf completed，blocked=0；冻结时 artifact/install/runtime 与 v2 候选精确绑定，stable runtime=1、window-sensitive leaf=0；当前开发候选另由 current identity 管理 |
 | Frozen R4 candidate | 当前 `R4-RELEASE-CANDIDATE-MANIFEST/v2` 冻结 `4f8a567` VSIX；原 `a034e5e` v1 JSON/schema/view 以固定文件哈希归档为历史不可变候选；两者均无资格效力 |
-| Current local development receipt | `924f8af` 精确绑定 `devseek-netai-1.0.0-debug.20260810.t160917.g924f8af.vsix`、SHA256 `c28f46526d7e77f3feeefcf042b8ef5ea71f5a9fb79375961def884583dd9faa`、本地安装和单一 Bridge runtime；I10～I18 共 46 个增量案例的原始 TAP 仅在本地保留，不进入 Git。该回执不改写 `4f8a567` 冻结候选，也不是 qualification receipt |
+| Current local development receipt | `2edc604` 精确绑定 `devseek-netai-1.0.0-debug.20260810.t172136.g2edc604.vsix`、SHA256 `51f0c0117f01116c71b07cb45986f005c0ba522921511bd61f39d44eb0bac26c`、本地安装和单一 Bridge runtime；I10～I18 共 46 个增量案例及本轮 C9 产品仿真原始结果仅在本地 `code/devseek-tests/` 保留，不进入 Git。该回执不改写 `4f8a567` 冻结候选，也不是 qualification receipt |
 | Post-R4 local track | NP-05/06/07 manifest 已在 `5c32551` 提交；检查覆盖 16 个 source、17/17 anchors、8 个 local-only command，6/6 通过 |
 | Surface inventory | 88 个入口分母全部 covered，无 unknown、重复或待 cutover；source hash 对账通过 |
 | Architecture budget | 设计优先门禁通过，仍有 6 个明确债务热点；`extension.ts` 为 1679/1683 行；大小只作回退护栏，不替代职责、依赖和 owner 判定 |
@@ -188,12 +188,12 @@ devseek_governance:
 | Surface inventory | `PASS`，12/12 checker tests；88/88 covered，unknown=0 |
 | Legacy doc inventory | `PASS`，5/5 tests；40 个 legacy 文档全覆盖，archive 明确排除，root duplicate=0 |
 | Doc governance | `PASS`，4/4 tests；43 个受治理文档，3 个 active baseline、40 个 legacy/reference |
-| Surface product conformance | `PASS`，`379efbd` 精确 VSIX 的 VS Code create/modify/repair/permission-denied/policy-refusal 5/5 通过，并与 CLI、Headless 形成 5/5 三 Surface product-route conformance；qualification eligible=false |
-| Previous stable VSIX receipt | `PASS`，`devseek-netai-1.0.0-debug.20260810.t115039.g940d77e.vsix`；SHA256 `0e62babd31d1ee4f689f6e930b4873e35c9ef27bd2b8dd08370354b578113116`；该回执是本轮 release loop 前的回退基线，不冒充当前源码候选 |
-| Candidate identity rule | 当前 `924f8af` source/artifact/install/runtime 已由同一轮 release loop 精确绑定，stable runtime=1、stale/unknown/unreadable=0；禁止从上一稳定 `940d77e` 或 R4 冻结候选继承当前候选 PASS |
-| 本地用户闭环 | `PASS`，精确已安装 VSIX 的受控普通用户路径与五场景产品路径通过；Bridge 为 `session-missing`，real DeepSeek 因资格前置未满足而未执行 |
+| Surface product conformance | `PASS`，`2edc604` 精确 VSIX 的 VS Code create/modify/repair/permission-denied/policy-refusal 5/5 通过，并与 CLI、Headless 形成 5/5 三 Surface product-route conformance；repair 保留 action-owned failed→repair→passed，qualification eligible=false |
+| Previous stable VSIX receipt | `PASS`，`devseek-netai-1.0.0-debug.20260810.t170815.g0ed2d7e.vsix`；SHA256 `f94f7cc38de9dc6172f4542aebb4d50b65d10a7eb9306791d23e6fd76afd3cd8`；该回执是本轮 release loop 前的回退基线，不冒充当前源码候选 |
+| Candidate identity rule | 当前 `2edc604` source/artifact/install/runtime 已由同一轮 release loop 精确绑定，stable runtime=1、stale/unknown/unreadable=0；禁止从上一稳定 `0ed2d7e` 或 R4 冻结候选继承当前候选 PASS |
+| 本地用户闭环 | `PASS`，精确已安装 VSIX 的受控普通用户路径与五场景产品路径通过；headed Bridge 已刷新到当前候选并保留已登录 DeepSeek chat 页面，因资格前置未满足未发送 real task |
 | R4 frozen candidate identity | `PASS`，11/11；冻结验证时 stable=1、stale/unknown/unreadable=0；qualification effect=`NONE` |
-| Phase 0-12 | `PASS`，32/32；最终 run id `2026-08-07T14-55-58-842Z`；本轮 source-binding 诊断 run `2026-08-07T14-19-17-065Z`、`2026-08-07T14-28-23-425Z` 均保留；deterministic=`passed`，real CLI/plugin Provider=`not-run`，Gate 0 仍为 `NOT_PASSED` |
+| Phase 0-12 | 本轮候选机器源已刷新，完整门禁将在收敛提交后以 clean worktree 重跑；deterministic local checks 不产生资格效力，real CLI/plugin Provider 不因本地验证自动执行，Gate 0 仍为 `NOT_PASSED` |
 
 受控 T3 使用真实已安装 VSIX、隔离 Extension Host 与确定性 fake Bridge，并通过测试专用消息和程序化 intent approval 驱动。它不是自然 UI、real Provider、RC smoke、T4/T5 或 qualification 证据，`qualification_effect=NONE`。
 
