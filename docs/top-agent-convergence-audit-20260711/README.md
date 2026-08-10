@@ -193,7 +193,7 @@ devseek_governance:
 | Candidate identity rule | 当前 `2edc604` source/artifact/install/runtime 已由同一轮 release loop 精确绑定，stable runtime=1、stale/unknown/unreadable=0；禁止从上一稳定 `0ed2d7e` 或 R4 冻结候选继承当前候选 PASS |
 | 本地用户闭环 | `PASS`，精确已安装 VSIX 的受控普通用户路径与五场景产品路径通过；headed Bridge 已刷新到当前候选并保留已登录 DeepSeek chat 页面，因资格前置未满足未发送 real task |
 | R4 frozen candidate identity | `PASS`，11/11；冻结验证时 stable=1、stale/unknown/unreadable=0；qualification effect=`NONE` |
-| Phase 0-12 | 本轮候选机器源已刷新，完整门禁将在收敛提交后以 clean worktree 重跑；deterministic local checks 不产生资格效力，real CLI/plugin Provider 不因本地验证自动执行，Gate 0 仍为 `NOT_PASSED` |
+| Phase 0-12 | `PASS`，本轮以 clean worktree 完整重跑且全部 phase/gate 通过；deterministic=`passed`，real CLI/plugin Provider=`not-run`，candidate/stable claim 均不允许，Gate 0 仍为 `NOT_PASSED` |
 
 受控 T3 使用真实已安装 VSIX、隔离 Extension Host 与确定性 fake Bridge，并通过测试专用消息和程序化 intent approval 驱动。它不是自然 UI、real Provider、RC smoke、T4/T5 或 qualification 证据，`qualification_effect=NONE`。
 
