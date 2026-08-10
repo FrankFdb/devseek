@@ -18,21 +18,19 @@ export interface TerminalVerificationObservation {
   readonly verification: CodingVerificationSessionPort;
 }
 
-/**
- * Projects one already-settled validation command into Verification without
- * rerunning it. Failed or ambiguous commands remain tool evidence only.
- */
-export async function recordPassedTerminalVerification(
+/** Projects one deterministic terminal result into Verification without rerunning it. */
+export async function recordTerminalVerification(
   input: TerminalVerificationObservation,
 ): Promise<CodingVerificationReceipt | undefined> {
-  if (!isCanonicalPassedValidation(input)) return undefined;
+  const terminalStatus = canonicalTerminalVerificationStatus(input);
+  if (!terminalStatus) return undefined;
   const { toolReceipt, evidence } = input;
   const scopePaths = workspaceRelativeVerificationPaths(input.writtenFiles, input.workspaceRoot);
   const canonicalScope = scopePaths.length > 0 ? scopePaths : ['workspace'];
   const evidenceRefs = [
     ...toolReceipt.evidenceRefs,
     ...(evidence.canonicalAction?.evidenceRefs ?? []),
-    `vscode-terminal-verification:${toolReceipt.actionId}:exit-0`,
+    `vscode-terminal-verification:${toolReceipt.actionId}:exit-${terminalStatus.exitCode}`,
   ];
   const outcome = await input.verification.verify(buildCodingVerificationPlan({
     runId: toolReceipt.runId,
@@ -54,11 +52,13 @@ export async function recordPassedTerminalVerification(
         verifier: 'vscode-terminal-execution',
         checks: [{
           checkId: `terminal-${toolReceipt.actionId}`,
-          status: 'passed',
+          status: terminalStatus.status,
           acceptanceIds: input.acceptance.map(criterion => criterion.id),
-          summary: `Executed ${evidence.kind} validation passed.`,
+          summary: terminalStatus.status === 'passed'
+            ? `Executed ${evidence.kind} validation passed.`
+            : `Executed ${evidence.kind} validation failed with exit code ${terminalStatus.exitCode}.`,
           command: evidence.command,
-          exitCode: 0,
+          exitCode: terminalStatus.exitCode,
           evidenceRefs,
         }],
         evidenceRefs,
@@ -68,19 +68,29 @@ export async function recordPassedTerminalVerification(
   return outcome.receipt;
 }
 
-function isCanonicalPassedValidation(input: TerminalVerificationObservation): boolean {
+function canonicalTerminalVerificationStatus(
+  input: TerminalVerificationObservation,
+): { readonly status: 'passed' | 'failed'; readonly exitCode: number } | undefined {
   const { toolReceipt, evidence, verification } = input;
   const action = evidence.canonicalAction;
-  return toolReceipt.runId === verification.runId
+  const hasCanonicalOwnership = toolReceipt.runId === verification.runId
     && toolReceipt.tool === 'run_terminal'
     && toolReceipt.purpose === 'verify'
     && toolReceipt.effects.length === 1
     && toolReceipt.effects[0] === 'process'
-    && toolReceipt.status === 'completed'
     && input.acceptance.length > 0
     && evidence.kind !== 'other'
-    && evidence.ok
-    && evidence.exitCode === 0
     && action?.actionId === toolReceipt.actionId
     && action.sequence === toolReceipt.sequence;
+  if (!hasCanonicalOwnership) return undefined;
+  if (toolReceipt.status === 'completed' && evidence.ok && evidence.exitCode === 0) {
+    return { status: 'passed', exitCode: 0 };
+  }
+  if (toolReceipt.status === 'failed'
+    && !evidence.ok
+    && Number.isSafeInteger(evidence.exitCode)
+    && evidence.exitCode !== 0) {
+    return { status: 'failed', exitCode: evidence.exitCode as number };
+  }
+  return undefined;
 }

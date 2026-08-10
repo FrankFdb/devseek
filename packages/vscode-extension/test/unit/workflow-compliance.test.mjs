@@ -2059,6 +2059,7 @@ test('Agentic loop: terminal completion evidence requires successful validation 
   const code = src('src/agent/agentic-loop.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
   const terminalAdapter = src('src/agent/tool-loop-terminal-evidence.ts');
+  const terminalObservation = src('src/agent/tool-loop-terminal-observation.ts');
   const executionEvidence = src('src/agent/agentic-execution-evidence.ts');
   const evidence = src('src/agent/completion-evidence.ts');
   assertContains(toolLoop, 'TerminalEvidence', 'terminal evidence model must exist');
@@ -2066,7 +2067,7 @@ test('Agentic loop: terminal completion evidence requires successful validation 
   assertDoesNotContain(terminalAdapter, 'function parseFormattedTerminalExitCode', 'terminal evidence adapter must not own formatted terminal exit-code parsing');
   assertContains(terminalAdapter, 'resolveCompilerOutputPath', 'compiler -o artifact path must be detected');
   assertContains(terminalAdapter, 'isExecutableFile', 'compiler output must be checked on disk');
-  assertContains(toolLoop, '验证命令未通过，不能把编译/运行/测试标记为完成', 'failed validation must be fed back to the agent');
+  assertContains(terminalObservation, '验证命令未通过，不能把编译/运行/测试标记为完成', 'terminal observation owner must feed failed validation back to the agent');
   assertContains(code, 'buildTerminalFailureRepairFeedback', 'terminal failure prose must be converted into a repair instruction');
   assertContains(code, 'assessMissingCompletionEvidence', 'agent loop must delegate semantic completion checks to evidence boundary');
   assertContains(code, 'getAgenticBlockingTerminalFailure', 'agentic runtime must use a final settlement gate for terminal failures');
@@ -2077,8 +2078,8 @@ test('Agentic loop: terminal completion evidence requires successful validation 
   );
   assertContains(executionEvidence, 'findBlockingTerminalFailureEvidence(terminalEvidence)', 'agentic settlement owner must not let failed validation evidence be hidden by provider completion prose');
   assert.match(
-    toolLoop,
-    /canonicalAction:\s*\{[\s\S]*?actionId: execution\.receipt\.actionId[\s\S]*?evidenceRefs: execution\.receipt\.evidenceRefs[\s\S]*?terminalEvidence\.push\(canonicalEvidence\)/,
+    terminalObservation,
+    /canonicalAction:\s*\{[\s\S]*?actionId: input\.toolReceipt\.actionId[\s\S]*?evidenceRefs: input\.toolReceipt\.evidenceRefs[\s\S]*?terminalEvidence:[\s\S]*?\[canonicalEvidence\]/,
     'terminal evidence must retain its canonical action receipt and be recorded separately from raw terminal commands',
   );
   assert.match(
@@ -2667,16 +2668,16 @@ test('Safety refusal: no-mutation delivery has one explicit evidence path', () =
 });
 
 test('Agentic evidence: read-only terminal checks are retained as completion evidence', () => {
-  const toolLoop = src('src/agent/tool-loop.ts');
+  const terminalObservation = src('src/agent/tool-loop-terminal-observation.ts');
   assertContains(
-    toolLoop,
-    'isReadOnlyTerminalEvidenceCommand(resolvedCommand)',
-    'tool loop must keep read-only terminal evidence for the capability-resolved command instead of dropping kind=other commands',
+    terminalObservation,
+    'isReadOnlyTerminalEvidenceCommand(input.command)',
+    'terminal observation owner must keep read-only evidence instead of dropping kind=other commands',
   );
   assert.match(
-    toolLoop,
-    /canonicalEvidence\.kind !== 'other' \|\| isReadOnlyTerminalEvidenceCommand\(resolvedCommand\)[\s\S]*?terminalEvidence\.push\(canonicalEvidence\)/,
-    'run_terminal evidence collection must retain read-only other-kind commands after capability resolution',
+    terminalObservation,
+    /canonicalEvidence\.kind !== 'other'[\s\S]*?isReadOnlyTerminalEvidenceCommand\(input\.command\)[\s\S]*?\? \[canonicalEvidence\]/,
+    'terminal observation must retain read-only other-kind commands after capability resolution',
   );
 });
 
@@ -3648,6 +3649,8 @@ test('C9: Shared Kernel owns verifier selection, orchestration, and acceptance s
   const validationService = src('src/workspace/validation-service.ts');
   const adapter = src('src/app/coding-verification-adapter.ts');
   const terminalAdapter = src('src/agent/terminal-verification-adapter.ts');
+  const terminalObservation = src('src/agent/tool-loop-terminal-observation.ts');
+  const toolLoop = src('src/agent/tool-loop.ts');
   const kernelOutput = src('src/app/vscode-coding-kernel-output.ts');
   const selection = repoSrc('packages/shared/src/coding-verifier-selection.ts');
   const orchestration = repoSrc('packages/shared/src/coding-build-orchestration.ts');
@@ -3660,8 +3663,12 @@ test('C9: Shared Kernel owns verifier selection, orchestration, and acceptance s
   assertContains(orchestration, 'class CanonicalBuildOrchestrationService', 'Shared Kernel must own ordered fail-fast execution');
   assertContains(verification, 'class CanonicalVerificationService', 'Shared Kernel must own acceptance settlement');
   assertContains(adapter, 'projectBuildOrchestrationHostResult', 'surface adapter must project raw orchestration facts into canonical verification');
-  assertContains(terminalAdapter, 'toolReceipt.status === \'completed\'', 'terminal verification must require a completed canonical tool receipt');
+  assertContains(terminalAdapter, 'canonicalTerminalVerificationStatus', 'terminal verification must normalize only deterministic terminal outcomes');
+  assertContains(terminalAdapter, "toolReceipt.status === 'failed'", 'terminal verification must retain deterministic failed execution history');
   assertContains(terminalAdapter, 'action?.actionId === toolReceipt.actionId', 'terminal verification must bind the exact executing action');
+  assertContains(terminalObservation, 'recordTerminalVerification', 'terminal observation must own terminal-to-verification projection');
+  assertContains(toolLoop, 'observeSettledTerminalExecution', 'tool loop must delegate settled terminal observation');
+  assertDoesNotContain(toolLoop, 'recordTerminalVerification', 'tool loop must not own terminal verification projection');
   assertContains(kernelOutput, 'toolActionIds.has(receipt.actionId)', 'conformance projection must include only exact action-owned verification receipts');
   assertDoesNotContain(kernelOutput, 'correlateVsCodeCodingConformanceReceipts', 'product projection must never guess receipt ownership after Completion');
   assert.equal(existsSync(path.join(root, 'src/app/vscode-coding-conformance-correlation.ts')), false, 'obsolete receipt correlation owner must be deleted');

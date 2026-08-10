@@ -94,7 +94,10 @@ export class CanonicalCompletionDecisionService implements CompletionDecisionPor
 }
 
 function deriveCompletionDecision(input: CodingCompletionDecisionInput): CodingCompletionDecision {
-  const unresolvedVerifications = unresolvedVerificationReceipts(input.verifications);
+  const unresolvedVerifications = unresolvedVerificationReceipts(
+    input.verifications,
+    input.toolExecutions,
+  );
   const acceptance = projectCompletionAcceptance(
     input.acceptance,
     unresolvedVerifications,
@@ -196,16 +199,18 @@ function verificationToolFailureWasRecovered(
 
 function unresolvedVerificationReceipts(
   receipts: readonly CodingVerificationReceipt[],
+  toolExecutions: readonly CodingToolExecutionReceipt<unknown>[],
 ): readonly CodingVerificationReceipt[] {
   return receipts.filter(previous => (
     previous.status === 'passed'
-    || !receipts.some(candidate => verificationSupersedes(candidate, previous))
+    || !receipts.some(candidate => verificationSupersedes(candidate, previous, toolExecutions))
   ));
 }
 
 function verificationSupersedes(
   candidate: CodingVerificationReceipt,
   previous: CodingVerificationReceipt,
+  toolExecutions: readonly CodingToolExecutionReceipt<unknown>[],
 ): boolean {
   if (candidate.status !== 'passed'
     || candidate.runId !== previous.runId
@@ -221,8 +226,30 @@ function verificationSupersedes(
       .filter(result => result.status === 'passed')
       .map(result => result.criterionId),
   );
-  return previous.acceptance.length > 0
-    && previous.acceptance.every(result => passedAcceptance.has(result.criterionId));
+  if (previous.acceptance.length === 0
+    || !previous.acceptance.every(result => passedAcceptance.has(result.criterionId))) {
+    return false;
+  }
+  const failedTool = matchingVerificationTool(previous, toolExecutions, 'failed');
+  return !failedTool
+    || matchingVerificationTool(candidate, toolExecutions, 'completed') !== undefined;
+}
+
+function matchingVerificationTool(
+  verification: CodingVerificationReceipt,
+  toolExecutions: readonly CodingToolExecutionReceipt<unknown>[],
+  status: 'completed' | 'failed',
+): CodingToolExecutionReceipt<unknown> | undefined {
+  return toolExecutions.find(receipt => (
+    receipt.runId === verification.runId
+      && receipt.sequence === verification.sequence
+      && receipt.actionId === verification.actionId
+      && receipt.tool === 'run_terminal'
+      && receipt.purpose === 'verify'
+      && receipt.effects.length === 1
+      && receipt.effects[0] === 'process'
+      && receipt.status === status
+  ));
 }
 
 function normalizeVerificationPath(value: string): string {

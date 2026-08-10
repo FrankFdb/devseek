@@ -27,7 +27,7 @@ execFileSync('npx', [
 ], { cwd: extensionRoot, stdio: 'pipe' });
 
 const require = createRequire(import.meta.url);
-const { recordPassedTerminalVerification } = require(bundlePath);
+const { recordTerminalVerification } = require(bundlePath);
 
 after(() => rmSync(bundleRoot, { recursive: true, force: true }));
 
@@ -97,7 +97,7 @@ function observation(overrides = {}) {
 
 test('terminal verification binds a real successful command to its exact tool action', async () => {
   const input = observation();
-  const result = await recordPassedTerminalVerification(input);
+  const result = await recordTerminalVerification(input);
 
   assert.equal(result.status, 'passed');
   assert.equal(result.actionId, input.toolReceipt.actionId);
@@ -116,24 +116,58 @@ test('terminal verification binds a real successful command to its exact tool ac
   }]);
 });
 
-test('terminal verification fails closed for failure, ambiguity, or mismatched ownership', async () => {
+test('terminal verification binds a real failed command to its exact tool action', async () => {
+  const input = observation({
+    toolReceipt: receipt({
+      status: 'failed',
+      errorCode: 'process-exit-1',
+      evidenceRefs: ['terminal-host:terminal-action-4:exit-1'],
+    }),
+    evidence: evidence({
+      ok: false,
+      exitCode: 1,
+      canonicalAction: {
+        actionId: 'terminal-action-4',
+        sequence: 4,
+        evidenceRefs: ['terminal-host:terminal-action-4:exit-1'],
+      },
+    }),
+  });
+  const result = await recordTerminalVerification(input);
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.actionId, input.toolReceipt.actionId);
+  assert.equal(result.sequence, input.toolReceipt.sequence);
+  assert.equal(result.checks[0].exitCode, 1);
+  assert.deepEqual(result.acceptance, [{
+    criterionId: 'verified',
+    status: 'failed',
+    evidenceRefs: [
+      'terminal-host:terminal-action-4:exit-1',
+      'vscode-terminal-verification:terminal-action-4:exit-1',
+    ],
+  }]);
+});
+
+test('terminal verification fails closed for ambiguity or mismatched ownership', async () => {
   const cases = [
-    { toolReceipt: receipt({ status: 'failed' }) },
+    { toolReceipt: receipt({ status: 'failed' }), evidence: evidence() },
+    { toolReceipt: receipt(), evidence: evidence({ ok: false, exitCode: 1 }) },
+    { toolReceipt: receipt({ status: 'failed' }), evidence: evidence({ ok: false, exitCode: null }) },
     { evidence: evidence({ kind: 'other' }) },
-    { evidence: evidence({ ok: false, exitCode: 1 }) },
     { evidence: evidence({ canonicalAction: { actionId: 'other-action', sequence: 4, evidenceRefs: [] } }) },
     { toolReceipt: receipt({ effects: ['process', 'network'] }) },
   ];
 
   for (const overrides of cases) {
     const input = observation({ ...overrides, verification: verification() });
-    assert.equal(await recordPassedTerminalVerification(input), undefined);
+    assert.equal(await recordTerminalVerification(input), undefined);
     assert.deepEqual(input.verification.receipts(), []);
   }
 });
 
 test('terminal verification uses workspace scope for a valid test-only task', async () => {
-  const result = await recordPassedTerminalVerification(observation({ writtenFiles: [] }));
+  const result = await recordTerminalVerification(observation({ writtenFiles: [] }));
 
   assert.deepEqual(result.scopePaths, ['workspace']);
 });

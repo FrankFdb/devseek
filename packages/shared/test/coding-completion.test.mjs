@@ -167,7 +167,7 @@ test('CanonicalCompletionDecisionService preserves but does not re-fail resolved
     acceptance: [{ criterionId: 'builds', status: 'passed', evidenceRefs: ['repair-build:exit-0'] }],
   };
   const decision = new CanonicalCompletionDecisionService().decide(input({
-    toolExecutions: [failedVerificationTool()],
+    toolExecutions: [failedVerificationTool(), completedVerificationTool()],
     verifications: [failed, repaired],
   }));
 
@@ -207,6 +207,48 @@ test('CanonicalCompletionDecisionService requires a later verified tool action t
   assert.equal(recovered.evidenceRefs.includes('verification-tool:focused-check-1:failed'), true);
   assert.equal(unrelatedAutoPass.status, 'failed');
   assert.equal(unrelatedAutoPass.reasonCodes.includes('failed-effect'), true);
+});
+
+test('CanonicalCompletionDecisionService requires a matching executed verifier to supersede its failure', () => {
+  const failedTool = failedVerificationTool('focused-check-1', 1);
+  const failedVerification = {
+    ...verification('failed'),
+    actionId: failedTool.actionId,
+    idempotencyKey: `completion-run-1:${failedTool.actionId}`,
+  };
+  const automaticPass = {
+    ...verification('passed'),
+    sequence: 2,
+    actionId: 'auto-validation-2',
+    idempotencyKey: 'completion-run-1:auto-validation-2',
+  };
+  const stillFailed = new CanonicalCompletionDecisionService().decide(input({
+    decisionId: 'completion-weaker-auto-pass',
+    idempotencyKey: 'completion-run-1:completion-weaker-auto-pass',
+    toolExecutions: [failedTool],
+    verifications: [failedVerification, automaticPass],
+  }));
+  const recoveredTool = completedVerificationTool('focused-check-3', 3);
+  const recoveredVerification = {
+    ...automaticPass,
+    sequence: recoveredTool.sequence,
+    actionId: recoveredTool.actionId,
+    idempotencyKey: `completion-run-1:${recoveredTool.actionId}`,
+    evidenceRefs: ['focused-check-3:exit-0'],
+    acceptance: [{ criterionId: 'builds', status: 'passed', evidenceRefs: ['focused-check-3:exit-0'] }],
+  };
+  const recovered = new CanonicalCompletionDecisionService().decide(input({
+    decisionId: 'completion-matching-terminal-pass',
+    idempotencyKey: 'completion-run-1:completion-matching-terminal-pass',
+    toolExecutions: [failedTool, recoveredTool],
+    verifications: [failedVerification, automaticPass, recoveredVerification],
+  }));
+
+  assert.equal(stillFailed.status, 'failed');
+  assert.equal(stillFailed.reasonCodes.includes('verification-failed'), true);
+  assert.equal(recovered.status, 'completed');
+  assert.equal(recovered.evidenceRefs.includes('build:not-passed'), true);
+  assert.equal(recovered.evidenceRefs.includes('focused-check-3:exit-0'), true);
 });
 
 test('CanonicalCompletionDecisionService does not let a narrower pass erase a broader failure', () => {

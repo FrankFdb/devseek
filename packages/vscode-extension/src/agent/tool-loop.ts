@@ -30,7 +30,6 @@ import {
   shouldBlockUnverifiedSourceOverwrite,
 } from './write-guard';
 import {
-  isReadOnlyTerminalEvidenceCommand,
   type TerminalEvidence,
   type WrittenFileEvidence,
 } from './completion-evidence';
@@ -46,8 +45,7 @@ import {
   createToolLoopCanonicalSession,
 } from './tool-loop-canonical-session';
 import { ToolLoopFileWriter } from './tool-loop-file-writer';
-import { analyzeTerminalEvidence } from './tool-loop-terminal-evidence';
-import { recordPassedTerminalVerification } from './terminal-verification-adapter';
+import { observeSettledTerminalExecution } from './tool-loop-terminal-observation';
 
 export { analyzeTerminalEvidence } from './tool-loop-terminal-evidence';
 
@@ -146,7 +144,7 @@ export interface ToolLoopResult {
   changeReceipts?: CodingWorkspaceMutationReceipt<unknown>[];
   /** Shared terminal receipts produced by canonical tool execution. */
   toolExecutionReceipts?: CodingToolExecutionReceipt<unknown>[];
-  /** Verification receipts bound to successful terminal validation actions. */
+  /** Verification receipts bound to deterministic terminal validation actions. */
   verificationReceipts?: CodingVerificationReceipt[];
   /** Blocking tool failures that should be audited across rounds for no-progress loops. */
   toolFailures?: ToolFailureEvidence[];
@@ -567,53 +565,23 @@ export async function executeFakeToolsForLoop(
             continue;
           }
           const evidenceWorkdir = workdir ?? defaultWorkdir ?? workspaceRoot;
-          const evidenceResult = analyzeTerminalEvidence(resolvedCommand, output, evidenceWorkdir);
-          const canonicalEvidence: TerminalEvidence = {
-            ...evidenceResult.evidence,
-            canonicalAction: {
-              actionId: execution.receipt.actionId,
-              sequence: execution.receipt.sequence,
-              evidenceRefs: execution.receipt.evidenceRefs,
-            },
-          };
-          terminalOutputs.push({ command: resolvedCommand, workdir: evidenceWorkdir, output });
-          evidenceRefs.push(readEvidenceRecorder.recordTerminalOutput(
-            resolvedCommand,
+          const observation = await observeSettledTerminalExecution({
+            command: resolvedCommand,
             output,
-            evidenceWorkdir,
-            canonicalEvidence.exitCode,
-          ));
-          if (evidenceResult.ran) {
-            terminalCommands.push(resolvedCommand);
-          }
-          if (canonicalEvidence.kind !== 'other' || isReadOnlyTerminalEvidenceCommand(resolvedCommand)) {
-            terminalEvidence.push(canonicalEvidence);
-          }
-          if (callbacks.canonicalVerification && callbacks.canonicalVerificationAcceptance?.length) {
-            const verificationReceipt = await recordPassedTerminalVerification({
-              toolReceipt: execution.receipt,
-              evidence: canonicalEvidence,
-              workspaceRoot,
-              workdir: evidenceWorkdir,
-              writtenFiles: [
-                ...(taskContext?.verificationScopeFiles ?? []),
-                ...writtenFiles,
-              ],
-              acceptance: callbacks.canonicalVerificationAcceptance,
-              verification: callbacks.canonicalVerification,
-            });
-            if (verificationReceipt) verificationReceipts.push(verificationReceipt);
-          }
-          // Silent: output goes to AI context only (shown in Working box via terminalRanNotice)
-          parts.push(`[run_terminal: ${resolvedCommand}]\n${output}`);
-          if (canonicalEvidence.kind !== 'other' && !canonicalEvidence.ok) {
-            parts.push(
-              `[terminal_evidence]\n` +
-              `验证命令未通过，不能把编译/运行/测试标记为完成。\n` +
-              `kind=${canonicalEvidence.kind} exitCode=${canonicalEvidence.exitCode ?? 'unknown'}\n` +
-              `${canonicalEvidence.detail ?? '请根据终端输出修复后重新验证。'}`,
-            );
-          }
+            workdir: evidenceWorkdir,
+            workspaceRoot,
+            toolReceipt: execution.receipt,
+            readEvidenceRecorder,
+            writtenFiles: [...(taskContext?.verificationScopeFiles ?? []), ...writtenFiles],
+            acceptance: callbacks.canonicalVerificationAcceptance,
+            verification: callbacks.canonicalVerification,
+          });
+          terminalOutputs.push(observation.output);
+          evidenceRefs.push(observation.evidenceRef);
+          terminalCommands.push(...observation.terminalCommands);
+          terminalEvidence.push(...observation.terminalEvidence);
+          verificationReceipts.push(...observation.verificationReceipts);
+          parts.push(...observation.feedbackParts);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           if (!canonicalSettled) {
