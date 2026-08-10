@@ -1,10 +1,8 @@
 import {
-  CanonicalCompletionDecisionService,
   buildSecretHarvestingRefusalAcceptanceEvidence,
   codingToolExecutionFailureReason,
   hasUnsafeSecretHarvestingRefusalEvidence,
   isSecretHarvestingRefusalTaskContract,
-  projectSettledCodingConformanceRun,
   type CodingKernelExecutionRequest,
   type CodingKernelRuntimeRequest,
   type CodingKernelRuntimeOutput,
@@ -12,6 +10,7 @@ import {
   type CodingCompletionAcceptanceDecision,
   type CodingCompletionDecision,
   type CodingConformanceProjection,
+  type CodingKernelCompletionEvidence,
   type CodingRawToolCall,
   type CodingToolCall,
   type CodingToolCallSource,
@@ -59,18 +58,20 @@ export interface CliCodingKernelRuntimeContext {
   formatError(error: unknown): string;
 }
 
-export interface CliCodingKernelResult {
+export interface CliCodingKernelRuntimeResult {
   readonly attempts: number;
   readonly changedPaths: readonly string[];
-  readonly toolExecutions: readonly CodingToolExecutionReceipt<unknown>[];
-  readonly changeReceipts: readonly CodingWorkspaceMutationReceipt<readonly string[]>[];
-  readonly verificationReceipts: readonly CodingVerificationReceipt[];
   readonly verification: {
     readonly status: 'passed' | 'failed' | 'unverified' | 'indeterminate' | 'not-run';
     readonly evidenceRefs: readonly string[];
   };
+}
+
+export interface CliCodingKernelResult extends CliCodingKernelRuntimeResult {
+  readonly toolExecutions: readonly CodingToolExecutionReceipt<unknown>[];
+  readonly changeReceipts: readonly CodingWorkspaceMutationReceipt<unknown>[];
+  readonly verificationReceipts: readonly CodingVerificationReceipt[];
   readonly completion: CodingCompletionDecision;
-  /** Full settled product projection; consumers bind run identity to a conformance fixture. */
   readonly codingConformance: CodingConformanceProjection;
 }
 
@@ -83,10 +84,8 @@ interface CliRecoveryBoundary {
 
 export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
   CliCodingKernelRuntimeContext,
-  CliCodingKernelResult
+  CliCodingKernelRuntimeResult
 > {
-  private readonly completion = new CanonicalCompletionDecisionService();
-
   constructor(
     private readonly artifactInterpreter: Pick<CliCodingArtifactInterpreter, 'interpret'>,
     private readonly workspaceMutation: CliWorkspaceMutationHostAdapter,
@@ -95,7 +94,7 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
 
   async executeCanonical(
     request: CodingKernelRuntimeRequest<CliCodingKernelRuntimeContext>,
-  ): Promise<CodingKernelRuntimeOutput<CliCodingKernelResult>> {
+  ): Promise<CodingKernelRuntimeOutput<CliCodingKernelRuntimeResult>> {
     const input = request.runtimeContext;
     let response = acceptCliProviderMessage(
       request.providerEvents,
@@ -138,15 +137,10 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
             });
             toolExecutions.push(terminalOutcome.receipt);
           }
-          return settleCliResult({
-            completion: this.completion,
+          return buildCliRuntimeOutput({
             request,
             attempts: executionAttempt,
             changedPaths,
-            toolExecutions,
-            changeReceipts,
-            verificationReceipts,
-            resolvedVerificationActionIds: [],
             verificationStatus: 'not-run',
             evidenceRefs: toolExecutions.flatMap(receipt => receipt.evidenceRefs),
             acceptanceEvidence: request.taskContract.acceptance.map(criterion => ({
@@ -169,15 +163,10 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
           const responseEvidenceRefs = directRefusal
             ? ['response:explicit-refusal', 'response:safe-alternative', 'workspace:no-mutation']
             : [`cli-response:${request.runId}:settled`];
-          return settleCliResult({
-            completion: this.completion,
+          return buildCliRuntimeOutput({
             request,
             attempts: attempt,
             changedPaths,
-            toolExecutions,
-            changeReceipts,
-            verificationReceipts,
-            resolvedVerificationActionIds: [],
             verificationStatus: 'not-run',
             evidenceRefs: request.taskContract.mode === 'change' || request.taskContract.mode === 'release'
               ? []
@@ -365,7 +354,7 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
                 prompt: request.userPrompt,
                 acceptance: request.taskContract.acceptance,
                 evidenceRefs: changeReceipt.evidenceRefs,
-              });
+              }, request.verification);
               const receipt = verification.receipt;
               return {
                 status: receipt.status === 'passed'
@@ -467,17 +456,10 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
         const recoveryOperationId = 'cli-recovery-1';
         if (validation.passed) {
           if (recovery) closeCliRecoveryCompleted(request.runId, input, recovery, verificationOperationId);
-          return settleCliResult({
-            completion: this.completion,
+          return buildCliRuntimeOutput({
             request,
             attempts: executionAttempt,
             changedPaths,
-            toolExecutions,
-            changeReceipts,
-            verificationReceipts,
-            resolvedVerificationActionIds: recovery
-              ? verificationReceipts.slice(0, -1).map(receipt => receipt.actionId)
-              : [],
             verificationStatus: 'passed',
             evidenceRefs: validation.evidenceRefs,
             acceptanceEvidence: [],
@@ -486,15 +468,10 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
         const latestVerification = verificationReceipts.at(-1);
         if (latestVerification?.status === 'unverified' || latestVerification?.status === 'indeterminate') {
           noteCliRecoveryAdverse(recovery, verificationOperationId);
-          return settleCliResult({
-            completion: this.completion,
+          return buildCliRuntimeOutput({
             request,
             attempts: executionAttempt,
             changedPaths,
-            toolExecutions,
-            changeReceipts,
-            verificationReceipts,
-            resolvedVerificationActionIds: [],
             verificationStatus: latestVerification.status,
             evidenceRefs: latestVerification.evidenceRefs,
             acceptanceEvidence: [],
@@ -672,60 +649,30 @@ function closeCliRecoveryFailed(
   recovery.closed = true;
 }
 
-function settleCliResult(input: {
-  completion: CanonicalCompletionDecisionService;
+function buildCliRuntimeOutput(input: {
   request: CodingKernelExecutionRequest<CliCodingKernelRuntimeContext>;
   attempts: number;
   changedPaths: ReadonlySet<string>;
-  toolExecutions: readonly CodingToolExecutionReceipt<unknown>[];
-  changeReceipts: readonly CodingWorkspaceMutationReceipt<readonly string[]>[];
-  verificationReceipts: readonly CodingVerificationReceipt[];
-  resolvedVerificationActionIds: readonly string[];
-  verificationStatus: CliCodingKernelResult['verification']['status'];
+  verificationStatus: CliCodingKernelRuntimeResult['verification']['status'];
   evidenceRefs: readonly string[];
   acceptanceEvidence: readonly CodingCompletionAcceptanceDecision[];
   residualRisks?: readonly string[];
-}): CodingKernelRuntimeOutput<CliCodingKernelResult> {
-  const completion = input.completion.decide({
-    runId: input.request.runId,
-    decisionId: 'cli-completion',
-    idempotencyKey: `${input.request.runId}:cli-completion`,
-    acceptance: input.request.taskContract.acceptance,
-    verificationRequired: input.request.taskContract.mode === 'change'
-      || input.request.taskContract.mode === 'release',
+}): CodingKernelRuntimeOutput<CliCodingKernelRuntimeResult> {
+  const completionEvidence: CodingKernelCompletionEvidence = {
     reviewRequired: false,
-    toolExecutions: input.toolExecutions,
-    mutations: input.changeReceipts,
-    verifications: input.verificationReceipts,
-    resolvedVerificationActionIds: input.resolvedVerificationActionIds,
     acceptanceEvidence: input.acceptanceEvidence,
     pendingRefs: [],
     adverseEvidenceRefs: [],
     residualRisks: input.residualRisks ?? [],
     evidenceRefs: [...input.request.taskContract.provenanceRefs, ...input.evidenceRefs],
-  });
-  const codingConformance = projectSettledCodingConformanceRun({
-    fixtureId: input.request.runId,
-    taskContract: input.request.taskContract,
-    toolExecutions: input.toolExecutions,
-    changeReceipts: input.changeReceipts,
-    verifications: input.verificationReceipts,
-    completion,
-  });
+  };
   return {
-    status: completion.status,
     result: {
       attempts: input.attempts,
       changedPaths: [...input.changedPaths],
-      toolExecutions: [...input.toolExecutions],
-      changeReceipts: [...input.changeReceipts],
-      verificationReceipts: [...input.verificationReceipts],
       verification: { status: input.verificationStatus, evidenceRefs: [...input.evidenceRefs] },
-      completion,
-      codingConformance,
     },
-    evidenceRefs: completion.evidenceRefs,
-    residualRisks: completion.residualRisks,
+    completionEvidence,
   };
 }
 

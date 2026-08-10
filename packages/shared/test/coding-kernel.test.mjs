@@ -10,6 +10,7 @@ import {
   CanonicalRunLifecycleService,
   CodingKernelExecutionError,
   InMemoryCodingOperationJournal,
+  buildCodingVerificationPlan,
   buildCodingKernelTaskContract,
   projectCodingKernelTaskContract,
 } from '../dist/index.js';
@@ -50,6 +51,46 @@ function request(overrides = {}) {
   };
 }
 
+function completionEvidence(overrides = {}) {
+  return {
+    reviewRequired: false,
+    acceptanceEvidence: [],
+    pendingRefs: [],
+    adverseEvidenceRefs: [],
+    residualRisks: [],
+    evidenceRefs: [],
+    ...overrides,
+  };
+}
+
+async function passCanonicalVerification(input) {
+  return input.verification.verify(buildCodingVerificationPlan({
+    runId: input.runId,
+    sequence: 1,
+    actionId: 'verify-change',
+    idempotencyKey: `${input.runId}:verify-change`,
+    scopePaths: ['src/value.ts'],
+    acceptance: input.taskContract.acceptance.map(({ id, statement }) => ({ id, statement })),
+    payload: { command: 'npm test' },
+    evidenceRefs: [],
+  }), {
+    async verify() {
+      return {
+        verifier: 'project-test-runner',
+        checks: [{
+          checkId: 'requested-behavior',
+          status: 'passed',
+          acceptanceIds: ['verified'],
+          summary: 'The requested behavior passed.',
+          exitCode: 0,
+          evidenceRefs: ['verify:passed'],
+        }],
+        evidenceRefs: [],
+      };
+    },
+  });
+}
+
 test('CanonicalCodingKernel preserves one versioned request and terminal output contract', async () => {
   const calls = [];
   const kernel = new CanonicalCodingKernel({
@@ -78,10 +119,10 @@ test('CanonicalCodingKernel preserves one versioned request and terminal output 
         targetPaths: ['/workspace/src/auth.ts'],
         risk: 'low',
       }).permission.reason, 'task-contract-change-allows-workspace-mutation');
+      await passCanonicalVerification(input);
       return {
-        status: 'completed',
         result: { changedPaths: ['src/value.ts'] },
-        evidenceRefs: ['verify:passed', 'verify:passed'],
+        completionEvidence: completionEvidence(),
       };
     },
   });
@@ -153,6 +194,8 @@ test('CanonicalCodingKernel preserves one versioned request and terminal output 
   assert.equal(output.taskContract.version, CODING_KERNEL_TASK_CONTRACT_VERSION);
   assert.deepEqual(output.taskContract.scope.include, ['src/value.ts']);
   assert.deepEqual(output.result.changedPaths, ['src/value.ts']);
+  assert.equal(output.completion.status, 'completed');
+  assert.deepEqual(output.verificationReceipts.map(receipt => receipt.status), ['passed']);
   assert.deepEqual(output.evidenceRefs, ['verify:passed']);
   assert.deepEqual(output.settlement.evidenceRefs, output.evidenceRefs);
 });
@@ -162,7 +205,7 @@ test('CanonicalCodingKernel fails closed before invoking runtime for invalid rou
   const kernel = new CanonicalCodingKernel({
     async executeCanonical() {
       calls += 1;
-      return { status: 'completed', result: undefined };
+      return { result: undefined, completionEvidence: completionEvidence() };
     },
   });
 
@@ -200,12 +243,17 @@ test('CanonicalCodingKernel fails closed before invoking runtime for invalid rou
 test('CanonicalCodingKernel seals blocked and failed runtime outcomes through one lifecycle owner', async () => {
   const blockedKernel = new CanonicalCodingKernel({
     async executeCanonical() {
-      return { status: 'blocked', result: { reason: 'permission-denied' } };
+      return {
+        result: { reason: 'permission-denied' },
+        completionEvidence: completionEvidence({ pendingRefs: ['permission-denied'] }),
+      };
     },
   });
   const blocked = await blockedKernel.execute(request());
   assert.equal(blocked.lifecycle.status, 'blocked');
   assert.equal(blocked.settlement.status, 'blocked');
+  assert.equal(blocked.completion.reasonCodes.includes('pending-work'), true);
+  assert.equal(blocked.completion.reasonCodes.includes('verification-not-run'), true);
   assert.equal(blocked.lifecycle.events.at(-1).cause, 'authority-blocked');
 
   const failedKernel = new CanonicalCodingKernel({
@@ -218,6 +266,8 @@ test('CanonicalCodingKernel seals blocked and failed runtime outcomes through on
     assert.equal(error.message, 'provider disconnected');
     assert.equal(error.lifecycle.status, 'failed');
     assert.equal(error.settlement.status, 'failed');
+    assert.equal(error.completion.status, 'failed');
+    assert.equal(error.completion.reasonCodes.includes('execution-failed'), true);
     assert.equal(error.lifecycle.events.at(-1).cause, 'runtime-failed');
     return true;
   });

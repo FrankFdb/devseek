@@ -2,6 +2,7 @@ import * as nodePath from 'path';
 import type {
   CodingVerificationCriterion,
   CodingVerificationReceipt,
+  CodingVerificationSessionPort,
 } from '@devseek-netai/shared';
 import { VsCodeVerificationAdapter } from '../app/coding-verification-adapter';
 import type { TerminalEvidence, WrittenFileEvidence } from './completion-evidence';
@@ -16,6 +17,7 @@ export interface TerminalVerificationProjectionInput {
   readonly terminalEvidence: readonly TerminalEvidence[];
   readonly acceptance: readonly CodingVerificationCriterion[];
   readonly adapter?: Pick<VsCodeVerificationAdapter, 'verify'>;
+  readonly verification?: CodingVerificationSessionPort;
 }
 
 export function classifyAgenticManualReviewEvidence(input: {
@@ -53,7 +55,10 @@ export async function projectTerminalVerificationReceipts(
   const runId = input.runId?.trim();
   if (!runId) return [];
   const scopePaths = workspaceRelativeWrittenPaths(input.writtenFiles, input.workspaceRoot);
-  const adapter = input.adapter ?? canonicalTerminalVerification;
+  const adapter = input.adapter
+    ?? (input.verification
+      ? new VsCodeVerificationAdapter(input.verification)
+      : canonicalTerminalVerification);
   const receipts: CodingVerificationReceipt[] = [];
 
   for (const evidence of input.terminalEvidence) {

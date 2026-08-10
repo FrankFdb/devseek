@@ -37,7 +37,6 @@ function input(overrides = {}) {
     toolExecutions: [],
     mutations: [],
     verifications: [verification()],
-    resolvedVerificationActionIds: [],
     acceptanceEvidence: [],
     pendingRefs: [],
     adverseEvidenceRefs: [],
@@ -160,12 +159,51 @@ test('CanonicalCompletionDecisionService preserves but does not re-fail resolved
   const decision = new CanonicalCompletionDecisionService().decide(input({
     toolExecutions: [failedVerificationTool()],
     verifications: [failed, repaired],
-    resolvedVerificationActionIds: ['verify-1'],
   }));
 
   assert.equal(decision.status, 'completed');
   assert.equal(decision.evidenceRefs.includes('build:not-passed'), true);
   assert.equal(decision.evidenceRefs.includes('repair-build:exit-0'), true);
+});
+
+test('CanonicalCompletionDecisionService does not let a narrower pass erase a broader failure', () => {
+  const failed = {
+    ...verification('failed'),
+    scopePaths: ['src/value.ts', 'src/other.ts'],
+  };
+  const narrowerPass = {
+    ...verification('passed'),
+    sequence: 2,
+    actionId: 'verify-2',
+    idempotencyKey: 'completion-run-1:verify-2',
+  };
+  const decision = new CanonicalCompletionDecisionService().decide(input({
+    verifications: [failed, narrowerPass],
+  }));
+
+  assert.equal(decision.status, 'failed');
+  assert.equal(decision.reasonCodes.includes('verification-failed'), true);
+});
+
+test('CanonicalCompletionDecisionService rejects receipts from another run', () => {
+  const foreignVerification = { ...verification(), runId: 'foreign-run' };
+  const foreignTool = { ...failedVerificationTool(), runId: 'foreign-run' };
+  const service = new CanonicalCompletionDecisionService();
+
+  assert.throws(
+    () => service.decide(input({ verifications: [foreignVerification] })),
+    /coding-completion:verification-run-mismatch/,
+  );
+  assert.throws(
+    () => service.decide(input({ toolExecutions: [foreignTool] })),
+    /coding-completion:tool-run-mismatch/,
+  );
+  assert.throws(
+    () => service.decide(input({
+      mutations: [{ runId: 'foreign-run', status: 'committed' }],
+    })),
+    /coding-completion:mutation-run-mismatch/,
+  );
 });
 
 test('CanonicalCompletionDecisionService lets Verification own a matching failed tool outcome', () => {

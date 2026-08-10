@@ -3,6 +3,7 @@ import * as nodePath from 'path';
 import type {
   CodingVerificationCriterion,
   CodingVerificationReceipt,
+  CodingVerificationSessionPort,
 } from '@devseek-netai/shared';
 import type { AgentStatusEvent } from './events';
 import {
@@ -48,6 +49,7 @@ export interface AgentAutoValidationCallbacks {
   onValidationCommand: ValidationCommandRunner;
   traceRunId?: string;
   signal?: AbortSignal;
+  canonicalVerification?: CodingVerificationSessionPort;
 }
 
 export interface AgentAutoValidationResult {
@@ -491,7 +493,10 @@ export async function runAgentAutoValidationForWrites(
   if (changedPaths.length === 0 || callbacks.signal?.aborted) return {};
   const evidenceOperationId = nextAutoValidationOperationId(changedPaths);
   const verificationContext = {
-    adapter: options.verificationAdapter ?? canonicalVerificationAdapter,
+    adapter: options.verificationAdapter
+      ?? (callbacks.canonicalVerification
+        ? new VsCodeVerificationAdapter(callbacks.canonicalVerification)
+        : canonicalVerificationAdapter),
     runId: callbacks.traceRunId?.trim() || evidenceOperationId,
     sequence: autoValidationOperationSequence,
     actionId: evidenceOperationId,

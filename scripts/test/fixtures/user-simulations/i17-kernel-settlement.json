@@ -1,0 +1,56 @@
+{
+  "schema_version": "devseek.user-simulation-scenario/v1",
+  "iteration_id": "I17",
+  "name": "kernel-settlement",
+  "purpose": "Exercise Kernel-owned completion, run-bound verification, exact acceptance binding, and resolved repair evidence without trusting Surface terminal claims.",
+  "cases": [
+    {
+      "case_id": "I17-OWN-01",
+      "input": {
+        "surface": "vscode",
+        "run_id": "i17-surface-claim",
+        "prompt": "Fix src/value.ts and verify the requested behavior.",
+        "surface_terminal_status": "completed"
+      }
+    },
+    {
+      "case_id": "I17-VRF-01",
+      "input": {
+        "surface": "cli",
+        "run_id": "i17-bound-verifier",
+        "prompt": "Fix src/value.ts and verify the requested behavior.",
+        "action_id": "verify-bound-change"
+      }
+    },
+    {
+      "case_id": "I17-RUN-01",
+      "input": {
+        "surface": "headless",
+        "run_id": "i17-active-run",
+        "foreign_run_id": "i17-foreign-run",
+        "prompt": "Fix src/value.ts and verify the requested behavior.",
+        "action_id": "verify-foreign-run"
+      }
+    },
+    {
+      "case_id": "I17-ACC-01",
+      "input": {
+        "surface": "vscode",
+        "run_id": "i17-acceptance-binding",
+        "prompt": "Fix src/value.ts and verify the requested behavior.",
+        "action_id": "verify-drifted-acceptance",
+        "drifted_statement": "A different behavior passes verification."
+      }
+    },
+    {
+      "case_id": "I17-RPR-01",
+      "input": {
+        "surface": "cli",
+        "run_id": "i17-repair-reverify",
+        "prompt": "Fix src/value.ts and keep working until the requested behavior passes verification.",
+        "failed_action_id": "verify-before-repair",
+        "passed_action_id": "verify-after-repair"
+      }
+    }
+  ]
+}

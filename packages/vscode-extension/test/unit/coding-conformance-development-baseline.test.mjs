@@ -9,37 +9,39 @@ import path from 'node:path';
 import {
   CODING_KERNEL_REQUEST_VERSION,
   CODING_CONFORMANCE_DEVELOPMENT_FIXTURES,
-  CODING_TOOL_RECEIPT_VERSION,
-  CODING_VERIFICATION_RECEIPT_VERSION,
-  CODING_WORKSPACE_MUTATION_RECEIPT_VERSION,
   CanonicalCodingKernel,
   InMemoryCodingOperationJournal,
   bindSettledCodingConformanceObservation,
-  buildSecretHarvestingRefusalAcceptanceEvidence,
-  buildCodingKernelTaskContract,
   evaluateCodingConformanceFixture,
-  isSecretHarvestingRefusalTaskContract,
-  resolveCodingOrientationDecision,
+  resolveCodingKernelTaskContract,
 } from '../../../shared/dist/index.js';
 import { createCanonicalCheckpointFixture } from '../helpers/canonical-checkpoint-fixture.mjs';
+import { exerciseCanonicalDevelopmentRoute } from '../helpers/canonical-development-route-fixture.mjs';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const extensionRoot = path.resolve(testDir, '../..');
 const bundleRoot = mkdtempSync(path.join(tmpdir(), 'devseek-vscode-coding-conformance-'));
-const bundlePath = path.join(bundleRoot, 'coding-kernel-execution.cjs');
+const runtimeBundlePath = path.join(bundleRoot, 'coding-kernel-execution.cjs');
+const outputBundlePath = path.join(bundleRoot, 'vscode-coding-kernel-output.cjs');
 
-execFileSync('npx', [
-  'esbuild',
-  'src/app/coding-kernel-execution.ts',
-  '--bundle',
-  `--outfile=${bundlePath}`,
-  '--format=cjs',
-  '--platform=node',
-  '--external:vscode',
-], { cwd: extensionRoot, stdio: 'pipe' });
+for (const [entryPoint, outfile] of [
+  ['src/app/coding-kernel-execution.ts', runtimeBundlePath],
+  ['src/app/vscode-coding-kernel-output.ts', outputBundlePath],
+]) {
+  execFileSync('npx', [
+    'esbuild',
+    entryPoint,
+    '--bundle',
+    `--outfile=${outfile}`,
+    '--format=cjs',
+    '--platform=node',
+    '--external:vscode',
+  ], { cwd: extensionRoot, stdio: 'pipe' });
+}
 
 const require = createRequire(import.meta.url);
-const { VsCodeCodingKernelRuntimeAdapter } = require(bundlePath);
+const { VsCodeCodingKernelRuntimeAdapter } = require(runtimeBundlePath);
+const { projectVsCodeCodingKernelOutput } = require(outputBundlePath);
 
 after(() => rmSync(bundleRoot, { recursive: true, force: true }));
 
@@ -55,14 +57,21 @@ test('VS Code canonical Kernel probe exposes semantically conformant settled pro
   for (const routeCase of cases) {
     const fixture = findFixture(routeCase.fixtureId);
     const calls = [];
-    const loopResult = buildDevelopmentLoopResult(fixture);
+    const input = routeInput(routeCase.recovery, fixture);
+    let agentResult;
     const kernel = new CanonicalCodingKernel(new VsCodeCodingKernelRuntimeAdapter({
       async runCanonical(request) {
         calls.push({ route: 'canonical', request });
-        return loopResult;
+        const exercise = await exerciseCanonicalDevelopmentRoute({
+          fixture,
+          request,
+          taskContract: input.taskContract,
+        });
+        agentResult = exercise.agentResult;
+        return agentResult;
       },
     }));
-    const routeOutput = await kernel.execute(routeInput(routeCase.recovery, fixture));
+    const routeOutput = await executeProductRoute(kernel, input);
     const evaluation = evaluateCodingConformanceFixture(fixture, [
       observeVsCodeRouteOutput(fixture, routeOutput),
     ]);
@@ -71,7 +80,7 @@ test('VS Code canonical Kernel probe exposes semantically conformant settled pro
     assert.equal(calls.length, 1, routeCase.fixtureId);
     assert.equal(calls[0].route, 'canonical', routeCase.fixtureId);
     assert.equal(Boolean(calls[0].request.recoveryContextText), routeCase.recovery, routeCase.fixtureId);
-    assert.notEqual(routeOutput.result, loopResult, routeCase.fixtureId);
+    assert.notEqual(routeOutput.result, agentResult, routeCase.fixtureId);
     assert.ok(routeOutput.result.completionDecision, routeCase.fixtureId);
     assert.equal(routeOutput.orientation, routeOutput.taskContract.orientation, routeCase.fixtureId);
     assert.equal(routeOutput.orientation.mode, routeOutput.taskContract.mode, routeCase.fixtureId);
@@ -94,38 +103,27 @@ test('VS Code canonical Kernel probe exposes semantically conformant settled pro
 
 test('VS Code product projection correlates internal host receipt ids to canonical tool actions', async () => {
   const fixture = findFixture('create-and-verify');
-  const loopResult = buildDevelopmentLoopResult(fixture);
-  const mutationEvidence = 'vscode-mutation-correlation:create';
-  loopResult.toolExecutionReceipts = loopResult.toolExecutionReceipts.map(receipt => ({
-    ...receipt,
-    actionId: `vscode-tool-${receipt.sequence}-${receipt.tool}`,
-    evidenceRefs: receipt.effects.includes('workspace-mutation')
-      ? [...receipt.evidenceRefs, mutationEvidence]
-      : receipt.evidenceRefs,
-  }));
-  loopResult.changeReceipts = loopResult.changeReceipts.map(receipt => ({
-    ...receipt,
-    actionId: `vscode-text-transaction-${receipt.sequence}`,
-    evidenceRefs: [...receipt.evidenceRefs, mutationEvidence],
-  }));
-  loopResult.verificationReceipts = loopResult.verificationReceipts.map(receipt => ({
-    ...receipt,
-    actionId: `vscode-auto-validation-${receipt.sequence}`,
-  }));
+  const input = routeInput(false, fixture);
   const kernel = new CanonicalCodingKernel(new VsCodeCodingKernelRuntimeAdapter({
-    async runCanonical() {
-      return loopResult;
+    async runCanonical(request) {
+      return (await exerciseCanonicalDevelopmentRoute({
+        fixture,
+        request,
+        taskContract: input.taskContract,
+        internalReceiptIds: true,
+      })).agentResult;
     },
   }));
 
-  const output = await kernel.execute(routeInput(false, fixture));
+  const kernelOutput = await kernel.execute(input);
+  const output = bindProductOutput(kernelOutput);
   const projection = output.result.codingConformance;
   const mutationTool = projection.toolExecutions.find(receipt => receipt.effects.includes('workspace-mutation'));
   const processTool = projection.toolExecutions.find(receipt => receipt.effects.includes('process'));
   assert.equal(projection.changeReceipts[0].actionId, mutationTool.actionId);
   assert.equal(projection.verifications[0].actionId, processTool.actionId);
-  assert.equal(loopResult.changeReceipts[0].actionId, 'vscode-text-transaction-1');
-  assert.equal(loopResult.verificationReceipts[0].actionId, 'vscode-auto-validation-1');
+  assert.equal(kernelOutput.workspaceMutationReceipts[0].actionId, 'vscode-text-transaction-1');
+  assert.equal(kernelOutput.verificationReceipts[0].actionId, 'vscode-auto-validation-1');
 
   const evaluation = evaluateCodingConformanceFixture(fixture, [observeVsCodeRouteOutput(fixture, output)]);
   const vscodeResult = evaluation.surfaceResults.find(result => result.surface === 'vscode');
@@ -134,143 +132,38 @@ test('VS Code product projection correlates internal host receipt ids to canonic
 
 test('VS Code product projection prefers action-owned acceptance receipts over internal quality receipts', async () => {
   const fixture = findFixture('create-and-verify');
-  const loopResult = buildDevelopmentLoopResult(fixture);
-  const actionOwned = loopResult.verificationReceipts[0];
-  loopResult.verificationReceipts.push({
-    ...actionOwned,
-    sequence: actionOwned.sequence + 100,
-    actionId: 'vscode-auto-validation-internal',
-    idempotencyKey: `${actionOwned.runId}:vscode-auto-validation-internal`,
-    verifier: 'vscode-agent-quality-gate',
-  });
+  const input = routeInput(false, fixture);
   const kernel = new CanonicalCodingKernel(new VsCodeCodingKernelRuntimeAdapter({
-    async runCanonical() {
-      return loopResult;
+    async runCanonical(request) {
+      return (await exerciseCanonicalDevelopmentRoute({
+        fixture,
+        request,
+        taskContract: input.taskContract,
+        extraInternalVerification: true,
+      })).agentResult;
     },
   }));
 
-  const output = await kernel.execute(routeInput(false, fixture));
-  assert.deepEqual(
-    output.result.codingConformance.verifications.map(receipt => receipt.actionId),
-    [actionOwned.actionId],
+  const kernelOutput = await kernel.execute(input);
+  const output = bindProductOutput(kernelOutput);
+  const processTool = output.result.codingConformance.toolExecutions.find(
+    receipt => receipt.effects.includes('process'),
   );
+  assert.deepEqual(kernelOutput.verificationReceipts.map(receipt => receipt.actionId), [
+    processTool.actionId,
+    'vscode-auto-validation-internal',
+  ]);
+  assert.deepEqual(output.result.codingConformance.verifications.map(receipt => receipt.actionId), [
+    processTool.actionId,
+  ]);
 });
-
-function buildDevelopmentLoopResult(fixture) {
-  const runId = `conformance-${fixture.fixtureId}`;
-  const toolExecutionReceipts = fixture.expected.toolExecutions.map(receipt => ({
-    version: CODING_TOOL_RECEIPT_VERSION,
-    runId,
-    sequence: receipt.sequence,
-    actionId: receipt.actionId,
-    tool: receipt.tool,
-    effects: receipt.effects,
-    status: receipt.status,
-    permission: {
-      decision: receipt.status === 'denied' ? 'deny' : 'allow',
-      status: receipt.status === 'denied' ? 'denied' : 'authorized',
-      reason: receipt.status === 'denied'
-        ? 'development-route-approval-required'
-        : 'development-route-authorized',
-      evidenceRefs: receipt.evidenceRefs,
-    },
-    ...(receipt.status === 'failed' ? { errorCode: 'development-verification-failed' } : {}),
-    evidenceRefs: receipt.evidenceRefs,
-  }));
-  const changeReceipts = fixture.expected.changeReceipts.map(receipt => ({
-    version: CODING_WORKSPACE_MUTATION_RECEIPT_VERSION,
-    runId,
-    sequence: receipt.sequence,
-    actionId: receipt.actionId,
-    idempotencyKey: `${runId}:${receipt.actionId}`,
-    status: receipt.status,
-    paths: receipt.paths,
-    baselineRef: receipt.baselineRef,
-    ...(receipt.readbackRef ? { readbackRef: receipt.readbackRef } : {}),
-    ...(receipt.rollbackRef ? { rollbackRef: receipt.rollbackRef } : {}),
-    evidenceRefs: receipt.evidenceRefs,
-  }));
-  const verificationReceipts = fixture.expected.verifications.map(receipt => {
-    const status = receipt.status === 'blocked' ? 'unverified' : receipt.status;
-    return {
-      version: CODING_VERIFICATION_RECEIPT_VERSION,
-      runId,
-      sequence: receipt.sequence,
-      actionId: receipt.actionId,
-      idempotencyKey: `${runId}:${receipt.actionId}`,
-      verifier: receipt.verifier,
-      status,
-      scopePaths: [...new Set(changeReceipts.flatMap(change => change.paths))],
-      checks: [{
-        checkId: `check-${receipt.actionId}`,
-        status,
-        acceptanceIds: receipt.acceptanceIds,
-        summary: `Development verification ${status}`,
-        evidenceRefs: receipt.evidenceRefs,
-      }],
-      acceptance: receipt.acceptanceIds.map(criterionId => ({
-        criterionId,
-        status: status === 'passed' ? 'passed' : status === 'failed' ? 'failed' : 'unverified',
-        evidenceRefs: receipt.evidenceRefs,
-      })),
-      evidenceRefs: receipt.evidenceRefs,
-    };
-  });
-  const changedPaths = [...new Set(changeReceipts
-    .filter(receipt => receipt.status === 'committed')
-    .flatMap(receipt => receipt.paths))];
-  const blockedByAuthority = toolExecutionReceipts.some(receipt => receipt.status === 'denied');
-  const verifiedAcceptanceIds = new Set(verificationReceipts
-    .flatMap(receipt => receipt.acceptance.map(result => result.criterionId)));
-  const acceptanceEvidence = isSecretHarvestingRefusalTaskContract(fixture.expected.taskContract)
-    ? buildSecretHarvestingRefusalAcceptanceEvidence()
-    : blockedByAuthority || fixture.expected.taskContract.mode !== 'change'
-      ? []
-      : fixture.expected.completion.acceptance
-        .filter(result => !verifiedAcceptanceIds.has(result.criterionId));
-  const taskCount = Math.max(1, changeReceipts.length);
-
-  return {
-    tasksTotal: taskCount,
-    tasksApplied: blockedByAuthority ? 0 : taskCount,
-    tasksFailed: blockedByAuthority ? 1 : 0,
-    changedPaths,
-    verificationIds: verificationReceipts.map(receipt => receipt.actionId),
-    verificationReceipts,
-    toolExecutionReceipts,
-    changeReceipts,
-    ...(acceptanceEvidence.length > 0 ? { acceptanceEvidence } : {}),
-    historyText: `Development route settled ${fixture.title}.`,
-  };
-}
 
 function routeInput(recovery, fixture) {
   const tasks = [{ id: 'resume', file: 'src/main.ts', action: 'modify', desc: fixture.title }];
-  const taskContract = buildCodingKernelTaskContract({
-    goal: fixture.expected.taskContract.goal,
-    mode: fixture.expected.taskContract.mode,
-    orientation: resolveCodingOrientationDecision({
-      prompt: fixture.prompt,
-      modeHint: fixture.expected.taskContract.mode,
-    }),
-    include: fixture.expected.taskContract.scope.include,
-    exclude: fixture.expected.taskContract.scope.exclude,
-    deliverables: fixture.expected.taskContract.deliverables,
-    constraints: fixture.expected.taskContract.constraints,
-    acceptance: fixture.expected.taskContract.acceptance.map(criterion => ({
-      ...criterion,
-      deliverableIds: fixture.expected.taskContract.deliverables.map(deliverable => deliverable.id),
-      oracle: {
-        kind: 'verification',
-        verifier: 'vscode-conformance-adapter',
-        scope: fixture.expected.taskContract.scope.include.length > 0
-          ? fixture.expected.taskContract.scope.include
-          : ['workspace'],
-        evidenceKinds: ['verification-receipt'],
-      },
-      externalBoundaryRefs: [],
-    })),
-    provenanceRefs: fixture.expected.taskContract.provenanceRefs,
+  const taskContract = resolveCodingKernelTaskContract({
+    prompt: fixture.prompt,
+    surface: 'vscode',
+    modeHint: fixture.expected.taskContract.mode,
   });
   const canonicalCheckpoint = recovery
     ? createCanonicalCheckpointFixture({
@@ -311,6 +204,14 @@ function routeInput(recovery, fixture) {
     ...(canonicalCheckpoint ? { resumeCheckpoint: canonicalCheckpoint } : {}),
     runtimeContext,
   };
+}
+
+async function executeProductRoute(kernel, input) {
+  return bindProductOutput(await kernel.execute(input));
+}
+
+function bindProductOutput(output) {
+  return { ...output, result: projectVsCodeCodingKernelOutput(output) };
 }
 
 function observeVsCodeRouteOutput(fixture, routeOutput) {

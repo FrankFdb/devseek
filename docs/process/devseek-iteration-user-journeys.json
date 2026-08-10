@@ -676,6 +676,87 @@
           }
         }
       ]
+    },
+    {
+      "iteration_id": "I17",
+      "status": "verified-local",
+      "goal": "Make completion and settlement Kernel-owned, with verification evidence bound to one run and its exact acceptance contract.",
+      "delta_from_baseline": "Adds adversarial Surface terminal claims, foreign-run verification, acceptance substitution, exact bound verification, and failed-then-resolved revalidation; the fixed five coding fixtures and I10-I16 do not exercise these terminal-authority boundaries.",
+      "fixture_path": "scripts/test/fixtures/user-simulations/i17-kernel-settlement.json",
+      "local_artifact_root": "code/devseek-tests/kernel-settlement",
+      "capability_ids": ["C1-SETTLEMENT", "C9-INDEPENDENT-VERIFICATION"],
+      "cases": [
+        {
+          "case_id": "I17-OWN-01",
+          "capability_ids": ["C1-SETTLEMENT", "C9-INDEPENDENT-VERIFICATION"],
+          "surface": "vscode",
+          "user_action": "Let the editor Surface claim completed and submit direct pass evidence without invoking the required verifier.",
+          "expected_outcomes": [
+            "The Surface claim remains ordinary result data and cannot set canonical terminal state.",
+            "Kernel completion settles blocked with verification-not-run and no verification receipt."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-kernel-settlement-journeys.test.mjs",
+            "test_name": "I17-OWN-01 Surface completed claims cannot settle a verification task"
+          }
+        },
+        {
+          "case_id": "I17-VRF-01",
+          "capability_ids": ["C1-SETTLEMENT", "C9-INDEPENDENT-VERIFICATION"],
+          "surface": "cli",
+          "user_action": "Run the project verifier through the Kernel session for the active run and exact requested acceptance.",
+          "expected_outcomes": [
+            "The session records one evidence-backed passed verification receipt.",
+            "Kernel completion and settlement both authorize completed."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-kernel-settlement-journeys.test.mjs",
+            "test_name": "I17-VRF-01 exact run-bound verification authorizes Kernel completion"
+          }
+        },
+        {
+          "case_id": "I17-RUN-01",
+          "capability_ids": ["C9-INDEPENDENT-VERIFICATION"],
+          "surface": "headless",
+          "user_action": "Submit a valid-looking verifier plan whose run ID belongs to another execution.",
+          "expected_outcomes": [
+            "The bound verification session rejects the foreign run before verifier host dispatch.",
+            "No receipt is retained and Kernel completion stays blocked."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-kernel-settlement-journeys.test.mjs",
+            "test_name": "I17-RUN-01 verifier evidence from another run is rejected before host dispatch"
+          }
+        },
+        {
+          "case_id": "I17-ACC-01",
+          "capability_ids": ["C9-INDEPENDENT-VERIFICATION"],
+          "surface": "vscode",
+          "user_action": "Reuse the active run but replace the requested acceptance statement in the verifier plan.",
+          "expected_outcomes": [
+            "The verification session rejects the drifted acceptance contract before host dispatch.",
+            "No receipt is retained and direct Surface evidence cannot close the task."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-kernel-settlement-journeys.test.mjs",
+            "test_name": "I17-ACC-01 verifier cannot substitute a different acceptance contract"
+          }
+        },
+        {
+          "case_id": "I17-RPR-01",
+          "capability_ids": ["C1-SETTLEMENT", "C9-INDEPENDENT-VERIFICATION"],
+          "surface": "cli",
+          "user_action": "Observe a failed focused check, apply one repair, then rerun the same acceptance scope successfully.",
+          "expected_outcomes": [
+            "Both failed and passed receipts remain auditable while the later pass explicitly resolves the earlier action.",
+            "Only the unresolved evidence enters completion, allowing a completed settlement after repair."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-kernel-settlement-journeys.test.mjs",
+            "test_name": "I17-RPR-01 passed revalidation resolves the failed pre-repair evidence"
+          }
+        }
+      ]
     }
   ]
 }

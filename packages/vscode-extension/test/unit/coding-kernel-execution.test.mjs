@@ -8,10 +8,9 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import {
   CODING_KERNEL_REQUEST_VERSION,
-  CODING_VERIFICATION_RECEIPT_VERSION,
-  CODING_WORKSPACE_MUTATION_RECEIPT_VERSION,
   CanonicalCodingKernel,
   InMemoryCodingOperationJournal,
+  buildCodingVerificationPlan,
   buildCodingKernelTaskContract,
 } from '../../../shared/dist/index.js';
 import { createCanonicalCheckpointFixture } from '../helpers/canonical-checkpoint-fixture.mjs';
@@ -35,7 +34,10 @@ execFileSync('npx', [
 ], { cwd: rootDir, stdio: 'pipe' });
 
 const req = createRequire(import.meta.url);
-const { VsCodeCodingKernelRuntimeAdapter } = req(bundlePath);
+const {
+  VsCodeCodingKernelRuntimeAdapter,
+  deliverVsCodeRecoverySettlement,
+} = req(bundlePath);
 
 after(() => rmSync(tempRoot, { recursive: true, force: true }));
 
@@ -64,8 +66,8 @@ test('canonical Kernel sends VS Code work through its runtime adapter', async ()
   });
 
   assert.notEqual(output.result, expected);
-  assert.equal(output.result.historyText, expected.historyText);
-  assert.equal(output.result.completionDecision.status, 'completed');
+  assert.equal(output.result.agentResult.historyText, expected.historyText);
+  assert.equal(output.completion.status, 'completed');
   assert.equal(output.status, 'completed');
   assert.equal(calls.length, 1);
   assert.equal(calls[0].userPrompt, 'inspect the repository');
@@ -133,7 +135,7 @@ test('I10-MEM-04 user journey: VS Code prompt consumes the sealed memory decisio
     },
   });
 
-  await execute(kernel, {
+  const output = await execute(kernel, {
     ...baseRequest(),
     callbacks: { executionMode: 'edit' },
     memoryCandidates: materializeMemoryCandidates(scenario, { workspaceRoot: '/workspace' }),
@@ -156,7 +158,7 @@ test('recovery failure stays paused with the same pending checkpoint work', asyn
     },
   });
 
-  await execute(kernel, {
+  const output = await execute(kernel, {
     ...baseRequest(),
     recovery,
     callbacks: {
@@ -167,18 +169,25 @@ test('recovery failure stays paused with the same pending checkpoint work', asyn
 
   assert.match(calls[0].recoveryContextText, /durable checkpoint resume/u);
   assert.match(calls[0].recoveryContextText, /pending task/u);
+  assert.deepEqual(checkpoints, []);
+  await deliverVsCodeRecoverySettlement({
+    status: output.status,
+    fallback: output.result.recoveryFallback,
+    onTaskCheckpoint: async (...args) => { checkpoints.push(args); },
+  });
   assertCheckpointCall(checkpoints, 0, [recovery.tasks[1]], 'paused', 1);
 });
 
 test('recovery success clears the durable checkpoint exactly once', async () => {
   const checkpoints = [];
   const kernel = createKernel({
-    async runCanonical() {
+    async runCanonical(request) {
+      await passCanonicalVerification(request, 'recovery');
       return result('recovery');
     },
   });
 
-  await execute(kernel, {
+  const output = await execute(kernel, {
     ...baseRequest(),
     recovery: checkpointRecovery(0),
     callbacks: {
@@ -187,7 +196,14 @@ test('recovery success clears the durable checkpoint exactly once', async () => 
     },
   });
 
-  assert.deepEqual(checkpoints, [[null, [], 'completed', undefined]]);
+  assert.equal(output.status, 'completed');
+  assert.deepEqual(checkpoints, []);
+  await deliverVsCodeRecoverySettlement({
+    status: output.status,
+    fallback: output.result.recoveryFallback,
+    onTaskCheckpoint: async (...args) => { checkpoints.push(args); },
+  });
+  assert.deepEqual(checkpoints, [[null, [], 'completed']]);
 });
 
 test('recovery stays paused when loop counters look successful but completion evidence is missing', async () => {
@@ -213,6 +229,12 @@ test('recovery stays paused when loop counters look successful but completion ev
   });
 
   assert.equal(output.status, 'blocked');
+  assert.deepEqual(checkpoints, []);
+  await deliverVsCodeRecoverySettlement({
+    status: output.status,
+    fallback: output.result.recoveryFallback,
+    onTaskCheckpoint: async (...args) => { checkpoints.push(args); },
+  });
   assertCheckpointCall(checkpoints, 0, checkpointRecovery(0).tasks, 'paused', 0);
 });
 
@@ -328,9 +350,11 @@ function execute(kernel, runtimeContext) {
       id: 'completed',
       statement: 'The requested work is complete.',
       deliverableIds: ['result'],
-      oracle: verificationOracle(...(runtimeContext.contextFiles.length > 0
-        ? runtimeContext.contextFiles
-        : ['workspace'])),
+      oracle: runtimeContext.workflowMode === 'inspect'
+        ? responseOracle()
+        : verificationOracle(...(runtimeContext.contextFiles.length > 0
+          ? runtimeContext.contextFiles
+          : ['workspace'])),
       externalBoundaryRefs: [],
     }],
     provenanceRefs: ['vscode-test'],
@@ -410,43 +434,41 @@ function checkpointRecovery(startFromIndex) {
 }
 
 function result(route, tasksFailed = 0) {
-  const changedPath = `${route}.txt`;
   return {
     tasksTotal: 1,
     tasksApplied: tasksFailed ? 0 : 1,
     tasksFailed,
-    changedPaths: tasksFailed ? [] : [changedPath],
+    changedPaths: [],
     ...(tasksFailed ? {} : {
       historyText: `Completed ${route}.`,
-      changeReceipts: [{
-        version: CODING_WORKSPACE_MUTATION_RECEIPT_VERSION,
-        runId: 'vscode-test-run',
-        sequence: 1,
-        actionId: `mutation-${route}`,
-        idempotencyKey: `vscode-test-run:mutation-${route}`,
-        status: 'committed',
-        paths: [changedPath],
-        baselineRef: `baseline:${changedPath}`,
-        readbackRef: `readback:${changedPath}`,
-        evidenceRefs: [`mutation:${route}:committed`],
-      }],
-      verificationReceipts: [{
-        version: CODING_VERIFICATION_RECEIPT_VERSION,
-        runId: 'vscode-test-run',
-        sequence: 1,
-        actionId: `verification-${route}`,
-        idempotencyKey: `vscode-test-run:verification-${route}`,
-        verifier: 'vscode-test',
-        status: 'passed',
-        scopePaths: [changedPath],
-        checks: [],
-        acceptance: [{
-          criterionId: 'completed',
-          status: 'passed',
-          evidenceRefs: [`verification:${route}:passed`],
-        }],
-        evidenceRefs: [`verification:${route}:passed`],
-      }],
     }),
   };
+}
+
+async function passCanonicalVerification(request, route) {
+  const runId = request.callbacks.traceRunId;
+  return request.callbacks.canonicalVerification.verify(buildCodingVerificationPlan({
+    runId,
+    sequence: 1,
+    actionId: `verification-${route}`,
+    idempotencyKey: `${runId}:verification-${route}`,
+    scopePaths: ['workspace'],
+    acceptance: [{ id: 'completed', statement: 'The requested work is complete.' }],
+    payload: { route },
+    evidenceRefs: [],
+  }), {
+    async verify() {
+      return {
+        verifier: 'vscode-test',
+        checks: [{
+          checkId: `verification-${route}:check`,
+          status: 'passed',
+          acceptanceIds: ['completed'],
+          summary: `${route} passed`,
+          evidenceRefs: [`verification:${route}:passed`],
+        }],
+        evidenceRefs: [],
+      };
+    },
+  });
 }

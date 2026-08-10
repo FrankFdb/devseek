@@ -2,6 +2,7 @@ import {
   CODING_KERNEL_REQUEST_VERSION,
   CanonicalCodingKernel,
   FileSystemCodingOperationJournal,
+  projectSettledCodingConformanceRun,
   type CodingKernelExecutionOutput,
 } from '@devseek-netai/shared';
 import { CliCodingArtifactInterpreter } from './cli-coding-artifact-interpreter';
@@ -9,6 +10,7 @@ import {
   CliCodingKernelRuntimeAdapter,
   type CliCodingKernelResult,
   type CliCodingKernelRuntimeContext,
+  type CliCodingKernelRuntimeResult,
 } from './cli-coding-kernel-runtime';
 import { buildCliCodingKernelTaskContract } from './cli-coding-kernel-task-contract';
 import { CliVerificationAdapter } from './cli-verification-adapter';
@@ -23,7 +25,10 @@ export interface CliProductCodingKernelInput extends CliCodingKernelRuntimeConte
   readonly signal: AbortSignal;
 }
 
-export type CliProductCodingKernelOutput = CodingKernelExecutionOutput<CliCodingKernelResult>;
+export type CliProductCodingKernelOutput = Omit<
+  CodingKernelExecutionOutput<CliCodingKernelRuntimeResult>,
+  'result'
+> & { readonly result: CliCodingKernelResult };
 
 export class CliCodingKernelTerminalError extends Error {
   constructor(
@@ -42,7 +47,7 @@ const kernel = new CanonicalCodingKernel(new CliCodingKernelRuntimeAdapter(
 ));
 
 export const productCliCodingKernelExecutor = {
-  execute(input: CliProductCodingKernelInput): Promise<CliProductCodingKernelOutput> {
+  async execute(input: CliProductCodingKernelInput): Promise<CliProductCodingKernelOutput> {
     const {
       workspaceRoot,
       userPrompt,
@@ -51,7 +56,7 @@ export const productCliCodingKernelExecutor = {
       signal,
       ...runtimeContext
     } = input;
-    return kernel.execute({
+    const output = await kernel.execute({
       version: CODING_KERNEL_REQUEST_VERSION,
       route: 'canonical',
       surface: 'cli',
@@ -64,6 +69,25 @@ export const productCliCodingKernelExecutor = {
       runtimeContext,
       signal,
     });
+    const codingConformance = projectSettledCodingConformanceRun({
+      fixtureId: output.runId,
+      taskContract: output.taskContract,
+      toolExecutions: output.toolExecutionReceipts,
+      changeReceipts: output.workspaceMutationReceipts,
+      verifications: output.verificationReceipts,
+      completion: output.completion,
+    });
+    return {
+      ...output,
+      result: {
+        ...output.result,
+        toolExecutions: output.toolExecutionReceipts,
+        changeReceipts: output.workspaceMutationReceipts,
+        verificationReceipts: output.verificationReceipts,
+        completion: output.completion,
+        codingConformance,
+      },
+    };
   },
 };
 
@@ -71,11 +95,12 @@ export function assertCompletedCliCodingKernelOutput(
   output: CliProductCodingKernelOutput,
 ): void {
   if (output.status !== output.settlement.status
-    || output.result.completion.status !== output.settlement.status) {
+    || output.completion.status !== output.settlement.status
+    || output.result.completion !== output.completion) {
     throw new Error('cli-coding-kernel:settlement-binding-mismatch');
   }
   if (output.status === 'completed') return;
-  const reasons = output.result.completion.reasonCodes.join(', ') || 'completion-not-authorized';
+  const reasons = output.completion.reasonCodes.join(', ') || 'completion-not-authorized';
   throw new CliCodingKernelTerminalError(
     output.status,
     `DevSeek coding run ${output.status}: ${reasons}`,

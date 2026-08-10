@@ -1240,6 +1240,10 @@
           "path": "packages/shared/src/coding-settlement.ts"
         },
         {
+          "role": "completion-decision-authority",
+          "path": "packages/shared/src/coding-completion.ts"
+        },
+        {
           "role": "canonical-kernel-composition",
           "path": "packages/shared/src/coding-kernel.ts"
         },
@@ -1256,8 +1260,16 @@
           "path": "packages/vscode-extension/src/product-coding-kernel-executor.ts"
         },
         {
+          "role": "vscode-product-output-projection",
+          "path": "packages/vscode-extension/src/app/vscode-coding-kernel-output.ts"
+        },
+        {
           "role": "headless-settlement-binding",
           "path": "packages/headless/src/headless-coding-kernel.ts"
+        },
+        {
+          "role": "cross-surface-user-simulation-tests",
+          "path": "packages/shared/test/coding-kernel-settlement-journeys.test.mjs"
         },
         {
           "role": "machine-wiring-evidence",
@@ -1278,7 +1290,9 @@
           "npm run shared:test",
           "npm run cli:test",
           "npm run headless:test",
-          "node --test packages/vscode-extension/test/unit/coding-kernel-execution.test.mjs"
+          "node --test packages/vscode-extension/test/unit/coding-kernel-execution.test.mjs",
+          "node --test packages/vscode-extension/test/unit/coding-conformance-development-baseline.test.mjs",
+          "node scripts/run-devseek-iteration-user-journeys.mjs --iteration I17 --run-id <run-id>"
         ],
         "evidence_kind": "deterministic-regression"
       }
@@ -5279,5 +5293,5 @@
       ]
     }
   ],
-  "ledger_sha256": "85e7f728d80f75ce1421f2e41eb9c22ce70feb5be6f41bc454bf4b671ef7c771"
+  "ledger_sha256": "75339881eeb7f7bdabccaec27adc4c4bd4bcacf029f2a571d547b8def2df546d"
 }

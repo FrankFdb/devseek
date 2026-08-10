@@ -44,13 +44,15 @@ test('CLI run lifecycle retains canonical output before projecting a blocked ter
       calls.push(['wait']);
     },
   };
+  const completion = { status: 'blocked', reasonCodes: ['permission-denied'] };
   let blockedError;
   try {
     acceptCliCodingKernelOutput(evidence, {
       status: 'blocked',
       lifecycle,
       settlement: { status: 'blocked' },
-      result: { completion: { status: 'blocked', reasonCodes: ['permission-denied'] } },
+      completion,
+      result: { completion },
     });
   } catch (error) {
     blockedError = error;

@@ -27,7 +27,7 @@
     },
     "pendingEditCoordinator": {
       "path": "packages/vscode-extension/src/pending-edit-coordinator.ts",
-      "source_sha256": "2cec1fb6c25299342576b33d816befd2b14f77502c406bb663b023974002f7a1"
+      "source_sha256": "421178a86461008b363430c6f103efca577954ee5e5ff8a8100239ad6f682eab"
     },
     "realPluginHarness": {
       "path": "packages/vscode-extension/src/ui/real-plugin-harness.ts",
@@ -59,11 +59,11 @@
     },
     "headlessIndex": {
       "path": "packages/headless/src/index.ts",
-      "source_sha256": "8257089f9e9dc0f26a0931293125536e6d4640e521241443d1f024dcca6c5757"
+      "source_sha256": "08fb8fa76789ce99c44c88abbcb18c47edad8c466000202415106be1a8e71b6c"
     },
     "headlessExecutor": {
       "path": "packages/headless/src/headless-coding-kernel.ts",
-      "source_sha256": "5044a643d07669e36e3a42d24a4f5c783a7908bf50831759813cc636751914e1"
+      "source_sha256": "b7d7e3ee9db65fc2b7e23781364728dd8fe06c6671c738b24128658b36f2d725"
     },
     "bridgeServer": {
       "path": "packages/bridge/src/server.ts",
@@ -1490,5 +1490,5 @@
     "duplicate_webview_protocol_declarations": 0,
     "duplicate_webview_handler_registrations": 0
   },
-  "inventory_sha256": "17522ef218af7878ffb229a3c28674be39da2b94624491cb64a6455568175a79"
+  "inventory_sha256": "90141cc176f4458082433736fe6c8841904825a327ef62799f5fdc5f44a58b6a"
 }

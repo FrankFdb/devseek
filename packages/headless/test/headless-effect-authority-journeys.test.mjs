@@ -9,14 +9,13 @@ import {
   buildCodingKernelTaskContract,
   codingExternalEffectOperationSha256,
   codingSemanticDigest,
-  projectSettledCodingConformanceRun,
 } from '../../shared/dist/index.js';
 import {
   HeadlessCodingKernelExecutor,
-  HeadlessCompletionAdapter,
   HeadlessToolExecutionAdapter,
 } from '../dist/index.js';
 import { loadUserSimulationCase } from '../../../scripts/lib/devseek-user-simulation-fixture.mjs';
+import { completedRuntimeResult } from './headless-runtime-fixtures.mjs';
 
 test('I12-AUT-01 user journey: read-only task rejects a Surface-authorized write before host dispatch', async () => {
   const scenario = loadUserSimulationCase('I12', 'I12-AUT-01');
@@ -48,7 +47,7 @@ test('I12-AUT-01 user journey: read-only task rejects a Surface-authorized write
         });
         assert.equal(denied.receipt.status, 'denied');
         assert.equal(denied.receipt.permission.reason, 'sandbox-denies-workspace-mutation');
-        return settleTask(request, { hostCalls }, [denied.receipt]);
+        return settleTask(request, { hostCalls });
       },
     });
     const output = await executor.execute({
@@ -302,7 +301,7 @@ test('I12-RSM-01 user journey: external effect receipt settles resume and skips 
         );
         assert.equal(outcome.replayed, false);
         assert.ok(outcome.receipt.toolReceipt);
-        return settleTask(request, { hostCalls, replayed: outcome.replayed }, [outcome.receipt.toolReceipt]);
+        return settleTask(request, { hostCalls, replayed: outcome.replayed });
       },
     });
     const first = await firstExecutor.execute({
@@ -369,7 +368,7 @@ test('I12-RSM-02 user journey: completed resume receipt cannot authorize substit
           issueExternalEffect(request, resumeEffectInput(scenario, scenario.input.approved_body)),
           host,
         );
-        return settleTask(request, { hostCalls }, [outcome.receipt.toolReceipt]);
+        return settleTask(request, { hostCalls });
       },
     });
     const first = await firstExecutor.execute({
@@ -519,43 +518,6 @@ function taskContract(goal, mode) {
   });
 }
 
-function settleTask(request, value, toolExecutions = []) {
-  const acceptanceEvidence = request.taskContract.acceptance.map(criterion => ({
-    criterionId: criterion.id,
-    status: 'passed',
-    evidenceRefs: [`i12:${criterion.id}:passed`],
-  }));
-  const completion = new HeadlessCompletionAdapter().decide({
-    runId: request.runId,
-    decisionId: `${request.runId}-completion`,
-    idempotencyKey: `${request.runId}:completion`,
-    acceptance: request.taskContract.acceptance,
-    verificationRequired: false,
-    reviewRequired: false,
-    toolExecutions,
-    mutations: [],
-    verifications: [],
-    resolvedVerificationActionIds: [],
-    acceptanceEvidence,
-    pendingRefs: [],
-    adverseEvidenceRefs: [],
-    residualRisks: [],
-    evidenceRefs: acceptanceEvidence.flatMap(item => item.evidenceRefs),
-  });
-  return {
-    status: completion.status,
-    result: {
-      value,
-      conformance: projectSettledCodingConformanceRun({
-        fixtureId: request.runId,
-        taskContract: request.taskContract,
-        toolExecutions,
-        changeReceipts: [],
-        verifications: [],
-        completion,
-      }),
-    },
-    evidenceRefs: completion.evidenceRefs,
-    residualRisks: completion.residualRisks,
-  };
+function settleTask(request, value) {
+  return completedRuntimeResult(request, value, { evidencePrefix: 'i12' });
 }

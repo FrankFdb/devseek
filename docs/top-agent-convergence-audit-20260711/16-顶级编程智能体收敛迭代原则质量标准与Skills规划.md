@@ -21,7 +21,7 @@ devseek_governance:
 
 # 顶级编程智能体收敛迭代原则、质量标准与 Skills 规划
 
-- 更新日期：2026-08-07
+- 更新日期：2026-08-10
 - 文档性质：模型无关的工程执行规范、GPT-5.5 原子作业协议与候选 Skills backlog
 - 当前状态：规范已定义；Skills 矩阵中的候选均未因本文而自动实现或取得资格
 - 审计包入口：[README.md](README.md)
@@ -54,6 +54,7 @@ devseek_governance:
 18. **授权精确绑定且不继承**：用户/外部授权必须绑定当前窗口、atomic ID、candidate、run/action、tool、不可变 input digest、effect facets、sandbox policy、target scope、有效期和撤销源，并由当前 authority session 签发和验真；字段结构正确不能替代签发事实。journal、checkpoint 或 resume receipt 只能重放同一精确 operation；任一绑定缺失或漂移都 fail closed。旧聊天、旧窗口、另一个 slot 或一般性“继续”不能替代高影响动作的明确授权。
 19. **设计原则优先，规模指标从属**：代码优化先确定行为契约、唯一 owner、单一职责、依赖方向和可测试边界，再查看行数、diff 和复杂度。如果缺陷暴露了错误边界，应重构或删除该边界，不在其上叠加补丁。规模预算只阻止职责回流；删说明、压格式、空壳拆分或无契约迁移不计收敛。
 20. **计划可修订，范围不可偷换**：探索或工具调用发现新具体目标时，必须在副作用前由唯一 plan-revision authority 封存证据、父计划、影响与验收映射；执行 authority 只消费当前修订。显式 `allowed_paths`、`no_touch_paths`、`non_goals`、`no-other-files` 和 workspace 边界不得被模型提议改写，不能用“动态规划”伪装越权。
+21. **验证证据必须绑定当前运行契约**：verifier receipt 必须来自当前 Kernel 签发的 run session，并精确匹配 TaskContract acceptance；Surface 不能提交终态、不能声明某条失败已解除。只有同 run、更新序列、完整覆盖原 scope 与 acceptance 的 passed receipt，才可由 Completion authority 解除较早 adverse receipt；跨 run、缩窄范围、替换验收或无原始证据一律 fail closed。
 
 ## 2. 生命周期质量标准与 Definition of Done
 
@@ -68,7 +69,7 @@ devseek_governance:
 | 代码实现 | 输入已批准 ChangePlan；输出最小 diff、迁移/删除、EvidenceRef 与 read-back | 对应 domain service；workspace 写盘仅 Mutation authority | compile/type/schema、diff budget、sibling guard、CAS/dirty/ABA/fault injection；禁止隐藏 writer | 发现需扩大 capability 时停止并拆新任务；不顺手扩功能 |
 | 权限与副作用 | 输入 operation intent/identity/policy；输出 durable request/authorization/started/terminal receipt | Permission + SideEffect authority | deny-before-callback、unknown mutable、idempotency、timeout/indeterminate、secret non-observation、MCP/command/undo 旁路 | 高风险/网络/破坏性动作需用户授权；拒绝或身份漂移立即停止 |
 | 编译与测试 | 输入变更、项目规则和 acceptance；输出 VerificationPlan 与原始结果 | Validation Planner + runner；模型无权自判 pass | focused→package full→replay→architecture→Phase；测试未执行、弱 oracle、环境失败误标 pass 为硬失败 | GUI/交互项显式 manual review；早层失败不跳后层 |
-| 恢复与结算 | 输入全部运行事件；输出唯一 terminal settlement、seal 和可重放状态 | RunContext/Settlement authority | adverse<commit<verification<gate<recovery、失败粘性、预算/no-progress、exactly-one terminal；fake recovery 攻击 | 无新证据或预算耗尽时 failed/blocked，不无限继续 |
+| 恢复与结算 | 输入 canonical tool/mutation/verification receipt 与 Runtime 观察证据；输出唯一 terminal completion、settlement、seal 和可重放状态 | Kernel Completion + RunLifecycle + Settlement authority | run/acceptance/scope binding、adverse<commit<verification<gate<recovery、失败粘性、预算/no-progress、exactly-one terminal；Surface completed、foreign receipt、acceptance substitution、narrow repair 攻击 | 无新证据或预算耗尽时 failed/blocked，不无限继续；Surface 只投影结果 |
 | 软件发布 | 输入干净 release commit；输出精确 VSIX/Bridge/hash/build/installed identity | Release pipeline | package reproducibility、包内 commit、Bridge health/auth、SHA-256、安装后 identity、tracked drift | 包身份不一致或发布后源码漂移立即停止/回滚完整旧 artifact |
 | 文档与接管 | 输入机器 SSOT、Git、测试和 artifact；输出 active 状态、backlog、接管清单 | Machine SSOT + documentation generator/owner | 相对链接、diff check、生成物 drift、事实/计划分栏、commit 自引用处理 | 文档不得提升能力；冲突时机器证据优先并记录 superseding fact |
 | 资格 | 输入冻结 candidate、签名 plan、完整事件、独立 Manifest/retention | 独立 qualification authority | 分母/失败/veto 守恒、精确 tuple、职责隔离、WORM/anchor/time、跨 scope 外推攻击 | 缺外部 authority 或 live 授权即 blocked；任一 veto 关闭候选 |

@@ -1,6 +1,6 @@
 {
-  "schema_version": "devseek.kernel-prep-owner-baseline/v25",
-  "baseline_id": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v25",
+  "schema_version": "devseek.kernel-prep-owner-baseline/v27",
+  "baseline_id": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v27",
   "purpose": "Track product-route and semantic-owner convergence without asserting qualification or coupling local iteration to Gate 0.",
   "qualification_eligible": false,
   "qualification_effect": "NONE",
@@ -659,7 +659,7 @@
     "cross_surface_kernel_routes": 4,
     "semantic_domains": 30,
     "converged_semantic_domains": 30,
-    "source_checks": 122,
+    "source_checks": 123,
     "failed_source_checks": 0
   },
   "source_checks": [
@@ -754,7 +754,14 @@
         "journal: request.operationJournal",
         "assertCodingOrientationPrompt(taskContract.orientation, request.userPrompt)",
         "lifecycle.beginExecution()",
-        "lifecycle.settle(runtimeOutput.status)",
+        "const verification = VERIFICATION.bind({",
+        "acceptance: taskContract.acceptance,",
+        "const completionEvidence = assertRuntimeCompletionEvidence(runtimeOutput.completionEvidence)",
+        "const completion = this.completion.decide({",
+        "verificationRequired: codingTaskContractRequiresVerification(taskContract)",
+        "verifications: verification.receipts()",
+        "lifecycle.settle(completion.status)",
+        "completion,",
         "lifecycle: lifecycleSnapshot",
         "status: settlement.status",
         "settlement,",
@@ -1326,9 +1333,11 @@
         "CODING_SETTLEMENT_DECISION_VERSION = 'devseek.coding-settlement-decision/v1'",
         "export interface SettlementDecisionPort",
         "export class CanonicalSettlementDecisionService implements SettlementDecisionPort",
+        "readonly completion: CodingCompletionDecision",
         "settlementFailure('non-terminal-lifecycle')",
+        "settlementFailure('completion-run-mismatch')",
         "terminal-mismatch:",
-        "terminal-preserved:"
+        "'canonical-completion-bound'"
       ],
       "excludes": [
         "from 'vscode'",
@@ -1715,7 +1724,7 @@
       "path": "packages/shared/src/coding-workspace-mutation.ts",
       "includes": [
         "export interface WorkspaceMutationPort",
-        "export class CanonicalWorkspaceMutationTransaction implements WorkspaceMutationTransactionPort",
+        "export class CanonicalWorkspaceMutationTransaction implements WorkspaceMutationTransactionSessionPort",
         "applyOutcome.mutationState === 'unchanged'",
         "return rollbackMutation(plan, host, baseline, applyOutcome.applied, 'apply-failed'",
         "status: 'committed'",
@@ -1754,7 +1763,12 @@
       "path": "packages/shared/src/coding-verification.ts",
       "includes": [
         "export interface VerificationPort",
-        "export class CanonicalVerificationService implements VerificationPort",
+        "export interface CodingVerificationSessionPort extends VerificationPort",
+        "export class CanonicalVerificationService implements VerificationServicePort",
+        "return new CanonicalVerificationSession(this, input.runId, input.acceptance)",
+        "coding-verification:session-run-mismatch",
+        "coding-verification:session-acceptance-mismatch",
+        "receipts(): readonly CodingVerificationReceipt[]",
         "status: 'unverified'",
         "verification-acceptance-uncovered",
         "verification-host-failed",
@@ -1774,7 +1788,9 @@
       "includes": [
         "export interface CompletionDecisionPort",
         "export class CanonicalCompletionDecisionService implements CompletionDecisionPort",
-        "resolvedVerificationActionIds",
+        "const unresolvedVerifications = unresolvedVerificationReceipts(input.verifications)",
+        "function verificationSupersedes(",
+        "assertReceiptRunIds(runId, input.verifications, 'verification')",
         "verification-not-run",
         "cancellation-unsettled",
         "private readonly decisions = new Map<string, { canonicalInput: string; decision: CodingCompletionDecision }>()"
@@ -1783,7 +1799,8 @@
         "from 'vscode'",
         "HeadlessCompletionAdapter",
         "TerminalPermissionCoordinator",
-        "CliRunEvidence"
+        "CliRunEvidence",
+        "resolvedVerificationActionIds"
       ],
       "passed": true
     },
@@ -1808,10 +1825,11 @@
         "export * from './headless-run-evidence';",
         "export * from './headless-tool-execution';",
         "export * from './headless-workspace-mutation';",
-        "export * from './headless-verification';",
+        "export * from './headless-verification';"
+      ],
+      "excludes": [
         "export * from './headless-completion';"
       ],
-      "excludes": [],
       "passed": true
     },
     {
@@ -1830,15 +1848,18 @@
         "operationJournal: FileSystemCodingOperationJournal.forWorkspace(input.workspaceRoot)",
         "taskContract: input.taskContract",
         "contextSeed: input.contextSeed",
-        "validateCodingConformanceProjection(snapshot, 'headless')",
-        "evidence.finalize(lifecycle, output.status, 'surface-output-settled')",
-        "projectCodingKernelTaskContract(output.taskContract)",
-        "terminal-status-mismatch",
-        "completion-evidence-mismatch"
+        "const conformance = projectSettledCodingConformanceRun({",
+        "toolExecutions: output.toolExecutionReceipts",
+        "changeReceipts: output.workspaceMutationReceipts",
+        "verifications: output.verificationReceipts",
+        "completion: output.completion",
+        "evidence.finalize(lifecycle, output.status, 'surface-output-settled')"
       ],
       "excludes": [
         "from 'vscode'",
         "CliCodingKernelRuntimeAdapter",
+        "CanonicalCompletionDecisionService",
+        "HeadlessCompletionAdapter",
         "runAgenticLoop",
         "interface CodingKernelTaskContract",
         "CODING_KERNEL_TASK_CONTRACT_VERSION"
@@ -1871,7 +1892,8 @@
         "surface: 'headless'",
         "surface.evidenceClass, 'product-route'",
         "CODING_CONFORMANCE_DIMENSIONS",
-        "Headless product entry fails closed on incomplete or drifted conformance evidence",
+        "Headless product entry accepts no Surface-owned terminal or conformance projection",
+        "Headless Kernel blocks a change without canonical verification evidence",
         "coding-kernel-execution:cancelled-before-start"
       ],
       "excludes": [],
@@ -1921,28 +1943,14 @@
       "path": "packages/headless/src/headless-verification.ts",
       "includes": [
         "export class HeadlessVerificationAdapter",
-        "private readonly verification: VerificationPort = new CanonicalVerificationService()",
+        "constructor(private readonly verification: VerificationPort)",
         "return this.verification.verify(buildCodingVerificationPlan(input.plan), input.host)"
       ],
       "excludes": [
         "from 'vscode'",
+        "CanonicalVerificationService",
         "CliVerificationAdapter",
         "ValidationService"
-      ],
-      "passed": true
-    },
-    {
-      "check_id": "headless-completion-composition",
-      "path": "packages/headless/src/headless-completion.ts",
-      "includes": [
-        "export class HeadlessCompletionAdapter",
-        "private readonly completion: CompletionDecisionPort = new CanonicalCompletionDecisionService()",
-        "return this.completion.decide(input)"
-      ],
-      "excludes": [
-        "from 'vscode'",
-        "CliRunEvidence",
-        "TerminalPermissionCoordinator"
       ],
       "passed": true
     },
@@ -1954,7 +1962,7 @@
         "adapterId: 'cli-canonical-real-workspace-product-route'",
         "new CliWorkspaceMutationHostAdapter()",
         "new CliVerificationAdapter(new CliVerificationHostAdapter())",
-        "projection: output.result.codingConformance",
+        "projection: projectSettledCodingConformanceRun({",
         "surface.evidenceClass, 'product-route'",
         "changedUserPaths(before, snapshotUserFiles(cwd, scenario.trackedPaths))"
       ],
@@ -2207,13 +2215,17 @@
         "operationJournal: FileSystemCodingOperationJournal.forWorkspace(request.workspaceRoot)",
         "retainVsCodeCodingRunLifecycle({",
         "retainLifecycle(output.lifecycle)",
+        "const productOutput = projectVsCodeCodingKernelOutput(output)",
+        "await deliverVsCodeRecoverySettlement({",
+        "status: output.status,",
         "error instanceof CodingKernelExecutionError"
       ],
       "excludes": [
         "runAgentLoop",
         "runLegacyPlanned",
         "CodingKernelExecutionService",
-        "runtimeContext: request"
+        "runtimeContext: request",
+        "CanonicalCompletionDecisionService"
       ],
       "passed": true
     },
@@ -2295,10 +2307,11 @@
         "userPrompt: kernelRequest.userPrompt",
         "workspaceRoot: kernelRequest.workspaceRoot",
         "renderCodingContextGraphSummary(kernelRequest.contextGraph)",
-        "const completionDecision = this.completion.decide({",
-        "const codingConformance: CodingConformanceProjection = projectSettledCodingConformanceRun({",
-        "const settledResult: AgentLoopResult = { ...result, completionDecision, codingConformance };",
-        "status: completionDecision.status"
+        "canonicalVerification: kernelRequest.verification",
+        "verificationReceipts: [...kernelRequest.verification.receipts()]",
+        "const completionEvidence = this.completionEvidence.project({",
+        "agentResult: result,",
+        "completionEvidence,"
       ],
       "excludes": [
         "legacy-planned",
@@ -2306,7 +2319,44 @@
         "runLegacyPlanned",
         "CodingKernelExecutionService",
         "userPrompt: request.userPrompt",
-        "workspaceRoot: request.workspaceRoot"
+        "workspaceRoot: request.workspaceRoot",
+        "CanonicalCompletionDecisionService",
+        "projectSettledCodingConformanceRun",
+        "completionDecision.status"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-kernel-output-projection",
+      "path": "packages/vscode-extension/src/app/vscode-coding-kernel-output.ts",
+      "includes": [
+        "export function projectVsCodeCodingKernelOutput(",
+        "output.completion.status !== output.settlement.status",
+        "correlateVsCodeCodingConformanceReceipts({",
+        "toolExecutions: output.toolExecutionReceipts",
+        "changeReceipts: output.workspaceMutationReceipts",
+        "verifications: output.verificationReceipts",
+        "completion: output.completion",
+        "completionDecision: output.completion"
+      ],
+      "excludes": [
+        "CanonicalCompletionDecisionService",
+        "VsCodeCompletionEvidenceAdapter"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-recovery-settlement-delivery",
+      "path": "packages/vscode-extension/src/app/coding-kernel-recovery-delivery.ts",
+      "includes": [
+        "export async function deliverVsCodeRecoverySettlement(",
+        "if (input.status === 'completed')",
+        "await input.onTaskCheckpoint(null, [], 'completed')",
+        "'paused'"
+      ],
+      "excludes": [
+        "CanonicalCompletionDecisionService",
+        "completionDecision"
       ],
       "passed": true
     },
@@ -2546,14 +2596,22 @@
       "passed": true
     },
     {
-      "check_id": "vscode-completion",
+      "check_id": "vscode-completion-evidence",
       "path": "packages/vscode-extension/src/app/coding-completion-adapter.ts",
       "includes": [
-        "export class VsCodeCompletionAdapter",
-        "private readonly completion: CompletionDecisionPort = new CanonicalCompletionDecisionService()",
-        "return this.completion.decide({"
+        "export class VsCodeCompletionEvidenceAdapter",
+        "codingTaskContractRequiresVerification(input.taskContract)",
+        "const acceptanceEvidence = buildDirectAcceptanceEvidence({",
+        "pendingRefs,",
+        "adverseEvidenceRefs: failedArtifactRefs"
       ],
-      "excludes": [],
+      "excludes": [
+        "CanonicalCompletionDecisionService",
+        "CompletionDecisionPort",
+        "completion.decide",
+        "resolvedVerificationActionIds",
+        "verificationSupersedes"
+      ],
       "passed": true
     },
     {
@@ -2598,18 +2656,24 @@
         "CODING_KERNEL_REQUEST_VERSION,",
         "CanonicalCodingKernel,",
         "const kernel = new CanonicalCodingKernel(new CliCodingKernelRuntimeAdapter(",
-        "return kernel.execute({",
+        "const output = await kernel.execute({",
         "route: 'canonical'",
         "surface: 'cli'",
         "taskContract: buildCliCodingKernelTaskContract(userPrompt, contextFiles)",
         "contextSeed: { files: contextFiles.map(path => ({ path })) }",
-        "operationJournal: FileSystemCodingOperationJournal.forWorkspace(workspaceRoot)"
+        "operationJournal: FileSystemCodingOperationJournal.forWorkspace(workspaceRoot)",
+        "const codingConformance = projectSettledCodingConformanceRun({",
+        "toolExecutions: output.toolExecutionReceipts",
+        "changeReceipts: output.workspaceMutationReceipts",
+        "verifications: output.verificationReceipts",
+        "completion: output.completion"
       ],
       "excludes": [
         "CliLegacyCodingLoop",
         "legacyCodingLoop",
         "cli-legacy-coding-loop",
-        "AgentKernelService"
+        "AgentKernelService",
+        "CanonicalCompletionDecisionService"
       ],
       "passed": true
     },
@@ -2623,17 +2687,19 @@
         "toolExecution.executeWorkspaceMutation({",
         "toolExecutions.push(workspaceExecution.outcome.receipt)",
         "verificationReceipts.push(verificationReceipt)",
-        "private readonly completion = new CanonicalCompletionDecisionService()",
-        "const codingConformance = projectSettledCodingConformanceRun({",
-        "codingConformance,",
-        "status: completion.status",
+        "const completionEvidence: CodingKernelCompletionEvidence = {",
+        "return {",
+        "completionEvidence,",
         "function buildRepairPrompt(",
-        "function settleCliResult(input:"
+        "function buildCliRuntimeOutput(input:"
       ],
       "excludes": [
         "CliLegacyCodingLoop",
         "legacyCodingLoop",
-        "AgentApplicationService"
+        "AgentApplicationService",
+        "CanonicalCompletionDecisionService",
+        "resolvedVerificationActionIds",
+        "projectSettledCodingConformanceRun"
       ],
       "passed": true
     },
@@ -2703,12 +2769,14 @@
       "path": "packages/cli/src/cli-verification-adapter.ts",
       "includes": [
         "export class CliVerificationAdapter",
-        "private readonly verification: VerificationPort = new CanonicalVerificationService()",
-        "return this.verification.verify(plan, {",
+        "constructor(private readonly host: Pick<CliVerificationHostAdapter, 'verify'>)",
+        "verification: VerificationPort,",
+        "return verification.verify(plan, {",
         "verifier: status === 'unverified' ? 'none' : 'cli-project-verifier'"
       ],
       "excludes": [
         "from 'vscode'",
+        "CanonicalVerificationService",
         "HeadlessVerificationAdapter",
         "ValidationService"
       ],
@@ -2727,5 +2795,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "2456297ba5e1801275b880cfa7382ae489f5e00417c73948a4fdee8806edae7a"
+  "baseline_sha256": "0b3b9cd9606362daa66e8d3bba9a52804df076bee27fd423728a77831e1fcc84"
 }

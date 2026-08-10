@@ -3,18 +3,13 @@ import test from 'node:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import {
-  buildCodingKernelTaskContract,
-  projectSettledCodingConformanceRun,
-} from '../../shared/dist/index.js';
-import {
-  HeadlessCodingKernelExecutor,
-  HeadlessCompletionAdapter,
-} from '../dist/index.js';
+import { buildCodingKernelTaskContract } from '../../shared/dist/index.js';
+import { HeadlessCodingKernelExecutor } from '../dist/index.js';
 import {
   loadUserSimulationCase,
   materializeMemoryCandidates,
 } from '../../../scripts/lib/devseek-user-simulation-fixture.mjs';
+import { completedRuntimeResult } from './headless-runtime-fixtures.mjs';
 
 test('I10-MEM-01 user journey: external memory cannot become an instruction', async () => {
   const scenario = loadUserSimulationCase('I10', 'I10-MEM-01');
@@ -131,42 +126,5 @@ function reviewContract(goal) {
 }
 
 function completedReview(request, value) {
-  const acceptanceEvidence = request.taskContract.acceptance.map(criterion => ({
-    criterionId: criterion.id,
-    status: 'passed',
-    evidenceRefs: [`review:${criterion.id}:passed`],
-  }));
-  const completion = new HeadlessCompletionAdapter().decide({
-    runId: request.runId,
-    decisionId: `${request.runId}-completion`,
-    idempotencyKey: `${request.runId}:completion`,
-    acceptance: request.taskContract.acceptance,
-    verificationRequired: false,
-    reviewRequired: false,
-    toolExecutions: [],
-    mutations: [],
-    verifications: [],
-    resolvedVerificationActionIds: [],
-    acceptanceEvidence,
-    pendingRefs: [],
-    adverseEvidenceRefs: [],
-    residualRisks: [],
-    evidenceRefs: acceptanceEvidence.flatMap(item => item.evidenceRefs),
-  });
-  return {
-    status: completion.status,
-    result: {
-      value,
-      conformance: projectSettledCodingConformanceRun({
-        fixtureId: request.runId,
-        taskContract: request.taskContract,
-        toolExecutions: [],
-        changeReceipts: [],
-        verifications: [],
-        completion,
-      }),
-    },
-    evidenceRefs: completion.evidenceRefs,
-    residualRisks: completion.residualRisks,
-  };
+  return completedRuntimeResult(request, value, { evidencePrefix: 'review' });
 }

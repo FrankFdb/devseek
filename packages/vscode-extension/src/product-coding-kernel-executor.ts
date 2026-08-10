@@ -14,6 +14,8 @@ import { projectVsCodeCodingKernelTaskContract } from './app/coding-kernel-task-
 import { projectVsCodeCodingContextSeed } from './app/coding-kernel-context-seed';
 import { retainVsCodeCodingRunLifecycle } from './app/coding-run-evidence-retention';
 import { MemoryService } from './app/memory-service';
+import { deliverVsCodeRecoverySettlement } from './app/coding-kernel-recovery-delivery';
+import { projectVsCodeCodingKernelOutput } from './app/vscode-coding-kernel-output';
 
 const runtime = new VsCodeCodingKernelRuntimeAdapter({
   runCanonical: request => runAgenticLoop(
@@ -89,10 +91,14 @@ export const productCodingKernelExecutor: CodingKernelExecutionPort = {
         signal: request.callbacks.signal,
       });
       retainLifecycle(output.lifecycle);
-      if (output.result.completionDecision?.status !== output.settlement.status) {
-        throw new Error('vscode-coding-kernel:settlement-binding-mismatch');
-      }
-      return output.result;
+      const productOutput = projectVsCodeCodingKernelOutput(output);
+      const fallback = output.result.recoveryFallback;
+      await deliverVsCodeRecoverySettlement({
+        status: output.status,
+        fallback,
+        onTaskCheckpoint: request.callbacks.onTaskCheckpoint,
+      });
+      return productOutput;
     } catch (error) {
       if (error instanceof CodingKernelExecutionError) retainLifecycle(error.lifecycle);
       throw error;

@@ -92,14 +92,33 @@ export interface VerificationPort {
   ): Promise<CodingVerificationOutcome>;
 }
 
+export interface CodingVerificationSessionPort extends VerificationPort {
+  readonly runId: string;
+  receipts(): readonly CodingVerificationReceipt[];
+}
+
+export interface VerificationServicePort extends VerificationPort {
+  bind(input: {
+    readonly runId: string;
+    readonly acceptance: readonly CodingVerificationCriterion[];
+  }): CodingVerificationSessionPort;
+}
+
 interface ActiveVerification {
   readonly canonicalPlan: string;
   readonly receipt: Promise<CodingVerificationReceipt>;
 }
 
 /** Owns acceptance coverage and verification terminal semantics across Surfaces. */
-export class CanonicalVerificationService implements VerificationPort {
+export class CanonicalVerificationService implements VerificationServicePort {
   private readonly executions = new Map<string, ActiveVerification>();
+
+  bind(input: {
+    readonly runId: string;
+    readonly acceptance: readonly CodingVerificationCriterion[];
+  }): CodingVerificationSessionPort {
+    return new CanonicalVerificationSession(this, input.runId, input.acceptance);
+  }
 
   async verify<TPayload>(
     plan: CodingVerificationPlan<TPayload>,
@@ -117,6 +136,47 @@ export class CanonicalVerificationService implements VerificationPort {
     const receipt = executeVerification(snapshot, host);
     this.executions.set(key, { canonicalPlan, receipt });
     return { receipt: await receipt, replayed: false };
+  }
+}
+
+class CanonicalVerificationSession implements CodingVerificationSessionPort {
+  readonly runId: string;
+  private readonly acceptance: readonly CodingVerificationCriterion[];
+  private readonly settledReceipts = new Map<string, CodingVerificationReceipt>();
+
+  constructor(
+    private readonly service: VerificationPort,
+    runId: string,
+    acceptance: readonly CodingVerificationCriterion[],
+  ) {
+    this.runId = normalizedCodingId(runId, 'verification-session-run-id');
+    this.acceptance = Object.freeze(acceptance.map(criterion => Object.freeze({
+      id: normalizedCodingId(criterion.id, 'verification-session-acceptance-id'),
+      statement: normalizedCodingId(
+        criterion.statement,
+        'verification-session-acceptance-statement',
+      ),
+    })));
+    if (new Set(this.acceptance.map(criterion => criterion.id)).size !== this.acceptance.length) {
+      throw new Error('coding-verification:duplicate-session-acceptance-id');
+    }
+  }
+
+  async verify<TPayload>(
+    plan: CodingVerificationPlan<TPayload>,
+    host: CodingVerificationHostPort<TPayload>,
+  ): Promise<CodingVerificationOutcome> {
+    if (plan.runId !== this.runId) throw new Error('coding-verification:session-run-mismatch');
+    if (canonicalCodingJson(plan.acceptance) !== canonicalCodingJson(this.acceptance)) {
+      throw new Error('coding-verification:session-acceptance-mismatch');
+    }
+    const outcome = await this.service.verify(plan, host);
+    this.settledReceipts.set(outcome.receipt.actionId, outcome.receipt);
+    return outcome;
+  }
+
+  receipts(): readonly CodingVerificationReceipt[] {
+    return Object.freeze([...this.settledReceipts.values()]);
   }
 }
 

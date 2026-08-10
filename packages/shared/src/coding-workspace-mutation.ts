@@ -152,14 +152,19 @@ export interface WorkspaceMutationTransactionPort {
   ): Promise<CodingWorkspaceMutationOutcome<TResult>>;
 }
 
+export interface WorkspaceMutationTransactionSessionPort extends WorkspaceMutationTransactionPort {
+  receipts(): readonly CodingWorkspaceMutationReceipt<unknown>[];
+}
+
 interface ActiveMutation {
   readonly canonicalPlan: string;
   readonly receipt: Promise<CodingWorkspaceMutationReceipt<unknown>>;
 }
 
 /** Owns baseline, apply, readback, rollback, and one terminal mutation receipt. */
-export class CanonicalWorkspaceMutationTransaction implements WorkspaceMutationTransactionPort {
+export class CanonicalWorkspaceMutationTransaction implements WorkspaceMutationTransactionSessionPort {
   private readonly executions = new Map<string, ActiveMutation>();
+  private readonly settledReceipts = new Map<string, CodingWorkspaceMutationReceipt<unknown>>();
 
   constructor(
     private readonly journal?: CodingOperationJournalPort,
@@ -176,10 +181,12 @@ export class CanonicalWorkspaceMutationTransaction implements WorkspaceMutationT
     const existing = this.executions.get(key);
     if (existing) {
       assertSamePlan(existing.canonicalPlan, canonicalPlan);
-      return {
+      const outcome = {
         receipt: await existing.receipt as CodingWorkspaceMutationReceipt<TResult>,
         replayed: true,
       };
+      this.settledReceipts.set(key, outcome.receipt);
+      return outcome;
     }
 
     const execution = this.executeOnce(snapshot, host, canonicalPlan);
@@ -187,7 +194,13 @@ export class CanonicalWorkspaceMutationTransaction implements WorkspaceMutationT
       canonicalPlan,
       receipt: execution.then(outcome => outcome.receipt) as Promise<CodingWorkspaceMutationReceipt<unknown>>,
     });
-    return execution;
+    const outcome = await execution;
+    this.settledReceipts.set(key, outcome.receipt);
+    return outcome;
+  }
+
+  receipts(): readonly CodingWorkspaceMutationReceipt<unknown>[] {
+    return Object.freeze([...this.settledReceipts.values()]);
   }
 
   private async executeOnce<TPayload, TBaseline, TApplied, TResult>(

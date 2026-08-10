@@ -66,11 +66,13 @@ Anthropic 官方把 Claude Code 的核心循环明确描述为“获取上下文
 
 因此 Claude Code 公开定义的也不是“必须依次生成六份工件”，而是一个能按任务复杂度折叠、能观察环境、能执行工具、能验证并继续修复的反馈循环。
 
-### 2.3 2026-08-07 规划行为增量复核
+### 2.3 2026-08-10 规划与验证行为增量复核
 
 - Claude Code 官方 [`permission modes`](https://code.claude.com/docs/en/permission-modes) 将 Plan Mode 定义为可分析代码库并形成计划、但不修改文件或执行命令的受限模式；[`permissions`](https://code.claude.com/docs/en/permissions) 继续把工具许可与 OS sandbox 分层。DevSeek 因而应把“探索/设计”和“有副作用执行”做成宿主可强制的状态与 authority 边界，而不是仅在 prompt 中要求先规划。
 - Codex 开源的 [`default instructions`](https://github.com/openai/codex/blob/main/codex-rs/protocol/src/prompts/base_instructions/default.md) 要求较长任务用 `update_plan` 维护 `pending`、`in_progress`、`completed`，且任一时刻恰有一个步骤处于 `in_progress`；简单任务可以跳过计划。DevSeek 对标的是这种按复杂度折叠、可持续更新并与执行状态一致的可观察行为，不推测 Codex 私有实现。
 - 本轮据此把需求 revision、验收 oracle、设计决策和 change plan 建成 shared typed owner，并让 mutation/external-effect authority 消费当前计划。当自然任务中的模型/工具提出新具体目标时，shared `ChangePlanRevisionPort` 会在副作用前封存证据、父计划和修订决策；显式用户范围和 workspace 边界不可扩大。实时外部调研、clarification/steer、外部新证据驱动的 requirement/design revision 和可审阅计划状态仍是后续差距。
+- Claude Code 的反馈循环与 best practices 都把测试、构建或其他可观察结果作为继续修复和完成判断的依据；Codex 的公开默认指令同样要求实现后主动验证并把未运行项说清。DevSeek 本轮据此把验证会话绑定到当前 `runId` 与精确 acceptance，Runtime/Surface 只能提交观察证据，不能提交终态或声明旧失败已解除。
+- 后续通过回执只有在同一 run、序列更新、scope 完整覆盖且 acceptance 全覆盖时，才由 shared Completion authority 解除较早失败；跨 run 回执、替换 acceptance、较窄 scope 或 Surface 的 completed 自报均 fail closed。该结果闭合的是 C1 completion/settlement 的本地职责；C9 的 verifier selection、build orchestration、diagnosis、repair budget 与 regression selection 仍须按 capability DAG 实现，因此不得提前声明 C9 已 `wired`。
 
 ### 2.4 从公开事实抽象出的共同架构
 
@@ -165,7 +167,7 @@ Anthropic 官方把 Claude Code 的核心循环明确描述为“获取上下文
 | 行为资格 | 从小任务到真实项目逐级验证真实入口和 Provider | PA benchmark 主要走 CLI+Fake Bridge；当前真实 VS Code 配额为 `0/3、0/2、0/1` | D/I，Q✗ | P0 |
 | 架构防漂移 | 限制 owner、旁路、依赖方向、执行引擎和 mutation API 数量 | drift gate 只检查少量文件行数，新千行热点不在预算 | D/I弱 | P0-治理 |
 
-> 2026-08-07 状态注记：上表大部分行仍保留 2026-07-11 物理审计快照；本轮只重核并改写 C4/C5 相关行。完整当前状态、计数和下一任务只以 `PLAN-当前收敛迭代计划.md` 与 capability ledger 为准。C4/C5 的 `wired` 只表示本地 owner、产品接线和确定性证据已满足，不产生 qualification claim。
+> 2026-08-10 状态注记：上表大部分行仍保留 2026-07-11 物理审计快照；后续只重核并改写 C4/C5 以及 C1 verification/completion/settlement 相关结论。完整当前状态、计数和下一任务只以 `PLAN-当前收敛迭代计划.md` 与 capability ledger 为准。`wired` 只表示对应本地 owner、产品接线和确定性证据已满足，不产生 qualification claim。
 
 ### 4.3 公开能力差异附录
 

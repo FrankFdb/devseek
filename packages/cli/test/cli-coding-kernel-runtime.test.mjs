@@ -11,6 +11,7 @@ import {
   CODING_KERNEL_REQUEST_VERSION,
   CanonicalCodingKernel,
   InMemoryCodingOperationJournal,
+  buildCodingVerificationPlan,
   buildCodingKernelTaskContract,
 } from '../../shared/dist/index.js';
 import { loadUserSimulationCase } from '../../../scripts/lib/devseek-user-simulation-fixture.mjs';
@@ -34,6 +35,8 @@ const { CliCodingKernelRuntimeAdapter } = require(bundlePath);
 
 after(() => rmSync(bundleRoot, { recursive: true, force: true }));
 
+let harnessSequence = 0;
+
 function createHarness({
   responses = [{ candidateCount: 1 }],
   changedFiles = [['src/value.ts']],
@@ -43,6 +46,7 @@ function createHarness({
   mode = 'change',
   prompt = 'Change the value, but intentionally fail the first response.',
 } = {}) {
+  harnessSequence += 1;
   const interpreted = [];
   const mutations = [];
   const verifications = [];
@@ -108,10 +112,39 @@ function createHarness({
     },
   };
   const verification = {
-    async verify(request) {
+    async verify(request, canonicalVerification) {
       verifications.push(request);
       const result = validations[Math.min(verifications.length - 1, validations.length - 1)];
-      return verificationOutcome(request, result);
+      return canonicalVerification.verify(buildCodingVerificationPlan({
+        runId: request.runId,
+        sequence: request.sequence,
+        actionId: request.actionId,
+        idempotencyKey: `${request.runId}:${request.actionId}`,
+        scopePaths: request.files,
+        acceptance: request.acceptance,
+        payload: {
+          workspaceRoot: request.workspaceRoot,
+          files: request.files,
+          prompt: request.prompt,
+        },
+        evidenceRefs: request.evidenceRefs,
+      }), {
+        async verify() {
+          const status = result.status ?? (result.passed ? 'passed' : 'failed');
+          const evidenceRefs = result.evidenceRefs ?? [];
+          return {
+            verifier: status === 'unverified' ? 'none' : 'test-verifier',
+            checks: status === 'unverified' ? [] : [{
+              checkId: `check-${request.actionId}`,
+              status,
+              acceptanceIds: request.acceptance.map(criterion => criterion.id),
+              summary: result.summary,
+              evidenceRefs,
+            }],
+            evidenceRefs,
+          };
+        },
+      });
     },
   };
   const kernel = new CanonicalCodingKernel(new CliCodingKernelRuntimeAdapter(
@@ -123,7 +156,7 @@ function createHarness({
     version: CODING_KERNEL_REQUEST_VERSION,
     route: 'canonical',
     surface: 'cli',
-    runId: 'run-1',
+    runId: `cli-runtime-run-${harnessSequence}`,
     userPrompt: prompt,
     workspaceRoot: '/workspace',
     signal: new AbortController().signal,
@@ -201,12 +234,12 @@ test('canonical CLI runtime blocks a mutating task when the model proposes no ar
   assert.equal(output.status, 'blocked');
   assert.equal(output.result.attempts, 0);
   assert.deepEqual(output.result.changedPaths, []);
-  assert.deepEqual(output.result.toolExecutions, []);
-  assert.deepEqual(output.result.changeReceipts, []);
-  assert.deepEqual(output.result.verificationReceipts, []);
+  assert.deepEqual(output.toolExecutionReceipts, []);
+  assert.deepEqual(output.workspaceMutationReceipts, []);
+  assert.deepEqual(output.verificationReceipts, []);
   assert.equal(output.result.verification.status, 'not-run');
-  assert.equal(output.result.completion.status, 'blocked');
-  assert.equal(output.result.completion.reasonCodes.includes('verification-not-run'), true);
+  assert.equal(output.completion.status, 'blocked');
+  assert.equal(output.completion.reasonCodes.includes('verification-not-run'), true);
 });
 
 test('canonical CLI runtime denies model-requested terminal execution without host effects', async () => {
@@ -229,20 +262,20 @@ test('canonical CLI runtime denies model-requested terminal execution without ho
   assert.equal(harness.repairRequests.length, 0);
   assert.equal(output.status, 'blocked');
   assert.deepEqual(output.result.changedPaths, []);
-  assert.deepEqual(output.result.changeReceipts, []);
-  assert.deepEqual(output.result.verificationReceipts, []);
-  assert.equal(output.result.toolExecutions.length, 1);
-  assert.equal(output.result.toolExecutions[0].tool, 'run_terminal');
-  assert.equal(output.result.toolExecutions[0].status, 'denied');
-  assert.equal(output.result.toolExecutions[0].permission.status, 'denied');
-  assert.deepEqual(output.result.toolExecutions[0].effects, [
+  assert.deepEqual(output.workspaceMutationReceipts, []);
+  assert.deepEqual(output.verificationReceipts, []);
+  assert.equal(output.toolExecutionReceipts.length, 1);
+  assert.equal(output.toolExecutionReceipts[0].tool, 'run_terminal');
+  assert.equal(output.toolExecutionReceipts[0].status, 'denied');
+  assert.equal(output.toolExecutionReceipts[0].permission.status, 'denied');
+  assert.deepEqual(output.toolExecutionReceipts[0].effects, [
     'process',
     'network',
     'workspace-mutation',
   ]);
   assert.equal(output.result.verification.status, 'not-run');
-  assert.equal(output.result.completion.status, 'blocked');
-  assert.deepEqual(output.result.completion.residualRisks, ['requested-change-not-applied']);
+  assert.equal(output.completion.status, 'blocked');
+  assert.deepEqual(output.completion.residualRisks, ['requested-change-not-applied']);
 });
 
 test('canonical CLI runtime records one committed and verified edit', async () => {
@@ -263,26 +296,31 @@ test('canonical CLI runtime records one committed and verified edit', async () =
     'quality_gate.started',
     'quality_gate.passed',
   ]);
-  assert.deepEqual(harness.events, [
-    { type: 'fileChanges.proposed', files: ['src/value.ts'] },
-    { type: 'validation.completed', passed: true, evidenceRefs: ['verify:passed'] },
-    { type: 'qualityGate.completed', passed: true, evidenceRefs: ['verify:passed'] },
+  assert.deepEqual(harness.events.map(event => event.type), [
+    'fileChanges.proposed',
+    'validation.completed',
+    'qualityGate.completed',
   ]);
+  assert.deepEqual(harness.events[0].files, ['src/value.ts']);
+  assert.equal(harness.events[1].passed, true);
+  assert.equal(harness.events[1].evidenceRefs.includes('verify:passed'), true);
+  assert.equal(harness.events[2].passed, true);
+  assert.equal(harness.events[2].evidenceRefs.includes('verify:passed'), true);
   assert.deepEqual(output.result.changedPaths, ['src/value.ts']);
-  assert.equal(output.result.toolExecutions.length, 2);
-  assert.equal(output.result.toolExecutions[0].status, 'completed');
-  assert.equal(output.result.toolExecutions[0].permission.status, 'authorized');
-  assert.equal(output.result.toolExecutions[1].tool, 'run_terminal');
-  assert.equal(output.result.toolExecutions[1].status, 'completed');
-  assert.equal(output.result.toolExecutions[1].result.status, 'passed');
-  assert.equal(output.result.changeReceipts.length, 1);
-  assert.equal(output.result.changeReceipts[0].status, 'committed');
-  assert.ok(output.result.changeReceipts[0].baselineRef);
-  assert.ok(output.result.changeReceipts[0].readbackRef);
+  assert.equal(output.toolExecutionReceipts.length, 2);
+  assert.equal(output.toolExecutionReceipts[0].status, 'completed');
+  assert.equal(output.toolExecutionReceipts[0].permission.status, 'authorized');
+  assert.equal(output.toolExecutionReceipts[1].tool, 'run_terminal');
+  assert.equal(output.toolExecutionReceipts[1].status, 'completed');
+  assert.equal(output.toolExecutionReceipts[1].result.status, 'passed');
+  assert.equal(output.workspaceMutationReceipts.length, 1);
+  assert.equal(output.workspaceMutationReceipts[0].status, 'committed');
+  assert.ok(output.workspaceMutationReceipts[0].baselineRef);
+  assert.ok(output.workspaceMutationReceipts[0].readbackRef);
   assert.equal(output.result.verification.status, 'passed');
-  assert.equal(output.result.verificationReceipts.length, 1);
-  assert.equal(output.result.verificationReceipts[0].status, 'passed');
-  assert.equal(output.result.completion.status, 'completed');
+  assert.equal(output.verificationReceipts.length, 1);
+  assert.equal(output.verificationReceipts[0].status, 'passed');
+  assert.equal(output.completion.status, 'completed');
 });
 
 test('canonical CLI runtime reports a proposed workspace escape before mutation', async () => {
@@ -295,37 +333,6 @@ test('canonical CLI runtime reports a proposed workspace escape before mutation'
   assert.equal(harness.mutations.length, 0);
   assert.equal(harness.verifications.length, 0);
 });
-
-function verificationOutcome(request, result) {
-  const status = result.status ?? (result.passed ? 'passed' : 'failed');
-  const evidenceRefs = result.evidenceRefs ?? [];
-  return {
-    replayed: false,
-    receipt: {
-      version: 'devseek.coding-verification-receipt/v1',
-      runId: request.runId,
-      sequence: request.sequence,
-      actionId: request.actionId,
-      idempotencyKey: `${request.runId}:${request.actionId}`,
-      verifier: 'test-verifier',
-      status,
-      scopePaths: request.files,
-      checks: status === 'unverified' ? [] : [{
-        checkId: `check-${request.actionId}`,
-        status,
-        acceptanceIds: request.acceptance.map(criterion => criterion.id),
-        summary: result.summary,
-        evidenceRefs,
-      }],
-      acceptance: request.acceptance.map(criterion => ({
-        criterionId: criterion.id,
-        status: status === 'passed' ? 'passed' : status === 'failed' ? 'failed' : 'unverified',
-        evidenceRefs,
-      })),
-      evidenceRefs,
-    },
-  };
-}
 
 test('canonical CLI runtime fails closed when a non-mutating task proposes a workspace write', async () => {
   const harness = createHarness({ mode: 'review' });
@@ -354,11 +361,11 @@ test('canonical CLI runtime blocks unverified changes without wasting a repair a
 
   assert.equal(output.status, 'blocked');
   assert.equal(output.result.verification.status, 'unverified');
-  assert.equal(output.result.verificationReceipts[0].status, 'unverified');
-  assert.equal(output.result.toolExecutions.at(-1).status, 'failed');
-  assert.equal(output.result.toolExecutions.at(-1).result.status, 'unverified');
-  assert.equal(output.result.completion.status, 'blocked');
-  assert.equal(output.result.completion.reasonCodes.includes('verification-incomplete'), true);
+  assert.equal(output.verificationReceipts[0].status, 'unverified');
+  assert.equal(output.toolExecutionReceipts.at(-1).status, 'failed');
+  assert.equal(output.toolExecutionReceipts.at(-1).result.status, 'unverified');
+  assert.equal(output.completion.status, 'blocked');
+  assert.equal(output.completion.reasonCodes.includes('verification-incomplete'), true);
   assert.equal(harness.repairRequests.length, 0);
 });
 
@@ -467,11 +474,11 @@ test('I13-CLI-02 user journey: CLI unknown terminal command is conservatively de
   assert.equal(harness.mutations.length, 0);
   assert.equal(harness.verifications.length, 0);
   assert.equal(output.status, 'blocked');
-  assert.equal(output.result.toolExecutions[0].status, 'denied');
-  assert.deepEqual(output.result.toolExecutions[0].effects, ['process', 'workspace-mutation']);
-  assert.equal(output.result.toolExecutions[0].permission.decision, 'deny');
+  assert.equal(output.toolExecutionReceipts[0].status, 'denied');
+  assert.deepEqual(output.toolExecutionReceipts[0].effects, ['process', 'workspace-mutation']);
+  assert.equal(output.toolExecutionReceipts[0].permission.decision, 'deny');
   assert.equal(
-    output.result.toolExecutions[0].evidenceRefs.some(ref => ref.includes('cli-terminal-policy')),
+    output.toolExecutionReceipts[0].evidenceRefs.some(ref => ref.includes('cli-terminal-policy')),
     true,
   );
 });

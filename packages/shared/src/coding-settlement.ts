@@ -1,3 +1,7 @@
+import {
+  CODING_COMPLETION_DECISION_VERSION,
+  type CodingCompletionDecision,
+} from './coding-completion';
 import type { CodingTerminalStatus } from './coding-conformance';
 import {
   assertCodingRunLifecycleSnapshot,
@@ -8,9 +12,7 @@ export const CODING_SETTLEMENT_DECISION_VERSION = 'devseek.coding-settlement-dec
 
 export interface CodingSettlementDecisionInput {
   readonly lifecycle: CodingRunLifecycleSnapshot;
-  readonly requestedStatus: CodingTerminalStatus;
-  readonly evidenceRefs?: readonly string[];
-  readonly residualRisks?: readonly string[];
+  readonly completion: CodingCompletionDecision;
 }
 
 export interface CodingSettlementDecision {
@@ -29,29 +31,35 @@ export interface SettlementDecisionPort {
 }
 
 /**
- * Preserves the terminal fact chosen by the completion/runtime authorities.
- * It validates settlement binding and never remaps one terminal into another.
+ * Atomically binds the sole completion authority's decision to one terminal
+ * lifecycle. Runtime and Surface adapters cannot supply or remap terminal state.
  */
 export class CanonicalSettlementDecisionService implements SettlementDecisionPort {
   decide(input: CodingSettlementDecisionInput): CodingSettlementDecision {
     const lifecycle = assertCodingRunLifecycleSnapshot(input.lifecycle);
     if (!lifecycle.terminal) settlementFailure('non-terminal-lifecycle');
-    if (!isTerminalStatus(input.requestedStatus)) settlementFailure('invalid-requested-status');
-    if (lifecycle.status !== input.requestedStatus) {
-      settlementFailure(`terminal-mismatch:${lifecycle.status}:${input.requestedStatus}`);
+    const completion = input.completion;
+    if (!completion || completion.version !== CODING_COMPLETION_DECISION_VERSION) {
+      settlementFailure('invalid-completion-decision');
+    }
+    if (!isTerminalStatus(completion.status)) settlementFailure('invalid-completion-status');
+    if (completion.runId !== lifecycle.runId) settlementFailure('completion-run-mismatch');
+    if (lifecycle.status !== completion.status) {
+      settlementFailure(`terminal-mismatch:${lifecycle.status}:${completion.status}`);
     }
     return Object.freeze({
       version: CODING_SETTLEMENT_DECISION_VERSION,
       runId: lifecycle.runId,
       surface: lifecycle.surface,
-      status: input.requestedStatus,
+      status: completion.status,
       lifecycleSequence: lifecycle.events.length,
-      reasonCodes: Object.freeze([
+      reasonCodes: uniqueNonEmpty([
         'canonical-lifecycle-terminal',
-        `terminal-preserved:${input.requestedStatus}`,
+        'canonical-completion-bound',
+        ...completion.reasonCodes,
       ]),
-      evidenceRefs: uniqueNonEmpty(input.evidenceRefs ?? []),
-      residualRisks: uniqueNonEmpty(input.residualRisks ?? []),
+      evidenceRefs: uniqueNonEmpty(completion.evidenceRefs),
+      residualRisks: uniqueNonEmpty(completion.residualRisks),
     });
   }
 }

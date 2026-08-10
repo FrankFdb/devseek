@@ -24,28 +24,27 @@ execSync(
 );
 
 const req = createRequire(import.meta.url);
-const { VsCodeCompletionAdapter } = req(bundlePath);
+const { VsCodeCompletionEvidenceAdapter } = req(bundlePath);
 
-test('VS Code completion requires committed mutation and passed acceptance verification for changes', () => {
-  const completed = decide({
+test('VS Code evidence projection leaves verifier authority with the Kernel', () => {
+  const verified = project({
     changedPaths: ['src/main.ts'],
     changeReceipts: [mutation()],
     verificationReceipts: [verification()],
   });
-
-  assert.equal(completed.status, 'completed');
-  assert.equal(completed.acceptance[0].status, 'passed');
-
-  const missingVerification = decide({
+  const unverified = project({
     changedPaths: ['src/main.ts'],
     changeReceipts: [mutation()],
   });
-  assert.equal(missingVerification.status, 'blocked');
-  assert.equal(missingVerification.reasonCodes.includes('verification-not-run'), true);
+
+  assert.deepEqual(verified.acceptanceEvidence, []);
+  assert.deepEqual(unverified.acceptanceEvidence, []);
+  assert.deepEqual(verified.pendingRefs, []);
+  assert.deepEqual(unverified.pendingRefs, []);
 });
 
-test('VS Code completion accepts direct non-verifier evidence for a change criterion', () => {
-  const decision = decide({
+test('VS Code evidence projection preserves explicit criterion evidence without deciding terminal state', () => {
+  const evidence = project({
     changedPaths: ['src/main.ts'],
     changeReceipts: [mutation()],
     verificationReceipts: [verification({ acceptance: [] })],
@@ -56,119 +55,69 @@ test('VS Code completion accepts direct non-verifier evidence for a change crite
     }],
   });
 
-  assert.equal(decision.status, 'completed');
-  assert.deepEqual(decision.acceptance[0].evidenceRefs, ['mutation:scope-contained']);
+  assert.deepEqual(evidence.acceptanceEvidence, [{
+    criterionId: 'completed',
+    status: 'passed',
+    evidenceRefs: ['mutation:scope-contained'],
+  }]);
 });
 
-test('VS Code completion blocks changed paths without a canonical mutation receipt', () => {
-  const decision = decide({
+test('VS Code evidence projection reports changed paths without canonical mutation receipts as pending', () => {
+  const evidence = project({
     changedPaths: ['/workspace/src/main.ts'],
     verificationReceipts: [verification()],
   });
 
-  assert.equal(decision.status, 'blocked');
-  assert.equal(decision.reasonCodes.includes('pending-work'), true);
-  assert.equal(decision.evidenceRefs.includes('verify:passed'), true);
+  assert.deepEqual(evidence.pendingRefs, ['vscode-mutation-receipt-missing:/workspace/src/main.ts']);
 });
 
-test('VS Code completion fails settled task and artifact verification failures', () => {
-  const taskFailure = decide({ tasksFailed: 1, tasksApplied: 0 });
-  const artifactFailure = decide({
+test('VS Code evidence projection preserves task and artifact failure evidence', () => {
+  const taskFailure = project({ tasksFailed: 1, tasksApplied: 0 });
+  const artifactFailure = project({
     changedPaths: [],
     verificationResults: [{ verificationId: 'artifact-1', ok: false, claims: [] }],
   }, 'review');
 
-  assert.equal(taskFailure.status, 'failed');
-  assert.equal(taskFailure.reasonCodes.includes('verification-failed'), true);
-  assert.equal(artifactFailure.status, 'failed');
-  assert.equal(artifactFailure.reasonCodes.includes('unresolved-adverse-evidence'), true);
+  assert.equal(taskFailure.acceptanceEvidence[0].status, 'failed');
+  assert.deepEqual(artifactFailure.adverseEvidenceRefs, [
+    'vscode-artifact-verification:artifact-1:failed',
+  ]);
 });
 
-test('VS Code completion treats denied effects as evidenced blocking, not task failure', () => {
-  const decision = decide({
+test('VS Code evidence projection treats denied effects as blocking evidence', () => {
+  const evidence = project({
     tasksFailed: 1,
     tasksApplied: 0,
     toolExecutionReceipts: [deniedTool()],
   });
 
-  assert.equal(decision.status, 'blocked');
-  assert.equal(decision.reasonCodes.includes('denied-effect'), true);
-  assert.equal(decision.reasonCodes.includes('verification-failed'), false);
-  assert.deepEqual(decision.acceptance, [{
+  assert.deepEqual(evidence.acceptanceEvidence, [{
     criterionId: 'completed',
     status: 'blocked',
     evidenceRefs: ['permission:install-denied'],
   }]);
-  assert.deepEqual(decision.residualRisks, ['requested-change-not-applied']);
+  assert.deepEqual(evidence.residualRisks, ['requested-change-not-applied']);
 });
 
-test('later passed verification supersedes earlier adverse verification only for the same full scope', () => {
-  const repaired = decide({
-    changedPaths: ['src/main.ts'],
-    changeReceipts: [mutation()],
-    verificationReceipts: [
-      verification({ status: 'failed', actionId: 'verify-1', sequence: 1 }),
-      verification({ status: 'passed', actionId: 'verify-2', sequence: 2 }),
-    ],
-  });
-  const partialRepair = decide({
-    changedPaths: ['src/main.ts'],
-    changeReceipts: [mutation()],
-    verificationReceipts: [
-      verification({
-        status: 'failed',
-        actionId: 'verify-1',
-        sequence: 1,
-        scopePaths: ['src/main.ts', 'src/other.ts'],
-      }),
-      verification({ status: 'passed', actionId: 'verify-2', sequence: 2 }),
-    ],
-  });
-
-  assert.equal(repaired.status, 'completed');
-  assert.equal(repaired.evidenceRefs.includes('verify:failed'), true);
-  assert.equal(partialRepair.status, 'failed');
-});
-
-test('a repaired terminal verifier resolves its failed process action without erasing history', () => {
-  const decision = decide({
-    changedPaths: ['src/main.ts'],
-    changeReceipts: [mutation()],
-    toolExecutionReceipts: [
-      terminalTool({ status: 'failed', actionId: 'verify-terminal-1', sequence: 3 }),
-      terminalTool({ status: 'completed', actionId: 'verify-terminal-2', sequence: 5 }),
-    ],
-    verificationReceipts: [
-      verification({ status: 'failed', actionId: 'verify-terminal-1', sequence: 3 }),
-      verification({ status: 'passed', actionId: 'verify-terminal-2', sequence: 5 }),
-    ],
-  });
-
-  assert.equal(decision.status, 'completed');
-  assert.equal(decision.reasonCodes.includes('failed-effect'), false);
-  assert.equal(decision.reasonCodes.includes('verification-failed'), false);
-  assert.equal(decision.evidenceRefs.includes('terminal:failed'), true);
-});
-
-test('manual review and evidence-free read-only output remain blocked', () => {
-  const manualReview = decide({
+test('manual review and read-only response evidence remain explicit', () => {
+  const manualReview = project({
     changedPaths: ['src/main.ts'],
     changeReceipts: [mutation()],
     verificationReceipts: [verification()],
     manualReviewRequired: true,
     manualReviewReason: 'Confirm the rendered UI.',
   });
-  const evidenceFree = decide({ changedPaths: [] }, 'review');
-  const evidencedReview = decide({ changedPaths: [], historyText: 'Inspected src/main.ts.' }, 'review');
+  const evidenceFree = project({ changedPaths: [] }, 'review');
+  const evidencedReview = project({ changedPaths: [], historyText: 'Inspected src/main.ts.' }, 'review');
 
-  assert.equal(manualReview.status, 'blocked');
-  assert.equal(manualReview.reasonCodes.includes('review-not-passed'), true);
+  assert.equal(manualReview.reviewRequired, true);
+  assert.equal(manualReview.review.status, 'not-run');
   assert.deepEqual(manualReview.residualRisks, ['Confirm the rendered UI.']);
-  assert.equal(evidenceFree.status, 'blocked');
-  assert.equal(evidencedReview.status, 'completed');
+  assert.deepEqual(evidenceFree.acceptanceEvidence, []);
+  assert.equal(evidencedReview.acceptanceEvidence[0].status, 'passed');
 });
 
-test('policy refusal completes only with direct refusal acceptance and no side effects', () => {
+test('policy refusal projects only explicit refusal acceptance evidence', () => {
   const taskContract = buildSecretHarvestingRefusalTaskContract('vscode');
   const baseResult = {
     tasksTotal: 1,
@@ -177,12 +126,12 @@ test('policy refusal completes only with direct refusal acceptance and no side e
     changedPaths: [],
     historyText: 'A provider response exists but is not itself refusal proof.',
   };
-  const missingEvidence = new VsCodeCompletionAdapter().decide({
+  const missingEvidence = new VsCodeCompletionEvidenceAdapter().project({
     runId: 'vscode-completion-run',
     taskContract,
     result: baseResult,
   });
-  const completed = new VsCodeCompletionAdapter().decide({
+  const completed = new VsCodeCompletionEvidenceAdapter().project({
     runId: 'vscode-completion-run',
     taskContract,
     result: {
@@ -191,9 +140,8 @@ test('policy refusal completes only with direct refusal acceptance and no side e
     },
   });
 
-  assert.equal(missingEvidence.status, 'blocked');
-  assert.equal(completed.status, 'completed');
-  assert.deepEqual(completed.acceptance.map(criterion => criterion.status), [
+  assert.deepEqual(missingEvidence.acceptanceEvidence, []);
+  assert.deepEqual(completed.acceptanceEvidence.map(criterion => criterion.status), [
     'passed',
     'passed',
     'passed',
@@ -201,8 +149,8 @@ test('policy refusal completes only with direct refusal acceptance and no side e
   assert.deepEqual(completed.residualRisks, []);
 });
 
-function decide(result, mode = 'change') {
-  return new VsCodeCompletionAdapter().decide({
+function project(result, mode = 'change') {
+  return new VsCodeCompletionEvidenceAdapter().project({
     runId: 'vscode-completion-run',
     taskContract: buildCodingKernelTaskContract({
       goal: 'Complete the task',
@@ -287,27 +235,5 @@ function deniedTool() {
       evidenceRefs: ['permission:install-denied'],
     },
     evidenceRefs: ['permission:install-denied'],
-  };
-}
-
-function terminalTool(overrides = {}) {
-  const actionId = overrides.actionId ?? 'verify-terminal';
-  const status = overrides.status ?? 'completed';
-  return {
-    version: CODING_TOOL_RECEIPT_VERSION,
-    runId: 'vscode-completion-run',
-    sequence: overrides.sequence ?? 1,
-    actionId,
-    tool: 'run_terminal',
-    effects: ['process'],
-    status,
-    permission: {
-      decision: 'allow',
-      status: 'authorized',
-      reason: 'terminal-authorized',
-      evidenceRefs: [`terminal:${actionId}:authorized`],
-    },
-    evidenceRefs: [status === 'failed' ? 'terminal:failed' : 'terminal:passed'],
-    ...overrides,
   };
 }

@@ -29,7 +29,8 @@ test('CLI composition root delegates canonical execution to the shared Kernel', 
   assert.match(productKernel, /new CliWorkspaceMutationHostAdapter\(\)/);
   assert.match(productKernel, /new CliVerificationAdapter\(new CliVerificationHostAdapter\(\)\)/);
   assert.match(productKernel, /new CanonicalCodingKernel\(new CliCodingKernelRuntimeAdapter\(/);
-  assert.match(productKernel, /return kernel\.execute\(/);
+  assert.match(productKernel, /const output = await kernel\.execute\(/);
+  assert.match(productKernel, /completion: output\.completion/);
   assert.match(productKernel, /route: 'canonical'/);
   assert.match(productKernel, /output\.status === 'completed'/);
   assert.match(productKernel, /completion\.reasonCodes/);

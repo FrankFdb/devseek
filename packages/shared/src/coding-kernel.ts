@@ -11,6 +11,7 @@ import {
 import {
   CODING_KERNEL_TASK_CONTRACT_VERSION,
   CanonicalTaskContractService,
+  codingTaskContractRequiresVerification,
   type CodingKernelTaskContract,
 } from './coding-task-contract';
 import {
@@ -73,8 +74,19 @@ import {
 } from './coding-tool-execution';
 import {
   CanonicalWorkspaceMutationTransaction,
-  type WorkspaceMutationTransactionPort,
+  type CodingWorkspaceMutationReceipt,
+  type WorkspaceMutationTransactionSessionPort,
 } from './coding-workspace-mutation';
+import {
+  CanonicalVerificationService,
+  type CodingVerificationReceipt,
+  type CodingVerificationSessionPort,
+} from './coding-verification';
+import {
+  CanonicalCompletionDecisionService,
+  type CodingCompletionDecision,
+  type CodingKernelCompletionEvidence,
+} from './coding-completion';
 import {
   CanonicalRequirementDecisionService,
   type CodingRequirementDecision,
@@ -138,17 +150,16 @@ export interface CodingKernelRuntimeRequest<TRuntimeContext>
   readonly toolDispatch: ToolDispatchPort;
   readonly toolExecution: CodingToolExecutionSessionPort;
   readonly toolAuthority: CodingToolAuthoritySessionPort;
-  readonly workspaceMutations: WorkspaceMutationTransactionPort;
+  readonly workspaceMutations: WorkspaceMutationTransactionSessionPort;
   readonly externalEffects: CodingExternalEffectSessionPort;
+  readonly verification: CodingVerificationSessionPort;
   readonly resume?: CodingCheckpointRestoreDecision;
   readonly resumeIdempotency?: CodingResumeIdempotencySessionPort;
 }
 
 export interface CodingKernelRuntimeOutput<TResult> {
-  readonly status: CodingTerminalStatus;
   readonly result: TResult;
-  readonly evidenceRefs?: readonly string[];
-  readonly residualRisks?: readonly string[];
+  readonly completionEvidence: CodingKernelCompletionEvidence;
 }
 
 export interface CodingKernelExecutionOutput<TResult> {
@@ -173,8 +184,11 @@ export interface CodingKernelExecutionOutput<TResult> {
   readonly contextCompactions: readonly CodingContextCompactionReceipt[];
   readonly toolAuthorizations: readonly CodingToolAuthorization[];
   readonly toolExecutionReceipts: readonly CodingToolExecutionReceipt<unknown>[];
+  readonly workspaceMutationReceipts: readonly CodingWorkspaceMutationReceipt<unknown>[];
   readonly externalEffectReceipts: readonly CodingExternalEffectReceipt<unknown>[];
+  readonly verificationReceipts: readonly CodingVerificationReceipt[];
   readonly resumeReceipts: readonly CodingResumeOperationReceipt[];
+  readonly completion: CodingCompletionDecision;
   readonly result: TResult;
   readonly evidenceRefs: readonly string[];
   readonly residualRisks: readonly string[];
@@ -193,8 +207,11 @@ export class CodingKernelExecutionError extends Error {
   readonly contextCompactions: readonly CodingContextCompactionReceipt[];
   readonly toolAuthorizations: readonly CodingToolAuthorization[];
   readonly toolExecutionReceipts: readonly CodingToolExecutionReceipt<unknown>[];
+  readonly workspaceMutationReceipts: readonly CodingWorkspaceMutationReceipt<unknown>[];
   readonly externalEffectReceipts: readonly CodingExternalEffectReceipt<unknown>[];
+  readonly verificationReceipts: readonly CodingVerificationReceipt[];
   readonly resumeReceipts: readonly CodingResumeOperationReceipt[];
+  readonly completion: CodingCompletionDecision;
   readonly runtimeCause: unknown;
 
   constructor(
@@ -205,8 +222,11 @@ export class CodingKernelExecutionError extends Error {
     contextCompactions: readonly CodingContextCompactionReceipt[],
     toolAuthorizations: readonly CodingToolAuthorization[],
     toolExecutionReceipts: readonly CodingToolExecutionReceipt<unknown>[],
+    workspaceMutationReceipts: readonly CodingWorkspaceMutationReceipt<unknown>[],
     externalEffectReceipts: readonly CodingExternalEffectReceipt<unknown>[],
+    verificationReceipts: readonly CodingVerificationReceipt[],
     resumeReceipts: readonly CodingResumeOperationReceipt[],
+    completion: CodingCompletionDecision,
     runtimeCause?: unknown,
   ) {
     super(message);
@@ -217,8 +237,11 @@ export class CodingKernelExecutionError extends Error {
     this.contextCompactions = contextCompactions;
     this.toolAuthorizations = toolAuthorizations;
     this.toolExecutionReceipts = toolExecutionReceipts;
+    this.workspaceMutationReceipts = workspaceMutationReceipts;
     this.externalEffectReceipts = externalEffectReceipts;
+    this.verificationReceipts = verificationReceipts;
     this.resumeReceipts = resumeReceipts;
+    this.completion = completion;
     this.runtimeCause = runtimeCause;
   }
 }
@@ -237,6 +260,7 @@ const TOOL_DISPATCH = new CanonicalToolDispatchService(TOOL_SCHEMAS);
 const TOOL_EXECUTION = new CanonicalToolExecutionService();
 const TOOL_AUTHORITY = new CanonicalToolAuthorityService();
 const EXTERNAL_EFFECT = new CanonicalExternalEffectService();
+const VERIFICATION = new CanonicalVerificationService();
 const REQUIREMENTS = new CanonicalRequirementDecisionService();
 const DESIGN = new CanonicalDesignDecisionService();
 const CHANGE_PLAN = new CanonicalChangePlanService();
@@ -248,6 +272,8 @@ const CHANGE_PLAN_REVISION = new CanonicalChangePlanRevisionService(DESIGN, CHAN
  * redefine the request and terminal-output contract.
  */
 export class CanonicalCodingKernel<TRuntimeContext, TResult> {
+  private readonly completion = new CanonicalCompletionDecisionService();
+
   constructor(private readonly runtime: CodingKernelRuntimePort<TRuntimeContext, TResult>) {}
 
   async execute(
@@ -324,6 +350,10 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       request.operationJournal,
       resume?.originRunId,
     );
+    const verification = VERIFICATION.bind({
+      runId: request.runId,
+      acceptance: taskContract.acceptance,
+    });
     const externalEffects = EXTERNAL_EFFECT.bind({
       runId: request.runId,
       authority: toolAuthority,
@@ -333,30 +363,32 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       ...(resumeIdempotency ? { resume: resumeIdempotency } : {}),
     });
     const lifecycle = RUN_LIFECYCLE.start({ runId: request.runId, surface: request.surface });
+    const terminalContext: CodingKernelTerminalContext = {
+      taskContract,
+      checkpoint,
+      contextCompaction,
+      toolAuthority,
+      toolExecution,
+      workspaceMutations,
+      externalEffects,
+      verification,
+      resumeIdempotency,
+      completion: this.completion,
+    };
     if (request.signal?.aborted) {
-      lifecycle.settle('cancelled');
       throw lifecycleError(
         'coding-kernel-execution:cancelled-before-start',
         lifecycle,
-        checkpoint,
-        contextCompaction,
-        toolAuthority,
-        toolExecution,
-        externalEffects,
-        resumeIdempotency,
+        terminalContext,
+        'cancelled',
       );
     }
     if (resumeIdempotency && !resumeIdempotency.plan.executionAllowed) {
-      lifecycle.settle('blocked');
       throw lifecycleError(
         'coding-kernel-execution:resume-indeterminate-effect',
         lifecycle,
-        checkpoint,
-        contextCompaction,
-        toolAuthority,
-        toolExecution,
-        externalEffects,
-        resumeIdempotency,
+        terminalContext,
+        'blocked',
       );
     }
 
@@ -378,6 +410,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       toolAuthority,
       workspaceMutations,
       externalEffects,
+      verification,
       ...(resume ? { resume } : {}),
       ...(resumeIdempotency ? { resumeIdempotency } : {}),
     });
@@ -387,14 +420,30 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       if (!runtimeOutput || typeof runtimeOutput !== 'object') {
         throw new Error('coding-kernel-execution:missing-runtime-output');
       }
-      assertTerminalStatus(runtimeOutput.status);
-      lifecycle.settle(runtimeOutput.status);
+      const completionEvidence = assertRuntimeCompletionEvidence(runtimeOutput.completionEvidence);
+      const completion = this.completion.decide({
+        runId: request.runId,
+        decisionId: 'kernel-completion',
+        idempotencyKey: `${request.runId}:kernel-completion`,
+        acceptance: taskContract.acceptance,
+        verificationRequired: codingTaskContractRequiresVerification(taskContract),
+        reviewRequired: taskContract.mode === 'release' || completionEvidence.reviewRequired,
+        ...(request.signal?.aborted ? { requestedTerminalStatus: 'cancelled' as const } : {}),
+        toolExecutions: toolExecution.receipts(),
+        mutations: workspaceMutations.receipts(),
+        verifications: verification.receipts(),
+        acceptanceEvidence: completionEvidence.acceptanceEvidence,
+        ...(completionEvidence.review ? { review: completionEvidence.review } : {}),
+        pendingRefs: completionEvidence.pendingRefs,
+        adverseEvidenceRefs: completionEvidence.adverseEvidenceRefs,
+        residualRisks: completionEvidence.residualRisks,
+        evidenceRefs: completionEvidence.evidenceRefs,
+      });
+      lifecycle.settle(completion.status);
       const lifecycleSnapshot = lifecycle.snapshot();
       const settlement = SETTLEMENT.decide({
         lifecycle: lifecycleSnapshot,
-        requestedStatus: runtimeOutput.status,
-        evidenceRefs: runtimeOutput.evidenceRefs,
-        residualRisks: runtimeOutput.residualRisks,
+        completion,
       });
       const settledDesignDecision = changePlanRevision.currentDesign();
       const settledChangePlan = changePlanRevision.currentPlan();
@@ -420,60 +469,90 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         contextCompactions: contextCompaction.receipts(),
         toolAuthorizations: toolAuthority.authorizations(),
         toolExecutionReceipts: toolExecution.receipts(),
+        workspaceMutationReceipts: workspaceMutations.receipts(),
         externalEffectReceipts: externalEffects.receipts(),
+        verificationReceipts: verification.receipts(),
         resumeReceipts: resumeIdempotency?.receipts() ?? [],
+        completion,
         result: runtimeOutput.result,
         evidenceRefs: settlement.evidenceRefs,
         residualRisks: settlement.residualRisks,
       };
     } catch (error) {
       if (error instanceof CodingKernelExecutionError) throw error;
-      if (!lifecycle.snapshot().terminal) {
-        lifecycle.settle(request.signal?.aborted ? 'cancelled' : 'failed');
-      }
       throw lifecycleError(
         errorMessage(error),
         lifecycle,
-        checkpoint,
-        contextCompaction,
-        toolAuthority,
-        toolExecution,
-        externalEffects,
-        resumeIdempotency,
+        terminalContext,
+        request.signal?.aborted ? 'cancelled' : 'failed',
         error,
       );
     }
   }
 }
 
+interface CodingKernelTerminalContext {
+  readonly taskContract: CodingKernelTaskContract;
+  readonly checkpoint: CodingCheckpointSessionPort;
+  readonly contextCompaction: CodingContextCompactionSessionPort;
+  readonly toolAuthority: CodingToolAuthoritySessionPort;
+  readonly toolExecution: CodingToolExecutionSessionPort;
+  readonly workspaceMutations: WorkspaceMutationTransactionSessionPort;
+  readonly externalEffects: CodingExternalEffectSessionPort;
+  readonly verification: CodingVerificationSessionPort;
+  readonly resumeIdempotency?: CodingResumeIdempotencySessionPort;
+  readonly completion: CanonicalCompletionDecisionService;
+}
+
 function lifecycleError(
   message: string,
   lifecycle: RunLifecycleSessionPort,
-  checkpoint: CodingCheckpointSessionPort,
-  contextCompaction: CodingContextCompactionSessionPort,
-  toolAuthority: CodingToolAuthoritySessionPort,
-  toolExecution: CodingToolExecutionSessionPort,
-  externalEffects: CodingExternalEffectSessionPort,
-  resumeIdempotency?: CodingResumeIdempotencySessionPort,
+  context: CodingKernelTerminalContext,
+  requestedStatus: Exclude<CodingTerminalStatus, 'completed'>,
   cause?: unknown,
 ): CodingKernelExecutionError {
+  const evidenceRef = message.trim() || 'coding-kernel-execution:unknown-error';
+  const completion = context.completion.decide({
+    runId: lifecycle.snapshot().runId,
+    decisionId: 'kernel-completion',
+    idempotencyKey: `${lifecycle.snapshot().runId}:kernel-completion`,
+    acceptance: context.taskContract.acceptance,
+    verificationRequired: codingTaskContractRequiresVerification(context.taskContract),
+    reviewRequired: false,
+    ...(requestedStatus === 'failed' || requestedStatus === 'cancelled'
+      ? { requestedTerminalStatus: requestedStatus }
+      : {}),
+    toolExecutions: context.toolExecution.receipts(),
+    mutations: context.workspaceMutations.receipts(),
+    verifications: context.verification.receipts(),
+    acceptanceEvidence: [],
+    pendingRefs: requestedStatus === 'blocked' ? [evidenceRef] : [],
+    adverseEvidenceRefs: requestedStatus === 'failed' ? [evidenceRef] : [],
+    residualRisks: [],
+    evidenceRefs: [evidenceRef],
+  });
+  if (!lifecycle.snapshot().terminal) lifecycle.settle(completion.status);
   const snapshot = lifecycle.snapshot();
-  if (!snapshot.terminal) throw new Error('coding-kernel-execution:non-terminal-error');
-  assertTerminalStatus(snapshot.status);
+  if (snapshot.status !== completion.status) {
+    throw new Error('coding-kernel-execution:terminal-completion-mismatch');
+  }
   const settlement = SETTLEMENT.decide({
     lifecycle: snapshot,
-    requestedStatus: snapshot.status,
+    completion,
   });
   return new CodingKernelExecutionError(
     message,
     snapshot,
     settlement,
-    checkpoint,
-    contextCompaction.receipts(),
-    toolAuthority.authorizations(),
-    toolExecution.receipts(),
-    externalEffects.receipts(),
-    resumeIdempotency?.receipts() ?? [],
+    context.checkpoint,
+    context.contextCompaction.receipts(),
+    context.toolAuthority.authorizations(),
+    context.toolExecution.receipts(),
+    context.workspaceMutations.receipts(),
+    context.externalEffects.receipts(),
+    context.verification.receipts(),
+    context.resumeIdempotency?.receipts() ?? [],
+    completion,
     cause,
   );
 }
@@ -518,8 +597,24 @@ function assertCanonicalRequest(request: CodingKernelExecutionRequest<unknown>):
   }
 }
 
-function assertTerminalStatus(status: unknown): asserts status is CodingTerminalStatus {
-  if (status !== 'completed' && status !== 'failed' && status !== 'blocked' && status !== 'cancelled') {
-    throw new Error('coding-kernel-execution:invalid-terminal-status');
+function assertRuntimeCompletionEvidence(value: unknown): CodingKernelCompletionEvidence {
+  if (!value || typeof value !== 'object') {
+    throw new Error('coding-kernel-execution:missing-completion-evidence');
   }
+  const evidence = value as Partial<CodingKernelCompletionEvidence>;
+  if (typeof evidence.reviewRequired !== 'boolean') {
+    throw new Error('coding-kernel-execution:invalid-review-requirement');
+  }
+  for (const key of [
+    'acceptanceEvidence',
+    'pendingRefs',
+    'adverseEvidenceRefs',
+    'residualRisks',
+    'evidenceRefs',
+  ] as const) {
+    if (!Array.isArray(evidence[key])) {
+      throw new Error(`coding-kernel-execution:invalid-completion-evidence:${key}`);
+    }
+  }
+  return evidence as CodingKernelCompletionEvidence;
 }

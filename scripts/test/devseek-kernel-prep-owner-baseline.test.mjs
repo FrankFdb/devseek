@@ -50,7 +50,7 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     cross_surface_kernel_routes: 4,
     semantic_domains: 30,
     converged_semantic_domains: 30,
-    source_checks: 122,
+    source_checks: 123,
     failed_source_checks: 0,
   });
   assert.deepEqual(
@@ -312,7 +312,7 @@ test('kernel prep owner baseline fails closed when CLI bypasses the shared canon
   const mutatedSources = structuredClone(sources);
   const sourcePath = 'packages/cli/src/cli-product-coding-kernel.ts';
   mutatedSources.sourceContents[sourcePath] = mutatedSources.sourceContents[sourcePath]
-    .replace('return kernel.execute({', 'return runtime.executeCanonical({');
+    .replace('const output = await kernel.execute({', 'const output = await runtime.executeCanonical({');
 
   const mutated = buildKernelPrepOwnerBaseline(mutatedSources);
   const result = validateKernelPrepOwnerBaseline(mutated, mutatedSources);

@@ -275,7 +275,17 @@ test('CanonicalCodingKernel exposes compaction receipts and blocks indeterminate
         createdAt: 2_000,
       });
       checkpoint = compacted.checkpoint;
-      return { status: 'completed', result: { checkpointId: checkpoint.checkpointId } };
+      return {
+        result: { checkpointId: checkpoint.checkpointId },
+        completionEvidence: {
+          reviewRequired: false,
+          acceptanceEvidence: [],
+          pendingRefs: ['publish'],
+          adverseEvidenceRefs: [],
+          residualRisks: [],
+          evidenceRefs: ['context:budget'],
+        },
+      };
     },
   });
   const base = {
@@ -321,7 +331,17 @@ test('CanonicalCodingKernel exposes compaction receipts and blocks indeterminate
   const blockedKernel = new CanonicalCodingKernel({
     async executeCanonical() {
       resumeCalls += 1;
-      return { status: 'completed', result: {} };
+      return {
+        result: {},
+        completionEvidence: {
+          reviewRequired: false,
+          acceptanceEvidence: [],
+          pendingRefs: [],
+          adverseEvidenceRefs: [],
+          residualRisks: [],
+          evidenceRefs: [],
+        },
+      };
     },
   });
   await assert.rejects(blockedKernel.execute({

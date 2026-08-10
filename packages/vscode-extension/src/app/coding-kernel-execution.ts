@@ -1,10 +1,8 @@
 import {
-  projectSettledCodingConformanceRun,
   renderCodingChangePlanSummary,
   renderCodingContextGraphSummary,
   renderCodingRequirementDecisionSummary,
   renderCodingMemoryContext,
-  type CodingConformanceProjection,
   type CodingContextCompactionSessionPort,
   type CodingKernelRuntimeRequest,
   type CodingKernelRuntimeOutput,
@@ -18,9 +16,11 @@ import {
   renderCodingKernelRecoveryContext,
   type CodingKernelRecovery,
 } from './coding-kernel-recovery';
-import { VsCodeCompletionAdapter } from './coding-completion-adapter';
-import { correlateVsCodeCodingConformanceReceipts } from './vscode-coding-conformance-correlation';
+import { VsCodeCompletionEvidenceAdapter } from './coding-completion-adapter';
 import { projectAgentTaskCheckpointEffect } from './coding-checkpoint-effect';
+import type { VsCodeRecoveryFallback } from './coding-kernel-recovery-delivery';
+
+export { deliverVsCodeRecoverySettlement } from './coding-kernel-recovery-delivery';
 
 type AgentRunMode = 'fast' | 'r1' | undefined;
 
@@ -66,25 +66,27 @@ export interface CodingKernelLoopPorts {
   runCanonical(request: CanonicalKernelLoopRequest): Promise<AgentLoopResult>;
 }
 
+export interface VsCodeCodingKernelRuntimeResult {
+  readonly agentResult: AgentLoopResult;
+  readonly recoveryFallback?: VsCodeRecoveryFallback;
+}
+
 export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
   VsCodeCodingKernelRuntimeContext,
-  AgentLoopResult
+  VsCodeCodingKernelRuntimeResult
 > {
   constructor(
     private readonly loops: CodingKernelLoopPorts,
-    private readonly completion = new VsCodeCompletionAdapter(),
+    private readonly completionEvidence = new VsCodeCompletionEvidenceAdapter(),
   ) {}
 
   async executeCanonical(
     kernelRequest: CodingKernelRuntimeRequest<VsCodeCodingKernelRuntimeContext>,
-  ): Promise<CodingKernelRuntimeOutput<AgentLoopResult>> {
+  ): Promise<CodingKernelRuntimeOutput<VsCodeCodingKernelRuntimeResult>> {
     const request = kernelRequest.runtimeContext;
     const recoveryContextText = request.recovery
       ? renderCodingKernelRecoveryContext(request.recovery)
       : '';
-    const pendingRecoveryTasks = request.recovery
-      ? getPendingKernelRecoveryTasks(request.recovery)
-      : [];
     let terminalCheckpointEmitted = false;
     let checkpointEpoch = request.recovery?.kind === 'checkpoint-resume'
       ? request.recovery.checkpoint.epoch
@@ -105,6 +107,7 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
       canonicalToolAuthority: kernelRequest.toolAuthority,
       canonicalWorkspaceMutations: kernelRequest.workspaceMutations,
       canonicalExternalEffects: kernelRequest.externalEffects,
+      canonicalVerification: kernelRequest.verification,
       ...(originalCheckpoint ? {
         onTaskCheckpoint: async (firstUnfinishedIndex, remainingTasks, reason) => {
           if (firstUnfinishedIndex === null || reason === 'paused' || reason === 'completed') {
@@ -132,8 +135,9 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
       } : {}),
     };
 
+    let loopResult: AgentLoopResult;
     try {
-      const result = await this.loops.runCanonical({
+      loopResult = await this.loops.runCanonical({
         userPrompt: kernelRequest.userPrompt,
         contextFiles: [...request.contextFiles],
         workspaceRoot: kernelRequest.workspaceRoot,
@@ -152,53 +156,54 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
         memoryContextText: renderCodingMemoryContext(kernelRequest.memoryPolicy),
         contextCompaction: kernelRequest.contextCompaction,
       });
-      const completionDecision = this.completion.decide({
-        runId: kernelRequest.runId,
-        taskContract: kernelRequest.taskContract,
-        result,
-        cancelled: kernelRequest.signal?.aborted === true,
-      });
-      const conformanceReceipts = correlateVsCodeCodingConformanceReceipts({
-        toolExecutions: result.toolExecutionReceipts ?? [],
-        changeReceipts: result.changeReceipts ?? [],
-        verifications: result.verificationReceipts ?? [],
-      });
-      const codingConformance: CodingConformanceProjection = projectSettledCodingConformanceRun({
-        fixtureId: kernelRequest.runId,
-        taskContract: kernelRequest.taskContract,
-        toolExecutions: conformanceReceipts.toolExecutions,
-        changeReceipts: conformanceReceipts.changeReceipts,
-        verifications: conformanceReceipts.verifications,
-        completion: completionDecision,
-      });
-      const settledResult: AgentLoopResult = { ...result, completionDecision, codingConformance };
-      if (request.recovery && originalCheckpoint && !terminalCheckpointEmitted) {
-        if (completionDecision.status !== 'completed') {
-          await callbacks.onTaskCheckpoint?.(
-            0,
-            pendingRecoveryTasks,
-            'paused',
-          );
-        } else {
-          await callbacks.onTaskCheckpoint?.(null, [], 'completed');
-        }
-      }
-      return {
-        status: completionDecision.status,
-        result: settledResult,
-        evidenceRefs: completionDecision.evidenceRefs,
-        residualRisks: completionDecision.residualRisks,
-      };
     } catch (error) {
       if (request.recovery && originalCheckpoint && !terminalCheckpointEmitted) {
         await callbacks.onTaskCheckpoint?.(
           0,
-          pendingRecoveryTasks,
+          getPendingKernelRecoveryTasks(request.recovery),
           'paused',
         );
       }
       throw error;
     }
+    const result: AgentLoopResult = {
+      ...loopResult,
+      toolExecutionReceipts: [...kernelRequest.toolExecution.receipts()],
+      changeReceipts: [...kernelRequest.workspaceMutations.receipts()],
+      verificationReceipts: [...kernelRequest.verification.receipts()],
+    };
+    const completionEvidence = this.completionEvidence.project({
+        runId: kernelRequest.runId,
+        taskContract: kernelRequest.taskContract,
+        result,
+    });
+    const pendingRecoveryTasks = request.recovery && originalCheckpoint && !terminalCheckpointEmitted
+      ? getPendingKernelRecoveryTasks(request.recovery)
+      : [];
+    const recoveryFallback = pendingRecoveryTasks.length > 0 ? {
+      pendingTasks: pendingRecoveryTasks,
+      checkpoint: kernelRequest.checkpoint.create({
+        epoch: ++checkpointEpoch,
+        completedUnitCount: completedUnitBase,
+        pendingUnits: pendingRecoveryTasks.map(task => ({
+          id: task.id,
+          description: task.desc,
+          action: task.action,
+          target: task.visibleTarget || task.file || 'Agent task',
+          effectClass: projectAgentTaskCheckpointEffect(task.action),
+        })),
+        reason: 'paused',
+        evidenceRefs: kernelRequest.resume?.evidenceRefs ?? [],
+        ...(parentCheckpointId ? { parentCheckpointId } : {}),
+      }),
+    } : undefined;
+    return {
+      result: {
+        agentResult: result,
+        ...(recoveryFallback ? { recoveryFallback } : {}),
+      },
+      completionEvidence,
+    };
   }
 }
 

@@ -1,5 +1,4 @@
 import {
-  CanonicalVerificationService,
   buildCodingVerificationPlan,
   type CodingVerificationCriterion,
   type CodingVerificationHostResult,
@@ -24,12 +23,12 @@ export interface CliVerificationInput {
 
 /** Maps the CLI verifier host onto shared acceptance and receipt semantics. */
 export class CliVerificationAdapter {
-  constructor(
-    private readonly host: Pick<CliVerificationHostAdapter, 'verify'>,
-    private readonly verification: VerificationPort = new CanonicalVerificationService(),
-  ) {}
+  constructor(private readonly host: Pick<CliVerificationHostAdapter, 'verify'>) {}
 
-  verify(input: CliVerificationInput): Promise<CodingVerificationOutcome> {
+  verify(
+    input: CliVerificationInput,
+    verification: VerificationPort,
+  ): Promise<CodingVerificationOutcome> {
     const plan = buildCodingVerificationPlan({
       runId: input.runId,
       sequence: input.sequence,
@@ -44,7 +43,7 @@ export class CliVerificationAdapter {
       },
       evidenceRefs: input.evidenceRefs,
     });
-    return this.verification.verify(plan, {
+    return verification.verify(plan, {
       verify: async () => projectCliHostResult(
         await this.host.verify(input.workspaceRoot, input.files, input.prompt),
         input.acceptance,

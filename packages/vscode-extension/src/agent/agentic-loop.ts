@@ -901,6 +901,7 @@ export async function runAgenticLoop(
         writtenFiles: allWrittenFiles,
         terminalEvidence: loopRes.terminalEvidence,
         acceptance: projectTaskContractAcceptance(writeAuthority.semanticContract.taskContract),
+        verification: callbacks.canonicalVerification,
       }));
     }
     if (loopRes.evidenceRefs?.length) {

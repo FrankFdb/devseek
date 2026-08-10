@@ -28,11 +28,20 @@ export interface CodingCompletionDecisionInput {
   readonly acceptance: readonly CodingCompletionAcceptanceCriterion[];
   readonly verificationRequired: boolean;
   readonly reviewRequired: boolean;
-  readonly requestedTerminalStatus?: 'cancelled';
+  readonly requestedTerminalStatus?: 'failed' | 'cancelled';
   readonly toolExecutions: readonly CodingToolExecutionReceipt<unknown>[];
   readonly mutations: readonly CodingWorkspaceMutationReceipt<unknown>[];
   readonly verifications: readonly CodingVerificationReceipt[];
-  readonly resolvedVerificationActionIds: readonly string[];
+  readonly acceptanceEvidence: readonly CodingCompletionAcceptanceDecision[];
+  readonly review?: CodingCompletionReview;
+  readonly pendingRefs: readonly string[];
+  readonly adverseEvidenceRefs: readonly string[];
+  readonly residualRisks: readonly string[];
+  readonly evidenceRefs: readonly string[];
+}
+
+export interface CodingKernelCompletionEvidence {
+  readonly reviewRequired: boolean;
   readonly acceptanceEvidence: readonly CodingCompletionAcceptanceDecision[];
   readonly review?: CodingCompletionReview;
   readonly pendingRefs: readonly string[];
@@ -85,10 +94,7 @@ export class CanonicalCompletionDecisionService implements CompletionDecisionPor
 }
 
 function deriveCompletionDecision(input: CodingCompletionDecisionInput): CodingCompletionDecision {
-  const resolvedVerificationIds = new Set(input.resolvedVerificationActionIds);
-  const unresolvedVerifications = input.verifications.filter(
-    receipt => !resolvedVerificationIds.has(receipt.actionId),
-  );
+  const unresolvedVerifications = unresolvedVerificationReceipts(input.verifications);
   const acceptance = projectCompletionAcceptance(
     input.acceptance,
     unresolvedVerifications,
@@ -124,7 +130,10 @@ function deriveCompletionDecision(input: CodingCompletionDecisionInput): CodingC
   if (input.review?.status === 'failed') reasonCodes.push('review-veto');
 
   let status: CodingTerminalStatus;
-  if (input.requestedTerminalStatus === 'cancelled') {
+  if (input.requestedTerminalStatus === 'failed') {
+    status = 'failed';
+    reasonCodes.push('execution-failed');
+  } else if (input.requestedTerminalStatus === 'cancelled') {
     status = hasIndeterminateEffect || input.pendingRefs.length > 0 ? 'blocked' : 'cancelled';
     if (status === 'blocked') reasonCodes.push('cancellation-unsettled');
   } else if (hasFailedEffect || hasFailedVerification || acceptanceFailed || input.review?.status === 'failed') {
@@ -159,6 +168,41 @@ function deriveCompletionDecision(input: CodingCompletionDecisionInput): CodingC
     residualRisks: input.residualRisks,
     evidenceRefs,
   }, 'completion-decision') as CodingCompletionDecision;
+}
+
+function unresolvedVerificationReceipts(
+  receipts: readonly CodingVerificationReceipt[],
+): readonly CodingVerificationReceipt[] {
+  return receipts.filter(previous => (
+    previous.status === 'passed'
+    || !receipts.some(candidate => verificationSupersedes(candidate, previous))
+  ));
+}
+
+function verificationSupersedes(
+  candidate: CodingVerificationReceipt,
+  previous: CodingVerificationReceipt,
+): boolean {
+  if (candidate.status !== 'passed'
+    || candidate.runId !== previous.runId
+    || candidate.sequence <= previous.sequence) {
+    return false;
+  }
+  const candidatePaths = new Set(candidate.scopePaths.map(normalizeVerificationPath));
+  if (!previous.scopePaths.every(path => candidatePaths.has(normalizeVerificationPath(path)))) {
+    return false;
+  }
+  const passedAcceptance = new Set(
+    candidate.acceptance
+      .filter(result => result.status === 'passed')
+      .map(result => result.criterionId),
+  );
+  return previous.acceptance.length > 0
+    && previous.acceptance.every(result => passedAcceptance.has(result.criterionId));
+}
+
+function normalizeVerificationPath(value: string): string {
+  return value.trim().replace(/\\/g, '/').replace(/^\.\//u, '').replace(/\/+$/u, '');
 }
 
 function projectCompletionAcceptance(
@@ -205,6 +249,12 @@ function projectCompletionAcceptance(
 }
 
 function snapshotDecisionInput(input: CodingCompletionDecisionInput): CodingCompletionDecisionInput {
+  const runId = normalizedCodingId(input.runId, 'completion-run-id');
+  if (input.requestedTerminalStatus !== undefined
+    && input.requestedTerminalStatus !== 'failed'
+    && input.requestedTerminalStatus !== 'cancelled') {
+    throw new Error('coding-completion:invalid-requested-terminal-status');
+  }
   const acceptance = input.acceptance.map(criterion => Object.freeze({
     id: normalizedCodingId(criterion.id, 'completion-acceptance-id'),
     statement: normalizedCodingId(criterion.statement, 'completion-acceptance-statement'),
@@ -225,11 +275,9 @@ function snapshotDecisionInput(input: CodingCompletionDecisionInput): CodingComp
     }
     return { criterionId, status: result.status, evidenceRefs };
   });
-  const verificationActionIds = new Set(input.verifications.map(receipt => receipt.actionId));
-  const resolvedVerificationActionIds = uniqueCodingRefs(input.resolvedVerificationActionIds);
-  if (resolvedVerificationActionIds.some(actionId => !verificationActionIds.has(actionId))) {
-    throw new Error('coding-completion:unknown-resolved-verification');
-  }
+  assertReceiptRunIds(runId, input.toolExecutions, 'tool');
+  assertReceiptRunIds(runId, input.mutations, 'mutation');
+  assertReceiptRunIds(runId, input.verifications, 'verification');
   if (input.toolExecutions.some(receipt => !['completed', 'failed', 'denied', 'indeterminate'].includes(receipt.status))) {
     throw new Error('coding-completion:invalid-tool-status');
   }
@@ -241,17 +289,26 @@ function snapshotDecisionInput(input: CodingCompletionDecisionInput): CodingComp
   }
   return snapshotCodingValue({
     ...input,
-    runId: normalizedCodingId(input.runId, 'completion-run-id'),
+    runId,
     decisionId: normalizedCodingId(input.decisionId, 'completion-decision-id'),
     idempotencyKey: normalizedCodingId(input.idempotencyKey, 'completion-idempotency-key'),
     acceptance,
     acceptanceEvidence,
     pendingRefs: uniqueCodingRefs(input.pendingRefs),
     adverseEvidenceRefs: uniqueCodingRefs(input.adverseEvidenceRefs),
-    resolvedVerificationActionIds,
     residualRisks: uniqueCodingRefs(input.residualRisks),
     evidenceRefs: uniqueCodingRefs(input.evidenceRefs),
   }, 'completion-input') as CodingCompletionDecisionInput;
+}
+
+function assertReceiptRunIds(
+  runId: string,
+  receipts: readonly { readonly runId: string }[],
+  kind: 'tool' | 'mutation' | 'verification',
+): void {
+  if (receipts.some(receipt => receipt.runId !== runId)) {
+    throw new Error(`coding-completion:${kind}-run-mismatch`);
+  }
 }
 
 function completionIdentity(input: Pick<CodingCompletionDecisionInput, 'runId' | 'decisionId'>): string {

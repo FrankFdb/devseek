@@ -1,13 +1,11 @@
 import { createHash } from 'crypto';
 import {
-  CanonicalCompletionDecisionService,
+  codingTaskContractRequiresVerification,
   isSecretHarvestingRefusalTaskContract,
   type CodingCompletionAcceptanceDecision,
-  type CodingCompletionDecision,
+  type CodingKernelCompletionEvidence,
   type CodingKernelTaskContract,
-  type CodingVerificationReceipt,
   type CodingWorkspaceMutationReceipt,
-  type CompletionDecisionPort,
 } from '@devseek-netai/shared';
 import type { EvidenceRef } from '../agent/evidence-grounding';
 import type { AgentLoopResult } from '../agent/loop-types';
@@ -16,18 +14,12 @@ export interface VsCodeCompletionInput {
   readonly runId: string;
   readonly taskContract: CodingKernelTaskContract;
   readonly result: AgentLoopResult;
-  readonly cancelled?: boolean;
 }
 
-/** Projects VS Code run evidence into the shared terminal-decision authority. */
-export class VsCodeCompletionAdapter {
-  constructor(
-    private readonly completion: CompletionDecisionPort = new CanonicalCompletionDecisionService(),
-  ) {}
-
-  decide(input: VsCodeCompletionInput): CodingCompletionDecision {
-    const verificationRequired = input.taskContract.mode === 'change'
-      || input.taskContract.mode === 'release';
+/** Projects VS Code observations without owning or predicting terminal state. */
+export class VsCodeCompletionEvidenceAdapter {
+  project(input: VsCodeCompletionInput): CodingKernelCompletionEvidence {
+    const verificationRequired = codingTaskContractRequiresVerification(input.taskContract);
     const resultEvidenceRefs = collectResultEvidenceRefs(input.runId, input.result);
     const failedArtifactRefs = collectFailedArtifactRefs(input.result);
     const uncoveredChangedPaths = findUncoveredChangedPaths(
@@ -53,20 +45,8 @@ export class VsCodeCompletionAdapter {
       path => `vscode-mutation-receipt-missing:${normalizePath(path)}`,
     );
     const reviewRequired = input.result.manualReviewRequired === true;
-    const verifications = input.result.verificationReceipts ?? [];
-
-    return this.completion.decide({
-      runId: input.runId,
-      decisionId: 'vscode-completion',
-      idempotencyKey: `${input.runId}:vscode-completion`,
-      acceptance: input.taskContract.acceptance,
-      verificationRequired,
+    return {
       reviewRequired,
-      ...(input.cancelled ? { requestedTerminalStatus: 'cancelled' as const } : {}),
-      toolExecutions: input.result.toolExecutionReceipts ?? [],
-      mutations: input.result.changeReceipts ?? [],
-      verifications,
-      resolvedVerificationActionIds: findSupersededVerificationActionIds(verifications),
       acceptanceEvidence,
       ...(reviewRequired ? {
         review: { status: 'not-run' as const, evidenceRefs: [] },
@@ -82,7 +62,7 @@ export class VsCodeCompletionAdapter {
         ...resultEvidenceRefs,
         ...(input.result.tasksFailed > 0 ? [failureRef] : []),
       ],
-    });
+    };
   }
 }
 
@@ -187,35 +167,6 @@ function findUncoveredChangedPaths(
 
 function sameMutationPath(left: string, right: string): boolean {
   return left === right || left.endsWith(`/${right}`) || right.endsWith(`/${left}`);
-}
-
-function findSupersededVerificationActionIds(
-  receipts: readonly CodingVerificationReceipt[],
-): string[] {
-  return receipts
-    .filter(receipt => receipt.status !== 'passed')
-    .filter(receipt => receipts.some(candidate => verificationSupersedes(candidate, receipt)))
-    .map(receipt => receipt.actionId);
-}
-
-function verificationSupersedes(
-  candidate: CodingVerificationReceipt,
-  previous: CodingVerificationReceipt,
-): boolean {
-  if (candidate.status !== 'passed'
-    || candidate.runId !== previous.runId
-    || candidate.sequence <= previous.sequence) {
-    return false;
-  }
-  const candidatePaths = new Set(candidate.scopePaths.map(normalizePath));
-  if (!previous.scopePaths.every(path => candidatePaths.has(normalizePath(path)))) return false;
-  const passedAcceptance = new Set(
-    candidate.acceptance
-      .filter(item => item.status === 'passed')
-      .map(item => item.criterionId),
-  );
-  return previous.acceptance.length > 0
-    && previous.acceptance.every(item => passedAcceptance.has(item.criterionId));
 }
 
 function contentDigest(value: string): string {

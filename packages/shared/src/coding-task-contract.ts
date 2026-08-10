@@ -112,6 +112,12 @@ export interface TaskContractPort {
   project(contract: CodingKernelTaskContract): CodingTaskContractProjection;
 }
 
+export function codingTaskContractRequiresVerification(
+  contract: Pick<CodingKernelTaskContract, 'acceptance'>,
+): boolean {
+  return contract.acceptance.some(criterion => criterion.oracle.kind === 'verification');
+}
+
 /** Owns canonical construction, validation, snapshots, and public projection. */
 export class CanonicalTaskContractService implements TaskContractPort {
   build(input: BuildCodingKernelTaskContractInput): CodingKernelTaskContract {

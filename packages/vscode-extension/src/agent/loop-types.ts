@@ -23,6 +23,7 @@ import type {
   CodingToolHostResult,
   CodingToolSurfaceConstraint,
   CodingVerificationReceipt,
+  CodingVerificationSessionPort,
   CodingWorkspaceMutationReceipt,
   WorkspaceMutationTransactionPort,
 } from '@devseek-netai/shared';
@@ -71,6 +72,7 @@ export interface AgentLoopCallbacks {
   canonicalToolExecution?: CodingToolExecutionSessionPort;
   canonicalWorkspaceMutations?: WorkspaceMutationTransactionPort;
   canonicalExternalEffects?: CodingExternalEffectSessionPort;
+  canonicalVerification?: CodingVerificationSessionPort;
   canonicalProviderEvents?: ProviderEventPort;
   canonicalToolDispatch?: ToolDispatchPort;
   /** Unified filesystem root for this run's provider/tool trace files. */

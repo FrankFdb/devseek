@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildSync } from 'esbuild';
+import { CanonicalVerificationService } from '../../shared/dist/index.js';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const cliRoot = path.resolve(testDir, '..');
@@ -95,6 +96,11 @@ test('CLI verification host preserves a failing package test for non-C++ changes
 test('CLI verification adapter emits an unverified shared receipt without acceptance coverage', async () => {
   const workspace = createWorkspace('shared-receipt');
   try {
+    const acceptance = [{ id: 'updated', statement: 'The requested update is verified.' }];
+    const verification = new CanonicalVerificationService().bind({
+      runId: 'cli-verification-run',
+      acceptance,
+    });
     const outcome = await new CliVerificationAdapter(service).verify({
       runId: 'cli-verification-run',
       sequence: 1,
@@ -102,13 +108,14 @@ test('CLI verification adapter emits an unverified shared receipt without accept
       workspaceRoot: workspace,
       files: ['notes.txt'],
       prompt: 'Update notes.txt',
-      acceptance: [{ id: 'updated', statement: 'The requested update is verified.' }],
+      acceptance,
       evidenceRefs: ['mutation:notes:committed'],
-    });
+    }, verification);
 
     assert.equal(outcome.receipt.status, 'unverified');
     assert.equal(outcome.receipt.acceptance[0].status, 'unverified');
     assert.equal(outcome.receipt.errorCode, 'verification-acceptance-uncovered');
+    assert.equal(verification.receipts()[0], outcome.receipt);
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }

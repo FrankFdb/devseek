@@ -21,6 +21,7 @@ import {
   bindSettledCodingConformanceObservation,
   buildUnsafeSecretHarvestingRefusalMessage,
   evaluateCodingConformanceFixture,
+  projectSettledCodingConformanceRun,
   resolveCodingKernelTaskContract,
 } from '../../shared/dist/index.js';
 
@@ -73,7 +74,14 @@ test('CLI product route settles five coding fixtures from isolated real workspac
         'packages/cli/src/cli-workspace-mutation-service.ts',
         `cli-real-workspace:${scenario.fixtureId}`,
       ],
-      projection: output.result.codingConformance,
+      projection: projectSettledCodingConformanceRun({
+        fixtureId: output.runId,
+        taskContract: output.taskContract,
+        toolExecutions: output.toolExecutionReceipts,
+        changeReceipts: output.workspaceMutationReceipts,
+        verifications: output.verificationReceipts,
+        completion: output.completion,
+      }),
     });
     const evaluation = evaluateCodingConformanceFixture(fixture, [observation]);
     const surface = evaluation.surfaceResults.find(result => result.surface === 'cli');

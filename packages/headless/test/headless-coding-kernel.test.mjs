@@ -16,6 +16,7 @@ import {
   CODING_CONFORMANCE_DEVELOPMENT_FIXTURES,
   CODING_CONFORMANCE_DIMENSIONS,
   CODING_KERNEL_OUTPUT_VERSION,
+  CanonicalVerificationService,
   CanonicalToolExecutionService,
   CanonicalToolAuthorityService,
   CanonicalWorkspaceMutationTransaction,
@@ -25,12 +26,10 @@ import {
   classifyCodingTerminalEffects,
   evaluateCodingConformanceFixture,
   ProductRunEvidenceWorkspaceReader,
-  projectSettledCodingConformanceRun,
   resolveCodingKernelTaskContract,
 } from '../../shared/dist/index.js';
 import {
   HeadlessCodingKernelExecutor,
-  HeadlessCompletionAdapter,
   HeadlessToolExecutionAdapter,
   HeadlessVerificationAdapter,
   HeadlessWorkspaceMutationAdapter,
@@ -110,28 +109,63 @@ test('Headless product entry settles five coding fixtures from isolated real wor
   }
 });
 
-test('Headless product entry fails closed on incomplete or drifted conformance evidence', async t => {
+test('Headless product entry accepts no Surface-owned terminal or conformance projection', async t => {
   const fixture = findFixture('modify-and-verify');
 
-  await t.test('missing dimension', async () => {
-    await assert.rejects(
-      executeMutated(fixture, projection => delete projection.verifications),
-      /headless-coding-conformance:invalid-projection:verifications:missing-dimension/,
-    );
+  await t.test('legacy runtime terminal protocol fails closed', async () => {
+    const executor = new HeadlessCodingKernelExecutor({
+      async executeCanonical() {
+        return {
+          status: 'completed',
+          result: { value: null, conformance: structuredClone(fixture.expected) },
+          evidenceRefs: fixture.expected.completion.evidenceRefs,
+        };
+      },
+    });
+    const workspaceRoot = mkdtempSync(join(tmpdir(), 'devseek-headless-legacy-terminal-'));
+    try {
+      await assert.rejects(
+        executor.execute(runInput(fixture, workspaceRoot)),
+        /coding-kernel-execution:missing-completion-evidence/,
+      );
+    } finally {
+      rmSync(workspaceRoot, { recursive: true, force: true });
+    }
   });
 
-  await t.test('TaskContract drift', async () => {
-    await assert.rejects(
-      executeMutated(fixture, projection => { projection.taskContract.goal = 'A different goal.'; }),
-      /headless-coding-conformance:binding-mismatch:task-contract-mismatch/,
-    );
-  });
-
-  await t.test('terminal status drift', async () => {
-    await assert.rejects(
-      executeMutated(fixture, projection => { projection.completion.status = 'failed'; }),
-      /headless-coding-conformance:binding-mismatch:terminal-status-mismatch/,
-    );
+  await t.test('result claims cannot replace canonical verification', async () => {
+    const executor = new HeadlessCodingKernelExecutor({
+      async executeCanonical(request) {
+        return {
+          result: {
+            claimedStatus: 'completed',
+            claimedConformance: structuredClone(fixture.expected),
+          },
+          completionEvidence: {
+            reviewRequired: false,
+            acceptanceEvidence: request.taskContract.acceptance.map(criterion => ({
+              criterionId: criterion.id,
+              status: 'passed',
+              evidenceRefs: ['surface:claimed-pass'],
+            })),
+            pendingRefs: [],
+            adverseEvidenceRefs: [],
+            residualRisks: [],
+            evidenceRefs: ['surface:claimed-completed'],
+          },
+        };
+      },
+    });
+    const workspaceRoot = mkdtempSync(join(tmpdir(), 'devseek-headless-claimed-terminal-'));
+    try {
+      const output = await executor.execute(runInput(fixture, workspaceRoot));
+      assert.equal(output.result.claimedStatus, 'completed');
+      assert.equal(output.status, 'blocked');
+      assert.equal(output.completion.reasonCodes.includes('verification-not-run'), true);
+      assert.equal(output.conformance.completion.status, 'blocked');
+    } finally {
+      rmSync(workspaceRoot, { recursive: true, force: true });
+    }
   });
 });
 
@@ -256,14 +290,19 @@ test('Headless mutation adapter commits only caller-host readback evidence', asy
 });
 
 test('Headless verification adapter keeps missing acceptance evidence unverified', async () => {
-  const outcome = await new HeadlessVerificationAdapter().verify({
+  const acceptance = [{ id: 'builds', statement: 'Project builds' }];
+  const verification = new CanonicalVerificationService().bind({
+    runId: 'headless-verify-run',
+    acceptance,
+  });
+  const outcome = await new HeadlessVerificationAdapter(verification).verify({
     plan: {
       runId: 'headless-verify-run',
       sequence: 1,
       actionId: 'headless-verify-1',
       idempotencyKey: 'headless-verify-run:headless-verify-1',
       scopePaths: ['src/value.ts'],
-      acceptance: [{ id: 'builds', statement: 'Project builds' }],
+      acceptance,
       payload: { workspaceRoot: '/workspace' },
       evidenceRefs: ['headless-mutation:committed'],
     },
@@ -276,36 +315,39 @@ test('Headless verification adapter keeps missing acceptance evidence unverified
 
   assert.equal(outcome.receipt.status, 'unverified');
   assert.equal(outcome.receipt.acceptance[0].status, 'unverified');
+  assert.equal(verification.receipts()[0], outcome.receipt);
 });
 
-test('Headless completion adapter blocks a change without verification evidence', () => {
-  const decision = new HeadlessCompletionAdapter().decide({
-    runId: 'headless-completion-run',
-    decisionId: 'completion-1',
-    idempotencyKey: 'headless-completion-run:completion-1',
-    acceptance: [{ id: 'verified', statement: 'The change is verified.' }],
-    verificationRequired: true,
-    reviewRequired: false,
-    toolExecutions: [],
-    mutations: [],
-    verifications: [],
-    resolvedVerificationActionIds: [],
-    acceptanceEvidence: [],
-    pendingRefs: [],
-    adverseEvidenceRefs: [],
-    residualRisks: [],
-    evidenceRefs: ['headless-task-contract:completion-run'],
-  });
+test('Headless Kernel blocks a change without canonical verification evidence', async () => {
+  const fixture = findFixture('modify-and-verify');
+  const workspaceRoot = mkdtempSync(join(tmpdir(), 'devseek-headless-completion-'));
+  try {
+    const output = await new HeadlessCodingKernelExecutor({
+      async executeCanonical() {
+        return {
+          result: null,
+          completionEvidence: {
+            reviewRequired: false,
+            acceptanceEvidence: [],
+            pendingRefs: [],
+            adverseEvidenceRefs: [],
+            residualRisks: [],
+            evidenceRefs: ['headless-task-contract:completion-run'],
+          },
+        };
+      },
+    }).execute(runInput(fixture, workspaceRoot));
 
-  assert.equal(decision.status, 'blocked');
-  assert.equal(decision.reasonCodes.includes('verification-not-run'), true);
+    assert.equal(output.status, 'blocked');
+    assert.equal(output.completion.reasonCodes.includes('verification-not-run'), true);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
 });
 
 async function executeHeadlessProductRoute(request, scenario) {
   const toolExecutions = [];
-  const changeReceipts = [];
   const verifications = [];
-  const failedVerificationActionIds = [];
 
   if (scenario.fixtureId === 'permission-denied-no-effect') {
     const denied = await new HeadlessToolExecutionAdapter(request.toolExecution).execute({
@@ -337,7 +379,6 @@ async function executeHeadlessProductRoute(request, scenario) {
         content,
       });
       toolExecutions.push(mutation.toolReceipt);
-      changeReceipts.push(mutation.changeReceipt);
 
       const verificationActionId = `headless-verify-${index + 1}`;
       const verification = await executeHeadlessVerificationTool({
@@ -349,25 +390,11 @@ async function executeHeadlessProductRoute(request, scenario) {
       });
       toolExecutions.push(verification.toolReceipt);
       verifications.push(verification.verificationReceipt);
-      if (verification.verificationReceipt.status === 'failed') {
-        failedVerificationActionIds.push(verification.verificationReceipt.actionId);
-      }
     }
   }
 
-  const completion = new HeadlessCompletionAdapter().decide({
-    runId: request.runId,
-    decisionId: 'headless-product-completion',
-    idempotencyKey: `${request.runId}:headless-product-completion`,
-    acceptance: request.taskContract.acceptance,
-    verificationRequired: request.taskContract.mode === 'change' || request.taskContract.mode === 'release',
+  const completionEvidence = {
     reviewRequired: false,
-    toolExecutions,
-    mutations: changeReceipts,
-    verifications,
-    resolvedVerificationActionIds: verifications.at(-1)?.status === 'passed'
-      ? failedVerificationActionIds
-      : [],
     acceptanceEvidence: scenario.fixtureId === 'policy-refusal-no-mutation'
       ? buildSecretHarvestingRefusalAcceptanceEvidence()
       : scenario.fixtureId === 'permission-denied-no-effect'
@@ -383,20 +410,10 @@ async function executeHeadlessProductRoute(request, scenario) {
       ? ['requested-change-not-applied']
       : [],
     evidenceRefs: [...request.taskContract.provenanceRefs, `headless-product:${request.runId}:settled`],
-  });
-  const conformance = projectSettledCodingConformanceRun({
-    fixtureId: request.runId,
-    taskContract: request.taskContract,
-    toolExecutions,
-    changeReceipts,
-    verifications,
-    completion,
-  });
+  };
   return {
-    status: completion.status,
-    result: { value: { fixtureId: request.runId }, conformance },
-    evidenceRefs: completion.evidenceRefs,
-    residualRisks: completion.residualRisks,
+    result: { fixtureId: request.runId },
+    completionEvidence,
   };
 }
 
@@ -464,7 +481,7 @@ async function executeHeadlessVerificationTool(input) {
     risk: 'medium',
   }, {
     async execute() {
-        const verification = await new HeadlessVerificationAdapter().verify({
+        const verification = await new HeadlessVerificationAdapter(input.request.verification).verify({
           plan: {
             runId: context.runId,
             sequence: context.sequence,
@@ -659,36 +676,17 @@ function writeOptionalProductReport(surface, observations) {
   writeFileSync(reportPath, JSON.stringify({ surface, observations }, null, 2), 'utf8');
 }
 
-async function executeMutated(fixture, mutate) {
-  const projection = structuredClone(fixture.expected);
-  mutate(projection);
-  const executor = new HeadlessCodingKernelExecutor({
-    async executeCanonical() {
-      return {
-        status: fixture.expected.completion.status,
-        result: { value: null, conformance: projection },
-        evidenceRefs: fixture.expected.completion.evidenceRefs,
-        residualRisks: fixture.expected.completion.residualRisks,
-      };
-    },
-  });
-  const workspaceRoot = mkdtempSync(join(tmpdir(), 'devseek-headless-invalid-'));
-  try {
-    return await executor.execute(runInput(fixture, workspaceRoot));
-  } finally {
-    rmSync(workspaceRoot, { recursive: true, force: true });
-  }
-}
-
 function runtimeOutput(fixture, value) {
   return {
-    status: fixture.expected.completion.status,
-    result: {
-      value,
-      conformance: structuredClone(fixture.expected),
+    result: value,
+    completionEvidence: {
+      reviewRequired: false,
+      acceptanceEvidence: [],
+      pendingRefs: [],
+      adverseEvidenceRefs: [],
+      residualRisks: fixture.expected.completion.residualRisks,
+      evidenceRefs: fixture.expected.completion.evidenceRefs,
     },
-    evidenceRefs: fixture.expected.completion.evidenceRefs,
-    residualRisks: fixture.expected.completion.residualRisks,
   };
 }
 

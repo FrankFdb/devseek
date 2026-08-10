@@ -114,3 +114,52 @@ test('Verification plans reject duplicate acceptance and conflicting action iden
     /coding-verification:conflicting-action-identity/,
   );
 });
+
+test('bound verification sessions reject foreign runs and drifted acceptance contracts', async () => {
+  const service = new CanonicalVerificationService();
+  const session = service.bind({
+    runId: 'verify-run-1',
+    acceptance: [
+      { id: 'builds', statement: 'Project builds' },
+      { id: 'behavior', statement: 'Output is correct' },
+    ],
+  });
+  const capability = host([
+    {
+      checkId: 'build',
+      status: 'passed',
+      acceptanceIds: ['builds'],
+      summary: 'build passed',
+      evidenceRefs: ['build:exit-0'],
+    },
+    {
+      checkId: 'runtime',
+      status: 'passed',
+      acceptanceIds: ['behavior'],
+      summary: 'runtime output matched',
+      evidenceRefs: ['runtime:output-match'],
+    },
+  ]);
+
+  await assert.rejects(
+    session.verify(plan({ runId: 'foreign-run' }), capability),
+    /coding-verification:session-run-mismatch/,
+  );
+  await assert.rejects(
+    session.verify(plan({
+      acceptance: [
+        { id: 'builds', statement: 'Project builds differently' },
+        { id: 'behavior', statement: 'Output is correct' },
+      ],
+    }), capability),
+    /coding-verification:session-acceptance-mismatch/,
+  );
+  assert.deepEqual(session.receipts(), []);
+
+  const first = await session.verify(plan(), capability);
+  const replay = await session.verify(plan(), capability);
+  assert.equal(first.receipt.status, 'passed');
+  assert.equal(replay.replayed, true);
+  assert.deepEqual(session.receipts(), [first.receipt]);
+  assert.equal(capability.calls, 1);
+});
