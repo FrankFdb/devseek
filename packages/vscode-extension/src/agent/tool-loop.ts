@@ -9,6 +9,7 @@ import {
   normalizeCodingFileWriteInputs,
   type CodingToolCall,
   type CodingToolExecutionReceipt,
+  type CodingVerificationReceipt,
   type CodingWorkspaceMutationReceipt,
   type DevSeekTraceLogger,
 } from '@devseek-netai/shared';
@@ -46,6 +47,7 @@ import {
 } from './tool-loop-canonical-session';
 import { ToolLoopFileWriter } from './tool-loop-file-writer';
 import { analyzeTerminalEvidence } from './tool-loop-terminal-evidence';
+import { recordPassedTerminalVerification } from './terminal-verification-adapter';
 
 export { analyzeTerminalEvidence } from './tool-loop-terminal-evidence';
 
@@ -144,6 +146,8 @@ export interface ToolLoopResult {
   changeReceipts?: CodingWorkspaceMutationReceipt<unknown>[];
   /** Shared terminal receipts produced by canonical tool execution. */
   toolExecutionReceipts?: CodingToolExecutionReceipt<unknown>[];
+  /** Verification receipts bound to successful terminal validation actions. */
+  verificationReceipts?: CodingVerificationReceipt[];
   /** Blocking tool failures that should be audited across rounds for no-progress loops. */
   toolFailures?: ToolFailureEvidence[];
 }
@@ -220,6 +224,7 @@ export async function executeFakeToolsForLoop(
     requireReadBeforeOverwrite?: boolean;
     readEvidencePaths?: string[];
     readEvidenceRecorder?: ToolReadEvidenceRecorder;
+    verificationScopeFiles?: readonly WrittenFileEvidence[];
     plannedTerminalValidation?: {
       command: string;
       workdir: string;
@@ -244,6 +249,7 @@ export async function executeFakeToolsForLoop(
   const evidenceRefs: EvidenceRef[] = [];
   const changeReceipts: CodingWorkspaceMutationReceipt<unknown>[] = [];
   const toolExecutionReceipts: CodingToolExecutionReceipt<unknown>[] = [];
+  const verificationReceipts: CodingVerificationReceipt[] = [];
   const toolFailures: ToolFailureEvidence[] = [];
   const replaceMissSnapshots = new Set<string>();
   let cancellationFeedbackEmitted = false;
@@ -582,6 +588,21 @@ export async function executeFakeToolsForLoop(
           }
           if (canonicalEvidence.kind !== 'other' || isReadOnlyTerminalEvidenceCommand(resolvedCommand)) {
             terminalEvidence.push(canonicalEvidence);
+          }
+          if (callbacks.canonicalVerification && callbacks.canonicalVerificationAcceptance?.length) {
+            const verificationReceipt = await recordPassedTerminalVerification({
+              toolReceipt: execution.receipt,
+              evidence: canonicalEvidence,
+              workspaceRoot,
+              workdir: evidenceWorkdir,
+              writtenFiles: [
+                ...(taskContext?.verificationScopeFiles ?? []),
+                ...writtenFiles,
+              ],
+              acceptance: callbacks.canonicalVerificationAcceptance,
+              verification: callbacks.canonicalVerification,
+            });
+            if (verificationReceipt) verificationReceipts.push(verificationReceipt);
           }
           // Silent: output goes to AI context only (shown in Working box via terminalRanNotice)
           parts.push(`[run_terminal: ${resolvedCommand}]\n${output}`);
@@ -1283,6 +1304,7 @@ export async function executeFakeToolsForLoop(
     evidenceRefs: evidenceRefs.length > 0 ? evidenceRefs : undefined,
     changeReceipts: changeReceipts.length > 0 ? changeReceipts : undefined,
     toolExecutionReceipts: toolExecutionReceipts.length > 0 ? toolExecutionReceipts : undefined,
+    verificationReceipts: verificationReceipts.length > 0 ? verificationReceipts : undefined,
     toolFailures: toolFailures.length > 0 ? toolFailures : undefined,
   };
 }

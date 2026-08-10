@@ -3647,6 +3647,8 @@ test('C9: Shared Kernel owns verifier selection, orchestration, and acceptance s
   const planner = src('src/app/verification-planner.ts');
   const validationService = src('src/workspace/validation-service.ts');
   const adapter = src('src/app/coding-verification-adapter.ts');
+  const terminalAdapter = src('src/agent/terminal-verification-adapter.ts');
+  const kernelOutput = src('src/app/vscode-coding-kernel-output.ts');
   const selection = repoSrc('packages/shared/src/coding-verifier-selection.ts');
   const orchestration = repoSrc('packages/shared/src/coding-build-orchestration.ts');
   const verification = repoSrc('packages/shared/src/coding-verification.ts');
@@ -3658,6 +3660,10 @@ test('C9: Shared Kernel owns verifier selection, orchestration, and acceptance s
   assertContains(orchestration, 'class CanonicalBuildOrchestrationService', 'Shared Kernel must own ordered fail-fast execution');
   assertContains(verification, 'class CanonicalVerificationService', 'Shared Kernel must own acceptance settlement');
   assertContains(adapter, 'projectBuildOrchestrationHostResult', 'surface adapter must project raw orchestration facts into canonical verification');
+  assertContains(terminalAdapter, 'toolReceipt.status === \'completed\'', 'terminal verification must require a completed canonical tool receipt');
+  assertContains(terminalAdapter, 'action?.actionId === toolReceipt.actionId', 'terminal verification must bind the exact executing action');
+  assertDoesNotContain(kernelOutput, 'correlateVsCodeCodingConformanceReceipts', 'product projection must never guess receipt ownership after Completion');
+  assert.equal(existsSync(path.join(root, 'src/app/vscode-coding-conformance-correlation.ts')), false, 'obsolete receipt correlation owner must be deleted');
   assertDoesNotContain(validationService, 'CanonicalVerifierSelectionService', 'VS Code host must not select its own verifier');
   assertDoesNotContain(validationService, 'CanonicalVerificationService', 'VS Code host must not settle acceptance');
   assert.doesNotMatch(planner, /debug-vsix-package|controlled-vsix-realistic-product/, 'capability discovery must not fabricate future release evidence');

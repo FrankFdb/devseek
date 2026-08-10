@@ -176,11 +176,18 @@ test('VS Code adapter appends explicit in-process policy checks to the selected 
   assert.equal(execution.outcome.receipt.status, 'failed');
 });
 
-test('terminal evidence settlement no longer promotes prior terminal claims into verification receipts', () => {
-  const source = execSync('cat src/agent/terminal-evidence-settlement.ts', {
+test('terminal verification requires an action-owned settled tool receipt', () => {
+  const settlement = execSync('cat src/agent/terminal-evidence-settlement.ts', {
     cwd: rootDir,
     encoding: 'utf8',
   });
-  assert.doesNotMatch(source, /projectTerminalVerificationReceipts|VsCodeVerificationAdapter/);
-  assert.match(source, /classifyAgenticManualReviewEvidence/);
+  const adapter = execSync('cat src/agent/terminal-verification-adapter.ts', {
+    cwd: rootDir,
+    encoding: 'utf8',
+  });
+  assert.doesNotMatch(settlement, /recordPassedTerminalVerification|VsCodeVerificationAdapter/);
+  assert.match(settlement, /classifyAgenticManualReviewEvidence/);
+  assert.match(adapter, /toolReceipt\.status === 'completed'/);
+  assert.match(adapter, /action\?\.actionId === toolReceipt\.actionId/);
+  assert.doesNotMatch(adapter, /prior terminal|uniqueEvidenceOwner|candidates\.length === 1/);
 });

@@ -852,6 +852,7 @@ export async function runAgenticLoop(
         workspaceRoot,
         requireReadBeforeOverwrite: true,
         readEvidencePaths: [...allReadEvidencePaths],
+        verificationScopeFiles: allWrittenFiles,
       },
     );
     if (writeAuthority.writeRevoked && hasWriteRevokedToolAttempt(toolsToExecute)) { failedReason = '用户实时补充已撤销写入授权，任务已停止。'; break; }
@@ -878,6 +879,9 @@ export async function runAgenticLoop(
     if (loopRes.changeReceipts?.length) allChangeReceipts.push(...loopRes.changeReceipts);
     if (loopRes.toolExecutionReceipts?.length) {
       allToolExecutionReceipts.push(...loopRes.toolExecutionReceipts);
+    }
+    if (loopRes.verificationReceipts?.length) {
+      allVerificationReceipts.push(...loopRes.verificationReceipts);
     }
     if (loopRes.readFiles?.length) {
       for (const readPath of loopRes.readFiles) allReadEvidencePaths.add(readPath);

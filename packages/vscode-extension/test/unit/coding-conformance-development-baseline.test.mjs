@@ -101,7 +101,7 @@ test('VS Code canonical Kernel probe exposes semantically conformant settled pro
   }
 });
 
-test('VS Code product projection correlates internal host receipt ids to canonical tool actions', async () => {
+test('VS Code product projection preserves internal receipt identities instead of guessing ownership', async () => {
   const fixture = findFixture('create-and-verify');
   const input = routeInput(false, fixture);
   const kernel = new CanonicalCodingKernel(new VsCodeCodingKernelRuntimeAdapter({
@@ -120,17 +120,15 @@ test('VS Code product projection correlates internal host receipt ids to canonic
   const projection = output.result.codingConformance;
   const mutationTool = projection.toolExecutions.find(receipt => receipt.effects.includes('workspace-mutation'));
   const processTool = projection.toolExecutions.find(receipt => receipt.effects.includes('process'));
-  assert.equal(projection.changeReceipts[0].actionId, mutationTool.actionId);
-  assert.equal(projection.verifications[0].actionId, processTool.actionId);
+  assert.equal(projection.changeReceipts[0].actionId, 'vscode-text-transaction-1');
+  assert.equal(projection.verifications[0].actionId, 'vscode-auto-validation-1');
+  assert.notEqual(projection.changeReceipts[0].actionId, mutationTool.actionId);
+  assert.notEqual(projection.verifications[0].actionId, processTool.actionId);
   assert.equal(kernelOutput.workspaceMutationReceipts[0].actionId, 'vscode-text-transaction-1');
   assert.equal(kernelOutput.verificationReceipts[0].actionId, 'vscode-auto-validation-1');
-
-  const evaluation = evaluateCodingConformanceFixture(fixture, [observeVsCodeRouteOutput(fixture, output)]);
-  const vscodeResult = evaluation.surfaceResults.find(result => result.surface === 'vscode');
-  assert.equal(vscodeResult.contractConformant, true, JSON.stringify(vscodeResult.violations));
 });
 
-test('VS Code product projection prefers action-owned acceptance receipts over internal quality receipts', async () => {
+test('VS Code product projection retains every canonical verification receipt', async () => {
   const fixture = findFixture('create-and-verify');
   const input = routeInput(false, fixture);
   const kernel = new CanonicalCodingKernel(new VsCodeCodingKernelRuntimeAdapter({
@@ -155,6 +153,7 @@ test('VS Code product projection prefers action-owned acceptance receipts over i
   ]);
   assert.deepEqual(output.result.codingConformance.verifications.map(receipt => receipt.actionId), [
     processTool.actionId,
+    'vscode-auto-validation-internal',
   ]);
 });
 

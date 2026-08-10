@@ -42,6 +42,7 @@ import {
   type VsCodeVerificationExecution,
 } from '../app/coding-verification-adapter';
 import { validationResultToTerminalEvidence } from './validation-terminal-evidence';
+import { workspaceRelativeVerificationPaths } from './verification-scope';
 
 export interface AgentAutoValidationCallbacks {
   onAgentStatus: (status: AgentStatusEvent) => void | Promise<void>;
@@ -140,22 +141,6 @@ async function emitAutoValidationQualityGateStatus(
         : '自动验证 QualityGate 未通过',
     detail: qualityGate.summary,
   });
-}
-
-function workspaceRelativeValidationPaths(writtenFiles: WrittenFileEvidence[], workspaceRootFsPath: string): string[] {
-  if (!workspaceRootFsPath) return [];
-  const root = nodePath.resolve(workspaceRootFsPath);
-  const seen = new Set<string>();
-  const relPaths: string[] = [];
-  for (const file of writtenFiles) {
-    const absPath = nodePath.resolve(nodePath.isAbsolute(file.path) ? file.path : nodePath.join(root, file.path));
-    if (!isInsideWorkspacePath(absPath, root)) continue;
-    const relPath = nodePath.relative(root, absPath).replace(/\\/g, '/');
-    if (!relPath || seen.has(relPath)) continue;
-    seen.add(relPath);
-    relPaths.push(relPath);
-  }
-  return relPaths;
 }
 
 function formatAutoValidationFeedback(result: AutoValidationResult): string {
@@ -473,7 +458,7 @@ export async function runAgentAutoValidationForWrites(
   callbacks: AgentAutoValidationCallbacks,
   options: AgentAutoValidationOptions = {},
 ): Promise<AgentAutoValidationResult> {
-  const changedPaths = workspaceRelativeValidationPaths(writtenFiles, workspaceRootFsPath);
+  const changedPaths = workspaceRelativeVerificationPaths(writtenFiles, workspaceRootFsPath);
   if (changedPaths.length === 0 || callbacks.signal?.aborted) return {};
   const evidenceOperationId = nextAutoValidationOperationId(changedPaths);
   const acceptance = callbacks.canonicalVerificationAcceptance?.length
