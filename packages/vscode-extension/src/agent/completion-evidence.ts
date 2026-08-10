@@ -575,7 +575,10 @@ function lastUnclearedTerminalFailure(
       blockingFailure = undefined;
       continue;
     }
-    if (evidence.ok && successKinds.has(evidence.kind)) {
+    if (evidence.ok
+      && successKinds.has(evidence.kind)
+      && blockingFailure
+      && terminalSuccessClearsFailure(evidence, blockingFailure)) {
       blockingFailure = undefined;
       continue;
     }

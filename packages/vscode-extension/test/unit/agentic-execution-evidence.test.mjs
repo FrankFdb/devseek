@@ -22,6 +22,7 @@ execSync(
 const req = createRequire(import.meta.url);
 const {
   describeAgenticDeniedToolExecution,
+  getAgenticBlockingTerminalFailure,
   getAgenticDeniedToolExecution,
 } = req(bundlePath);
 
@@ -34,6 +35,45 @@ test('agentic execution evidence settles an authority denial instead of retrying
   assert.equal(
     describeAgenticDeniedToolExecution(denied),
     '工具 run_terminal 未获授权：approval-required',
+  );
+});
+
+test('agentic execution evidence keeps a failed functional check open after weaker syntax success', () => {
+  const failedFunctionalCheck = {
+    command: `node -e "const {parse}=require('./src/parser.js'); if(!parse('valid').ok) process.exit(1)"`,
+    kind: 'run',
+    ok: false,
+    exitCode: 1,
+  };
+  const successfulSyntaxCheck = {
+    command: 'node --check src/parser.js',
+    kind: 'compile',
+    ok: true,
+    exitCode: 0,
+  };
+  const successfulFunctionalCheck = {
+    ...failedFunctionalCheck,
+    ok: true,
+    exitCode: 0,
+  };
+
+  assert.equal(
+    getAgenticBlockingTerminalFailure(
+      'Repair src/parser.js and keep working until the focused parser check passes.',
+      [],
+      [],
+      [failedFunctionalCheck, successfulSyntaxCheck],
+    ),
+    failedFunctionalCheck,
+  );
+  assert.equal(
+    getAgenticBlockingTerminalFailure(
+      'Repair src/parser.js and keep working until the focused parser check passes.',
+      [],
+      [],
+      [failedFunctionalCheck, successfulSyntaxCheck, successfulFunctionalCheck],
+    ),
+    undefined,
   );
 });
 

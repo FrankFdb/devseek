@@ -160,6 +160,8 @@ test('Agent auto validation preserves a real failing process and blocks completi
 
     assert.equal(result.verificationReceipt.status, 'failed');
     assert.equal(result.evidence.ok, false);
+    assert.equal(result.evidence.kind, 'compile');
+    assert.match(result.evidence.command, /^node --check src\/app\.js$/);
     assert.equal(result.evidence.exitCode, 2);
     assert.match(result.feedbackForAI, /SyntaxError/);
   } finally {

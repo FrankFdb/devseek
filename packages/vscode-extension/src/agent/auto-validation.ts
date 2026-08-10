@@ -9,9 +9,7 @@ import type {
 } from '@devseek-netai/shared';
 import type { AgentStatusEvent } from './events';
 import {
-  classifyTerminalEvidenceCommand,
   type TerminalEvidence,
-  type TerminalEvidenceKind,
   type WrittenFileEvidence,
 } from './completion-evidence';
 import { assessFormalProjectDocumentQuality } from './formal-project-document-quality';
@@ -43,6 +41,7 @@ import {
   VsCodeVerificationAdapter,
   type VsCodeVerificationExecution,
 } from '../app/coding-verification-adapter';
+import { validationResultToTerminalEvidence } from './validation-terminal-evidence';
 
 export interface AgentAutoValidationCallbacks {
   onAgentStatus: (status: AgentStatusEvent) => void | Promise<void>;
@@ -157,29 +156,6 @@ function workspaceRelativeValidationPaths(writtenFiles: WrittenFileEvidence[], w
     relPaths.push(relPath);
   }
   return relPaths;
-}
-
-export function validationResultToTerminalEvidence(result: AutoValidationResult): TerminalEvidence | undefined {
-  const verification = normalizeVerificationResult(result);
-  if (!shouldEmitTerminalEvidenceForVerification(verification)) return undefined;
-  const classified = classifyTerminalEvidenceCommand(result.command);
-  const kind: TerminalEvidenceKind = result.mode === 'readback'
-      ? 'other'
-    : classified !== 'other'
-      ? classified
-      : result.mode === 'test'
-        ? 'test'
-        : result.mode
-        ? 'compile'
-        : 'other';
-  const detail = [result.reason, result.output].filter(Boolean).join('\n').slice(0, 1200);
-  return {
-    command: result.command,
-    kind,
-    ok: result.ok,
-    exitCode: result.exitCode,
-    ...(detail ? { detail } : {}),
-  };
 }
 
 function formatAutoValidationFeedback(result: AutoValidationResult): string {
