@@ -544,6 +544,7 @@ export async function runAgenticLoop(
           state: 'started',
           title: display.title,
           detail: display.detail,
+          recoveryReason: 'provider-response-corruption',
         });
         const recoveryMessage = buildAgentProviderRecoveryPrompt({
           userPrompt: writeAuthority.currentPrompt,

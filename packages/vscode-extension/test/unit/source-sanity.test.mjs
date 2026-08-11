@@ -86,6 +86,31 @@ test('source sanity repairs escaped macro line continuations without touching st
   assert.equal(findGeneratedSourceSanityIssue('test_warranty.cpp', repaired.content), undefined);
 });
 
+test('source sanity repairs adjacent C++ include directives collapsed by web transport', () => {
+  const polluted = [
+    '#include "job_scheduler.hpp"#include <algorithm>#include <queue>',
+    '',
+    'namespace devseek_case {',
+    'int value = 1;',
+    '}',
+  ].join('\n');
+
+  const repaired = repairGeneratedSourceTransportEscapes('job_scheduler.cpp', polluted);
+
+  assert.equal(repaired.repaired, true);
+  assert.equal(repaired.repairCount, 2);
+  assert.match(repaired.content, /^#include "job_scheduler\.hpp"\n#include <algorithm>\n#include <queue>$/m);
+  assert.equal(findGeneratedSourceSanityIssue('job_scheduler.cpp', repaired.content), undefined);
+});
+
+test('source sanity does not split valid comments after C++ include directives', () => {
+  const source = '#include <vector> // retained comment\n#include <string> /* retained block comment */\n';
+  const repaired = repairGeneratedSourceTransportEscapes('main.cpp', source);
+
+  assert.equal(repaired.repaired, false);
+  assert.equal(repaired.content, source);
+});
+
 test('source sanity repairs Markdown emphasis corruption in variadic C++ macros', () => {
   const polluted = [
     '#include <cstdio>',

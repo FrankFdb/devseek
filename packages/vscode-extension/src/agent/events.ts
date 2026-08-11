@@ -16,7 +16,9 @@ export type AgentProgressStage =
   | 'recovery'
   | 'delivery';
 
-export type AgentRecoveryReason = 'provider-short-intent';
+export type AgentRecoveryReason =
+  | 'provider-short-intent'
+  | 'provider-response-corruption';
 
 export interface AgentProgressPresentation {
   progressStage?: AgentProgressStage;

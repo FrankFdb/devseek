@@ -214,7 +214,7 @@ export class ToolLoopFileWriter {
         const terminalReason = mutationReceipt?.errorCode
           ?? codingToolExecutionFailureReason(toolOutcome.receipt);
         const reason = mutationReceipt?.errorCode === 'workspace-proposal-invalid'
-          ? `源码语法护栏阻止写入：${terminalReason}`
+          ? `源码语法护栏阻止写入：${mutationReceipt.errorDetail ?? terminalReason}`
           : `工作区写入事务未提交：${terminalReason}`;
         reporter.failure(toolName, rawPath, reason);
         reporter.feedback(`[${toolName}: ${rawPath}] 错误: ${reason}`);

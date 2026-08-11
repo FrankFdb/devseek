@@ -1285,6 +1285,39 @@ test('ToolLoop records blocking source sanity failures as structured tool failur
     assert.equal(result.toolFailures?.[0]?.tool, 'create_file');
     assert.equal(result.toolFailures?.[0]?.kind, 'write');
     assert.match(result.toolFailures?.[0]?.reason ?? '', /源码语法护栏/);
+    assert.match(result.toolFailures?.[0]?.reason ?? '', /第 1 行附近.*字符串字面量/);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('ToolLoop repairs collapsed C++ include directives before committing a web write', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-include-transport-repair-'));
+  try {
+    const filePath = path.join(workspaceRoot, 'src', 'main.cpp');
+    const result = await executeFakeToolsForLoop(
+      [
+        {
+          name: 'create_file',
+          input: {
+            path: 'src/main.cpp',
+            content: '#include <vector>#include <string>\nint main() { return 0; }\n',
+          },
+        },
+      ],
+      {
+        onResolveFileWriteConstraint: async () => ALLOW_FILE_WRITE,
+        onAppliedChange: async () => {},
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      workspaceRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot },
+    );
+
+    assert.equal(result.toolFailures, undefined);
+    assert.equal(result.writtenFiles?.[0].path, filePath);
+    assert.match(readFileSync(filePath, 'utf8'), /^#include <vector>\n#include <string>$/m);
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });
   }

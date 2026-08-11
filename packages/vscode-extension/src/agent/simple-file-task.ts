@@ -130,7 +130,7 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
     const errorCode = mutationOutcome.receipt.errorCode;
     const failure = errorCode === 'workspace-baseline-conflict'
       ? 'target changed after write authority was captured (workspace-baseline-conflict)'
-      : errorCode ?? mutationOutcome.receipt.status;
+      : mutationOutcome.receipt.errorDetail ?? errorCode ?? mutationOutcome.receipt.status;
     const failureLabel = errorCode === 'workspace-proposal-invalid'
       ? '源码语法护栏阻止写入'
       : '工作区写入事务未提交';

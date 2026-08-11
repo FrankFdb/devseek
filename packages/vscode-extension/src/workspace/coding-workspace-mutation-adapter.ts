@@ -14,6 +14,7 @@ import {
   type WorkspaceTextFileCommitToken,
   type WorkspaceTextFileDeleteCommitToken,
 } from './edit-service';
+import { describeWorkspaceMutationError } from './workspace-mutation-error';
 
 interface VsCodeTextFileMutationPayload {
   readonly absPath: string;
@@ -206,12 +207,14 @@ export class VsCodeWorkspaceMutationAdapter {
             },
           };
         } catch (error) {
+          const failure = describeWorkspaceMutationError(error, 'single');
           return {
             status: 'rejected',
             mutationState: this.edits.isTextFileBaselineCurrent(baseline.state)
               ? 'unchanged'
               : 'possibly-changed',
-            errorCode: workspaceMutationErrorCode(error),
+            errorCode: failure.code,
+            ...(failure.detail ? { errorDetail: failure.detail } : {}),
             evidenceRefs: [`workspace-apply:${plan.actionId}:rejected`],
           };
         }
@@ -351,12 +354,14 @@ export class VsCodeWorkspaceMutationAdapter {
             },
           };
         } catch (error) {
+          const failure = describeWorkspaceMutationError(error, 'single');
           return {
             status: 'rejected',
             mutationState: this.edits.isTextFileBaselineCurrent(baseline.state)
               ? 'unchanged'
               : 'possibly-changed',
-            errorCode: workspaceMutationErrorCode(error),
+            errorCode: failure.code,
+            ...(failure.detail ? { errorDetail: failure.detail } : {}),
             evidenceRefs: [`workspace-delete-apply:${plan.actionId}:rejected`],
           };
         }
@@ -400,11 +405,4 @@ function assertPlanMatchesBaseline(
   if (payload.absPath !== baseline.absPath || payload.workspaceRoot !== baseline.workspaceRoot) {
     throw new Error('vscode-workspace-mutation:baseline-scope-mismatch');
   }
-}
-
-function workspaceMutationErrorCode(error: unknown): string {
-  const name = error instanceof Error ? error.name : '';
-  if (name === 'WorkspaceEditValidationError') return 'workspace-proposal-invalid';
-  if (name === 'WorkspaceEditConflictError') return 'workspace-commit-conflict';
-  return 'workspace-commit-failed';
 }

@@ -70,6 +70,7 @@ export interface CodingWorkspaceApplyRejection<TApplied, TResult> {
   readonly status: 'rejected';
   readonly mutationState: 'unchanged' | 'possibly-changed';
   readonly errorCode: string;
+  readonly errorDetail?: string;
   readonly applied?: CodingWorkspaceAppliedMutation<TApplied, TResult>;
   readonly evidenceRefs: readonly string[];
 }
@@ -135,6 +136,7 @@ export interface CodingWorkspaceMutationReceipt<TResult> {
   readonly rollbackRef?: string;
   readonly result?: TResult;
   readonly errorCode?: string;
+  readonly errorDetail?: string;
   readonly evidenceRefs: readonly string[];
 }
 
@@ -533,7 +535,7 @@ async function executeMutationFromBaseline<TPayload, TBaseline, TApplied, TResul
       ...applyOutcome.evidenceRefs,
     ]);
     if (applyOutcome.mutationState === 'unchanged') {
-      return failedMutationReceipt(plan, applyOutcome.errorCode, evidenceRefs);
+      return failedMutationReceipt(plan, applyOutcome.errorCode, evidenceRefs, applyOutcome.errorDetail);
     }
     return rollbackMutation(plan, host, baseline, applyOutcome.applied, 'apply-failed', evidenceRefs);
   }
@@ -626,6 +628,7 @@ function failedMutationReceipt<TResult>(
   plan: CodingWorkspaceMutationPlan<unknown>,
   errorCode: string,
   evidenceRefs: readonly string[],
+  errorDetail?: string,
 ): CodingWorkspaceMutationReceipt<TResult> {
   return snapshotMutationReceipt({
     version: CODING_WORKSPACE_MUTATION_RECEIPT_VERSION,
@@ -636,6 +639,7 @@ function failedMutationReceipt<TResult>(
     status: 'failed',
     paths: plan.paths,
     errorCode,
+    ...(errorDetail ? { errorDetail } : {}),
     evidenceRefs: uniqueCodingRefs([...plan.evidenceRefs, ...evidenceRefs]),
   });
 }
@@ -728,6 +732,9 @@ function snapshotApplyOutcome<TApplied, TResult>(
     status: 'rejected',
     mutationState: outcome.mutationState,
     errorCode: normalizeCodingErrorCode(outcome.errorCode),
+    ...(normalizeCodingErrorDetail(outcome.errorDetail)
+      ? { errorDetail: normalizeCodingErrorDetail(outcome.errorDetail) }
+      : {}),
     ...(outcome.applied ? { applied: snapshotAppliedMutation(outcome.applied) } : {}),
     evidenceRefs: uniqueCodingRefs(outcome.evidenceRefs),
   });
@@ -788,8 +795,20 @@ function snapshotMutationReceipt<TResult>(
       ? {}
       : { result: snapshotCodingValue(receipt.result, 'mutation-receipt-result') as TResult }),
     ...(receipt.errorCode ? { errorCode: normalizeCodingErrorCode(receipt.errorCode) } : {}),
+    ...(normalizeCodingErrorDetail(receipt.errorDetail)
+      ? { errorDetail: normalizeCodingErrorDetail(receipt.errorDetail) }
+      : {}),
     evidenceRefs: Object.freeze(evidenceRefs),
   });
+}
+
+function normalizeCodingErrorDetail(value: string | undefined): string {
+  if (typeof value !== 'string') return '';
+  return value
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 1000);
 }
 
 function normalizeMutationPaths(paths: readonly string[]): readonly string[] {

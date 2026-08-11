@@ -3,6 +3,19 @@ export interface PendingProviderShortIntent {
   evidence: string;
 }
 
+export type RecoverableProviderReplayIssueKind =
+  | 'empty-provider-response'
+  | 'provider-truncated-response'
+  | 'provider-incomplete-answer';
+
+export interface PendingProviderIntegrityFailure {
+  kind: RecoverableProviderReplayIssueKind;
+  severity: 'warn' | 'error';
+  line: number;
+  message: string;
+  evidence?: string;
+}
+
 export interface PendingTerminalFailure {
   line: number;
   exitCode: number;
@@ -18,6 +31,7 @@ export interface PendingTerminalFailure {
  */
 export class RunRecoverySettlement {
   private readonly providerShortIntents: PendingProviderShortIntent[] = [];
+  private readonly providerIntegrityFailures: PendingProviderIntegrityFailure[] = [];
   private terminalFailures: PendingTerminalFailure[] = [];
   private readonly terminalOutputBySha = new Map<string, string>();
 
@@ -31,6 +45,18 @@ export class RunRecoverySettlement {
 
   unresolvedProviderShortIntents(): readonly PendingProviderShortIntent[] {
     return this.providerShortIntents;
+  }
+
+  recordProviderIntegrityFailure(failure: PendingProviderIntegrityFailure): void {
+    this.providerIntegrityFailures.push(failure);
+  }
+
+  settleLatestProviderIntegrityFailure(): void {
+    this.providerIntegrityFailures.pop();
+  }
+
+  unresolvedProviderIntegrityFailures(): readonly PendingProviderIntegrityFailure[] {
+    return this.providerIntegrityFailures;
   }
 
   recordTerminalFailure(failure: PendingTerminalFailure): void {

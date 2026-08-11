@@ -12,6 +12,7 @@ import {
   type WorkspaceTextFileBaseline,
   type WorkspaceTextFileCommitToken,
 } from './edit-service';
+import { describeWorkspaceMutationError } from './workspace-mutation-error';
 
 export interface VsCodeWorkspaceBatchMutationItem {
   readonly absPath: string;
@@ -196,10 +197,12 @@ export class VsCodeWorkspaceBatchMutationAdapter {
           };
         } catch (error) {
           const possiblyChanged = commitTokens.length > 0 || createdDirs.size > 0;
+          const failure = describeWorkspaceMutationError(error, 'batch');
           return {
             status: 'rejected',
             mutationState: possiblyChanged ? 'possibly-changed' : 'unchanged',
-            errorCode: workspaceBatchErrorCode(error),
+            errorCode: failure.code,
+            ...(failure.detail ? { errorDetail: failure.detail } : {}),
             ...(possiblyChanged ? {
               applied: {
                 state: { commitTokens, createdDirs: [...createdDirs] },
@@ -295,11 +298,4 @@ function cleanupCreatedEmptyDirs(createdDirs: readonly string[]): void {
       // File rollback is authoritative; directory cleanup is best effort.
     }
   }
-}
-
-function workspaceBatchErrorCode(error: unknown): string {
-  const name = error instanceof Error ? error.name : '';
-  if (name === 'WorkspaceEditValidationError') return 'workspace-batch-proposal-invalid';
-  if (name === 'WorkspaceEditConflictError') return 'workspace-batch-commit-conflict';
-  return 'workspace-batch-commit-failed';
 }

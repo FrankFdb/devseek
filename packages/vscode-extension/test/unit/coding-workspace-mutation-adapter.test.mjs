@@ -95,6 +95,35 @@ test('VS Code workspace adapter rejects a stale authorized baseline without over
   }
 });
 
+test('VS Code workspace adapter preserves source validation guidance in a failed receipt', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-vscode-mutation-invalid-'));
+  const target = path.join(root, 'main.cpp');
+  try {
+    const edits = new WorkspaceEditService();
+    const adapter = new VsCodeWorkspaceMutationAdapter(edits);
+    const baseline = edits.captureTextFileBaseline(target, root);
+    const outcome = await adapter.executeTextFileWrite({
+      transaction: new CanonicalWorkspaceMutationTransaction(),
+      runId: 'run-invalid-source',
+      sequence: 1,
+      actionId: 'write-invalid-source',
+      absPath: target,
+      workspaceRoot: root,
+      content: '#include <vector>int main() { return 0; }\n',
+      applyOptions: { validateSourceSanity: true },
+      baseline,
+      evidenceRefs: ['authority:file-write'],
+    });
+
+    assert.equal(outcome.receipt.status, 'failed');
+    assert.equal(outcome.receipt.errorCode, 'workspace-proposal-invalid');
+    assert.match(outcome.receipt.errorDetail ?? '', /预处理指令必须独占物理行/);
+    assert.equal(existsSync(target), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('VS Code workspace adapter rolls back when the caller-owned readback oracle rejects committed content', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-vscode-mutation-oracle-'));
   const target = path.join(root, 'report.md');

@@ -2802,6 +2802,7 @@ test('Agentic loop: visible correction and context convergence are owned by Agen
   assertContains(agenticLoop, 'emitAgenticCorrectionStatus', 'agentic loop must surface internal recovery as user-visible status');
   assertContains(agenticLoop, '已拦接口头承诺，要求真实工具执行', 'dangling model promises must be visible to the user');
   assertContains(agenticLoop, "'provider-short-intent'", 'dangling model promise recovery must have a stable evidence reason');
+  assertContains(agenticLoop, "'provider-response-corruption'", 'provider response recovery must have a stable evidence reason');
   assertContains(agenticLoop, 'AGENTIC_CONTEXT_GATHERING_ROUND_LIMIT_BEFORE_WRITE', 'context-gathering convergence must be bounded');
   assertContains(agenticLoop, 'contextGatheringOnlyRoundsWithoutWrite', 'agentic loop must track read/search-only rounds');
   assertContains(agenticLoop, '项目证据已收集，正在切换到交付落盘', 'formal project work must visibly transition from investigation to delivery');

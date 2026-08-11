@@ -1790,6 +1790,44 @@ test('run log replay settles short intent after the runtime emits a recovery tra
   }
 });
 
+test('run log replay settles a truncated response after the runtime starts safe recovery', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-08-11T02:10:00.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'truncated-response-recovered',
+      data: {
+        name: 'extension.response.raw',
+        content: '正在写入。 <TOOL_CALL>{"name":"create_file","arguments":{"path":"src/main.cpp"',
+      },
+    },
+    {
+      ts: '2026-08-11T02:10:00.100Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'agent-status',
+      event: 'agent-status',
+      runId: 'truncated-response-recovered',
+      data: {
+        phase: 'repair',
+        state: 'started',
+        recoveryReason: 'provider-response-corruption',
+        title: 'Provider response recovery',
+      },
+    },
+  ]);
+
+  try {
+    const kinds = new Set(replayRunLog(logPath).issues.map(issue => issue.kind));
+    assert.equal(kinds.has('provider-truncated-response'), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run log replay accepts full markdown read-only answer after tool evidence', () => {
   const { dir, logPath } = writeLog([
     {

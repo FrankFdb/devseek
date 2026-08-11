@@ -38,6 +38,9 @@ export function repairGeneratedSourceTransportEscapes(filePath: string, content:
   let current = content || '';
   let repairCount = 0;
   if (CPP_SOURCE_EXT_RE.test(filePath || '')) {
+    const includeDirectiveRepair = repairCppCollapsedIncludeDirectives(current);
+    current = includeDirectiveRepair.content;
+    repairCount += includeDirectiveRepair.repairCount;
     const macroTransportRepair = repairCppMacroTransportEscapedNewlines(current);
     current = macroTransportRepair.content;
     repairCount += macroTransportRepair.repairCount;
@@ -58,6 +61,25 @@ export function repairGeneratedSourceTransportEscapes(filePath: string, content:
     repaired: repairCount > 0,
     repairCount,
   };
+}
+
+function repairCppCollapsedIncludeDirectives(content: string): SourceTransportRepairResult {
+  let current = content;
+  let repairCount = 0;
+  const collapsedInclude = /^([ \t]*#\s*include\s*(?:<[^>\r\n]+>|"[^"\r\n]+"))(?=[ \t]*[^ \t\r\n/])/gm;
+
+  while (true) {
+    let roundRepairs = 0;
+    const repaired = current.replace(collapsedInclude, (_match, directive: string) => {
+      roundRepairs += 1;
+      return `${directive}\n`;
+    });
+    if (roundRepairs === 0) break;
+    current = repaired;
+    repairCount += roundRepairs;
+  }
+
+  return { content: current, repaired: repairCount > 0, repairCount };
 }
 
 function findCppUnterminatedStringLiteral(content: string): SourceSanityIssue | undefined {

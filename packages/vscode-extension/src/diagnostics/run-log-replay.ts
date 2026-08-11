@@ -14,6 +14,7 @@ import { hasInteractiveLaunchEvidence } from '../execution-outcome-classifier';
 import {
   RunRecoverySettlement,
   terminalCommandIdentity,
+  type PendingProviderIntegrityFailure,
 } from './run-recovery-settlement';
 
 export type RunLogReplayIssueSeverity = 'info' | 'warn' | 'error';
@@ -347,6 +348,9 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
       if (isProviderShortIntentRecoveryStatus(data)) {
         recoverySettlement.settleLatestProviderShortIntent();
       }
+      if (isProviderResponseCorruptionRecoveryStatus(data)) {
+        recoverySettlement.settleLatestProviderIntegrityFailure();
+      }
     }
     if (entry.event === 'participant-started') {
       appVersion ??= stringValue(data?.appVersion);
@@ -400,12 +404,15 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
         providerResponses += 1;
         const parsedToolCount = parseFakeToolCalls(content).length;
         latestExtensionResponse = { line: event.line, content, parsedToolCount };
-        const integrityKind = collectProviderResponseIssues(content, event.line, issues);
-        if (integrityKind === 'short_intent') {
+        const providerResponse = collectProviderResponseIssues(content, event.line, issues);
+        if (providerResponse.integrityKind === 'short_intent') {
           recoverySettlement.recordProviderShortIntent({
             line: event.line,
             evidence: truncateOneLine(content, 220),
           });
+        }
+        if (providerResponse.recoverableIssue) {
+          recoverySettlement.recordProviderIntegrityFailure(providerResponse.recoverableIssue);
         }
         if (SOURCE_CODE_RESPONSE_RE.test(content)) {
           sourceCodeResponses.push({
@@ -544,6 +551,10 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
       message: 'Provider 只输出短意图，没有工具调用或结论；运行时必须恢复追问，不能结算。',
       evidence: shortIntent.evidence,
     });
+  }
+
+  for (const failure of recoverySettlement.unresolvedProviderIntegrityFailures()) {
+    issues.push(failure);
   }
 
   collectProductRunEvidenceSettlementIssues({
@@ -981,11 +992,16 @@ function collectProviderRequestIssues(content: string, line: number, issues: Run
   }
 }
 
+interface ProviderResponseIssueCollection {
+  integrityKind: ProviderOutputIntegrityKind;
+  recoverableIssue?: PendingProviderIntegrityFailure;
+}
+
 function collectProviderResponseIssues(
   content: string,
   line: number,
   issues: RunLogReplayIssue[],
-): ProviderOutputIntegrityKind {
+): ProviderResponseIssueCollection {
   const duplicateWritePath = findDuplicateFullFileWritePath(content);
   if (duplicateWritePath) {
     issues.push({
@@ -998,22 +1014,25 @@ function collectProviderResponseIssues(
   }
   const integrity = classifyProviderOutputIntegrity(content);
   if (integrity.kind === 'empty') {
-    issues.push({
-      kind: 'empty-provider-response',
-      severity: 'error',
-      line,
-      message: 'DeepSeek 网页返回了空正文；执行器不应继续把它当成正常计划或正常任务回复。',
-    });
-    return integrity.kind;
+    return {
+      integrityKind: integrity.kind,
+      recoverableIssue: {
+        kind: 'empty-provider-response',
+        severity: 'error',
+        line,
+        message: 'DeepSeek 网页返回了空正文；执行器不应继续把它当成正常计划或正常任务回复。',
+      },
+    };
   }
+  let recoverableIssue: PendingProviderIntegrityFailure | undefined;
   if (integrity.kind === 'truncated') {
-    issues.push({
+    recoverableIssue = {
       kind: 'provider-truncated-response',
       severity: 'error',
       line,
       message: `${describeProviderOutputIntegrity(integrity.kind)}运行时必须保留失败事实或恢复重试。`,
       evidence: truncateOneLine(content, 220),
-    });
+    };
   } else if (integrity.kind === 'error_page') {
     issues.push({
       kind: 'provider-error-page',
@@ -1031,13 +1050,13 @@ function collectProviderResponseIssues(
       evidence: truncateOneLine(content, 220),
     });
   } else if (integrity.kind === 'incomplete_answer') {
-    issues.push({
+    recoverableIssue = {
       kind: 'provider-incomplete-answer',
       severity: 'warn',
       line,
       message: 'Provider 输出缺少可结算回答证据；只读任务不能仅凭该文本完成。',
       evidence: truncateOneLine(content, 220),
-    });
+    };
   }
 
   const toolRequestText = isolateModelToolRequestText(content).text;
@@ -1097,7 +1116,7 @@ function collectProviderResponseIssues(
       }
     }
   }
-  return integrity.kind;
+  return { integrityKind: integrity.kind, ...(recoverableIssue ? { recoverableIssue } : {}) };
 }
 
 function collectProductRunEvidenceSettlementIssues(input: {
@@ -1273,6 +1292,14 @@ function isProviderShortIntentRecoveryStatus(data: Record<string, unknown> | und
   return stringValue(data?.phase) === 'execute'
     && stringValue(data?.state) === 'started'
     && stringValue(data?.title) === '已拦接口头承诺，要求真实工具执行';
+}
+
+function isProviderResponseCorruptionRecoveryStatus(data: Record<string, unknown> | undefined): boolean {
+  if (stringValue(data?.recoveryReason) === 'provider-response-corruption') return true;
+  // Compatibility for logs emitted before recoveryReason became part of AgentStatusEvent.
+  return stringValue(data?.phase) === 'repair'
+    && stringValue(data?.state) === 'started'
+    && /Provider (?:响应被截断|请求未送达)，正在安全(?:续跑|重试)/.test(stringValue(data?.title) ?? '');
 }
 
 function numberValue(value: unknown): number | undefined {

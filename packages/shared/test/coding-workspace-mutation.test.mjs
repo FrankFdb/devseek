@@ -24,6 +24,7 @@ function host({
   readbackMatches = true,
   applyThrows = false,
   applyRejectsUnchanged = false,
+  applyRejectionDetail,
   rollbackSucceeds = true,
 } = {}) {
   const calls = [];
@@ -45,6 +46,7 @@ function host({
           status: 'rejected',
           mutationState: 'unchanged',
           errorCode: 'workspace-baseline-changed',
+          ...(applyRejectionDetail ? { errorDetail: applyRejectionDetail } : {}),
           evidenceRefs: ['baseline:changed'],
         };
       }
@@ -118,12 +120,16 @@ test('CanonicalWorkspaceMutationTransaction rolls back an uncertain partial appl
 });
 
 test('CanonicalWorkspaceMutationTransaction does not roll back a proven unchanged rejection', async () => {
-  const capability = host({ applyRejectsUnchanged: true });
+  const capability = host({
+    applyRejectsUnchanged: true,
+    applyRejectionDetail: '  Line 1\ncontains a collapsed directive.  ',
+  });
   const outcome = await new CanonicalWorkspaceMutationTransaction().execute(plan(), capability);
 
   assert.deepEqual(capability.calls, ['baseline', 'apply']);
   assert.equal(outcome.receipt.status, 'failed');
   assert.equal(outcome.receipt.errorCode, 'workspace-baseline-changed');
+  assert.equal(outcome.receipt.errorDetail, 'Line 1 contains a collapsed directive.');
   assert.equal(outcome.receipt.rollbackRef, undefined);
 });
 
