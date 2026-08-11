@@ -66,6 +66,17 @@ test('ResponseIntegrityChecker: does not treat a rate-limiter tool response as p
   assert.equal(result.safeToExecute, true);
 });
 
+test('ResponseIntegrityChecker: accepts a complete tool request in a structured text envelope', () => {
+  const response = `我先读取实现。\n\n\`\`\`\n${JSON.stringify([{
+    type: 'text',
+    text: '<tool_call>\n[TOOL:read_file {"path":"/workspace/src/rate_limiter.cpp"}]\n</tool_call>',
+  }], null, 2)}\n\`\`\``;
+  const result = new ResponseIntegrityChecker().check(response);
+
+  assert.equal(result.status, 'ok');
+  assert.equal(result.safeToExecute, true);
+});
+
 test('ResponseIntegrityChecker: still blocks provider login and captcha control surfaces', () => {
   const checker = new ResponseIntegrityChecker();
 

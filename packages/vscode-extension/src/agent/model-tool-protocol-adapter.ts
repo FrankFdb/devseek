@@ -1,4 +1,5 @@
 import { listCodingToolNames as listAgentToolNames } from '@devseek-netai/shared';
+import { normalizeStructuredToolEnvelope } from './structured-tool-envelope-normalizer';
 
 export interface ModelToolProtocolDialect<TTool> {
   name: string;
@@ -48,12 +49,13 @@ export function findFirstModelAuthoredToolResultStart(text: string): number {
 }
 
 export function isolateModelToolRequestText(text: string): ModelToolRequestIsolation {
-  const resultStart = findFirstModelAuthoredToolResultStart(text);
+  const normalizedText = normalizeStructuredToolEnvelope(text);
+  const resultStart = findFirstModelAuthoredToolResultStart(normalizedText);
   if (resultStart < 0) {
-    return { text, resultStart: -1, truncated: false };
+    return { text: normalizedText, resultStart: -1, truncated: false };
   }
   return {
-    text: text.slice(0, resultStart),
+    text: normalizedText.slice(0, resultStart),
     resultStart,
     truncated: true,
   };

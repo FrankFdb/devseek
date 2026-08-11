@@ -36,6 +36,17 @@ test('provider output integrity: classifies executable tool calls before settlem
   assert.equal(result.toolCallCount, 1);
 });
 
+test('provider output integrity: classifies a fenced structured text tool envelope as executable', () => {
+  const response = `先读取文件。\n\n\`\`\`\n${JSON.stringify([{
+    type: 'text',
+    text: '<tool_call>\n[TOOL:read_file {"path":"/tmp/app/main.cpp"}]\n</tool_call>',
+  }], null, 2)}\n\`\`\``;
+  const result = classifyProviderOutputIntegrity(response);
+
+  assert.equal(result.kind, 'tool_call');
+  assert.equal(result.toolCallCount, 1);
+});
+
 test('provider output integrity: quote-damaged manage_todo_list is a recoverable control tool call', () => {
   const result = classifyProviderOutputIntegrity([
     '当前任务已实际完成，但 Todo 状态需要校正。',

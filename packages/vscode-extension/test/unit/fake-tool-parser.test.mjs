@@ -42,6 +42,31 @@ test('FakeToolParser: parses bracket tool calls', () => {
   assert.deepEqual(tools[0].input, { path: 'src/index.ts' });
 });
 
+test('FakeToolParser: unwraps fenced structured text emitted around a complete tool request', () => {
+  const text = [
+    '我先查看工作区。',
+    '```',
+    JSON.stringify([{
+      type: 'text',
+      text: '<tool_call>\n[TOOL:list_dir {"path":"/tmp/workspace"}]\n</tool_call>',
+    }], null, 2),
+    '```',
+  ].join('\n');
+
+  assert.deepEqual(parseFakeToolCalls(text), [{ name: 'list_dir', input: { path: '/tmp/workspace' } }]);
+  assert.equal(hasIncompleteFakeToolCallProtocol(text), false);
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.equal(stripToolCallBlocks(text), '我先查看工作区。');
+});
+
+test('FakeToolParser: keeps ordinary structured text JSON inert', () => {
+  const text = '```json\n[{"type":"text","text":"ordinary report content"}]\n```';
+
+  assert.equal(parseFakeToolCalls(text).length, 0);
+  assert.equal(containsFakeToolCallProtocol(text), false);
+  assert.equal(stripToolCallBlocks(text), text);
+});
+
 test('FakeToolParser: recovers quote-damaged manage_todo_list control calls', () => {
   const text = [
     'Todo 状态需要校正。',

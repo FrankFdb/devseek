@@ -1,5 +1,6 @@
 import { listCodingToolNames as listAgentToolNames } from '@devseek-netai/shared';
 import { hasIncompleteFakeToolCallProtocol, parseFakeToolCalls } from '../../agent/fake-tool-parser';
+import { normalizeStructuredToolEnvelope } from '../../agent/structured-tool-envelope-normalizer';
 import {
   looksLikeProviderLoginGate,
   looksLikeProviderRateLimitGate,
@@ -45,7 +46,7 @@ const XML_REGISTERED_TOOL_OPEN_RE = new RegExp(`(?:<|&lt;)\\s*(${XML_MODEL_TOOL_
 
 export class ResponseIntegrityChecker {
   check(content: string): ResponseIntegrityResult {
-    const text = String(content || '');
+    const text = normalizeStructuredToolEnvelope(String(content || ''));
     const trimmed = text.trim();
     if (!trimmed) {
       return result('empty', 'Provider returned an empty response.', false);

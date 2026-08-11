@@ -1,6 +1,7 @@
 import { hasReadOnlyAnswerEvidence } from './completion-evidence';
 import { hasIncompleteFakeToolCallProtocol, parseFakeToolCalls } from './fake-tool-parser';
 import { isolateModelToolRequestText } from './model-tool-protocol-adapter';
+import { normalizeStructuredToolEnvelope } from './structured-tool-envelope-normalizer';
 import {
   looksLikeProviderErrorSurface,
   looksLikeProviderLoginGate,
@@ -30,7 +31,7 @@ const SHORT_INTENT_RE = /(?:我(?:来|将|会|再|先|继续)|让我|现在我|�
 const CONCRETE_CONCLUSION_RE = /(?:结论|依据|原因|问题|风险|建议|对策|方案|任务拆解|验证结果|已完成|修改了|创建了|summary|conclusion|evidence|recommendation|implemented|changed)/i;
 
 export function classifyProviderOutputIntegrity(text: string | undefined): ProviderOutputIntegrity {
-  const raw = String(text ?? '');
+  const raw = normalizeStructuredToolEnvelope(String(text ?? ''));
   const trimmed = raw.trim();
   if (!trimmed) {
     return buildProviderIntegrity('empty', 0, false, 'provider returned an empty response');
