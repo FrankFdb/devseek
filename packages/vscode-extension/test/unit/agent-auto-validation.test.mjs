@@ -177,6 +177,34 @@ test('Agent auto validation selects and runs a discovered CMake project test scr
   }
 });
 
+test('Agent auto validation binds project retries to every accumulated changed path', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-cmake-retry-'));
+  try {
+    seed(root, 'include/scheduler.hpp', 'int scheduler();\n');
+    seed(root, 'src/scheduler.cpp', 'int scheduler() { return 1; }\n');
+    seed(root, 'CMakeLists.txt', 'enable_testing()\nadd_test(NAME scheduler COMMAND scheduler)\n');
+    seed(root, 'test.sh', '#!/usr/bin/env bash\ncmake -S . -B build && ctest --test-dir build\n');
+    const scopePaths = ['include/scheduler.hpp', 'src/scheduler.cpp'];
+    const context = verificationContext(root, scopePaths);
+
+    const result = await runAgentAutoValidationForWrites(
+      [written(root, 'src/scheduler.cpp')],
+      root,
+      '修复 include/ 和 src/ 中的 C++ 调度器并运行项目测试',
+      context.callbacks,
+      {
+        verificationAcceptance: context.acceptance,
+        verificationScopeWrittenFiles: scopePaths.map(file => written(root, file)),
+      },
+    );
+
+    assert.equal(result.verificationReceipt.status, 'passed');
+    assert.deepEqual(result.verificationReceipt.scopePaths, scopePaths);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('Agent auto validation preserves a real failing process and blocks completion', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-fail-'));
   try {

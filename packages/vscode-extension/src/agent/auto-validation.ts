@@ -86,6 +86,7 @@ export interface AgentAutoValidationResult {
 export interface AgentAutoValidationOptions {
   validationService?: Pick<ValidationService, 'discover' | 'execute'>;
   qualityWrittenFiles?: WrittenFileEvidence[];
+  verificationScopeWrittenFiles?: readonly WrittenFileEvidence[];
   verificationAdapter?: Pick<VsCodeVerificationAdapter, 'verify'>;
   verificationPorts?: {
     readonly selection: VerifierSelectionPort;
@@ -469,8 +470,13 @@ export async function runAgentAutoValidationForWrites(
   callbacks: AgentAutoValidationCallbacks,
   options: AgentAutoValidationOptions = {},
 ): Promise<AgentAutoValidationResult> {
-  const changedPaths = workspaceRelativeVerificationPaths(writtenFiles, workspaceRootFsPath);
-  if (changedPaths.length === 0 || callbacks.signal?.aborted) return {};
+  const triggerPaths = workspaceRelativeVerificationPaths(writtenFiles, workspaceRootFsPath);
+  if (triggerPaths.length === 0 || callbacks.signal?.aborted) return {};
+  const changedPaths = workspaceRelativeVerificationPaths(
+    options.verificationScopeWrittenFiles ?? writtenFiles,
+    workspaceRootFsPath,
+  );
+  if (changedPaths.length === 0) return {};
   const evidenceOperationId = nextAutoValidationOperationId(changedPaths);
   const acceptance = callbacks.canonicalVerificationAcceptance?.length
     ? callbacks.canonicalVerificationAcceptance

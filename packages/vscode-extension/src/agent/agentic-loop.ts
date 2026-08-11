@@ -667,6 +667,7 @@ export async function runAgenticLoop(
           writeAuthority.callbacks,
           {
             qualityWrittenFiles: allWrittenFiles,
+            verificationScopeWrittenFiles: allWrittenFiles,
             verificationAcceptance: callbacks.canonicalVerificationAcceptance
               ?? projectTaskContractAcceptance(writeAuthority.semanticContract.taskContract),
           },
@@ -960,6 +961,7 @@ export async function runAgenticLoop(
       writeAuthority.callbacks,
       {
         qualityWrittenFiles: allWrittenFiles,
+        verificationScopeWrittenFiles: allWrittenFiles,
         verificationAcceptance: callbacks.canonicalVerificationAcceptance
           ?? projectTaskContractAcceptance(writeAuthority.semanticContract.taskContract),
       },
