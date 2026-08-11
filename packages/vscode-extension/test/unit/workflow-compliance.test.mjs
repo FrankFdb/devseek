@@ -2585,6 +2585,8 @@ test('Architecture: Bridge does not use Playwright fill for oversized prompts', 
 test('Architecture: validated source changes require fresh source review before completion', () => {
   const agenticLoop = src('src/agent/agentic-loop.ts');
   const reviewLedger = src('src/agent/requirement-review-ledger.ts');
+  const providerReview = src('src/agent/provider-requirement-review.ts');
+  const independentReview = src('src/agent/independent-requirement-review.ts');
 
   assertContains(
     agenticLoop,
@@ -2610,6 +2612,31 @@ test('Architecture: validated source changes require fresh source review before 
     reviewLedger,
     '写入工具的自动读回不算独立复核',
     'mutation readback must not satisfy independent final-source review',
+  );
+  assertContains(
+    providerReview,
+    'new IndependentRequirementReviewer',
+    'provider adapter must delegate final-source judgment to the independent reviewer',
+  );
+  assert.match(
+    providerReview,
+    /chatWithMessages\([\s\S]*?input\.callbacks\.signal,[\s\S]*?true,/,
+    'independent review must use a fresh provider session',
+  );
+  assertContains(
+    providerReview,
+    'input.onProviderSessionReplaced()',
+    'implementation must be told that the reviewer replaced the browser session',
+  );
+  assertContains(
+    independentReview,
+    'independent, read-only senior code reviewer',
+    'semantic review must have a dedicated read-only role',
+  );
+  assertContains(
+    independentReview,
+    'Return one exact JSON object matching the schema',
+    'semantic review must return a machine-checkable verdict',
   );
 });
 

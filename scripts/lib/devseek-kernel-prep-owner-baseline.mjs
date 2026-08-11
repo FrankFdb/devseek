@@ -779,7 +779,9 @@ const SOURCE_CHECKS = Object.freeze([
     'export function resolveCodingTaskPathIntent(',
     'export function extractCodingWorkspacePaths(prompt: string)',
     'if (DATA_PREFIX_RE.test(before)) continue',
-    'if (REFERENCE_PREFIX_RE.test(mention.before)) return false',
+    'const intent = classifyMutationIntent(mention)',
+    'function resolvePrecedingAction(before: string)',
+    'function resolvePostfixAction(after: string)',
     'mutationDirectoryTargets',
   ], ["from 'vscode'", 'CliCodingKernelRuntimeAdapter', 'VsCodeCodingKernelRuntimeAdapter']),
   check('shared-terminal-effect-classifier', SOURCE_PATHS.sharedTerminalEffects, [
@@ -976,7 +978,8 @@ const SOURCE_CHECKS = Object.freeze([
     'const unresolvedVerifications = settledCodingVerificationReceipts(',
     'input.verifications,',
     'input.toolExecutions,',
-    'codingVerificationToolFailureWasRecovered(',
+    'codingAdverseToolExecutionBlocksCompletion(',
+    'codingAdverseWorkspaceMutationWasRecovered(',
     "assertReceiptRunIds(runId, input.verifications, 'verification')",
     'verification-not-run',
     'cancellation-unsettled',
@@ -1222,7 +1225,10 @@ const SOURCE_CHECKS = Object.freeze([
   ]),
   check('vscode-run-changed-path-boundary', SOURCE_PATHS.extension, [
     'new RunChangedPathRecorder({',
-    'const agRunChangedPaths = runChangedPathRecorder.record({',
+    'const agentChangedPathScope = runChangedPathRecorder.openScope(agentWorkspaceRoot)',
+    'agentChangedPathScope.add(agResult.changedPaths)',
+    'const agRunChangedPaths = agentChangedPathScope.commit()',
+    'const chatRunChangedPaths = runChangedPathRecorder.openScope(chatWorkspaceRoot)',
     'currentChatRunChangedPaths = chatRunChangedPaths.commit();',
   ], [
     'settleAgentLoopResult(agResult, lastAgentChangedPaths)',

@@ -2207,7 +2207,9 @@
         "export function resolveCodingTaskPathIntent(",
         "export function extractCodingWorkspacePaths(prompt: string)",
         "if (DATA_PREFIX_RE.test(before)) continue",
-        "if (REFERENCE_PREFIX_RE.test(mention.before)) return false",
+        "const intent = classifyMutationIntent(mention)",
+        "function resolvePrecedingAction(before: string)",
+        "function resolvePostfixAction(after: string)",
         "mutationDirectoryTargets"
       ],
       "excludes": [
@@ -2578,7 +2580,8 @@
         "const unresolvedVerifications = settledCodingVerificationReceipts(",
         "input.verifications,",
         "input.toolExecutions,",
-        "codingVerificationToolFailureWasRecovered(",
+        "codingAdverseToolExecutionBlocksCompletion(",
+        "codingAdverseWorkspaceMutationWasRecovered(",
         "assertReceiptRunIds(runId, input.verifications, 'verification')",
         "verification-not-run",
         "cancellation-unsettled",
@@ -2969,7 +2972,10 @@
       "path": "packages/vscode-extension/src/extension.ts",
       "includes": [
         "new RunChangedPathRecorder({",
-        "const agRunChangedPaths = runChangedPathRecorder.record({",
+        "const agentChangedPathScope = runChangedPathRecorder.openScope(agentWorkspaceRoot)",
+        "agentChangedPathScope.add(agResult.changedPaths)",
+        "const agRunChangedPaths = agentChangedPathScope.commit()",
+        "const chatRunChangedPaths = runChangedPathRecorder.openScope(chatWorkspaceRoot)",
         "currentChatRunChangedPaths = chatRunChangedPaths.commit();"
       ],
       "excludes": [
@@ -3810,5 +3816,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "611de60882213410a84ef180f0ca0bf124504babdcd65e06ada844e300544a6b"
+  "baseline_sha256": "9ffbf8fbe7523fc8bf446a6765b4985871038a48059e9e01f9f4c34d445b5ed3"
 }

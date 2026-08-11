@@ -122,7 +122,7 @@ import {
 import { compactAgenticMessageHistory } from './agentic-context-compaction';
 import { ToolFailureRecoveryLedger } from './tool-failure-recovery';
 import { QualityGateStagnationLedger } from './quality-gate-stagnation';
-import { RequirementReviewLedger } from './requirement-review-ledger';
+import { createProviderRequirementReviewService } from './provider-requirement-review';
 import { tryRunGroundedMarkdownAgenticTask } from './grounded-markdown-agentic-task';
 import { buildAgenticSystemPrompt } from './agentic-system-prompt';
 import { createSemanticExecutionWriteAuthority } from './semantic-execution-context';
@@ -264,7 +264,13 @@ export async function runAgenticLoop(
   const allReadEvidencePaths = new Set<string>();
   const toolFailureRecovery = new ToolFailureRecoveryLedger({ workspaceRoot });
   const qualityGateStagnation = new QualityGateStagnationLedger();
-  const requirementReview = new RequirementReviewLedger();
+  const requirementReview = createProviderRequirementReviewService({
+    userPrompt: () => writeAuthority.currentPrompt,
+    workspaceRoot,
+    mode,
+    callbacks,
+    onProviderSessionReplaced: () => { forceProviderNewSessionNextTurn = true; },
+  });
   let progressEpoch = 0;
   const recordQualityGateFailureFeedback = (qualityGate: AgenticHistoryQualityGate | undefined): string => {
     const observation = qualityGateStagnation.record(qualityGate, progressEpoch);
@@ -984,7 +990,7 @@ export async function runAgenticLoop(
       && missingAfterTools.length === 0
       && !blockingFailureAfterTools
       && summaryFactFailuresAfterTools.length === 0) {
-      reviewFeedback = requirementReview.request({
+      reviewFeedback = await requirementReview.request({
         sourceChangeRequested: effectiveTaskIntent.mutation.sourceChange,
         qualityGate: normalizedAutoValidation.qualityGate,
         writtenFiles: allWrittenFiles,

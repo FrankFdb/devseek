@@ -29,10 +29,11 @@ test('requirement review is scheduled once for each newly validated source mutat
   });
   assert.match(first, /通过可见测试只证明已覆盖行为/);
   assert.match(first, /时间回拨、状态迁移、重入、顺序、容量、边界值和异常路径/);
-  assert.match(first, /调用方能观察到与正常成功不同的失败通道/);
+  assert.match(first, /调用方可观察且不与正常成功重叠的失败通道/);
   assert.match(first, /完成或取消后的再次使用/);
-  assert.match(first, /数据结构和复杂度要求/);
-  assert.match(first, /一次性最小 probe/);
+  assert.match(first, /数据结构和复杂度/);
+  assert.match(first, /全新隔离上下文中的只读审查者/);
+  assert.match(first, /不要自行创建临时 probe/);
   assert.match(first, /read_file/);
   assert.match(ledger.beforeNoToolCompletion(), /不能跳过需求覆盖复核/);
 
@@ -49,6 +50,15 @@ test('requirement review is scheduled once for each newly validated source mutat
     writtenFiles: firstWrites,
     roundReadFiles: ['/workspace/include/cache.hpp', '/workspace/src/cache.cpp'],
   }), /最终源码已重新读取/);
+  assert.deepEqual(ledger.takeIndependentReviewCandidate(), {
+    sourcePaths: ['include/cache.hpp', 'src/cache.cpp'],
+  });
+  assert.match(ledger.beforeNoToolCompletion(), /不能跳过独立需求审查/);
+  assert.match(ledger.settleIndependentReview({
+    status: 'passed',
+    explanation: 'All stated requirements map to the final source.',
+    findings: [],
+  }), /独立需求审查：通过/);
   assert.equal(ledger.beforeNoToolCompletion(), undefined);
   assert.equal(ledger.request({
     sourceChangeRequested: true,
@@ -82,7 +92,55 @@ test('pending requirement review survives read-only rounds without a new quality
     writtenFiles: writes,
     roundReadFiles: ['src/order_book.cpp'],
   }), /最终源码已重新读取/);
+  assert.deepEqual(ledger.takeIndependentReviewCandidate(), {
+    sourcePaths: ['src/order_book.cpp'],
+  });
+  assert.match(ledger.settleIndependentReview({
+    status: 'passed',
+    explanation: 'The implementation satisfies the contract.',
+    findings: [],
+  }), /独立需求审查：通过/);
   assert.equal(ledger.beforeNoToolCompletion(), undefined);
+});
+
+test('failed independent review blocks completion until repaired source is revalidated', () => {
+  const ledger = new RequirementReviewLedger();
+  const firstWrite = sourceWrite('src/order_book.cpp');
+  ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: passedGate,
+    writtenFiles: [firstWrite],
+    roundReadFiles: [],
+  });
+  ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: undefined,
+    writtenFiles: [firstWrite],
+    roundReadFiles: ['src/order_book.cpp'],
+  });
+  ledger.takeIndependentReviewCandidate();
+  const failed = ledger.settleIndependentReview({
+    status: 'failed',
+    explanation: 'A used identity can be submitted again.',
+    findings: [{
+      title: 'Preserve used order identifiers',
+      body: 'Completed identifiers are erased and become reusable.',
+      priority: 1,
+      confidence: 0.99,
+      path: 'src/order_book.cpp',
+      line: 42,
+    }],
+  });
+  assert.match(failed, /Preserve used order identifiers/);
+  assert.match(ledger.beforeNoToolCompletion(), /必须根据上述独立结论修复生产源码/);
+
+  const repairedWrite = sourceWrite('src/order_book.cpp');
+  assert.match(ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: passedGate,
+    writtenFiles: [firstWrite, repairedWrite],
+    roundReadFiles: [],
+  }), /完成前需求覆盖复核/);
 });
 
 test('requirement review ignores unverified, non-source, and non-code work', () => {
