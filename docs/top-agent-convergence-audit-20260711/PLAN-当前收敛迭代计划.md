@@ -40,7 +40,7 @@ devseek_governance:
 | C13 扩展边界 | `completed` | 唯一活跃项 MCP 已使用官方稳定 SDK；server launch 建立会话信任，只读封闭调用直接执行，高风险调用精确确认且 receipt 不可重放；其余未启用生态保持 conditional/experimental |
 | 用户仿真 | `completed` | I10～I23 共 72 个增量案例绑定唯一 fixture 与自动化证据；I21/I22/I23 分别覆盖 connector/environment、run collaboration、MCP authority；原始结果只保留在被 Git 忽略的 `code/devseek-tests/` |
 | C14 正式顶级资格 | `blocked_external` | Gate 0=`NOT_PASSED`，6 个外部 authority blocker、7 个 exact claims 尚未满足；RC、真实 Provider wave 与 sealed holdout 不得本地伪造 |
-| 本轮 release loop | `in_progress` | 完成跨包总回归、生成物/治理/架构门禁、VSIX 打包安装、运行时残留检查和 Git 提交后关闭 |
+| 本轮 release loop | `completed` | Phase 0～12 的 32/32 门禁通过；VSIX 已打包安装；唯一 Bridge 运行时空闲，无测试进程或 `.inspect.cjs` 残留 |
 | 文档治理 | `completed` | 01～20 编号文档已完整归档且根目录无编号尾页；当前状态与任务只由 PLAN 发放，README 仅提供入口和边界 |
 
 ## 非活跃能力
@@ -58,7 +58,7 @@ devseek_governance:
 
 | 顺序 | 任务 | 状态 | 完成条件 |
 | ---: | --- | --- | --- |
-| 1 | 关闭当前本地候选 | `in_progress` | 全量 shared/Bridge/CLI/Headless/Extension 测试、Phase 0～12、架构与生成物门禁全部通过；VSIX 重新打包并安装；无残留测试进程；提交边界清楚 |
+| 1 | 关闭当前本地候选 | `completed` | 全量 shared/Bridge/CLI/Headless/Extension 测试、Phase 0～12、架构与生成物门禁全部通过；VSIX 已安装；无残留测试进程；产品、候选身份、文档归档和测试边界均已独立提交 |
 | 2 | 建立 Gate 0 外部资格设施 | `blocked_external` | 独立受保护 profile/aggregator、签名身份、WORM retention、trusted time/anchor 与 7 个 exact claims 全部由授权主体提供并经机器复算 |
 | 3 | 执行一次 headed DeepSeek 真实用户路径 | `blocked_external` | 第 2 项完成后，按已有条件授权保留 VS Code 窗口和 DeepSeek 页面；绑定当前冻结候选与真实 Provider evidence，不复用旧回执 |
 | 4 | 执行 C14 RC 与 sealed holdout | `blocked_external` | 冻结 profile、runner、候选和 coverage；RC 与全新 disjoint holdout 均满足门槛，失败不得补跑覆盖 |
