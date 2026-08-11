@@ -89,6 +89,24 @@ test('ResponseIntegrityChecker: accepts a complete tool request in a structured 
   assert.equal(result.safeToExecute, true);
 });
 
+test('ResponseIntegrityChecker: ignores inline fence literals around complete multiline file tools', () => {
+  const response = [
+    '工具调用必须包裹在```xml代码围栏中。现在重新发送：',
+    '```',
+    '<create_file>',
+    '<path>/workspace/include/router.hpp</path>',
+    '<content><![CDATA[#pragma once',
+    '#include <string>',
+    ']]></content>',
+    '</create_file>',
+    '```',
+  ].join('\n');
+  const result = new ResponseIntegrityChecker().check(response);
+
+  assert.equal(result.status, 'ok');
+  assert.equal(result.safeToExecute, true);
+});
+
 test('ResponseIntegrityChecker: still blocks provider login and captcha control surfaces', () => {
   const checker = new ResponseIntegrityChecker();
 

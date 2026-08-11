@@ -43,6 +43,7 @@ const TOOL_CALL_ENVELOPE_TAIL_RE = /(?:<|&lt;)\s*(?:T|TO|TOO|TOOL|TOOL_|TOOL_C|T
 const TOOL_CALL_ENVELOPE_OPEN_RE = /(?:<|&lt;)\s*TOOL_CALLS?\b/gi;
 const TOOL_CALL_ENVELOPE_CLOSE_RE = /(?:<\/|&lt;\/)\s*TOOL_CALLS?\s*(?:>|&gt;)/gi;
 const XML_REGISTERED_TOOL_OPEN_RE = new RegExp(`(?:<|&lt;)\\s*(${XML_MODEL_TOOL_NAME_PATTERN})\\b[^<>]*(?:>|&gt;)?`, 'gi');
+const MARKDOWN_BACKTICK_FENCE_LINE_RE = /^[ \t]{0,3}`{3,}(?=[^`]|$)/gm;
 
 export class ResponseIntegrityChecker {
   check(content: string): ResponseIntegrityResult {
@@ -183,7 +184,11 @@ function health(status: BridgeHealthDecision['status'], reason: string, canSendP
 }
 
 function hasUnclosedMarkdownFence(text: string): boolean {
-  const matches = text.match(/```/g);
+  // A Markdown fence is a line-level delimiter. Provider prose frequently
+  // mentions literals such as ```xml while explaining the text-tool protocol;
+  // those inline literals must not turn a complete tool response into a
+  // fabricated truncation failure.
+  const matches = text.match(MARKDOWN_BACKTICK_FENCE_LINE_RE);
   return Boolean(matches && matches.length % 2 === 1);
 }
 
