@@ -97,6 +97,35 @@ test('ValidationService enforces configured stdout evidence', async () => {
   assert.match(observation.summary, /stdout missed "EXPECTED"/);
 });
 
+test('ValidationService rejects compiler warnings emitted for changed C++ sources', async () => {
+  const warning = '/repo/src/job_scheduler.cpp:61:8: warning: variable cmp set but not used [-Wunused-but-set-variable]';
+  const service = new ValidationService({
+    commandRunner: async () => commandResult({ stderr: warning, output: warning }),
+  });
+  const observation = await service.execute(processStep('/repo', {
+    invocation: { kind: 'process', command: 'bash', args: ['test.sh'] },
+    scopePaths: ['src/job_scheduler.cpp'],
+  }));
+
+  assert.equal(observation.status, 'failed');
+  assert.equal(observation.exitCode, 0);
+  assert.match(observation.summary, /warning\(s\) in changed source/);
+  assert.ok(observation.evidenceRefs.includes('compiler-warning:src/job_scheduler.cpp:61:8'));
+});
+
+test('ValidationService does not attribute unrelated compiler warnings to the changed scope', async () => {
+  const warning = '/repo/third_party/legacy.cpp:7:2: warning: deprecated API [-Wdeprecated-declarations]';
+  const service = new ValidationService({
+    commandRunner: async () => commandResult({ stderr: warning, output: warning }),
+  });
+  const observation = await service.execute(processStep('/repo', {
+    invocation: { kind: 'process', command: 'bash', args: ['test.sh'] },
+    scopePaths: ['src/job_scheduler.cpp'],
+  }));
+
+  assert.equal(observation.status, 'passed');
+});
+
 test('ValidationService hashes readback evidence without invoking a process', async () => {
   const workspace = mkdtempSync(path.join(tmpdir(), 'devseek-vscode-readback-'));
   try {

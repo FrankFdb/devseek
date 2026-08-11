@@ -13,6 +13,7 @@ import {
   VerificationPlanner,
   type VerificationPlannerFs,
 } from '../app/verification-planner';
+import { assessValidationOutputDiagnostics } from './validation-output-diagnostics';
 
 export type ValidationMode = 'project' | 'syntax' | 'typecheck' | 'compile-only' | 'build' | 'test' | 'readback';
 
@@ -132,6 +133,20 @@ export class ValidationService implements CodingBuildExecutionHostPort {
         stderr: result.stderr,
         mutationPaths,
         evidenceRefs,
+      });
+    }
+    const outputDiagnostics = assessValidationOutputDiagnostics({
+      cwd: step.cwd,
+      scopePaths: step.scopePaths,
+      output: [result.stdout, result.stderr, result.output].filter(Boolean).join('\n'),
+    });
+    if (outputDiagnostics.warnings.length > 0) {
+      return observation(step, 'failed', outputDiagnostics.summary ?? `${command} emitted compiler warnings.`, {
+        exitCode: result.exitCode,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        mutationPaths,
+        evidenceRefs: [...evidenceRefs, ...outputDiagnostics.evidenceRefs],
       });
     }
     return observation(step, 'passed', summarize(result.output) || `${command} passed.`, {
