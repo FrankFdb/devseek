@@ -40,7 +40,7 @@ devseek_governance:
 
 **最开始的最终目的尚未达成。**
 
-文档包已经完成诊断、对标、目标架构和资格方法设计，C0 本地可证地基也已接线。VS Code、CLI、Headless 已共用 canonical Coding Kernel、38 个收敛语义域与不可变磁盘 operation journal，Provider、tool、workspace/external effect，以及 task-path intent/requirement/external-source/acceptance/design/change-plan/revision 不再由 Surface 各自解释；C8 code change/integration conformance 与 C9 验证、诊断、回归选择和有界修复也已形成 shared 唯一语义边界。完成必须来自计划内 mutation 的 committed readback 和同一因果链验证；同根因只允许一次有新证据的 replan，相同 mutation/diagnosis 会诚实阻断。五类固定场景与 I10～I19 共 55 个增量用户路径已通过本地验收。C1～C14 已有 38 项 `wired`；其余 31 项能力、完整长任务路线和密封 holdout 资格尚未完成，因此当前不能宣称 DevSeek 已达到顶级编程智能体目标。
+文档包已经完成诊断、对标、目标架构和资格方法设计，C0 本地可证地基也已接线。VS Code、CLI、Headless 已共用 canonical Coding Kernel、45 个收敛语义域与不可变磁盘 operation journal，Provider、tool、workspace/external effect、task-path intent/requirement/external-source/acceptance/design/change-plan/revision，以及独立审查、产物身份、Git 交付、发布与回滚不再由 Surface 各自解释；C8 code change/integration conformance、C9 验证/诊断/回归选择/有界修复和 C10 review/delivery/release 均已形成 shared 唯一语义边界。完成必须来自计划内 mutation 的 committed readback 和同一因果链验证；同根因只允许一次有新证据的 replan，相同 mutation/diagnosis 会诚实阻断。五类固定场景与 I10～I20 共 59 个增量用户路径已通过本地验收。C1～C14 已有 45 项 `wired`；其余 24 项能力、完整长任务路线和密封 holdout 资格尚未完成，因此当前不能宣称 DevSeek 已达到顶级编程智能体目标。
 
 | 原始目的 | 当前判定 | 主要证据 |
 | --- | --- | --- |
@@ -49,19 +49,19 @@ devseek_governance:
 | 定义单一执行内核与完整生命周期 | `已完成设计` | 03、04、08 已定义目标、能力 DAG 和里程碑 |
 | 建立机器账本、证据协议和 fail-closed 裁决 | `本地实现完成，未取得资格` | C0 `7/7 wired`；Gate 0 local conformance `PASSED`；claims `0` |
 | 将 VS Code、CLI、Headless 切到同一 Coding Kernel | `本地产品责任已完成` | 三 Surface 共用 canonical Kernel、TaskContract、Tool、Mutation、Verification、Completion；五类真实工作区产品场景联合等价，legacy execution owner=0 |
-| 让 C1～C14 产品能力达到可声明等级 | `进行中` | 69 项中 38 项已 `wired`，其余 31 项为 `proposed`；C8 code change/integration 和 C9 verification/diagnosis/regression/repair 已接线，无 qualification claim |
+| 让 C1～C14 产品能力达到可声明等级 | `进行中` | 69 项中 45 项已 `wired`，其余 24 项为 `proposed`；C8 code change/integration、C9 verification/diagnosis/regression/repair 和 C10 review/delivery/release 已接线，无 qualification claim |
 | 完成正式项目、真实 Provider 与 holdout 顶级资格 | `未完成` | Gate 0 `NOT_PASSED`，6 个外部 authority blocker，R1 qualification `NOT_STARTED` |
 
 ## 2. 当前机器事实
 
 | 范围 | 2026-08-11 观测 |
 | --- | --- |
-| Capability ledger | 76 项能力、15 个域；共 45 项 `wired`、31 项 `proposed`；其中 C1～C14 为 38/69 `wired`；claims=0 |
+| Capability ledger | 76 项能力、15 个域；共 52 项 `wired`、24 项 `proposed`；其中 C1～C14 为 45/69 `wired`；claims=0 |
 | Gate 0 | local conformance `PASSED`；implementation `7/7`；repository blocker `0`；external blocker `6`；最终 `NOT_PASSED` |
 | Qualification runner | 19 个入口；1 个本地非资格 runner、10 个 catalog fixture、4 个 production disabled、4 个 historical disabled |
 | R4 | 6/6 原始 leaf completed，blocked=0；冻结时 artifact/install/runtime 与 v2 候选精确绑定，stable runtime=1、window-sensitive leaf=0；当前开发候选另由 current identity 管理 |
 | Frozen R4 candidate | 当前 `R4-RELEASE-CANDIDATE-MANIFEST/v2` 冻结 `4f8a567` VSIX；原 `a034e5e` v1 JSON/schema/view 以固定文件哈希归档为历史不可变候选；两者均无资格效力 |
-| Current local development receipt | 当前 source/artifact/install/runtime 身份在本轮 release loop 完成后刷新；I10～I19 共 55 个增量案例及本轮 C8/C9 产品仿真原始结果仅在本地 `code/devseek-tests/` 保留，不进入 Git。该回执不改写 `4f8a567` 冻结候选，也不是 qualification receipt |
+| Current local development receipt | 当前 source/artifact/install/runtime 身份在本轮 release loop 完成后刷新；I10～I20 共 59 个增量案例及本轮 C8/C9/C10 产品仿真原始结果仅在本地 `code/devseek-tests/` 保留，不进入 Git。该回执不改写 `4f8a567` 冻结候选，也不是 qualification receipt |
 | Post-R4 local track | NP-05/06/07 manifest 已在 `5c32551` 提交；检查覆盖 16 个 source、17/17 anchors、8 个 local-only command，6/6 通过 |
 | Surface inventory | 88 个入口分母全部 covered，无 unknown、重复或待 cutover；source hash 对账通过 |
 | Architecture budget | 设计优先门禁通过，仍有 6 个明确债务热点；`extension.ts` 为 1679/1683 行；大小只作回退护栏，不替代职责、依赖和 owner 判定 |
@@ -69,7 +69,7 @@ devseek_governance:
 必须同时保留三个事实：
 
 1. R1～R3 的大量产品侧原子卡确实有本地测试、发包和 controlled VSIX 回执，不能抹消这些实现进展。
-2. 这些回执一直声明 `qualification_effect=NONE`；能力账本只将具备 owner、产品接线和机器证据的 33 项 C1～C14 能力提升为 `wired`，不能从“作业卡 PASS”批量推导其余能力已完成。
+2. 这些回执一直声明 `qualification_effect=NONE`；能力账本只将具备 owner、产品接线和机器证据的 45 项 C1～C14 能力提升为 `wired`，不能从“作业卡 PASS”批量推导其余能力已完成。
 3. 当前 process baseline 已由简短 `PLAN-当前收敛迭代计划.md` 唯一承接；14 号只保留历史回执并已归档，计划与日志责任不再混写。
 
 ## 3. 核心缺口
@@ -84,10 +84,11 @@ devseek_governance:
 ### 3.2 单内核本地产品责任已完成
 
 - VS Code、CLI、Headless 产品入口只向 shared `CanonicalCodingKernel` 提交版本化 request；Surface 不再拥有第二套完成、mutation 或 verification 语义。
-- Orientation、TaskContract、TaskPathIntent、EngineeringOrientation、CodebaseExploration、ContextGraph、ContextProvenance、InstructionPrecedence、Requirements、ExternalBoundary、SourceGrounding、AcceptanceContract、DesignDecision、ChangePlan、ChangePlanRevision、RunLifecycle、AgentCommand、Settlement、SurfaceAdapter、ProviderNormalization、ToolSchema、ToolDispatch、ToolExecution、Mutation、CodeChange、IntegrationConformance、VerifierSelection、BuildOrchestration、Verification、Diagnostic、RegressionSelection、RepairDecision、Completion、RunEvidenceRetention、MemoryPolicy、Checkpoint、ContextCompaction、ResumeIdempotency 38 个语义域均由 shared 单一 owner 裁决，legacy execution owner 已删除或封死。
+- Orientation、TaskContract、TaskPathIntent、EngineeringOrientation、CodebaseExploration、ContextGraph、ContextProvenance、InstructionPrecedence、Requirements、ExternalBoundary、SourceGrounding、AcceptanceContract、DesignDecision、ChangePlan、ChangePlanRevision、RunLifecycle、AgentCommand、Settlement、SurfaceAdapter、ProviderNormalization、ToolSchema、ToolDispatch、ToolExecution、Mutation、CodeChange、IntegrationConformance、VerifierSelection、BuildOrchestration、Verification、Diagnostic、RegressionSelection、RepairDecision、Completion、RunEvidenceRetention、MemoryPolicy、Checkpoint、ContextCompaction、ResumeIdempotency、IndependentReview、ArtifactIdentity、GitDelivery、DeliveryManifest、ReleaseGate、CiDeployObserve、Rollback 45 个语义域均由 shared 单一 owner 裁决，legacy execution owner 已删除或封死。
 - acceptance 只能从已提交 mutation 的工作区 readback 获得结构证据，技术验证必须来自 acceptance 选中的只读 verifier；Surface 提示词、文件后缀和主观成功声明不能代替工程事实。
 - `CodeChangePort` 与 `IntegrationConformancePort` 在 Kernel 结算前复算计划覆盖、committed readback、工具调用、mutation 和 verification 的同 action 因果链；未计划路径、direct mutation 旁路、孤立工具调用和未验证改动均不能进入成功终态。
 - `DiagnosticPort` 将宿主/验证失败归一为稳定、路径绑定且可复算的 diagnosis；`RegressionSelectionPort` 按失败步骤前置依赖、影响路径和基础设施风险选取 targeted/dependent/full 验证；`RepairDecisionPort` 只在有进展证据时重试，同一根因至多 replan 一次，相同 mutation 与 diagnosis 立即停止。旧 VS Code bounded repair 语义 owner 已删除，Surface 只保留宿主组合或展示责任。
+- `IndependentReviewPort` 以不同 actor、精确改动范围和结算后的验证事实执行只读审查；`ArtifactIdentityPort`、`GitDeliveryPort` 与 `DeliveryManifestPort` 将源码、审查、提交和产物身份封成不可替换链；`ReleaseGatePort`、`CiDeployObservePort` 与 `RollbackPort` 只允许经授权的同一产物按 CI→deploy→smoke→observe 顺序推进，并在失败时绑定精确回滚目标。审查自证、范围遗漏、回执漂移和未经授权发布均 fail closed。
 - `TaskPathIntentPort` 区分明确修改目标、目标目录、参考输入和 slash-delimited 数据；`Alice/3/4`、需求文档和参考源码不再被误建模为必须改写的交付文件，宿主显式 target 仍保留精确范围。
 - TaskContract v2 明确区分 deliverable、constraint、non-goal、assumption/conflict 和 acceptance oracle；shared C4 owner 对外部来源做 boundary、locator、content digest、tool/effect receipt 精确绑定，弱 oracle、缺来源和冲突在实现前 fail closed。
 - shared C5 owner 生成可复算的 design alternative/trade-off、impact set、migration/deletion/rollback 和 acceptance mapping；`ChangePlanRevisionPort` 在模型提出具体文件后、任何宿主 effect 前生成证据绑定的设计/计划 revision，保留 parent lineage，并由低层 authority 统一拒绝工作区逃逸、显式用户范围外目标或未授权 effect。旧 VS Code requirement contract owner 及其专属测试已删除。
@@ -99,7 +100,7 @@ devseek_governance:
 
 ### 3.3 产品能力和资格尚未对齐
 
-- C1～C14 尚未 `wired` 的 31 项 `proposed` 能力需逐项回填“实现 owner 可达、全入口接线、失败语义、测试证据”，再由账本判定 `proposed -> implemented -> wired`。下一本地批次优先 C10 review/delivery，并按共享安全边界合批 C6 capability/connector、C7 secrets/dirty-tree/platform；随后收敛 C11 协作长任务与 C13 扩展边界，不再另建契约、计划或验证 owner。
+- C1～C14 尚未 `wired` 的 24 项 `proposed` 能力需逐项回填“实现 owner 可达、全入口接线、失败语义、测试证据”，再由账本判定 `proposed -> implemented -> wired`。下一本地批次按共享安全边界合批 C6 capability/connector 与 C7 secrets/dirty-tree/platform；随后收敛 C11 协作长任务和 C13 扩展边界，不再另建契约、计划、验证、审查或交付 owner。
 - Gate 0 缺少独立受保护 profile、aggregator、签名 evidence digest binding、WORM/retention、trusted time 和 7 个 exact claims。
 - R4 headed 真实用户路线已获得“外部资格前置满足后执行一次并保留窗口/页面”的条件授权；前置尚未满足，RC smoke 和 L6 holdout 均未执行，不能用 deterministic 或 controlled fake Bridge 结果替代。
 
@@ -140,7 +141,7 @@ devseek_governance:
 
 | ID | 任务 | 完成条件 |
 | --- | --- | --- |
-| `CAP-01` | 对 C1～C14 尚未 `wired` 的 31 项产品能力逐项反查 | 每项有 owner、入口可达性、失败/恢复语义、验证证据和真实 implementation state；不按历史卡名批量提升 |
+| `CAP-01` | 对 C1～C14 尚未 `wired` 的 24 项产品能力逐项反查 | 每项有 owner、入口可达性、失败/恢复语义、验证证据和真实 implementation state；不按历史卡名批量提升 |
 | `CAP-02` | 补齐 P0 黄金旅程 | D-G01～D-G10 的写入、修改、运行、失败、权限拒绝、cancel/resume、CAS 冲突在共享 conformance suite 下通过 |
 | `CAP-03` | 补齐 P1 软件工程能力 | 指令优先级、repo/symbol map、source grounding、设计影响、Provider normalization、review/delivery、memory/skills/hooks/MCP 分别有验收 profile |
 | `CAP-04` | 完成 Surface 和平台矩阵 | VS Code/CLI/Headless 与 Linux/macOS/Windows/WSL 的适用边界和降级都有机器证据 |
@@ -164,7 +165,7 @@ devseek_governance:
 | VS Code extension full unit runner | `PASS`，163/163 suites |
 | Intent / Surface permission focused suites | `PASS`，52/52；未分类 terminal、否定 external-effect 与 duplicate-owner 反例受保护 |
 | Natural intent UI corpus | `PASS`，48/48，12 类任务各 4 条自然输入 |
-| Shared / CLI / Headless regression | `PASS`，Shared 415/415 tests、CLI 81/81 tests、Headless 25/25 tests |
+| Shared / CLI / Headless regression | `PASS`，Shared 422/422 tests、CLI 81/81 tests、Headless 25/25 tests |
 | Programming-agent benchmark | `PASS`，PA0～PA13 14/14；覆盖创建/修改、失败修复、证据事件、unified diff、项目测试、增量上下文、stdin、多文件/Python verifier、路径越界拒绝和正式项目工作流；局部 case 可独立复测且不覆盖全量 latest |
 | I10 增量用户仿真 | `PASS`，memory/checkpoint 5/5；版本化场景位于 `scripts/test/fixtures/user-simulations/i10-memory-checkpoint.json`，fixture SHA、逐例原始 TAP 与汇总仅在本地 `code/devseek-tests/memory-checkpoint/runs/i10-local-20260806-g379efbd/` 保留，不进入 Git；固定五场景不计作本轮增量 |
 | I11 增量用户仿真 | `PASS`，context/resume 4/4；版本化场景位于 `scripts/test/fixtures/user-simulations/i11-context-resume.json`，三次连续压缩、VS Code 密封收据、completed effect 跳过和 indeterminate effect 阻断均使用独立 case；原始 TAP 仅在本地 `code/devseek-tests/context-resume/runs/i11-context-resume-20260806/` 保留 |
@@ -176,10 +177,11 @@ devseek_governance:
 | I17 增量用户仿真 | `PASS`，Kernel settlement 5/5；版本化场景位于 `scripts/test/fixtures/user-simulations/i17-kernel-settlement.json`，fixture SHA256=`001437808d9ecf06281feba02fbe7d51528e933d2d36d91f20ce81a589dfc044`；分别验证 Surface 完成伪造、精确验证通过、跨 run 回执拒绝、acceptance 替换拒绝和 repair 后重验证；原始 TAP/JSON 仅在本地 `code/devseek-tests/kernel-settlement/` 保留，不进入 Git |
 | I18 增量用户仿真 | `PASS`，verification pipeline 6/6；版本化场景位于 `scripts/test/fixtures/user-simulations/i18-verification-pipeline.json`，fixture SHA256=`3502daaf8d61cadf6fe3aad2e49e485768f9bf0f340002b4d9ffe3eb18e868ee`；覆盖验证器选择、源码变更验证器拒绝、结构 readback、CLI 项目验证器不可被弱化、Headless 无能力零调用与 VS Code 未知后缀文本 readback；原始 TAP/JSON 仅在本地 `code/devseek-tests/verification-pipeline/` 保留，不进入 Git |
 | I19 增量用户仿真 | `PASS`，code-change/diagnostic-repair 9/9；版本化场景位于 `scripts/test/fixtures/user-simulations/i19-diagnostic-repair.json`，fixture SHA256=`8562df1f57ed8baf290e0ec07a87fe7274179fc726e8716f611ddd413efd3e32`；覆盖计划内 committed readback、计划外路径、direct mutation 旁路、因果链、稳定诊断、依赖回归、基础设施 full-risk、一次 replan 与相同修复停止；原始 TAP/JSON 仅在本地 `code/devseek-tests/diagnostic-repair/` 保留，不进入 Git |
-| Kernel owner convergence baseline | `PASS`，v29、134/134 source checks、38 semantic domains converged、missing Surface=0；baseline SHA256=`5291ac04d87768e8f3fbff0dada34ef23e95da8a2e2d26d36e906dd7831b4cb5` |
+| I20 增量用户仿真 | `PASS`，review/delivery/release 4/4；版本化场景位于 `scripts/test/fixtures/user-simulations/i20-review-delivery.json`，fixture SHA256=`f8e5c6d2f180862f6df7e7e93924a7e622e0060841313dd3eb2a686c0116a99e`；覆盖独立审查、自证与范围遗漏拒绝、精确产物/Git 交付、授权发布观测和失败后的精确回滚；原始 TAP/JSON 仅在本地 `code/devseek-tests/review-delivery/` 保留，不进入 Git |
+| Kernel owner convergence baseline | `PASS`，v30、138/138 source checks、45 semantic domains converged、missing Surface=0；baseline SHA256=`9fbad544353aaeb2b9be4c1a2beea6e40c6f2d5c0107df3a38eb4a94123c7b62` |
 | Lifecycle focused/static suites | `PASS`；blocked 保真、flush 异常、证据保留与职责防绕过均覆盖 |
 | Workspace TypeScript `--noEmit` audit | `PASS`，既存 extension 类型债务已清零 |
-| Capability ledger | `PASS`，76 capabilities / 138 dependency edges；45 `wired`、31 `proposed`、claims=0 |
+| Capability ledger | `PASS`，76 capabilities / 138 dependency edges；52 `wired`、24 `proposed`、claims=0 |
 | Gate 0 decision | checker `PASS`，决策仍为 `NOT_PASSED` |
 | External authority readiness | `PASS`，10/10 请求均保持精确 blocker 与可执行下一授权动作；approved=0、local-unblockable=0、live runs=0 |
 | R4 versioned candidate manifest | `PASS`，v2 冻结 `4f8a567`；v1 `a034e5e` JSON/schema/view 与两份 VSIX 字节哈希受守卫 |

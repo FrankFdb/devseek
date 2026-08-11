@@ -1000,6 +1000,85 @@
           }
         }
       ]
+    },
+    {
+      "iteration_id": "I20",
+      "status": "verified-local",
+      "goal": "Separate implementation from independent review and bind delivery, release, observation, and rollback to exact evidence identities.",
+      "delta_from_baseline": "Adds self-review rejection, complete changed-scope review, introduced-finding severity, source-bound artifacts, review-bound Git effects, immutable delivery manifests, explicit release authorization, ordered CI/deploy/smoke/observe identity, and exact rollback targets; none is covered by the fixed five coding fixtures or I10-I19.",
+      "fixture_path": "scripts/test/fixtures/user-simulations/i20-review-delivery.json",
+      "local_artifact_root": "code/devseek-tests/review-delivery",
+      "capability_ids": [
+        "C10-INDEPENDENT-REVIEW",
+        "C10-ARTIFACT-IDENTITY",
+        "C10-GIT-DELIVERY",
+        "C10-DELIVERY-MANIFEST",
+        "C10-RELEASE-GATE",
+        "C10-CI-DEPLOY-OBSERVE",
+        "C10-ROLLBACK"
+      ],
+      "cases": [
+        {
+          "case_id": "I20-REV-01",
+          "capability_ids": ["C10-INDEPENDENT-REVIEW"],
+          "surface": "shared-kernel",
+          "user_action": "Ask a separate reviewer to inspect all changed paths after implementation, while the implementation actor first attempts to self-review and then leaves an introduced important finding open.",
+          "expected_outcomes": [
+            "Self-review and incomplete changed-path coverage are indeterminate rather than accepted.",
+            "A verified open important finding introduced by the change vetoes delivery."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-review-delivery.test.mjs",
+            "test_name": "I20-REV-01 user journey: independent review rejects self-review, incomplete scope, and open introduced findings"
+          }
+        },
+        {
+          "case_id": "I20-DLV-01",
+          "capability_ids": [
+            "C10-ARTIFACT-IDENTITY",
+            "C10-GIT-DELIVERY",
+            "C10-DELIVERY-MANIFEST"
+          ],
+          "surface": "shared-kernel",
+          "user_action": "Build an artifact from one commit and request a reviewed push, then present a stale artifact, a self-reported push without effect receipt, and a mismatched review fingerprint.",
+          "expected_outcomes": [
+            "Artifact identity fails on source-commit drift and Git delivery rejects missing external-effect evidence.",
+            "Only the exact passed review fingerprint and committed Git effect can enter a ready immutable delivery manifest."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-review-delivery.test.mjs",
+            "test_name": "I20-DLV-01 user journey: exact artifact and reviewed Git evidence govern delivery"
+          }
+        },
+        {
+          "case_id": "I20-REL-01",
+          "capability_ids": ["C10-RELEASE-GATE", "C10-CI-DEPLOY-OBSERVE"],
+          "surface": "shared-kernel",
+          "user_action": "Authorize one ready manifest for release and carry its artifact identity through CI, deploy, smoke, and observation, including one stale smoke-stage identity attempt.",
+          "expected_outcomes": [
+            "A release request without explicit authorization remains blocked even when its manifest is ready.",
+            "Stages must be ordered and bind the same artifact; stale identity becomes indeterminate and the exact chain passes."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-review-delivery.test.mjs",
+            "test_name": "I20-REL-01 user journey: authorized release preserves artifact identity through observation"
+          }
+        },
+        {
+          "case_id": "I20-RBK-01",
+          "capability_ids": ["C10-ROLLBACK"],
+          "surface": "shared-kernel",
+          "user_action": "Observe a smoke failure after deployment, first omit rollback target and authority, then execute an authorized rollback to one exact previous artifact.",
+          "expected_outcomes": [
+            "A post-deploy failure makes rollback required and blocks an unspecified or unauthorized recovery.",
+            "Rollback completes only with a committed release-effect receipt bound to the exact target artifact."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-review-delivery.test.mjs",
+            "test_name": "I20-RBK-01 user journey: post-deploy failure requires exact authorized rollback"
+          }
+        }
+      ]
     }
   ]
 }

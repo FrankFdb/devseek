@@ -4,7 +4,7 @@
 
 - Schema: `devseek.capability-ledger/v1`
 - Capabilities: 76
-- Ledger SHA-256: `bfec419148a3b5d7519093b33a4524f4da24c8270a02d34f669167a2632ec56e`
+- Ledger SHA-256: `18a06eeccc6965c80361549f013edf23f272d3f749704f58d5143fff17367153`
 - Qualification claim policy: `deny-until-signed-evidence-validator`
 
 | Capability | Priority | Applicability | Claim scopes | Implementation | Qualification | Authority port | Typed dependencies |
@@ -20,13 +20,13 @@
 | `C1-RUN-LIFECYCLE` | P0 | active | core-coding | wired | — | `RunLifecyclePort` | C0-RUN-EVIDENCE-LEDGER (evidence/wired) |
 | `C1-SETTLEMENT` | P0 | active | core-coding | wired | — | `SettlementDecisionPort` | C1-RUN-LIFECYCLE (control/wired) |
 | `C1-SURFACE-ADAPTER-CONFORMANCE` | P0 | active | core-coding | wired | — | `SurfaceAdapterConformancePort` | C1-RUN-LIFECYCLE (control/wired)<br>C1-AGENT-COMMAND (control/wired)<br>C1-SETTLEMENT (control/wired) |
-| `C10-ARTIFACT-IDENTITY` | P0 | active | core-coding, safety | proposed | — | `ArtifactIdentityPort` | C9-BUILD-ORCHESTRATION (verification/wired)<br>C10-INDEPENDENT-REVIEW (delivery/wired) |
-| `C10-CI-DEPLOY-OBSERVE` | P2 | conditional | release-capable | proposed | — | `CiDeployObservePort` | C10-RELEASE-GATE (delivery/wired)<br>C7-EXTERNAL-EFFECT (authority/wired) |
-| `C10-DELIVERY-MANIFEST` | P0 | active | core-coding, safety | proposed | — | `DeliveryManifestPort` | C10-INDEPENDENT-REVIEW (delivery/wired)<br>C10-ARTIFACT-IDENTITY (delivery/wired) |
-| `C10-GIT-DELIVERY` | P2 | conditional | release-capable | proposed | — | `GitDeliveryPort` | C10-INDEPENDENT-REVIEW (delivery/wired)<br>C7-EXTERNAL-EFFECT (authority/wired) |
-| `C10-INDEPENDENT-REVIEW` | P0 | active | core-coding, safety | proposed | — | `IndependentReviewPort` | C9-INDEPENDENT-VERIFICATION (verification/wired) |
-| `C10-RELEASE-GATE` | P2 | conditional | release-capable | proposed | — | `ReleaseGatePort` | C10-DELIVERY-MANIFEST (delivery/wired)<br>C10-GIT-DELIVERY (delivery/wired)<br>C10-ARTIFACT-IDENTITY (delivery/wired) |
-| `C10-ROLLBACK` | P2 | conditional | release-capable | proposed | — | `RollbackPort` | C10-CI-DEPLOY-OBSERVE (delivery/wired) |
+| `C10-ARTIFACT-IDENTITY` | P0 | active | core-coding, safety | wired | — | `ArtifactIdentityPort` | C9-BUILD-ORCHESTRATION (verification/wired)<br>C10-INDEPENDENT-REVIEW (delivery/wired) |
+| `C10-CI-DEPLOY-OBSERVE` | P2 | conditional | release-capable | wired | — | `CiDeployObservePort` | C10-RELEASE-GATE (delivery/wired)<br>C7-EXTERNAL-EFFECT (authority/wired) |
+| `C10-DELIVERY-MANIFEST` | P0 | active | core-coding, safety | wired | — | `DeliveryManifestPort` | C10-INDEPENDENT-REVIEW (delivery/wired)<br>C10-ARTIFACT-IDENTITY (delivery/wired) |
+| `C10-GIT-DELIVERY` | P2 | conditional | release-capable | wired | — | `GitDeliveryPort` | C10-INDEPENDENT-REVIEW (delivery/wired)<br>C7-EXTERNAL-EFFECT (authority/wired) |
+| `C10-INDEPENDENT-REVIEW` | P0 | active | core-coding, safety | wired | — | `IndependentReviewPort` | C9-INDEPENDENT-VERIFICATION (verification/wired) |
+| `C10-RELEASE-GATE` | P2 | conditional | release-capable | wired | — | `ReleaseGatePort` | C10-DELIVERY-MANIFEST (delivery/wired)<br>C10-GIT-DELIVERY (delivery/wired)<br>C10-ARTIFACT-IDENTITY (delivery/wired) |
+| `C10-ROLLBACK` | P2 | conditional | release-capable | wired | — | `RollbackPort` | C10-CI-DEPLOY-OBSERVE (delivery/wired) |
 | `C11-BACKGROUND-AUTOMATION` | P2 | deferred | background-automation | proposed | — | `BackgroundAutomationPort` | C11-CHECKPOINT (recovery/wired)<br>C11-RESUME-IDEMPOTENCY (recovery/wired)<br>C11-CANCEL-INTERRUPT (recovery/wired)<br>C7-EXTERNAL-EFFECT (authority/wired) |
 | `C11-CANCEL-INTERRUPT` | P1 | active | core-coding | proposed | — | `CancellationPort` | C1-AGENT-COMMAND (control/wired) |
 | `C11-CHECKPOINT` | P1 | active | core-coding | wired | — | `CheckpointPort` | C1-RUN-LIFECYCLE (control/wired)<br>C0-RUN-EVIDENCE-LEDGER (evidence/wired) |

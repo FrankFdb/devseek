@@ -1,7 +1,21 @@
 import type { CodingTerminalStatus } from './coding-conformance';
 import type { CodingToolExecutionReceipt } from './coding-tool-execution';
 import type { CodingWorkspaceMutationReceipt } from './coding-workspace-mutation';
-import type { CodingVerificationReceipt } from './coding-verification';
+import {
+  codingVerificationToolFailureWasRecovered,
+  settledCodingVerificationReceipts,
+  type CodingVerificationReceipt,
+} from './coding-verification';
+import type { CodingArtifactObservation } from './coding-artifact-identity';
+import type { CodingIndependentReviewObservation } from './coding-independent-review';
+import type {
+  CodingGitDeliveryObservation,
+  CodingGitDeliveryOperation,
+} from './coding-delivery';
+import type {
+  CodingDeploymentStageObservation,
+  CodingRollbackObservation,
+} from './coding-release';
 import {
   canonicalCodingJson,
   normalizedCodingId,
@@ -16,9 +30,37 @@ export interface CodingCompletionAcceptanceCriterion {
   readonly statement: string;
 }
 
+/** A manual completion review decision; distinct from C10 independent code review evidence. */
 export interface CodingCompletionReview {
   readonly status: 'passed' | 'failed' | 'not-run';
   readonly evidenceRefs: readonly string[];
+}
+
+export interface CodingKernelRollbackEvidence {
+  readonly requested: boolean;
+  readonly authorized: boolean;
+  readonly authorizationRef?: string;
+  readonly targetArtifactFingerprint?: string;
+  readonly observation?: CodingRollbackObservation;
+}
+
+export interface CodingKernelReleaseEvidence {
+  readonly requested: boolean;
+  readonly authorized: boolean;
+  readonly authorizationRef?: string;
+  readonly deploymentObservations?: readonly CodingDeploymentStageObservation[];
+  readonly rollback?: CodingKernelRollbackEvidence;
+}
+
+export interface CodingKernelDeliveryEvidence {
+  readonly implementationActorId?: string;
+  readonly sourceCommit?: string;
+  readonly artifacts?: readonly CodingArtifactObservation[];
+  readonly git?: {
+    readonly operation: CodingGitDeliveryOperation;
+    readonly observation?: CodingGitDeliveryObservation;
+  };
+  readonly release?: CodingKernelReleaseEvidence;
 }
 
 export interface CodingCompletionDecisionInput {
@@ -44,6 +86,9 @@ export interface CodingKernelCompletionEvidence {
   readonly reviewRequired: boolean;
   readonly acceptanceEvidence: readonly CodingCompletionAcceptanceDecision[];
   readonly review?: CodingCompletionReview;
+  readonly independentReviewRequired?: boolean;
+  readonly independentReview?: CodingIndependentReviewObservation;
+  readonly delivery?: CodingKernelDeliveryEvidence;
   readonly pendingRefs: readonly string[];
   readonly adverseEvidenceRefs: readonly string[];
   readonly residualRisks: readonly string[];
@@ -94,7 +139,7 @@ export class CanonicalCompletionDecisionService implements CompletionDecisionPor
 }
 
 function deriveCompletionDecision(input: CodingCompletionDecisionInput): CodingCompletionDecision {
-  const unresolvedVerifications = unresolvedVerificationReceipts(
+  const unresolvedVerifications = settledCodingVerificationReceipts(
     input.verifications,
     input.toolExecutions,
   );
@@ -112,7 +157,11 @@ function deriveCompletionDecision(input: CodingCompletionDecisionInput): CodingC
   const hasFailedEffect = input.toolExecutions.some(receipt => (
     receipt.status === 'failed'
       && !verificationActionIds.has(receipt.actionId)
-      && !verificationToolFailureWasRecovered(receipt, input.toolExecutions, input.verifications)
+      && !codingVerificationToolFailureWasRecovered(
+        receipt,
+        input.toolExecutions,
+        input.verifications,
+      )
   ))
     || input.mutations.some(receipt => receipt.status === 'failed' || receipt.status === 'rolled-back');
   const hasDeniedEffect = input.toolExecutions.some(receipt => receipt.status === 'denied');
@@ -173,87 +222,6 @@ function deriveCompletionDecision(input: CodingCompletionDecisionInput): CodingC
     residualRisks: input.residualRisks,
     evidenceRefs,
   }, 'completion-decision') as CodingCompletionDecision;
-}
-
-function verificationToolFailureWasRecovered(
-  failed: CodingToolExecutionReceipt<unknown>,
-  toolExecutions: readonly CodingToolExecutionReceipt<unknown>[],
-  verifications: readonly CodingVerificationReceipt[],
-): boolean {
-  if (failed.purpose !== 'verify' || !failed.effects.includes('process')) return false;
-  return toolExecutions.some(candidate => (
-    candidate.runId === failed.runId
-      && candidate.sequence > failed.sequence
-      && candidate.status === 'completed'
-      && candidate.purpose === 'verify'
-      && candidate.effects.includes('process')
-      && verifications.some(receipt => (
-        receipt.runId === failed.runId
-          && receipt.actionId === candidate.actionId
-          && receipt.status === 'passed'
-          && receipt.acceptance.length > 0
-          && receipt.acceptance.every(result => result.status === 'passed')
-      ))
-  ));
-}
-
-function unresolvedVerificationReceipts(
-  receipts: readonly CodingVerificationReceipt[],
-  toolExecutions: readonly CodingToolExecutionReceipt<unknown>[],
-): readonly CodingVerificationReceipt[] {
-  return receipts.filter(previous => (
-    previous.status === 'passed'
-    || !receipts.some(candidate => verificationSupersedes(candidate, previous, toolExecutions))
-  ));
-}
-
-function verificationSupersedes(
-  candidate: CodingVerificationReceipt,
-  previous: CodingVerificationReceipt,
-  toolExecutions: readonly CodingToolExecutionReceipt<unknown>[],
-): boolean {
-  if (candidate.status !== 'passed'
-    || candidate.runId !== previous.runId
-    || candidate.sequence <= previous.sequence) {
-    return false;
-  }
-  const candidatePaths = new Set(candidate.scopePaths.map(normalizeVerificationPath));
-  if (!previous.scopePaths.every(path => candidatePaths.has(normalizeVerificationPath(path)))) {
-    return false;
-  }
-  const passedAcceptance = new Set(
-    candidate.acceptance
-      .filter(result => result.status === 'passed')
-      .map(result => result.criterionId),
-  );
-  if (previous.acceptance.length === 0
-    || !previous.acceptance.every(result => passedAcceptance.has(result.criterionId))) {
-    return false;
-  }
-  const failedTool = matchingVerificationTool(previous, toolExecutions, 'failed');
-  return !failedTool
-    || matchingVerificationTool(candidate, toolExecutions, 'completed') !== undefined;
-}
-
-function matchingVerificationTool(
-  verification: CodingVerificationReceipt,
-  toolExecutions: readonly CodingToolExecutionReceipt<unknown>[],
-  status: 'completed' | 'failed',
-): CodingToolExecutionReceipt<unknown> | undefined {
-  return toolExecutions.find(receipt => (
-    receipt.runId === verification.runId
-      && receipt.sequence === verification.sequence
-      && receipt.actionId === verification.actionId
-      && receipt.tool === 'run_terminal'
-      && receipt.purpose === 'verify'
-      && receipt.effects.length === 1
-      && receipt.effects[0] === 'process'
-      && receipt.status === status
-  ));
-}
-
-function normalizeVerificationPath(value: string): string {
-  return value.trim().replace(/\\/g, '/').replace(/^\.\//u, '').replace(/\/+$/u, '');
 }
 
 function projectCompletionAcceptance(

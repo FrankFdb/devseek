@@ -1,0 +1,47 @@
+{
+  "schema_version": "devseek.user-simulation-scenario/v1",
+  "iteration_id": "I20",
+  "name": "review-delivery",
+  "purpose": "Exercise independent read-only review, exact artifact and Git identity, immutable delivery manifests, authorized staged release, and rollback without treating implementation self-report as delivery evidence.",
+  "cases": [
+    {
+      "case_id": "I20-REV-01",
+      "input": {
+        "surface": "shared-kernel",
+        "implementation_actor": "implementation:runtime",
+        "review_actor": "review:independent",
+        "changed_paths": ["src/value.ts", "src/auth.ts"],
+        "blocking_finding": "introduced-important"
+      }
+    },
+    {
+      "case_id": "I20-DLV-01",
+      "input": {
+        "surface": "shared-kernel",
+        "artifact_source_commit": "abc1234",
+        "git_operation": "push",
+        "required_effect_facet": "git",
+        "review_fingerprint_binding": "exact"
+      }
+    },
+    {
+      "case_id": "I20-REL-01",
+      "input": {
+        "surface": "shared-kernel",
+        "release_authorization": "explicit",
+        "stages": ["ci", "deploy", "smoke", "observe"],
+        "artifact_identity_binding": "exact"
+      }
+    },
+    {
+      "case_id": "I20-RBK-01",
+      "input": {
+        "surface": "shared-kernel",
+        "failure_stage": "smoke",
+        "deployed": true,
+        "rollback_authorization": "explicit",
+        "rollback_target_binding": "exact"
+      }
+    }
+  ]
+}

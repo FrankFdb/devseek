@@ -117,6 +117,35 @@ import {
   type RepairDecisionPort,
 } from './coding-repair-decision';
 import {
+  CanonicalIndependentReviewService,
+  type CodingIndependentReviewDecision,
+  type IndependentReviewPort,
+} from './coding-independent-review';
+import {
+  CanonicalArtifactIdentityService,
+  type ArtifactIdentityPort,
+  type CodingArtifactIdentityDecision,
+} from './coding-artifact-identity';
+import {
+  CanonicalDeliveryManifestService,
+  CanonicalGitDeliveryService,
+  type CodingDeliveryManifest,
+  type CodingGitDeliveryDecision,
+  type DeliveryManifestPort,
+  type GitDeliveryPort,
+} from './coding-delivery';
+import {
+  CanonicalCiDeployObserveService,
+  CanonicalReleaseGateService,
+  CanonicalRollbackService,
+  type CiDeployObservePort,
+  type CodingDeploymentDecision,
+  type CodingReleaseGateDecision,
+  type CodingRollbackDecision,
+  type ReleaseGatePort,
+  type RollbackPort,
+} from './coding-release';
+import {
   CanonicalCompletionDecisionService,
   type CodingCompletionDecision,
   type CodingKernelCompletionEvidence,
@@ -194,6 +223,13 @@ export interface CodingKernelRuntimeRequest<TRuntimeContext>
   readonly diagnostics: DiagnosticPort;
   readonly regressionSelection: RegressionSelectionPort;
   readonly repairDecisions: RepairDecisionPort;
+  readonly independentReview: IndependentReviewPort;
+  readonly artifactIdentity: ArtifactIdentityPort;
+  readonly gitDelivery: GitDeliveryPort;
+  readonly deliveryManifest: DeliveryManifestPort;
+  readonly releaseGate: ReleaseGatePort;
+  readonly ciDeployObserve: CiDeployObservePort;
+  readonly rollback: RollbackPort;
   readonly verificationAcceptance: readonly CodingVerificationCriterion[];
   readonly verification: CodingVerificationSessionPort;
   readonly resume?: CodingCheckpointRestoreDecision;
@@ -235,6 +271,13 @@ export interface CodingKernelExecutionOutput<TResult> {
   readonly diagnosticDecisions: readonly CodingDiagnosticDecision[];
   readonly regressionSelectionDecisions: readonly CodingRegressionSelectionDecision[];
   readonly repairDecisions: readonly CodingRepairDecision[];
+  readonly independentReviewDecisions: readonly CodingIndependentReviewDecision[];
+  readonly artifactIdentityDecisions: readonly CodingArtifactIdentityDecision[];
+  readonly gitDeliveryDecisions: readonly CodingGitDeliveryDecision[];
+  readonly deliveryManifests: readonly CodingDeliveryManifest[];
+  readonly releaseGateDecisions: readonly CodingReleaseGateDecision[];
+  readonly deploymentDecisions: readonly CodingDeploymentDecision[];
+  readonly rollbackDecisions: readonly CodingRollbackDecision[];
   readonly resumeReceipts: readonly CodingResumeOperationReceipt[];
   readonly completion: CodingCompletionDecision;
   readonly result: TResult;
@@ -263,6 +306,13 @@ export class CodingKernelExecutionError extends Error {
   readonly diagnosticDecisions: readonly CodingDiagnosticDecision[];
   readonly regressionSelectionDecisions: readonly CodingRegressionSelectionDecision[];
   readonly repairDecisions: readonly CodingRepairDecision[];
+  readonly independentReviewDecisions: readonly CodingIndependentReviewDecision[];
+  readonly artifactIdentityDecisions: readonly CodingArtifactIdentityDecision[];
+  readonly gitDeliveryDecisions: readonly CodingGitDeliveryDecision[];
+  readonly deliveryManifests: readonly CodingDeliveryManifest[];
+  readonly releaseGateDecisions: readonly CodingReleaseGateDecision[];
+  readonly deploymentDecisions: readonly CodingDeploymentDecision[];
+  readonly rollbackDecisions: readonly CodingRollbackDecision[];
   readonly resumeReceipts: readonly CodingResumeOperationReceipt[];
   readonly completion: CodingCompletionDecision;
   readonly runtimeCause: unknown;
@@ -286,6 +336,13 @@ export class CodingKernelExecutionError extends Error {
     resumeReceipts: readonly CodingResumeOperationReceipt[],
     completion: CodingCompletionDecision,
     runtimeCause?: unknown,
+    independentReviewDecisions: readonly CodingIndependentReviewDecision[] = [],
+    artifactIdentityDecisions: readonly CodingArtifactIdentityDecision[] = [],
+    gitDeliveryDecisions: readonly CodingGitDeliveryDecision[] = [],
+    deliveryManifests: readonly CodingDeliveryManifest[] = [],
+    releaseGateDecisions: readonly CodingReleaseGateDecision[] = [],
+    deploymentDecisions: readonly CodingDeploymentDecision[] = [],
+    rollbackDecisions: readonly CodingRollbackDecision[] = [],
   ) {
     super(message);
     this.name = 'CodingKernelExecutionError';
@@ -303,6 +360,13 @@ export class CodingKernelExecutionError extends Error {
     this.diagnosticDecisions = diagnosticDecisions;
     this.regressionSelectionDecisions = regressionSelectionDecisions;
     this.repairDecisions = repairDecisions;
+    this.independentReviewDecisions = independentReviewDecisions;
+    this.artifactIdentityDecisions = artifactIdentityDecisions;
+    this.gitDeliveryDecisions = gitDeliveryDecisions;
+    this.deliveryManifests = deliveryManifests;
+    this.releaseGateDecisions = releaseGateDecisions;
+    this.deploymentDecisions = deploymentDecisions;
+    this.rollbackDecisions = rollbackDecisions;
     this.resumeReceipts = resumeReceipts;
     this.completion = completion;
     this.runtimeCause = runtimeCause;
@@ -331,6 +395,13 @@ const INTEGRATION_CONFORMANCE = new CanonicalIntegrationConformanceService();
 const DIAGNOSTICS = new CanonicalDiagnosticService();
 const REGRESSION_SELECTION = new CanonicalRegressionSelectionService();
 const REPAIR_DECISIONS = new CanonicalRepairDecisionService();
+const INDEPENDENT_REVIEW = new CanonicalIndependentReviewService();
+const ARTIFACT_IDENTITY = new CanonicalArtifactIdentityService();
+const GIT_DELIVERY = new CanonicalGitDeliveryService();
+const DELIVERY_MANIFEST = new CanonicalDeliveryManifestService();
+const RELEASE_GATE = new CanonicalReleaseGateService();
+const CI_DEPLOY_OBSERVE = new CanonicalCiDeployObserveService();
+const ROLLBACK = new CanonicalRollbackService();
 const STRUCTURAL_ACCEPTANCE = new CanonicalStructuralAcceptanceEvidenceService();
 const REQUIREMENTS = new CanonicalRequirementDecisionService();
 const DESIGN = new CanonicalDesignDecisionService();
@@ -440,6 +511,13 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
     const diagnostics = DIAGNOSTICS.bind({ runId: request.runId });
     const regressionSelection = REGRESSION_SELECTION.bind({ runId: request.runId });
     const repairDecisions = REPAIR_DECISIONS.bind({ runId: request.runId });
+    const independentReview = INDEPENDENT_REVIEW.bind({ runId: request.runId });
+    const artifactIdentity = ARTIFACT_IDENTITY.bind({ runId: request.runId });
+    const gitDelivery = GIT_DELIVERY.bind({ runId: request.runId });
+    const deliveryManifest = DELIVERY_MANIFEST.bind({ runId: request.runId });
+    const releaseGate = RELEASE_GATE.bind({ runId: request.runId });
+    const ciDeployObserve = CI_DEPLOY_OBSERVE.bind({ runId: request.runId });
+    const rollback = ROLLBACK.bind({ runId: request.runId });
     const externalEffects = EXTERNAL_EFFECT.bind({
       runId: request.runId,
       authority: toolAuthority,
@@ -463,6 +541,13 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       diagnostics,
       regressionSelection,
       repairDecisions,
+      independentReview,
+      artifactIdentity,
+      gitDelivery,
+      deliveryManifest,
+      releaseGate,
+      ciDeployObserve,
+      rollback,
       resumeIdempotency,
       completion: this.completion,
     };
@@ -508,6 +593,13 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       diagnostics,
       regressionSelection,
       repairDecisions,
+      independentReview,
+      artifactIdentity,
+      gitDelivery,
+      deliveryManifest,
+      releaseGate,
+      ciDeployObserve,
+      rollback,
       verificationAcceptance,
       verification,
       ...(resume ? { resume } : {}),
@@ -543,12 +635,129 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         verifications: verification.receipts(),
         evidenceRefs: codeChange.evidenceRefs,
       });
+      const releaseRequested = taskContract.mode === 'release'
+        || completionEvidence.delivery?.release?.requested === true;
+      const independentReviewRequired = releaseRequested
+        || completionEvidence.independentReviewRequired === true;
+      const completionReviewRequired = completionEvidence.reviewRequired
+        || independentReviewRequired;
+      const review = independentReview.assess({
+        sequence: finalDecisionSequence + 2,
+        actionId: 'kernel-independent-review',
+        reviewRequired: independentReviewRequired,
+        implementationActorId: completionEvidence.delivery?.implementationActorId
+          ?? `${request.surface}:canonical-runtime`,
+        codeChange,
+        toolExecutions: toolExecution.receipts(),
+        verifications: verification.receipts(),
+        ...(completionEvidence.independentReview
+          ? { observation: completionEvidence.independentReview }
+          : {}),
+        evidenceRefs: integration.evidenceRefs,
+      });
+      const artifact = artifactIdentity.assess({
+        sequence: finalDecisionSequence + 3,
+        actionId: 'kernel-artifact-identity',
+        required: releaseRequested,
+        ...(completionEvidence.delivery?.sourceCommit
+          ? { expectedSourceCommit: completionEvidence.delivery.sourceCommit }
+          : {}),
+        artifacts: completionEvidence.delivery?.artifacts ?? [],
+        evidenceRefs: review.evidenceRefs,
+      });
+      const gitOperation = completionEvidence.delivery?.git?.operation
+        ?? (releaseRequested ? 'commit' : 'none');
+      const git = gitDelivery.assess({
+        sequence: finalDecisionSequence + 4,
+        actionId: 'kernel-git-delivery',
+        operation: gitOperation,
+        review,
+        externalEffects: externalEffects.receipts(),
+        ...(completionEvidence.delivery?.git?.observation
+          ? { observation: completionEvidence.delivery.git.observation }
+          : {}),
+        evidenceRefs: artifact.evidenceRefs,
+      });
+      const manifest = deliveryManifest.build({
+        sequence: finalDecisionSequence + 5,
+        actionId: 'kernel-delivery-manifest',
+        releaseRequired: releaseRequested,
+        ...(completionEvidence.delivery?.sourceCommit
+          ? { sourceCommit: completionEvidence.delivery.sourceCommit }
+          : {}),
+        codeChange,
+        integration,
+        toolExecutions: toolExecution.receipts(),
+        verifications: verification.receipts(),
+        review,
+        artifactIdentity: artifact,
+        gitDelivery: git,
+        evidenceRefs: git.evidenceRefs,
+      });
+      const gate = releaseGate.assess({
+        sequence: finalDecisionSequence + 6,
+        actionId: 'kernel-release-gate',
+        requested: releaseRequested,
+        authorized: completionEvidence.delivery?.release?.authorized === true,
+        ...(completionEvidence.delivery?.release?.authorizationRef
+          ? { authorizationRef: completionEvidence.delivery.release.authorizationRef }
+          : {}),
+        manifest,
+        artifactIdentity: artifact,
+        gitDelivery: git,
+        evidenceRefs: manifest.evidenceRefs,
+      });
+      const deployment = ciDeployObserve.assess({
+        sequence: finalDecisionSequence + 7,
+        actionId: 'kernel-ci-deploy-observe',
+        gate,
+        observations: completionEvidence.delivery?.release?.deploymentObservations ?? [],
+        externalEffects: externalEffects.receipts(),
+        evidenceRefs: gate.evidenceRefs,
+      });
+      const rollbackEvidence = completionEvidence.delivery?.release?.rollback;
+      const rollbackDecision = rollback.assess({
+        sequence: finalDecisionSequence + 8,
+        actionId: 'kernel-rollback',
+        requested: rollbackEvidence?.requested === true,
+        authorized: rollbackEvidence?.authorized === true,
+        ...(rollbackEvidence?.authorizationRef
+          ? { authorizationRef: rollbackEvidence.authorizationRef }
+          : {}),
+        ...(rollbackEvidence?.targetArtifactFingerprint
+          ? { targetArtifactFingerprint: rollbackEvidence.targetArtifactFingerprint }
+          : {}),
+        deployment,
+        ...(rollbackEvidence?.observation ? { observation: rollbackEvidence.observation } : {}),
+        externalEffects: externalEffects.receipts(),
+        evidenceRefs: deployment.evidenceRefs,
+      });
       const c8PendingRefs = [codeChange, integration]
         .filter(decision => decision.status === 'incomplete' || decision.status === 'indeterminate')
         .flatMap(decision => decision.reasonCodes.map(reason => `c8-pending:${reason}`));
       const c8AdverseRefs = [codeChange, integration]
         .filter(decision => decision.status === 'failed')
         .flatMap(decision => decision.reasonCodes.map(reason => `c8-adverse:${reason}`));
+      const c10PendingRefs = projectC10PendingRefs({
+        reviewRequired: independentReviewRequired,
+        releaseRequested,
+        review,
+        artifact,
+        git,
+        manifest,
+        gate,
+        deployment,
+        rollback: rollbackDecision,
+      });
+      const c10AdverseRefs = projectC10AdverseRefs({
+        review,
+        artifact,
+        git,
+        manifest,
+        gate,
+        deployment,
+        rollback: rollbackDecision,
+      });
       const structuralAcceptanceEvidence = STRUCTURAL_ACCEPTANCE.project({
         taskContract,
         mutations: workspaceMutations.receipts(),
@@ -559,7 +768,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         idempotencyKey: `${request.runId}:kernel-completion`,
         acceptance: taskContract.acceptance,
         verificationRequired: codingTaskContractRequiresVerification(taskContract),
-        reviewRequired: taskContract.mode === 'release' || completionEvidence.reviewRequired,
+        reviewRequired: completionReviewRequired,
         ...(request.signal?.aborted ? { requestedTerminalStatus: 'cancelled' as const } : {}),
         toolExecutions: toolExecution.receipts(),
         mutations: workspaceMutations.receipts(),
@@ -568,14 +777,33 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
           ...structuralAcceptanceEvidence,
           ...completionEvidence.acceptanceEvidence,
         ],
-        ...(completionEvidence.review ? { review: completionEvidence.review } : {}),
-        pendingRefs: [...completionEvidence.pendingRefs, ...c8PendingRefs],
-        adverseEvidenceRefs: [...completionEvidence.adverseEvidenceRefs, ...c8AdverseRefs],
+        ...(completionEvidence.reviewRequired ? {
+          review: completionEvidence.review ?? { status: 'not-run' as const, evidenceRefs: [] },
+        } : independentReviewRequired ? {
+          review: {
+            status: review.status === 'passed'
+              ? 'passed' as const
+              : review.status === 'failed'
+                ? 'failed' as const
+                : 'not-run' as const,
+            evidenceRefs: review.evidenceRefs,
+          },
+        } : {}),
+        pendingRefs: [...completionEvidence.pendingRefs, ...c8PendingRefs, ...c10PendingRefs],
+        adverseEvidenceRefs: [
+          ...completionEvidence.adverseEvidenceRefs,
+          ...c8AdverseRefs,
+          ...c10AdverseRefs,
+        ],
         residualRisks: completionEvidence.residualRisks,
         evidenceRefs: [
           ...completionEvidence.evidenceRefs,
           ...codeChange.evidenceRefs,
           ...integration.evidenceRefs,
+          ...manifest.evidenceRefs,
+          ...gate.evidenceRefs,
+          ...deployment.evidenceRefs,
+          ...rollbackDecision.evidenceRefs,
         ],
       });
       lifecycle.settle(completion.status);
@@ -614,6 +842,13 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         diagnosticDecisions: diagnostics.decisions(),
         regressionSelectionDecisions: regressionSelection.decisions(),
         repairDecisions: repairDecisions.decisions(),
+        independentReviewDecisions: independentReview.decisions(),
+        artifactIdentityDecisions: artifactIdentity.decisions(),
+        gitDeliveryDecisions: gitDelivery.decisions(),
+        deliveryManifests: deliveryManifest.manifests(),
+        releaseGateDecisions: releaseGate.decisions(),
+        deploymentDecisions: ciDeployObserve.decisions(),
+        rollbackDecisions: rollback.decisions(),
         resumeReceipts: resumeIdempotency?.receipts() ?? [],
         completion,
         result: runtimeOutput.result,
@@ -647,6 +882,13 @@ interface CodingKernelTerminalContext {
   readonly diagnostics: DiagnosticPort;
   readonly regressionSelection: RegressionSelectionPort;
   readonly repairDecisions: RepairDecisionPort;
+  readonly independentReview: IndependentReviewPort;
+  readonly artifactIdentity: ArtifactIdentityPort;
+  readonly gitDelivery: GitDeliveryPort;
+  readonly deliveryManifest: DeliveryManifestPort;
+  readonly releaseGate: ReleaseGatePort;
+  readonly ciDeployObserve: CiDeployObservePort;
+  readonly rollback: RollbackPort;
   readonly resumeIdempotency?: CodingResumeIdempotencySessionPort;
   readonly completion: CanonicalCompletionDecisionService;
 }
@@ -706,6 +948,13 @@ function lifecycleError(
     context.resumeIdempotency?.receipts() ?? [],
     completion,
     cause,
+    context.independentReview.decisions(),
+    context.artifactIdentity.decisions(),
+    context.gitDelivery.decisions(),
+    context.deliveryManifest.manifests(),
+    context.releaseGate.decisions(),
+    context.ciDeployObserve.decisions(),
+    context.rollback.decisions(),
   );
 }
 
@@ -717,6 +966,75 @@ function nextKernelDecisionSequence(
   ...receiptGroups: readonly (readonly { readonly sequence: number }[])[]
 ): number {
   return Math.max(0, ...receiptGroups.flatMap(receipts => receipts.map(receipt => receipt.sequence))) + 1;
+}
+
+interface CodingC10DecisionProjection {
+  readonly review: CodingIndependentReviewDecision;
+  readonly artifact: CodingArtifactIdentityDecision;
+  readonly git: CodingGitDeliveryDecision;
+  readonly manifest: CodingDeliveryManifest;
+  readonly gate: CodingReleaseGateDecision;
+  readonly deployment: CodingDeploymentDecision;
+  readonly rollback: CodingRollbackDecision;
+}
+
+function projectC10PendingRefs(
+  input: CodingC10DecisionProjection & {
+    readonly reviewRequired: boolean;
+    readonly releaseRequested: boolean;
+  },
+): string[] {
+  return [
+    ...(input.reviewRequired && !['passed', 'failed'].includes(input.review.status)
+      ? input.review.reasonCodes.map(reason => `c10-pending:${reason}`)
+      : []),
+    ...(input.releaseRequested && input.artifact.status !== 'bound' && input.artifact.status !== 'failed'
+      ? input.artifact.reasonCodes.map(reason => `c10-pending:${reason}`)
+      : []),
+    ...(input.git.operation !== 'none' && ['blocked', 'indeterminate'].includes(input.git.status)
+      ? input.git.reasonCodes.map(reason => `c10-pending:${reason}`)
+      : []),
+    ...(input.manifest.status === 'blocked'
+      ? input.manifest.reasonCodes.map(reason => `c10-pending:${reason}`)
+      : []),
+    ...(input.releaseRequested && input.gate.status === 'blocked'
+      ? input.gate.reasonCodes.map(reason => `c10-pending:${reason}`)
+      : []),
+    ...(input.releaseRequested
+      && ['blocked', 'in-progress', 'indeterminate', 'not-run'].includes(input.deployment.status)
+      ? input.deployment.reasonCodes.map(reason => `c10-pending:${reason}`)
+      : []),
+    ...(input.rollback.required
+      && ['blocked', 'ready', 'indeterminate'].includes(input.rollback.status)
+      ? input.rollback.reasonCodes.map(reason => `c10-pending:${reason}`)
+      : []),
+  ];
+}
+
+function projectC10AdverseRefs(input: CodingC10DecisionProjection): string[] {
+  return [
+    ...(input.review.status === 'failed'
+      ? input.review.reasonCodes.map(reason => `c10-adverse:${reason}`)
+      : []),
+    ...(input.artifact.status === 'failed'
+      ? input.artifact.reasonCodes.map(reason => `c10-adverse:${reason}`)
+      : []),
+    ...(input.git.status === 'failed'
+      ? input.git.reasonCodes.map(reason => `c10-adverse:${reason}`)
+      : []),
+    ...(input.manifest.status === 'failed'
+      ? input.manifest.reasonCodes.map(reason => `c10-adverse:${reason}`)
+      : []),
+    ...(input.gate.status === 'rejected'
+      ? input.gate.reasonCodes.map(reason => `c10-adverse:${reason}`)
+      : []),
+    ...(input.deployment.status === 'failed'
+      ? input.deployment.reasonCodes.map(reason => `c10-adverse:${reason}`)
+      : []),
+    ...(input.rollback.status === 'failed'
+      ? input.rollback.reasonCodes.map(reason => `c10-adverse:${reason}`)
+      : []),
+  ];
 }
 
 function assertCanonicalRequest(request: CodingKernelExecutionRequest<unknown>): void {
@@ -762,6 +1080,10 @@ function assertRuntimeCompletionEvidence(value: unknown): CodingKernelCompletion
   const evidence = value as Partial<CodingKernelCompletionEvidence>;
   if (typeof evidence.reviewRequired !== 'boolean') {
     throw new Error('coding-kernel-execution:invalid-review-requirement');
+  }
+  if (evidence.independentReviewRequired !== undefined
+    && typeof evidence.independentReviewRequired !== 'boolean') {
+    throw new Error('coding-kernel-execution:invalid-independent-review-requirement');
   }
   for (const key of [
     'acceptanceEvidence',

@@ -4,6 +4,7 @@ import {
   snapshotCodingValue,
   uniqueCodingRefs,
 } from './coding-contract-utils';
+import type { CodingToolExecutionReceipt } from './coding-tool-execution';
 
 export const CODING_VERIFICATION_PLAN_VERSION = 'devseek.coding-verification-plan/v1' as const;
 export const CODING_VERIFICATION_RECEIPT_VERSION = 'devseek.coding-verification-receipt/v1' as const;
@@ -102,6 +103,40 @@ export interface VerificationServicePort extends VerificationPort {
     readonly runId: string;
     readonly acceptance: readonly CodingVerificationCriterion[];
   }): CodingVerificationSessionPort;
+}
+
+/** Resolves repaired verification attempts without hiding an unsettled terminal failure. */
+export function settledCodingVerificationReceipts(
+  receipts: readonly CodingVerificationReceipt[],
+  toolExecutions: readonly CodingToolExecutionReceipt<unknown>[],
+): readonly CodingVerificationReceipt[] {
+  return receipts.filter(previous => (
+    previous.status === 'passed'
+    || !receipts.some(candidate => verificationSupersedes(candidate, previous, toolExecutions))
+  ));
+}
+
+/** Determines whether a failed verification process has a later, evidenced successful retry. */
+export function codingVerificationToolFailureWasRecovered(
+  failed: CodingToolExecutionReceipt<unknown>,
+  toolExecutions: readonly CodingToolExecutionReceipt<unknown>[],
+  verifications: readonly CodingVerificationReceipt[],
+): boolean {
+  if (failed.purpose !== 'verify' || !failed.effects.includes('process')) return false;
+  return toolExecutions.some(candidate => (
+    candidate.runId === failed.runId
+      && candidate.sequence > failed.sequence
+      && candidate.status === 'completed'
+      && candidate.purpose === 'verify'
+      && candidate.effects.includes('process')
+      && verifications.some(receipt => (
+        receipt.runId === failed.runId
+          && receipt.actionId === candidate.actionId
+          && receipt.status === 'passed'
+          && receipt.acceptance.length > 0
+          && receipt.acceptance.every(result => result.status === 'passed')
+      ))
+  ));
 }
 
 interface ActiveVerification {
@@ -333,6 +368,55 @@ function snapshotVerificationReceipt(receipt: CodingVerificationReceipt): Coding
 
 function verificationIdentity(value: Pick<CodingVerificationPlan<unknown>, 'runId' | 'actionId'>): string {
   return `${value.runId}\u0000${value.actionId}`;
+}
+
+function verificationSupersedes(
+  candidate: CodingVerificationReceipt,
+  previous: CodingVerificationReceipt,
+  toolExecutions: readonly CodingToolExecutionReceipt<unknown>[],
+): boolean {
+  if (candidate.status !== 'passed'
+    || candidate.runId !== previous.runId
+    || candidate.sequence <= previous.sequence) {
+    return false;
+  }
+  const candidatePaths = new Set(candidate.scopePaths.map(normalizeVerificationPath));
+  if (!previous.scopePaths.every(path => candidatePaths.has(normalizeVerificationPath(path)))) {
+    return false;
+  }
+  const passedAcceptance = new Set(
+    candidate.acceptance
+      .filter(result => result.status === 'passed')
+      .map(result => result.criterionId),
+  );
+  if (previous.acceptance.length === 0
+    || !previous.acceptance.every(result => passedAcceptance.has(result.criterionId))) {
+    return false;
+  }
+  const failedTool = matchingVerificationTool(previous, toolExecutions, 'failed');
+  return !failedTool
+    || matchingVerificationTool(candidate, toolExecutions, 'completed') !== undefined;
+}
+
+function matchingVerificationTool(
+  verification: CodingVerificationReceipt,
+  toolExecutions: readonly CodingToolExecutionReceipt<unknown>[],
+  status: 'completed' | 'failed',
+): CodingToolExecutionReceipt<unknown> | undefined {
+  return toolExecutions.find(receipt => (
+    receipt.runId === verification.runId
+      && receipt.sequence === verification.sequence
+      && receipt.actionId === verification.actionId
+      && receipt.tool === 'run_terminal'
+      && receipt.purpose === 'verify'
+      && receipt.effects.length === 1
+      && receipt.effects[0] === 'process'
+      && receipt.status === status
+  ));
+}
+
+function normalizeVerificationPath(value: string): string {
+  return value.trim().replace(/\\/g, '/').replace(/^\.\//u, '').replace(/\/+$/u, '');
 }
 
 function assertSamePlan(existing: string, incoming: string): void {

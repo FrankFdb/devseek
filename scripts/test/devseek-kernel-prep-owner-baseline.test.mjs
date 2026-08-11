@@ -48,9 +48,9 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    semantic_domains: 38,
-    converged_semantic_domains: 38,
-    source_checks: 134,
+    semantic_domains: 45,
+    converged_semantic_domains: 45,
+    source_checks: 138,
     failed_source_checks: 0,
   });
   assert.deepEqual(
@@ -124,6 +124,13 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     'diagnostic-normalization',
     'regression-selection',
     'bounded-repair',
+    'independent-review',
+    'artifact-identity',
+    'git-delivery',
+    'delivery-manifest',
+    'release-gate',
+    'ci-deploy-observe',
+    'rollback',
     'completion-decision',
     'run-evidence-retention',
     'memory-policy',
@@ -229,6 +236,13 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     ['diagnostic-normalization', 'shared-CanonicalDiagnosticService'],
     ['regression-selection', 'shared-CanonicalRegressionSelectionService'],
     ['bounded-repair', 'shared-CanonicalRepairDecisionService'],
+    ['independent-review', 'shared-CanonicalIndependentReviewService'],
+    ['artifact-identity', 'shared-CanonicalArtifactIdentityService'],
+    ['git-delivery', 'shared-CanonicalGitDeliveryService'],
+    ['delivery-manifest', 'shared-CanonicalDeliveryManifestService'],
+    ['release-gate', 'shared-CanonicalReleaseGateService'],
+    ['ci-deploy-observe', 'shared-CanonicalCiDeployObserveService'],
+    ['rollback', 'shared-CanonicalRollbackService'],
   ]) {
     const domain = actual.semantic_domains.find(item => item.domain_id === domainId);
     assert.equal(domain.current_owners[0].owner_id, ownerId);
@@ -373,7 +387,7 @@ test('kernel prep owner baseline checker validates the current generated artifac
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    converged_semantic_domains: 38,
+    converged_semantic_domains: 45,
     failed_source_checks: 0,
     qualification_effect: 'NONE',
   });

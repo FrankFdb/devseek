@@ -48,6 +48,7 @@ OpenAI 官方资料表明 Codex 的工程能力不是固定瀑布阶段，而是
 - 当前官方 [Customization](https://learn.chatgpt.com/docs/customization/overview) 和 Codex 文档导航还公开 Memories/Chronicle、MCP、Plugins、Hooks、Record & Replay 等机制；它们是可观察产品能力，不代表本文知道其内部拓扑。其中 [Plugins](https://learn.chatgpt.com/docs/plugins) 组合 skills、MCP、apps 等可复用扩展；[Record & Replay](https://learn.chatgpt.com/docs/extend/record-and-replay) 可把稳定图形工作流录制成可复用 skill。
 - Codex 官方还公开 CLI、IDE、App 和 Cloud 多种 Surface，App 支持并行 agent/worktree 和定时 [Automations](https://openai.com/index/introducing-the-codex-app/)；[Browser/Computer Use](https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan/) 和长时间目标属于实际对标范围，但需按可用地区/版本声明适用性。
 - 官方 [use cases](https://developers.openai.com/codex/use-cases) 覆盖大型代码库理解、功能实现、重构、审查、验证操作与可评分改进循环。
+- 官方 [Code review](https://learn.chatgpt.com/docs/code-review) 将 `/review` 作为独立只读 reviewer，可选择工作树、提交、分支或自定义 diff 范围，输出按严重度排序且可执行的 findings，并明确 review 本身不修改工作树；应用修复时才回到正常 sandbox/approval 边界。
 
 这些公开行为共同指向一个重点：模型负责推理，Agent harness 负责指令、上下文、工具、权限、执行和可验证反馈；安全与完成事实不能只存在于提示词。
 
@@ -63,6 +64,7 @@ Anthropic 官方把 Claude Code 的核心循环明确描述为“获取上下文
 - 官方扩展体系还包括 Skills、MCP、Plugins/marketplaces、worktrees、programmatic/headless usage 和 Agent SDK；[`Agent teams`](https://code.claude.com/docs/en/agent-teams) 支持 peer 会话与共享任务，但官方明确标记为 experimental、默认关闭，不应当成稳定基线。
 - [`Permissions`](https://code.claude.com/docs/en/permissions) 明确将工具权限与 OS sandbox 作为互补层：权限覆盖 Bash/Read/Edit/WebFetch/MCP 等，sandbox 对 Bash 及其子进程做操作系统级约束。
 - [`Computer use`](https://code.claude.com/docs/en/computer-use) 已作为 macOS CLI research preview 公开，可打开应用、点击、输入、看屏幕并验证原生/视觉流程；它有计划、版本、交互模式和逐会话应用审批限制，不能外推为所有平台/Surface 的稳定能力。
+- [`Code review`](https://code.claude.com/docs/en/code-review) 公开采用多个 review agent 产生候选、结合代码行为验证、去重并按严重度排序；findings 不自动等于 PR gate。[`GitHub Actions`](https://code.claude.com/docs/en/github-actions) 中写提交或创建 PR 仍需显式 `contents` / `issues` / `pull-requests` 权限。
 
 因此 Claude Code 公开定义的也不是“必须依次生成六份工件”，而是一个能按任务复杂度折叠、能观察环境、能执行工具、能验证并继续修复的反馈循环。
 
@@ -75,6 +77,7 @@ Anthropic 官方把 Claude Code 的核心循环明确描述为“获取上下文
 - 后续通过回执只有在同一 run、序列更新、scope 完整覆盖且 acceptance 全覆盖时，才由 shared Completion authority 解除较早失败；跨 run 回执、替换 acceptance、较窄 scope 或 Surface 的 completed 自报均 fail closed。
 - Claude Code 的 [`permissions`](https://code.claude.com/docs/en/permissions) 明确 deny/ask 规则和 OS sandbox 是独立强制边界，[`hooks`](https://code.claude.com/docs/en/hooks) 也不能绕过权限；Codex 的 [agent approvals and security](https://learn.chatgpt.com/docs/agent-approvals-security) 将工作区、网络、受保护路径和审批边界分开，公开 review 行为要求以 diff 风险和验证证据裁决。由此抽象出的 DevSeek 契约是：实现回执不能自行证明完成，诊断、修复预算和回归范围必须由独立、fail-closed 的宿主 owner 决定。
 - 2026-08-11 本地接线已实现上述契约：`CodeChangePort` / `IntegrationConformancePort` 绑定计划、tool、committed readback 和 verification；`DiagnosticPort` 生成稳定根因，`RegressionSelectionPort` 按影响与依赖扩展验证，`RepairDecisionPort` 仅在出现新证据时重试并将重复无进展转为 blocked。五项能力均已接入三 Surface canonical Kernel，I19 9/9 通过；这只支持本地 `wired`，不产生 Codex/Claude 等价或 qualification claim。
+- C10 据此把只读独立审查与有副作用交付分开：`IndependentReviewPort` 拒绝 self-review、漏审 changed scope、未验证 finding 与开放的 introduced critical/important finding；`ArtifactIdentityPort`、`GitDeliveryPort` 和 `DeliveryManifestPort` 绑定 source commit、checksum、review fingerprint 与 canonical external-effect receipt；`ReleaseGatePort`、`CiDeployObservePort`、`RollbackPort` 再要求显式授权、同一 artifact identity、顺序化 CI→deploy→smoke→observe 和精确回滚目标。七项均进入三 Surface canonical Kernel，I20 4/4 通过；真实外部发布、Codex/Claude 等价和 qualification claim 仍未声明。
 
 ### 2.4 从公开事实抽象出的共同架构
 
@@ -145,7 +148,7 @@ Anthropic 官方把 Claude Code 的核心循环明确描述为“获取上下文
 | 代码库探索 | 按需文件搜索、诊断、符号/引用查询；观察结果反馈给循环 | VS Code 工具较多，所谓 semantic search 仍偏文本 grep；CLI 使用另一套能力 | I/W部分 | P1 |
 | 外部资料与边界 | Web/MCP/官方文档按需使用，来源可追踪，受网络权限约束 | shared `ExternalBoundaryPort` / `SourceGroundingPort` 要求 source 精确绑定 boundary、locator、内容摘要及 tool/effect evidence；缺来源时 Kernel 返回 exploration-required。实时 Web/MCP 获取循环仍待接线 | D/I/W本地，Q✗ | P0-安全 |
 | 设计与规划 | 复杂任务先探索和规划，可审阅、可因新证据重规划 | shared `DesignDecisionPort` / `ChangePlanPort` 统一备选方案、trade-off、影响集、迁移/删除/回退和验收映射；`ChangePlanRevisionPort` 将工具提议的具体目标在执行前收口为证据化修订，authority 只消费当前计划。用户 review、clarification/steer 和外部证据触发的需求/设计修订仍待产品化 | D/I/W本地，Q✗ | P0 |
-| 架构一致性 | 依据仓库规则、责任边界和影响分析约束修改 | change plan 已声明 owner/dependency checks、删除项和 acceptance mapping，并由 v25 静态 owner 基线以 30 个语义域防止 Surface 旁路；跨语言完整影响图和正式项目资格仍未完成 | D/I/W部分，Q✗ | P1 |
+| 架构一致性 | 依据仓库规则、责任边界和影响分析约束修改 | change plan 已声明 owner/dependency checks、删除项和 acceptance mapping；v30 静态 owner 基线以 45 个语义域和 138 条源码断言防止 Surface 旁路。跨语言完整影响图和正式项目资格仍未完成 | D/I/W部分，Q✗ | P1 |
 | Provider 协议 | 模型方言在 Adapter 归一，Core 只消费结构化 ToolCall | Extension 有大型 fake/parser 兼容层，CLI 又维护 JSON/XML/diff 解析 | D/I/W分叉 | P1 |
 | 工具注册与执行 | 单一注册表、策略判定、执行器和结果协议 | ToolRegistry/Executor 已有，但 Extension 大循环仍自行调度，CLI 不复用 | D/I/W部分 | P0 |
 | 文件 mutation | edit/delete/mkdir/undo 经同一受控、可回滚事务 | 新 baseline/CAS/atomic commit 主要只接入 Markdown；旧写入入口仍广泛存在 | D/I，W很少 | P0 |
@@ -163,8 +166,8 @@ Anthropic 官方把 Claude Code 的核心循环明确描述为“获取上下文
 | MCP | 外部工具进入统一注册、权限、审计和证据链 | MCP 已能调用，但绕过已设计的 `McpPermissionService` | D/I/W，不安全 | P0-安全 |
 | 多 Surface | CLI、IDE、非交互入口消费同一 Kernel 和事件协议 | Shared Core 主要做 Provider Chat；VS Code 与 CLI 分别编排 Coding Loop | D/I，W✗ | P0 |
 | 跨平台 | Shell、Path、Storage、Browser 差异由 Platform Adapter 收口 | `PlatformRuntimeAdapter` 有实现和测试，无生产引用 | D/I，W✗ | P1 |
-| 审查、Git、交付 | 基于 diff、验证和风险交付；外部提交需授权 | Git/PR assistant 主要为纯函数和测试，无真实主链路 | D/I壳，W✗ | P2 |
-| 发布与回退 | 按任务和授权执行制品、CI、发布、观测、回退 | DevSeek 自身有 VSIX 发布链；没有用户项目通用发布状态和审批模型 | D/I/W局部 | P2 |
+| 审查、Git、交付 | 基于 diff、验证和风险交付；外部提交需授权 | shared independent review、artifact identity、review-bound Git effect 与 immutable delivery manifest 已进入 canonical Kernel；真实 Git host adapter 仍按当前任务适用性受外部 effect authority 约束 | D/I/W本地，Q✗ | P2 |
+| 发布与回退 | 按任务和授权执行制品、CI、发布、观测、回退 | shared release gate、CI/deploy/smoke/observe 和 rollback 状态机已 fail closed；本地确定性证据已完成，真实用户项目发布和跨平台/Provider 资格尚未执行 | D/I/W本地，Q✗ | P2 |
 | Trace/replay | 行动、证据和失败可回放并定位到阶段 | RunContext/trace/replay 是已有优势，但多 Loop 使事实不一致 | D/I/W部分 | P0 |
 | 行为资格 | 从小任务到真实项目逐级验证真实入口和 Provider | PA benchmark 主要走 CLI+Fake Bridge；当前真实 VS Code 配额为 `0/3、0/2、0/1` | D/I，Q✗ | P0 |
 | 架构防漂移 | 限制 owner、旁路、依赖方向、执行引擎和 mutation API 数量 | drift gate 只检查少量文件行数，新千行热点不在预算 | D/I弱 | P0-治理 |

@@ -33,6 +33,39 @@ function taskContract() {
   });
 }
 
+function releaseTaskContract() {
+  return buildCodingKernelTaskContract({
+    goal: 'Deploy src/value.ts and verify it',
+    mode: 'release',
+    include: ['src/value.ts'],
+    deliverables: [{ id: 'source', kind: 'source-change', path: 'src/value.ts' }],
+    acceptance: [{
+      id: 'verified',
+      statement: 'The requested behavior passes verification.',
+      deliverableIds: ['source'],
+      oracle: verificationOracle('src/value.ts'),
+      externalBoundaryRefs: [],
+    }],
+    provenanceRefs: ['user-prompt'],
+  });
+}
+
+function reviewTaskContract() {
+  return buildCodingKernelTaskContract({
+    goal: 'Inspect the repository architecture',
+    mode: 'review',
+    deliverables: [{ id: 'report', kind: 'report' }],
+    acceptance: [{
+      id: 'reviewed',
+      statement: 'The inspection report is grounded.',
+      deliverableIds: ['report'],
+      oracle: responseOracle(),
+      externalBoundaryRefs: [],
+    }],
+    provenanceRefs: ['user-prompt'],
+  });
+}
+
 function request(overrides = {}) {
   return {
     version: CODING_KERNEL_REQUEST_VERSION,
@@ -102,6 +135,13 @@ test('CanonicalCodingKernel preserves one versioned request and terminal output 
       assert.equal(input.requirementDecision.status, 'ready');
       assert.equal(input.designDecision.status, 'ready');
       assert.equal(input.changePlan.status, 'ready');
+      assert.equal(typeof input.independentReview.assess, 'function');
+      assert.equal(typeof input.artifactIdentity.assess, 'function');
+      assert.equal(typeof input.gitDelivery.assess, 'function');
+      assert.equal(typeof input.deliveryManifest.build, 'function');
+      assert.equal(typeof input.releaseGate.assess, 'function');
+      assert.equal(typeof input.ciDeployObserve.assess, 'function');
+      assert.equal(typeof input.rollback.assess, 'function');
       const planned = await commitCanonicalWorkspaceChange(input, {
         paths: ['src/value.ts'],
         marker: 'planned-target',
@@ -192,10 +232,102 @@ test('CanonicalCodingKernel preserves one versioned request and terminal output 
   assert.deepEqual(output.result.changedPaths, ['src/value.ts', 'src/auth.ts']);
   assert.equal(output.completion.status, 'completed');
   assert.deepEqual(output.verificationReceipts.map(receipt => receipt.status), ['passed']);
+  assert.deepEqual(output.independentReviewDecisions.map(item => item.status), ['not-required']);
+  assert.deepEqual(output.artifactIdentityDecisions.map(item => item.status), ['not-applicable']);
+  assert.deepEqual(output.gitDeliveryDecisions.map(item => item.status), ['not-applicable']);
+  assert.deepEqual(output.deliveryManifests.map(item => item.status), ['ready']);
+  assert.deepEqual(output.releaseGateDecisions.map(item => item.status), ['not-applicable']);
+  assert.deepEqual(output.deploymentDecisions.map(item => item.status), ['not-applicable']);
+  assert.deepEqual(output.rollbackDecisions.map(item => item.status), ['not-required']);
   assert.equal(output.evidenceRefs.includes('code-change:path:src/value.ts'), true);
   assert.equal(output.evidenceRefs.includes('code-change:path:src/auth.ts'), true);
   assert.equal(output.evidenceRefs.includes('verify:passed'), true);
   assert.deepEqual(output.settlement.evidenceRefs, output.evidenceRefs);
+});
+
+test('CanonicalCodingKernel blocks release without independent review and exact delivery evidence', async () => {
+  const kernel = new CanonicalCodingKernel({
+    async executeCanonical(input) {
+      await commitCanonicalWorkspaceChange(input, {
+        paths: ['src/value.ts'],
+        marker: 'release-target',
+      });
+      await passCanonicalVerification(input);
+      return {
+        result: { changedPaths: ['src/value.ts'] },
+        completionEvidence: completionEvidence(),
+      };
+    },
+  });
+
+  const output = await kernel.execute(request({
+    runId: 'run-release-blocked',
+    userPrompt: 'Deploy src/value.ts and verify it',
+    taskContract: releaseTaskContract(),
+  }));
+
+  assert.equal(output.status, 'blocked');
+  assert.equal(output.completion.reasonCodes.includes('review-not-passed'), true);
+  assert.deepEqual(output.independentReviewDecisions.map(item => item.status), ['not-run']);
+  assert.deepEqual(output.artifactIdentityDecisions.map(item => item.status), ['indeterminate']);
+  assert.deepEqual(output.gitDeliveryDecisions.map(item => item.status), ['blocked']);
+  assert.deepEqual(output.deliveryManifests.map(item => item.status), ['blocked']);
+  assert.deepEqual(output.releaseGateDecisions.map(item => item.status), ['blocked']);
+  assert.deepEqual(output.deploymentDecisions.map(item => item.status), ['blocked']);
+});
+
+test('CanonicalCodingKernel keeps read-only reports, manual review, and independent review distinct', async () => {
+  const kernel = new CanonicalCodingKernel({
+    async executeCanonical(input) {
+      return {
+        result: { report: 'Architecture inspection.' },
+        completionEvidence: completionEvidence({
+          acceptanceEvidence: [{
+            criterionId: 'reviewed',
+            status: 'passed',
+            evidenceRefs: [`report:${input.runId}`],
+          }],
+          ...(input.runtimeContext.manualReview ? {
+            reviewRequired: true,
+            review: { status: 'not-run', evidenceRefs: [] },
+          } : {}),
+          ...(input.runtimeContext.independentReview ? {
+            independentReviewRequired: true,
+          } : {}),
+        }),
+      };
+    },
+  });
+  const base = {
+    userPrompt: 'Inspect the repository architecture',
+    taskContract: reviewTaskContract(),
+  };
+
+  const report = await kernel.execute(request({
+    ...base,
+    runId: 'run-read-only-report',
+    runtimeContext: {},
+  }));
+  assert.equal(report.status, 'completed');
+  assert.deepEqual(report.independentReviewDecisions.map(item => item.status), ['not-required']);
+
+  const manual = await kernel.execute(request({
+    ...base,
+    runId: 'run-manual-review',
+    runtimeContext: { manualReview: true },
+  }));
+  assert.equal(manual.status, 'blocked');
+  assert.equal(manual.completion.reasonCodes.includes('review-not-passed'), true);
+  assert.deepEqual(manual.independentReviewDecisions.map(item => item.status), ['not-required']);
+
+  const independent = await kernel.execute(request({
+    ...base,
+    runId: 'run-independent-review',
+    runtimeContext: { independentReview: true },
+  }));
+  assert.equal(independent.status, 'blocked');
+  assert.equal(independent.completion.reasonCodes.includes('review-not-passed'), true);
+  assert.deepEqual(independent.independentReviewDecisions.map(item => item.status), ['not-run']);
 });
 
 test('CanonicalCodingKernel fails closed before invoking runtime for invalid routes and cancellation', async () => {

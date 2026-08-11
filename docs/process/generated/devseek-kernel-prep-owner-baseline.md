@@ -57,6 +57,13 @@
 | diagnostic-normalization | shared-CanonicalDiagnosticService | - | 1 | converged |
 | regression-selection | shared-CanonicalRegressionSelectionService | - | 1 | converged |
 | bounded-repair | shared-CanonicalRepairDecisionService | - | 1 | converged |
+| independent-review | shared-CanonicalIndependentReviewService | - | 1 | converged |
+| artifact-identity | shared-CanonicalArtifactIdentityService | - | 1 | converged |
+| git-delivery | shared-CanonicalGitDeliveryService | - | 1 | converged |
+| delivery-manifest | shared-CanonicalDeliveryManifestService | - | 1 | converged |
+| release-gate | shared-CanonicalReleaseGateService | - | 1 | converged |
+| ci-deploy-observe | shared-CanonicalCiDeployObserveService | - | 1 | converged |
+| rollback | shared-CanonicalRollbackService | - | 1 | converged |
 | completion-decision | shared-CanonicalCompletionDecisionService | - | 1 | converged |
 | run-evidence-retention | shared-CanonicalRunEvidenceRetentionService | - | 1 | converged |
 | memory-policy | shared-CanonicalMemoryPolicyService | - | 1 | converged |
