@@ -109,6 +109,8 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
       canonicalExternalEffects: kernelRequest.externalEffects,
       canonicalVerifierSelection: kernelRequest.verifierSelection,
       canonicalBuildOrchestration: kernelRequest.buildOrchestration,
+      canonicalRegressionSelection: kernelRequest.regressionSelection,
+      canonicalDiagnostics: kernelRequest.diagnostics,
       canonicalVerificationAcceptance: kernelRequest.verificationAcceptance,
       canonicalVerification: kernelRequest.verification,
       ...(originalCheckpoint ? {

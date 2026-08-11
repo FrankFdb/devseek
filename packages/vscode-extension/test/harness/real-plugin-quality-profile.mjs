@@ -384,7 +384,7 @@ const R3_09B_BUDGET_POLICY_DECISION_SPEC = Object.freeze({
     'R3-09B-BUDGET-POLICY-DECISION',
     'decideRunBudgetPolicy',
     'devseek.run-budget-policy/v1',
-    'bounded-repair-policy',
+    'canonical-run-budget',
     'allow/replan/blocked',
     'safety-and-acceptance-protected',
     'optional-budget-exceeded-replan',

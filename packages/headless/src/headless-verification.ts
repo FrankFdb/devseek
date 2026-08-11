@@ -5,8 +5,10 @@ import {
   type CodingBuildExecutionHostPort,
   type CodingVerificationCriterion,
   type CodingVerificationOutcome,
+  type CodingVerificationSessionPort,
   type CodingVerifierCandidate,
-  type VerificationPort,
+  type DiagnosticPort,
+  type RegressionSelectionPort,
   type VerifierSelectionPort,
 } from '@devseek-netai/shared';
 
@@ -25,7 +27,9 @@ export interface HeadlessVerificationInput {
 export interface HeadlessVerificationPorts {
   readonly selection: VerifierSelectionPort;
   readonly orchestration: BuildOrchestrationPort;
-  readonly verification: VerificationPort;
+  readonly regressionSelection: RegressionSelectionPort;
+  readonly verification: CodingVerificationSessionPort;
+  readonly diagnostics: DiagnosticPort;
 }
 
 /** Composes programmatic capabilities with shared selection, execution, and acceptance authorities. */
@@ -40,7 +44,17 @@ export class HeadlessVerificationAdapter {
       candidates: input.candidates,
       evidenceRefs: input.evidenceRefs,
     });
-    const orchestration = await this.ports.orchestration.execute(selection, input.host);
+    const regression = this.ports.regressionSelection.select({
+      sequence: input.sequence,
+      actionId: `${input.actionId}:regression`,
+      changedPaths: input.scopePaths,
+      verifierSelection: selection,
+      previousVerifications: this.ports.verification.receipts()
+        .filter(receipt => receipt.actionId !== input.actionId),
+      evidenceRefs: input.evidenceRefs,
+    });
+    const executionSelection = regression.verificationSelection;
+    const orchestration = await this.ports.orchestration.execute(executionSelection, input.host);
     const plan = buildCodingVerificationPlan({
       runId: input.runId,
       sequence: input.sequence,
@@ -51,12 +65,14 @@ export class HeadlessVerificationAdapter {
       payload: {
         workspaceRoot: input.workspaceRoot,
         surface: 'headless' as const,
-        selection,
+        selection: executionSelection,
       },
       evidenceRefs: orchestration.evidenceRefs,
     });
-    return this.ports.verification.verify(plan, {
+    const outcome = await this.ports.verification.verify(plan, {
       verify: async () => projectBuildOrchestrationHostResult(orchestration),
     });
+    this.ports.diagnostics.normalizeVerification(outcome.receipt);
+    return outcome;
   }
 }

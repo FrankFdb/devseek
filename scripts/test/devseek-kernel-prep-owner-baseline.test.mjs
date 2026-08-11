@@ -48,9 +48,9 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    semantic_domains: 33,
-    converged_semantic_domains: 33,
-    source_checks: 129,
+    semantic_domains: 38,
+    converged_semantic_domains: 38,
+    source_checks: 134,
     failed_source_checks: 0,
   });
   assert.deepEqual(
@@ -116,9 +116,14 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     'tool-dispatch',
     'tool-execution',
     'workspace-mutation',
+    'code-change',
+    'integration-conformance',
     'verifier-selection',
     'build-orchestration',
     'verification',
+    'diagnostic-normalization',
+    'regression-selection',
+    'bounded-repair',
     'completion-decision',
     'run-evidence-retention',
     'memory-policy',
@@ -219,6 +224,11 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     ['design-decision', 'shared-CanonicalDesignDecisionService'],
     ['change-plan', 'shared-CanonicalChangePlanService'],
     ['change-plan-revision', 'shared-CanonicalChangePlanRevisionService'],
+    ['code-change', 'shared-CanonicalCodeChangeService'],
+    ['integration-conformance', 'shared-CanonicalIntegrationConformanceService'],
+    ['diagnostic-normalization', 'shared-CanonicalDiagnosticService'],
+    ['regression-selection', 'shared-CanonicalRegressionSelectionService'],
+    ['bounded-repair', 'shared-CanonicalRepairDecisionService'],
   ]) {
     const domain = actual.semantic_domains.find(item => item.domain_id === domainId);
     assert.equal(domain.current_owners[0].owner_id, ownerId);
@@ -239,6 +249,7 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
       'shared-coding-conformance-fixtures',
       'shared-settled-conformance-projection-owner',
       'shared-coding-conformance-export',
+      'shared-canonical-integration-conformance-owner',
     ],
   );
 
@@ -362,7 +373,7 @@ test('kernel prep owner baseline checker validates the current generated artifac
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    converged_semantic_domains: 33,
+    converged_semantic_domains: 38,
     failed_source_checks: 0,
     qualification_effect: 'NONE',
   });

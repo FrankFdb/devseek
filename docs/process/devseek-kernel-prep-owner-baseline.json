@@ -534,6 +534,44 @@
       "convergence_status": "converged"
     },
     {
+      "domain_id": "code-change",
+      "target_port": "CodeChangePort",
+      "target_owner_count": 1,
+      "current_owner_count": 1,
+      "current_owners": [
+        {
+          "owner_id": "shared-CanonicalCodeChangeService",
+          "surfaces": [
+            "vscode",
+            "cli",
+            "headless"
+          ],
+          "source_ref": "packages/shared/src/coding-code-change.ts"
+        }
+      ],
+      "missing_surfaces": [],
+      "convergence_status": "converged"
+    },
+    {
+      "domain_id": "integration-conformance",
+      "target_port": "IntegrationConformancePort",
+      "target_owner_count": 1,
+      "current_owner_count": 1,
+      "current_owners": [
+        {
+          "owner_id": "shared-CanonicalIntegrationConformanceService",
+          "surfaces": [
+            "vscode",
+            "cli",
+            "headless"
+          ],
+          "source_ref": "packages/shared/src/coding-integration-conformance.ts"
+        }
+      ],
+      "missing_surfaces": [],
+      "convergence_status": "converged"
+    },
+    {
       "domain_id": "verifier-selection",
       "target_port": "VerifierSelectionPort",
       "target_owner_count": 1,
@@ -585,6 +623,63 @@
             "headless"
           ],
           "source_ref": "packages/shared/src/coding-verification.ts"
+        }
+      ],
+      "missing_surfaces": [],
+      "convergence_status": "converged"
+    },
+    {
+      "domain_id": "diagnostic-normalization",
+      "target_port": "DiagnosticPort",
+      "target_owner_count": 1,
+      "current_owner_count": 1,
+      "current_owners": [
+        {
+          "owner_id": "shared-CanonicalDiagnosticService",
+          "surfaces": [
+            "vscode",
+            "cli",
+            "headless"
+          ],
+          "source_ref": "packages/shared/src/coding-diagnostic.ts"
+        }
+      ],
+      "missing_surfaces": [],
+      "convergence_status": "converged"
+    },
+    {
+      "domain_id": "regression-selection",
+      "target_port": "RegressionSelectionPort",
+      "target_owner_count": 1,
+      "current_owner_count": 1,
+      "current_owners": [
+        {
+          "owner_id": "shared-CanonicalRegressionSelectionService",
+          "surfaces": [
+            "vscode",
+            "cli",
+            "headless"
+          ],
+          "source_ref": "packages/shared/src/coding-regression-selection.ts"
+        }
+      ],
+      "missing_surfaces": [],
+      "convergence_status": "converged"
+    },
+    {
+      "domain_id": "bounded-repair",
+      "target_port": "RepairDecisionPort",
+      "target_owner_count": 1,
+      "current_owner_count": 1,
+      "current_owners": [
+        {
+          "owner_id": "shared-CanonicalRepairDecisionService",
+          "surfaces": [
+            "vscode",
+            "cli",
+            "headless"
+          ],
+          "source_ref": "packages/shared/src/coding-repair-decision.ts"
         }
       ],
       "missing_surfaces": [],
@@ -714,9 +809,9 @@
     "legacy_recovery_routes": 0,
     "legacy_execution_owners": 0,
     "cross_surface_kernel_routes": 4,
-    "semantic_domains": 33,
-    "converged_semantic_domains": 33,
-    "source_checks": 129,
+    "semantic_domains": 38,
+    "converged_semantic_domains": 38,
+    "source_checks": 134,
     "failed_source_checks": 0
   },
   "source_checks": [
@@ -790,6 +885,11 @@
         "new CanonicalResumeIdempotencyService()",
         "new CanonicalVerifierSelectionService()",
         "new CanonicalBuildOrchestrationService()",
+        "new CanonicalCodeChangeService()",
+        "new CanonicalIntegrationConformanceService()",
+        "new CanonicalDiagnosticService()",
+        "new CanonicalRegressionSelectionService()",
+        "new CanonicalRepairDecisionService()",
         "new CanonicalStructuralAcceptanceEvidenceService()",
         "new CanonicalProviderEventService()",
         "new CanonicalToolSchemaRegistry()",
@@ -819,10 +919,17 @@
         "acceptance: verificationAcceptance,",
         "const verifierSelection = VERIFIER_SELECTION.bind({",
         "const buildOrchestration = BUILD_ORCHESTRATION.bind({ runId: request.runId })",
+        "const codeChanges = CODE_CHANGES.bind({ runId: request.runId })",
+        "const integrationConformance = INTEGRATION_CONFORMANCE.bind({ runId: request.runId })",
+        "const diagnostics = DIAGNOSTICS.bind({ runId: request.runId })",
+        "const regressionSelection = REGRESSION_SELECTION.bind({ runId: request.runId })",
+        "const repairDecisions = REPAIR_DECISIONS.bind({ runId: request.runId })",
         "verifierSelection,",
         "buildOrchestration,",
         "verificationAcceptance,",
         "const completionEvidence = assertRuntimeCompletionEvidence(runtimeOutput.completionEvidence)",
+        "const codeChange = codeChanges.assess({",
+        "const integration = integrationConformance.assess({",
         "const structuralAcceptanceEvidence = STRUCTURAL_ACCEPTANCE.project({",
         "...structuralAcceptanceEvidence,",
         "const completion = this.completion.decide({",
@@ -1523,9 +1630,14 @@
         "export * from './coding-tool-dispatch';",
         "export * from './coding-tool-schema';",
         "export * from './coding-workspace-mutation';",
+        "export * from './coding-code-change';",
+        "export * from './coding-integration-conformance';",
         "export * from './coding-verifier-selection';",
         "export * from './coding-build-orchestration';",
         "export * from './coding-verification';",
+        "export * from './coding-diagnostic';",
+        "export * from './coding-regression-selection';",
+        "export * from './coding-repair-decision';",
         "export * from './coding-structural-acceptance';",
         "export * from './coding-completion';",
         "export * from './surface-adapter-conformance';"
@@ -1850,6 +1962,42 @@
       "passed": true
     },
     {
+      "check_id": "shared-canonical-code-change-owner",
+      "path": "packages/shared/src/coding-code-change.ts",
+      "includes": [
+        "CODING_CODE_CHANGE_DECISION_VERSION = 'devseek.coding-code-change-decision/v1'",
+        "export interface CodeChangePort",
+        "export class CanonicalCodeChangeService implements CodeChangeServicePort",
+        "planned-change-committed-and-read-back",
+        "unplanned-path-mutated",
+        "coding-code-change:"
+      ],
+      "excludes": [
+        "from 'vscode'",
+        "CliCodingKernelRuntimeAdapter",
+        "HeadlessCodingKernelExecutor"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "shared-canonical-integration-conformance-owner",
+      "path": "packages/shared/src/coding-integration-conformance.ts",
+      "includes": [
+        "CODING_INTEGRATION_CONFORMANCE_VERSION = 'devseek.coding-integration-conformance/v1'",
+        "export interface IntegrationConformancePort",
+        "export class CanonicalIntegrationConformanceService implements IntegrationConformanceServicePort",
+        "workspace-mutation-bypassed-tool-execution",
+        "mutating-tool-missing-transaction-receipt",
+        "coding-integration-conformance:"
+      ],
+      "excludes": [
+        "from 'vscode'",
+        "CliCodingKernelRuntimeAdapter",
+        "HeadlessCodingKernelExecutor"
+      ],
+      "passed": true
+    },
+    {
       "check_id": "shared-canonical-verifier-selection-owner",
       "path": "packages/shared/src/coding-verifier-selection.ts",
       "includes": [
@@ -1912,6 +2060,60 @@
         "CliVerificationAdapter",
         "HeadlessVerificationAdapter",
         "ValidationService"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "shared-canonical-diagnostic-owner",
+      "path": "packages/shared/src/coding-diagnostic.ts",
+      "includes": [
+        "CODING_DIAGNOSTIC_DECISION_VERSION = 'devseek.coding-diagnostic-decision/v1'",
+        "export interface DiagnosticPort",
+        "export class CanonicalDiagnosticService implements DiagnosticServicePort",
+        "normalizeVerification(receipt: CodingVerificationReceipt)",
+        "diagnostic-fingerprint:",
+        "coding-diagnostic:"
+      ],
+      "excludes": [
+        "from 'vscode'",
+        "CliVerificationAdapter",
+        "HeadlessVerificationAdapter"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "shared-canonical-regression-selection-owner",
+      "path": "packages/shared/src/coding-regression-selection.ts",
+      "includes": [
+        "CODING_REGRESSION_SELECTION_VERSION = 'devseek.coding-regression-selection/v1'",
+        "export interface RegressionSelectionPort",
+        "export class CanonicalRegressionSelectionService implements RegressionSelectionServicePort",
+        "export type CodingRegressionStrategy = 'targeted' | 'dependent' | 'full-risk'",
+        "regression-acceptance-coverage-expanded",
+        "coding-regression-selection:"
+      ],
+      "excludes": [
+        "from 'vscode'",
+        "CliVerificationAdapter",
+        "HeadlessVerificationAdapter"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "shared-canonical-repair-decision-owner",
+      "path": "packages/shared/src/coding-repair-decision.ts",
+      "includes": [
+        "CODING_REPAIR_DECISION_VERSION = 'devseek.coding-repair-decision/v1'",
+        "export interface RepairDecisionPort",
+        "export class CanonicalRepairDecisionService implements RepairDecisionServicePort",
+        "root-cause-replan-required",
+        "repeated-mutation-no-progress",
+        "coding-repair-decision:"
+      ],
+      "excludes": [
+        "from 'vscode'",
+        "CliCodingKernelRuntimeAdapter",
+        "AgenticRepairService"
       ],
       "passed": true
     },
@@ -2098,8 +2300,11 @@
         "export class HeadlessVerificationAdapter",
         "constructor(private readonly ports: HeadlessVerificationPorts)",
         "const selection = this.ports.selection.select({",
-        "const orchestration = await this.ports.orchestration.execute(selection, input.host)",
-        "return this.ports.verification.verify(plan, {",
+        "const regression = this.ports.regressionSelection.select({",
+        "const executionSelection = regression.verificationSelection",
+        "const orchestration = await this.ports.orchestration.execute(executionSelection, input.host)",
+        "const outcome = await this.ports.verification.verify(plan, {",
+        "this.ports.diagnostics.normalizeVerification(outcome.receipt)",
         "projectBuildOrchestrationHostResult(orchestration)"
       ],
       "excludes": [
@@ -2754,8 +2959,11 @@
         "constructor(private readonly host: VsCodeVerificationHostPort)",
         "const discovered = await this.host.discover({",
         "const selection = ports.selection.select({",
-        "const orchestration = await ports.orchestration.execute(selection, this.host)",
+        "const regression = ports.regressionSelection.select({",
+        "const executionSelection = regression.verificationSelection",
+        "const orchestration = await ports.orchestration.execute(executionSelection, this.host)",
         "const outcome = await ports.verification.verify(plan, {",
+        "ports.diagnostics.normalizeVerification(outcome.receipt)",
         "projectBuildOrchestrationHostResult(orchestration)"
       ],
       "excludes": [
@@ -2985,8 +3193,11 @@
         "async prepare(",
         "const selection = ports.selection.select({",
         "async execute(",
-        "const orchestration = await ports.orchestration.execute(selection, this.host)",
-        "return ports.verification.verify(plan, {",
+        "const regression = ports.regressionSelection.select({",
+        "const executionSelection = regression.verificationSelection",
+        "const orchestration = await ports.orchestration.execute(executionSelection, this.host)",
+        "const outcome = await ports.verification.verify(plan, {",
+        "ports.diagnostics.normalizeVerification(outcome.receipt)",
         "projectBuildOrchestrationHostResult(orchestration)"
       ],
       "excludes": [
@@ -3010,5 +3221,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "77d2f6ea788fbc05e9d2a71501857a5e3a80aa5b4caf1f55093e95169494a2c3"
+  "baseline_sha256": "5291ac04d87768e8f3fbff0dada34ef23e95da8a2e2d26d36e906dd7831b4cb5"
 }

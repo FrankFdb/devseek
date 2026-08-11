@@ -14,6 +14,7 @@ import {
   buildCodingKernelTaskContract,
   projectCodingKernelTaskContract,
 } from '../dist/index.js';
+import { commitCanonicalWorkspaceChange } from './support/canonical-code-change-fixture.mjs';
 
 function taskContract() {
   return buildCodingKernelTaskContract({
@@ -63,13 +64,13 @@ function completionEvidence(overrides = {}) {
   };
 }
 
-async function passCanonicalVerification(input) {
+async function passCanonicalVerification(input, scopePaths = ['src/value.ts']) {
   return input.verification.verify(buildCodingVerificationPlan({
     runId: input.runId,
     sequence: 1,
     actionId: 'verify-change',
     idempotencyKey: `${input.runId}:verify-change`,
-    scopePaths: ['src/value.ts'],
+    scopePaths,
     acceptance: input.taskContract.acceptance.map(({ id, statement }) => ({ id, statement })),
     payload: { command: 'npm test' },
     evidenceRefs: [],
@@ -101,27 +102,22 @@ test('CanonicalCodingKernel preserves one versioned request and terminal output 
       assert.equal(input.requirementDecision.status, 'ready');
       assert.equal(input.designDecision.status, 'ready');
       assert.equal(input.changePlan.status, 'ready');
-      assert.equal(input.toolAuthority.authorize({
-        actionId: 'write-planned-target',
-        tool: 'write_file',
-        purpose: 'workspace-mutation',
-        effects: ['workspace-mutation'],
-        input: { path: 'src/value.ts' },
-        targetPaths: ['/workspace/src/value.ts'],
-        risk: 'low',
-      }).permission.decision, 'allow');
-      assert.equal(input.toolAuthority.authorize({
-        actionId: 'write-outside-plan',
-        tool: 'write_file',
-        purpose: 'workspace-mutation',
-        effects: ['workspace-mutation'],
-        input: { path: 'src/auth.ts' },
-        targetPaths: ['/workspace/src/auth.ts'],
-        risk: 'low',
-      }).permission.reason, 'task-contract-change-allows-workspace-mutation');
-      await passCanonicalVerification(input);
+      const planned = await commitCanonicalWorkspaceChange(input, {
+        paths: ['src/value.ts'],
+        marker: 'planned-target',
+      });
+      assert.equal(planned.authorization.permission.decision, 'allow');
+      const revised = await commitCanonicalWorkspaceChange(input, {
+        paths: ['src/auth.ts'],
+        marker: 'runtime-discovered-target',
+      });
+      assert.equal(
+        revised.authorization.permission.reason,
+        'task-contract-change-allows-workspace-mutation',
+      );
+      await passCanonicalVerification(input, ['src/value.ts', 'src/auth.ts']);
       return {
-        result: { changedPaths: ['src/value.ts'] },
+        result: { changedPaths: ['src/value.ts', 'src/auth.ts'] },
         completionEvidence: completionEvidence(),
       };
     },
@@ -193,10 +189,12 @@ test('CanonicalCodingKernel preserves one versioned request and terminal output 
   });
   assert.equal(output.taskContract.version, CODING_KERNEL_TASK_CONTRACT_VERSION);
   assert.deepEqual(output.taskContract.scope.include, ['src/value.ts']);
-  assert.deepEqual(output.result.changedPaths, ['src/value.ts']);
+  assert.deepEqual(output.result.changedPaths, ['src/value.ts', 'src/auth.ts']);
   assert.equal(output.completion.status, 'completed');
   assert.deepEqual(output.verificationReceipts.map(receipt => receipt.status), ['passed']);
-  assert.deepEqual(output.evidenceRefs, ['verify:passed']);
+  assert.equal(output.evidenceRefs.includes('code-change:path:src/value.ts'), true);
+  assert.equal(output.evidenceRefs.includes('code-change:path:src/auth.ts'), true);
+  assert.equal(output.evidenceRefs.includes('verify:passed'), true);
   assert.deepEqual(output.settlement.evidenceRefs, output.evidenceRefs);
 });
 

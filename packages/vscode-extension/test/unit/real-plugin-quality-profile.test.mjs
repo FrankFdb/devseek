@@ -478,7 +478,7 @@ test('R3-09B budget policy decision real plugin scenario adds bounded budget cov
     'R3-09B-BUDGET-POLICY-DECISION',
     'decideRunBudgetPolicy',
     'devseek.run-budget-policy/v1',
-    'bounded-repair-policy',
+    'canonical-run-budget',
     'allow/replan/blocked',
     'safety-and-acceptance-protected',
     'optional-budget-exceeded-replan',

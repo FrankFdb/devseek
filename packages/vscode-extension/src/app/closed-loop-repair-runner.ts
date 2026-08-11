@@ -9,7 +9,7 @@ import {
 import { AgenticRepairService } from './agentic-repair-service';
 import { askRepairExhaustedAction, requestManualFixGuidance } from './repair-exhaustion-interaction';
 import type { ValidationCommandRunner } from '../workspace/validation-service';
-import { extendRepairRoundBudget, normalizeRepairRoundBudget } from './bounded-repair-policy';
+import { extendRepairRoundBudget, normalizeRepairRoundBudget } from '@devseek-netai/shared';
 
 export interface ClosedLoopRepairRouteChatOptions {
   prompt: string;

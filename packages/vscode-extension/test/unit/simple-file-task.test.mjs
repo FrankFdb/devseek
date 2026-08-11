@@ -9,7 +9,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   CanonicalBuildOrchestrationService,
+  CanonicalDiagnosticService,
   CanonicalEngineeringOrientationService,
+  CanonicalRegressionSelectionService,
   CanonicalVerificationService,
   CanonicalVerifierSelectionService,
   buildCodingKernelTaskContract,
@@ -108,6 +110,8 @@ function makeCallbacks(events, commandRunner) {
       orientation,
     }),
     canonicalBuildOrchestration: new CanonicalBuildOrchestrationService().bind({ runId }),
+    canonicalRegressionSelection: new CanonicalRegressionSelectionService().bind({ runId }),
+    canonicalDiagnostics: new CanonicalDiagnosticService().bind({ runId }),
     canonicalVerification: new CanonicalVerificationService().bind({ runId, acceptance }),
     canonicalVerificationAcceptance: acceptance,
   };

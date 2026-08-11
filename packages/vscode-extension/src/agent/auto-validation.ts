@@ -5,6 +5,8 @@ import type {
   CodingVerificationCriterion,
   CodingVerificationReceipt,
   CodingVerificationSessionPort,
+  DiagnosticPort,
+  RegressionSelectionPort,
   VerifierSelectionPort,
 } from '@devseek-netai/shared';
 import type { AgentStatusEvent } from './events';
@@ -54,6 +56,8 @@ export interface AgentAutoValidationCallbacks {
   canonicalVerification?: CodingVerificationSessionPort;
   canonicalVerifierSelection?: VerifierSelectionPort;
   canonicalBuildOrchestration?: BuildOrchestrationPort;
+  canonicalRegressionSelection?: RegressionSelectionPort;
+  canonicalDiagnostics?: DiagnosticPort;
   canonicalVerificationAcceptance?: readonly CodingVerificationCriterion[];
 }
 
@@ -81,7 +85,9 @@ export interface AgentAutoValidationOptions {
   verificationPorts?: {
     readonly selection: VerifierSelectionPort;
     readonly orchestration: BuildOrchestrationPort;
+    readonly regressionSelection: RegressionSelectionPort;
     readonly verification: CodingVerificationSessionPort;
+    readonly diagnostics: DiagnosticPort;
   };
   verificationAcceptance?: readonly CodingVerificationCriterion[];
   verificationEvidenceRefs?: readonly string[];
@@ -535,11 +541,15 @@ export async function runAgentAutoValidationForWrites(
     const ports = options.verificationPorts ?? (
       callbacks.canonicalVerifierSelection
       && callbacks.canonicalBuildOrchestration
+      && callbacks.canonicalRegressionSelection
       && callbacks.canonicalVerification
+      && callbacks.canonicalDiagnostics
         ? {
             selection: callbacks.canonicalVerifierSelection,
             orchestration: callbacks.canonicalBuildOrchestration,
+            regressionSelection: callbacks.canonicalRegressionSelection,
             verification: callbacks.canonicalVerification,
+            diagnostics: callbacks.canonicalDiagnostics,
           }
         : undefined
     );

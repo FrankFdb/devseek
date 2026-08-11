@@ -203,7 +203,9 @@ test('I12-AUT-03 user journey: approved tool input cannot be substituted before 
       runtimeContext: { journey: scenario.case_id },
     });
 
-    assert.equal(output.status, 'completed');
+    assert.equal(output.status, 'blocked');
+    assert.equal(output.codeChangeDecisions[0].status, 'incomplete');
+    assert.equal(output.integrationConformanceDecisions[0].status, 'incomplete');
     assert.equal(output.result.hostCalls, 0);
     assert.equal(output.result.inputSha256.length, 64);
     assert.equal(hostCalls, 0);

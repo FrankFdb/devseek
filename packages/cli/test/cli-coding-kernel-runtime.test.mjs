@@ -189,8 +189,14 @@ function createHarness({
       usesBridge,
       async requestRepair(repairRequest) {
         repairRequests.push(repairRequest);
-        if (repairResult instanceof Error) throw repairResult;
-        return repairResult;
+        const repairIndex = repairRequests.length - 1;
+        const candidate = typeof repairResult === 'function'
+          ? await repairResult(repairRequest, repairIndex)
+          : Array.isArray(repairResult)
+            ? repairResult[Math.min(repairIndex, repairResult.length - 1)]
+            : repairResult;
+        if (candidate instanceof Error) throw candidate;
+        return candidate;
       },
       recordOperationEvidence(entry, operationId, boundary) {
         evidence.push({ entry, operationId, boundary });
@@ -280,6 +286,8 @@ test('canonical CLI runtime denies model-requested terminal execution without ho
   assert.equal(output.result.verification.status, 'not-run');
   assert.equal(output.completion.status, 'blocked');
   assert.deepEqual(output.completion.residualRisks, ['requested-change-not-applied']);
+  assert.equal(output.codeChangeDecisions[0].status, 'incomplete');
+  assert.equal(output.integrationConformanceDecisions[0].status, 'incomplete');
 });
 
 test('canonical CLI runtime records one committed and verified edit', async () => {
@@ -411,6 +419,64 @@ test('canonical CLI runtime repairs a failed first edit and closes its recovery 
   });
   assert.equal(output.result.attempts, 2);
   assert.equal(output.status, 'completed');
+});
+
+test('I19-RPR-01 user journey: one root-cause replan lets changed repair evidence succeed', async () => {
+  const harness = createHarness({
+    responses: [
+      { candidateCount: 1 },
+      { candidateCount: 1 },
+      { candidateCount: 1 },
+    ],
+    validations: [
+      { passed: false, summary: 'typecheck failed: TS2322', evidenceRefs: ['verify:failed:1'] },
+      { passed: false, summary: 'typecheck failed: TS2322', evidenceRefs: ['verify:failed:2'] },
+      { passed: true, summary: 'passed', evidenceRefs: ['verify:passed'] },
+    ],
+    repairResult: ['changed repair response', 'root-cause repair response'],
+  });
+
+  const output = await harness.kernel.execute(harness.request);
+
+  assert.deepEqual(harness.interpreted, [
+    'initial response',
+    'changed repair response',
+    'root-cause repair response',
+  ]);
+  assert.equal(harness.repairRequests.length, 2);
+  assert.match(harness.repairRequests[1].prompt, /Canonical repair decision: replan/);
+  assert.match(harness.repairRequests[1].prompt, /change the root-cause hypothesis/);
+  assert.deepEqual(output.repairDecisions.map(decision => decision.action), ['retry', 'replan']);
+  assert.deepEqual(output.repairDecisions.map(decision => decision.repeatedMutation), [false, false]);
+  assert.equal(output.result.attempts, 3);
+  assert.equal(output.status, 'completed');
+});
+
+test('I19-RPR-02 user journey: identical repair stops before another provider turn', async () => {
+  const harness = createHarness({
+    responses: [{ candidateCount: 1 }, { candidateCount: 1 }],
+    validations: [
+      { passed: false, summary: 'tests failed: same assertion', evidenceRefs: ['verify:failed:1'] },
+      { passed: false, summary: 'tests failed: same assertion', evidenceRefs: ['verify:failed:2'] },
+    ],
+    repairResult: 'initial response',
+  });
+
+  let caught;
+  try {
+    await harness.kernel.execute(harness.request);
+  } catch (error) {
+    caught = error;
+  }
+
+  assert.ok(caught);
+  assert.match(caught.message, /repeated-mutation-no-progress/);
+  assert.equal(harness.mutations.length, 2);
+  assert.equal(harness.verifications.length, 2);
+  assert.equal(harness.repairRequests.length, 1);
+  assert.deepEqual(caught.repairDecisions.map(decision => decision.action), ['retry', 'blocked']);
+  assert.equal(caught.repairDecisions[1].repeatedDiagnostic, true);
+  assert.equal(caught.repairDecisions[1].repeatedMutation, true);
 });
 
 test('canonical CLI runtime closes recovery as failed when the repair provider fails', async () => {

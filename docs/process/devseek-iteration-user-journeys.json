@@ -857,6 +857,149 @@
           }
         }
       ]
+    },
+    {
+      "iteration_id": "I19",
+      "status": "verified-local",
+      "goal": "Converge code-change conformance, causal integration evidence, diagnostic normalization, regression selection, and bounded adaptive repair into one cross-Surface Kernel pipeline.",
+      "delta_from_baseline": "Adds plan-versus-mutation settlement, direct-write bypass detection, stable path-bound diagnostic fingerprints, dependency-aware and full-risk regression selection, one root-cause replan, and repeated-mutation early stop; none are established by the fixed five coding fixtures or I10-I18.",
+      "fixture_path": "scripts/test/fixtures/user-simulations/i19-diagnostic-repair.json",
+      "local_artifact_root": "code/devseek-tests/diagnostic-repair",
+      "capability_ids": [
+        "C8-CODE-CHANGE",
+        "C8-INTEGRATION-CONFORMANCE",
+        "C9-DIAGNOSTIC-NORMALIZATION",
+        "C9-REGRESSION-SELECTION",
+        "C9-BOUNDED-REPAIR"
+      ],
+      "cases": [
+        {
+          "case_id": "I19-CHG-01",
+          "capability_ids": ["C8-CODE-CHANGE"],
+          "surface": "headless",
+          "user_action": "Apply exactly the accepted source target through a committed transaction with matching readback evidence.",
+          "expected_outcomes": [
+            "The changed path covers the accepted change-plan target.",
+            "Code-change conformance settles only after committed readback evidence exists."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-code-change.test.mjs",
+            "test_name": "I19-CHG-01 user journey: planned code change requires committed readback evidence"
+          }
+        },
+        {
+          "case_id": "I19-CHG-02",
+          "capability_ids": ["C8-CODE-CHANGE"],
+          "surface": "vscode",
+          "user_action": "Commit the requested source change together with an undeclared sibling path.",
+          "expected_outcomes": [
+            "The extra path is reported as unplanned even though the transaction committed.",
+            "The code-change decision fails closed instead of treating commit status as sufficient."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-code-change.test.mjs",
+            "test_name": "I19-CHG-02 user journey: committed unplanned paths fail code change conformance"
+          }
+        },
+        {
+          "case_id": "I19-INT-01",
+          "capability_ids": ["C8-INTEGRATION-CONFORMANCE"],
+          "surface": "cli",
+          "user_action": "Execute a planned write through one authorized tool action, commit its transaction, and verify the same changed scope.",
+          "expected_outcomes": [
+            "Tool, mutation, and verification receipts form one action-bound causal chain.",
+            "No changed path remains unverified or detached from tool execution."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-code-change.test.mjs",
+            "test_name": "I19-INT-01 user journey: tool mutation and verification form one causal chain"
+          }
+        },
+        {
+          "case_id": "I19-INT-02",
+          "capability_ids": ["C8-INTEGRATION-CONFORMANCE"],
+          "surface": "headless",
+          "user_action": "Present a committed workspace mutation without the matching completed mutating-tool receipt.",
+          "expected_outcomes": [
+            "The mutation is identified as bypassing canonical tool execution.",
+            "Verification cannot repair the missing causal authority chain."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-code-change.test.mjs",
+            "test_name": "I19-INT-02 user journey: direct mutation bypass cannot authorize completion"
+          }
+        },
+        {
+          "case_id": "I19-DGN-01",
+          "capability_ids": ["C9-DIAGNOSTIC-NORMALIZATION"],
+          "surface": "vscode",
+          "user_action": "Receive a TypeScript verifier failure that identifies an affected source path and acceptance criterion.",
+          "expected_outcomes": [
+            "The failure becomes one stable typecheck diagnosis bound to the affected path.",
+            "The same receipt replays the same immutable diagnostic decision and fingerprint."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-diagnostic-repair.test.mjs",
+            "test_name": "I19-DGN-01 user journey: verifier failure becomes a stable path-bound diagnosis"
+          }
+        },
+        {
+          "case_id": "I19-REG-01",
+          "capability_ids": ["C9-REGRESSION-SELECTION"],
+          "surface": "cli",
+          "user_action": "Repair a failed downstream verifier after ordered prerequisite checks already ran.",
+          "expected_outcomes": [
+            "Regression selection reruns the ordered prerequisite prefix through the failed check.",
+            "Acceptance coverage is preserved while unrelated checks remain excluded."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-regression-selection.test.mjs",
+            "test_name": "I19-REG-01 user journey: repair reruns failed verification with ordered prerequisites"
+          }
+        },
+        {
+          "case_id": "I19-REG-02",
+          "capability_ids": ["C9-REGRESSION-SELECTION"],
+          "surface": "headless",
+          "user_action": "Change infrastructure configuration together with source code after a failed validation.",
+          "expected_outcomes": [
+            "Configuration risk expands selection to the full applicable verifier set.",
+            "A narrowly targeted retry cannot conceal infrastructure-wide regression risk."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-regression-selection.test.mjs",
+            "test_name": "I19-REG-02 user journey: infrastructure changes expand to full risk verification"
+          }
+        },
+        {
+          "case_id": "I19-RPR-01",
+          "capability_ids": ["C9-BOUNDED-REPAIR", "C9-DIAGNOSTIC-NORMALIZATION"],
+          "surface": "cli",
+          "user_action": "Submit two different repairs for the same normalized TypeScript diagnosis, with the second repair changing the root-cause hypothesis.",
+          "expected_outcomes": [
+            "The first diagnosis permits a retry and one repeated diagnosis requests root-cause replanning.",
+            "Changed repair evidence is reverified and the third attempt completes."
+          ],
+          "evidence": {
+            "test_path": "packages/cli/test/cli-coding-kernel-runtime.test.mjs",
+            "test_name": "I19-RPR-01 user journey: one root-cause replan lets changed repair evidence succeed"
+          }
+        },
+        {
+          "case_id": "I19-RPR-02",
+          "capability_ids": ["C9-BOUNDED-REPAIR"],
+          "surface": "cli",
+          "user_action": "Return the identical repair response after the same verifier diagnosis repeats.",
+          "expected_outcomes": [
+            "The repeated mutation and diagnosis settle as no progress.",
+            "The loop blocks before spending another provider repair turn."
+          ],
+          "evidence": {
+            "test_path": "packages/cli/test/cli-coding-kernel-runtime.test.mjs",
+            "test_name": "I19-RPR-02 user journey: identical repair stops before another provider turn"
+          }
+        }
+      ]
     }
   ]
 }

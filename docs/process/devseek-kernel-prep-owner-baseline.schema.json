@@ -80,8 +80,8 @@
     "semantic_domains": {
       "type": "array",
       "items": { "$ref": "#/$defs/semanticDomain" },
-      "minItems": 33,
-      "maxItems": 33
+      "minItems": 38,
+      "maxItems": 38
     },
     "counts": {
       "type": "object",

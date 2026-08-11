@@ -17,7 +17,9 @@ import {
   CODING_CONFORMANCE_DIMENSIONS,
   CODING_KERNEL_OUTPUT_VERSION,
   CanonicalBuildOrchestrationService,
+  CanonicalDiagnosticService,
   CanonicalEngineeringOrientationService,
+  CanonicalRegressionSelectionService,
   CanonicalVerificationService,
   CanonicalVerifierSelectionService,
   CanonicalToolExecutionService,
@@ -94,7 +96,11 @@ test('Headless product entry settles five coding fixtures from isolated real wor
       assert.deepEqual(output.result, { fixtureId: fixture.fixtureId }, fixture.fixtureId);
       assert.equal(Object.isFrozen(output.conformance), true, fixture.fixtureId);
       assert.equal(Object.isFrozen(output.conformance.taskContract.scope.include), true, fixture.fixtureId);
-      assert.equal(surface.contractConformant, true, JSON.stringify(surface.violations));
+      assert.equal(
+        surface.contractConformant,
+        true,
+        `${fixture.fixtureId}: ${JSON.stringify(surface.violations)}`,
+      );
       assert.equal(surface.evidenceClass, 'product-route', fixture.fixtureId);
       assert.deepEqual(surface.observedDimensions, CODING_CONFORMANCE_DIMENSIONS, fixture.fixtureId);
       assert.deepEqual(surface.missingDimensions, [], fixture.fixtureId);
@@ -327,7 +333,9 @@ test('I18-HDL-01 user journey: unavailable Headless verifier never dispatches th
       }),
     }),
     orchestration: new CanonicalBuildOrchestrationService().bind({ runId: 'headless-verify-run' }),
+    regressionSelection: new CanonicalRegressionSelectionService().bind({ runId: 'headless-verify-run' }),
     verification,
+    diagnostics: new CanonicalDiagnosticService().bind({ runId: 'headless-verify-run' }),
   }).verify({
     runId: 'headless-verify-run',
     sequence: 1,
@@ -529,7 +537,9 @@ async function executeHeadlessVerificationTool(input) {
         const verification = await new HeadlessVerificationAdapter({
           selection: input.request.verifierSelection,
           orchestration: input.request.buildOrchestration,
+          regressionSelection: input.request.regressionSelection,
           verification: input.request.verification,
+          diagnostics: input.request.diagnostics,
         }).verify({
           runId: context.runId,
           sequence: context.sequence,

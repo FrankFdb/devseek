@@ -4,7 +4,7 @@
 
 - Schema: `devseek.capability-ledger/v1`
 - Capabilities: 76
-- Ledger SHA-256: `4e2faf1b579c049dd0cb8f51d393fcf2bda12b3ca695593c739efb3aded5286f`
+- Ledger SHA-256: `bfec419148a3b5d7519093b33a4524f4da24c8270a02d34f669167a2632ec56e`
 - Qualification claim policy: `deny-until-signed-evidence-validator`
 
 | Capability | Priority | Applicability | Claim scopes | Implementation | Qualification | Authority port | Typed dependencies |
@@ -77,11 +77,11 @@
 | `C7-SANDBOX-POLICY` | P0 | active | core-coding | wired | — | `SandboxPolicyPort` | C7-PERMISSION-DECISION (authority/wired) |
 | `C7-SECRETS-REDACTION` | P0 | active | core-coding | proposed | — | `SecretRedactionPort` | C7-EXTERNAL-EFFECT (authority/wired) |
 | `C7-WORKSPACE-MUTATION` | P0 | active | core-coding | wired | — | `WorkspaceMutationPort` | C7-PERMISSION-DECISION (authority/wired)<br>C7-SANDBOX-POLICY (authority/wired)<br>C6-TOOL-EXECUTION (execution/wired) |
-| `C8-CODE-CHANGE` | P0 | active | core-coding | proposed | — | `CodeChangePort` | C5-CHANGE-PLAN (semantic/wired)<br>C7-WORKSPACE-MUTATION (authority/wired) |
-| `C8-INTEGRATION-CONFORMANCE` | P0 | active | core-coding | proposed | — | `IntegrationConformancePort` | C8-CODE-CHANGE (execution/wired)<br>C6-TOOL-DISPATCH (execution/wired) |
-| `C9-BOUNDED-REPAIR` | P0 | active | core-coding | proposed | — | `RepairDecisionPort` | C9-DIAGNOSTIC-NORMALIZATION (verification/wired)<br>C7-WORKSPACE-MUTATION (authority/wired) |
+| `C8-CODE-CHANGE` | P0 | active | core-coding | wired | — | `CodeChangePort` | C5-CHANGE-PLAN (semantic/wired)<br>C7-WORKSPACE-MUTATION (authority/wired) |
+| `C8-INTEGRATION-CONFORMANCE` | P0 | active | core-coding | wired | — | `IntegrationConformancePort` | C8-CODE-CHANGE (execution/wired)<br>C6-TOOL-DISPATCH (execution/wired) |
+| `C9-BOUNDED-REPAIR` | P0 | active | core-coding | wired | — | `RepairDecisionPort` | C9-DIAGNOSTIC-NORMALIZATION (verification/wired)<br>C7-WORKSPACE-MUTATION (authority/wired) |
 | `C9-BUILD-ORCHESTRATION` | P0 | active | core-coding | wired | — | `BuildOrchestrationPort` | C8-CODE-CHANGE (execution/wired)<br>C7-EXTERNAL-EFFECT (authority/wired) |
-| `C9-DIAGNOSTIC-NORMALIZATION` | P0 | active | core-coding | proposed | — | `DiagnosticPort` | C9-INDEPENDENT-VERIFICATION (verification/wired) |
+| `C9-DIAGNOSTIC-NORMALIZATION` | P0 | active | core-coding | wired | — | `DiagnosticPort` | C9-INDEPENDENT-VERIFICATION (verification/wired) |
 | `C9-INDEPENDENT-VERIFICATION` | P0 | active | core-coding | wired | — | `VerificationEvidencePort` | C9-VERIFIER-SELECTION (verification/wired)<br>C9-BUILD-ORCHESTRATION (verification/wired) |
-| `C9-REGRESSION-SELECTION` | P0 | active | core-coding | proposed | — | `RegressionSelectionPort` | C9-INDEPENDENT-VERIFICATION (verification/wired) |
+| `C9-REGRESSION-SELECTION` | P0 | active | core-coding | wired | — | `RegressionSelectionPort` | C9-INDEPENDENT-VERIFICATION (verification/wired) |
 | `C9-VERIFIER-SELECTION` | P0 | active | core-coding | wired | — | `VerifierSelectionPort` | C4-ACCEPTANCE-CONTRACT (semantic/wired) |

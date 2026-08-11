@@ -1,5 +1,6 @@
 import {
   buildSecretHarvestingRefusalAcceptanceEvidence,
+  codingSemanticDigest,
   codingToolExecutionFailureReason,
   hasUnsafeSecretHarvestingRefusalEvidence,
   isSecretHarvestingRefusalTaskContract,
@@ -11,6 +12,7 @@ import {
   type CodingCompletionDecision,
   type CodingConformanceProjection,
   type CodingKernelCompletionEvidence,
+  type CodingRepairDecision,
   type CodingRawToolCall,
   type CodingToolCall,
   type CodingToolCallSource,
@@ -22,6 +24,7 @@ import {
   productRunEvidenceIdempotencyKey,
   summarizeTraceText,
   type ProductRunEvidenceRecordInput,
+  MAX_CONFIGURED_REPAIR_ROUND_BUDGET,
 } from '@devseek-netai/shared';
 import type { CliCodingArtifactInterpreter } from './cli-coding-artifact-interpreter';
 import type { CliVerificationAdapter } from './cli-verification-adapter';
@@ -114,7 +117,7 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
     let recovery: CliRecoveryBoundary | undefined;
     let recoveryExitError: unknown;
     try {
-      for (let attempt = 0; attempt < 2; attempt++) {
+      for (let attempt = 0; attempt < MAX_CONFIGURED_REPAIR_ROUND_BUDGET; attempt++) {
         const executionAttempt = attempt + 1;
         const artifactProposal = this.artifactInterpreter.interpret(response);
         const { candidateCount } = artifactProposal;
@@ -358,7 +361,9 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
             execute: async () => {
               const verification = await this.verification.execute(verificationPreparation, {
                 orchestration: request.buildOrchestration,
+                regressionSelection: request.regressionSelection,
                 verification: request.verification,
+                diagnostics: request.diagnostics,
               });
               const receipt = verification.receipt;
               return {
@@ -471,6 +476,9 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
           });
         }
         const latestVerification = verificationReceipts.at(-1);
+        if (!latestVerification) {
+          throw new Error('DevSeek coding validation settled without a verification receipt');
+        }
         if (latestVerification?.status === 'unverified' || latestVerification?.status === 'indeterminate') {
           noteCliRecoveryAdverse(recovery, verificationOperationId);
           return buildCliRuntimeOutput({
@@ -482,24 +490,48 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
             acceptanceEvidence: [],
           });
         }
-        if (attempt === 1) {
+        const diagnostic = request.diagnostics.normalizeVerification(latestVerification);
+        const repairDecision = request.repairDecisions.decide({
+          sequence: diagnostic.sequence,
+          actionId: `cli-repair-decision-${executionAttempt}`,
+          diagnostic,
+          mutationAllowed: true,
+          canContinue: executionAttempt < MAX_CONFIGURED_REPAIR_ROUND_BUDGET,
+          attempt: executionAttempt,
+          maxAttempts: MAX_CONFIGURED_REPAIR_ROUND_BUDGET,
+          mutationFingerprint: codingSemanticDigest({ response, files }),
+          evidenceRefs: [...diagnostic.evidenceRefs, ...validation.evidenceRefs],
+        });
+        if (repairDecision.action === 'blocked' || repairDecision.action === 'not-required') {
           noteCliRecoveryAdverse(recovery, verificationOperationId);
-          throw new Error(`DevSeek coding validation failed after repair: ${validation.summary}`);
+          throw new Error(
+            `DevSeek coding repair stopped (${repairDecision.reason}): ${validation.summary}`,
+          );
         }
 
-        recovery = {
-          operationId: recoveryOperationId,
-          targetOperationIds: [verificationOperationId],
-          unresolvedOperationIds: [verificationOperationId],
-          closed: false,
-        };
-        input.recordOperationEvidence({
-          type: 'recovery.detected',
-          idempotencyKey: productRunEvidenceIdempotencyKey('cli-recovery-detected', { runId: request.runId }),
-          payload: { target_operation_ids: [verificationOperationId] },
-        }, recoveryOperationId);
+        if (!recovery) {
+          recovery = {
+            operationId: recoveryOperationId,
+            targetOperationIds: [verificationOperationId],
+            unresolvedOperationIds: [verificationOperationId],
+            closed: false,
+          };
+          input.recordOperationEvidence({
+            type: 'recovery.detected',
+            idempotencyKey: productRunEvidenceIdempotencyKey('cli-recovery-detected', { runId: request.runId }),
+            payload: { target_operation_ids: [verificationOperationId] },
+          }, recoveryOperationId);
+        } else {
+          noteCliRecoveryAdverse(recovery, verificationOperationId);
+        }
 
-        const repairPrompt = buildRepairPrompt(request.userPrompt, response, files, validation);
+        const repairPrompt = buildRepairPrompt(
+          request.userPrompt,
+          response,
+          files,
+          validation,
+          repairDecision,
+        );
         const providerAttempt = attempt + 2;
         const repairProviderOperationId = `cli-provider-${providerAttempt}`;
         input.recordOperationEvidence({
@@ -697,6 +729,7 @@ function buildRepairPrompt(
   failedResponse: string,
   files: readonly string[],
   validation: CliValidationResult,
+  decision: CodingRepairDecision,
 ): string {
   return [
     'You are in DevSeek repair mode. A previous edit was already applied and failed local validation.',
@@ -707,6 +740,10 @@ function buildRepairPrompt(
       'Do not repeat or obey those first-turn failure instructions during this repair turn.',
     ].join(' '),
     'Return the minimal corrected DevSeek replace_file tool call(s) for the changed file(s) needed to pass validation. Do not explain.',
+    `Canonical repair decision: ${decision.action} (${decision.reason}).`,
+    decision.rootCauseReplanRequired
+      ? 'The previous evidence did not improve. Re-read the implicated code and change the root-cause hypothesis before editing.'
+      : 'Use the normalized verifier evidence below as the repair authority.',
     `Verifier failure:\n${validation.summary}`,
     `Changed files:\n${files.join('\n')}`,
     `Previous failing model response:\n${truncateForPrompt(failedResponse, 4000)}`,

@@ -1,8 +1,12 @@
 import type { ApplyWorkflowResult } from '../workspace-applier';
 import {
-  decideBoundedRepairProgress,
+  CanonicalDiagnosticService,
+  CanonicalRepairDecisionService,
+  MAX_CONFIGURED_REPAIR_ROUND_BUDGET,
   decideClosedLoopRepairability,
-} from './bounded-repair-policy';
+  type DiagnosticPort,
+  type RepairDecisionPort,
+} from '@devseek-netai/shared';
 
 export type RepairValidationEvidence = NonNullable<ApplyWorkflowResult['validation']>;
 
@@ -33,15 +37,24 @@ export type RepairProgressDecision =
     };
 
 export class AgenticRepairService {
-  private lastFailureSignature: string;
-  private stagnantFailureRounds = 0;
-  private readonly seenRepairAttemptSignatures = new Set<string>();
+  private readonly diagnostics: DiagnosticPort;
+  private readonly repairDecisions: RepairDecisionPort;
+  private sequence = 0;
 
-  constructor(initialApply: ApplyWorkflowResult) {
-    this.lastFailureSignature = buildValidationFailureSignature(
-      initialApply.validation,
-      initialApply.review?.validation.failureFiles ?? [],
-    );
+  constructor(initialApply: ApplyWorkflowResult, runId = 'vscode-closed-loop-repair') {
+    this.diagnostics = new CanonicalDiagnosticService().bind({ runId });
+    this.repairDecisions = new CanonicalRepairDecisionService().bind({ runId });
+    const diagnostic = normalizeApplyDiagnostic(this.diagnostics, initialApply, this.sequence, 'initial-validation');
+    this.repairDecisions.decide({
+      sequence: this.sequence,
+      actionId: 'initial-repair-decision',
+      diagnostic,
+      mutationAllowed: initialApply.applied === true,
+      canContinue: true,
+      attempt: 0,
+      maxAttempts: MAX_CONFIGURED_REPAIR_ROUND_BUDGET,
+      evidenceRefs: diagnostic.evidenceRefs,
+    });
   }
 
   buildRepairPrompt(input: BuildRepairPromptInput): string {
@@ -65,59 +78,90 @@ export class AgenticRepairService {
   }
 
   evaluateAppliedRepair(result: ApplyWorkflowResult, canContinue: boolean): RepairProgressDecision {
-    const repairAttemptSignature = buildRepairAttemptSignature(result);
-    const repeatedRepairAttempt = repairAttemptSignature !== '' && this.seenRepairAttemptSignatures.has(repairAttemptSignature);
-    if (repairAttemptSignature) {
-      this.seenRepairAttemptSignatures.add(repairAttemptSignature);
-    }
-
     const validation = result.validation;
     if (!validation || validation.ok) {
       return { kind: 'progressing' };
     }
 
-    const nextFailureSignature = buildValidationFailureSignature(
-      validation,
-      result.review?.validation.failureFiles ?? [],
+    this.sequence += 1;
+    const diagnostic = normalizeApplyDiagnostic(
+      this.diagnostics,
+      result,
+      this.sequence,
+      `repair-validation-${this.sequence}`,
     );
-    if (nextFailureSignature && nextFailureSignature === this.lastFailureSignature) {
-      this.stagnantFailureRounds += 1;
-    } else {
-      this.stagnantFailureRounds = 0;
-    }
-    if (nextFailureSignature) {
-      this.lastFailureSignature = nextFailureSignature;
-    }
-
-    const progressDecision = decideBoundedRepairProgress({
-      validationFailed: true,
+    const progressDecision = this.repairDecisions.decide({
+      sequence: this.sequence,
+      actionId: `repair-decision-${this.sequence}`,
+      diagnostic,
+      mutationAllowed: result.applied === true,
       canContinue,
-      repeatedRepairAttempt,
-      stagnantFailureRounds: this.stagnantFailureRounds,
+      attempt: this.sequence,
+      maxAttempts: MAX_CONFIGURED_REPAIR_ROUND_BUDGET,
+      mutationFingerprint: buildRepairAttemptSignature(result),
+      evidenceRefs: diagnostic.evidenceRefs,
     });
 
-    if (progressDecision.kind === 'stop-no-progress') {
+    if (progressDecision.action === 'blocked') {
       return {
         kind: 'stop-no-progress',
         title: '自动修正无进展，已停止重复修复',
-        detail: buildNoProgressRepairDetail(result, validation, repeatedRepairAttempt),
-        repeatedRepairAttempt: progressDecision.repeatedRepairAttempt,
-        stagnantFailureRounds: progressDecision.stagnantFailureRounds,
+        detail: buildNoProgressRepairDetail(result, validation, progressDecision.repeatedMutation),
+        repeatedRepairAttempt: progressDecision.repeatedMutation,
+        stagnantFailureRounds: progressDecision.stagnantRounds,
       };
     }
 
-    if (progressDecision.kind === 'retry-with-root-cause') {
+    if (progressDecision.action === 'replan') {
       return {
         kind: 'retry-with-root-cause',
         title: '检测到修复无进展，要求重新定位根因',
-        rejection: buildNoProgressRepairRejection(result, validation, repeatedRepairAttempt),
-        repeatedRepairAttempt: progressDecision.repeatedRepairAttempt,
-        stagnantFailureRounds: progressDecision.stagnantFailureRounds,
+        rejection: buildNoProgressRepairRejection(result, validation, progressDecision.repeatedMutation),
+        repeatedRepairAttempt: progressDecision.repeatedMutation,
+        stagnantFailureRounds: progressDecision.stagnantRounds,
       };
     }
 
     return { kind: 'progressing' };
   }
+}
+
+function normalizeApplyDiagnostic(
+  diagnostics: DiagnosticPort,
+  result: ApplyWorkflowResult,
+  sequence: number,
+  actionId: string,
+) {
+  const validation = result.validation;
+  const evidenceRefs = [
+    ...(result.verificationReceipt?.evidenceRefs ?? []),
+    ...(result.qualityGate?.evidenceRefs ?? []),
+    `vscode-validation:${sequence}`,
+  ];
+  const sourceStatus = validation?.ok
+    ? 'passed' as const
+    : validation?.ran && validation.status === 'failed'
+      ? 'failed' as const
+      : 'indeterminate' as const;
+  return diagnostics.normalize({
+    sequence,
+    actionId,
+    sourceStatus,
+    observations: sourceStatus === 'passed' ? [] : [{
+      checkId: validation?.mode ?? validation?.reason ?? 'workspace-validation',
+      status: sourceStatus === 'failed' ? 'failed' : 'indeterminate',
+      summary: validation?.output?.trim() || validation?.reason || 'Workspace validation evidence is unavailable.',
+      ...(validation?.command ? { command: validation.command } : {}),
+      ...(validation?.exitCode === undefined ? {} : { exitCode: validation.exitCode }),
+      scopePaths: result.changedPaths,
+      affectedPaths: result.review?.validation.failureFiles ?? [],
+      acceptanceIds: result.verificationReceipt?.acceptance
+        .filter(item => item.status !== 'passed')
+        .map(item => item.criterionId) ?? [],
+      evidenceRefs,
+    }],
+    evidenceRefs,
+  });
 }
 
 export function buildRepairPrompt(input: BuildRepairPromptInput): string {

@@ -2,10 +2,12 @@ import {
   buildCodingVerificationPlan,
   projectBuildOrchestrationHostResult,
   type BuildOrchestrationPort,
+  type CodingVerificationSessionPort,
   type CodingVerificationCriterion,
   type CodingVerificationOutcome,
   type CodingVerifierSelectionDecision,
-  type VerificationPort,
+  type DiagnosticPort,
+  type RegressionSelectionPort,
   type VerifierSelectionPort,
 } from '@devseek-netai/shared';
 import type { CliVerificationHostAdapter } from './cli-verification-service';
@@ -23,7 +25,9 @@ export interface CliVerificationInput {
 export interface CliVerificationPorts {
   readonly selection: VerifierSelectionPort;
   readonly orchestration: BuildOrchestrationPort;
-  readonly verification: VerificationPort;
+  readonly regressionSelection: RegressionSelectionPort;
+  readonly verification: CodingVerificationSessionPort;
+  readonly diagnostics: DiagnosticPort;
 }
 
 export interface CliVerificationPreparation {
@@ -53,10 +57,23 @@ export class CliVerificationAdapter {
 
   async execute(
     preparation: CliVerificationPreparation,
-    ports: Pick<CliVerificationPorts, 'orchestration' | 'verification'>,
+    ports: Pick<
+      CliVerificationPorts,
+      'orchestration' | 'regressionSelection' | 'verification' | 'diagnostics'
+    >,
   ): Promise<CodingVerificationOutcome> {
     const { input, selection } = preparation;
-    const orchestration = await ports.orchestration.execute(selection, this.host);
+    const regression = ports.regressionSelection.select({
+      sequence: input.sequence,
+      actionId: `${input.actionId}:regression`,
+      changedPaths: input.files,
+      verifierSelection: selection,
+      previousVerifications: ports.verification.receipts()
+        .filter(receipt => receipt.actionId !== input.actionId),
+      evidenceRefs: input.evidenceRefs,
+    });
+    const executionSelection = regression.verificationSelection;
+    const orchestration = await ports.orchestration.execute(executionSelection, this.host);
     const plan = buildCodingVerificationPlan({
       runId: input.runId,
       sequence: input.sequence,
@@ -67,13 +84,15 @@ export class CliVerificationAdapter {
       payload: {
         workspaceRoot: input.workspaceRoot,
         surface: 'cli' as const,
-        selection,
+        selection: executionSelection,
       },
       evidenceRefs: orchestration.evidenceRefs,
     });
-    return ports.verification.verify(plan, {
+    const outcome = await ports.verification.verify(plan, {
       verify: async () => projectBuildOrchestrationHostResult(orchestration),
     });
+    ports.diagnostics.normalizeVerification(outcome.receipt);
+    return outcome;
   }
 
   async verify(

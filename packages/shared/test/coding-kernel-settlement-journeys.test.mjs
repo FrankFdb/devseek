@@ -8,6 +8,7 @@ import {
   buildCodingVerificationPlan,
 } from '../dist/index.js';
 import { loadUserSimulationCase } from '../../../scripts/lib/devseek-user-simulation-fixture.mjs';
+import { commitCanonicalWorkspaceChange } from './support/canonical-code-change-fixture.mjs';
 
 test('I17-OWN-01 Surface completed claims cannot settle a verification task', async () => {
   const scenario = loadUserSimulationCase('I17', 'I17-OWN-01');
@@ -42,6 +43,10 @@ test('I17-VRF-01 exact run-bound verification authorizes Kernel completion', asy
   const scenario = loadUserSimulationCase('I17', 'I17-VRF-01');
   const output = await executeScenario(scenario, {
     async executeCanonical(request) {
+      await commitCanonicalWorkspaceChange(request, {
+        paths: ['src/value.ts'],
+        marker: 'verified-change',
+      });
       await request.verification.verify(verificationPlan(request, scenario.input.action_id), {
         async verify() {
           return passedVerification(scenario.input.action_id);
@@ -130,6 +135,10 @@ test('I17-RPR-01 passed revalidation resolves the failed pre-repair evidence', a
   const scenario = loadUserSimulationCase('I17', 'I17-RPR-01');
   const output = await executeScenario(scenario, {
     async executeCanonical(request) {
+      await commitCanonicalWorkspaceChange(request, {
+        paths: ['src/value.ts'],
+        marker: 'initial-change',
+      });
       const failed = await request.verification.verify(
         verificationPlan(request, scenario.input.failed_action_id, { sequence: 1 }),
         {
@@ -138,6 +147,10 @@ test('I17-RPR-01 passed revalidation resolves the failed pre-repair evidence', a
           },
         },
       );
+      await commitCanonicalWorkspaceChange(request, {
+        paths: ['src/value.ts'],
+        marker: 'repair-change',
+      });
       await request.verification.verify(
         verificationPlan(request, scenario.input.passed_action_id, { sequence: 2 }),
         {

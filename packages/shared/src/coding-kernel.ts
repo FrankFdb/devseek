@@ -92,6 +92,31 @@ import {
   type BuildOrchestrationPort,
 } from './coding-build-orchestration';
 import {
+  CanonicalCodeChangeService,
+  type CodeChangePort,
+  type CodingCodeChangeDecision,
+} from './coding-code-change';
+import {
+  CanonicalIntegrationConformanceService,
+  type CodingIntegrationConformanceDecision,
+  type IntegrationConformancePort,
+} from './coding-integration-conformance';
+import {
+  CanonicalDiagnosticService,
+  type CodingDiagnosticDecision,
+  type DiagnosticPort,
+} from './coding-diagnostic';
+import {
+  CanonicalRegressionSelectionService,
+  type CodingRegressionSelectionDecision,
+  type RegressionSelectionPort,
+} from './coding-regression-selection';
+import {
+  CanonicalRepairDecisionService,
+  type CodingRepairDecision,
+  type RepairDecisionPort,
+} from './coding-repair-decision';
+import {
   CanonicalCompletionDecisionService,
   type CodingCompletionDecision,
   type CodingKernelCompletionEvidence,
@@ -164,6 +189,11 @@ export interface CodingKernelRuntimeRequest<TRuntimeContext>
   readonly externalEffects: CodingExternalEffectSessionPort;
   readonly verifierSelection: VerifierSelectionPort;
   readonly buildOrchestration: BuildOrchestrationPort;
+  readonly codeChanges: CodeChangePort;
+  readonly integrationConformance: IntegrationConformancePort;
+  readonly diagnostics: DiagnosticPort;
+  readonly regressionSelection: RegressionSelectionPort;
+  readonly repairDecisions: RepairDecisionPort;
   readonly verificationAcceptance: readonly CodingVerificationCriterion[];
   readonly verification: CodingVerificationSessionPort;
   readonly resume?: CodingCheckpointRestoreDecision;
@@ -200,6 +230,11 @@ export interface CodingKernelExecutionOutput<TResult> {
   readonly workspaceMutationReceipts: readonly CodingWorkspaceMutationReceipt<unknown>[];
   readonly externalEffectReceipts: readonly CodingExternalEffectReceipt<unknown>[];
   readonly verificationReceipts: readonly CodingVerificationReceipt[];
+  readonly codeChangeDecisions: readonly CodingCodeChangeDecision[];
+  readonly integrationConformanceDecisions: readonly CodingIntegrationConformanceDecision[];
+  readonly diagnosticDecisions: readonly CodingDiagnosticDecision[];
+  readonly regressionSelectionDecisions: readonly CodingRegressionSelectionDecision[];
+  readonly repairDecisions: readonly CodingRepairDecision[];
   readonly resumeReceipts: readonly CodingResumeOperationReceipt[];
   readonly completion: CodingCompletionDecision;
   readonly result: TResult;
@@ -223,6 +258,11 @@ export class CodingKernelExecutionError extends Error {
   readonly workspaceMutationReceipts: readonly CodingWorkspaceMutationReceipt<unknown>[];
   readonly externalEffectReceipts: readonly CodingExternalEffectReceipt<unknown>[];
   readonly verificationReceipts: readonly CodingVerificationReceipt[];
+  readonly codeChangeDecisions: readonly CodingCodeChangeDecision[];
+  readonly integrationConformanceDecisions: readonly CodingIntegrationConformanceDecision[];
+  readonly diagnosticDecisions: readonly CodingDiagnosticDecision[];
+  readonly regressionSelectionDecisions: readonly CodingRegressionSelectionDecision[];
+  readonly repairDecisions: readonly CodingRepairDecision[];
   readonly resumeReceipts: readonly CodingResumeOperationReceipt[];
   readonly completion: CodingCompletionDecision;
   readonly runtimeCause: unknown;
@@ -238,6 +278,11 @@ export class CodingKernelExecutionError extends Error {
     workspaceMutationReceipts: readonly CodingWorkspaceMutationReceipt<unknown>[],
     externalEffectReceipts: readonly CodingExternalEffectReceipt<unknown>[],
     verificationReceipts: readonly CodingVerificationReceipt[],
+    codeChangeDecisions: readonly CodingCodeChangeDecision[],
+    integrationConformanceDecisions: readonly CodingIntegrationConformanceDecision[],
+    diagnosticDecisions: readonly CodingDiagnosticDecision[],
+    regressionSelectionDecisions: readonly CodingRegressionSelectionDecision[],
+    repairDecisions: readonly CodingRepairDecision[],
     resumeReceipts: readonly CodingResumeOperationReceipt[],
     completion: CodingCompletionDecision,
     runtimeCause?: unknown,
@@ -253,6 +298,11 @@ export class CodingKernelExecutionError extends Error {
     this.workspaceMutationReceipts = workspaceMutationReceipts;
     this.externalEffectReceipts = externalEffectReceipts;
     this.verificationReceipts = verificationReceipts;
+    this.codeChangeDecisions = codeChangeDecisions;
+    this.integrationConformanceDecisions = integrationConformanceDecisions;
+    this.diagnosticDecisions = diagnosticDecisions;
+    this.regressionSelectionDecisions = regressionSelectionDecisions;
+    this.repairDecisions = repairDecisions;
     this.resumeReceipts = resumeReceipts;
     this.completion = completion;
     this.runtimeCause = runtimeCause;
@@ -276,6 +326,11 @@ const EXTERNAL_EFFECT = new CanonicalExternalEffectService();
 const VERIFIER_SELECTION = new CanonicalVerifierSelectionService();
 const BUILD_ORCHESTRATION = new CanonicalBuildOrchestrationService();
 const VERIFICATION = new CanonicalVerificationService();
+const CODE_CHANGES = new CanonicalCodeChangeService();
+const INTEGRATION_CONFORMANCE = new CanonicalIntegrationConformanceService();
+const DIAGNOSTICS = new CanonicalDiagnosticService();
+const REGRESSION_SELECTION = new CanonicalRegressionSelectionService();
+const REPAIR_DECISIONS = new CanonicalRepairDecisionService();
 const STRUCTURAL_ACCEPTANCE = new CanonicalStructuralAcceptanceEvidenceService();
 const REQUIREMENTS = new CanonicalRequirementDecisionService();
 const DESIGN = new CanonicalDesignDecisionService();
@@ -380,6 +435,11 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       orientation: contextGraph.orientation,
     });
     const buildOrchestration = BUILD_ORCHESTRATION.bind({ runId: request.runId });
+    const codeChanges = CODE_CHANGES.bind({ runId: request.runId });
+    const integrationConformance = INTEGRATION_CONFORMANCE.bind({ runId: request.runId });
+    const diagnostics = DIAGNOSTICS.bind({ runId: request.runId });
+    const regressionSelection = REGRESSION_SELECTION.bind({ runId: request.runId });
+    const repairDecisions = REPAIR_DECISIONS.bind({ runId: request.runId });
     const externalEffects = EXTERNAL_EFFECT.bind({
       runId: request.runId,
       authority: toolAuthority,
@@ -398,6 +458,11 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       workspaceMutations,
       externalEffects,
       verification,
+      codeChanges,
+      integrationConformance,
+      diagnostics,
+      regressionSelection,
+      repairDecisions,
       resumeIdempotency,
       completion: this.completion,
     };
@@ -438,6 +503,11 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       externalEffects,
       verifierSelection,
       buildOrchestration,
+      codeChanges,
+      integrationConformance,
+      diagnostics,
+      regressionSelection,
+      repairDecisions,
       verificationAcceptance,
       verification,
       ...(resume ? { resume } : {}),
@@ -450,6 +520,35 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         throw new Error('coding-kernel-execution:missing-runtime-output');
       }
       const completionEvidence = assertRuntimeCompletionEvidence(runtimeOutput.completionEvidence);
+      const settledDesignDecision = changePlanRevision.currentDesign();
+      const settledChangePlan = changePlanRevision.currentPlan();
+      const finalDecisionSequence = nextKernelDecisionSequence(
+        toolExecution.receipts(),
+        workspaceMutations.receipts(),
+        verification.receipts(),
+      );
+      const codeChange = codeChanges.assess({
+        sequence: finalDecisionSequence,
+        actionId: 'kernel-code-change',
+        plan: settledChangePlan,
+        mutations: workspaceMutations.receipts(),
+        evidenceRefs: completionEvidence.evidenceRefs,
+      });
+      const integration = integrationConformance.assess({
+        sequence: finalDecisionSequence + 1,
+        actionId: 'kernel-integration-conformance',
+        codeChange,
+        toolExecutions: toolExecution.receipts(),
+        mutations: workspaceMutations.receipts(),
+        verifications: verification.receipts(),
+        evidenceRefs: codeChange.evidenceRefs,
+      });
+      const c8PendingRefs = [codeChange, integration]
+        .filter(decision => decision.status === 'incomplete' || decision.status === 'indeterminate')
+        .flatMap(decision => decision.reasonCodes.map(reason => `c8-pending:${reason}`));
+      const c8AdverseRefs = [codeChange, integration]
+        .filter(decision => decision.status === 'failed')
+        .flatMap(decision => decision.reasonCodes.map(reason => `c8-adverse:${reason}`));
       const structuralAcceptanceEvidence = STRUCTURAL_ACCEPTANCE.project({
         taskContract,
         mutations: workspaceMutations.receipts(),
@@ -470,10 +569,14 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
           ...completionEvidence.acceptanceEvidence,
         ],
         ...(completionEvidence.review ? { review: completionEvidence.review } : {}),
-        pendingRefs: completionEvidence.pendingRefs,
-        adverseEvidenceRefs: completionEvidence.adverseEvidenceRefs,
+        pendingRefs: [...completionEvidence.pendingRefs, ...c8PendingRefs],
+        adverseEvidenceRefs: [...completionEvidence.adverseEvidenceRefs, ...c8AdverseRefs],
         residualRisks: completionEvidence.residualRisks,
-        evidenceRefs: completionEvidence.evidenceRefs,
+        evidenceRefs: [
+          ...completionEvidence.evidenceRefs,
+          ...codeChange.evidenceRefs,
+          ...integration.evidenceRefs,
+        ],
       });
       lifecycle.settle(completion.status);
       const lifecycleSnapshot = lifecycle.snapshot();
@@ -481,8 +584,6 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         lifecycle: lifecycleSnapshot,
         completion,
       });
-      const settledDesignDecision = changePlanRevision.currentDesign();
-      const settledChangePlan = changePlanRevision.currentPlan();
       return {
         version: CODING_KERNEL_OUTPUT_VERSION,
         route: 'canonical',
@@ -508,6 +609,11 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         workspaceMutationReceipts: workspaceMutations.receipts(),
         externalEffectReceipts: externalEffects.receipts(),
         verificationReceipts: verification.receipts(),
+        codeChangeDecisions: codeChanges.decisions(),
+        integrationConformanceDecisions: integrationConformance.decisions(),
+        diagnosticDecisions: diagnostics.decisions(),
+        regressionSelectionDecisions: regressionSelection.decisions(),
+        repairDecisions: repairDecisions.decisions(),
         resumeReceipts: resumeIdempotency?.receipts() ?? [],
         completion,
         result: runtimeOutput.result,
@@ -536,6 +642,11 @@ interface CodingKernelTerminalContext {
   readonly workspaceMutations: WorkspaceMutationTransactionSessionPort;
   readonly externalEffects: CodingExternalEffectSessionPort;
   readonly verification: CodingVerificationSessionPort;
+  readonly codeChanges: CodeChangePort;
+  readonly integrationConformance: IntegrationConformancePort;
+  readonly diagnostics: DiagnosticPort;
+  readonly regressionSelection: RegressionSelectionPort;
+  readonly repairDecisions: RepairDecisionPort;
   readonly resumeIdempotency?: CodingResumeIdempotencySessionPort;
   readonly completion: CanonicalCompletionDecisionService;
 }
@@ -587,6 +698,11 @@ function lifecycleError(
     context.workspaceMutations.receipts(),
     context.externalEffects.receipts(),
     context.verification.receipts(),
+    context.codeChanges.decisions(),
+    context.integrationConformance.decisions(),
+    context.diagnostics.decisions(),
+    context.regressionSelection.decisions(),
+    context.repairDecisions.decisions(),
     context.resumeIdempotency?.receipts() ?? [],
     completion,
     cause,
@@ -595,6 +711,12 @@ function lifecycleError(
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function nextKernelDecisionSequence(
+  ...receiptGroups: readonly (readonly { readonly sequence: number }[])[]
+): number {
+  return Math.max(0, ...receiptGroups.flatMap(receipts => receipts.map(receipt => receipt.sequence))) + 1;
 }
 
 function assertCanonicalRequest(request: CodingKernelExecutionRequest<unknown>): void {

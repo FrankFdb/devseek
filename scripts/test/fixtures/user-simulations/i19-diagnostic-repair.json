@@ -1,0 +1,89 @@
+{
+  "schema_version": "devseek.user-simulation-scenario/v1",
+  "iteration_id": "I19",
+  "name": "diagnostic-repair",
+  "purpose": "Exercise plan-conformant code changes, causal tool-to-verification integration, normalized diagnostics, evidence-driven regression selection, and bounded adaptive repair without repeated provider turns.",
+  "cases": [
+    {
+      "case_id": "I19-CHG-01",
+      "input": {
+        "surface": "shared-kernel",
+        "planned_paths": ["src/value.ts"],
+        "mutation_status": "committed",
+        "readback_required": true
+      }
+    },
+    {
+      "case_id": "I19-CHG-02",
+      "input": {
+        "surface": "shared-kernel",
+        "planned_paths": ["src/value.ts"],
+        "mutated_paths": ["src/value.ts", "src/hidden.ts"],
+        "expected_status": "failed"
+      }
+    },
+    {
+      "case_id": "I19-INT-01",
+      "input": {
+        "surface": "shared-kernel",
+        "action_id": "write-1",
+        "changed_paths": ["src/value.ts"],
+        "verification_scope": ["src/value.ts"]
+      }
+    },
+    {
+      "case_id": "I19-INT-02",
+      "input": {
+        "surface": "shared-kernel",
+        "mutation_action_id": "write-1",
+        "tool_receipt_present": false,
+        "expected_status": "failed"
+      }
+    },
+    {
+      "case_id": "I19-DGN-01",
+      "input": {
+        "surface": "shared-kernel",
+        "verifier": "project-verification",
+        "failure_summary": "src/value.ts:12: Type error: string is not assignable to number",
+        "expected_category": "typecheck"
+      }
+    },
+    {
+      "case_id": "I19-REG-01",
+      "input": {
+        "surface": "shared-kernel",
+        "failed_step": "test",
+        "ordered_prerequisites": ["typecheck", "build"],
+        "expected_strategy": "dependent"
+      }
+    },
+    {
+      "case_id": "I19-REG-02",
+      "input": {
+        "surface": "shared-kernel",
+        "changed_paths": ["package.json", "src/value.ts"],
+        "expected_strategy": "full-risk"
+      }
+    },
+    {
+      "case_id": "I19-RPR-01",
+      "input": {
+        "surface": "cli",
+        "diagnostic_rounds": ["TS2322", "TS2322", "passed"],
+        "repair_responses": ["changed repair response", "root-cause repair response"],
+        "expected_decisions": ["retry", "replan"]
+      }
+    },
+    {
+      "case_id": "I19-RPR-02",
+      "input": {
+        "surface": "cli",
+        "repair_response": "initial response",
+        "repeated_diagnostic": true,
+        "expected_decisions": ["retry", "blocked"],
+        "maximum_provider_repair_turns": 1
+      }
+    }
+  ]
+}

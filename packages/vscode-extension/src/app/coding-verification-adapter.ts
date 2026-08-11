@@ -1,6 +1,8 @@
 import {
   CanonicalBuildOrchestrationService,
+  CanonicalDiagnosticService,
   CanonicalEngineeringOrientationService,
+  CanonicalRegressionSelectionService,
   CanonicalVerificationService,
   CanonicalVerifierSelectionService,
   buildCodingVerificationPlan,
@@ -11,9 +13,11 @@ import {
   type CodingBuildOrchestrationReceipt,
   type CodingVerificationCriterion,
   type CodingVerificationOutcome,
+  type CodingVerificationSessionPort,
   type CodingVerifierCandidate,
   type CodingVerifierSelectionDecision,
-  type VerificationPort,
+  type DiagnosticPort,
+  type RegressionSelectionPort,
   type VerifierSelectionPort,
 } from '@devseek-netai/shared';
 
@@ -43,7 +47,9 @@ export interface VsCodeVerificationInput {
 export interface VsCodeVerificationPorts {
   readonly selection: VerifierSelectionPort;
   readonly orchestration: BuildOrchestrationPort;
-  readonly verification: VerificationPort;
+  readonly regressionSelection: RegressionSelectionPort;
+  readonly verification: CodingVerificationSessionPort;
+  readonly diagnostics: DiagnosticPort;
 }
 
 export interface VsCodeVerificationExecution {
@@ -91,11 +97,13 @@ export function createStandaloneVsCodeVerificationPorts(input: {
       taskContract,
       orientation,
     }),
+    regressionSelection: new CanonicalRegressionSelectionService().bind({ runId: input.runId }),
     orchestration: new CanonicalBuildOrchestrationService().bind({ runId: input.runId }),
     verification: new CanonicalVerificationService().bind({
       runId: input.runId,
       acceptance: input.acceptance,
     }),
+    diagnostics: new CanonicalDiagnosticService().bind({ runId: input.runId }),
   };
 }
 
@@ -119,7 +127,17 @@ export class VsCodeVerificationAdapter {
       candidates,
       evidenceRefs: input.evidenceRefs,
     });
-    const orchestration = await ports.orchestration.execute(selection, this.host);
+    const regression = ports.regressionSelection.select({
+      sequence: input.sequence,
+      actionId: `${input.actionId}:regression`,
+      changedPaths: input.scopePaths,
+      verifierSelection: selection,
+      previousVerifications: ports.verification.receipts()
+        .filter(receipt => receipt.actionId !== input.actionId),
+      evidenceRefs: input.evidenceRefs,
+    });
+    const executionSelection = regression.verificationSelection;
+    const orchestration = await ports.orchestration.execute(executionSelection, this.host);
     const plan = buildCodingVerificationPlan({
       runId: input.runId,
       sequence: input.sequence,
@@ -130,14 +148,15 @@ export class VsCodeVerificationAdapter {
       payload: {
         workspaceRoot: input.workspaceRoot,
         surface: 'vscode' as const,
-        selection,
+        selection: executionSelection,
       },
       evidenceRefs: orchestration.evidenceRefs,
     });
     const outcome = await ports.verification.verify(plan, {
       verify: async () => projectBuildOrchestrationHostResult(orchestration),
     });
-    return { outcome, selection, orchestration };
+    ports.diagnostics.normalizeVerification(outcome.receipt);
+    return { outcome, selection: executionSelection, orchestration };
   }
 }
 

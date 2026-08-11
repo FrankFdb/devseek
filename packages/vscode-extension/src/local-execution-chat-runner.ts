@@ -31,7 +31,7 @@ import type { AppliedChangeRecord, ApplyWorkflowStatus } from './workspace-appli
 import { askRepairExhaustedAction, requestManualFixGuidance } from './app/repair-exhaustion-interaction';
 import { AgentDisplayPresenter } from './app/agent-display-presenter';
 import type { TerminalPermissionCoordinator } from './app/terminal-permission-coordinator';
-import { extendRepairRoundBudget, normalizeRepairRoundBudget } from './app/bounded-repair-policy';
+import { extendRepairRoundBudget, normalizeRepairRoundBudget } from '@devseek-netai/shared';
 import type { AgentKernelService } from './app/agent-kernel-service';
 import { createLocalValidationKernelRecovery } from './app/coding-kernel-recovery';
 

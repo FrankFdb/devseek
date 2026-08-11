@@ -26,6 +26,8 @@ import type {
   CodingVerificationCriterion,
   CodingVerificationSessionPort,
   BuildOrchestrationPort,
+  DiagnosticPort,
+  RegressionSelectionPort,
   VerifierSelectionPort,
   CodingWorkspaceMutationReceipt,
   WorkspaceMutationTransactionPort,
@@ -77,6 +79,8 @@ export interface AgentLoopCallbacks {
   canonicalExternalEffects?: CodingExternalEffectSessionPort;
   canonicalVerifierSelection?: VerifierSelectionPort;
   canonicalBuildOrchestration?: BuildOrchestrationPort;
+  canonicalRegressionSelection?: RegressionSelectionPort;
+  canonicalDiagnostics?: DiagnosticPort;
   canonicalVerificationAcceptance?: readonly CodingVerificationCriterion[];
   canonicalVerification?: CodingVerificationSessionPort;
   canonicalProviderEvents?: ProviderEventPort;

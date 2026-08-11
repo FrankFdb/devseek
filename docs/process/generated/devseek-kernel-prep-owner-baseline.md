@@ -49,9 +49,14 @@
 | tool-dispatch | shared-CanonicalToolDispatchService | - | 1 | converged |
 | tool-execution | shared-CanonicalToolExecutor | - | 1 | converged |
 | workspace-mutation | shared-CanonicalWorkspaceMutationTransaction | - | 1 | converged |
+| code-change | shared-CanonicalCodeChangeService | - | 1 | converged |
+| integration-conformance | shared-CanonicalIntegrationConformanceService | - | 1 | converged |
 | verifier-selection | shared-CanonicalVerifierSelectionService | - | 1 | converged |
 | build-orchestration | shared-CanonicalBuildOrchestrationService | - | 1 | converged |
 | verification | shared-CanonicalVerificationService | - | 1 | converged |
+| diagnostic-normalization | shared-CanonicalDiagnosticService | - | 1 | converged |
+| regression-selection | shared-CanonicalRegressionSelectionService | - | 1 | converged |
+| bounded-repair | shared-CanonicalRepairDecisionService | - | 1 | converged |
 | completion-decision | shared-CanonicalCompletionDecisionService | - | 1 | converged |
 | run-evidence-retention | shared-CanonicalRunEvidenceRetentionService | - | 1 | converged |
 | memory-policy | shared-CanonicalMemoryPolicyService | - | 1 | converged |

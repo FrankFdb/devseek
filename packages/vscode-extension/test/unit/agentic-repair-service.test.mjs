@@ -93,10 +93,11 @@ test('AgenticRepairService: repeated unchanged failures escalate once then stop'
   assert.match(second.detail, /已停止继续自动修复/);
 });
 
-test('AgenticRepairService: repair progress thresholds are delegated to bounded repair policy', () => {
+test('AgenticRepairService: diagnostics and repair progress are delegated to shared owners', () => {
   const source = readFileSync(path.join(rootDir, 'src/app/agentic-repair-service.ts'), 'utf8');
 
-  assert.match(source, /decideBoundedRepairProgress/);
+  assert.match(source, /CanonicalDiagnosticService/);
+  assert.match(source, /CanonicalRepairDecisionService/);
   assert.doesNotMatch(source, /stagnantFailureRounds\s*>=\s*2/);
   assert.doesNotMatch(source, /stagnantFailureRounds\s*>=\s*1\s*&&\s*repeatedRepairAttempt/);
 });

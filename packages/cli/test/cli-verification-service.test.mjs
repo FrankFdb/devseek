@@ -8,7 +8,9 @@ import { fileURLToPath } from 'node:url';
 import { buildSync } from 'esbuild';
 import {
   CanonicalBuildOrchestrationService,
+  CanonicalDiagnosticService,
   CanonicalEngineeringOrientationService,
+  CanonicalRegressionSelectionService,
   CanonicalVerificationService,
   CanonicalVerifierSelectionService,
   buildCodingKernelTaskContract,
@@ -89,7 +91,9 @@ function verificationPorts(workspace, files, runId = 'cli-verification-run') {
         orientation,
       }),
       orchestration: new CanonicalBuildOrchestrationService().bind({ runId }),
+      regressionSelection: new CanonicalRegressionSelectionService().bind({ runId }),
       verification: new CanonicalVerificationService().bind({ runId, acceptance }),
+      diagnostics: new CanonicalDiagnosticService().bind({ runId }),
     },
   };
 }

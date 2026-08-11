@@ -3382,10 +3382,39 @@
         },
         "contract_sha256": "9100ae371979e1eddcf6f965c8447aa20e8b703d1b326a9560ef0951406ecc0a"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-code-change.ts"
+        },
+        {
+          "role": "canonical-kernel-binding",
+          "path": "packages/shared/src/coding-kernel.ts"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/coding-code-change.test.mjs"
+        },
+        {
+          "role": "shared-settlement-tests",
+          "path": "packages/shared/test/coding-kernel-settlement-journeys.test.mjs"
+        },
+        {
+          "role": "cross-surface-product-tests",
+          "path": "packages/headless/test/headless-coding-kernel.test.mjs"
+        },
+        {
+          "role": "iteration-user-journey-evidence",
+          "path": "docs/process/devseek-iteration-user-journeys.json"
+        },
+        {
+          "role": "machine-wiring-evidence",
+          "path": "docs/process/devseek-kernel-prep-owner-baseline.json"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C5-CHANGE-PLAN",
@@ -3399,7 +3428,19 @@
           "required_implementation_state": "wired",
           "contract_sha256": "3d40c41d418c02213eacbcbce6f25bbb71b65c0c4bfe819ea3e43e8ef73566c6"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run verify:kernel-prep-owner-baseline",
+          "npm run verify:iteration-user-journeys",
+          "npm run shared:test",
+          "npm run cli:test",
+          "npm run headless:test",
+          "npm test --workspace=packages/vscode-extension",
+          "node scripts/run-devseek-iteration-user-journeys.mjs --iteration I19 --run-id <run-id>"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C8-INTEGRATION-CONFORMANCE",
@@ -3425,10 +3466,39 @@
         },
         "contract_sha256": "d43aa070be91954a213162a27f13ce513a328ecfae15650399c50d43f4921b1d"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-integration-conformance.ts"
+        },
+        {
+          "role": "canonical-kernel-binding",
+          "path": "packages/shared/src/coding-kernel.ts"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/coding-code-change.test.mjs"
+        },
+        {
+          "role": "cli-product-tests",
+          "path": "packages/cli/test/cli-coding-kernel-runtime.test.mjs"
+        },
+        {
+          "role": "cross-surface-product-tests",
+          "path": "packages/headless/test/headless-coding-kernel.test.mjs"
+        },
+        {
+          "role": "iteration-user-journey-evidence",
+          "path": "docs/process/devseek-iteration-user-journeys.json"
+        },
+        {
+          "role": "machine-wiring-evidence",
+          "path": "docs/process/devseek-kernel-prep-owner-baseline.json"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C8-CODE-CHANGE",
@@ -3442,7 +3512,19 @@
           "required_implementation_state": "wired",
           "contract_sha256": "4cb5a7114370be7a4e3810970e0989a480445527a5cff7d959b853603cb8b74c"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run verify:kernel-prep-owner-baseline",
+          "npm run verify:iteration-user-journeys",
+          "npm run shared:test",
+          "npm run cli:test",
+          "npm run headless:test",
+          "npm test --workspace=packages/vscode-extension",
+          "node scripts/run-devseek-iteration-user-journeys.mjs --iteration I19 --run-id <run-id>"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C9-VERIFIER-SELECTION",
@@ -3743,10 +3825,47 @@
         },
         "contract_sha256": "d8d24868384bc04decb0a66c40477d6ba50c0e5efbc9d817f08c270746d5085d"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-diagnostic.ts"
+        },
+        {
+          "role": "canonical-kernel-binding",
+          "path": "packages/shared/src/coding-kernel.ts"
+        },
+        {
+          "role": "cli-product-composition",
+          "path": "packages/cli/src/cli-verification-adapter.ts"
+        },
+        {
+          "role": "headless-product-composition",
+          "path": "packages/headless/src/headless-verification.ts"
+        },
+        {
+          "role": "vscode-product-composition",
+          "path": "packages/vscode-extension/src/app/coding-verification-adapter.ts"
+        },
+        {
+          "role": "shared-diagnostic-tests",
+          "path": "packages/shared/test/coding-diagnostic-repair.test.mjs"
+        },
+        {
+          "role": "cli-adaptive-repair-tests",
+          "path": "packages/cli/test/cli-coding-kernel-runtime.test.mjs"
+        },
+        {
+          "role": "iteration-user-journey-evidence",
+          "path": "docs/process/devseek-iteration-user-journeys.json"
+        },
+        {
+          "role": "machine-wiring-evidence",
+          "path": "docs/process/devseek-kernel-prep-owner-baseline.json"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C9-INDEPENDENT-VERIFICATION",
@@ -3754,7 +3873,19 @@
           "required_implementation_state": "wired",
           "contract_sha256": "d195f446cfb96484eb54502164a98ea8f8b322ab1c5faede0d24d2abfbcc4bc8"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run verify:kernel-prep-owner-baseline",
+          "npm run verify:iteration-user-journeys",
+          "npm run shared:test",
+          "npm run cli:test",
+          "npm run headless:test",
+          "npm test --workspace=packages/vscode-extension",
+          "node scripts/run-devseek-iteration-user-journeys.mjs --iteration I19 --run-id <run-id>"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C9-BOUNDED-REPAIR",
@@ -3780,10 +3911,55 @@
         },
         "contract_sha256": "44dbfdd4ec8fa6dad41c7b09973e9b974ef7686d6d6fcd521206205a824a7a73"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-repair-decision.ts"
+        },
+        {
+          "role": "run-budget-authority",
+          "path": "packages/shared/src/coding-run-budget.ts"
+        },
+        {
+          "role": "canonical-kernel-binding",
+          "path": "packages/shared/src/coding-kernel.ts"
+        },
+        {
+          "role": "cli-product-runtime",
+          "path": "packages/cli/src/cli-coding-kernel-runtime.ts"
+        },
+        {
+          "role": "vscode-product-service",
+          "path": "packages/vscode-extension/src/app/agentic-repair-service.ts"
+        },
+        {
+          "role": "vscode-product-runner",
+          "path": "packages/vscode-extension/src/app/closed-loop-repair-runner.ts"
+        },
+        {
+          "role": "shared-repair-tests",
+          "path": "packages/shared/test/coding-diagnostic-repair.test.mjs"
+        },
+        {
+          "role": "cli-adaptive-repair-tests",
+          "path": "packages/cli/test/cli-coding-kernel-runtime.test.mjs"
+        },
+        {
+          "role": "vscode-repair-tests",
+          "path": "packages/vscode-extension/test/unit/agentic-repair-service.test.mjs"
+        },
+        {
+          "role": "iteration-user-journey-evidence",
+          "path": "docs/process/devseek-iteration-user-journeys.json"
+        },
+        {
+          "role": "machine-wiring-evidence",
+          "path": "docs/process/devseek-kernel-prep-owner-baseline.json"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C9-DIAGNOSTIC-NORMALIZATION",
@@ -3797,7 +3973,19 @@
           "required_implementation_state": "wired",
           "contract_sha256": "3d40c41d418c02213eacbcbce6f25bbb71b65c0c4bfe819ea3e43e8ef73566c6"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run verify:kernel-prep-owner-baseline",
+          "npm run verify:iteration-user-journeys",
+          "npm run shared:test",
+          "npm run cli:test",
+          "npm run headless:test",
+          "npm test --workspace=packages/vscode-extension",
+          "node scripts/run-devseek-iteration-user-journeys.mjs --iteration I19 --run-id <run-id>"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C9-REGRESSION-SELECTION",
@@ -3823,10 +4011,47 @@
         },
         "contract_sha256": "80b6521836c53943d378680290c7929bed1a333d002a4d02f490171989d7476c"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-regression-selection.ts"
+        },
+        {
+          "role": "canonical-kernel-binding",
+          "path": "packages/shared/src/coding-kernel.ts"
+        },
+        {
+          "role": "cli-product-composition",
+          "path": "packages/cli/src/cli-verification-adapter.ts"
+        },
+        {
+          "role": "headless-product-composition",
+          "path": "packages/headless/src/headless-verification.ts"
+        },
+        {
+          "role": "vscode-product-composition",
+          "path": "packages/vscode-extension/src/app/coding-verification-adapter.ts"
+        },
+        {
+          "role": "shared-regression-tests",
+          "path": "packages/shared/test/coding-regression-selection.test.mjs"
+        },
+        {
+          "role": "vscode-auto-validation-tests",
+          "path": "packages/vscode-extension/test/unit/agent-auto-validation.test.mjs"
+        },
+        {
+          "role": "iteration-user-journey-evidence",
+          "path": "docs/process/devseek-iteration-user-journeys.json"
+        },
+        {
+          "role": "machine-wiring-evidence",
+          "path": "docs/process/devseek-kernel-prep-owner-baseline.json"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C9-INDEPENDENT-VERIFICATION",
@@ -3834,7 +4059,19 @@
           "required_implementation_state": "wired",
           "contract_sha256": "d195f446cfb96484eb54502164a98ea8f8b322ab1c5faede0d24d2abfbcc4bc8"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run verify:kernel-prep-owner-baseline",
+          "npm run verify:iteration-user-journeys",
+          "npm run shared:test",
+          "npm run cli:test",
+          "npm run headless:test",
+          "npm test --workspace=packages/vscode-extension",
+          "node scripts/run-devseek-iteration-user-journeys.mjs --iteration I19 --run-id <run-id>"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C10-INDEPENDENT-REVIEW",
@@ -5445,5 +5682,5 @@
       ]
     }
   ],
-  "ledger_sha256": "4e2faf1b579c049dd0cb8f51d393fcf2bda12b3ca695593c739efb3aded5286f"
+  "ledger_sha256": "bfec419148a3b5d7519093b33a4524f4da24c8270a02d34f669167a2632ec56e"
 }
