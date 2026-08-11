@@ -35,6 +35,7 @@ const {
 const {
   buildProviderStatusResponse,
   isProviderStatusRequest,
+  resolveProviderStatusResponse,
 } = bundle('src/app/provider-status-service.ts', 'provider-status-service');
 
 function config(values = {}) {
@@ -130,6 +131,32 @@ test('Provider status request ignores deepseek-like paths and business current-s
   ].join('\n');
 
   assert.equal(isProviderStatusRequest(prompt), false);
+});
+
+test('Provider status request does not intercept token bucket implementation work', () => {
+  const prompt = [
+    '请修复并重构这个 C++17 token bucket 限流器，使它可用于多租户服务。',
+    '请把时钟、配置验证和每客户端状态放在清晰的职责边界中，并运行测试。',
+  ].join('\n');
+
+  assert.equal(isProviderStatusRequest(prompt), false);
+});
+
+test('Provider status shortcut yields to the routed coding intent', async () => {
+  const snapshot = new ProviderConfigService(config()).getSnapshot();
+  let availabilityChecked = false;
+  const response = await resolveProviderStatusResponse({
+    prompt: '请检查当前 Provider 配置是否可用。',
+    snapshot,
+    routedIntent: { kind: 'code-change' },
+    checkAvailability: async () => {
+      availabilityChecked = true;
+      return true;
+    },
+  });
+
+  assert.equal(response, null);
+  assert.equal(availabilityChecked, false);
 });
 
 test('Provider runtime: API provider can switch model without changing workflow facts', () => {

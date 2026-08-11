@@ -38,6 +38,15 @@ test('VS Code provider status direct response records visible history with displ
   assert.doesNotMatch(branch, /nonBridgeChatHistory\.push\(\{ role: 'user', content: prompt \}\)/);
 });
 
+test('VS Code provider status shortcut yields to the routed coding intent', () => {
+  const call = sourceBetween(
+    'const providerStatusResponse = await resolveProviderStatusResponse({',
+    'if (providerStatusResponse) {',
+  );
+
+  assert.match(call, /routedIntent:\s*initialRouteDecision\.intent/);
+});
+
 test('VS Code smalltalk direct response records visible history with displayPrompt', () => {
   const branch = sourceBetween(
     "if (initialRouteDecision.intent.mode === 'smalltalk')",

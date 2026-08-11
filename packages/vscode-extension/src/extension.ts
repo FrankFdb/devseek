@@ -331,6 +331,7 @@ async function runActiveChat(
     prompt: initialRouteDecision.intentRoutingText,
     snapshot: getProviderConfigService().getSnapshot(),
     checkAvailability: () => getActiveProvider().available(),
+    routedIntent: initialRouteDecision.intent,
   });
   if (providerStatusResponse) {
     recordRealPluginHarnessProgress('run-chat-return-provider-status');
