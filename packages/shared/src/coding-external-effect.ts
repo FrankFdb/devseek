@@ -483,6 +483,7 @@ async function executeExternalHost<TInput, TResult>(
         : 'indeterminate' as const,
     ...(result.result === undefined ? {} : { result: result.result }),
     ...(result.errorCode ? { errorCode: result.errorCode } : {}),
+    ...(result.status === 'failed-no-effect' ? { effectStarted: false } : {}),
     evidenceRefs: result.evidenceRefs,
   };
 }
@@ -501,6 +502,7 @@ function snapshotToolHostResult<TResult>(
       ? {}
       : { result: snapshotCodingValue(value.result, 'external-journal-result') as TResult }),
     ...(value.errorCode ? { errorCode: normalizeCodingErrorCode(value.errorCode) } : {}),
+    ...(value.effectStarted === undefined ? {} : { effectStarted: value.effectStarted }),
     evidenceRefs: Object.freeze(evidenceRefs),
   });
 }

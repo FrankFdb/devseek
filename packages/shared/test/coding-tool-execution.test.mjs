@@ -86,6 +86,7 @@ function issuedAuthorization(input, options = {}) {
     purpose: input.purpose,
     effects: input.effects,
     input: input.input,
+    ...(input.targetPaths ? { targetPaths: input.targetPaths } : {}),
     ...(options.surfaceConstraint ? { surfaceConstraint: options.surfaceConstraint } : {}),
   }).receipt;
   return { receipt, session };
@@ -323,4 +324,28 @@ test('CanonicalToolExecutor preserves structured failure feedback in the termina
   assert.equal(outcome.receipt.errorCode, 'verification-failed');
   assert.deepEqual(outcome.receipt.result, { verifier: 'focused-test', status: 'failed' });
   assert.equal(Object.isFrozen(outcome.receipt.result), true);
+});
+
+test('CanonicalToolExecutor preserves an explicit pre-effect failure fact', async () => {
+  const outcome = await executeAction(new CanonicalToolExecutor(), action({
+    actionId: 'replace-no-op',
+    sequence: 3,
+    tool: 'replace_in_file',
+    purpose: 'workspace-mutation',
+    effects: ['workspace-mutation'],
+    input: { path: 'src/main.ts', old_str: 'same', new_str: 'same' },
+    targetPaths: ['src/main.ts'],
+  }), {
+    async execute() {
+      return {
+        status: 'failed',
+        errorCode: 'replace-no-op',
+        effectStarted: false,
+        evidenceRefs: ['replace:no-op:pre-effect'],
+      };
+    },
+  });
+
+  assert.equal(outcome.receipt.status, 'failed', outcome.receipt.permission.reason);
+  assert.equal(outcome.receipt.effectStarted, false);
 });

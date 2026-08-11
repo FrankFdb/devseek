@@ -119,6 +119,25 @@ test('parseGeneratedArtifacts: raw tool transcript inside a code block is not fi
   assert.ok(!artifacts.some((a) => a.path === 'person.cpp'));
 });
 
+test('parseGeneratedArtifacts: fenced XML tool calls cannot inherit a nearby file path', () => {
+  const text = [
+    '先检查 test.sh 和项目文件。',
+    '```xml',
+    '<list_dir>',
+    '{"path":"."}',
+    '</list_dir>',
+    '```',
+    '',
+    '```text',
+    '<manage_todo_list>',
+    '[{"id":1,"title":"调查项目","status":"in-progress"}]',
+    '</manage_tool>',
+    '```',
+  ].join('\n');
+
+  assert.deepEqual(parseGeneratedArtifacts(text), []);
+});
+
 test('parseGeneratedArtifacts: shell command fence with source path is not a file candidate', () => {
   const text = [
     '我先定位并读取 packages/vscode-extension/src/app/workflow-service.ts： Calling: bash',

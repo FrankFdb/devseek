@@ -181,6 +181,9 @@ test('projection validation rejects ambiguous actions and mutation receipts with
   incompleteRollback.changeReceipts[0].status = 'rolled-back';
   delete incompleteRollback.changeReceipts[0].rollbackRef;
 
+  const invalidEffectState = structuredClone(fixture.expected);
+  invalidEffectState.toolExecutions.find(receipt => receipt.status === 'completed').effectStarted = false;
+
   assert.ok(compareCodingConformanceProjection(fixture.expected, duplicateAction).some(
     violation => violation.code === 'duplicate-action-id',
   ));
@@ -189,6 +192,9 @@ test('projection validation rejects ambiguous actions and mutation receipts with
   ));
   assert.ok(compareCodingConformanceProjection(fixture.expected, incompleteRollback).some(
     violation => violation.code === 'incomplete-change-receipt',
+  ));
+  assert.ok(compareCodingConformanceProjection(fixture.expected, invalidEffectState).some(
+    violation => violation.code === 'invalid-tool-effect-state',
   ));
 });
 

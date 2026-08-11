@@ -369,6 +369,26 @@ test('CanonicalCompletionDecisionService settles failed edit routes through a re
   assert.equal(missingReadback.reasonCodes.includes('denied-effect'), true);
 });
 
+test('CanonicalCompletionDecisionService ignores only explicitly pre-effect mutation failures', () => {
+  const failedBeforeEffect = {
+    ...workspaceTool('replace-no-op', 1, 'failed'),
+    effectStarted: false,
+  };
+  const settled = new CanonicalCompletionDecisionService().decide(input({
+    toolExecutions: [failedBeforeEffect],
+  }));
+  const unknownEffect = new CanonicalCompletionDecisionService().decide(input({
+    decisionId: 'completion-unknown-effect',
+    idempotencyKey: 'completion-run-1:completion-unknown-effect',
+    toolExecutions: [{ ...failedBeforeEffect, effectStarted: undefined }],
+  }));
+
+  assert.equal(settled.status, 'completed');
+  assert.equal(settled.reasonCodes.includes('failed-effect'), false);
+  assert.equal(unknownEffect.status, 'failed');
+  assert.equal(unknownEffect.reasonCodes.includes('failed-effect'), true);
+});
+
 test('CanonicalCompletionDecisionService fails verification failure and settled effect failure', () => {
   const verificationFailure = new CanonicalCompletionDecisionService().decide(input({
     verifications: [verification('failed')],

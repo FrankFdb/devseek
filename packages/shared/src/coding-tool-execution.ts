@@ -55,6 +55,8 @@ export interface CodingToolHostResult<TResult> {
   readonly status: 'completed' | 'failed' | 'indeterminate';
   readonly result?: TResult;
   readonly errorCode?: string;
+  /** Explicitly false only when the host proves execution stopped before any effect began. */
+  readonly effectStarted?: boolean;
   readonly evidenceRefs: readonly string[];
 }
 
@@ -71,6 +73,8 @@ export interface CodingToolExecutionReceipt<TResult> {
   readonly status: CodingToolTerminalStatus;
   readonly result?: TResult;
   readonly errorCode?: string;
+  /** Missing means unknown; false is a settled pre-effect failure fact. */
+  readonly effectStarted?: boolean;
   readonly evidenceRefs: readonly string[];
 }
 
@@ -366,6 +370,10 @@ async function executeAuthorizedAction<TInput, TResult>(
   if (!['completed', 'failed', 'indeterminate'].includes(hostResult.status)) {
     return uncertainHostReceipt(action, 'invalid-tool-host-status', [`tool-host-status-invalid:${action.actionId}`]);
   }
+  if (hostResult.effectStarted !== undefined
+    && (hostResult.status !== 'failed' || typeof hostResult.effectStarted !== 'boolean')) {
+    return uncertainHostReceipt(action, 'invalid-tool-host-effect-state', [`tool-host-effect-state-invalid:${action.actionId}`]);
+  }
 
   const evidenceRefs = uniqueCodingRefs([...action.authority.evidenceRefs, ...hostEvidence]);
   if (hostResult.status === 'failed') {
@@ -374,6 +382,7 @@ async function executeAuthorizedAction<TInput, TResult>(
       normalizeCodingErrorCode(hostResult.errorCode) || 'tool-host-failed',
       evidenceRefs.length > 0 ? evidenceRefs : [`tool-host-failed:${action.actionId}`],
       hostResult.result,
+      hostResult.effectStarted,
     );
   }
   if (hostResult.status === 'indeterminate') {
@@ -431,6 +440,7 @@ function failedReceipt<TResult>(
   errorCode: string,
   evidenceRefs: readonly string[],
   result?: TResult,
+  effectStarted?: boolean,
 ): CodingToolExecutionReceipt<TResult> {
   return snapshotCodingToolReceipt({
     version: CODING_TOOL_RECEIPT_VERSION,
@@ -445,6 +455,7 @@ function failedReceipt<TResult>(
     status: 'failed',
     errorCode: normalizeCodingErrorCode(errorCode) || 'tool-execution-failed',
     ...(result === undefined ? {} : { result }),
+    ...(effectStarted === undefined ? {} : { effectStarted }),
     evidenceRefs: uniqueCodingRefs([...action.authority.evidenceRefs, ...evidenceRefs]),
   });
 }
@@ -517,6 +528,10 @@ function snapshotCodingToolReceipt<TResult>(
   if (!['completed', 'failed', 'denied', 'indeterminate'].includes(receipt.status)) {
     throw new Error('coding-tool-execution:invalid-receipt-status');
   }
+  if (receipt.effectStarted !== undefined
+    && (receipt.status !== 'failed' || typeof receipt.effectStarted !== 'boolean')) {
+    throw new Error('coding-tool-execution:invalid-receipt-effect-state');
+  }
   if (!Number.isSafeInteger(receipt.sequence) || receipt.sequence < 1) {
     throw new Error('coding-tool-execution:invalid-receipt-sequence');
   }
@@ -553,6 +568,7 @@ function snapshotCodingToolReceipt<TResult>(
     status: receipt.status,
     ...(result === undefined ? {} : { result }),
     ...(receipt.errorCode ? { errorCode: normalizeCodingErrorCode(receipt.errorCode) } : {}),
+    ...(receipt.effectStarted === undefined ? {} : { effectStarted: receipt.effectStarted }),
     evidenceRefs: Object.freeze(evidenceRefs),
   });
 }

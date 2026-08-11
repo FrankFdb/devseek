@@ -196,6 +196,7 @@ export class ToolLoopCanonicalSession {
       execute: async () => ({
         status: 'failed',
         errorCode,
+        effectStarted: false,
         evidenceRefs: [`vscode-tool-host:${context.actionId}:failed`],
       }),
     });

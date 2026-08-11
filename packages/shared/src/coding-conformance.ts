@@ -73,6 +73,7 @@ export interface CodingToolExecutionProjection {
   readonly tool: string;
   readonly effects: readonly CodingToolEffect[];
   readonly status: CodingReceiptStatus;
+  readonly effectStarted?: boolean;
   readonly evidenceRefs: readonly string[];
 }
 
@@ -305,6 +306,7 @@ function semanticToolExecutions(
     actionRole: `effect-${index + 1}`,
     effects: [...receipt.effects].sort(),
     status: receipt.status,
+    effectStarted: receipt.effectStarted ?? null,
     settledEvidence: receipt.evidenceRefs.length > 0,
   }));
 }
@@ -490,6 +492,10 @@ function validateProjection(
   for (const receipt of projection.toolExecutions) {
     if (!nonEmpty(receipt.actionId) || !nonEmpty(receipt.tool) || receipt.effects.length === 0 || !hasNonEmptyStrings(receipt.evidenceRefs)) {
       violations.push({ surface, dimension: 'toolExecutions', code: 'incomplete-tool-receipt' });
+    }
+    if (receipt.effectStarted !== undefined
+      && (receipt.status !== 'failed' || typeof receipt.effectStarted !== 'boolean')) {
+      violations.push({ surface, dimension: 'toolExecutions', code: 'invalid-tool-effect-state' });
     }
   }
   if (new Set(toolActionIdList).size !== toolActionIdList.length) {

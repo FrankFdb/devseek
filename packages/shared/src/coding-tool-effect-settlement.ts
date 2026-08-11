@@ -20,6 +20,7 @@ export function codingAdverseToolExecutionBlocksCompletion(
 ): boolean {
   if (adverse.status !== 'failed' && adverse.status !== 'denied') return false;
   if (isSideEffectFreeObservation(adverse)) return false;
+  if (adverse.status === 'failed' && adverse.effectStarted === false) return false;
   return !codingAdverseToolExecutionWasRecovered(
     adverse,
     toolExecutions,

@@ -46,6 +46,7 @@ export function projectSettledCodingConformanceRun(
       tool: receipt.tool,
       effects: receipt.effects,
       status: projectToolStatus(receipt.status),
+      ...(receipt.effectStarted === undefined ? {} : { effectStarted: receipt.effectStarted }),
       evidenceRefs: receipt.evidenceRefs,
     })),
     changeReceipts: input.changeReceipts.map(projectChangeReceipt),
