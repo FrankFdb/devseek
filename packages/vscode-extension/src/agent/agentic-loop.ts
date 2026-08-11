@@ -73,7 +73,7 @@ import { projectTaskContractAcceptance } from './task-contract-acceptance';
 import {
   describeAgenticDeniedToolExecution,
   getAgenticBlockingTerminalFailure,
-  getAgenticDeniedToolExecution,
+  getAgenticBlockingDeniedToolExecution,
 } from './agentic-execution-evidence';
 import {
   analyzeTerminalEvidence,
@@ -928,7 +928,8 @@ export async function runAgenticLoop(
       callbacks.onDelta('\x00PROSE_CLEAR\x00');
     }
 
-    const deniedToolAfterTools = getAgenticDeniedToolExecution(allToolExecutionReceipts);
+    const deniedToolAfterTools = getAgenticBlockingDeniedToolExecution(callbacks.canonicalToolExecution?.receipts()
+      ?? allToolExecutionReceipts, allChangeReceipts, allVerificationReceipts);
     if (deniedToolAfterTools
       && (loopRes.taskComplete || loopRes.allTodosCompleted)
       && !callbacks.signal?.aborted) {

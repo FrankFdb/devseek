@@ -23,19 +23,85 @@ const req = createRequire(import.meta.url);
 const {
   describeAgenticDeniedToolExecution,
   getAgenticBlockingTerminalFailure,
-  getAgenticDeniedToolExecution,
+  getAgenticBlockingDeniedToolExecution,
 } = req(bundlePath);
 
 test('agentic execution evidence settles an authority denial instead of retrying missing work', () => {
   const completed = toolReceipt('completed');
   const denied = toolReceipt('denied');
 
-  assert.equal(getAgenticDeniedToolExecution([completed]), undefined);
-  assert.equal(getAgenticDeniedToolExecution([completed, denied]), denied);
+  assert.equal(getAgenticBlockingDeniedToolExecution([completed], [], []), undefined);
+  assert.equal(getAgenticBlockingDeniedToolExecution([completed, denied], [], []), denied);
   assert.equal(
     describeAgenticDeniedToolExecution(denied),
     '工具 run_terminal 未获授权：approval-required',
   );
+});
+
+test('agentic execution evidence clears a rejected edit after canonical replacement and verification', () => {
+  const denied = {
+    ...toolReceipt('denied'),
+    sequence: 1,
+    actionId: 'replace-invalid',
+    tool: 'replace_in_file',
+    purpose: 'tool-write',
+    effects: ['workspace-mutation'],
+    permission: {
+      decision: 'deny',
+      status: 'denied',
+      reason: 'surface-denies:tool-call-rejected:invalid-tool-input',
+      evidenceRefs: ['permission:replace-invalid'],
+    },
+  };
+  const replacement = {
+    ...denied,
+    sequence: 2,
+    actionId: 'replace-recovered',
+    status: 'completed',
+    permission: {
+      decision: 'allow',
+      status: 'authorized',
+      reason: 'workspace-write-allowed',
+      evidenceRefs: ['permission:replace-recovered'],
+    },
+  };
+  const verifiedTool = {
+    ...replacement,
+    sequence: 3,
+    actionId: 'verify-recovered',
+    tool: 'run_terminal',
+    purpose: 'verify',
+    effects: ['process'],
+  };
+  const mutation = {
+    version: 'devseek.coding-workspace-mutation-receipt/v1',
+    runId: denied.runId,
+    sequence: replacement.sequence,
+    actionId: replacement.actionId,
+    idempotencyKey: `${denied.runId}:${replacement.actionId}`,
+    status: 'committed',
+    paths: ['src/order_book.cpp'],
+    baselineRef: 'baseline:order-book',
+    readbackRef: 'readback:order-book',
+    evidenceRefs: ['mutation:replace-recovered'],
+  };
+  const verification = {
+    version: 'devseek.coding-verification-receipt/v1',
+    runId: denied.runId,
+    sequence: verifiedTool.sequence,
+    actionId: verifiedTool.actionId,
+    idempotencyKey: `${denied.runId}:${verifiedTool.actionId}`,
+    verifier: 'project-verifier',
+    status: 'passed',
+    scopePaths: ['src/order_book.cpp'],
+    checks: [],
+    acceptance: [{ criterionId: 'tests', status: 'passed', evidenceRefs: ['test:pass'] }],
+    evidenceRefs: ['verification:passed'],
+  };
+  const receipts = [denied, replacement, verifiedTool];
+
+  assert.equal(getAgenticBlockingDeniedToolExecution(receipts, [mutation], []), denied);
+  assert.equal(getAgenticBlockingDeniedToolExecution(receipts, [mutation], [verification]), undefined);
 });
 
 test('agentic execution evidence keeps a failed functional check open after weaker syntax success', () => {

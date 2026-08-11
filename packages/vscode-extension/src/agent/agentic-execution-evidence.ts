@@ -1,4 +1,9 @@
-import type { CodingToolExecutionReceipt } from '@devseek-netai/shared';
+import {
+  codingAdverseToolExecutionBlocksCompletion,
+  type CodingToolExecutionReceipt,
+  type CodingVerificationReceipt,
+  type CodingWorkspaceMutationReceipt,
+} from '@devseek-netai/shared';
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import {
   findBlockingTerminalFailureEvidence,
@@ -19,10 +24,15 @@ export function getAgenticBlockingTerminalFailure(
     ?? findBlockingTerminalFailureEvidence(terminalEvidence);
 }
 
-export function getAgenticDeniedToolExecution(
+export function getAgenticBlockingDeniedToolExecution(
   receipts: readonly CodingToolExecutionReceipt<unknown>[],
+  mutations: readonly CodingWorkspaceMutationReceipt<unknown>[],
+  verifications: readonly CodingVerificationReceipt[],
 ): CodingToolExecutionReceipt<unknown> | undefined {
-  return receipts.find(receipt => receipt.status === 'denied');
+  return receipts.find(receipt => (
+    receipt.status === 'denied'
+      && codingAdverseToolExecutionBlocksCompletion(receipt, receipts, mutations, verifications)
+  ));
 }
 
 export function describeAgenticDeniedToolExecution(

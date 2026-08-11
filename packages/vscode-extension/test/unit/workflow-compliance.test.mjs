@@ -1071,9 +1071,10 @@ test('Agentic loop: terminal completion evidence requires successful validation 
   assertContains(code, 'getAgenticBlockingTerminalFailure', 'agentic runtime must use a final settlement gate for terminal failures');
   assert.match(
     code,
-    /getAgenticDeniedToolExecution\(allToolExecutionReceipts\)[\s\S]*?if \(deniedToolAfterTools[\s\S]*?loopRes\.taskComplete \|\| loopRes\.allTodosCompleted[\s\S]*?break;[\s\S]*?const missingAfterTools/,
-    'an acknowledged authority denial must settle before missing-deliverable recovery can request another provider round',
+    /getAgenticBlockingDeniedToolExecution\(callbacks\.canonicalToolExecution\?\.receipts\(\)[\s\S]*?allChangeReceipts, allVerificationReceipts\)[\s\S]*?if \(deniedToolAfterTools[\s\S]*?loopRes\.taskComplete \|\| loopRes\.allTodosCompleted[\s\S]*?break;[\s\S]*?const missingAfterTools/,
+    'only an unsettled authority denial may stop completion before missing-deliverable recovery',
   );
+  assertContains(executionEvidence, 'codingAdverseToolExecutionBlocksCompletion', 'agentic denial settlement must use the canonical shared effect owner');
   assertContains(executionEvidence, 'findBlockingTerminalFailureEvidence(terminalEvidence)', 'agentic settlement owner must not let failed validation evidence be hidden by provider completion prose');
   assert.match(
     terminalObservation,
