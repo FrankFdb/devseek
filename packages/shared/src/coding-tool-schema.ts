@@ -40,6 +40,7 @@ export interface CodingToolDescriptor {
   readonly schema: CodingToolInputSchema;
   readonly mutatesWorkspace?: boolean;
   readonly requiresTerminal?: boolean;
+  readonly completionImpact: 'required' | 'advisory';
   readonly modelVisible: boolean;
 }
 
@@ -68,11 +69,13 @@ const schema = (
   additionalProperties: true,
 });
 
-const descriptor = (input: Omit<CodingToolDescriptor, 'version' | 'modelVisible'> & {
+const descriptor = (input: Omit<CodingToolDescriptor, 'version' | 'modelVisible' | 'completionImpact'> & {
   readonly modelVisible?: boolean;
+  readonly completionImpact?: CodingToolDescriptor['completionImpact'];
 }): CodingToolDescriptor => Object.freeze({
   version: CODING_TOOL_SCHEMA_VERSION,
   modelVisible: input.modelVisible ?? true,
+  completionImpact: input.completionImpact ?? 'required',
   ...input,
   effects: Object.freeze([...input.effects]),
 });
@@ -96,7 +99,7 @@ export const CODING_TOOL_DESCRIPTORS: Readonly<Record<string, CodingToolDescript
   run_terminal: descriptor({ name: 'run_terminal', kind: 'terminal', risk: 'high', purpose: 'verify', effects: ['process'], requiresTerminal: true, schema: schema(['command'], { command: { type: 'string' }, workdir: { type: 'string' } }) }),
   run_vscode_command: descriptor({ name: 'run_vscode_command', kind: 'vscode', risk: 'high', purpose: 'external-effect', effects: ['process'], schema: schema(['command'], { command: { type: 'string' }, args: { type: 'array' } }) }),
   vscode_listCodeUsages: descriptor({ name: 'vscode_listCodeUsages', kind: 'read', risk: 'low', purpose: 'observe', effects: ['read'], schema: schema(['symbol'], { symbol: { type: 'string' }, path: { type: 'string' } }) }),
-  memory_write: descriptor({ name: 'memory_write', kind: 'memory', risk: 'low', purpose: 'external-effect', effects: ['process'], schema: schema(['content'], { content: { type: 'string' } }) }),
+  memory_write: descriptor({ name: 'memory_write', kind: 'memory', risk: 'low', purpose: 'external-effect', effects: ['process'], completionImpact: 'advisory', schema: schema(['content'], { content: { type: 'string' } }) }),
   manage_todo_list: descriptor({ name: 'manage_todo_list', kind: 'control', risk: 'low', purpose: 'observe', effects: ['read'], schema: schema(['todoList'], { todoList: { type: 'array' } }) }),
   task_complete: descriptor({ name: 'task_complete', kind: 'control', risk: 'low', purpose: 'observe', effects: ['read'], schema: schema(['summary'], { summary: { type: 'string' } }) }),
   apply_workspace_artifacts: descriptor({ name: 'apply_workspace_artifacts', kind: 'edit', risk: 'medium', purpose: 'workspace-mutation', effects: ['workspace-mutation'], mutatesWorkspace: true, modelVisible: false, schema: schema(['workspaceRoot', 'proposal'], { workspaceRoot: { type: 'string' }, proposal: { type: 'object' } }) }),

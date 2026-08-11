@@ -249,6 +249,34 @@ test('CanonicalCompletionDecisionService keeps rejected control attempts complet
   assert.equal(decision.evidenceRefs.includes('authority:todo-invalid'), true);
 });
 
+test('CanonicalCompletionDecisionService keeps unapproved advisory memory completion-neutral', () => {
+  const deniedMemory = {
+    version: CODING_TOOL_RECEIPT_VERSION,
+    runId: 'completion-run-1',
+    sequence: 1,
+    actionId: 'memory-unapproved-1',
+    tool: 'memory_write',
+    purpose: 'external-effect',
+    effects: ['process'],
+    status: 'denied',
+    permission: {
+      decision: 'require-confirmation',
+      status: 'denied',
+      reason: 'external-effect-requires-confirmation',
+      evidenceRefs: ['authority:memory-unapproved'],
+    },
+    evidenceRefs: ['authority:memory-unapproved'],
+  };
+
+  const decision = new CanonicalCompletionDecisionService().decide(input({
+    toolExecutions: [deniedMemory],
+  }));
+
+  assert.equal(decision.status, 'completed');
+  assert.equal(decision.reasonCodes.includes('denied-effect'), false);
+  assert.equal(decision.evidenceRefs.includes('authority:memory-unapproved'), true);
+});
+
 test('CanonicalCompletionDecisionService keeps failed read-only exploration completion-neutral', () => {
   const failedRead = {
     version: CODING_TOOL_RECEIPT_VERSION,

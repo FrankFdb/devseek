@@ -104,6 +104,17 @@ test('agentic execution evidence clears a rejected edit after canonical replacem
   assert.equal(getAgenticBlockingDeniedToolExecution(receipts, [mutation], [verification]), undefined);
 });
 
+test('agentic execution evidence does not let optional memory persistence veto delivery', () => {
+  const deniedMemory = {
+    ...toolReceipt('denied'),
+    tool: 'memory_write',
+    purpose: 'external-effect',
+    effects: ['process'],
+  };
+
+  assert.equal(getAgenticBlockingDeniedToolExecution([deniedMemory], [], []), undefined);
+});
+
 test('agentic execution evidence keeps a failed functional check open after weaker syntax success', () => {
   const failedFunctionalCheck = {
     command: `node -e "const {parse}=require('./src/parser.js'); if(!parse('valid').ok) process.exit(1)"`,
