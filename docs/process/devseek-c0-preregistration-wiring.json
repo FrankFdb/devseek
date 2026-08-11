@@ -28,7 +28,7 @@
       "path": "docs/process/devseek-profile-executor-contracts.json",
       "schema_version": "devseek.profile-executor-contracts/v1",
       "contract_registry_id": "DEVSEEK-GATE0-PROFILE-EXECUTOR-CONTRACTS/v1",
-      "source_sha256": "f9d6922e5803ba22063201267b84b4bb5aa35c55df68c4295fd81841da4686b5"
+      "source_sha256": "7b41514b526af19d37ac943ac542ce9ebaaf31965382802c1c6639430b4dfb98"
     },
     "qualification_plan_schema": {
       "path": "docs/process/devseek-qualification-plan.schema.json",
@@ -370,5 +370,5 @@
     "dispatch_bypasses": 0,
     "qualification_claims": 0
   },
-  "wiring_sha256": "9c9069d43e1e7ef8b13b5bbc8cdb53f3905c1b8e3d63268fff24219c0628f68c"
+  "wiring_sha256": "8cdf3d537fabae94b5efc16914c686d3a76055a06a26bec0bce8ddd84de280c2"
 }
