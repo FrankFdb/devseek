@@ -1362,6 +1362,98 @@ test('run log replay detects terminal command failures even when execution evide
   }
 });
 
+test('run log replay settles a failed repair command after the same command succeeds', () => {
+  const command = { length: 12, sha256: 'test-command' };
+  const workdir = '/tmp/ws/cpp-project';
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-08-11T01:00:00.000Z',
+      level: 'info',
+      source: 'vscode-extension.terminal',
+      phase: 'terminal',
+      event: 'command-complete',
+      runId: 'repair-command-settled',
+      data: { command, workdir, exitCode: 2 },
+    },
+    {
+      ts: '2026-08-11T01:00:05.000Z',
+      level: 'info',
+      source: 'vscode-extension.terminal',
+      phase: 'terminal',
+      event: 'command-complete',
+      runId: 'repair-command-settled',
+      data: { command, workdir, exitCode: 0 },
+    },
+    {
+      ts: '2026-08-11T01:00:06.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'run-context',
+      event: 'agent-run-completed',
+      runId: 'repair-command-settled',
+      data: { status: 'failed', reason: 'provider-fetch-failed' },
+    },
+  ]);
+
+  try {
+    const kinds = new Set(replayRunLog(logPath).issues.map(issue => issue.kind));
+    assert.equal(kinds.has('terminal-command-failed'), false);
+    assert.equal(kinds.has('agent-run-failed'), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay settles earlier repair failures after host validation passes', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-08-11T01:10:00.000Z',
+      level: 'info',
+      source: 'vscode-extension.terminal',
+      phase: 'terminal',
+      event: 'command-complete',
+      runId: 'repair-validation-settled',
+      data: {
+        command: { length: 11, sha256: 'first-command' },
+        workdir: '/tmp/ws/cpp-project',
+        exitCode: 1,
+      },
+    },
+    {
+      ts: '2026-08-11T01:10:05.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'agent-status',
+      event: 'agent-status',
+      runId: 'repair-validation-settled',
+      data: {
+        phase: 'validate',
+        state: 'completed',
+        evidenceOperationId: 'auto-validation-2',
+        title: '自动验证通过',
+        detail: '[verification_result: passed]',
+      },
+    },
+    {
+      ts: '2026-08-11T01:10:06.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'run-context',
+      event: 'agent-run-completed',
+      runId: 'repair-validation-settled',
+      data: { status: 'failed', reason: 'provider-fetch-failed' },
+    },
+  ]);
+
+  try {
+    const kinds = new Set(replayRunLog(logPath).issues.map(issue => issue.kind));
+    assert.equal(kinds.has('terminal-command-failed'), false);
+    assert.equal(kinds.has('failure-status-reported-completed'), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run log replay does not let stale GUI timeout evidence override final completion', () => {
   const { dir, logPath } = writeLog([
     {
@@ -1655,6 +1747,44 @@ test('run log replay detects no-tool read-only intent after tool results and opt
     assert.equal(kinds.has('provider-short-intent'), true);
     assert.equal(kinds.has('read-only-no-tool-intent-after-tools'), true);
     assert.equal(kinds.has('optimistic-completion-before-failure'), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay settles short intent after the runtime emits a recovery transition', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-08-11T02:00:00.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'short-intent-recovered',
+      data: {
+        name: 'extension.response.raw',
+        content: '我将先阅读现有接口和测试，然后开始实现。',
+      },
+    },
+    {
+      ts: '2026-08-11T02:00:00.100Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'agent-status',
+      event: 'agent-status',
+      runId: 'short-intent-recovered',
+      data: {
+        phase: 'execute',
+        state: 'started',
+        recoveryReason: 'provider-short-intent',
+        title: 'Provider response recovery',
+      },
+    },
+  ]);
+
+  try {
+    const kinds = new Set(replayRunLog(logPath).issues.map(issue => issue.kind));
+    assert.equal(kinds.has('provider-short-intent'), false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

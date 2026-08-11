@@ -283,6 +283,36 @@ test('TaskSemanticContract v3: mixed code and report targets retain typed obliga
   )));
 });
 
+test('TaskSemanticContract v3: coding directory allowlist is not an exact deliverable list', () => {
+  const contract = buildTaskSemanticContract([
+    '你正在维护一个 C++17 作业调度库。请完成依赖感知的确定性调度器。',
+    '行为要求：',
+    '- addJob 对空 id、重复 id 抛出 std::invalid_argument。',
+    '- buildPlan 必须先满足依赖；同一时刻可运行的作业按 priority 从高到低、id 字典序从小到大选择。',
+    '- 未知依赖抛出 std::invalid_argument；依赖环抛出 std::logic_error。',
+    '- 多次调用 buildPlan 结果一致，不能修改已登记作业。',
+    '只允许修改 include/ 和 src/。不得修改 CMakeLists.txt、test.sh 或 tests/。',
+    '请先阅读现有接口和测试，按单一职责组织验证与拓扑规划逻辑，不要为过测试硬编码。',
+    '完成后运行 ./test.sh，测试未通过不得宣称完成。',
+  ].join('\n'));
+
+  assert.equal(contract.mutation.requested, true);
+  assert.equal(contract.mutation.sourceChange, true);
+  assert.equal(contract.mutation.fileArtifact, false);
+  assert.equal(contract.kind, 'existing-project-code');
+  assert.equal(contract.validation.runProhibited, false);
+  assert.deepEqual(contract.mutation.targets, []);
+  assert.ok(contract.obligations.artifacts.some(item => (
+    item.kind === 'source-change' && item.target === undefined
+  )));
+  assert.ok(contract.completion.doneIff.some(item => (
+    item.kind === 'code-written' && item.target === undefined
+  )));
+  assert.equal(contract.completion.doneIff.some(item => item.target === 'include/'), false);
+  assert.equal(contract.completion.doneIff.some(item => item.target === 'src/'), false);
+  assert.ok(contract.completion.doneIff.some(item => item.kind === 'test-passed'));
+});
+
 test('TaskSemanticContract v3: source-derived reports require read and artifact evidence', () => {
   const contract = buildTaskSemanticContract('读取 src/a.ts 并生成 report.md，总结主要函数。');
 

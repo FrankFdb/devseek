@@ -126,6 +126,8 @@ const STDOUT_RE = /(?:打印|输出|stdout|std::cout|\bcout\b|console\.log|print
 const OUTPUT_ARTIFACT_RE = /(?:(?:输出|打印)[^，,。；;\n]{0,20}(?:文件|文档|报告|Markdown|md|目录|路径|清单|内容)|(?:文件|文档|报告|内容|最后一行|每行|一行)[^，,。；;\n]{0,24}(?:打印|输出|console\.log|print)|(?:output|print)[^,.;\n]{0,24}(?:file|document|report|markdown|content|line))/i;
 const NO_RUN_RE = /(?:不(?:要|用|需|需要|必|得|准|能)?|禁止|别|勿|请勿|未)[^，,。；;\n]{0,24}(?:运行|执行|启动|测试)|(?:do\s+not|don't|without|no)\s+(?:run|execute|start|test)/i;
 const NO_RUN_CLAUSE_RE = /(?:不(?:要|用|需|需要|必|得|准|能)?|禁止|别|勿|请勿|未)[^，,。；;\n]{0,32}(?:运行|执行|启动|测试)[^，,。；;\n]*|(?:do\s+not|don't|without|no)\s+[^,.;\n]*(?:run|execute|start|test)[^,.;\n]*/gi;
+const TEST_AS_IMPLEMENTATION_CONSTRAINT_RE = /(?:不要|不得|禁止|别|勿|请勿)[^，,。；;\n]{0,20}(?:为(?:了)?(?:通)?过|迎合|针对)\s*(?:测试|tests?)[^，,。；;\n]*|\b(?:do\s+not|don't|never)\b[^,.;\n]{0,24}\bhardcode\b[^,.;\n]{0,16}\btests?\b/gi;
+const EXPLICIT_TEST_COMMAND_RE = /(?:运行|执行|run|execute)[^，,。；;\n]{0,24}(?:\.\/?|\b)(?:test\.sh|tests?|ctest|pytest|jest|vitest|mocha)\b/i;
 const READ_ONLY_RE = /(?:只读|仅分析|只分析|仅讨论|只讨论|只指出|仅指出|直接回复|直接回答|当前不准备|不准备|先不要|暂不|不要落地|不需要代码|only\s+(?:explain|discuss|answer)|just\s+(?:chat|talk|discuss))/i;
 const READ_REQUEST_RE = /(?:读取|读出|查看|检查|确认|分析|提取|显示|告诉我|read|inspect|check|confirm|analy[sz]e|extract|show|display)/i;
 const READ_CONTENT_RE = /(?:文件内容|内容|第一行|首行|真实值|常量值|显示|读出|提取|告诉我[^，,。；;\n]{0,20}(?:行|内容|值)|(?:show|display|read|extract)[^,.;\n]{0,28}(?:content|line|value)|(?:content|first\s+line|actual\s+value))/i;
@@ -136,10 +138,13 @@ const PROJECT_SCALE_QUALITY_RE = /(?:正式项目|生产项目|正式源码|正�
 export function buildTaskSemanticContract(promptText: string): TaskSemanticContract {
   const prompt = String(promptText || '').trim();
   const taskContract = buildTaskContract(prompt);
-  const sourceTargets = taskContract.inputs.filter(isSourcePath);
-  const nonCodeTargets = taskContract.inputs.filter(isNonCodeArtifactPath);
   const classifiedMutationTargets = resolveTaskMutationTargets(prompt);
-  const sourceDeliverableTargets = taskContract.deliverableTargets.filter(isSourcePath);
+  const requestedMutationTargets = [...new Set([
+    ...taskContract.deliverableTargets,
+    ...classifiedMutationTargets,
+  ])];
+  const sourceMutationTargets = requestedMutationTargets.filter(isSourcePath);
+  const nonCodeMutationTargets = requestedMutationTargets.filter(isNonCodeArtifactPath);
   const artifactPathQuery = ARTIFACT_PATH_QUERY_RE.test(prompt);
   const hasScopedOtherFileProhibition = NO_WRITE_RE.test(prompt) && OTHER_FILE_SCOPE_RE.test(prompt);
   const hasScopedFormalSourceProhibition = NO_WRITE_RE.test(prompt) && FORMAL_SOURCE_SCOPE_RE.test(prompt);
@@ -159,12 +164,9 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     || DERIVED_ARTIFACT_OUTPUT_RE.test(positiveIntentText)
   );
   const effectivePositiveWriteAction = positiveWriteAction && !hasUnscopedNoWrite;
-  const explicitSourceFileWrite = effectivePositiveWriteAction && sourceTargets.length > 0 && (
-    sourceDeliverableTargets.length > 0
-    || (taskContract.deliverableTargets.length === 0 && !taskContract.deliverables.includes('report'))
-  );
-  const explicitNonCodeFileWrite = effectivePositiveWriteAction && nonCodeTargets.length > 0;
-  const isolatedSourceArtifact = sourceTargets.some(target => DEVSEEK_ISOLATED_ARTIFACT_PATH_RE.test(target));
+  const explicitSourceFileWrite = effectivePositiveWriteAction && sourceMutationTargets.length > 0;
+  const explicitNonCodeFileWrite = effectivePositiveWriteAction && nonCodeMutationTargets.length > 0;
+  const isolatedSourceArtifact = sourceMutationTargets.some(target => DEVSEEK_ISOLATED_ARTIFACT_PATH_RE.test(target));
   const explicitNewSourceFile = explicitSourceFileWrite && CREATE_SOURCE_ACTION_RE.test(positiveIntentText);
   const standaloneCodeRaw = taskContract.taskShapes.includes('standalone')
     || (hasStandaloneCodeGenerationIntent(prompt) && !taskContract.taskShapes.includes('existing-project'))
@@ -190,7 +192,7 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const simpleFileRequest = parseSimpleFileWriteRequest(prompt);
   const validationPrompt = stripAgentProceduralExecutionPhrases(
     stripSimpleFileContentPayload(prompt, simpleFileRequest?.content),
-  );
+  ).replace(TEST_AS_IMPLEMENTATION_CONSTRAINT_RE, ' ');
   const validationText = maskTaskTargetPaths(validationPrompt, taskContract.inputs);
   const validationRequested = !artifactPathQuery
     && !destructiveIntent
@@ -199,7 +201,9 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const compileRequested = !artifactPathQuery && COMPILE_RE.test(positiveValidationText);
   const stdoutRequested = !artifactPathQuery && STDOUT_RE.test(validationText) && !OUTPUT_ARTIFACT_RE.test(validationText);
   const runProhibited = !artifactPathQuery && NO_RUN_RE.test(validationText);
-  const testRequested = !runProhibited && !artifactPathQuery && TEST_RE.test(positiveValidationText);
+  const testRequested = !runProhibited
+    && !artifactPathQuery
+    && (TEST_RE.test(positiveValidationText) || EXPLICIT_TEST_COMMAND_RE.test(validationPrompt));
   const runRequested = !runProhibited && !artifactPathQuery && (RUN_RE.test(positiveValidationText) || stdoutRequested || testRequested);
   const fileCheckRequested = fileArtifact
     && (validationRequested
@@ -228,7 +232,9 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   let kind = resolveKind({
     readOnly: readOnlyIntent,
     standaloneCode,
-    existingProjectCode: existingProjectCodeDelivery,
+    existingProjectCode: existingProjectCodeDelivery || (
+      sourceChange && taskContract.taskShapes.includes('existing-project')
+    ),
     formalProjectRequired,
     fileArtifact,
     validationRequested,
@@ -257,21 +263,7 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     prohibited,
     sourceChange,
     fileArtifact,
-    targets: buildMutationTargets({
-      taskContractTargets: resolveSemanticMutationTargetHints({
-        prompt,
-        taskContractTargets: [...new Set([
-          ...taskContract.deliverableTargets,
-          ...classifiedMutationTargets,
-        ])],
-        nonCodeTargets,
-        sourceChange,
-      }),
-      sourceTargets,
-      nonCodeTargets,
-      includeSourceTargets: sourceChange,
-      includeNonCodeTargets: fileArtifact,
-    }),
+    targets: requestedMutationTargets,
   };
   const validation = {
     requested: validationRequested,
@@ -416,46 +408,6 @@ function isSourcePath(pathValue: string): boolean {
 
 function isNonCodeArtifactPath(pathValue: string): boolean {
   return NON_CODE_ARTIFACT_RE.test(pathValue) && !isSourcePath(pathValue);
-}
-
-function buildMutationTargets(input: {
-  taskContractTargets: readonly string[];
-  sourceTargets: readonly string[];
-  nonCodeTargets: readonly string[];
-  includeSourceTargets: boolean;
-  includeNonCodeTargets: boolean;
-}): string[] {
-  const targetSet = new Set(input.taskContractTargets);
-  if (input.includeSourceTargets) {
-    for (const sourceTarget of input.sourceTargets) {
-      if (input.taskContractTargets.length === 0 || input.taskContractTargets.includes(sourceTarget)) {
-        targetSet.add(sourceTarget);
-      }
-    }
-  }
-  if (input.includeNonCodeTargets) {
-    for (const nonCodeTarget of input.nonCodeTargets) {
-      if (input.taskContractTargets.length === 0 || input.taskContractTargets.includes(nonCodeTarget)) {
-        targetSet.add(nonCodeTarget);
-      }
-    }
-  }
-  return [...targetSet];
-}
-
-function resolveSemanticMutationTargetHints(input: {
-  prompt: string;
-  taskContractTargets: readonly string[];
-  nonCodeTargets: readonly string[];
-  sourceChange: boolean;
-}): string[] {
-  if (input.taskContractTargets.length > 0) return [...input.taskContractTargets];
-  if (!input.sourceChange
-    && input.nonCodeTargets.length > 1
-    && DERIVED_ARTIFACT_OUTPUT_RE.test(input.prompt)) {
-    return [input.nonCodeTargets[input.nonCodeTargets.length - 1]];
-  }
-  return [];
 }
 
 function shouldPromoteUnscopedEditMutation(

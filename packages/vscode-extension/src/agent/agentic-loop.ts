@@ -61,6 +61,7 @@ import {
   withTaskTerminalEvidence,
 } from './task-execution-result';
 import type { AgentLoopCallbacks, AgentLoopResult } from './loop-types';
+import type { AgentRecoveryReason } from './events';
 import type { EvidenceRef } from './tool-executor';
 import { chatWithMessages } from './loop-chat';
 import { hasWriteRevokedToolAttempt } from './write-authority';
@@ -336,7 +337,12 @@ export async function runAgenticLoop(
   const _agentLabel = _shortPrompt.length > 38 ? _shortPrompt.slice(0, 36) + '…' : _shortPrompt;
   const initialDisplayAction = callbacks.runDisplayAction || 'explore';
   const initialDisplayTarget = callbacks.runDisplayTarget || '';
-  const emitAgenticCorrectionStatus = async (title: string, detail: string, activityLabel?: string) => {
+  const emitAgenticCorrectionStatus = async (
+    title: string,
+    detail: string,
+    activityLabel?: string,
+    recoveryReason?: AgentRecoveryReason,
+  ) => {
     if (callbacks.signal?.aborted) return;
     callbacks.onToolActivity?.('label', activityLabel || title);
     await callbacks.onAgentStatus({
@@ -345,6 +351,7 @@ export async function runAgenticLoop(
       taskId: 'agentic',
       taskFile: initialDisplayTarget,
       taskAction: initialDisplayAction,
+      recoveryReason,
       taskIndex: 1,
       taskTotal: 1,
       state: 'started',
@@ -718,6 +725,7 @@ export async function runAgenticLoop(
           '已拦接口头承诺，要求真实工具执行',
           '模型刚才只说明要继续检查、创建、写入或验证，但没有调用任何工具。DevSeek 已保留这个失败事实，并要求下一轮必须使用真实文件、搜索或终端工具推进。',
           '拦接口头承诺，要求真实工具执行',
+          'provider-short-intent',
         );
         const retryMessage = buildDanglingAgentActionFeedback();
         messages.push({ role: 'user', content: retryMessage });

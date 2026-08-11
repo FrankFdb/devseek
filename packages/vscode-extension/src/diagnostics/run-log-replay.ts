@@ -7,9 +7,14 @@ import { isolateModelToolRequestText } from '../agent/model-tool-protocol-adapte
 import {
   classifyProviderOutputIntegrity,
   describeProviderOutputIntegrity,
+  type ProviderOutputIntegrityKind,
 } from '../agent/provider-output-integrity';
 import { LEGACY_CPP_BUILD_DIR_NAMES, listCppBuildOutputDirNames } from '../cpp-build-layout';
 import { hasInteractiveLaunchEvidence } from '../execution-outcome-classifier';
+import {
+  RunRecoverySettlement,
+  terminalCommandIdentity,
+} from './run-recovery-settlement';
 
 export type RunLogReplayIssueSeverity = 'info' | 'warn' | 'error';
 
@@ -180,8 +185,7 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
   let sawReadOnlyTask = false;
   let sawSuccessfulToolRound = false;
   const sourceCodeResponses: { line: number; evidence?: string }[] = [];
-  const terminalFailures: Array<{ line: number; exitCode: number; evidence: string; outputSha?: string; output?: string }> = [];
-  const terminalOutputBySha = new Map<string, string>();
+  const recoverySettlement = new RunRecoverySettlement();
   const completedTaskStatusByKey = new Map<string, { line: number; title: string }>();
   const completedMarkdownDeliverables: Array<{ line: number; title: string; evidence: string }> = [];
   const completedRunChangedPaths: string[] = [];
@@ -293,6 +297,7 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
         };
       } else if (phase === 'validate' && state === 'completed') {
         pendingValidationFailure = undefined;
+        recoverySettlement.recordSuccessfulValidation();
         if (evidenceOperationId) completedRuntimeVerificationIds.add(evidenceOperationId);
       } else if (phase === 'quality' && state === 'completed' && evidenceOperationId) {
         passedRuntimeQualityGateIds.add(evidenceOperationId);
@@ -338,6 +343,9 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
       }
       if (phase === 'done' && state === 'completed') {
         completedStatusEditedFiles += arrayValue(data?.editedFiles).length;
+      }
+      if (isProviderShortIntentRecoveryStatus(data)) {
+        recoverySettlement.settleLatestProviderShortIntent();
       }
     }
     if (entry.event === 'participant-started') {
@@ -392,7 +400,13 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
         providerResponses += 1;
         const parsedToolCount = parseFakeToolCalls(content).length;
         latestExtensionResponse = { line: event.line, content, parsedToolCount };
-        collectProviderResponseIssues(content, event.line, issues);
+        const integrityKind = collectProviderResponseIssues(content, event.line, issues);
+        if (integrityKind === 'short_intent') {
+          recoverySettlement.recordProviderShortIntent({
+            line: event.line,
+            evidence: truncateOneLine(content, 220),
+          });
+        }
         if (SOURCE_CODE_RESPONSE_RE.test(content)) {
           sourceCodeResponses.push({
             line: event.line,
@@ -404,12 +418,7 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
       }
       if (name === 'terminal.output') {
         const sha = stringValue(payload?.sha256);
-        if (sha) terminalOutputBySha.set(sha, content);
-        const lastUnresolved = terminalFailures
-          .slice()
-          .reverse()
-          .find(item => !item.output && (!item.outputSha || item.outputSha === sha));
-        if (lastUnresolved) lastUnresolved.output = content;
+        recoverySettlement.recordTerminalOutput(sha, content);
       }
     }
 
@@ -431,17 +440,25 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
     }
     if (entry.source === 'vscode-extension.terminal' && entry.event === 'command-complete') {
       const exitCode = numberValue(data?.exitCode);
+      const command = objectValue(data?.command);
+      const commandIdentity = terminalCommandIdentity(
+        stringValue(command?.sha256),
+        stringValue(data?.workdir),
+      );
       if (typeof exitCode === 'number' && exitCode > 0) {
         const outputMeta = objectValue(data?.output);
-        terminalFailures.push({
+        recoverySettlement.recordTerminalFailure({
           line: event.line,
           exitCode,
+          commandIdentity,
           outputSha: stringValue(outputMeta?.sha256),
           evidence: truncateOneLine([
             `exitCode=${exitCode}`,
-            stringValue(objectValue(data?.command)?.text),
+            stringValue(command?.text),
           ].filter(Boolean).join(' '), 220),
         });
+      } else if (exitCode === 0) {
+        recoverySettlement.recordTerminalSuccess(commandIdentity);
       }
     }
 
@@ -519,6 +536,16 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
     issues.push(pendingBridgeRuntimeMismatch);
   }
 
+  for (const shortIntent of recoverySettlement.unresolvedProviderShortIntents()) {
+    issues.push({
+      kind: 'provider-short-intent',
+      severity: 'error',
+      line: shortIntent.line,
+      message: 'Provider 只输出短意图，没有工具调用或结论；运行时必须恢复追问，不能结算。',
+      evidence: shortIntent.evidence,
+    });
+  }
+
   collectProductRunEvidenceSettlementIssues({
     evidenceEvents: loadProductRunEvidenceEvents(absLogPath, runId),
     agentRunCompletedSuccessfully,
@@ -526,8 +553,8 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
     issues,
   });
 
-  for (const failure of terminalFailures) {
-    const output = failure.output || (failure.outputSha ? terminalOutputBySha.get(failure.outputSha) : undefined) || '';
+  for (const failure of recoverySettlement.unresolvedTerminalFailures()) {
+    const output = failure.output || '';
     if (hasInteractiveLaunchEvidence(output)) continue;
     if (agentRunCompletedSuccessfully) continue;
     issues.push({
@@ -954,7 +981,11 @@ function collectProviderRequestIssues(content: string, line: number, issues: Run
   }
 }
 
-function collectProviderResponseIssues(content: string, line: number, issues: RunLogReplayIssue[]): void {
+function collectProviderResponseIssues(
+  content: string,
+  line: number,
+  issues: RunLogReplayIssue[],
+): ProviderOutputIntegrityKind {
   const duplicateWritePath = findDuplicateFullFileWritePath(content);
   if (duplicateWritePath) {
     issues.push({
@@ -973,7 +1004,7 @@ function collectProviderResponseIssues(content: string, line: number, issues: Ru
       line,
       message: 'DeepSeek 网页返回了空正文；执行器不应继续把它当成正常计划或正常任务回复。',
     });
-    return;
+    return integrity.kind;
   }
   if (integrity.kind === 'truncated') {
     issues.push({
@@ -997,14 +1028,6 @@ function collectProviderResponseIssues(content: string, line: number, issues: Ru
       severity: 'error',
       line,
       message: `${describeProviderOutputIntegrity(integrity.kind)}Bridge 必须恢复登录上下文或失败。`,
-      evidence: truncateOneLine(content, 220),
-    });
-  } else if (integrity.kind === 'short_intent') {
-    issues.push({
-      kind: 'provider-short-intent',
-      severity: 'error',
-      line,
-      message: 'Provider 只输出短意图，没有工具调用或结论；运行时必须恢复追问，不能结算。',
       evidence: truncateOneLine(content, 220),
     });
   } else if (integrity.kind === 'incomplete_answer') {
@@ -1074,6 +1097,7 @@ function collectProviderResponseIssues(content: string, line: number, issues: Ru
       }
     }
   }
+  return integrity.kind;
 }
 
 function collectProductRunEvidenceSettlementIssues(input: {
@@ -1241,6 +1265,14 @@ function objectValue(value: unknown): Record<string, unknown> | undefined {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
+}
+
+function isProviderShortIntentRecoveryStatus(data: Record<string, unknown> | undefined): boolean {
+  if (stringValue(data?.recoveryReason) === 'provider-short-intent') return true;
+  // Compatibility for logs emitted before recoveryReason became part of AgentStatusEvent.
+  return stringValue(data?.phase) === 'execute'
+    && stringValue(data?.state) === 'started'
+    && stringValue(data?.title) === '已拦接口头承诺，要求真实工具执行';
 }
 
 function numberValue(value: unknown): number | undefined {

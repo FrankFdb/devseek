@@ -18,6 +18,7 @@ const {
   getSourceClaimArtifactContractIssue,
   hasArtifactWriteIntent,
   resolveTaskContractSourcePaths,
+  resolveTaskMutationTargets,
 } = createRequire(import.meta.url)(bundlePath);
 
 test('plain configuration extraction requires evidence but no protocol or implementation plan', () => {
@@ -607,6 +608,25 @@ test('file-write authorization treats standalone programming requests as bounded
   assert.equal(authorize(`${prompt}，不要创建文件。`, 'hello.cpp').reason, 'all-file-writes-prohibited');
   assert.equal(authorize('只回答代码，不要写文件：编写一个 C++ 程序，打印下午好。', 'hello.cpp').allowed, false);
   assert.equal(authorize('请创建 main.cpp。', 'hello.cpp').reason, 'target-file-write-prohibited');
+});
+
+test('semantic mutation targets distinguish writable directory scope from required files', () => {
+  assert.deepEqual(
+    resolveTaskMutationTargets('只允许修改 include/ 和 src/。不得修改 CMakeLists.txt、test.sh 或 tests/。'),
+    [],
+  );
+  assert.deepEqual(
+    resolveTaskMutationTargets('只修改 src/main.ts，不要修改其他文件。'),
+    ['src/main.ts'],
+  );
+  assert.deepEqual(
+    resolveTaskMutationTargets('Only modify files under src/; leave tests/ unchanged.'),
+    [],
+  );
+  assert.deepEqual(
+    resolveTaskMutationTargets('读取 README.md 并翻译成 docs/readme.zh.md'),
+    ['docs/readme.zh.md'],
+  );
 });
 
 test('file-write authorization binds actions to output roles and fails closed on read-only paths', () => {

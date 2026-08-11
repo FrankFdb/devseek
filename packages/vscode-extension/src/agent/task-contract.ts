@@ -281,9 +281,13 @@ function classifyPathOccurrenceMutation(
   const nearestRead = localReads.reduce<MutationActionSpan | undefined>((selected, candidate) => (
     !selected || Math.abs(distance(candidate)) < Math.abs(distance(selected)) ? candidate : selected
   ), undefined);
+  const transformationOutput = nearestRead?.index === nearest.index
+    && isTransformationOutputOccurrence(prompt, nearest, occurrence);
   if ((explicitRole?.kind === 'read'
       && (nearest.index > occurrence.index || explicitRole.index >= nearest.index))
-    || (nearestRead && Math.abs(distance(nearestRead)) <= Math.abs(distance(nearest)))
+    || (nearestRead
+      && !transformationOutput
+      && Math.abs(distance(nearestRead)) <= Math.abs(distance(nearest)))
     || isResponseDirectedMutationForOccurrence(prompt, nearest, occurrence)) {
     return {
       requested: false,
@@ -296,6 +300,17 @@ function classifyPathOccurrenceMutation(
   return nearest.prohibited
     ? { requested: false, prohibited: true, mentioned: true, actionIndex: nearest.index }
     : { requested: true, prohibited: false, mentioned: true, actionIndex: nearest.index };
+}
+
+function isTransformationOutputOccurrence(
+  prompt: string,
+  action: MutationActionSpan,
+  occurrence: PathOccurrence,
+): boolean {
+  const actionText = prompt.slice(action.index, action.end);
+  if (!/(?:翻译|总结|摘要|概括|提取|translate|summari[sz]e|extract)/i.test(actionText)) return false;
+  const beforeTarget = prompt.slice(action.end, occurrence.index);
+  return /(?:成|为|到|至|入)\s*$|\b(?:to|into|as)\s*$/i.test(beforeTarget);
 }
 
 function classifyStandaloneRequirementPathMutation(
@@ -666,7 +681,7 @@ export function resolveTaskReadTargets(promptText: string): string[] {
     .map(occurrence => occurrence.path))];
 }
 
-/** Resolve file targets whose path occurrence is explicitly bound to a mutation. */
+/** Resolve concrete file targets whose path occurrence is explicitly bound to a mutation. */
 export function resolveTaskMutationTargets(promptText: string): string[] {
   const prompt = extractCurrentUserRequest(promptText);
   const occurrences = extractPathOccurrences(prompt);
@@ -680,8 +695,16 @@ export function resolveTaskMutationTargets(promptText: string): string[] {
     }
   }
   return [...decisions.entries()]
-    .filter(([, decision]) => decision.requested && !decision.prohibited)
+    .filter(([pathValue, decision]) => (
+      decision.requested
+      && !decision.prohibited
+      && !isDirectoryScopePath(pathValue)
+    ))
     .map(([pathValue]) => pathValue);
+}
+
+function isDirectoryScopePath(pathValue: string): boolean {
+  return /[\\/]$/u.test(pathValue);
 }
 
 /** Final write-boundary authorization for Markdown artifacts named by the user. */
