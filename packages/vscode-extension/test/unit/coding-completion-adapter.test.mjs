@@ -135,6 +135,32 @@ test('VS Code evidence projection clears a denied validation route after a canon
   assert.deepEqual(evidence.residualRisks, []);
 });
 
+test('VS Code evidence projection does not turn rejected control attempts into delivery risk', () => {
+  const controlDenial = {
+    ...deniedTool(),
+    actionId: 'todo-invalid-1',
+    tool: 'manage_todo_list',
+    purpose: 'observe',
+    effects: ['read'],
+    permission: {
+      decision: 'deny',
+      status: 'denied',
+      reason: 'invalid-tool-input',
+      evidenceRefs: ['permission:todo-invalid'],
+    },
+    evidenceRefs: ['permission:todo-invalid'],
+  };
+  const evidence = project({
+    changedPaths: ['src/main.ts'],
+    changeReceipts: [mutation()],
+    verificationReceipts: [verification()],
+    toolExecutionReceipts: [controlDenial],
+  });
+
+  assert.deepEqual(evidence.acceptanceEvidence, []);
+  assert.deepEqual(evidence.residualRisks, []);
+});
+
 test('VS Code evidence projection clears a denied shell write after a verified workspace tool replacement', () => {
   const denied = {
     ...deniedTool(),

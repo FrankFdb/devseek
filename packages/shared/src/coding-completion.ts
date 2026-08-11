@@ -6,7 +6,7 @@ import {
   type CodingVerificationReceipt,
 } from './coding-verification';
 import {
-  codingAdverseToolExecutionWasRecovered,
+  codingAdverseToolExecutionBlocksCompletion,
   codingAdverseWorkspaceMutationWasRecovered,
 } from './coding-tool-effect-settlement';
 import type { CodingArtifactObservation } from './coding-artifact-identity';
@@ -160,7 +160,7 @@ function deriveCompletionDecision(input: CodingCompletionDecisionInput): CodingC
   const hasFailedEffect = input.toolExecutions.some(receipt => (
     receipt.status === 'failed'
       && !verificationActionIds.has(receipt.actionId)
-      && !codingAdverseToolExecutionWasRecovered(
+      && codingAdverseToolExecutionBlocksCompletion(
         receipt,
         input.toolExecutions,
         input.mutations,
@@ -178,7 +178,7 @@ function deriveCompletionDecision(input: CodingCompletionDecisionInput): CodingC
     ));
   const hasDeniedEffect = input.toolExecutions.some(receipt => (
     receipt.status === 'denied'
-      && !codingAdverseToolExecutionWasRecovered(
+      && codingAdverseToolExecutionBlocksCompletion(
         receipt,
         input.toolExecutions,
         input.mutations,

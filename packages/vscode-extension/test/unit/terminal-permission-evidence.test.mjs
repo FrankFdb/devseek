@@ -526,6 +526,63 @@ test('Terminal evidence: canonical validation closes an earlier failure in the v
   assert.equal(owner.settleAndSeal({ status: 'completed', idempotencyKey: 'settlement' }).head.sealed, true);
 });
 
+test('Terminal evidence: non-success settlement closes an active recovery before sealing', async t => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-terminal-blocked-recovery-'));
+  t.after(() => rmSync(workspaceRoot, { recursive: true, force: true }));
+  const runId = 'terminal-blocked-active-recovery';
+  const { owner, participantToken } = openRun(workspaceRoot, runId);
+  const coordinator = new TerminalPermissionCoordinator();
+  const commonInput = {
+    webview: { postMessage() { return true; } },
+    workdir: workspaceRoot,
+    workspaceRoot,
+    mode: 'run',
+    toolPolicy: allowTerminalPolicy,
+    traceRunId: runId,
+    traceEvidenceParticipantToken: participantToken,
+    userConfirmed: true,
+  };
+
+  assert.equal((await coordinator.runCommandWithPermissionDetailed({
+    ...commonInput,
+    command: 'false',
+  })).outcome, 'failed');
+  assert.equal((await coordinator.runCommandWithPermissionDetailed({
+    ...commonInput,
+    command: 'echo retry-observed-without-gate',
+  })).outcome, 'committed');
+  assert.deepEqual(
+    owner.readEvents().filter(event => event.type.startsWith('recovery.')).map(event => event.type),
+    ['recovery.detected'],
+  );
+
+  const evidenceErrors = [];
+  const runContext = {
+    runId,
+    workspaceRoot,
+    evidenceParticipantToken: participantToken,
+    markEvidenceDegraded(error) { evidenceErrors.push(error); },
+    complete(status) {
+      owner.settleAndSeal({ status, idempotencyKey: `settlement:${status}` });
+      return status;
+    },
+    cancel() {
+      owner.settleAndSeal({ status: 'cancelled', idempotencyKey: 'settlement:cancelled' });
+      return 'cancelled';
+    },
+  };
+  assert.equal(coordinator.completeRunContext(runContext, 'blocked'), 'blocked');
+
+  const events = owner.readEvents();
+  assert.deepEqual(
+    events.filter(event => event.type.startsWith('recovery.')).map(event => event.type),
+    ['recovery.detected', 'recovery.failed'],
+  );
+  assert.equal(events.find(event => event.type === 'run.settled')?.payload.status, 'blocked');
+  assert.deepEqual(evidenceErrors, []);
+  assert.equal(owner.verify().status, 'valid-sealed');
+});
+
 test('Terminal evidence: a changed workspace and canonical gate supersede a pre-change validation failure', async t => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-terminal-workspace-recovery-'));
   t.after(() => rmSync(workspaceRoot, { recursive: true, force: true }));

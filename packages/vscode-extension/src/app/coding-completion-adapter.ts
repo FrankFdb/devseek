@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 import {
-  codingAdverseToolExecutionWasRecovered,
+  codingAdverseToolExecutionBlocksCompletion,
   codingTaskContractRequiresVerification,
   isSecretHarvestingRefusalTaskContract,
   type CodingCompletionAcceptanceDecision,
@@ -34,7 +34,7 @@ export class VsCodeCompletionEvidenceAdapter {
     const deniedEffectRefs = uniqueNonEmpty(toolExecutions
       .filter(receipt => (
         receipt.status === 'denied'
-          && !codingAdverseToolExecutionWasRecovered(
+          && codingAdverseToolExecutionBlocksCompletion(
             receipt,
             toolExecutions,
             mutations,

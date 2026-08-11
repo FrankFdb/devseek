@@ -209,6 +209,46 @@ test('CanonicalCompletionDecisionService settles a denied verification route onl
   assert.equal(uncorrelated.reasonCodes.includes('denied-effect'), true);
 });
 
+test('CanonicalCompletionDecisionService keeps rejected control attempts completion-neutral', () => {
+  const deniedControl = {
+    version: CODING_TOOL_RECEIPT_VERSION,
+    runId: 'completion-run-1',
+    sequence: 1,
+    actionId: 'todo-invalid-1',
+    tool: 'manage_todo_list',
+    purpose: 'observe',
+    effects: ['read'],
+    status: 'denied',
+    permission: {
+      decision: 'deny',
+      status: 'denied',
+      reason: 'invalid-tool-input',
+      evidenceRefs: ['authority:todo-invalid'],
+    },
+    evidenceRefs: ['authority:todo-invalid'],
+  };
+  const completedControl = {
+    ...deniedControl,
+    sequence: 2,
+    actionId: 'todo-valid-2',
+    status: 'completed',
+    permission: {
+      decision: 'allow',
+      status: 'authorized',
+      reason: 'valid-tool-input',
+      evidenceRefs: ['authority:todo-valid'],
+    },
+    evidenceRefs: ['todo:updated'],
+  };
+  const decision = new CanonicalCompletionDecisionService().decide(input({
+    toolExecutions: [deniedControl, completedControl],
+  }));
+
+  assert.equal(decision.status, 'completed');
+  assert.equal(decision.reasonCodes.includes('denied-effect'), false);
+  assert.equal(decision.evidenceRefs.includes('authority:todo-invalid'), true);
+});
+
 test('CanonicalCompletionDecisionService settles failed edit routes through a read-back and scoped canonical verification', () => {
   const failedEdit = workspaceTool('replace-failed', 1, 'failed');
   const deniedShellWrite = workspaceTool('shell-write-denied', 2, 'denied');

@@ -1,6 +1,5 @@
 import {
   listCodingToolNames as listAgentToolNames,
-  normalizeCodingToolInput as normalizeAgentToolInput,
   normalizeCodingToolName as normalizeAgentToolName,
 } from '@devseek-netai/shared';
 import {
@@ -11,6 +10,7 @@ import {
   type ModelToolProtocolDialect,
 } from './model-tool-protocol-adapter';
 import { parseLosslessXmlMutationInput } from './lossless-xml-tool-input';
+import { normalizeFakeTool, normalizeToolInput } from './fake-tool-input-normalizer';
 import { createFakeToolJsonUtils, decodeLooseJsonString, findJsonArrayEnd, findJsonObjectEnd, type FakeTool } from './fake-tool-json-utils';
 
 export { findJsonArrayEnd, findJsonObjectEnd };
@@ -21,8 +21,6 @@ export const KNOWN_FAKE_TOOL_NAMES = new Set(listAgentToolNames());
 const SHELL_TRANSCRIPT_NAMES = new Set([
   'bash', 'shell', 'sh', 'zsh', 'console', 'terminal', 'cmd', 'powershell', 'pwsh',
 ]);
-
-const FILE_WRITE_TOOL_NAMES = new Set(['create_file', 'write_file', 'replace_file']);
 
 const DSML_BAR_PATTERN = '[|｜]{1,2}';
 const DSML_MARKER_PATTERN = `${DSML_BAR_PATTERN}\\s*DSML\\s*${DSML_BAR_PATTERN}`;
@@ -188,18 +186,6 @@ function isShellTranscriptName(name: string): boolean {
   return SHELL_TRANSCRIPT_NAMES.has(String(name || '').toLowerCase());
 }
 
-function normalizeToolInput(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
-  return unwrapNestedFileWriteContentEnvelope(
-    normalizeAgentToolName(toolName),
-    { ...normalizeAgentToolInput(toolName, input) },
-  );
-}
-
-function normalizeFakeTool(tool: FakeTool): FakeTool {
-  const name = normalizeAgentToolName(tool.name);
-  return { name, input: normalizeToolInput(name, tool.input) };
-}
-
 const fakeToolJsonUtils = createFakeToolJsonUtils({
   normalizeToolName: normalizeAgentToolName,
   jsonObjectToFakeTool,
@@ -213,17 +199,6 @@ const {
   jsonValueContainsToolPayload,
   parseLooseToolInput,
 } = fakeToolJsonUtils;
-
-function unwrapNestedFileWriteContentEnvelope(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
-  if (!FILE_WRITE_TOOL_NAMES.has(toolName) || typeof input.content !== 'string') return input;
-  const unwrapped = unwrapStandaloneCdataParameterEnvelope(input.content);
-  return unwrapped === undefined ? input : { ...input, content: unwrapped };
-}
-
-function unwrapStandaloneCdataParameterEnvelope(value: string): string | undefined {
-  const match = /^\s*<\s*(content|contents|text|body|fileContent|file_content|source|code|newContent|new_content)\b[^>]*>\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*<\/\s*\1\s*>\s*$/i.exec(value);
-  return match ? match[2] : undefined;
-}
 
 function looksLikeNonShellTranscriptLine(line: string): boolean {
   const first = line.trim().replace(/^\$\s*/, '').replace(/^>\s*/, '');
@@ -1243,7 +1218,8 @@ function parseCallingToolCalls(text: string): FakeTool[] {
     if (jsonEnd < 0) continue;
     const jsonText = text.slice(jsonStart, jsonEnd + 1);
     try {
-      tools.push({ name, input: JSON.parse(jsonText) });
+      const parsed = JSON.parse(jsonText) as Record<string, unknown>;
+      tools.push(jsonObjectToFakeTool(parsed) ?? { name, input: parsed });
       callRe.lastIndex = jsonEnd + 1;
     } catch {
       const looseInput = parseLooseToolInput(name, jsonText);

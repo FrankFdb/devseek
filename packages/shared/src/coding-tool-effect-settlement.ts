@@ -5,6 +5,28 @@ import {
   codingVerificationToolFailureWasRecovered,
   type CodingVerificationReceipt,
 } from './coding-verification';
+import { getCodingToolDescriptor } from './coding-tool-schema';
+
+/**
+ * Completion-neutral control calls are orchestration hints, not user-facing
+ * effects. Their rejected attempts remain auditable but cannot veto an
+ * otherwise evidenced delivery.
+ */
+export function codingAdverseToolExecutionBlocksCompletion(
+  adverse: CodingToolExecutionReceipt<unknown>,
+  toolExecutions: readonly CodingToolExecutionReceipt<unknown>[],
+  mutations: readonly CodingWorkspaceMutationReceipt<unknown>[],
+  verifications: readonly CodingVerificationReceipt[],
+): boolean {
+  if (adverse.status !== 'failed' && adverse.status !== 'denied') return false;
+  if (getCodingToolDescriptor(adverse.tool)?.kind === 'control') return false;
+  return !codingAdverseToolExecutionWasRecovered(
+    adverse,
+    toolExecutions,
+    mutations,
+    verifications,
+  );
+}
 
 /**
  * Settles a failed or denied tool route only when a later canonical route

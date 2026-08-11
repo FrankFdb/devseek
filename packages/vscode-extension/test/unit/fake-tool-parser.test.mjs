@@ -82,6 +82,40 @@ test('FakeToolParser: recovers quote-damaged manage_todo_list control calls', ()
   assert.equal(stripToolCallBlocks(text), 'Todo 状态需要校正。');
 });
 
+test('FakeToolParser: prioritizes structured control envelopes over prose and decodes typed JSON strings', () => {
+  const todos = [
+    { id: 1, title: '设计缓存数据结构', status: 'in-progress' },
+    { id: 2, title: '运行测试验证', status: 'not-started' },
+  ];
+  const stringified = [
+    '让我创建任务列表并开始修复：',
+    '```',
+    JSON.stringify({
+      tool: 'manage_todo_list',
+      arguments: { todoList: JSON.stringify(todos) },
+    }, null, 2),
+    '```',
+  ].join('\n');
+  const proseCollision = [
+    '抱歉，让我正确调用manage_todo_list：',
+    '```',
+    JSON.stringify({
+      tool: 'manage_todo_list',
+      arguments: { todoList: todos },
+    }, null, 2),
+    '```',
+  ].join('\n');
+
+  assert.deepEqual(parseFakeToolCalls(stringified), [{
+    name: 'manage_todo_list',
+    input: { todoList: todos },
+  }]);
+  assert.deepEqual(parseFakeToolCalls(proseCollision), [{
+    name: 'manage_todo_list',
+    input: { todoList: todos },
+  }]);
+});
+
 test('FakeToolParser: recovers quote-damaged Chinese task_complete calls', () => {
   const text = [
     '我理解。task_complete 需要 summary 必填参数。现在补全调用。',

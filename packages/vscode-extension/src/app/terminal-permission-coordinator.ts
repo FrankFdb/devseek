@@ -427,6 +427,12 @@ export class TerminalPermissionCoordinator {
     );
   }
 
+  private hasActiveCommandRecovery(runId: string): boolean {
+    return terminalCommandRecoveryKeys(runId).some(
+      key => this.activeCommandRecoveryByLane.has(key),
+    );
+  }
+
   private closeUnresolvedCommandRecoveries(
     input: ResolveTerminalCommandRecoveryInput,
     reason: string,
@@ -453,13 +459,15 @@ export class TerminalPermissionCoordinator {
   ): RunContextStatus {
     let status = requestedStatus;
     let completionData = data;
-    if (requestedStatus === 'completed' && this.hasPendingCommandFailures(runContext.runId)) {
-      const recoveryInput: ResolveTerminalCommandRecoveryInput = {
-        workspaceRoot: runContext.workspaceRoot,
-        runId: runContext.runId,
-        traceEvidenceParticipantToken: runContext.evidenceParticipantToken,
-        onTraceEvidenceError: error => runContext.markEvidenceDegraded(error),
-      };
+    const hasPendingFailures = this.hasPendingCommandFailures(runContext.runId);
+    const hasActiveRecovery = this.hasActiveCommandRecovery(runContext.runId);
+    const recoveryInput: ResolveTerminalCommandRecoveryInput = {
+      workspaceRoot: runContext.workspaceRoot,
+      runId: runContext.runId,
+      traceEvidenceParticipantToken: runContext.evidenceParticipantToken,
+      onTraceEvidenceError: error => runContext.markEvidenceDegraded(error),
+    };
+    if (requestedStatus === 'completed' && (hasPendingFailures || hasActiveRecovery)) {
       if (!this.resolveCommandFailuresAfterQualityGate(recoveryInput)) {
         this.closeUnresolvedCommandRecoveries(recoveryInput, 'run-settlement-without-terminal-recovery-proof');
         status = 'failed';
@@ -469,6 +477,11 @@ export class TerminalPermissionCoordinator {
           requestedStatus,
         };
       }
+    } else if (hasActiveRecovery) {
+      this.closeUnresolvedCommandRecoveries(
+        recoveryInput,
+        `run-${requestedStatus}-without-terminal-recovery-proof`,
+      );
     }
     status = status === 'cancelled'
       ? runContext.cancel(completionData)
