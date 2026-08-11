@@ -919,6 +919,8 @@ test('Agent planning: task shape guidance is injected before code is written', (
   assertContains(toolProtocolPrompt, 'replace_in_file', 'shared tool prompt must expose targeted edits, not only full-file writes');
   assertContains(toolProtocolPrompt, '<old_str>', 'shared tool prompt must expose a quote-safe raw edit format');
   assertContains(toolProtocolPrompt, '<old_str><![CDATA[', 'targeted multiline edits must preserve source bytes through web rendering');
+  assertContains(toolProtocolPrompt, "'```xml'", 'raw multiline mutation tools must use a browser-lossless code fence');
+  assertContains(toolProtocolPrompt, '不要输出裸 XML', 'raw mutation guidance must reject lossy rendered XML');
   assertContains(toolProtocolPrompt, '每轮最多输出 1 个多行 replace_in_file', 'weak text providers must await each targeted write result');
   assertContains(toolProtocolPrompt, '<content><![CDATA[', 'shared tool prompt must expose a lossless multiline file format');
   assertContains(toolProtocolPrompt, '每轮最多输出 1 个较大的整文件写入工具', 'weak text providers must serialize large writes one at a time');

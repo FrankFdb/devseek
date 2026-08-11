@@ -90,12 +90,13 @@ test('Agent provider recovery prompt keeps only durable facts and forces small t
   assert.match(prompt, /<replace_in_file>/);
   assert.match(prompt, /<old_str><!\[CDATA\[if \(ready\) \{/);
   assert.match(prompt, /<new_str><!\[CDATA\[if \(ready\) \{/);
+  assert.match(prompt, /```xml\n<replace_in_file>[\s\S]*<\/replace_in_file>\n```/);
   assert.match(prompt, /每轮只修复 1 个多行替换/);
   assert.match(prompt, /command 必须是合法 JSON 字符串/);
   assert.match(prompt, /输出工具块后立即停止/);
   assert.match(prompt, /正式既有工程任务必须继续沿既有入口/);
   assert.match(prompt, /src\/lifting\/lifting_manager\.hpp/);
-  assert.doesNotMatch(prompt, /Tool block is incomplete[\s\S]*```/);
+  assert.equal(prompt.match(/```xml/g)?.length, 1);
 });
 
 test('Agent provider recovery prompt tightens the last retry', () => {

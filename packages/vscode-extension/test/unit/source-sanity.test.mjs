@@ -111,6 +111,29 @@ test('source sanity does not split valid comments after C++ include directives',
   assert.equal(repaired.content, source);
 });
 
+test('source sanity rejects C++ statements swallowed by a collapsed line comment', () => {
+  const transported = repairGeneratedSourceTransportEscapes('job_scheduler.cpp', [
+    '#include "job_scheduler.hpp"#include <stdexcept>',
+    'void add(Job job) {// 验证空 idif (job.id.empty()) {throw std::invalid_argument("empty");}// 保存作业jobs_[job.id] = job;}',
+  ].join('\n'));
+  const issue = findGeneratedSourceSanityIssue('job_scheduler.cpp', transported.content);
+
+  assert.equal(issue?.kind, 'collapsed-line-comment-code');
+  assert.equal(issue?.line, 3);
+  assert.match(issue?.detail ?? '', /```xml/);
+  assert.match(issue?.detail ?? '', /不要输出裸 XML/);
+});
+
+test('source sanity allows line comments that deliberately describe code', () => {
+  const source = [
+    '// Example: if (ready) { start(); } else { stop(); }',
+    '// See https://example.test/guide and call validate(); publish();',
+    'int value = 1; // retain value if (ready)',
+  ].join('\n');
+
+  assert.equal(findGeneratedSourceSanityIssue('main.cpp', source), undefined);
+});
+
 test('source sanity repairs Markdown emphasis corruption in variadic C++ macros', () => {
   const polluted = [
     '#include <cstdio>',

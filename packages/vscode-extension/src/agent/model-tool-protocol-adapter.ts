@@ -18,6 +18,8 @@ export interface ModelToolRequestIsolation {
   truncated: boolean;
 }
 
+const EMPTY_TOOL_PROTOCOL_FENCE_RE = /(?:^|\n)[ \t]*```[A-Za-z0-9_-]*[ \t]*\n[ \t\r\n]*```(?=\n|$)/g;
+
 const MODEL_AUTHORED_TOOL_RESULT_MARKERS: readonly RegExp[] = [
   /\[(?:工具返回|工具执行结果)\]/i,
   /【(?:工具返回|工具执行结果)】/i,
@@ -91,5 +93,6 @@ export function stripModelToolProtocolBlocks<TTool>(
     result = dialect.strip(result);
     removed = removed || result !== before;
   }
+  if (removed) result = result.replace(EMPTY_TOOL_PROTOCOL_FENCE_RE, '\n');
   return { text: result, removed };
 }

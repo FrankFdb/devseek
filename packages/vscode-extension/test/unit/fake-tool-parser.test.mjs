@@ -617,6 +617,32 @@ test('FakeToolParser: preserves multiline source bytes in raw XML file writes', 
   assert.equal(stripToolCallBlocks(text), '我创建脚本。');
 });
 
+test('FakeToolParser: preserves multiline source bytes in fenced XML file writes', () => {
+  const source = [
+    '#include <string>',
+    'int main() {',
+    '  return 0;',
+    '}',
+    '',
+  ].join('\n');
+  const text = [
+    '我创建源码。',
+    '```xml',
+    '<write_file>',
+    '<path>/tmp/main.cpp</path>',
+    `<content><![CDATA[${source}]]></content>`,
+    '</write_file>',
+    '```',
+  ].join('\n');
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'write_file');
+  assert.equal(tools[0].input.content, source);
+  assert.equal(stripToolCallBlocks(text), '我创建源码。');
+});
+
 test('FakeToolParser: preserves source bytes in raw XML targeted edits', () => {
   const oldStr = 'if (ready && value == "&amp;") {\\n  print("\\nold");\\n}';
   const newStr = 'if (ready && value == "&amp;") {\\n  print("\\nnew");\\n}';

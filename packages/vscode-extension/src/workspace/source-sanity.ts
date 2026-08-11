@@ -3,7 +3,8 @@ export interface SourceSanityIssue {
     | 'unterminated-string-literal'
     | 'tool-protocol-contamination'
     | 'markdown-emphasis-dunder-corruption'
-    | 'collapsed-preprocessor-directive';
+    | 'collapsed-preprocessor-directive'
+    | 'collapsed-line-comment-code';
   line: number;
   detail: string;
 }
@@ -21,13 +22,17 @@ const SOURCE_TOOL_PROTOCOL_RE = /(?:\[调用\s+(?:create_file|write_file|replace
 const PYTHON_DUNDER_NAME_RE = /(?:init|name|main|str|repr|len|iter|next|enter|exit|eq|ne|lt|le|gt|ge|hash|call|dict|class|module|all|file|doc|annotations|slots|getattr|setattr|delattr|contains|getitem|setitem|delitem|bool|bytes|format|new|del)/;
 const PYTHON_MARKDOWN_DUNDER_RE = new RegExp(`\\*\\*${PYTHON_DUNDER_NAME_RE.source}\\*\\*`);
 const PYTHON_MARKDOWN_DUNDER_GLOBAL_RE = new RegExp(`\\*\\*(${PYTHON_DUNDER_NAME_RE.source})\\*\\*`, 'g');
+const CPP_WEB_TRANSPORT_RECOVERY_GUIDANCE =
+  '请把整个 <write_file> 或 <replace_in_file> CDATA 工具块放入 ```xml 代码围栏后重试，不要输出裸 XML。';
 
 export function findGeneratedSourceSanityIssue(filePath: string, content: string): SourceSanityIssue | undefined {
   if (!CODE_SOURCE_EXT_RE.test(filePath || '')) return undefined;
   return findSourceToolProtocolContamination(content || '')
     || findPythonMarkdownDunderCorruption(filePath, content || '')
     || (CPP_SOURCE_EXT_RE.test(filePath || '')
-      ? findCppCollapsedPreprocessorDirective(content || '') || findCppUnterminatedStringLiteral(content || '')
+      ? findCppCollapsedPreprocessorDirective(content || '')
+        || findCppCollapsedLineCommentCode(content || '')
+        || findCppUnterminatedStringLiteral(content || '')
       : undefined);
 }
 
@@ -196,7 +201,7 @@ function findCppCollapsedPreprocessorDirective(content: string): SourceSanityIss
       return {
         kind: 'collapsed-preprocessor-directive',
         line: marker.line,
-        detail: `第 ${marker.line} 行的 #${marker.directive} 被拼接到其他源码后。C/C++ 预处理指令必须独占物理行，请保留真实换行后重试。`,
+        detail: `第 ${marker.line} 行的 #${marker.directive} 被拼接到其他源码后。C/C++ 预处理指令必须独占物理行。${CPP_WEB_TRANSPORT_RECOVERY_GUIDANCE}`,
       };
     }
 
@@ -216,11 +221,91 @@ function findCppCollapsedPreprocessorDirective(content: string): SourceSanityIss
   return undefined;
 }
 
+function findCppCollapsedLineCommentCode(content: string): SourceSanityIssue | undefined {
+  let line = 1;
+  let inBlockComment = false;
+  let inString = false;
+  let inChar = false;
+  let escape = false;
+
+  for (let index = 0; index < content.length; index += 1) {
+    const ch = content[index];
+    const next = content[index + 1];
+    if (ch === '\n') {
+      line += 1;
+      inString = false;
+      inChar = false;
+      escape = false;
+      continue;
+    }
+    if (inBlockComment) {
+      if (ch === '*' && next === '/') {
+        inBlockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+    if (inString || inChar) {
+      if (escape) escape = false;
+      else if (ch === '\\') escape = true;
+      else if ((inString && ch === '"') || (inChar && ch === "'")) {
+        inString = false;
+        inChar = false;
+      }
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      inBlockComment = true;
+      index += 1;
+      continue;
+    }
+    if (ch === 'R' && next === '"') {
+      const rawEnd = findRawStringLiteralEnd(content, index);
+      if (rawEnd !== -1) {
+        line += countNewlines(content.slice(index, rawEnd + 1));
+        index = rawEnd;
+        continue;
+      }
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "'") {
+      inChar = true;
+      continue;
+    }
+    if (ch !== '/' || next !== '/') continue;
+
+    const lineEnd = content.indexOf('\n', index + 2);
+    const comment = content.slice(index + 2, lineEnd < 0 ? content.length : lineEnd);
+    if (looksLikeCollapsedCodeInLineComment(comment)) {
+      return {
+        kind: 'collapsed-line-comment-code',
+        line,
+        detail: `第 ${line} 行的 // 注释后检测到被折叠的源码语句。网页文本工具可能丢失了物理换行；${CPP_WEB_TRANSPORT_RECOVERY_GUIDANCE}`,
+      };
+    }
+    if (lineEnd < 0) break;
+    index = lineEnd - 1;
+  }
+  return undefined;
+}
+
+function looksLikeCollapsedCodeInLineComment(comment: string): boolean {
+  const structuralTokenCount = (comment.match(/[;{}]/g) || []).length;
+  if (structuralTokenCount < 2) return false;
+  const nestedComment = /(^|[^:])\/\//.test(comment);
+  const gluedControl = /[A-Za-z_\u3400-\u9fff）】](?:if|for|while|switch)\s*\(/.test(comment);
+  const gluedDeclaration = /[\u3400-\u9fff）】](?:auto|return|throw|std::|[A-Za-z_]\w*\s*\()/.test(comment);
+  return nestedComment || gluedControl || gluedDeclaration;
+}
+
 function collapsedDirectiveTailIssue(marker: CppPreprocessorMarker, directive: string): SourceSanityIssue {
   return {
     kind: 'collapsed-preprocessor-directive',
     line: marker.line,
-    detail: `第 ${marker.line} 行的 #${directive} 后拼接了源码。C/C++ 预处理指令必须独占物理行，请保留真实换行后重试。`,
+    detail: `第 ${marker.line} 行的 #${directive} 后拼接了源码。C/C++ 预处理指令必须独占物理行。${CPP_WEB_TRANSPORT_RECOVERY_GUIDANCE}`,
   };
 }
 
