@@ -79,6 +79,7 @@ import {
   executeFakeToolsForLoop,
   isAgentWorkToolName,
   normalizeVisibleTodos,
+  type ToolSuppressionEvidence,
 } from './tool-loop';
 import { applyMarkdownFileArtifactsForLoop } from './markdown-artifact-applier';
 import {
@@ -296,7 +297,7 @@ export async function runAgenticLoop(
   };
   const announcedProseKeys = new Set<string>();
   const allReadEvidencePaths = new Set<string>();
-  const toolFailureRecovery = new ToolFailureRecoveryLedger();
+  const toolFailureRecovery = new ToolFailureRecoveryLedger({ workspaceRoot });
   const qualityGateStagnation = new QualityGateStagnationLedger();
   let progressEpoch = 0;
   const recordQualityGateFailureFeedback = (qualityGate: AgenticHistoryQualityGate | undefined): string => {
@@ -809,6 +810,7 @@ export async function runAgenticLoop(
     }
 
     const blockedRepeatedToolIndexes = new Set<number>();
+    const suppressedTools: ToolSuppressionEvidence[] = [];
     const loopWarnings: string[] = [];
     const hasFileWriteIntentThisRound = hasExplicitFileWriteTool || artifactApply.writtenFiles.length > 0;
     tools.forEach((tool, toolIndex) => {
@@ -819,6 +821,7 @@ export async function runAgenticLoop(
       const seen = seenTerminalCmdSignatures.get(sig);
       if (seen && seen.lastProgressEpoch === progressEpoch && !hasFileWriteIntentThisRound) {
         blockedRepeatedToolIndexes.add(toolIndex);
+        suppressedTools.push({ tool: tool.name, reason: 'repeated-terminal-without-progress' });
         loopWarnings.push(getTerminalRecoveryProtocol(command, seen.count + 1));
         callbacks.onToolActivity?.('terminal', `跳过重复命令: ${sig.slice(0, 50)}`);
       }
@@ -828,9 +831,18 @@ export async function runAgenticLoop(
       const sig = makeContextToolSignature(tool);
       const seen = seenContextToolSignatures.get(sig);
       if (seen && seen.lastProgressEpoch === progressEpoch && !hasFileWriteIntentThisRound) {
+        const refreshPath = tool.name === 'read_file' && typeof tool.input.path === 'string'
+          ? tool.input.path
+          : undefined;
+        if (toolFailureRecovery.consumeContextRefresh(refreshPath)) {
+          seenContextToolSignatures.delete(sig);
+          callbacks.onToolActivity?.('read', '重新读取失败编辑后的当前文件');
+          return;
+        }
         const nextCount = seen.count + 1;
         seenContextToolSignatures.set(sig, { count: nextCount, lastProgressEpoch: progressEpoch });
         blockedRepeatedToolIndexes.add(toolIndex);
+        suppressedTools.push({ tool: tool.name, reason: 'repeated-context-without-progress' });
         loopWarnings.push(buildRepeatedContextToolFeedback(tool, nextCount));
         callbacks.onToolActivity?.('search', `跳过重复上下文工具: ${tool.name}`);
       }
@@ -853,6 +865,7 @@ export async function runAgenticLoop(
         requireReadBeforeOverwrite: true,
         readEvidencePaths: [...allReadEvidencePaths],
         verificationScopeFiles: allWrittenFiles,
+        suppressedTools,
       },
     );
     if (writeAuthority.writeRevoked && hasWriteRevokedToolAttempt(toolsToExecute)) { failedReason = '用户实时补充已撤销写入授权，任务已停止。'; break; }

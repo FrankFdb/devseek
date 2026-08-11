@@ -1,3 +1,4 @@
+import * as nodePath from 'path';
 import type { ToolFailureEvidence } from './tool-loop';
 
 export interface ToolFailureRoundResult {
@@ -8,6 +9,7 @@ export interface ToolFailureRoundResult {
 export interface ToolFailureRecoveryOptions {
   warnAfterRounds?: number;
   stopAfterRounds?: number;
+  workspaceRoot?: string;
 }
 
 interface FailureRoundState {
@@ -24,17 +26,24 @@ const DEFAULT_STOP_AFTER_ROUNDS = 4;
  */
 export class ToolFailureRecoveryLedger {
   private readonly failures = new Map<string, FailureRoundState>();
+  private readonly pendingContextRefreshPaths = new Set<string>();
   private readonly warnAfterRounds: number;
   private readonly stopAfterRounds: number;
+  private readonly workspaceRoot?: string;
 
   constructor(options: ToolFailureRecoveryOptions = {}) {
     this.warnAfterRounds = options.warnAfterRounds ?? DEFAULT_WARN_AFTER_ROUNDS;
     this.stopAfterRounds = options.stopAfterRounds ?? DEFAULT_STOP_AFTER_ROUNDS;
+    this.workspaceRoot = options.workspaceRoot;
   }
 
   recordRound(failures: readonly ToolFailureEvidence[]): ToolFailureRoundResult {
     const grouped = new Map<string, { failure: ToolFailureEvidence; occurrences: number }>();
     for (const failure of failures) {
+      if (failure.kind === 'write' || failure.kind === 'replace') {
+        const refreshPath = this.normalizePath(failure.path);
+        if (refreshPath) this.pendingContextRefreshPaths.add(refreshPath);
+      }
       const signature = makeToolFailureSignature(failure);
       const existing = grouped.get(signature);
       if (existing) existing.occurrences += 1;
@@ -63,14 +72,33 @@ export class ToolFailureRecoveryLedger {
   }
 
   clearForWrittenPaths(paths: readonly string[]): void {
-    const normalizedPaths = paths.map(normalizeToolFailurePath).filter(Boolean);
+    const normalizedPaths = paths.map(pathValue => this.normalizePath(pathValue)).filter(Boolean);
     if (normalizedPaths.length === 0) return;
+    for (const normalizedPath of normalizedPaths) {
+      this.pendingContextRefreshPaths.delete(normalizedPath);
+    }
     for (const [signature, state] of this.failures) {
-      const failurePath = normalizeToolFailurePath(state.failure.path);
+      const failurePath = this.normalizePath(state.failure.path);
       if (failurePath && normalizedPaths.includes(failurePath)) {
         this.failures.delete(signature);
       }
     }
+  }
+
+  consumeContextRefresh(pathValue: string | undefined): boolean {
+    const normalizedPath = this.normalizePath(pathValue);
+    if (!normalizedPath || !this.pendingContextRefreshPaths.has(normalizedPath)) return false;
+    this.pendingContextRefreshPaths.delete(normalizedPath);
+    return true;
+  }
+
+  private normalizePath(pathValue: string | undefined): string {
+    const trimmed = pathValue?.trim();
+    if (!trimmed) return '';
+    const resolved = this.workspaceRoot && !nodePath.isAbsolute(trimmed)
+      ? nodePath.resolve(this.workspaceRoot, trimmed)
+      : trimmed;
+    return normalizeToolFailurePath(resolved);
   }
 }
 

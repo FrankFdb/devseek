@@ -175,6 +175,7 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
   const chatRequestTerminalOperationIds = new Set<string>();
   let workspaceMutationRequested = false;
   let latestExtensionResponse: { line: number; content: string; parsedToolCount: number } | undefined;
+  let pendingSuppressedToolCount = 0;
   let activeReadOnlyTask: { key: string; title: string; action: string } | undefined;
   let sawReadOnlyTask = false;
   let sawSuccessfulToolRound = false;
@@ -446,6 +447,7 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
 
     if (entry.source === 'vscode-extension.tool-loop' && entry.event === 'execute-start') {
       toolExecutions += 1;
+      pendingSuppressedToolCount = Math.max(0, numberValue(data?.suppressedToolCount) ?? 0);
       const defaultWorkdir = stringValue(data?.defaultWorkdir);
       if (defaultWorkdir && BUILD_ARTIFACT_WORKDIR_RE.test(defaultWorkdir)) {
         issues.push({
@@ -467,15 +469,20 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
       if (toolCallsMade || readFileCount > 0 || feedbackLength > 0) {
         sawSuccessfulToolRound = true;
       }
-      if (toolCallsMade === false && !taskComplete && latestExtensionResponse?.parsedToolCount) {
+      const unexplainedProviderToolCount = Math.max(
+        0,
+        (latestExtensionResponse?.parsedToolCount ?? 0) - pendingSuppressedToolCount,
+      );
+      if (toolCallsMade === false && !taskComplete && unexplainedProviderToolCount > 0) {
         issues.push({
           kind: 'provider-tool-request-not-executed',
           severity: 'error',
           line: event.line,
-          message: `Provider 响应中包含 ${latestExtensionResponse.parsedToolCount} 个可解析工具调用，但本轮工具循环没有执行任何工具。`,
-          evidence: truncateOneLine(latestExtensionResponse.content, 220),
+          message: `Provider 响应中仍有 ${unexplainedProviderToolCount} 个可解析工具调用无法由执行或有意抑制记录解释。`,
+          evidence: truncateOneLine(latestExtensionResponse?.content ?? '', 220),
         });
       }
+      pendingSuppressedToolCount = 0;
       if (toolCallsMade === false
         && sawSuccessfulToolRound
         && activeReadOnlyTask

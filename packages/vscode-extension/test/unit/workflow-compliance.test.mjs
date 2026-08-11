@@ -1046,6 +1046,8 @@ test('Agentic loop: repeated terminal failures enter root-cause recovery before 
   );
   assertContains(code, 'CONTEXT_GATHERING_TOOL_NAMES', 'context gathering repeats must share the same no-progress guard');
   assertContains(code, 'seenContextToolSignatures', 'context tool repeats must be tracked across rounds');
+  assertContains(code, 'consumeContextRefresh', 'failed mutations must permit one fresh read before repeat suppression');
+  assertContains(code, 'suppressedTools', 'intentional repeat suppression must be recorded for replay diagnostics');
   assertContains(code, 'lastProgressEpoch', 'terminal repeats must be compared against file-write progress');
 });
 

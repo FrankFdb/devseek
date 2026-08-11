@@ -929,6 +929,81 @@ test('agentic route: an unresolved source-fact claim contract fails before provi
   }
 });
 
+test('agentic route: a failed replace permits one fresh read before repeat suppression resumes', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-failed-edit-refresh-'));
+  const source = path.join(root, 'scheduler.cpp');
+  const baseline = 'int priority() {\n  return 1;\n}\n';
+  writeFileSync(source, baseline);
+  fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'failed-edit-refresh', index: 0 }];
+
+  const prompt = `读取并修改 ${source}，将 priority 返回值改为 2，并验证修改。`;
+  const io = makeCallbacks();
+  const controller = new AbortController();
+  const originalActivity = io.callbacks.onToolActivity;
+  let providerCalls = 0;
+  let readCalls = 0;
+  io.callbacks.signal = controller.signal;
+  io.callbacks.onReadFile = async () => {
+    readCalls += 1;
+    return readFileSync(source, 'utf8');
+  };
+  io.callbacks.onToolActivity = (kind, label) => {
+    originalActivity(kind, label);
+    if (label.includes('跳过重复上下文工具')) controller.abort();
+  };
+
+  const readTool = { name: 'read_file', input: { path: source } };
+  const responses = [
+    { text: `<read_file path="${source}"/>`, tools: [readTool] },
+    {
+      text: `[TOOL:replace_in_file ${JSON.stringify({ path: source, old_str: 'return 9;', new_str: 'return 2;' })}]`,
+      tools: [{
+        name: 'replace_in_file',
+        input: { path: source, old_str: 'return 9;', new_str: 'return 2;' },
+      }],
+    },
+    { text: `<read_file path="${source}"/>`, tools: [readTool] },
+    { text: `<read_file path="${source}"/>`, tools: [readTool] },
+  ];
+  globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__ = async () => {
+    providerCalls += 1;
+    const response = responses.shift();
+    if (!response) throw new Error('unexpected provider round');
+    return response;
+  };
+
+  try {
+    const result = await runAgenticLoop(
+      prompt,
+      [],
+      root,
+      'fast',
+      io.callbacks,
+      '',
+      'edit',
+      [],
+      undefined,
+      { recoveryContextText: 'resume failed edit recovery test' },
+    );
+
+    assert.equal(providerCalls, 4);
+    assert.equal(readCalls, 2, 'initial read and one post-failure refresh must execute');
+    assert.equal(
+      io.activities.some(item => item.label === '重新读取失败编辑后的当前文件'),
+      true,
+    );
+    assert.equal(
+      io.activities.some(item => item.label.includes('跳过重复上下文工具')),
+      true,
+    );
+    assert.equal(result.tasksApplied, 0);
+    assert.equal(readFileSync(source, 'utf8'), baseline);
+  } finally {
+    delete globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 for (const [timing, revokePoll] of [['provider-in-flight', 2], ['write-boundary', 3]]) {
 test(`agentic route: a ${timing} steer revokes write authority before provider tools execute`, async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-agentic-steer-revoke-'));

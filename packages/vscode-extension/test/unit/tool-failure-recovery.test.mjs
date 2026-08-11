@@ -59,6 +59,35 @@ test('ToolFailureRecoveryLedger: a successful write clears stale failure history
   assert.equal(result.stopReason, undefined);
 });
 
+test('ToolFailureRecoveryLedger: failed mutation grants one context refresh for the exact path', () => {
+  const ledger = new ToolFailureRecoveryLedger({ workspaceRoot: '/repo' });
+  ledger.recordRound([{ ...staleReplaceFailure, path: 'src/verify.sh' }]);
+
+  assert.equal(ledger.consumeContextRefresh('/repo/src/other.sh'), false);
+  assert.equal(ledger.consumeContextRefresh('/repo/src/verify.sh'), true);
+  assert.equal(ledger.consumeContextRefresh('/repo/src/verify.sh'), false);
+});
+
+test('ToolFailureRecoveryLedger: terminal failures do not grant file context refreshes', () => {
+  const ledger = new ToolFailureRecoveryLedger();
+  ledger.recordRound([{
+    tool: 'run_terminal',
+    kind: 'terminal-guard',
+    path: '/repo/src/verify.sh',
+    reason: 'terminal mutation blocked',
+  }]);
+
+  assert.equal(ledger.consumeContextRefresh('/repo/src/verify.sh'), false);
+});
+
+test('ToolFailureRecoveryLedger: successful write clears a pending context refresh', () => {
+  const ledger = new ToolFailureRecoveryLedger();
+  ledger.recordRound([staleReplaceFailure]);
+  ledger.clearForWrittenPaths(['/repo/src/verify.sh']);
+
+  assert.equal(ledger.consumeContextRefresh('/repo/src/verify.sh'), false);
+});
+
 test('ToolFailureRecoveryLedger: missing terminal capability requires an alternate runtime or authorization', () => {
   const ledger = new ToolFailureRecoveryLedger({ warnAfterRounds: 1 });
   const result = ledger.recordRound([{

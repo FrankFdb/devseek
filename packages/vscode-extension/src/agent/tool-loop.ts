@@ -157,6 +157,11 @@ export interface ToolFailureEvidence {
   reason: string;
 }
 
+export interface ToolSuppressionEvidence {
+  tool: string;
+  reason: 'repeated-terminal-without-progress' | 'repeated-context-without-progress';
+}
+
 function isInternalMemoryTodo(item: TodoItem): boolean {
   return /(?:项目记忆|智能体记忆|记忆体|memory|memory_write|写入记忆|记录.*记忆)/i.test(item.title || '');
 }
@@ -227,6 +232,7 @@ export async function executeFakeToolsForLoop(
       command: string;
       workdir: string;
     };
+    suppressedTools?: readonly ToolSuppressionEvidence[];
   },
 ): Promise<ToolLoopResult> {
   let taskComplete = false;
@@ -307,6 +313,8 @@ export async function executeFakeToolsForLoop(
     toolCount: tools.length,
     tools: tools.map(t => t.name),
     workTools: tools.filter(t => isAgentWorkToolName(t.name)).map(t => t.name),
+    suppressedToolCount: taskContext?.suppressedTools?.length ?? 0,
+    suppressedTools: taskContext?.suppressedTools ?? [],
     defaultWorkdir,
   });
 

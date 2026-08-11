@@ -687,6 +687,110 @@ test('run log replay detects an unexecuted DeepSeek nameless artifact array', ()
   }
 });
 
+test('run log replay accepts provider tools covered by intentional suppression evidence', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-11T06:41:00.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'intentional-tool-suppression',
+      data: {
+        name: 'extension.response.raw',
+        content: '<read_file path="/tmp/app/main.cpp"/>',
+      },
+    },
+    {
+      ts: '2026-07-11T06:41:01.000Z',
+      level: 'debug',
+      source: 'vscode-extension.tool-loop',
+      phase: 'tool-loop',
+      event: 'execute-start',
+      runId: 'intentional-tool-suppression',
+      data: {
+        toolCount: 0,
+        suppressedToolCount: 1,
+        suppressedTools: [{ tool: 'read_file', reason: 'repeated-context-without-progress' }],
+      },
+    },
+    {
+      ts: '2026-07-11T06:41:02.000Z',
+      level: 'debug',
+      source: 'vscode-extension.tool-loop',
+      phase: 'tool-loop',
+      event: 'execute-complete',
+      runId: 'intentional-tool-suppression',
+      data: {
+        taskComplete: false,
+        toolCallsMade: false,
+        feedbackLength: 120,
+        readFileCount: 0,
+        terminalCommandCount: 0,
+      },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    assert.equal(report.issues.some(item => item.kind === 'provider-tool-request-not-executed'), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay still reports provider tools not covered by suppression evidence', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-11T06:42:00.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'partial-tool-suppression',
+      data: {
+        name: 'extension.response.raw',
+        content: [
+          '<read_file path="/tmp/app/main.cpp"/>',
+          '<read_file path="/tmp/app/main.hpp"/>',
+        ].join('\n'),
+      },
+    },
+    {
+      ts: '2026-07-11T06:42:01.000Z',
+      level: 'debug',
+      source: 'vscode-extension.tool-loop',
+      phase: 'tool-loop',
+      event: 'execute-start',
+      runId: 'partial-tool-suppression',
+      data: { toolCount: 0, suppressedToolCount: 1 },
+    },
+    {
+      ts: '2026-07-11T06:42:02.000Z',
+      level: 'debug',
+      source: 'vscode-extension.tool-loop',
+      phase: 'tool-loop',
+      event: 'execute-complete',
+      runId: 'partial-tool-suppression',
+      data: {
+        taskComplete: false,
+        toolCallsMade: false,
+        feedbackLength: 0,
+        readFileCount: 0,
+        terminalCommandCount: 0,
+      },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const issue = report.issues.find(item => item.kind === 'provider-tool-request-not-executed');
+    assert.match(issue?.message ?? '', /1 个可解析工具调用/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run log replay detects unrecoverable bracket tool blocks', () => {
   const { dir, logPath } = writeLog([
     {
