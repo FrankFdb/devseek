@@ -185,7 +185,8 @@ test('Agent auto validation binds project retries to every accumulated changed p
     seed(root, 'CMakeLists.txt', 'enable_testing()\nadd_test(NAME scheduler COMMAND scheduler)\n');
     seed(root, 'test.sh', '#!/usr/bin/env bash\ncmake -S . -B build && ctest --test-dir build\n');
     const scopePaths = ['include/scheduler.hpp', 'src/scheduler.cpp'];
-    const context = verificationContext(root, scopePaths);
+    const statuses = [];
+    const context = verificationContext(root, scopePaths, statuses);
 
     const result = await runAgentAutoValidationForWrites(
       [written(root, 'src/scheduler.cpp')],
@@ -200,6 +201,11 @@ test('Agent auto validation binds project retries to every accumulated changed p
 
     assert.equal(result.verificationReceipt.status, 'passed');
     assert.deepEqual(result.verificationReceipt.scopePaths, scopePaths);
+    assert.equal(statuses.length, 4);
+    assert.equal(statuses.every(status => (
+      status.evidenceOperationId === result.evidenceOperationId
+      && JSON.stringify(status.verificationScopePaths) === JSON.stringify(scopePaths)
+    )), true);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -598,6 +598,119 @@ test('RunContext: repaired mutation uses a new attempt and resolves the failed s
   }
 });
 
+test('RunContext: a broader verified coding mutation supersedes an earlier partial validation failure', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  try {
+    const runId = 'run-context-cumulative-verification-recovery';
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId,
+      userPrompt: '实现 include/rate_limiter.hpp 和 src/rate_limiter.cpp 并运行项目测试',
+      traceLevel: 'debug',
+    });
+    const headerWrite = {
+      type: 'agentStatus', phase: 'execute', taskId: 'write-header',
+      taskFile: 'include/rate_limiter.hpp', taskAction: 'modify', title: '修改头文件',
+    };
+    context.recordAgentStatus({ ...headerWrite, state: 'started' });
+    context.recordAgentStatus({ ...headerWrite, state: 'completed' });
+    for (const [phase, state, title] of [
+      ['validate', 'started', '验证头文件'],
+      ['validate', 'failed', '头文件中间验证失败'],
+      ['quality', 'started', '评估头文件门禁'],
+      ['quality', 'failed', '头文件门禁未通过'],
+    ]) {
+      context.recordAgentStatus({
+        type: 'agentStatus', phase, state, title,
+        evidenceOperationId: 'verify-header-only',
+        verificationScopePaths: ['include/rate_limiter.hpp'],
+      });
+    }
+
+    const sourceWrite = {
+      type: 'agentStatus', phase: 'execute', taskId: 'write-source',
+      taskFile: 'src/rate_limiter.cpp', taskAction: 'modify', title: '修改实现文件',
+    };
+    context.recordAgentStatus({ ...sourceWrite, state: 'started' });
+    context.recordAgentStatus({ ...sourceWrite, state: 'completed' });
+    for (const [phase, state, title] of [
+      ['validate', 'started', '验证累计变更'],
+      ['validate', 'completed', '累计验证通过'],
+      ['quality', 'started', '评估累计门禁'],
+      ['quality', 'completed', '累计门禁通过'],
+    ]) {
+      context.recordAgentStatus({
+        type: 'agentStatus', phase, state, title,
+        evidenceOperationId: 'verify-header-and-source',
+        verificationScopePaths: ['include/rate_limiter.hpp', 'src/rate_limiter.cpp'],
+      });
+    }
+
+    assert.equal(context.complete('completed'), 'completed');
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const events = ledger.read(runId);
+    const recovery = events.find(event => event.type === 'recovery.completed');
+    assert.deepEqual(recovery?.payload.resolves_operation_ids, ['verify-header-only']);
+    assert.equal(recovery?.payload.verification_operation_id, 'verify-header-and-source');
+    assert.deepEqual(recovery?.payload.verification_scope_paths, [
+      'include/rate_limiter.hpp',
+      'src/rate_limiter.cpp',
+    ]);
+    assert.equal(ledger.verify(runId).status, 'valid-sealed');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('RunContext: a narrower successful verification cannot clear an unrelated validation failure', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  try {
+    const runId = 'run-context-narrow-verification-recovery';
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId,
+      userPrompt: '修改 include/api.hpp 和 src/other.cpp',
+      traceLevel: 'debug',
+    });
+    const headerWrite = {
+      type: 'agentStatus', phase: 'execute', taskId: 'write-header',
+      taskFile: 'include/api.hpp', taskAction: 'modify', title: '修改头文件',
+    };
+    context.recordAgentStatus({ ...headerWrite, state: 'completed' });
+    for (const [phase, state] of [
+      ['validate', 'started'], ['validate', 'failed'],
+      ['quality', 'started'], ['quality', 'failed'],
+    ]) {
+      context.recordAgentStatus({
+        type: 'agentStatus', phase, state, title: '头文件验证失败',
+        evidenceOperationId: 'verify-api-header', verificationScopePaths: ['include/api.hpp'],
+      });
+    }
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'execute', state: 'completed',
+      taskId: 'write-other', taskFile: 'src/other.cpp', taskAction: 'modify', title: '修改其他实现',
+    });
+    for (const [phase, state] of [
+      ['validate', 'started'], ['validate', 'completed'],
+      ['quality', 'started'], ['quality', 'completed'],
+    ]) {
+      context.recordAgentStatus({
+        type: 'agentStatus', phase, state, title: '其他实现验证通过',
+        evidenceOperationId: 'verify-other-source', verificationScopePaths: ['src/other.cpp'],
+      });
+    }
+
+    assert.equal(context.complete('completed'), 'failed');
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const events = ledger.read(runId);
+    assert.equal(events.some(event => event.type === 'recovery.completed'), false);
+    assert.equal(events.some(event => event.type === 'evidence.degraded'), false);
+    assert.equal(events.find(event => event.type === 'run.settled')?.payload.status, 'failed');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('RunContext: provider response recovery resolves participant provider failure after bounded retry validation', () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
   try {

@@ -36,6 +36,8 @@ export interface AgentStatusEvent extends AgentProgressPresentation {
    * correlation from display text or arrival order.
    */
   evidenceOperationId?: string;
+  /** Workspace-relative files covered by this verification operation. */
+  verificationScopePaths?: readonly string[];
   /** Stable machine-readable reason for a host-owned recovery transition. */
   recoveryReason?: AgentRecoveryReason;
   taskId?: string;

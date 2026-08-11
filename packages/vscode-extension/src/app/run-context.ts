@@ -20,6 +20,7 @@ import type { TaskSemanticContract } from '../task-semantic-contract';
 import { resolveTaskSemanticContract } from '../intent/task-semantic-contract-service';
 import { buildRunSettlementSealBinding, type RunSettlementBuildIdentity } from './run-settlement-seal-binding';
 import { decideSettlementState, type SettlementTerminalStatus } from './settlement-state';
+import { VerificationScopeRegistry } from './verification-scope-registry';
 
 export type RunContextStatus = SettlementTerminalStatus;
 
@@ -87,9 +88,11 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
   private currentRecovery?: {
     operationId: string;
     targetOperationIds: string[];
+    verificationScopeTargetOperationIds?: string[];
     sideEffectOperationId?: string;
     sideEffectCommitted?: boolean;
   };
+  private readonly verificationScopes = new VerificationScopeRegistry();
   private readonly verificationStates = new Map<string, 'started' | 'completed' | 'failed'>();
   private readonly qualityGateStates = new Map<string, 'started' | 'passed' | 'failed' | 'vetoed'>();
   private readonly sideEffectOperations = new Set<string>();
@@ -381,7 +384,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
       const operationKey = sideEffectOperationKey(status);
       let operationId = this.activeSideEffectOperations.get(operationKey);
       if ((status.state === 'started' || status.state === 'completed') && !this.currentRecovery) {
-        this.beginImplicitRecoveryForOperationKey(operationKey, summary);
+        this.beginImplicitMutationRecovery(operationKey, summary);
       }
       if ((status.state === 'started' || status.state === 'completed') && !this.currentRecovery) {
         this.beginImplicitProviderFallbackRecovery(status, summary);
@@ -550,7 +553,10 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
         this.markEvidenceDegraded(new Error(`Verification ${operationId} has a duplicate start or terminal`));
         return;
       }
-      this.recordOperationEvent('verification.started', operationId, 'started', summary);
+      const scopePaths = this.verificationScopes.record(operationId, status.verificationScopePaths);
+      this.recordOperationEvent('verification.started', operationId, 'started', summary, scopePaths.length > 0
+        ? { verification_scope_paths: [...scopePaths] }
+        : {});
       this.verificationStates.set(operationId, 'started');
       return;
     }
@@ -641,6 +647,16 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
   ): void {
     const recovery = this.currentRecovery;
     if (!recovery || recovery.targetOperationIds.length === 0 || !this.evidence) return;
+    const scopeTargets = recovery.verificationScopeTargetOperationIds ?? [];
+    if (scopeTargets.length > 0 && !this.verificationScopes.supersedes(verificationOperationId, scopeTargets)) {
+      this.trace.info('run-context', 'verification-recovery-scope-not-superseded', {
+        recoveryOperationId: recovery.operationId,
+        targetOperationIds: scopeTargets,
+        candidateOperationId: verificationOperationId,
+        candidateScopePaths: this.verificationScopes.pathsFor(verificationOperationId),
+      });
+      return;
+    }
     try {
       const events = this.evidence.readEvents();
       const detected = events.find(event => (
@@ -716,6 +732,10 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
       this.recordOperationEvent('recovery.completed', recovery.operationId, 'completed', summary, {
         resolves_operation_ids: recovery.targetOperationIds,
         verification_operation_id: verificationOperationId,
+        ...(scopeTargets.length > 0 ? {
+          supersedes_verification_operation_ids: scopeTargets,
+          verification_scope_paths: [...this.verificationScopes.pathsFor(verificationOperationId)],
+        } : {}),
       });
       recovery.targetOperationIds.forEach(operationId => this.deletePendingAdverseOperation(operationId));
       this.currentRecovery = undefined;
@@ -739,19 +759,44 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     this.sideEffectOperations.add(operationId);
   }
 
-  private beginImplicitRecoveryForOperationKey(
+  private beginImplicitMutationRecovery(
     operationKey: string,
     summary: { length: number; sha256: string },
   ): void {
-    const targetOperationIds = [...(this.pendingAdverseOperationIdsByKey.get(operationKey) ?? [])]
+    const sameOperationTargetIds = [...(this.pendingAdverseOperationIdsByKey.get(operationKey) ?? [])]
       .filter(operationId => this.pendingAdverseOperationIds.has(operationId));
+    const verificationScopeTargetOperationIds = [...this.pendingAdverseOperationIds]
+      .filter(operationId => (
+        this.verificationScopes.has(operationId)
+        && (
+          this.verificationStates.get(operationId) === 'failed'
+          || this.qualityGateStates.get(operationId) === 'failed'
+          || this.qualityGateStates.get(operationId) === 'vetoed'
+        )
+      ));
+    const targetOperationIds = [...new Set([
+      ...sameOperationTargetIds,
+      ...verificationScopeTargetOperationIds,
+    ])];
     if (targetOperationIds.length === 0) return;
     this.recoverySequence += 1;
     const operationId = `vscode-recovery-${this.recoverySequence}`;
-    this.currentRecovery = { operationId, targetOperationIds };
+    this.currentRecovery = {
+      operationId,
+      targetOperationIds,
+      ...(verificationScopeTargetOperationIds.length > 0 ? { verificationScopeTargetOperationIds } : {}),
+    };
+    const recoveryTrigger = verificationScopeTargetOperationIds.length > 0
+      ? sameOperationTargetIds.length > 0
+        ? 'mutation-retry-with-verification-supersession'
+        : 'mutation-after-failed-verification'
+      : 'same-task-mutation-retry';
     this.recordOperationEvent('recovery.detected', operationId, 'detected', summary, {
       target_operation_ids: targetOperationIds,
-      recovery_trigger: 'same-task-mutation-retry',
+      recovery_trigger: recoveryTrigger,
+      ...(verificationScopeTargetOperationIds.length > 0
+        ? { verification_scope_target_operation_ids: verificationScopeTargetOperationIds }
+        : {}),
     });
   }
 
@@ -1254,6 +1299,7 @@ function summarizeAgentStatusForTrace(status: AgentStatusEvent): Record<string, 
     phase: status.phase,
     state: status.state,
     evidenceOperationId: status.evidenceOperationId,
+    verificationScopePaths: status.verificationScopePaths,
     recoveryReason: status.recoveryReason,
     taskId: status.taskId,
     taskFile: status.taskFile,
@@ -1277,6 +1323,7 @@ function agentStatusEvidenceIdentity(status: AgentStatusEvent): { [key: string]:
     phase: status.phase,
     state: status.state,
     evidenceOperationId: status.evidenceOperationId ?? null,
+    verificationScopePaths: status.verificationScopePaths ? [...status.verificationScopePaths] : null,
     recoveryReason: status.recoveryReason ?? null,
     taskId: status.taskId ?? null,
     taskFile: status.taskFile ?? null,

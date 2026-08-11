@@ -131,6 +131,7 @@ function qualityGateStatusToValidationState(
 async function emitAutoValidationQualityGateStatus(
   callbacks: AgentAutoValidationCallbacks,
   evidenceOperationId: string,
+  verificationScopePaths: readonly string[],
   qualityGate: NonNullable<AgentAutoValidationResult['qualityGate']>,
 ): Promise<void> {
   await callbacks.onAgentStatus({
@@ -138,6 +139,7 @@ async function emitAutoValidationQualityGateStatus(
     phase: 'quality',
     state: 'started',
     evidenceOperationId,
+    verificationScopePaths,
     title: '评估自动验证 QualityGate',
     detail: qualityGate.summary,
   });
@@ -146,6 +148,7 @@ async function emitAutoValidationQualityGateStatus(
     phase: 'quality',
     state: qualityGateStatusToAgentState(qualityGate.status),
     evidenceOperationId,
+    verificationScopePaths,
     title: qualityGate.status === 'pass'
       ? '自动验证 QualityGate 通过'
       : qualityGate.status === 'blocked'
@@ -501,6 +504,7 @@ export async function runAgentAutoValidationForWrites(
       phase: 'validate',
       state: 'started',
       evidenceOperationId,
+      verificationScopePaths: changedPaths,
       title: '自动验证写入结果',
       detail: changedPaths.join('\n'),
     });
@@ -607,10 +611,11 @@ export async function runAgentAutoValidationForWrites(
         phase: 'validate',
         state: qualityGateStatusToValidationState(policyQuality?.qualityGate?.status),
         evidenceOperationId,
+        verificationScopePaths: changedPaths,
         title: policyQualityTitle ?? '未识别到自动验证目标',
         detail: [changedPaths.join('\n'), policyQuality?.feedbackForAI].filter(Boolean).join('\n\n').slice(0, 1200),
       });
-      await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, unavailableQuality);
+      await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, changedPaths, unavailableQuality);
       const settled = {
         evidenceOperationId,
         feedbackForAI: policyQuality?.feedbackForAI ?? unavailableQuality.summary,
@@ -629,10 +634,11 @@ export async function runAgentAutoValidationForWrites(
           ? qualityGateStatusToValidationState(policyQuality.qualityGate?.status)
           : 'skipped',
         evidenceOperationId,
+        verificationScopePaths: changedPaths,
         title: policyQualityTitle ?? '自动验证阻塞',
         detail: [feedbackForAI, policyQuality?.feedbackForAI].filter(Boolean).join('\n\n').slice(0, 1200),
       });
-      await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, qualityGate);
+      await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, changedPaths, qualityGate);
       const settled = {
         evidenceOperationId,
         feedbackForAI: [feedbackForAI, policyQuality?.feedbackForAI].filter(Boolean).join('\n\n'),
@@ -656,6 +662,7 @@ export async function runAgentAutoValidationForWrites(
       phase: 'validate',
       state: validationPassed ? 'completed' : qualityGateStatusToValidationState(finalQualityGate.status),
       evidenceOperationId,
+      verificationScopePaths: changedPaths,
       title: validationPassed
         ? '自动验证通过'
         : policyQuality
@@ -663,7 +670,7 @@ export async function runAgentAutoValidationForWrites(
           : '自动验证失败',
       detail: finalFeedbackForAI.slice(0, 1200),
     });
-    await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, finalQualityGate);
+    await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, changedPaths, finalQualityGate);
     const settled = {
       evidenceOperationId,
       ...(evidence ? { evidence } : {}),
@@ -679,6 +686,7 @@ export async function runAgentAutoValidationForWrites(
       phase: 'validate',
       state: 'failed',
       evidenceOperationId,
+      verificationScopePaths: changedPaths,
       title: '自动验证异常',
       detail: message,
     });
