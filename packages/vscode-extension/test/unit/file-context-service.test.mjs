@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -58,6 +58,49 @@ test('FileContextService: returns a moderate code file fully with explicit metad
     assert.match(result, /int line_501 = 501;/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('FileContextService: rejects absolute and symlink reads outside the workspace', async () => {
+  const workspace = tempProject();
+  const outside = tempProject();
+  try {
+    const secret = path.join(outside, 'secret.txt');
+    writeFileSync(secret, 'must-not-reach-provider', 'utf8');
+    symlinkSync(secret, path.join(workspace, 'linked-secret.txt'));
+    const service = new FileContextService({ workspaceRoot: workspace });
+
+    await assert.rejects(
+      service.readFileForAi(secret),
+      /read_file:target-outside-workspace/,
+    );
+    await assert.rejects(
+      service.readFileForAi('linked-secret.txt', { workDir: workspace }),
+      /read_file:target-outside-workspace/,
+    );
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('FileContextService: never exposes the internal bridge credential', async () => {
+  const workspace = tempProject();
+  try {
+    const internalDir = path.join(workspace, '.devseek');
+    mkdirSync(internalDir, { recursive: true });
+    writeFileSync(path.join(internalDir, 'bridge-token'), 'live-secret-token', 'utf8');
+    writeFileSync(path.join(internalDir, 'bridge-process.log'), 'diagnostic-only', 'utf8');
+    const service = new FileContextService({ workspaceRoot: workspace });
+
+    await assert.rejects(
+      service.readFileForAi('.devseek/bridge-token', { workDir: workspace }),
+      /read_file:protected-devseek-credential/,
+    );
+    const diagnostic = await service.readFileForAi('.devseek/bridge-process.log', { workDir: workspace });
+    assert.match(diagnostic, /diagnostic-only/);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
   }
 });
 

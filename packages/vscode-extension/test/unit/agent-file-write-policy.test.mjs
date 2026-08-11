@@ -782,4 +782,27 @@ test('AgentFileWritePolicy: an explicit source directory authorizes nested seman
   assert.equal(decide('package.json').action, 'deny');
 });
 
+test('AgentFileWritePolicy: unquoted C++ source directories authorize nested files', () => {
+  const requestPrompt = [
+    '请完成现有 C++17 调度器。',
+    '只允许修改 include/ 和 src/。不得修改 CMakeLists.txt、test.sh 或 tests/。',
+  ].join('\n');
+  const decide = relativePath => decideAgentFileWrite({
+    absPath: `/workspace/${relativePath}`,
+    workspaceRoot: '/workspace',
+    autopilotMode: true,
+    context: {
+      purpose: 'tool-write',
+      userRequested: false,
+      taskAction: 'replace_in_file',
+      displayName: relativePath,
+      requestPrompt,
+    },
+  });
+
+  assert.equal(decide('src/domain/job_scheduler.cpp').action, 'allow');
+  assert.equal(decide('include/job_scheduler.hpp').action, 'allow');
+  assert.equal(decide('tests/job_scheduler.test.cpp').action, 'deny');
+});
+
 console.log('\nAgent file write policy tests passed.\n');

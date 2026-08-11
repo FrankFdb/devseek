@@ -26,6 +26,15 @@ interface ResolvedFileContent {
   source: 'fs' | 'fallback';
 }
 
+export type FileContextReadDenialReason =
+  | 'target-outside-workspace'
+  | 'protected-devseek-credential';
+
+export interface FileContextReadBoundaryDecision {
+  allowed: boolean;
+  reason?: FileContextReadDenialReason;
+}
+
 export const FILE_CONTEXT_PROTOCOL_VERSION = 'devseek.file-context/v1';
 
 const DEFAULT_MAX_FULL_BYTES = 64 * 1024;
@@ -89,14 +98,20 @@ export class FileContextService {
 
   private buildCandidatePaths(filePath: string, workDir?: string): string[] {
     const candidates: string[] = [];
-    const push = (candidate?: string) => {
-      if (candidate && !candidates.includes(candidate)) candidates.push(candidate);
+    const push = (candidate?: string, strict = false) => {
+      if (!candidate) return;
+      const decision = decideFileContextReadBoundary(candidate, this.options.workspaceRoot);
+      if (!decision.allowed) {
+        if (strict) throw fileContextReadDenied(candidate, decision.reason!);
+        return;
+      }
+      if (!candidates.includes(candidate)) candidates.push(candidate);
     };
 
-    if (nodePath.isAbsolute(filePath)) push(nodePath.resolve(filePath));
+    if (nodePath.isAbsolute(filePath)) push(nodePath.resolve(filePath), true);
     if (workDir && !nodePath.isAbsolute(filePath)) {
       const candidate = nodePath.resolve(workDir, filePath);
-      if (this.isAllowedWorkspaceCandidate(candidate)) push(candidate);
+      if (this.isAllowedWorkspaceCandidate(candidate)) push(candidate, true);
     }
 
     const recentByBase = this.options.recentFiles?.get(nodePath.basename(filePath).toLowerCase());
@@ -105,7 +120,7 @@ export class FileContextService {
     push(recentByRel);
 
     if (this.options.workspaceRoot && !nodePath.isAbsolute(filePath)) {
-      push(nodePath.resolve(this.options.workspaceRoot, filePath));
+      push(nodePath.resolve(this.options.workspaceRoot, filePath), true);
     }
     return candidates;
   }
@@ -128,6 +143,42 @@ export class FileContextService {
     const content = await fallback(filePath, candidates);
     return content === null ? null : { content, resolvedPath: filePath, source: 'fallback' };
   }
+}
+
+/** The only local-file boundary used before content can enter an AI prompt. */
+export function decideFileContextReadBoundary(
+  candidate: string,
+  workspaceRoot?: string,
+): FileContextReadBoundaryDecision {
+  const requested = nodePath.resolve(candidate);
+  const target = canonicalFileContextPath(candidate);
+  if (isProtectedDevSeekCredential(requested) || isProtectedDevSeekCredential(target)) {
+    return { allowed: false, reason: 'protected-devseek-credential' };
+  }
+  if (!workspaceRoot) return { allowed: true };
+  const root = canonicalFileContextPath(workspaceRoot);
+  const relative = nodePath.relative(root, target);
+  if (relative === '' || (!relative.startsWith('..') && !nodePath.isAbsolute(relative))) {
+    return { allowed: true };
+  }
+  return { allowed: false, reason: 'target-outside-workspace' };
+}
+
+function canonicalFileContextPath(candidate: string): string {
+  const resolved = nodePath.resolve(candidate);
+  try {
+    return fs.realpathSync.native(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
+function isProtectedDevSeekCredential(candidate: string): boolean {
+  return /(?:^|[\\/])\.devseek[\\/]bridge-token$/i.test(candidate);
+}
+
+function fileContextReadDenied(candidate: string, reason: FileContextReadDenialReason): Error {
+  return new Error(`read_file:${reason}:${candidate}`);
 }
 
 function readLocalFile(absPath: string): string | null {

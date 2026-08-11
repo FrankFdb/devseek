@@ -570,6 +570,11 @@ test('file-write authorization covers neutral, prohibited, exclusive, and correc
   assert.equal(decide(directoryScope, `${root}/tests/policy.test.js`).allowed, false);
   assert.equal(decide(directoryScope, `${root}/package.json`).allowed, false);
 
+  const bareDirectoryScope = '只允许修改 include/ 和 src/。不得修改 CMakeLists.txt、test.sh 或 tests/。';
+  assert.equal(decide(bareDirectoryScope, `${root}/src/domain/job_scheduler.cpp`).allowed, true);
+  assert.equal(decide(bareDirectoryScope, `${root}/include/job_scheduler.hpp`).allowed, true);
+  assert.equal(decide(bareDirectoryScope, `${root}/tests/job_scheduler.test.cpp`).allowed, false);
+
   const dedupePrompt = `请将仿真测试结果输出到 ${root}/docs/warranty-maintenance-advice-simulation.md，文件名需要保留 simulation 标识。`;
   assert.equal(decide(dedupePrompt, `${root}/docs/warranty-maintenance-advice-simulation-1.md`).allowed, true);
   assert.equal(

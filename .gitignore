@@ -35,6 +35,8 @@ backups/
 code/*
 !code/devseek-tests/
 !code/devseek-tests/**
+code/devseek-tests/cpp-user-matrix/
+code/devseek-tests/plugin-maintenance/
 code/devseek-tests/**/scenario.json
 code/devseek-tests/**/runs/
 aircraft/

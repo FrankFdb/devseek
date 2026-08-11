@@ -1331,6 +1331,10 @@ function extractPathOccurrences(prompt: string): PathOccurrence[] {
     const matchStart = match.index ?? 0;
     add(match[1], matchStart + match[0].lastIndexOf(match[1]));
   }
+  const bareDirectoryPath = /(?:^|[\s（(【\[<《：:,，；;、])((?:\.{1,2}[\\/]|[\\/])?(?:[\w.@+~-]+[\\/])+)(?=$|[\s）)】\]>》,，。；;、：:])/giu;
+  for (const match of prompt.matchAll(bareDirectoryPath)) {
+    add(match[1], (match.index ?? 0) + match[0].lastIndexOf(match[1]));
+  }
   const quotedPatterns = [
     /(["'`])((?:(?:[\\/]|\.{1,2}[\\/])?[\w.@+~-]+[\\/])+?)\1/giu,
     /“((?:(?:[\\/]|\.{1,2}[\\/])?[\w.@+~-]+[\\/])+)”/giu,
