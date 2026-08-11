@@ -193,7 +193,8 @@ devseek_governance:
 | Doc governance | `PASS`，4/4 tests；43 个受治理文档，3 个 active baseline、40 个 legacy/reference |
 | Surface product conformance | `PASS`，`2edc604` 精确 VSIX 的 VS Code create/modify/repair/permission-denied/policy-refusal 5/5 通过，并与 CLI、Headless 形成 5/5 三 Surface product-route conformance；repair 保留 action-owned failed→repair→passed，qualification eligible=false |
 | Previous stable VSIX receipt | `PASS`，`devseek-netai-1.0.0-debug.20260810.t170815.g0ed2d7e.vsix`；SHA256 `f94f7cc38de9dc6172f4542aebb4d50b65d10a7eb9306791d23e6fd76afd3cd8`；该回执是本轮 release loop 前的回退基线，不冒充当前源码候选 |
-| Candidate identity rule | 当前 `2edc604` source/artifact/install/runtime 已由同一轮 release loop 精确绑定，stable runtime=1、stale/unknown/unreadable=0；禁止从上一稳定 `0ed2d7e` 或 R4 冻结候选继承当前候选 PASS |
+| Current candidate VSIX receipt | `PASS`，`devseek-netai-1.0.0-debug.20260811.t104900.gf11e145.vsix`；SHA256 `5cea18a1d8c321d962a10b5ddb6bb30a6471f005f730e1ba7122444c9a2f69c2`；build `20260811-t104900`，qualification effect=`NONE` |
+| Candidate identity rule | 当前 `f11e145` source/artifact/install/runtime 已由同一轮 release loop 精确绑定，stable runtime=1、stale/unknown/unreadable=0；identity probe SHA256=`44b4e75b9f2b352cb2bb1f9abdaf3eb1162fb202ab6d1f1da1e74efa4692329d`；禁止从旧稳定或 R4 冻结候选继承当前候选 PASS |
 | 本地用户闭环 | `PASS`，精确已安装 VSIX 的受控普通用户路径与五场景产品路径通过；headed Bridge 已刷新到当前候选并保留已登录 DeepSeek chat 页面，因资格前置未满足未发送 real task |
 | R4 frozen candidate identity | `PASS`，11/11；冻结验证时 stable=1、stale/unknown/unreadable=0；qualification effect=`NONE` |
 | Phase 0-12 | `PASS`，本轮以 clean worktree 完整重跑且全部 phase/gate 通过；deterministic=`passed`，real CLI/plugin Provider=`not-run`，candidate/stable claim 均不允许，Gate 0 仍为 `NOT_PASSED` |
