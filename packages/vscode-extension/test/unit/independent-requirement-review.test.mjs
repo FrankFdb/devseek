@@ -60,6 +60,41 @@ test('strict review parser accepts an evidenced failing finding', () => {
   assert.equal(decision.findings[0].line, 2);
 });
 
+test('strict review parser keeps valid findings when a sibling has invalid protocol fields', () => {
+  const source = snapshot('src/order_book.cpp', 'return empty_trades;\nthrow invalid_order;');
+  const validFinding = {
+    title: 'Expose invalid input to the caller',
+    body: 'Returning the normal no-trade value does not implement the required rejection.',
+    priority: 1,
+    confidence_score: 0.98,
+    code_location: {
+      absolute_file_path: source.absolutePath,
+      line_range: { start: 1, end: 1 },
+    },
+  };
+  const malformedFinding = {
+    ...validFinding,
+    title: 'Unsupported priority',
+    priority: 5,
+  };
+  const failed = parseIndependentReviewResponse(response({
+    findings: [validFinding, malformedFinding],
+    overall_correctness: 'patch is incorrect',
+    overall_explanation: 'One caller-visible contract is missing.',
+    overall_confidence_score: 0.98,
+  }), [source]);
+  assert.equal(failed.status, 'failed');
+  assert.equal(failed.findings.length, 1);
+
+  const contradictoryPass = parseIndependentReviewResponse(response({
+    findings: [malformedFinding],
+    overall_correctness: 'patch is correct',
+    overall_explanation: 'No blocking finding.',
+    overall_confidence_score: 0.9,
+  }), [source]);
+  assert.equal(contradictoryPass.status, 'indeterminate');
+});
+
 test('strict review parser passes only an exact no-finding verdict', () => {
   const source = snapshot('src/cache.cpp', 'int cache = 0;');
   const decision = parseIndependentReviewResponse(response({
@@ -108,6 +143,9 @@ test('independent reviewer receives original requirements and final line-numbere
   assert.equal(invocations.length, 1);
   assert.match(invocations[0][0].content, /fresh|independent|read-only/i);
   assert.match(invocations[0][0].content, /continues after completion or cancellation/);
+  assert.match(invocations[0][0].content, /legitimate success can also produce is not rejection/);
+  assert.match(invocations[0][0].content, /every supplied source file/);
+  assert.match(invocations[0][0].content, /integer from 0 through 3 only/);
   assert.match(invocations[0][1].content, /Reject duplicate or already-used ids/);
   assert.match(invocations[0][1].content, /1: return empty_trades/);
   assert.match(invocations[0][1].content, /2: used_ids\.erase/);

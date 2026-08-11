@@ -28,7 +28,8 @@ export interface RequirementReviewCandidate {
 }
 
 interface PendingRequirementReview {
-  sourcePaths: string[];
+  changedSourcePaths: string[];
+  reviewSourcePaths: string[];
   freshSourceEvidenceReady: boolean;
   reviewerRequested: boolean;
   decision?: RequirementReviewDecision;
@@ -44,22 +45,26 @@ export class RequirementReviewLedger {
     const sourceWrites = input.writtenFiles.filter(file => isCodeArtifactPath(file.path));
     if (sourceWrites.length > this.scheduledSourceWriteCount) {
       if (input.qualityGate?.status !== 'pass') return undefined;
-      const sourcePaths = Array.from(new Set(sourceWrites
+      const changedSourcePaths = Array.from(new Set(sourceWrites
         .slice(this.scheduledSourceWriteCount)
         .map(file => file.path)));
+      const reviewSourcePaths = Array.from(new Set(sourceWrites.map(file => file.path)));
       this.scheduledSourceWriteCount = sourceWrites.length;
       this.pending = {
-        sourcePaths,
+        changedSourcePaths,
+        reviewSourcePaths,
         freshSourceEvidenceReady: false,
         reviewerRequested: false,
       };
       return [
         '【系统反馈：完成前需求覆盖复核】',
-        `项目现有验证已通过，最新源码变更为：${sourcePaths.join('、')}。通过可见测试只证明已覆盖行为，不能替代用户需求。`,
-        `下一轮必须先用 read_file 重新读取这些最终源码：${sourcePaths.join('、')}。写入工具的自动读回不算独立复核。`,
+        `项目现有验证已通过，最新源码变更为：${changedSourcePaths.join('、')}。通过可见测试只证明已覆盖行为，不能替代用户需求。`,
+        `下一轮必须先用 read_file 重新读取这些最终源码：${changedSourcePaths.join('、')}。写入工具的自动读回不算独立复核。`,
+        `独立审查将共同读取本任务全部已修改源码：${reviewSourcePaths.join('、')}，避免脱离声明、类型或依赖文件判断实现。`,
         '读取后将由全新隔离上下文中的只读审查者逐条映射用户需求；实现会话不能用自己的文字自检替代该结论。',
         '审查会覆盖时间回拨、状态迁移、重入、顺序、容量、边界值和异常路径，并检查新增状态量是否参与真实决策。',
-        '“拒绝/报错/无效”必须有调用方可观察且不与正常成功重叠的失败通道；“重复/已使用”身份约束会推演完成或取消后的再次使用。',
+        '“拒绝/报错/无效”必须有调用方可观察且不与正常成功重叠的失败通道；仅提前返回一个合法成功也可能返回的值，不算拒绝。',
+        '“重复/已使用”身份约束会推演完成或取消后的再次使用，审查结论不得反转原始需求的方向。',
         '用户指定的数据结构和复杂度同样属于验收条款；审查会识别无效状态量、错误所有权和违背约束的线性扫描。',
         '本轮只重新读取最终源码，不要自行创建临时 probe、修改受保护测试或直接结束任务。',
       ].join('\n');
@@ -70,7 +75,7 @@ export class RequirementReviewLedger {
       return renderBlockingDecision(this.pending.decision);
     }
     if (this.pending.freshSourceEvidenceReady) return undefined;
-    const missingPaths = this.pending.sourcePaths.filter(sourcePath => (
+    const missingPaths = this.pending.changedSourcePaths.filter(sourcePath => (
       !input.roundReadFiles.some(readPath => sameWorkspacePath(readPath, sourcePath))
     ));
     if (missingPaths.length > 0) {
@@ -91,7 +96,7 @@ export class RequirementReviewLedger {
   takeIndependentReviewCandidate(): RequirementReviewCandidate | undefined {
     if (!this.pending?.freshSourceEvidenceReady || this.pending.reviewerRequested) return undefined;
     this.pending.reviewerRequested = true;
-    return { sourcePaths: [...this.pending.sourcePaths] };
+    return { sourcePaths: [...this.pending.reviewSourcePaths] };
   }
 
   settleIndependentReview(decision: RequirementReviewDecision): string {
@@ -113,7 +118,7 @@ export class RequirementReviewLedger {
     if (!this.pending.freshSourceEvidenceReady) {
       return [
         '【系统反馈：不能跳过需求覆盖复核】',
-        `请先用 read_file 重新读取最终源码：${this.pending.sourcePaths.join('、')}。`,
+        `请先用 read_file 重新读取最终源码：${this.pending.changedSourcePaths.join('、')}。`,
         '公开测试通过和文字自检都不能替代对最终实现的独立读取。',
       ].join('\n');
     }

@@ -74,6 +74,16 @@ test('requirement review is scheduled once for each newly validated source mutat
     roundReadFiles: [],
   });
   assert.match(repaired, /src\/cache\.cpp/);
+  assert.match(repaired, /全部已修改源码：include\/cache\.hpp、src\/cache\.cpp/);
+  assert.match(ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: undefined,
+    writtenFiles: [...firstWrites, sourceWrite('src/cache.cpp')],
+    roundReadFiles: ['src/cache.cpp'],
+  }), /最终源码已重新读取/);
+  assert.deepEqual(ledger.takeIndependentReviewCandidate(), {
+    sourcePaths: ['include/cache.hpp', 'src/cache.cpp'],
+  });
 });
 
 test('pending requirement review survives read-only rounds without a new quality gate', () => {
