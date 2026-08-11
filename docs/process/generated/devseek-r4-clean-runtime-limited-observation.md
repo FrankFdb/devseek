@@ -4,8 +4,8 @@
 
 - Observation ID: `R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME-LIMITED-OBSERVATION/v1`
 - Current leaf: `R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME`
-- Terminal state: `COMPLETED`
-- Clean runtime identity established: `true`
+- Terminal state: `BLOCKED`
+- Clean runtime identity established: `false`
 - Qualification effect: `NONE`
 - Claims permitted: `false`
 - Gate assertion: `false`
@@ -25,14 +25,14 @@
 
 ## 候选身份
 
-- Expected candidate source commit: `4f8a56797090079914b4d921b56d9c34fe4d2abc`
-- Expected VSIX SHA-256: `68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc`
-- Expected bridge path: `/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260804.t093020.g4f8a567/bridge/server.js`
-- Matches release candidate manifest: `true`
+- Expected candidate source commit: `8ae8f0786239bff2e255de45fff0af3e39ea6ddd`
+- Expected VSIX SHA-256: `02b305616a0692bcd6d82b408ba47d0f362acf8bcedb4c6fb5a5d0b312632127`
+- Expected bridge path: `/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260811.t164929.g8ae8f07/bridge/server.js`
+- Matches release candidate manifest: `false`
 
 ## Tracked Registry 对比
 
-- Tracked artifact git commit: `4f8a567`
+- Tracked artifact git commit: `8ae8f07`
 - Tracked observe status: `passed`
 - Tracked matches expected identity: `true`
 
@@ -47,10 +47,12 @@
 
 ## Blockers
 
+- `expected-candidate-identity-does-not-match-release-candidate-manifest`
 
 ## 下一授权
 
+- `explicit-authority-to-freeze-latest-candidate-or-restore-frozen-release-candidate-runtime`
 
 ## Observation Identity
 
-- Observation SHA-256: `c9c6f7d5637e6453530937fa11db110a6725388bc6e84550679b1aebf0b78a56`
+- Observation SHA-256: `67a229b81458e2a3a721335a13e88e4d3c9fefe83fe40b85050519a45b40ade2`

@@ -18,13 +18,13 @@
 
 | Identity | Status | Artifact | VSIX SHA-256 | Observe | Usable For Qualification |
 | --- | --- | --- | --- | --- | --- |
-| tracked-current-candidate: `docs/process/devseek-current-candidate-identity.json` | `tracked-current-clean-runtime` | `4f8a567` | `68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc` | `passed` | `false` |
+| tracked-current-candidate: `docs/process/devseek-current-candidate-identity.json` | `tracked-stale-deferred` | `8ae8f07` | `02b305616a0692bcd6d82b408ba47d0f362acf8bcedb4c6fb5a5d0b312632127` | `passed` | `false` |
 | archived-failed-observe: `docs/process/archive/devseek-current-candidate-identity-failed-observe-20260723-t185546.json` | `archived-failed-observe` | `6b09d67` | `49a0479c8c436dac7a5eb6e5b68c71e42b30e3e8dae05973b65f864c9813c086` | `failed` | `false` |
 | release-candidate-manifest: `docs/process/devseek-r4-release-candidate-manifest.json` | `current-local-release-smoke-reference` | `4f8a56797090079914b4d921b56d9c34fe4d2abc` | `68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc` | `n/a` | `false` |
 
-- Tracked current matches release candidate: `true`
+- Tracked current matches release candidate: `false`
 - Archived failed snapshot matches release candidate: `false`
-- Authority to refresh current candidate identity: `not-required-current-identity-already-release-candidate`
+- Authority to refresh current candidate identity: `R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME`
 
 ## Handoff Drift
 
@@ -35,11 +35,11 @@
 
 ## 结论
 
-- Current candidate identity: `clean-runtime-identity-established`
+- Current candidate identity: `deferred-unusable-until-clean-runtime`
 - Failed identity snapshot: `archived-not-current`
 - Handoff drift: `archived-in-place`
 - Release candidate manifest remains local smoke source: `true`
 
 ## Reconciliation Identity
 
-- Reconciliation SHA-256: `71a6dd570f3f9bd875673abeeff5e56de2518b1a808603b40292e7a65b699b46`
+- Reconciliation SHA-256: `c1f775a3f291203976272eda021f2805066fbd8da70d72341ea136263dd3f2e3`

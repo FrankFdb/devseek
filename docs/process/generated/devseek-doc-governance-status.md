@@ -5,11 +5,11 @@
 ## Summary
 
 - generator: `devseek-doc-governance/v1`
-- active selector sha256: `7a2148a0e46e6305f7ba220749908974b3bf3f6970a19069b1b56f3e8c46f8c9`
-- legacy inventory sha256: `1105eb6962c5442dd42d5cfbe98c498fc400cb939462e9beaa1c1ec45d9b9915`
-- governed documents: `40`
+- active selector sha256: `a313e81e91c0a7a0d8e1190c3b18d7b3e47ee3b642a155144544bd09db046ad3`
+- legacy inventory sha256: `3b668b1c55ca02e63147e2e4b42095363d8fa4e9498f06568b58f8b1b3e526f8`
+- governed documents: `34`
 - active baselines: `3`
-- legacy documents: `37`
+- legacy documents: `31`
 - asserts Gate 0 pass: `false`
 
 ## Active Baselines
@@ -25,7 +25,7 @@
 | Decision | Count |
 | --- | ---: |
 | active | 3 |
-| keep | 31 |
+| keep | 25 |
 | revise | 0 |
 | supersede | 2 |
 | archive | 0 |
@@ -65,10 +65,4 @@
 | `docs/requirements/references/02-openai-codex.md` | requirements | reference | not-applicable | external-reference | `docs/requirements/02-顶级编程智能体需求基线.md` |
 | `docs/requirements/references/03-github-copilot.md` | requirements | reference | not-applicable | external-reference | `docs/requirements/02-顶级编程智能体需求基线.md` |
 | `docs/requirements/references/04-other-coding-agents.md` | requirements | reference | not-applicable | external-reference | `docs/requirements/02-顶级编程智能体需求基线.md` |
-| `docs/top-agent-convergence-audit-20260711/02-Codex-Claude-Code-DevSeek软件架构对比.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
-| `docs/top-agent-convergence-audit-20260711/03-顶级编程智能体目标软件架构.md` | handoff | historical | keep | supporting-ref | `docs/architecture/01-顶级编程智能体总体架构设计.md` |
-| `docs/top-agent-convergence-audit-20260711/04-分能力专项迭代与收敛路线图.md` | handoff | historical | keep | supporting-ref | `docs/requirements/02-顶级编程智能体需求基线.md` |
-| `docs/top-agent-convergence-audit-20260711/05-黄金用户旅程与正式项目资格方案.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
-| `docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
-| `docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md` | handoff | historical | keep | supporting-ref | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
 | `docs/top-agent-convergence-audit-20260711/README.md` | handoff | historical | keep | supporting-ref | `docs/requirements/02-顶级编程智能体需求基线.md` |

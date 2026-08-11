@@ -4,7 +4,7 @@
 
 - Schema: `devseek.capability-ledger/v1`
 - Capabilities: 76
-- Ledger SHA-256: `07ef5f1bda4f704aa9fa79b94a6a87f608d573cc92b97a6a44362831e92aba84`
+- Ledger SHA-256: `4a94ac0ea06741e7cdd3ba03ac306bf3899f7d38def82d40d795c71025897df1`
 - Qualification claim policy: `deny-until-signed-evidence-validator`
 
 | Capability | Priority | Applicability | Claim scopes | Implementation | Qualification | Authority port | Typed dependencies |

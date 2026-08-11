@@ -34,16 +34,16 @@
     "tracked_current_candidate_identity": {
       "path": "docs/process/devseek-current-candidate-identity.json",
       "generated_view_path": "docs/process/generated/devseek-current-candidate-identity.md",
-      "status": "tracked-current-clean-runtime",
+      "status": "tracked-stale-deferred",
       "archive_status": "not-archived",
-      "file_sha256": "80a68b5207f65625458b18320c15e1b89514125d7e77d1b3f7f2928c585b294e",
-      "generated_view_sha256": "0fa1d6ab155a6aaeca49d70210bd7d718e13524966a1635aee23798abd669aec",
-      "artifact_git_commit": "4f8a567",
-      "candidate_source_commit": "4f8a56797090079914b4d921b56d9c34fe4d2abc",
-      "vsix_sha256": "68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc",
-      "build_id": "20260804-t093020",
+      "file_sha256": "bac32c08d4817436e6c5d19c8fb9d4acc54988eacf4f4f036144a5b64a71f4b3",
+      "generated_view_sha256": "04683dc00a9f9a1783dfdc6c3af0042a4d2bc867ffc7effc15e299e9b5f828c5",
+      "artifact_git_commit": "8ae8f07",
+      "candidate_source_commit": "8ae8f0786239bff2e255de45fff0af3e39ea6ddd",
+      "vsix_sha256": "02b305616a0692bcd6d82b408ba47d0f362acf8bcedb4c6fb5a5d0b312632127",
+      "build_id": "20260811-t164929",
       "observe_status": "passed",
-      "identity_probe_sha256": "c629bfa4bdf1c7a1843a34e6c5e1277c6260dc5829072510c933b5a14664eafd",
+      "identity_probe_sha256": "6976462a1b92fd044966fcc7e4756142ac6fbb3297dd1571977161d356575e33",
       "usable_for_qualification": false,
       "qualification_effect": "NONE"
     },
@@ -72,7 +72,7 @@
       "usable_for_qualification": false,
       "qualification_effect": "NONE"
     },
-    "tracked_current_matches_release_candidate": true,
+    "tracked_current_matches_release_candidate": false,
     "archived_failed_matches_release_candidate": false
   },
   "handoff_documents": [
@@ -132,10 +132,10 @@
     }
   ],
   "conclusions": {
-    "current_candidate_identity_status": "clean-runtime-identity-established",
+    "current_candidate_identity_status": "deferred-unusable-until-clean-runtime",
     "failed_identity_snapshot_status": "archived-not-current",
     "handoff_drift_status": "archived-in-place",
-    "authority_to_refresh_current_candidate_identity": "not-required-current-identity-already-release-candidate",
+    "authority_to_refresh_current_candidate_identity": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
     "release_candidate_manifest_remains_source_of_local_release_smoke": true,
     "claims_empty": true,
     "gate0_status": "NOT_PASSED",
@@ -148,5 +148,5 @@
     "tracked_current_identity_usable_for_qualification": 0,
     "qualification_claims": 0
   },
-  "reconciliation_sha256": "71a6dd570f3f9bd875673abeeff5e56de2518b1a808603b40292e7a65b699b46"
+  "reconciliation_sha256": "c1f775a3f291203976272eda021f2805066fbd8da70d72341ea136263dd3f2e3"
 }

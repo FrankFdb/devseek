@@ -45,7 +45,7 @@ test('active baseline selector fails closed on ambiguous, unknown, missing, or c
   duplicateActive.documents.push({
     ...structuredClone(duplicateActive.documents.find(item => item.document_type === 'process')),
     document_id: 'process-duplicate-active',
-    path: 'docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md',
+    path: 'docs/top-agent-convergence-audit-20260711/archive/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md',
   });
   assertHasError(duplicateActive, 'active:duplicate-type-process');
 

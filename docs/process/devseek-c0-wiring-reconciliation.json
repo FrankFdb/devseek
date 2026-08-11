@@ -17,7 +17,7 @@
       "path": "docs/process/devseek-capability-ledger.json",
       "schema_version": "devseek.capability-ledger/v1",
       "ledger_id": "DEVSEEK-CAPABILITY-LEDGER/v1",
-      "source_sha256": "18a06eeccc6965c80361549f013edf23f272d3f749704f58d5143fff17367153"
+      "source_sha256": "4a94ac0ea06741e7cdd3ba03ac306bf3899f7d38def82d40d795c71025897df1"
     },
     "package_scripts": {
       "path": "package.json",
@@ -25,7 +25,7 @@
     },
     "phase_gate_source": {
       "path": "scripts/devseek-phase0-12-verify.mjs",
-      "source_sha256": "db927db5c6d2bf78ba78e62075bdde17a39c26ccdb41fef9f1847bd496b48702"
+      "source_sha256": "f9e850451a613301bd1b7fe2218174b33013693887f04f7b80236bdaffc3038d"
     },
     "checker_source": {
       "path": "scripts/devseek-c0-wiring-reconciliation-check.mjs",
@@ -43,8 +43,8 @@
       "schema_version": "devseek.c0-ledger-wiring/v1",
       "expected_schema_version": "devseek.c0-ledger-wiring/v1",
       "hash_field": "wiring_sha256",
-      "reported_sha256": "e2d371f810eb3ef82d280e446416a0287294208945dea543b35e8d653b574bcc",
-      "computed_sha256": "e2d371f810eb3ef82d280e446416a0287294208945dea543b35e8d653b574bcc",
+      "reported_sha256": "d0e28de3f3b03aa42bb1efb850cb4b6aff728ceb67e1a3d27b5165e65bd19a74",
+      "computed_sha256": "d0e28de3f3b03aa42bb1efb850cb4b6aff728ceb67e1a3d27b5165e65bd19a74",
       "hash_status": "matched",
       "package_script": "verify:c0-ledger-wiring",
       "package_script_present": true,
@@ -55,7 +55,7 @@
       "generated_view": {
         "path": "docs/process/generated/devseek-c0-ledger-wiring.md",
         "status": "current",
-        "source_sha256": "f3e102fc2cf2475e201282a4e833b8cb1d50e1f4e877025917c46db1541b2f0b"
+        "source_sha256": "78435812be81ae8a9d3b9db103e81925ba523a9a5780e499601efbbb64eec169"
       }
     },
     {
@@ -64,8 +64,8 @@
       "schema_version": "devseek.c0-preregistration-wiring/v1",
       "expected_schema_version": "devseek.c0-preregistration-wiring/v1",
       "hash_field": "wiring_sha256",
-      "reported_sha256": "8cdf3d537fabae94b5efc16914c686d3a76055a06a26bec0bce8ddd84de280c2",
-      "computed_sha256": "8cdf3d537fabae94b5efc16914c686d3a76055a06a26bec0bce8ddd84de280c2",
+      "reported_sha256": "76e2da0e75b3e59b0df337903b33ea32951f236caac2484ea1e468ed46146305",
+      "computed_sha256": "76e2da0e75b3e59b0df337903b33ea32951f236caac2484ea1e468ed46146305",
       "hash_status": "matched",
       "package_script": "verify:c0-preregistration-wiring",
       "package_script_present": true,
@@ -76,7 +76,7 @@
       "generated_view": {
         "path": "docs/process/generated/devseek-c0-preregistration-wiring.md",
         "status": "current",
-        "source_sha256": "619256a65f00cbcfe849ebd8967aaf186f459cac9b09dd4cfe08852515d845a2"
+        "source_sha256": "3c327afbd5df94d8be295cacf35d62aa092e63e52d52a64e326e9beb08894b45"
       }
     },
     {
@@ -85,8 +85,8 @@
       "schema_version": "devseek.c0-run-evidence-wiring/v1",
       "expected_schema_version": "devseek.c0-run-evidence-wiring/v1",
       "hash_field": "wiring_sha256",
-      "reported_sha256": "a2d193ce05b30e4b781063b75aa1d562dbc0cef83bfdf66044d7c573f71b4c90",
-      "computed_sha256": "a2d193ce05b30e4b781063b75aa1d562dbc0cef83bfdf66044d7c573f71b4c90",
+      "reported_sha256": "95cecb046a3ba880e98b13c220344f261f0c21c5b2957850c3ef63b1fc54691b",
+      "computed_sha256": "95cecb046a3ba880e98b13c220344f261f0c21c5b2957850c3ef63b1fc54691b",
       "hash_status": "matched",
       "package_script": "verify:c0-run-evidence-wiring",
       "package_script_present": true,
@@ -97,7 +97,7 @@
       "generated_view": {
         "path": "docs/process/generated/devseek-c0-run-evidence-wiring.md",
         "status": "current",
-        "source_sha256": "6b22045ea886ae6c0ebe5619dec27804227f5b4b7f5d738bd94d363f6770183b"
+        "source_sha256": "e2b1799175d3d161c7d9eef8ac887885c03fe0ba44b0ceb1f519b49c81f846e3"
       }
     },
     {
@@ -106,8 +106,8 @@
       "schema_version": "devseek.c0-manifest-aggregator-wiring/v1",
       "expected_schema_version": "devseek.c0-manifest-aggregator-wiring/v1",
       "hash_field": "wiring_sha256",
-      "reported_sha256": "509afdf75297a3a462fd08f80c12674603bdca6930120bc2142bfb582ce86dc2",
-      "computed_sha256": "509afdf75297a3a462fd08f80c12674603bdca6930120bc2142bfb582ce86dc2",
+      "reported_sha256": "806a0d504686205214bc74974da53930c4b33de5d69edf16d31e691e134d81fe",
+      "computed_sha256": "806a0d504686205214bc74974da53930c4b33de5d69edf16d31e691e134d81fe",
       "hash_status": "matched",
       "package_script": "verify:c0-manifest-aggregator-wiring",
       "package_script_present": true,
@@ -118,7 +118,7 @@
       "generated_view": {
         "path": "docs/process/generated/devseek-c0-manifest-aggregator-wiring.md",
         "status": "current",
-        "source_sha256": "1d76dd3dcea18337cb6d2d75c2fd88dac0defd6042b06ea9a6076b74e7ed4374"
+        "source_sha256": "bbecfae946ec6f0db7e8c7fe8bc000671ba6afc35f732931d89819decf54842e"
       }
     },
     {
@@ -127,8 +127,8 @@
       "schema_version": "devseek.external-authority-adapter/v1",
       "expected_schema_version": "devseek.external-authority-adapter/v1",
       "hash_field": "adapter_sha256",
-      "reported_sha256": "6f4c111ba927693769ad4db0c339ebb4aa112520c32473f8afd2a21c042d38f0",
-      "computed_sha256": "6f4c111ba927693769ad4db0c339ebb4aa112520c32473f8afd2a21c042d38f0",
+      "reported_sha256": "33a54220b7e3c8893c888e5cc50d64ae12ceddc54aa442d7d40454ec79399dde",
+      "computed_sha256": "33a54220b7e3c8893c888e5cc50d64ae12ceddc54aa442d7d40454ec79399dde",
       "hash_status": "matched",
       "package_script": "verify:external-authority-adapter",
       "package_script_present": true,
@@ -139,7 +139,7 @@
       "generated_view": {
         "path": "docs/process/generated/devseek-external-authority-adapter.md",
         "status": "current",
-        "source_sha256": "1d07d624157dd23c526f72de58e9e626eb0774e0160a36b40d613e87e50a82c4"
+        "source_sha256": "7f9628eaf1a0a3a7772693c1739f25a5b984fd609143bd32fbc1ffa8472c4628"
       }
     },
     {
@@ -148,8 +148,8 @@
       "schema_version": "devseek.gate0-decision/v1",
       "expected_schema_version": "devseek.gate0-decision/v1",
       "hash_field": "decision_sha256",
-      "reported_sha256": "e877a5bd359788b10e29b8769ccf9260b0f685dd59849ac30b6e5d055dc74278",
-      "computed_sha256": "e877a5bd359788b10e29b8769ccf9260b0f685dd59849ac30b6e5d055dc74278",
+      "reported_sha256": "f20c5f73ff44878e1c7a2edec75c05f82183833537b9629e7e74a6913262ef2b",
+      "computed_sha256": "f20c5f73ff44878e1c7a2edec75c05f82183833537b9629e7e74a6913262ef2b",
       "hash_status": "matched",
       "package_script": "verify:gate0-decision",
       "package_script_present": true,
@@ -180,14 +180,14 @@
     "source_bindings": [
       {
         "binding_id": "gate0-ledger-source",
-        "observed_sha256": "18a06eeccc6965c80361549f013edf23f272d3f749704f58d5143fff17367153",
-        "expected_sha256": "18a06eeccc6965c80361549f013edf23f272d3f749704f58d5143fff17367153",
+        "observed_sha256": "4a94ac0ea06741e7cdd3ba03ac306bf3899f7d38def82d40d795c71025897df1",
+        "expected_sha256": "4a94ac0ea06741e7cdd3ba03ac306bf3899f7d38def82d40d795c71025897df1",
         "status": "matched"
       },
       {
         "binding_id": "gate0-external-authority-adapter-source",
-        "observed_sha256": "6f4c111ba927693769ad4db0c339ebb4aa112520c32473f8afd2a21c042d38f0",
-        "expected_sha256": "6f4c111ba927693769ad4db0c339ebb4aa112520c32473f8afd2a21c042d38f0",
+        "observed_sha256": "33a54220b7e3c8893c888e5cc50d64ae12ceddc54aa442d7d40454ec79399dde",
+        "expected_sha256": "33a54220b7e3c8893c888e5cc50d64ae12ceddc54aa442d7d40454ec79399dde",
         "status": "matched"
       }
     ],
@@ -213,5 +213,5 @@
     "observed_claims": 0,
     "bypasses": 0
   },
-  "reconciliation_sha256": "6a1556e57a16c94238a4a8533f97fb7bffc4b412d8e252b32ca31022afebf400"
+  "reconciliation_sha256": "551a1067c89429945d37583b2df06122dcd6757b3f05a3cdc9d6f88219be2f95"
 }

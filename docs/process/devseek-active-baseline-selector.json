@@ -25,10 +25,6 @@
         {
           "path": "docs/top-agent-convergence-audit-20260711/README.md",
           "reason": "Current audit entry and applicability boundary."
-        },
-        {
-          "path": "docs/top-agent-convergence-audit-20260711/04-分能力专项迭代与收敛路线图.md",
-          "reason": "Capability maturity and qualification route derived from the requirement baseline."
         }
       ]
     },
@@ -39,13 +35,8 @@
       "role": "primary",
       "path": "docs/architecture/01-顶级编程智能体总体架构设计.md",
       "supersedes": [],
-      "rationale": "Primary active architecture baseline; convergence audit 03 is the current Coding Kernel target overlay, not a second machine owner.",
-      "supporting_refs": [
-        {
-          "path": "docs/top-agent-convergence-audit-20260711/03-顶级编程智能体目标软件架构.md",
-          "reason": "Converged Coding Kernel target overlay for current atomic cards."
-        }
-      ]
+      "rationale": "Primary active architecture baseline; archived audit overlays are historical evidence, not a second machine owner.",
+      "supporting_refs": []
     },
     {
       "document_id": "PROCESS-CURRENT-CONVERGENCE-PLAN",
@@ -57,15 +48,11 @@
       "rationale": "Primary active process plan and only task issuance source; it contains status and next work only, while docs/process owns machine facts and archived document 14 owns historical receipts.",
       "supporting_refs": [
         {
-          "path": "docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md",
-          "reason": "Invariant engineering rules and per-card DoD."
-        },
-        {
           "path": "docs/process/devseek-gate0-decision-report.json",
           "reason": "Machine Gate 0 state; Markdown cannot promote it."
         }
       ]
     }
   ],
-  "selector_sha256": "7a2148a0e46e6305f7ba220749908974b3bf3f6970a19069b1b56f3e8c46f8c9"
+  "selector_sha256": "a313e81e91c0a7a0d8e1190c3b18d7b3e47ee3b642a155144544bd09db046ad3"
 }

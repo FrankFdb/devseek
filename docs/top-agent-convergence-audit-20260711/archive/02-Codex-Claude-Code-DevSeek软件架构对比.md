@@ -2,7 +2,7 @@
 devseek_governance:
   generator: "devseek-doc-governance/v1"
   status: "historical"
-  path: "docs/top-agent-convergence-audit-20260711/02-Codex-Claude-Code-DevSeek软件架构对比.md"
+  path: "docs/top-agent-convergence-audit-20260711/archive/02-Codex-Claude-Code-DevSeek软件架构对比.md"
   source_group: "handoff"
   decision: "keep"
   relationship: "legacy-audit-report"
@@ -16,8 +16,10 @@ devseek_governance:
 
 <!-- DEVSEEK-GOVERNANCE-BANNER:START -->
 > [!NOTE]
-> DevSeek governance: this document is `historical` with decision `keep` and relationship `legacy-audit-report`. Current authority: `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md`. Machine source: `docs/process/devseek-legacy-doc-inventory.json`.
+> DevSeek governance: this document is archived historical evidence. Current process authority: `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md`. Machine source: `docs/process/devseek-active-baseline-selector.json`.
 <!-- DEVSEEK-GOVERNANCE-BANNER:END -->
+
+> 归档于 2026-08-11。公开行为对标与差距审计责任已完成；当前需求、能力状态和下一任务分别由现役 requirement baseline、`docs/process` 与根目录 PLAN 接管。
 
 # Codex、Claude Code、DevSeek 软件架构对比
 
@@ -236,13 +238,13 @@ CLI
 
 关键证据：
 
-- [`extension.ts`](../../packages/vscode-extension/src/extension.ts) 约 646～655 行把附件存在与否用于选择执行循环；附件本应只改变 Context。
-- [`agent-application-service.ts`](../../packages/shared/src/agent-application-service.ts) 只有 `chat.request` 获得实质处理，plan decision、permission decision、resume、cancel 仍是 Unsupported。
-- [`packages/cli/src/index.ts`](../../packages/cli/src/index.ts) 约 279 行开始维护自己的 Coding Loop，并直接处理写入、diff、验证和 repair。
+- [`extension.ts`](../../../packages/vscode-extension/src/extension.ts) 约 646～655 行把附件存在与否用于选择执行循环；附件本应只改变 Context。
+- [`agent-application-service.ts`](../../../packages/shared/src/agent-application-service.ts) 只有 `chat.request` 获得实质处理，plan decision、permission decision、resume、cancel 仍是 Unsupported。
+- [`packages/cli/src/index.ts`](../../../packages/cli/src/index.ts) 约 279 行开始维护自己的 Coding Loop，并直接处理写入、diff、验证和 repair。
 
 ### 5.3 DevSeek 文档目标与实现的断层
 
-[`10-运行形态与界面解耦架构设计.md`](../architecture/10-运行形态与界面解耦架构设计.md) 和 [`01-顶级编程智能体总体架构设计.md`](../architecture/01-顶级编程智能体总体架构设计.md) 已提出 Headless Core、Surface Adapter、Provider 隔离和统一权限质量边界。但这些仍主要是逻辑架构；代码没有完成依赖反转和旧 owner 删除。
+[`10-运行形态与界面解耦架构设计.md`](../../architecture/10-运行形态与界面解耦架构设计.md) 和 [`01-顶级编程智能体总体架构设计.md`](../../architecture/01-顶级编程智能体总体架构设计.md) 已提出 Headless Core、Surface Adapter、Provider 隔离和统一权限质量边界。但这些仍主要是逻辑架构；代码没有完成依赖反转和旧 owner 删除。
 
 因此 DevSeek 的主要问题不是“设计方向完全错误”，而是设计、类存在和产品主路径之间缺少可验证的接线状态。
 

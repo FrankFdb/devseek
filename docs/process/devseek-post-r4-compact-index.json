@@ -25,11 +25,11 @@
   "source_bindings": {
     "top_agent_followup_plan_14": {
       "path": "docs/top-agent-convergence-audit-20260711/archive/14-未完成事项与后续整体迭代计划.md",
-      "source_sha256": "f64bb5a55a2465618c4a06584ff98b1da689eecc6cb47f2f3009349e558213d1"
+      "source_sha256": "e9923917a087d39581e7e1c03eb3e3546e9b6a04de1d68b314be33b004a8d8f9"
     },
     "top_agent_quality_principles_16": {
-      "path": "docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md",
-      "source_sha256": "bdbb23bbcd25d7d31d4f0e5fb3bef224f483e74669207e75f9d5bc2d15925d57"
+      "path": "docs/top-agent-convergence-audit-20260711/archive/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md",
+      "source_sha256": "ccd5818be7a37b5a12aa1e9f297a29a8153e96529270f5bb78b4cc692d3c1727"
     },
     "r3_closeout_next_phase_20": {
       "path": "docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md",
@@ -41,9 +41,9 @@
     },
     "r4_iteration_status_rollup": {
       "path": "docs/process/devseek-r4-iteration-status-rollup.json",
-      "source_sha256": "fdf9c7be0c9043508596f0ff3b09f830dd61dc94292ffe9929aa5d687180e5c1",
-      "rollup_sha256": "16869238e0a2f6488a3c967a1313313ed53d28029f88eca8f4b75b751d73ba02",
-      "clean_runtime_leaf_terminal_state": "COMPLETED"
+      "source_sha256": "ecb6862254dfa14a146cbebe6f5ac0d1eef43ad0bdabe24c810123ab9d89ded0",
+      "rollup_sha256": "638b968f20f1e7774328c20584e9c8bce5c1145462b1e50b3f6a2cd11d1a8ea3",
+      "clean_runtime_leaf_terminal_state": "BLOCKED"
     },
     "r4_authorization_and_permission_guide": {
       "path": "docs/process/devseek-r4-authorization-and-permission-guide.md",
@@ -51,21 +51,21 @@
     },
     "r4_clean_runtime_limited_observation": {
       "path": "docs/process/devseek-r4-clean-runtime-limited-observation.json",
-      "source_sha256": "3ff09be8b82f423f999560dfeef22c1967ae778bb020e132bb275cb90b16d63c",
-      "observation_sha256": "c9c6f7d5637e6453530937fa11db110a6725388bc6e84550679b1aebf0b78a56",
-      "terminal_state": "COMPLETED",
+      "source_sha256": "cd68a2eef3282a1608f3c8ec69d5dacd96ced043cd58510bc517377e7b5ea50e",
+      "observation_sha256": "67a229b81458e2a3a721335a13e88e4d3c9fefe83fe40b85050519a45b40ade2",
+      "terminal_state": "BLOCKED",
       "stable_runtime_count": 1
     },
     "r4_process_artifacts_aggregate": {
       "path": "docs/process/devseek-r4-process-artifacts-aggregate.json",
-      "source_sha256": "6dac45a810f112a5599ccb1347e58c9430c11a49cafe00255184d344cfd6a06e",
-      "aggregate_sha256": "6fbef9bfa0f6d83abc5e7cf6c6c803df2b8cabab13ab3716fdce521755fb271e",
+      "source_sha256": "373b8688ef2b130ce879d807d229f401597ca9bbadf3d2cfa84fdc5eeeb98067",
+      "aggregate_sha256": "5a5987cdb258ff12c65dd4fb7875b47df4d5f5790506e9801257d28c8d897b3f",
       "artifact_errors": 0
     },
     "post_r4_local_regression_manifest": {
       "path": "docs/process/devseek-post-r4-local-regression-manifest.json",
-      "source_sha256": "848bb82bad9eed8d4f9b1cb1d3810ec9ba04dc897cf6c7a2fc5c97a5d3cfccb1",
-      "manifest_sha256": "43833e1d6fe66a9b862574e14e7d8e12b7136e485d63e94a52b581fd5d9b5378",
+      "source_sha256": "2dd4e612e94b6689d42a63ea60247d2deda21ad90ac5d03923031733339c2e7c",
+      "manifest_sha256": "7f6fe126ba41ae5bf333129be119887a824ec18808fed058622fe049150ac52c",
       "covered_nonpermission_items": [
         "NP-05",
         "NP-06",
@@ -80,8 +80,8 @@
     },
     "external_authority_requests": {
       "path": "docs/process/devseek-external-authority-requests.json",
-      "source_sha256": "e64a795df9a5aa56788d0c267d8eb573ed57d77cfd1832334c00adf0d4617124",
-      "request_set_sha256": "9c69641cadad73ff93e2d0ac64278d31cc4784f77ac133c87d6ff776398f8aaa",
+      "source_sha256": "97744c8bb9bbab4ef4972e24706397f945bf18ea1b22fb3597f4f86ba6ed3367",
+      "request_set_sha256": "1ab5f180fda1402b67c93dc9ca988cf06cec172ed7e490fb2055dff8fd9ed9c6",
       "blocked_requests": 5
     },
     "r4_live_qualification_request_packet": {
@@ -98,7 +98,7 @@
     },
     "phase_gate_source": {
       "path": "scripts/devseek-phase0-12-verify.mjs",
-      "source_sha256": "db927db5c6d2bf78ba78e62075bdde17a39c26ccdb41fef9f1847bd496b48702",
+      "source_sha256": "f9e850451a613301bd1b7fe2218174b33013693887f04f7b80236bdaffc3038d",
       "required_gate": "post-r4-compact-index-governance",
       "required_gate_present": true
     },
@@ -158,13 +158,13 @@
       "document_id": "legacy-followup-plan-14",
       "path": "docs/top-agent-convergence-audit-20260711/archive/14-未完成事项与后续整体迭代计划.md",
       "role": "historical-unfinished-work-and-followup-plan",
-      "source_sha256": "f64bb5a55a2465618c4a06584ff98b1da689eecc6cb47f2f3009349e558213d1"
+      "source_sha256": "e9923917a087d39581e7e1c03eb3e3546e9b6a04de1d68b314be33b004a8d8f9"
     },
     {
       "document_id": "quality-principles-16",
-      "path": "docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md",
+      "path": "docs/top-agent-convergence-audit-20260711/archive/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md",
       "role": "iteration-principles-quality-standards-and-skills-plan",
-      "source_sha256": "bdbb23bbcd25d7d31d4f0e5fb3bef224f483e74669207e75f9d5bc2d15925d57"
+      "source_sha256": "ccd5818be7a37b5a12aa1e9f297a29a8153e96529270f5bb78b4cc692d3c1727"
     },
     {
       "document_id": "r3-handoff-20",
@@ -175,12 +175,12 @@
   ],
   "r4_current_state": {
     "total_leaf_count": 6,
-    "completed_leaves": 6,
-    "blocked_leaves": 0,
-    "current_blocked_leaf": null,
-    "clean_runtime_leaf_terminal_state": "COMPLETED",
-    "clean_runtime_limited_observation_terminal_state": "COMPLETED",
-    "clean_runtime_identity_established": true,
+    "completed_leaves": 5,
+    "blocked_leaves": 1,
+    "current_blocked_leaf": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
+    "clean_runtime_leaf_terminal_state": "BLOCKED",
+    "clean_runtime_limited_observation_terminal_state": "BLOCKED",
+    "clean_runtime_identity_established": false,
     "stable_runtime_count": 1,
     "gate0_status": "NOT_PASSED",
     "r1_qualification_status": "NOT_STARTED",
@@ -190,10 +190,14 @@
   "suspended_authorization_branches": {
     "clean_runtime": {
       "leaf_id": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
-      "terminal_state": "COMPLETED",
-      "clean_runtime_identity_established": true,
-      "blockers": [],
-      "next_required_authority": [],
+      "terminal_state": "BLOCKED",
+      "clean_runtime_identity_established": false,
+      "blockers": [
+        "expected-candidate-identity-does-not-match-release-candidate-manifest"
+      ],
+      "next_required_authority": [
+        "explicit-authority-to-freeze-latest-candidate-or-restore-frozen-release-candidate-runtime"
+      ],
       "local_repository_may_unblock_without_new_authority": false
     },
     "r4_live_authorization_requests": [
@@ -294,7 +298,9 @@
       "live-provider-action",
       "external-authority-import"
     ],
-    "clean_runtime_recovery_authority": [],
+    "clean_runtime_recovery_authority": [
+      "explicit-authority-to-freeze-latest-candidate-or-restore-frozen-release-candidate-runtime"
+    ],
     "live_qualification_terms": {
       "provider": "deepseek-web",
       "execution_mode": "headed",
@@ -429,9 +435,9 @@
     "nonpermission_queue_items": 10,
     "generated_for_items": 2,
     "r4_total_leaves": 6,
-    "r4_completed_leaves": 6,
-    "r4_blocked_leaves": 0,
-    "clean_runtime_blockers": 0,
+    "r4_completed_leaves": 5,
+    "r4_blocked_leaves": 1,
+    "clean_runtime_blockers": 1,
     "live_authorization_requests": 5,
     "live_authorization_blocked": 5,
     "external_authority_requests": 5,
@@ -441,5 +447,5 @@
     "gate_pass_assertions": 0,
     "bypasses": 0
   },
-  "index_sha256": "ca29d5322b29d8cefeb6ceeb45404f0db1b8c5511a858b6e84cfd3951fbe5712"
+  "index_sha256": "3f6e47f65dcf0a5c7402de2b6e9850f6b7ef5be55862f361ae0bb5ba5f4cba5d"
 }

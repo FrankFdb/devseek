@@ -36,9 +36,9 @@
     },
     "doc_process_identity_reconciliation": {
       "path": "docs/process/devseek-r4-doc-process-identity-reconciliation.json",
-      "source_sha256": "7fc3945f48a41aaf4911609a9c600e5bdf9c2c4e0f7e8a4e4964d3066734d34c",
-      "reconciliation_sha256": "71a6dd570f3f9bd875673abeeff5e56de2518b1a808603b40292e7a65b699b46",
-      "current_candidate_identity_status": "clean-runtime-identity-established"
+      "source_sha256": "097d4ac83c9eca4d5240ac8652030f13810a6bd541f5cc92542afe2024c0cac4",
+      "reconciliation_sha256": "c1f775a3f291203976272eda021f2805066fbd8da70d72341ea136263dd3f2e3",
+      "current_candidate_identity_status": "deferred-unusable-until-clean-runtime"
     },
     "live_qualification_request_packet": {
       "path": "docs/process/devseek-r4-live-qualification-request-packet.json",
@@ -64,10 +64,10 @@
     },
     "clean_runtime_limited_observation": {
       "path": "docs/process/devseek-r4-clean-runtime-limited-observation.json",
-      "source_sha256": "3ff09be8b82f423f999560dfeef22c1967ae778bb020e132bb275cb90b16d63c",
-      "observation_sha256": "c9c6f7d5637e6453530937fa11db110a6725388bc6e84550679b1aebf0b78a56",
-      "terminal_state": "COMPLETED",
-      "clean_runtime_identity_established": true,
+      "source_sha256": "cd68a2eef3282a1608f3c8ec69d5dacd96ced043cd58510bc517377e7b5ea50e",
+      "observation_sha256": "67a229b81458e2a3a721335a13e88e4d3c9fefe83fe40b85050519a45b40ade2",
+      "terminal_state": "BLOCKED",
+      "clean_runtime_identity_established": false,
       "stable_runtime_count": 1
     }
   },
@@ -76,11 +76,11 @@
     "handoff_doc_commit": "02cb792b4fe86df523c7f88eb106f13394e6f3fd",
     "total_leaf_count": 6,
     "local_process_artifacts_complete_except_clean_runtime": true,
-    "clean_runtime_leaf_terminal_state": "COMPLETED",
-    "clean_runtime_limited_observation_terminal_state": "COMPLETED",
-    "clean_runtime_limited_observation_sha256": "c9c6f7d5637e6453530937fa11db110a6725388bc6e84550679b1aebf0b78a56",
+    "clean_runtime_leaf_terminal_state": "BLOCKED",
+    "clean_runtime_limited_observation_terminal_state": "BLOCKED",
+    "clean_runtime_limited_observation_sha256": "67a229b81458e2a3a721335a13e88e4d3c9fefe83fe40b85050519a45b40ade2",
     "clean_runtime_stable_runtime_count": 1,
-    "current_candidate_identity_status": "clean-runtime-identity-established",
+    "current_candidate_identity_status": "deferred-unusable-until-clean-runtime",
     "gate0_status": "NOT_PASSED",
     "r1_qualification_status": "NOT_STARTED",
     "release_candidate_vsix_sha256": "68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc",
@@ -92,20 +92,22 @@
     "may_run_live_provider_test": false,
     "may_install_or_replace_extension": false,
     "may_refresh_current_candidate_identity_without_authorization": false,
-    "acceptable_next_authority": [],
+    "acceptable_next_authority": [
+      "explicit-authority-to-freeze-latest-candidate-or-restore-frozen-release-candidate-runtime"
+    ],
     "latest_limited_observation_path": "docs/process/devseek-r4-clean-runtime-limited-observation.json",
-    "latest_limited_observation_terminal_state": "COMPLETED",
-    "latest_limited_observation_clean_runtime_identity_established": true,
-    "blocked_until_authority": false
+    "latest_limited_observation_terminal_state": "BLOCKED",
+    "latest_limited_observation_clean_runtime_identity_established": false,
+    "blocked_until_authority": true
   },
   "leaves": [
     {
       "leaf_id": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
-      "terminal_state": "COMPLETED",
-      "implementation_commit": "4f8a56797090079914b4d921b56d9c34fe4d2abc",
+      "terminal_state": "BLOCKED",
+      "implementation_commit": null,
       "artifact_path": "docs/process/devseek-current-candidate-identity.json",
-      "blocker_reason": null,
-      "next_required_authority": null,
+      "blocker_reason": "expected-candidate-identity-does-not-match-release-candidate-manifest",
+      "next_required_authority": "explicit-authority-to-freeze-latest-candidate-or-restore-frozen-release-candidate-runtime",
       "qualification_effect": "NONE",
       "claims_permitted": false,
       "asserts_gate_pass": false
@@ -168,11 +170,11 @@
   ],
   "counts": {
     "r4_total_leaves": 6,
-    "completed_leaves": 6,
-    "blocked_leaves": 0,
+    "completed_leaves": 5,
+    "blocked_leaves": 1,
     "remaining_window_sensitive_leaves": 0,
     "live_runs_authorized": 0,
     "qualification_claims": 0
   },
-  "rollup_sha256": "16869238e0a2f6488a3c967a1313313ed53d28029f88eca8f4b75b751d73ba02"
+  "rollup_sha256": "638b968f20f1e7774328c20584e9c8bce5c1145462b1e50b3f6a2cd11d1a8ea3"
 }

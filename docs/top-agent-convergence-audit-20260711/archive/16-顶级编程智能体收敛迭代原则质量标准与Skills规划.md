@@ -2,7 +2,7 @@
 devseek_governance:
   generator: "devseek-doc-governance/v1"
   status: "historical"
-  path: "docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md"
+  path: "docs/top-agent-convergence-audit-20260711/archive/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md"
   source_group: "handoff"
   decision: "keep"
   relationship: "supporting-ref"
@@ -16,18 +16,20 @@ devseek_governance:
 
 <!-- DEVSEEK-GOVERNANCE-BANNER:START -->
 > [!NOTE]
-> DevSeek governance: this document is `historical` with decision `keep` and relationship `supporting-ref`. Current authority: `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md`. Machine source: `docs/process/devseek-legacy-doc-inventory.json`.
+> DevSeek governance: this document is archived historical evidence. Current process authority: `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md`. Machine source: `docs/process/devseek-active-baseline-selector.json`.
 <!-- DEVSEEK-GOVERNANCE-BANNER:END -->
+
+> 归档于 2026-08-11。设计优先准则与每卡质量门槛已进入仓库指令、现役基线、静态守卫和根目录 PLAN；本文保留历史规划证据。
 
 # 顶级编程智能体收敛迭代原则、质量标准与 Skills 规划
 
 - 更新日期：2026-08-10
 - 文档性质：模型无关的工程执行规范、GPT-5.5 原子作业协议与候选 Skills backlog
 - 当前状态：规范已定义；Skills 矩阵中的候选均未因本文而自动实现或取得资格
-- 审计包入口：[README.md](README.md)
-- 当前任务入口：[PLAN-当前收敛迭代计划.md](PLAN-当前收敛迭代计划.md)
-- 历史接管协议：[15-新窗口与跨模型接管手册.md](archive/15-新窗口与跨模型接管手册.md)
-- 历史旧文档裁决：[18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md](archive/18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md)
+- 审计包入口：[README.md](../README.md)
+- 当前任务入口：[PLAN-当前收敛迭代计划.md](../PLAN-当前收敛迭代计划.md)
+- 历史接管协议：[15-新窗口与跨模型接管手册.md](15-新窗口与跨模型接管手册.md)
+- 历史旧文档裁决：[18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md](18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md)
 - 当前作业卡、阻塞和授权范围只由 `PLAN` 与 `docs/process` 机器事实确定；本文不复制动态任务状态
 
 本文把 01～09 的审计、目标架构、路线图和反证结论压缩为可执行的日常工程标准，不重复竞品资料或长篇设计。DevSeek 对标 Codex/Claude 时只比较公开、可观察的软件工程行为，不臆测闭源内部架构。
@@ -87,7 +89,7 @@ DoD 的最低共同部分：
 
 ### 3.1 选择与基线
 
-1. 只从 [当前计划](PLAN-当前收敛迭代计划.md) 领取一个明确的作业卡；机器 capability DAG 只复核前置、状态和证据，不发卡。
+1. 只从 [当前计划](../PLAN-当前收敛迭代计划.md) 领取一个明确的作业卡；机器 capability DAG 只复核前置、状态和证据，不发卡。
 2. 写明用户结果、semantic authority、输入/输出 contract、依赖、非目标、删除项和退出证据。
 3. 固定 branch、commit、dirty state 和 applicability；仅在 release/Surface/runtime 进入本卡 scope 时分别复算 artifact、stable installed 与 active runtime identity；先确认现有用户改动。
 4. 用 Codex/Claude 同类可观察行为描述差距，但只转化为 DevSeek 的 contract/owner/test，不复制提示词。
@@ -309,10 +311,10 @@ checkpoint 最小字段：`task_id`、mode、branch/HEAD、dirty/staged/untracke
 - 03：给出目标软件架构；
 - 04/05/06：给出 capability DAG、黄金旅程、资格与机器治理；
 - 08/09：给出最短路线和反证结果；
-- [当前计划](PLAN-当前收敛迭代计划.md)：维护完成状态、下一任务、批次依赖和验收条件；
-- [15](archive/15-新窗口与跨模型接管手册.md)：保存旧 CLOSE/G0 动态接管协议，不再发放当前任务；
-- [17](archive/17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md)：保存本轮静态集成检查点，不作为滚动状态 owner；
-- [18](archive/18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md)：保存旧 requirements/architecture 的历史保留、废止和 atomic ID 承接；
+- [当前计划](../PLAN-当前收敛迭代计划.md)：维护完成状态、下一任务、批次依赖和验收条件；
+- [15](15-新窗口与跨模型接管手册.md)：保存旧 CLOSE/G0 动态接管协议，不再发放当前任务；
+- [17](17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md)：保存本轮静态集成检查点，不作为滚动状态 owner；
+- [18](18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md)：保存旧 requirements/architecture 的历史保留、废止和 atomic ID 承接；
 - 本文：维护跨批次不变的工程原则、DoD 和 Skills 候选标准。
 
 冲突顺序：实际 Git/runtime/artifact 与 `docs/process` 机器事实优先；`PLAN` 是唯一当前任务和依赖 owner；本文只约束工程原则；归档 14/15/18/19 仅保留历史证据。任何冲突都必须显式登记，不得靠模型静默解释。

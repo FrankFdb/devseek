@@ -14,7 +14,7 @@
 | --- | --- | --- |
 | [top-agent-convergence-audit-20260711/README.md](top-agent-convergence-audit-20260711/README.md) | 当前决策包 | 审计结论、文档导航和决策边界 |
 | [top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md](top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md) | 当前计划 | 完成状态、待办任务、依赖和验收条件；不收录执行日志 |
-| [top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md](top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md) | 执行规范 | 单 owner、WIP=1、生命周期 DoD、Skills 与 GPT-5.5 作业模板 |
+| [top-agent-convergence-audit-20260711/archive/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md](top-agent-convergence-audit-20260711/archive/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md) | 执行规范 | 单 owner、WIP=1、生命周期 DoD、Skills 与 GPT-5.5 作业模板 |
 | [top-agent-convergence-audit-20260711/archive/15-新窗口与跨模型接管手册.md](top-agent-convergence-audit-20260711/archive/15-新窗口与跨模型接管手册.md) | 历史接管 | 2026-07-12 CLOSE/G0 身份复算与授权协议快照，不发放当前任务 |
 | [top-agent-convergence-audit-20260711/archive/18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md](top-agent-convergence-audit-20260711/archive/18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md) | 历史裁决 | ARCH-01～18/ARCH-05 的历史保留、废止和 atomic ID 映射 |
 | [top-agent-convergence-audit-20260711/archive/19-GPT5.5新窗口启动与授权指令.md](top-agent-convergence-audit-20260711/archive/19-GPT5.5新窗口启动与授权指令.md) | 历史启动信息 | 2026-07-23 GPT-5.5/R3 启动文本，仅供对账和审计 |
@@ -22,10 +22,10 @@
 | [process/generated/r1-minimal-capability-manifest.md](process/generated/r1-minimal-capability-manifest.md) | 生成目标视图 | R1 的 45 项目标依赖闭包；只表示未来工作要求，不表示当前资格 |
 | [top-agent-convergence-audit-20260711/08-决策结论与最短收敛实施方案.md](top-agent-convergence-audit-20260711/08-决策结论与最短收敛实施方案.md) | 历史战略路线 | 审计阶段形成的里程碑与顺序依据；不发放当前任务，实际任务只由 PLAN 发放 |
 | [top-agent-convergence-audit-20260711/09-文档自闭环反证审计报告.md](top-agent-convergence-audit-20260711/09-文档自闭环反证审计报告.md) | 反证审计 | 本轮关键反例、已修正矛盾、残余风险和交付验收清单 |
-| [top-agent-convergence-audit-20260711/02-Codex-Claude-Code-DevSeek软件架构对比.md](top-agent-convergence-audit-20260711/02-Codex-Claude-Code-DevSeek软件架构对比.md) | 对标/架构 | 官方公开能力对标、目标框图、逐模块判断和差距 |
-| [top-agent-convergence-audit-20260711/03-顶级编程智能体目标软件架构.md](top-agent-convergence-audit-20260711/03-顶级编程智能体目标软件架构.md) | 目标架构 | 唯一 Coding Kernel、组件、契约、状态机和生命周期 |
-| [top-agent-convergence-audit-20260711/04-分能力专项迭代与收敛路线图.md](top-agent-convergence-audit-20260711/04-分能力专项迭代与收敛路线图.md) | 能力路线 | C0 地基、C1～C13 实现域、C14 综合资格的原子晋级、指标和收敛波次 |
-| [top-agent-convergence-audit-20260711/05-黄金用户旅程与正式项目资格方案.md](top-agent-convergence-audit-20260711/05-黄金用户旅程与正式项目资格方案.md) | 测试资格 | DeepSeek Web 测试审计、黄金旅程、live 配额和 holdout |
+| [top-agent-convergence-audit-20260711/archive/02-Codex-Claude-Code-DevSeek软件架构对比.md](top-agent-convergence-audit-20260711/archive/02-Codex-Claude-Code-DevSeek软件架构对比.md) | 对标/架构 | 官方公开能力对标、目标框图、逐模块判断和差距 |
+| [top-agent-convergence-audit-20260711/archive/03-顶级编程智能体目标软件架构.md](top-agent-convergence-audit-20260711/archive/03-顶级编程智能体目标软件架构.md) | 目标架构 | 唯一 Coding Kernel、组件、契约、状态机和生命周期 |
+| [top-agent-convergence-audit-20260711/archive/04-分能力专项迭代与收敛路线图.md](top-agent-convergence-audit-20260711/archive/04-分能力专项迭代与收敛路线图.md) | 能力路线 | C0 地基、C1～C13 实现域、C14 综合资格的原子晋级、指标和收敛波次 |
+| [top-agent-convergence-audit-20260711/archive/05-黄金用户旅程与正式项目资格方案.md](top-agent-convergence-audit-20260711/archive/05-黄金用户旅程与正式项目资格方案.md) | 测试资格 | DeepSeek Web 测试审计、黄金旅程、live 配额和 holdout |
 | [top-agent-convergence-audit-20260711/07-原需求与架构设计正确性审计.md](top-agent-convergence-audit-20260711/07-原需求与架构设计正确性审计.md) | 旧文档裁决 | 原设计正确、错误、过期和应撤销项的逐文件矩阵 |
 | [process/devseek-gate0-decision-report.json](process/devseek-gate0-decision-report.json) 与 [top-agent-convergence-audit-20260711/archive/17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md](top-agent-convergence-audit-20260711/archive/17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md) | 当前机器裁决与历史集成快照 | 新窗口从 Git、PLAN、process 报告和适用 runtime/artifact receipt 现场复算；deterministic PASS 或 observation 均不等于产品资格 |
 | [process/TOP_AGENT_CHANGE_GATE.md](process/TOP_AGENT_CHANGE_GATE.md) | 工程过程 | 每次变更前后的检查清单、DoD、最近变更记录 |

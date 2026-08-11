@@ -239,9 +239,9 @@
           "contract_id": "C0-CAPABILITY-LEDGER-SCHEMA/v1",
           "decision_scope": "Own the semantic decision boundary for C0-CAPABILITY-LEDGER-SCHEMA.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C0-CAPABILITY-LEDGER-SCHEMA"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C0-CAPABILITY-LEDGER-SCHEMA"
         },
-        "contract_sha256": "8d68ea6eb2dcf0cdfcda59cc5872448f7f9aaf29da339f5874fded0294fad9d5"
+        "contract_sha256": "3ad5191ce5872e01e4ca0fbb8c73ff4cf27b04f158711ae14c9c73a14ba7957e"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -362,9 +362,9 @@
           "contract_id": "C0-RUN-EVIDENCE-LEDGER/v1",
           "decision_scope": "Own the semantic decision boundary for C0-RUN-EVIDENCE-LEDGER.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C0-RUN-EVIDENCE-LEDGER"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C0-RUN-EVIDENCE-LEDGER"
         },
-        "contract_sha256": "cec65045423ca109d43db56d7045650393d4cf903f49909eaf28a6b22b645564"
+        "contract_sha256": "f2a33d7ef5651b675aba9c7b47886c462e9ee0ee5adc167d9db6cc01cf406f32"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -537,9 +537,9 @@
           "contract_id": "C0-CASE-CATALOG/v1",
           "decision_scope": "Own the semantic decision boundary for C0-CASE-CATALOG.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C0-CASE-CATALOG"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C0-CASE-CATALOG"
         },
-        "contract_sha256": "422abd8c76af9da92acc076f5fd562bcfe7b8eddb92d8bb3e003a012510b6b91"
+        "contract_sha256": "d037a13375a9d756fba4fe6b52e2344f8cd02956313fa1a9e0f21f5476f604d4"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -575,7 +575,7 @@
           "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
           "relation": "evidence",
           "required_implementation_state": "wired",
-          "contract_sha256": "8d68ea6eb2dcf0cdfcda59cc5872448f7f9aaf29da339f5874fded0294fad9d5"
+          "contract_sha256": "3ad5191ce5872e01e4ca0fbb8c73ff4cf27b04f158711ae14c9c73a14ba7957e"
         }
       ],
       "verification": {
@@ -605,9 +605,9 @@
           "contract_id": "C0-QUALIFICATION-PROFILE-SCHEMA/v1",
           "decision_scope": "Own the semantic decision boundary for C0-QUALIFICATION-PROFILE-SCHEMA.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C0-QUALIFICATION-PROFILE-SCHEMA"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C0-QUALIFICATION-PROFILE-SCHEMA"
         },
-        "contract_sha256": "6904ecbc6fa936f36fef9f06860ca616332cbbb6cb07706bb4c7ab535893c032"
+        "contract_sha256": "85d231938a831d329574466ce39282f739fc36792e3473c1505573fea4b8575b"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -647,13 +647,13 @@
           "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
           "relation": "evidence",
           "required_implementation_state": "wired",
-          "contract_sha256": "8d68ea6eb2dcf0cdfcda59cc5872448f7f9aaf29da339f5874fded0294fad9d5"
+          "contract_sha256": "3ad5191ce5872e01e4ca0fbb8c73ff4cf27b04f158711ae14c9c73a14ba7957e"
         },
         {
           "capability_id": "C0-CASE-CATALOG",
           "relation": "evidence",
           "required_implementation_state": "wired",
-          "contract_sha256": "422abd8c76af9da92acc076f5fd562bcfe7b8eddb92d8bb3e003a012510b6b91"
+          "contract_sha256": "d037a13375a9d756fba4fe6b52e2344f8cd02956313fa1a9e0f21f5476f604d4"
         }
       ],
       "verification": {
@@ -683,9 +683,9 @@
           "contract_id": "C0-PREREGISTRATION-PLAN/v1",
           "decision_scope": "Own the semantic decision boundary for C0-PREREGISTRATION-PLAN.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C0-PREREGISTRATION-PLAN"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C0-PREREGISTRATION-PLAN"
         },
-        "contract_sha256": "441750ed63f2e8d0b9b702c050e27d9c8fd8362281285ceff081c5b31f84e91b"
+        "contract_sha256": "e0f76f087aa9c3709726332255677a75befbb309cac4eb9aaa3d32840031a2af"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -761,13 +761,13 @@
           "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
           "relation": "evidence",
           "required_implementation_state": "wired",
-          "contract_sha256": "6904ecbc6fa936f36fef9f06860ca616332cbbb6cb07706bb4c7ab535893c032"
+          "contract_sha256": "85d231938a831d329574466ce39282f739fc36792e3473c1505573fea4b8575b"
         },
         {
           "capability_id": "C0-CASE-CATALOG",
           "relation": "evidence",
           "required_implementation_state": "wired",
-          "contract_sha256": "422abd8c76af9da92acc076f5fd562bcfe7b8eddb92d8bb3e003a012510b6b91"
+          "contract_sha256": "d037a13375a9d756fba4fe6b52e2344f8cd02956313fa1a9e0f21f5476f604d4"
         }
       ],
       "verification": {
@@ -799,9 +799,9 @@
           "contract_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST/v1",
           "decision_scope": "Own the semantic decision boundary for C0-QUALIFICATION-EVIDENCE-MANIFEST.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C0-QUALIFICATION-EVIDENCE-MANIFEST"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C0-QUALIFICATION-EVIDENCE-MANIFEST"
         },
-        "contract_sha256": "bb80191aed73432cf3b147c9cba9bbe4176cae1d972306cd3efa57cb711fc86f"
+        "contract_sha256": "2bcfc382a472314b1ffebcd149d8e6ccc08c39c37e1495e780a4bd61789a9621"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -889,13 +889,13 @@
           "capability_id": "C0-PREREGISTRATION-PLAN",
           "relation": "evidence",
           "required_implementation_state": "wired",
-          "contract_sha256": "441750ed63f2e8d0b9b702c050e27d9c8fd8362281285ceff081c5b31f84e91b"
+          "contract_sha256": "e0f76f087aa9c3709726332255677a75befbb309cac4eb9aaa3d32840031a2af"
         },
         {
           "capability_id": "C0-RUN-EVIDENCE-LEDGER",
           "relation": "evidence",
           "required_implementation_state": "wired",
-          "contract_sha256": "cec65045423ca109d43db56d7045650393d4cf903f49909eaf28a6b22b645564"
+          "contract_sha256": "f2a33d7ef5651b675aba9c7b47886c462e9ee0ee5adc167d9db6cc01cf406f32"
         }
       ],
       "verification": {
@@ -927,9 +927,9 @@
           "contract_id": "C0-QUALIFICATION-AGGREGATOR/v1",
           "decision_scope": "Own the semantic decision boundary for C0-QUALIFICATION-AGGREGATOR.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C0-QUALIFICATION-AGGREGATOR"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C0-QUALIFICATION-AGGREGATOR"
         },
-        "contract_sha256": "99fd7b7af1537a3943ff573907e221d07889ba11fc1bc02e5ea24671cd7073f1"
+        "contract_sha256": "fe1511dd564c54c38f814dd9fa5909dcdf02ba700a46ec860ba7d9aee28a7bd2"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -1017,13 +1017,13 @@
           "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
           "relation": "evidence",
           "required_implementation_state": "wired",
-          "contract_sha256": "bb80191aed73432cf3b147c9cba9bbe4176cae1d972306cd3efa57cb711fc86f"
+          "contract_sha256": "2bcfc382a472314b1ffebcd149d8e6ccc08c39c37e1495e780a4bd61789a9621"
         },
         {
           "capability_id": "C0-PREREGISTRATION-PLAN",
           "relation": "evidence",
           "required_implementation_state": "wired",
-          "contract_sha256": "441750ed63f2e8d0b9b702c050e27d9c8fd8362281285ceff081c5b31f84e91b"
+          "contract_sha256": "e0f76f087aa9c3709726332255677a75befbb309cac4eb9aaa3d32840031a2af"
         }
       ],
       "verification": {
@@ -1055,9 +1055,9 @@
           "contract_id": "C1-RUN-LIFECYCLE/v1",
           "decision_scope": "Own the semantic decision boundary for C1-RUN-LIFECYCLE.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C1-RUN-LIFECYCLE"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C1-RUN-LIFECYCLE"
         },
-        "contract_sha256": "040103dbdd9acb186583edf610e521d7d88e88be58a2a62b551ff1d3d8f83a4e"
+        "contract_sha256": "fbb9193afb240e4e9b6ffc0005a1a6402101257b4a37acadabdc6d6527327394"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -1121,7 +1121,7 @@
           "capability_id": "C0-RUN-EVIDENCE-LEDGER",
           "relation": "evidence",
           "required_implementation_state": "wired",
-          "contract_sha256": "cec65045423ca109d43db56d7045650393d4cf903f49909eaf28a6b22b645564"
+          "contract_sha256": "f2a33d7ef5651b675aba9c7b47886c462e9ee0ee5adc167d9db6cc01cf406f32"
         }
       ],
       "verification": {
@@ -1155,9 +1155,9 @@
           "contract_id": "C1-AGENT-COMMAND/v1",
           "decision_scope": "Own the semantic decision boundary for C1-AGENT-COMMAND.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C1-AGENT-COMMAND"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C1-AGENT-COMMAND"
         },
-        "contract_sha256": "1cdf7be1d9b1b6830bd533e8b9a7aecdf34d2b0c4f43d8abaf7fe7415949daad"
+        "contract_sha256": "e025d2a723d87642eb29fcd44fed87ccbbaadfffca2c1659c3e6ac25ab16b8c7"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -1193,7 +1193,7 @@
           "capability_id": "C1-RUN-LIFECYCLE",
           "relation": "control",
           "required_implementation_state": "wired",
-          "contract_sha256": "040103dbdd9acb186583edf610e521d7d88e88be58a2a62b551ff1d3d8f83a4e"
+          "contract_sha256": "fbb9193afb240e4e9b6ffc0005a1a6402101257b4a37acadabdc6d6527327394"
         }
       ],
       "verification": {
@@ -1227,9 +1227,9 @@
           "contract_id": "C1-SETTLEMENT/v1",
           "decision_scope": "Own the semantic decision boundary for C1-SETTLEMENT.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C1-SETTLEMENT"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C1-SETTLEMENT"
         },
-        "contract_sha256": "26b3a0d6c6190ccd11f95381a26078363b58ebd60512e155aa6f67f1df9ae274"
+        "contract_sha256": "09e4c89c8b6c6a9e401110fd5bafd0a7e11e8ffa2fb5416a8c967eca1e8fe992"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -1281,7 +1281,7 @@
           "capability_id": "C1-RUN-LIFECYCLE",
           "relation": "control",
           "required_implementation_state": "wired",
-          "contract_sha256": "040103dbdd9acb186583edf610e521d7d88e88be58a2a62b551ff1d3d8f83a4e"
+          "contract_sha256": "fbb9193afb240e4e9b6ffc0005a1a6402101257b4a37acadabdc6d6527327394"
         }
       ],
       "verification": {
@@ -1317,9 +1317,9 @@
           "contract_id": "C1-SURFACE-ADAPTER-CONFORMANCE/v1",
           "decision_scope": "Own the semantic decision boundary for C1-SURFACE-ADAPTER-CONFORMANCE.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C1-SURFACE-ADAPTER-CONFORMANCE"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C1-SURFACE-ADAPTER-CONFORMANCE"
         },
-        "contract_sha256": "3ed3b52727759895fde7223977772771677cd3bd68e706f7d5895b802a643ec6"
+        "contract_sha256": "d52d41c3d20bb63ee44c0554f3f372cdb0ff137ca0ff8eaaa2e90c392d6fe10d"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -1359,19 +1359,19 @@
           "capability_id": "C1-RUN-LIFECYCLE",
           "relation": "control",
           "required_implementation_state": "wired",
-          "contract_sha256": "040103dbdd9acb186583edf610e521d7d88e88be58a2a62b551ff1d3d8f83a4e"
+          "contract_sha256": "fbb9193afb240e4e9b6ffc0005a1a6402101257b4a37acadabdc6d6527327394"
         },
         {
           "capability_id": "C1-AGENT-COMMAND",
           "relation": "control",
           "required_implementation_state": "wired",
-          "contract_sha256": "1cdf7be1d9b1b6830bd533e8b9a7aecdf34d2b0c4f43d8abaf7fe7415949daad"
+          "contract_sha256": "e025d2a723d87642eb29fcd44fed87ccbbaadfffca2c1659c3e6ac25ab16b8c7"
         },
         {
           "capability_id": "C1-SETTLEMENT",
           "relation": "control",
           "required_implementation_state": "wired",
-          "contract_sha256": "26b3a0d6c6190ccd11f95381a26078363b58ebd60512e155aa6f67f1df9ae274"
+          "contract_sha256": "09e4c89c8b6c6a9e401110fd5bafd0a7e11e8ffa2fb5416a8c967eca1e8fe992"
         }
       ],
       "verification": {
@@ -1405,9 +1405,9 @@
           "contract_id": "C2-ORIENTATION/v1",
           "decision_scope": "Own the semantic decision boundary for C2-ORIENTATION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C2-ORIENTATION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C2-ORIENTATION"
         },
-        "contract_sha256": "d8c86037c75a71ee7c0eda2ee5e00ea069b4a1dd48895be6ccedcb87b233b065"
+        "contract_sha256": "4704a0d755fc1bd1cb85424c8a375944582a168a6e3922fff9ee1743fc5a8373"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -1451,7 +1451,7 @@
           "capability_id": "C1-AGENT-COMMAND",
           "relation": "control",
           "required_implementation_state": "wired",
-          "contract_sha256": "1cdf7be1d9b1b6830bd533e8b9a7aecdf34d2b0c4f43d8abaf7fe7415949daad"
+          "contract_sha256": "e025d2a723d87642eb29fcd44fed87ccbbaadfffca2c1659c3e6ac25ab16b8c7"
         }
       ],
       "verification": {
@@ -1485,9 +1485,9 @@
           "contract_id": "C2-TASK-CONTRACT/v1",
           "decision_scope": "Own the semantic decision boundary for C2-TASK-CONTRACT.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C2-TASK-CONTRACT"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C2-TASK-CONTRACT"
         },
-        "contract_sha256": "2f7c8833fb07d3515342649b184c9079f84a5ed5c1cea952b384dfa4a25ae55e"
+        "contract_sha256": "1dbfc04e6bd8072d161ae8fc632f386468a07e374867334aef58c5ad82c5e04c"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -1531,7 +1531,7 @@
           "capability_id": "C2-ORIENTATION",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "d8c86037c75a71ee7c0eda2ee5e00ea069b4a1dd48895be6ccedcb87b233b065"
+          "contract_sha256": "4704a0d755fc1bd1cb85424c8a375944582a168a6e3922fff9ee1743fc5a8373"
         }
       ],
       "verification": {
@@ -1565,9 +1565,9 @@
           "contract_id": "C3-ENGINEERING-ORIENTATION/v1",
           "decision_scope": "Own the semantic decision boundary for C3-ENGINEERING-ORIENTATION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C3-ENGINEERING-ORIENTATION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C3-ENGINEERING-ORIENTATION"
         },
-        "contract_sha256": "98f3cb9ee28ebdb106b78b272aaeb3f582d12e8137857a5d7de221bf59e31a74"
+        "contract_sha256": "2e2cfa7a4b4ee060a600366f6e2519cf37b4bfe2e66ae15740b5b79fa00fa402"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -1599,7 +1599,7 @@
           "capability_id": "C2-TASK-CONTRACT",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "2f7c8833fb07d3515342649b184c9079f84a5ed5c1cea952b384dfa4a25ae55e"
+          "contract_sha256": "1dbfc04e6bd8072d161ae8fc632f386468a07e374867334aef58c5ad82c5e04c"
         }
       ],
       "verification": {
@@ -1633,9 +1633,9 @@
           "contract_id": "C3-CODEBASE-EXPLORATION/v1",
           "decision_scope": "Own the semantic decision boundary for C3-CODEBASE-EXPLORATION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C3-CODEBASE-EXPLORATION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C3-CODEBASE-EXPLORATION"
         },
-        "contract_sha256": "ea303a67a73064fe7057c8337c48c433f85d8cbef1cbb7829407b9c79c684c3c"
+        "contract_sha256": "8703a4ba1b41e31c02e5c4263117f38f63f5b6478b2b5196fa893617c1e984c1"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -1667,7 +1667,7 @@
           "capability_id": "C3-ENGINEERING-ORIENTATION",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "98f3cb9ee28ebdb106b78b272aaeb3f582d12e8137857a5d7de221bf59e31a74"
+          "contract_sha256": "2e2cfa7a4b4ee060a600366f6e2519cf37b4bfe2e66ae15740b5b79fa00fa402"
         }
       ],
       "verification": {
@@ -1701,9 +1701,9 @@
           "contract_id": "C3-CONTEXT-GRAPH/v1",
           "decision_scope": "Own the semantic decision boundary for C3-CONTEXT-GRAPH.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C3-CONTEXT-GRAPH"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C3-CONTEXT-GRAPH"
         },
-        "contract_sha256": "36643d1f21d30e2dbe331d962f6f4807d0613ae8f6ebb2a08209ceca39b23cf2"
+        "contract_sha256": "80604a48d3defa50c8c6b39ef73b88136294e421524cac3ddefed5da41761b47"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -1743,13 +1743,13 @@
           "capability_id": "C2-TASK-CONTRACT",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "2f7c8833fb07d3515342649b184c9079f84a5ed5c1cea952b384dfa4a25ae55e"
+          "contract_sha256": "1dbfc04e6bd8072d161ae8fc632f386468a07e374867334aef58c5ad82c5e04c"
         },
         {
           "capability_id": "C3-CODEBASE-EXPLORATION",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "ea303a67a73064fe7057c8337c48c433f85d8cbef1cbb7829407b9c79c684c3c"
+          "contract_sha256": "8703a4ba1b41e31c02e5c4263117f38f63f5b6478b2b5196fa893617c1e984c1"
         }
       ],
       "verification": {
@@ -1783,9 +1783,9 @@
           "contract_id": "C3-CONTEXT-PROVENANCE/v1",
           "decision_scope": "Own the semantic decision boundary for C3-CONTEXT-PROVENANCE.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C3-CONTEXT-PROVENANCE"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C3-CONTEXT-PROVENANCE"
         },
-        "contract_sha256": "8234f342b398c5fc3d0e6ee403c58a5a40296ed4d93c6e302301765702428b79"
+        "contract_sha256": "46578acddfc594ad4043e5777bb8a5da197962c3d1d4fafa079d46c36cfd242c"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -1813,7 +1813,7 @@
           "capability_id": "C3-CONTEXT-GRAPH",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "36643d1f21d30e2dbe331d962f6f4807d0613ae8f6ebb2a08209ceca39b23cf2"
+          "contract_sha256": "80604a48d3defa50c8c6b39ef73b88136294e421524cac3ddefed5da41761b47"
         }
       ],
       "verification": {
@@ -1844,9 +1844,9 @@
           "contract_id": "C3-INSTRUCTION-PRECEDENCE/v1",
           "decision_scope": "Own the semantic decision boundary for C3-INSTRUCTION-PRECEDENCE.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C3-INSTRUCTION-PRECEDENCE"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C3-INSTRUCTION-PRECEDENCE"
         },
-        "contract_sha256": "2080bfb3e7cd74dcb3f0f1ce3ae169a8b742eb4a07005aa5b469a8807bd49c5b"
+        "contract_sha256": "792062b5ba50a05714b11292b425a457347fc680baed5db508d6ee4900dcfad0"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -1886,7 +1886,7 @@
           "capability_id": "C3-CONTEXT-GRAPH",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "36643d1f21d30e2dbe331d962f6f4807d0613ae8f6ebb2a08209ceca39b23cf2"
+          "contract_sha256": "80604a48d3defa50c8c6b39ef73b88136294e421524cac3ddefed5da41761b47"
         }
       ],
       "verification": {
@@ -1918,9 +1918,9 @@
           "contract_id": "C4-REQUIREMENTS/v1",
           "decision_scope": "Own the semantic decision boundary for C4-REQUIREMENTS.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C4-REQUIREMENTS"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C4-REQUIREMENTS"
         },
-        "contract_sha256": "ec4ae5f3b7dda8feef0d417a633b302affe5b417b7d72f825a69bd6d2d694244"
+        "contract_sha256": "087454f880293c857da19d3fcd75782b66d63b9cf089ae14ce17131fa17c4ce3"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -1952,7 +1952,7 @@
           "capability_id": "C3-CONTEXT-GRAPH",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "36643d1f21d30e2dbe331d962f6f4807d0613ae8f6ebb2a08209ceca39b23cf2"
+          "contract_sha256": "80604a48d3defa50c8c6b39ef73b88136294e421524cac3ddefed5da41761b47"
         }
       ],
       "verification": {
@@ -1985,9 +1985,9 @@
           "contract_id": "C4-EXTERNAL-BOUNDARY/v1",
           "decision_scope": "Own the semantic decision boundary for C4-EXTERNAL-BOUNDARY.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C4-EXTERNAL-BOUNDARY"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C4-EXTERNAL-BOUNDARY"
         },
-        "contract_sha256": "629ef6794131fea3dc435e32531dd36501f73b6f1d6ebd9f14e7d64404f6919f"
+        "contract_sha256": "7840978fede34d451ea57095f0eec985ba23b1b94dfe4a6b46086120761ead4b"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -2019,13 +2019,13 @@
           "capability_id": "C4-REQUIREMENTS",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "ec4ae5f3b7dda8feef0d417a633b302affe5b417b7d72f825a69bd6d2d694244"
+          "contract_sha256": "087454f880293c857da19d3fcd75782b66d63b9cf089ae14ce17131fa17c4ce3"
         },
         {
           "capability_id": "C3-CONTEXT-PROVENANCE",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "8234f342b398c5fc3d0e6ee403c58a5a40296ed4d93c6e302301765702428b79"
+          "contract_sha256": "46578acddfc594ad4043e5777bb8a5da197962c3d1d4fafa079d46c36cfd242c"
         }
       ],
       "verification": {
@@ -2057,9 +2057,9 @@
           "contract_id": "C4-SOURCE-GROUNDING/v1",
           "decision_scope": "Own the semantic decision boundary for C4-SOURCE-GROUNDING.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C4-SOURCE-GROUNDING"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C4-SOURCE-GROUNDING"
         },
-        "contract_sha256": "95d3514dce3389adab2e4238686197b73324ba398e0755b3dbd75eb51b641a9c"
+        "contract_sha256": "8f2211bdae5c612f4bf8dfc347c384fd3894d9de8f598739b51a92f4007314ed"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -2091,19 +2091,19 @@
           "capability_id": "C4-EXTERNAL-BOUNDARY",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "629ef6794131fea3dc435e32531dd36501f73b6f1d6ebd9f14e7d64404f6919f"
+          "contract_sha256": "7840978fede34d451ea57095f0eec985ba23b1b94dfe4a6b46086120761ead4b"
         },
         {
           "capability_id": "C6-TOOL-EXECUTION",
           "relation": "execution",
           "required_implementation_state": "wired",
-          "contract_sha256": "09db09027c6d85500dae7784902ca36d51654aaee749f0066d04b975f534f878"
+          "contract_sha256": "83362488035391d07dd18857b914cb1ae62fe83084b10c8f26d60ca49ce86fea"
         },
         {
           "capability_id": "C7-EXTERNAL-EFFECT",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+          "contract_sha256": "36c1544f01e09d89d699a8d648ee5dc683e0cc1f0c3d31cab6626c6f331c4082"
         }
       ],
       "verification": {
@@ -2135,9 +2135,9 @@
           "contract_id": "C4-ACCEPTANCE-CONTRACT/v1",
           "decision_scope": "Own the semantic decision boundary for C4-ACCEPTANCE-CONTRACT.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C4-ACCEPTANCE-CONTRACT"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C4-ACCEPTANCE-CONTRACT"
         },
-        "contract_sha256": "d7e501a88971dc52071f5da81c2e1763e6d9b0334a4012b3ff9a3a9f42597e73"
+        "contract_sha256": "6c41760320861dd4c6a1bd42213ee82620592d765450beccb69c44c171123fa0"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -2169,13 +2169,13 @@
           "capability_id": "C4-REQUIREMENTS",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "ec4ae5f3b7dda8feef0d417a633b302affe5b417b7d72f825a69bd6d2d694244"
+          "contract_sha256": "087454f880293c857da19d3fcd75782b66d63b9cf089ae14ce17131fa17c4ce3"
         },
         {
           "capability_id": "C4-EXTERNAL-BOUNDARY",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "629ef6794131fea3dc435e32531dd36501f73b6f1d6ebd9f14e7d64404f6919f"
+          "contract_sha256": "7840978fede34d451ea57095f0eec985ba23b1b94dfe4a6b46086120761ead4b"
         }
       ],
       "verification": {
@@ -2207,9 +2207,9 @@
           "contract_id": "C5-DESIGN-DECISION/v1",
           "decision_scope": "Own the semantic decision boundary for C5-DESIGN-DECISION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C5-DESIGN-DECISION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C5-DESIGN-DECISION"
         },
-        "contract_sha256": "c045f040e3d551ef8efbc6b18b51026ddc5faa77228eac7956c999e4d4b5fa76"
+        "contract_sha256": "157e4cce69a119c8fce71ef77f559002561526c05519653458a740ea43a0ab5e"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -2241,7 +2241,7 @@
           "capability_id": "C4-ACCEPTANCE-CONTRACT",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "d7e501a88971dc52071f5da81c2e1763e6d9b0334a4012b3ff9a3a9f42597e73"
+          "contract_sha256": "6c41760320861dd4c6a1bd42213ee82620592d765450beccb69c44c171123fa0"
         }
       ],
       "verification": {
@@ -2273,9 +2273,9 @@
           "contract_id": "C5-CHANGE-PLAN/v1",
           "decision_scope": "Own the semantic decision boundary for C5-CHANGE-PLAN.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C5-CHANGE-PLAN"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C5-CHANGE-PLAN"
         },
-        "contract_sha256": "32510c5d94cc21cc462729e130e00ae0424155bca2cac26e7e070d8edcce6aa0"
+        "contract_sha256": "a6497dafa0d871006093783f5aa6ad90dd2bf317c792fb5cfe3c2565eecb3e69"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -2307,7 +2307,7 @@
           "capability_id": "C5-DESIGN-DECISION",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "c045f040e3d551ef8efbc6b18b51026ddc5faa77228eac7956c999e4d4b5fa76"
+          "contract_sha256": "157e4cce69a119c8fce71ef77f559002561526c05519653458a740ea43a0ab5e"
         }
       ],
       "verification": {
@@ -2339,9 +2339,9 @@
           "contract_id": "C6-PROVIDER-NORMALIZATION/v1",
           "decision_scope": "Own the semantic decision boundary for C6-PROVIDER-NORMALIZATION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C6-PROVIDER-NORMALIZATION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C6-PROVIDER-NORMALIZATION"
         },
-        "contract_sha256": "76f9d9aa48d6845fc06fddba998fa9534f46fe446c9a875f97f955c9736b1067"
+        "contract_sha256": "c7c4acace2f14f8e646c3034857e20b602bf97323f9a72d922e9655487f16d84"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -2389,7 +2389,7 @@
           "capability_id": "C1-RUN-LIFECYCLE",
           "relation": "control",
           "required_implementation_state": "wired",
-          "contract_sha256": "040103dbdd9acb186583edf610e521d7d88e88be58a2a62b551ff1d3d8f83a4e"
+          "contract_sha256": "fbb9193afb240e4e9b6ffc0005a1a6402101257b4a37acadabdc6d6527327394"
         }
       ],
       "verification": {
@@ -2423,9 +2423,9 @@
           "contract_id": "C6-TOOL-SCHEMA/v1",
           "decision_scope": "Own the semantic decision boundary for C6-TOOL-SCHEMA.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C6-TOOL-SCHEMA"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C6-TOOL-SCHEMA"
         },
-        "contract_sha256": "08a390eea1ecb473dc09da20671fbaafa2df634719176ba9dcc8ee66e230b268"
+        "contract_sha256": "408202c4d2f1423f06d1d089ea32f3c7d115d8798971d98b3945299ecdfda4dc"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -2477,7 +2477,7 @@
           "capability_id": "C1-RUN-LIFECYCLE",
           "relation": "control",
           "required_implementation_state": "wired",
-          "contract_sha256": "040103dbdd9acb186583edf610e521d7d88e88be58a2a62b551ff1d3d8f83a4e"
+          "contract_sha256": "fbb9193afb240e4e9b6ffc0005a1a6402101257b4a37acadabdc6d6527327394"
         }
       ],
       "verification": {
@@ -2511,9 +2511,9 @@
           "contract_id": "C6-TOOL-DISPATCH/v1",
           "decision_scope": "Own the semantic decision boundary for C6-TOOL-DISPATCH.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C6-TOOL-DISPATCH"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C6-TOOL-DISPATCH"
         },
-        "contract_sha256": "4cb5a7114370be7a4e3810970e0989a480445527a5cff7d959b853603cb8b74c"
+        "contract_sha256": "554b741fedde887ad10981675225884bc96239c9bb1b425b22dfc23427575474"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -2573,13 +2573,13 @@
           "capability_id": "C6-TOOL-SCHEMA",
           "relation": "execution",
           "required_implementation_state": "wired",
-          "contract_sha256": "08a390eea1ecb473dc09da20671fbaafa2df634719176ba9dcc8ee66e230b268"
+          "contract_sha256": "408202c4d2f1423f06d1d089ea32f3c7d115d8798971d98b3945299ecdfda4dc"
         },
         {
           "capability_id": "C1-AGENT-COMMAND",
           "relation": "control",
           "required_implementation_state": "wired",
-          "contract_sha256": "1cdf7be1d9b1b6830bd533e8b9a7aecdf34d2b0c4f43d8abaf7fe7415949daad"
+          "contract_sha256": "e025d2a723d87642eb29fcd44fed87ccbbaadfffca2c1659c3e6ac25ab16b8c7"
         }
       ],
       "verification": {
@@ -2613,9 +2613,9 @@
           "contract_id": "C6-TOOL-EXECUTION/v1",
           "decision_scope": "Own the semantic decision boundary for C6-TOOL-EXECUTION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C6-TOOL-EXECUTION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C6-TOOL-EXECUTION"
         },
-        "contract_sha256": "09db09027c6d85500dae7784902ca36d51654aaee749f0066d04b975f534f878"
+        "contract_sha256": "83362488035391d07dd18857b914cb1ae62fe83084b10c8f26d60ca49ce86fea"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -2671,7 +2671,7 @@
           "capability_id": "C6-TOOL-DISPATCH",
           "relation": "execution",
           "required_implementation_state": "wired",
-          "contract_sha256": "4cb5a7114370be7a4e3810970e0989a480445527a5cff7d959b853603cb8b74c"
+          "contract_sha256": "554b741fedde887ad10981675225884bc96239c9bb1b425b22dfc23427575474"
         }
       ],
       "verification": {
@@ -2705,9 +2705,9 @@
           "contract_id": "C6-CAPABILITY-NEGOTIATION/v1",
           "decision_scope": "Own the semantic decision boundary for C6-CAPABILITY-NEGOTIATION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C6-CAPABILITY-NEGOTIATION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C6-CAPABILITY-NEGOTIATION"
         },
-        "contract_sha256": "6e86daedd4515ae7af4b93512e789f3479d72f828b0deb8858759867b16990d3"
+        "contract_sha256": "7ef890b6f7c25ab8274f4f37b22d08f305d7fa76a4167d658d574f6226fc3503"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -2747,13 +2747,13 @@
           "capability_id": "C6-PROVIDER-NORMALIZATION",
           "relation": "execution",
           "required_implementation_state": "wired",
-          "contract_sha256": "76f9d9aa48d6845fc06fddba998fa9534f46fe446c9a875f97f955c9736b1067"
+          "contract_sha256": "c7c4acace2f14f8e646c3034857e20b602bf97323f9a72d922e9655487f16d84"
         },
         {
           "capability_id": "C6-TOOL-SCHEMA",
           "relation": "execution",
           "required_implementation_state": "wired",
-          "contract_sha256": "08a390eea1ecb473dc09da20671fbaafa2df634719176ba9dcc8ee66e230b268"
+          "contract_sha256": "408202c4d2f1423f06d1d089ea32f3c7d115d8798971d98b3945299ecdfda4dc"
         }
       ],
       "verification": {
@@ -2787,9 +2787,9 @@
           "contract_id": "C6-DEEPSEEK-WEB-CONNECTOR/v1",
           "decision_scope": "Own the semantic decision boundary for C6-DEEPSEEK-WEB-CONNECTOR.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C6-DEEPSEEK-WEB-CONNECTOR"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C6-DEEPSEEK-WEB-CONNECTOR"
         },
-        "contract_sha256": "560d04ac339f8f65228d7e99aa194f8fbf0a01b0df224cccdd00aa24a52bdad3"
+        "contract_sha256": "d79e459ee75e0061d2788aee3ad3455f65234a11603746d66a0177d705548c79"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -2829,19 +2829,19 @@
           "capability_id": "C6-PROVIDER-NORMALIZATION",
           "relation": "execution",
           "required_implementation_state": "wired",
-          "contract_sha256": "76f9d9aa48d6845fc06fddba998fa9534f46fe446c9a875f97f955c9736b1067"
+          "contract_sha256": "c7c4acace2f14f8e646c3034857e20b602bf97323f9a72d922e9655487f16d84"
         },
         {
           "capability_id": "C7-EXTERNAL-EFFECT",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+          "contract_sha256": "36c1544f01e09d89d699a8d648ee5dc683e0cc1f0c3d31cab6626c6f331c4082"
         },
         {
           "capability_id": "C7-SECRETS-REDACTION",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "1c1dbdeae68c8b9864608d53d79b21848a4e0a3a83401f1edaead035ac0f6e6a"
+          "contract_sha256": "3eefdfd2cd31c6ecdafc0f72fafeb5bbd9a71914bb19ab51c3d2404d5819c4b0"
         }
       ],
       "verification": {
@@ -2875,9 +2875,9 @@
           "contract_id": "C6-VISUAL-COMPUTER-USE/v1",
           "decision_scope": "Own the semantic decision boundary for C6-VISUAL-COMPUTER-USE.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C6-VISUAL-COMPUTER-USE"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C6-VISUAL-COMPUTER-USE"
         },
-        "contract_sha256": "9f155f41a289ffac37218b155a1459c58eeeca418feb339c5ac04673f0e610d1"
+        "contract_sha256": "2230cf144b8ae4f530727f42198b83f9f224b0028d44ffd65c7ee5f2bb08115c"
       },
       "implementation_state": "proposed",
       "qualification_claims": [],
@@ -2888,19 +2888,19 @@
           "capability_id": "C6-TOOL-EXECUTION",
           "relation": "execution",
           "required_implementation_state": "wired",
-          "contract_sha256": "09db09027c6d85500dae7784902ca36d51654aaee749f0066d04b975f534f878"
+          "contract_sha256": "83362488035391d07dd18857b914cb1ae62fe83084b10c8f26d60ca49ce86fea"
         },
         {
           "capability_id": "C7-EXTERNAL-EFFECT",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+          "contract_sha256": "36c1544f01e09d89d699a8d648ee5dc683e0cc1f0c3d31cab6626c6f331c4082"
         },
         {
           "capability_id": "C7-SECRETS-REDACTION",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "1c1dbdeae68c8b9864608d53d79b21848a4e0a3a83401f1edaead035ac0f6e6a"
+          "contract_sha256": "3eefdfd2cd31c6ecdafc0f72fafeb5bbd9a71914bb19ab51c3d2404d5819c4b0"
         }
       ]
     },
@@ -2924,9 +2924,9 @@
           "contract_id": "C7-PERMISSION-DECISION/v1",
           "decision_scope": "Own the semantic decision boundary for C7-PERMISSION-DECISION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C7-PERMISSION-DECISION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C7-PERMISSION-DECISION"
         },
-        "contract_sha256": "f347173365df730be2abf7aaed1648a499ade8897509a0a6a990d89ee433b2f5"
+        "contract_sha256": "d8d8ca49c13d07ca07fa5d8208625993d6762df43ea5058453b174b326a85a2c"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -2982,7 +2982,7 @@
           "capability_id": "C2-TASK-CONTRACT",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "2f7c8833fb07d3515342649b184c9079f84a5ed5c1cea952b384dfa4a25ae55e"
+          "contract_sha256": "1dbfc04e6bd8072d161ae8fc632f386468a07e374867334aef58c5ad82c5e04c"
         }
       ],
       "verification": {
@@ -3017,9 +3017,9 @@
           "contract_id": "C7-SANDBOX-POLICY/v1",
           "decision_scope": "Own the semantic decision boundary for C7-SANDBOX-POLICY.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C7-SANDBOX-POLICY"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C7-SANDBOX-POLICY"
         },
-        "contract_sha256": "663a23b0afc25b680ca0e55250b2dd7b385d93e6e8a094f4af7a3ead33d7bce1"
+        "contract_sha256": "03920b678d15d32f4b2c43cb9f895e19101b7b48c366a1105ca8c39fc64590a6"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -3067,7 +3067,7 @@
           "capability_id": "C7-PERMISSION-DECISION",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "f347173365df730be2abf7aaed1648a499ade8897509a0a6a990d89ee433b2f5"
+          "contract_sha256": "d8d8ca49c13d07ca07fa5d8208625993d6762df43ea5058453b174b326a85a2c"
         }
       ],
       "verification": {
@@ -3101,9 +3101,9 @@
           "contract_id": "C7-WORKSPACE-MUTATION/v1",
           "decision_scope": "Own the semantic decision boundary for C7-WORKSPACE-MUTATION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C7-WORKSPACE-MUTATION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C7-WORKSPACE-MUTATION"
         },
-        "contract_sha256": "3d40c41d418c02213eacbcbce6f25bbb71b65c0c4bfe819ea3e43e8ef73566c6"
+        "contract_sha256": "dedd2b4e7003aaa1cc7ad65bb8dcf634b1dc2a478e27e6025348915adfbe8782"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -3171,19 +3171,19 @@
           "capability_id": "C7-PERMISSION-DECISION",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "f347173365df730be2abf7aaed1648a499ade8897509a0a6a990d89ee433b2f5"
+          "contract_sha256": "d8d8ca49c13d07ca07fa5d8208625993d6762df43ea5058453b174b326a85a2c"
         },
         {
           "capability_id": "C7-SANDBOX-POLICY",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "663a23b0afc25b680ca0e55250b2dd7b385d93e6e8a094f4af7a3ead33d7bce1"
+          "contract_sha256": "03920b678d15d32f4b2c43cb9f895e19101b7b48c366a1105ca8c39fc64590a6"
         },
         {
           "capability_id": "C6-TOOL-EXECUTION",
           "relation": "execution",
           "required_implementation_state": "wired",
-          "contract_sha256": "09db09027c6d85500dae7784902ca36d51654aaee749f0066d04b975f534f878"
+          "contract_sha256": "83362488035391d07dd18857b914cb1ae62fe83084b10c8f26d60ca49ce86fea"
         }
       ],
       "verification": {
@@ -3217,9 +3217,9 @@
           "contract_id": "C7-EXTERNAL-EFFECT/v1",
           "decision_scope": "Own the semantic decision boundary for C7-EXTERNAL-EFFECT.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C7-EXTERNAL-EFFECT"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C7-EXTERNAL-EFFECT"
         },
-        "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+        "contract_sha256": "36c1544f01e09d89d699a8d648ee5dc683e0cc1f0c3d31cab6626c6f331c4082"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -3287,19 +3287,19 @@
           "capability_id": "C7-PERMISSION-DECISION",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "f347173365df730be2abf7aaed1648a499ade8897509a0a6a990d89ee433b2f5"
+          "contract_sha256": "d8d8ca49c13d07ca07fa5d8208625993d6762df43ea5058453b174b326a85a2c"
         },
         {
           "capability_id": "C7-SANDBOX-POLICY",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "663a23b0afc25b680ca0e55250b2dd7b385d93e6e8a094f4af7a3ead33d7bce1"
+          "contract_sha256": "03920b678d15d32f4b2c43cb9f895e19101b7b48c366a1105ca8c39fc64590a6"
         },
         {
           "capability_id": "C6-TOOL-EXECUTION",
           "relation": "execution",
           "required_implementation_state": "wired",
-          "contract_sha256": "09db09027c6d85500dae7784902ca36d51654aaee749f0066d04b975f534f878"
+          "contract_sha256": "83362488035391d07dd18857b914cb1ae62fe83084b10c8f26d60ca49ce86fea"
         }
       ],
       "verification": {
@@ -3333,9 +3333,9 @@
           "contract_id": "C7-SECRETS-REDACTION/v1",
           "decision_scope": "Own the semantic decision boundary for C7-SECRETS-REDACTION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C7-SECRETS-REDACTION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C7-SECRETS-REDACTION"
         },
-        "contract_sha256": "1c1dbdeae68c8b9864608d53d79b21848a4e0a3a83401f1edaead035ac0f6e6a"
+        "contract_sha256": "3eefdfd2cd31c6ecdafc0f72fafeb5bbd9a71914bb19ab51c3d2404d5819c4b0"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -3375,7 +3375,7 @@
           "capability_id": "C7-EXTERNAL-EFFECT",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+          "contract_sha256": "36c1544f01e09d89d699a8d648ee5dc683e0cc1f0c3d31cab6626c6f331c4082"
         }
       ],
       "verification": {
@@ -3407,9 +3407,9 @@
           "contract_id": "C7-DIRTY-WORKTREE/v1",
           "decision_scope": "Own the semantic decision boundary for C7-DIRTY-WORKTREE.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C7-DIRTY-WORKTREE"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C7-DIRTY-WORKTREE"
         },
-        "contract_sha256": "f53335c33f0991f53caea7835b5d359fb0c39b3fec849eb63343d9ddfe27045d"
+        "contract_sha256": "28cde8c056488f618e5cc01b9c2af667bd32a3786161a5451db116aa10ac56fd"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -3445,7 +3445,7 @@
           "capability_id": "C7-WORKSPACE-MUTATION",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "3d40c41d418c02213eacbcbce6f25bbb71b65c0c4bfe819ea3e43e8ef73566c6"
+          "contract_sha256": "dedd2b4e7003aaa1cc7ad65bb8dcf634b1dc2a478e27e6025348915adfbe8782"
         }
       ],
       "verification": {
@@ -3478,9 +3478,9 @@
           "contract_id": "C7-PLATFORM-ADAPTER-CONFORMANCE/v1",
           "decision_scope": "Own the semantic decision boundary for C7-PLATFORM-ADAPTER-CONFORMANCE.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C7-PLATFORM-ADAPTER-CONFORMANCE"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C7-PLATFORM-ADAPTER-CONFORMANCE"
         },
-        "contract_sha256": "75433b00d4a023800a950f109f7b9c79b5233617b10b49512cde68e05b63182c"
+        "contract_sha256": "601879840643ecbad00cb294acd9d5895506a4bc8381b7540743c58d381578d9"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -3516,19 +3516,19 @@
           "capability_id": "C7-SANDBOX-POLICY",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "663a23b0afc25b680ca0e55250b2dd7b385d93e6e8a094f4af7a3ead33d7bce1"
+          "contract_sha256": "03920b678d15d32f4b2c43cb9f895e19101b7b48c366a1105ca8c39fc64590a6"
         },
         {
           "capability_id": "C7-WORKSPACE-MUTATION",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "3d40c41d418c02213eacbcbce6f25bbb71b65c0c4bfe819ea3e43e8ef73566c6"
+          "contract_sha256": "dedd2b4e7003aaa1cc7ad65bb8dcf634b1dc2a478e27e6025348915adfbe8782"
         },
         {
           "capability_id": "C7-EXTERNAL-EFFECT",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+          "contract_sha256": "36c1544f01e09d89d699a8d648ee5dc683e0cc1f0c3d31cab6626c6f331c4082"
         }
       ],
       "verification": {
@@ -3561,9 +3561,9 @@
           "contract_id": "C8-CODE-CHANGE/v1",
           "decision_scope": "Own the semantic decision boundary for C8-CODE-CHANGE.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C8-CODE-CHANGE"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C8-CODE-CHANGE"
         },
-        "contract_sha256": "9100ae371979e1eddcf6f965c8447aa20e8b703d1b326a9560ef0951406ecc0a"
+        "contract_sha256": "bfb0da2aeca048e64a3237a0bcb332f35a24e3561bfacc770ac74617c0cd6fec"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -3603,13 +3603,13 @@
           "capability_id": "C5-CHANGE-PLAN",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "32510c5d94cc21cc462729e130e00ae0424155bca2cac26e7e070d8edcce6aa0"
+          "contract_sha256": "a6497dafa0d871006093783f5aa6ad90dd2bf317c792fb5cfe3c2565eecb3e69"
         },
         {
           "capability_id": "C7-WORKSPACE-MUTATION",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "3d40c41d418c02213eacbcbce6f25bbb71b65c0c4bfe819ea3e43e8ef73566c6"
+          "contract_sha256": "dedd2b4e7003aaa1cc7ad65bb8dcf634b1dc2a478e27e6025348915adfbe8782"
         }
       ],
       "verification": {
@@ -3645,9 +3645,9 @@
           "contract_id": "C8-INTEGRATION-CONFORMANCE/v1",
           "decision_scope": "Own the semantic decision boundary for C8-INTEGRATION-CONFORMANCE.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C8-INTEGRATION-CONFORMANCE"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C8-INTEGRATION-CONFORMANCE"
         },
-        "contract_sha256": "d43aa070be91954a213162a27f13ce513a328ecfae15650399c50d43f4921b1d"
+        "contract_sha256": "dc059bc07cbcdecfbbc0c20f12cc0f10fe66db188d475dd5cc5c0364f715e521"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -3687,13 +3687,13 @@
           "capability_id": "C8-CODE-CHANGE",
           "relation": "execution",
           "required_implementation_state": "wired",
-          "contract_sha256": "9100ae371979e1eddcf6f965c8447aa20e8b703d1b326a9560ef0951406ecc0a"
+          "contract_sha256": "bfb0da2aeca048e64a3237a0bcb332f35a24e3561bfacc770ac74617c0cd6fec"
         },
         {
           "capability_id": "C6-TOOL-DISPATCH",
           "relation": "execution",
           "required_implementation_state": "wired",
-          "contract_sha256": "4cb5a7114370be7a4e3810970e0989a480445527a5cff7d959b853603cb8b74c"
+          "contract_sha256": "554b741fedde887ad10981675225884bc96239c9bb1b425b22dfc23427575474"
         }
       ],
       "verification": {
@@ -3729,9 +3729,9 @@
           "contract_id": "C9-VERIFIER-SELECTION/v1",
           "decision_scope": "Own the semantic decision boundary for C9-VERIFIER-SELECTION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C9-VERIFIER-SELECTION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C9-VERIFIER-SELECTION"
         },
-        "contract_sha256": "a9ac15b5a6187d1a4a955b215af1ce36ad0fa8c71d4b6303fddc71a904d9284a"
+        "contract_sha256": "063329eca21361e00ce4eb4820052c5c27ca86b996f8ab2f2e419931fd5e9b80"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -3779,7 +3779,7 @@
           "capability_id": "C4-ACCEPTANCE-CONTRACT",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "d7e501a88971dc52071f5da81c2e1763e6d9b0334a4012b3ff9a3a9f42597e73"
+          "contract_sha256": "6c41760320861dd4c6a1bd42213ee82620592d765450beccb69c44c171123fa0"
         }
       ],
       "verification": {
@@ -3814,9 +3814,9 @@
           "contract_id": "C9-BUILD-ORCHESTRATION/v1",
           "decision_scope": "Own the semantic decision boundary for C9-BUILD-ORCHESTRATION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C9-BUILD-ORCHESTRATION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C9-BUILD-ORCHESTRATION"
         },
-        "contract_sha256": "feeede9333ab637184a4c75ff5cfd5812f80dd0d989ec1524345ef11b5102e15"
+        "contract_sha256": "2e24fa0eb40f0128399dc0e62428163d3764964f41deca0bac6c0004517b40d0"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -3868,13 +3868,13 @@
           "capability_id": "C8-CODE-CHANGE",
           "relation": "execution",
           "required_implementation_state": "wired",
-          "contract_sha256": "9100ae371979e1eddcf6f965c8447aa20e8b703d1b326a9560ef0951406ecc0a"
+          "contract_sha256": "bfb0da2aeca048e64a3237a0bcb332f35a24e3561bfacc770ac74617c0cd6fec"
         },
         {
           "capability_id": "C7-EXTERNAL-EFFECT",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+          "contract_sha256": "36c1544f01e09d89d699a8d648ee5dc683e0cc1f0c3d31cab6626c6f331c4082"
         }
       ],
       "verification": {
@@ -3909,9 +3909,9 @@
           "contract_id": "C9-INDEPENDENT-VERIFICATION/v1",
           "decision_scope": "Own the semantic decision boundary for C9-INDEPENDENT-VERIFICATION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C9-INDEPENDENT-VERIFICATION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C9-INDEPENDENT-VERIFICATION"
         },
-        "contract_sha256": "d195f446cfb96484eb54502164a98ea8f8b322ab1c5faede0d24d2abfbcc4bc8"
+        "contract_sha256": "a01a239bfa04648967e36c3cf11ef13a67f26b2698b701b79f3ebdcb36254844"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -3963,13 +3963,13 @@
           "capability_id": "C9-VERIFIER-SELECTION",
           "relation": "verification",
           "required_implementation_state": "wired",
-          "contract_sha256": "a9ac15b5a6187d1a4a955b215af1ce36ad0fa8c71d4b6303fddc71a904d9284a"
+          "contract_sha256": "063329eca21361e00ce4eb4820052c5c27ca86b996f8ab2f2e419931fd5e9b80"
         },
         {
           "capability_id": "C9-BUILD-ORCHESTRATION",
           "relation": "verification",
           "required_implementation_state": "wired",
-          "contract_sha256": "feeede9333ab637184a4c75ff5cfd5812f80dd0d989ec1524345ef11b5102e15"
+          "contract_sha256": "2e24fa0eb40f0128399dc0e62428163d3764964f41deca0bac6c0004517b40d0"
         }
       ],
       "verification": {
@@ -4004,9 +4004,9 @@
           "contract_id": "C9-DIAGNOSTIC-NORMALIZATION/v1",
           "decision_scope": "Own the semantic decision boundary for C9-DIAGNOSTIC-NORMALIZATION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C9-DIAGNOSTIC-NORMALIZATION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C9-DIAGNOSTIC-NORMALIZATION"
         },
-        "contract_sha256": "d8d24868384bc04decb0a66c40477d6ba50c0e5efbc9d817f08c270746d5085d"
+        "contract_sha256": "7c72d06136862acf02874cac7e47067255428d800c1033b9b4cc51bf06234dec"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -4054,7 +4054,7 @@
           "capability_id": "C9-INDEPENDENT-VERIFICATION",
           "relation": "verification",
           "required_implementation_state": "wired",
-          "contract_sha256": "d195f446cfb96484eb54502164a98ea8f8b322ab1c5faede0d24d2abfbcc4bc8"
+          "contract_sha256": "a01a239bfa04648967e36c3cf11ef13a67f26b2698b701b79f3ebdcb36254844"
         }
       ],
       "verification": {
@@ -4090,9 +4090,9 @@
           "contract_id": "C9-BOUNDED-REPAIR/v1",
           "decision_scope": "Own the semantic decision boundary for C9-BOUNDED-REPAIR.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C9-BOUNDED-REPAIR"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C9-BOUNDED-REPAIR"
         },
-        "contract_sha256": "44dbfdd4ec8fa6dad41c7b09973e9b974ef7686d6d6fcd521206205a824a7a73"
+        "contract_sha256": "da472030a2ff3e77998d5fad731929dba216e0441406d349acc335d023259eb0"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -4148,13 +4148,13 @@
           "capability_id": "C9-DIAGNOSTIC-NORMALIZATION",
           "relation": "verification",
           "required_implementation_state": "wired",
-          "contract_sha256": "d8d24868384bc04decb0a66c40477d6ba50c0e5efbc9d817f08c270746d5085d"
+          "contract_sha256": "7c72d06136862acf02874cac7e47067255428d800c1033b9b4cc51bf06234dec"
         },
         {
           "capability_id": "C7-WORKSPACE-MUTATION",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "3d40c41d418c02213eacbcbce6f25bbb71b65c0c4bfe819ea3e43e8ef73566c6"
+          "contract_sha256": "dedd2b4e7003aaa1cc7ad65bb8dcf634b1dc2a478e27e6025348915adfbe8782"
         }
       ],
       "verification": {
@@ -4190,9 +4190,9 @@
           "contract_id": "C9-REGRESSION-SELECTION/v1",
           "decision_scope": "Own the semantic decision boundary for C9-REGRESSION-SELECTION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C9-REGRESSION-SELECTION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C9-REGRESSION-SELECTION"
         },
-        "contract_sha256": "80b6521836c53943d378680290c7929bed1a333d002a4d02f490171989d7476c"
+        "contract_sha256": "3c9055bbc131525e19eacf4dbb697df77d38db47dc255d8e48c0ffbf329d4107"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -4240,7 +4240,7 @@
           "capability_id": "C9-INDEPENDENT-VERIFICATION",
           "relation": "verification",
           "required_implementation_state": "wired",
-          "contract_sha256": "d195f446cfb96484eb54502164a98ea8f8b322ab1c5faede0d24d2abfbcc4bc8"
+          "contract_sha256": "a01a239bfa04648967e36c3cf11ef13a67f26b2698b701b79f3ebdcb36254844"
         }
       ],
       "verification": {
@@ -4277,9 +4277,9 @@
           "contract_id": "C10-INDEPENDENT-REVIEW/v1",
           "decision_scope": "Own the semantic decision boundary for C10-INDEPENDENT-REVIEW.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C10-INDEPENDENT-REVIEW"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C10-INDEPENDENT-REVIEW"
         },
-        "contract_sha256": "66d6c625306488b9c8ef1becfccc44e0d4dc3593f6fa5a3ea88db23ba146c0dd"
+        "contract_sha256": "6ba9f1be7a5357c4fc8a2aa022ed3eec3d343b33e5278a94161d81d708d4ff5e"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -4319,7 +4319,7 @@
           "capability_id": "C9-INDEPENDENT-VERIFICATION",
           "relation": "verification",
           "required_implementation_state": "wired",
-          "contract_sha256": "d195f446cfb96484eb54502164a98ea8f8b322ab1c5faede0d24d2abfbcc4bc8"
+          "contract_sha256": "a01a239bfa04648967e36c3cf11ef13a67f26b2698b701b79f3ebdcb36254844"
         }
       ],
       "verification": {
@@ -4356,9 +4356,9 @@
           "contract_id": "C10-DELIVERY-MANIFEST/v1",
           "decision_scope": "Own the semantic decision boundary for C10-DELIVERY-MANIFEST.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C10-DELIVERY-MANIFEST"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C10-DELIVERY-MANIFEST"
         },
-        "contract_sha256": "f5e9f7c1b9b574bdec7c8002c7c458bedec26a87b42958401ee3361beaf65c4a"
+        "contract_sha256": "fdfca2f68fb9f14fcecb3acb9dce26c035f02181dc3cb98c707f66902d293f93"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -4398,13 +4398,13 @@
           "capability_id": "C10-INDEPENDENT-REVIEW",
           "relation": "delivery",
           "required_implementation_state": "wired",
-          "contract_sha256": "66d6c625306488b9c8ef1becfccc44e0d4dc3593f6fa5a3ea88db23ba146c0dd"
+          "contract_sha256": "6ba9f1be7a5357c4fc8a2aa022ed3eec3d343b33e5278a94161d81d708d4ff5e"
         },
         {
           "capability_id": "C10-ARTIFACT-IDENTITY",
           "relation": "delivery",
           "required_implementation_state": "wired",
-          "contract_sha256": "ef42b8d843f4ba12a3ef8cc18d215ce750c58316fe9d85648be2e630bc4bef04"
+          "contract_sha256": "fcc330234afb4cecfece624d80e0f78438b3f16497ce1f810c620fde7e8db0e6"
         }
       ],
       "verification": {
@@ -4440,9 +4440,9 @@
           "contract_id": "C10-GIT-DELIVERY/v1",
           "decision_scope": "Own the semantic decision boundary for C10-GIT-DELIVERY.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C10-GIT-DELIVERY"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C10-GIT-DELIVERY"
         },
-        "contract_sha256": "d48945be8427bee10e2b93be07cdb60ccd6098b428007bcb3552f9e5338eac39"
+        "contract_sha256": "51018a499c2053bf85c44da295cea6982afdfe00254b6350fd8e755e884498f0"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -4482,13 +4482,13 @@
           "capability_id": "C10-INDEPENDENT-REVIEW",
           "relation": "delivery",
           "required_implementation_state": "wired",
-          "contract_sha256": "66d6c625306488b9c8ef1becfccc44e0d4dc3593f6fa5a3ea88db23ba146c0dd"
+          "contract_sha256": "6ba9f1be7a5357c4fc8a2aa022ed3eec3d343b33e5278a94161d81d708d4ff5e"
         },
         {
           "capability_id": "C7-EXTERNAL-EFFECT",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+          "contract_sha256": "36c1544f01e09d89d699a8d648ee5dc683e0cc1f0c3d31cab6626c6f331c4082"
         }
       ],
       "verification": {
@@ -4525,9 +4525,9 @@
           "contract_id": "C10-ARTIFACT-IDENTITY/v1",
           "decision_scope": "Own the semantic decision boundary for C10-ARTIFACT-IDENTITY.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C10-ARTIFACT-IDENTITY"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C10-ARTIFACT-IDENTITY"
         },
-        "contract_sha256": "ef42b8d843f4ba12a3ef8cc18d215ce750c58316fe9d85648be2e630bc4bef04"
+        "contract_sha256": "fcc330234afb4cecfece624d80e0f78438b3f16497ce1f810c620fde7e8db0e6"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -4563,13 +4563,13 @@
           "capability_id": "C9-BUILD-ORCHESTRATION",
           "relation": "verification",
           "required_implementation_state": "wired",
-          "contract_sha256": "feeede9333ab637184a4c75ff5cfd5812f80dd0d989ec1524345ef11b5102e15"
+          "contract_sha256": "2e24fa0eb40f0128399dc0e62428163d3764964f41deca0bac6c0004517b40d0"
         },
         {
           "capability_id": "C10-INDEPENDENT-REVIEW",
           "relation": "delivery",
           "required_implementation_state": "wired",
-          "contract_sha256": "66d6c625306488b9c8ef1becfccc44e0d4dc3593f6fa5a3ea88db23ba146c0dd"
+          "contract_sha256": "6ba9f1be7a5357c4fc8a2aa022ed3eec3d343b33e5278a94161d81d708d4ff5e"
         }
       ],
       "verification": {
@@ -4605,9 +4605,9 @@
           "contract_id": "C10-RELEASE-GATE/v1",
           "decision_scope": "Own the semantic decision boundary for C10-RELEASE-GATE.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C10-RELEASE-GATE"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C10-RELEASE-GATE"
         },
-        "contract_sha256": "a845a49d593dab538927e150f086ecbe4261053ca596e6ef04a2e0e19b72191b"
+        "contract_sha256": "20c8ec75b88ba13c0a3be9ae433dc0ed73b5f8e06616998787c1f9a6c3518466"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -4643,19 +4643,19 @@
           "capability_id": "C10-DELIVERY-MANIFEST",
           "relation": "delivery",
           "required_implementation_state": "wired",
-          "contract_sha256": "f5e9f7c1b9b574bdec7c8002c7c458bedec26a87b42958401ee3361beaf65c4a"
+          "contract_sha256": "fdfca2f68fb9f14fcecb3acb9dce26c035f02181dc3cb98c707f66902d293f93"
         },
         {
           "capability_id": "C10-GIT-DELIVERY",
           "relation": "delivery",
           "required_implementation_state": "wired",
-          "contract_sha256": "d48945be8427bee10e2b93be07cdb60ccd6098b428007bcb3552f9e5338eac39"
+          "contract_sha256": "51018a499c2053bf85c44da295cea6982afdfe00254b6350fd8e755e884498f0"
         },
         {
           "capability_id": "C10-ARTIFACT-IDENTITY",
           "relation": "delivery",
           "required_implementation_state": "wired",
-          "contract_sha256": "ef42b8d843f4ba12a3ef8cc18d215ce750c58316fe9d85648be2e630bc4bef04"
+          "contract_sha256": "fcc330234afb4cecfece624d80e0f78438b3f16497ce1f810c620fde7e8db0e6"
         }
       ],
       "verification": {
@@ -4691,9 +4691,9 @@
           "contract_id": "C10-CI-DEPLOY-OBSERVE/v1",
           "decision_scope": "Own the semantic decision boundary for C10-CI-DEPLOY-OBSERVE.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C10-CI-DEPLOY-OBSERVE"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C10-CI-DEPLOY-OBSERVE"
         },
-        "contract_sha256": "dd572e05bc772227bc9daf08bfbf0cdd384689f3048680cdf363634cc667a9f0"
+        "contract_sha256": "f732cce07038a7ed469573ed9c1e92ce0b7eb98ee39df5543ee49c96ae90fd96"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -4733,13 +4733,13 @@
           "capability_id": "C10-RELEASE-GATE",
           "relation": "delivery",
           "required_implementation_state": "wired",
-          "contract_sha256": "a845a49d593dab538927e150f086ecbe4261053ca596e6ef04a2e0e19b72191b"
+          "contract_sha256": "20c8ec75b88ba13c0a3be9ae433dc0ed73b5f8e06616998787c1f9a6c3518466"
         },
         {
           "capability_id": "C7-EXTERNAL-EFFECT",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+          "contract_sha256": "36c1544f01e09d89d699a8d648ee5dc683e0cc1f0c3d31cab6626c6f331c4082"
         }
       ],
       "verification": {
@@ -4775,9 +4775,9 @@
           "contract_id": "C10-ROLLBACK/v1",
           "decision_scope": "Own the semantic decision boundary for C10-ROLLBACK.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C10-ROLLBACK"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C10-ROLLBACK"
         },
-        "contract_sha256": "eff85e00fbe0a1ea6e27691a55a38f8cf60deed4e9133aa7b5f97aa7c4719890"
+        "contract_sha256": "9ce3ef4b031d1b9d7a328378992379049be6651c64f62809b032832639870034"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -4817,7 +4817,7 @@
           "capability_id": "C10-CI-DEPLOY-OBSERVE",
           "relation": "delivery",
           "required_implementation_state": "wired",
-          "contract_sha256": "dd572e05bc772227bc9daf08bfbf0cdd384689f3048680cdf363634cc667a9f0"
+          "contract_sha256": "f732cce07038a7ed469573ed9c1e92ce0b7eb98ee39df5543ee49c96ae90fd96"
         }
       ],
       "verification": {
@@ -4853,9 +4853,9 @@
           "contract_id": "C11-CHECKPOINT/v1",
           "decision_scope": "Own the semantic decision boundary for C11-CHECKPOINT.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C11-CHECKPOINT"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C11-CHECKPOINT"
         },
-        "contract_sha256": "ae8106fe6cbbc6cf8b75ddf8ce724b6ecd7626939a4a9087034acfc93d442069"
+        "contract_sha256": "9f82c1df996c1d828afca85e5f517bb47a97a2164baa20512b1f4d8f3afd1afd"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -4903,13 +4903,13 @@
           "capability_id": "C1-RUN-LIFECYCLE",
           "relation": "control",
           "required_implementation_state": "wired",
-          "contract_sha256": "040103dbdd9acb186583edf610e521d7d88e88be58a2a62b551ff1d3d8f83a4e"
+          "contract_sha256": "fbb9193afb240e4e9b6ffc0005a1a6402101257b4a37acadabdc6d6527327394"
         },
         {
           "capability_id": "C0-RUN-EVIDENCE-LEDGER",
           "relation": "evidence",
           "required_implementation_state": "wired",
-          "contract_sha256": "cec65045423ca109d43db56d7045650393d4cf903f49909eaf28a6b22b645564"
+          "contract_sha256": "f2a33d7ef5651b675aba9c7b47886c462e9ee0ee5adc167d9db6cc01cf406f32"
         }
       ],
       "verification": {
@@ -4943,9 +4943,9 @@
           "contract_id": "C11-RESUME-IDEMPOTENCY/v1",
           "decision_scope": "Own the semantic decision boundary for C11-RESUME-IDEMPOTENCY.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C11-RESUME-IDEMPOTENCY"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C11-RESUME-IDEMPOTENCY"
         },
-        "contract_sha256": "3da2e08b7262828bdd3d7bfdc28438caf62f0908cbbe8163baa35415cd428dad"
+        "contract_sha256": "20022f540e66c49206a6b5b22dbcca3c5dececa50ca0205756b78b468996b685"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -5013,19 +5013,19 @@
           "capability_id": "C11-CHECKPOINT",
           "relation": "recovery",
           "required_implementation_state": "wired",
-          "contract_sha256": "ae8106fe6cbbc6cf8b75ddf8ce724b6ecd7626939a4a9087034acfc93d442069"
+          "contract_sha256": "9f82c1df996c1d828afca85e5f517bb47a97a2164baa20512b1f4d8f3afd1afd"
         },
         {
           "capability_id": "C7-EXTERNAL-EFFECT",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+          "contract_sha256": "36c1544f01e09d89d699a8d648ee5dc683e0cc1f0c3d31cab6626c6f331c4082"
         },
         {
           "capability_id": "C7-WORKSPACE-MUTATION",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "3d40c41d418c02213eacbcbce6f25bbb71b65c0c4bfe819ea3e43e8ef73566c6"
+          "contract_sha256": "dedd2b4e7003aaa1cc7ad65bb8dcf634b1dc2a478e27e6025348915adfbe8782"
         }
       ],
       "verification": {
@@ -5058,9 +5058,9 @@
           "contract_id": "C11-CANCEL-INTERRUPT/v1",
           "decision_scope": "Own the semantic decision boundary for C11-CANCEL-INTERRUPT.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C11-CANCEL-INTERRUPT"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C11-CANCEL-INTERRUPT"
         },
-        "contract_sha256": "d85aeaa0f8c1b57adf9dba0cc5e3c955b822a68d91343bcb96e1e414d5abc387"
+        "contract_sha256": "fc69c2bbbe2b4b66ad6fbd476f0f41a95a5767905ac76658e053f141d6b4e658"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -5104,7 +5104,7 @@
           "capability_id": "C1-AGENT-COMMAND",
           "relation": "control",
           "required_implementation_state": "wired",
-          "contract_sha256": "1cdf7be1d9b1b6830bd533e8b9a7aecdf34d2b0c4f43d8abaf7fe7415949daad"
+          "contract_sha256": "e025d2a723d87642eb29fcd44fed87ccbbaadfffca2c1659c3e6ac25ab16b8c7"
         }
       ],
       "verification": {
@@ -5137,9 +5137,9 @@
           "contract_id": "C11-STEERING/v1",
           "decision_scope": "Own the semantic decision boundary for C11-STEERING.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C11-STEERING"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C11-STEERING"
         },
-        "contract_sha256": "a191f503198bb14f32e5e81bb45e12037d4f2bbcafa7a869587cd85c096ebbb9"
+        "contract_sha256": "185af46670a7cb7b413fe4ab8613adc85eb6a02c621bcd7c6d1a7bad09257ab0"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -5175,13 +5175,13 @@
           "capability_id": "C1-AGENT-COMMAND",
           "relation": "control",
           "required_implementation_state": "wired",
-          "contract_sha256": "1cdf7be1d9b1b6830bd533e8b9a7aecdf34d2b0c4f43d8abaf7fe7415949daad"
+          "contract_sha256": "e025d2a723d87642eb29fcd44fed87ccbbaadfffca2c1659c3e6ac25ab16b8c7"
         },
         {
           "capability_id": "C2-TASK-CONTRACT",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "2f7c8833fb07d3515342649b184c9079f84a5ed5c1cea952b384dfa4a25ae55e"
+          "contract_sha256": "1dbfc04e6bd8072d161ae8fc632f386468a07e374867334aef58c5ad82c5e04c"
         }
       ],
       "verification": {
@@ -5214,9 +5214,9 @@
           "contract_id": "C11-USER-COLLABORATION/v1",
           "decision_scope": "Own the semantic decision boundary for C11-USER-COLLABORATION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C11-USER-COLLABORATION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C11-USER-COLLABORATION"
         },
-        "contract_sha256": "4f443efaf241d9367616a903fb633a8acdfd95057279a192ec0846f6c2f0f7cf"
+        "contract_sha256": "85cb8c3cd31f642a52ff799ff165e1e7c6388654923f74db8e6c8ffce67c300f"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -5256,25 +5256,25 @@
           "capability_id": "C1-AGENT-COMMAND",
           "relation": "control",
           "required_implementation_state": "wired",
-          "contract_sha256": "1cdf7be1d9b1b6830bd533e8b9a7aecdf34d2b0c4f43d8abaf7fe7415949daad"
+          "contract_sha256": "e025d2a723d87642eb29fcd44fed87ccbbaadfffca2c1659c3e6ac25ab16b8c7"
         },
         {
           "capability_id": "C2-TASK-CONTRACT",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "2f7c8833fb07d3515342649b184c9079f84a5ed5c1cea952b384dfa4a25ae55e"
+          "contract_sha256": "1dbfc04e6bd8072d161ae8fc632f386468a07e374867334aef58c5ad82c5e04c"
         },
         {
           "capability_id": "C11-CANCEL-INTERRUPT",
           "relation": "recovery",
           "required_implementation_state": "wired",
-          "contract_sha256": "d85aeaa0f8c1b57adf9dba0cc5e3c955b822a68d91343bcb96e1e414d5abc387"
+          "contract_sha256": "fc69c2bbbe2b4b66ad6fbd476f0f41a95a5767905ac76658e053f141d6b4e658"
         },
         {
           "capability_id": "C11-STEERING",
           "relation": "recovery",
           "required_implementation_state": "wired",
-          "contract_sha256": "a191f503198bb14f32e5e81bb45e12037d4f2bbcafa7a869587cd85c096ebbb9"
+          "contract_sha256": "185af46670a7cb7b413fe4ab8613adc85eb6a02c621bcd7c6d1a7bad09257ab0"
         }
       ],
       "verification": {
@@ -5307,9 +5307,9 @@
           "contract_id": "C11-SURFACE-ACCESSIBILITY/v1",
           "decision_scope": "Own the semantic decision boundary for C11-SURFACE-ACCESSIBILITY.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C11-SURFACE-ACCESSIBILITY"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C11-SURFACE-ACCESSIBILITY"
         },
-        "contract_sha256": "9c2dbb75d6923cbe80504944c2e46991b215b4cdf3a2c0e547015e3607e3455c"
+        "contract_sha256": "42ef9c66d603c5ad0af41748684b06a022da6d664bdc107d2ce1176b6d760cf2"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -5349,7 +5349,7 @@
           "capability_id": "C11-USER-COLLABORATION",
           "relation": "recovery",
           "required_implementation_state": "wired",
-          "contract_sha256": "4f443efaf241d9367616a903fb633a8acdfd95057279a192ec0846f6c2f0f7cf"
+          "contract_sha256": "85cb8c3cd31f642a52ff799ff165e1e7c6388654923f74db8e6c8ffce67c300f"
         }
       ],
       "verification": {
@@ -5382,9 +5382,9 @@
           "contract_id": "C11-BACKGROUND-AUTOMATION/v1",
           "decision_scope": "Own the semantic decision boundary for C11-BACKGROUND-AUTOMATION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C11-BACKGROUND-AUTOMATION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C11-BACKGROUND-AUTOMATION"
         },
-        "contract_sha256": "31fa69413a8a27c2a100d64b3fd228f3350d0816c6fff40f394f070168cb053f"
+        "contract_sha256": "9408ae58fb07b8ba00da572b4a5eb0ca8a95156eb24e7efc434da192e409e062"
       },
       "implementation_state": "proposed",
       "qualification_claims": [],
@@ -5395,25 +5395,25 @@
           "capability_id": "C11-CHECKPOINT",
           "relation": "recovery",
           "required_implementation_state": "wired",
-          "contract_sha256": "ae8106fe6cbbc6cf8b75ddf8ce724b6ecd7626939a4a9087034acfc93d442069"
+          "contract_sha256": "9f82c1df996c1d828afca85e5f517bb47a97a2164baa20512b1f4d8f3afd1afd"
         },
         {
           "capability_id": "C11-RESUME-IDEMPOTENCY",
           "relation": "recovery",
           "required_implementation_state": "wired",
-          "contract_sha256": "3da2e08b7262828bdd3d7bfdc28438caf62f0908cbbe8163baa35415cd428dad"
+          "contract_sha256": "20022f540e66c49206a6b5b22dbcca3c5dececa50ca0205756b78b468996b685"
         },
         {
           "capability_id": "C11-CANCEL-INTERRUPT",
           "relation": "recovery",
           "required_implementation_state": "wired",
-          "contract_sha256": "d85aeaa0f8c1b57adf9dba0cc5e3c955b822a68d91343bcb96e1e414d5abc387"
+          "contract_sha256": "fc69c2bbbe2b4b66ad6fbd476f0f41a95a5767905ac76658e053f141d6b4e658"
         },
         {
           "capability_id": "C7-EXTERNAL-EFFECT",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+          "contract_sha256": "36c1544f01e09d89d699a8d648ee5dc683e0cc1f0c3d31cab6626c6f331c4082"
         }
       ]
     },
@@ -5437,9 +5437,9 @@
           "contract_id": "C12-CONTEXT-COMPACTION/v1",
           "decision_scope": "Own the semantic decision boundary for C12-CONTEXT-COMPACTION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C12-CONTEXT-COMPACTION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C12-CONTEXT-COMPACTION"
         },
-        "contract_sha256": "348e6490ef7c54aafeadbe9e51afa644f024826e550737f27bc283fdbaacf545"
+        "contract_sha256": "202f5a9c0cfa84097c24412a6438387997e73ac25b5e0b582d006a8a29997119"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -5495,13 +5495,13 @@
           "capability_id": "C3-CONTEXT-GRAPH",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "36643d1f21d30e2dbe331d962f6f4807d0613ae8f6ebb2a08209ceca39b23cf2"
+          "contract_sha256": "80604a48d3defa50c8c6b39ef73b88136294e421524cac3ddefed5da41761b47"
         },
         {
           "capability_id": "C11-CHECKPOINT",
           "relation": "recovery",
           "required_implementation_state": "wired",
-          "contract_sha256": "ae8106fe6cbbc6cf8b75ddf8ce724b6ecd7626939a4a9087034acfc93d442069"
+          "contract_sha256": "9f82c1df996c1d828afca85e5f517bb47a97a2164baa20512b1f4d8f3afd1afd"
         }
       ],
       "verification": {
@@ -5536,9 +5536,9 @@
           "contract_id": "C12-RUN-EVIDENCE-RETENTION/v1",
           "decision_scope": "Own the semantic decision boundary for C12-RUN-EVIDENCE-RETENTION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C12-RUN-EVIDENCE-RETENTION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C12-RUN-EVIDENCE-RETENTION"
         },
-        "contract_sha256": "342945b722fb25ad6d80d98dcc574bc9a14a4b8805c6eb7d846579fd09d64069"
+        "contract_sha256": "bbf4a4b30529882c5d1cd172c19067a107a8fe4cfaf613cf4aed2f72279c94b0"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -5594,7 +5594,7 @@
           "capability_id": "C0-RUN-EVIDENCE-LEDGER",
           "relation": "evidence",
           "required_implementation_state": "wired",
-          "contract_sha256": "cec65045423ca109d43db56d7045650393d4cf903f49909eaf28a6b22b645564"
+          "contract_sha256": "f2a33d7ef5651b675aba9c7b47886c462e9ee0ee5adc167d9db6cc01cf406f32"
         }
       ],
       "verification": {
@@ -5629,9 +5629,9 @@
           "contract_id": "C12-MEMORY-POLICY/v1",
           "decision_scope": "Own the semantic decision boundary for C12-MEMORY-POLICY.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C12-MEMORY-POLICY"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C12-MEMORY-POLICY"
         },
-        "contract_sha256": "7c8749b26b104570a2b657e284274f00928202c9676c3e87f26c64342a46dd38"
+        "contract_sha256": "fbedda37f140ba1e5444737e0041bd4d67e3824cd2b145e6d77acca4df1f74b0"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -5679,13 +5679,13 @@
           "capability_id": "C3-INSTRUCTION-PRECEDENCE",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "2080bfb3e7cd74dcb3f0f1ce3ae169a8b742eb4a07005aa5b469a8807bd49c5b"
+          "contract_sha256": "792062b5ba50a05714b11292b425a457347fc680baed5db508d6ee4900dcfad0"
         },
         {
           "capability_id": "C12-RUN-EVIDENCE-RETENTION",
           "relation": "context",
           "required_implementation_state": "wired",
-          "contract_sha256": "342945b722fb25ad6d80d98dcc574bc9a14a4b8805c6eb7d846579fd09d64069"
+          "contract_sha256": "bbf4a4b30529882c5d1cd172c19067a107a8fe4cfaf613cf4aed2f72279c94b0"
         }
       ],
       "verification": {
@@ -5720,9 +5720,9 @@
           "contract_id": "C13-SKILL-BOUNDARY/v1",
           "decision_scope": "Own the semantic decision boundary for C13-SKILL-BOUNDARY.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C13-SKILL-BOUNDARY"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C13-SKILL-BOUNDARY"
         },
-        "contract_sha256": "bda6ed6c28b4af57cc0f7c53238c61711e8fb24c247a63b8e64e5f8693893563"
+        "contract_sha256": "e0eae48b1b719863de5e0eb3d014376e74ebe52480cf9657192f5945c8b3300c"
       },
       "implementation_state": "proposed",
       "qualification_claims": [],
@@ -5733,13 +5733,13 @@
           "capability_id": "C3-INSTRUCTION-PRECEDENCE",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "2080bfb3e7cd74dcb3f0f1ce3ae169a8b742eb4a07005aa5b469a8807bd49c5b"
+          "contract_sha256": "792062b5ba50a05714b11292b425a457347fc680baed5db508d6ee4900dcfad0"
         },
         {
           "capability_id": "C6-TOOL-SCHEMA",
           "relation": "execution",
           "required_implementation_state": "wired",
-          "contract_sha256": "08a390eea1ecb473dc09da20671fbaafa2df634719176ba9dcc8ee66e230b268"
+          "contract_sha256": "408202c4d2f1423f06d1d089ea32f3c7d115d8798971d98b3945299ecdfda4dc"
         }
       ]
     },
@@ -5764,9 +5764,9 @@
           "contract_id": "C13-HOOK-BOUNDARY/v1",
           "decision_scope": "Own the semantic decision boundary for C13-HOOK-BOUNDARY.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C13-HOOK-BOUNDARY"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C13-HOOK-BOUNDARY"
         },
-        "contract_sha256": "561fb25193f018eab9f79e3200a8165791f84f6a6595c6e8a4bf00bad9d872d0"
+        "contract_sha256": "89042a9336f5e352164a882bea37bd60b8738ac2d2b47e1112dd06e6cbb20e04"
       },
       "implementation_state": "proposed",
       "qualification_claims": [],
@@ -5777,25 +5777,25 @@
           "capability_id": "C6-TOOL-EXECUTION",
           "relation": "execution",
           "required_implementation_state": "wired",
-          "contract_sha256": "09db09027c6d85500dae7784902ca36d51654aaee749f0066d04b975f534f878"
+          "contract_sha256": "83362488035391d07dd18857b914cb1ae62fe83084b10c8f26d60ca49ce86fea"
         },
         {
           "capability_id": "C7-PERMISSION-DECISION",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "f347173365df730be2abf7aaed1648a499ade8897509a0a6a990d89ee433b2f5"
+          "contract_sha256": "d8d8ca49c13d07ca07fa5d8208625993d6762df43ea5058453b174b326a85a2c"
         },
         {
           "capability_id": "C7-EXTERNAL-EFFECT",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+          "contract_sha256": "36c1544f01e09d89d699a8d648ee5dc683e0cc1f0c3d31cab6626c6f331c4082"
         },
         {
           "capability_id": "C0-RUN-EVIDENCE-LEDGER",
           "relation": "evidence",
           "required_implementation_state": "wired",
-          "contract_sha256": "cec65045423ca109d43db56d7045650393d4cf903f49909eaf28a6b22b645564"
+          "contract_sha256": "f2a33d7ef5651b675aba9c7b47886c462e9ee0ee5adc167d9db6cc01cf406f32"
         }
       ]
     },
@@ -5819,9 +5819,9 @@
           "contract_id": "C13-MCP-BOUNDARY/v1",
           "decision_scope": "Own the semantic decision boundary for C13-MCP-BOUNDARY.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C13-MCP-BOUNDARY"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C13-MCP-BOUNDARY"
         },
-        "contract_sha256": "02eb49f0e34dcbfc087bc5df3816259ae15825a933d9d7f2443579affa41af65"
+        "contract_sha256": "9364695a50d7a9b45d822b64d2639d43deab4c6f8fa23694f3a388c995710453"
       },
       "implementation_state": "wired",
       "qualification_claims": [],
@@ -5865,19 +5865,19 @@
           "capability_id": "C6-TOOL-EXECUTION",
           "relation": "execution",
           "required_implementation_state": "wired",
-          "contract_sha256": "09db09027c6d85500dae7784902ca36d51654aaee749f0066d04b975f534f878"
+          "contract_sha256": "83362488035391d07dd18857b914cb1ae62fe83084b10c8f26d60ca49ce86fea"
         },
         {
           "capability_id": "C7-PERMISSION-DECISION",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "f347173365df730be2abf7aaed1648a499ade8897509a0a6a990d89ee433b2f5"
+          "contract_sha256": "d8d8ca49c13d07ca07fa5d8208625993d6762df43ea5058453b174b326a85a2c"
         },
         {
           "capability_id": "C7-EXTERNAL-EFFECT",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+          "contract_sha256": "36c1544f01e09d89d699a8d648ee5dc683e0cc1f0c3d31cab6626c6f331c4082"
         }
       ],
       "verification": {
@@ -5911,9 +5911,9 @@
           "contract_id": "C13-SUBAGENT-DELEGATION/v1",
           "decision_scope": "Own the semantic decision boundary for C13-SUBAGENT-DELEGATION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C13-SUBAGENT-DELEGATION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C13-SUBAGENT-DELEGATION"
         },
-        "contract_sha256": "5438abb3f349953a559b54869cd67c41d2698682877397d72c3c6b4ecfc5f3c8"
+        "contract_sha256": "a16f0d67787b751701401eef8883e122f13749b6d0f38ee4da7aec654c8c6102"
       },
       "implementation_state": "proposed",
       "qualification_claims": [],
@@ -5924,25 +5924,25 @@
           "capability_id": "C1-AGENT-COMMAND",
           "relation": "control",
           "required_implementation_state": "wired",
-          "contract_sha256": "1cdf7be1d9b1b6830bd533e8b9a7aecdf34d2b0c4f43d8abaf7fe7415949daad"
+          "contract_sha256": "e025d2a723d87642eb29fcd44fed87ccbbaadfffca2c1659c3e6ac25ab16b8c7"
         },
         {
           "capability_id": "C3-CONTEXT-GRAPH",
           "relation": "semantic",
           "required_implementation_state": "wired",
-          "contract_sha256": "36643d1f21d30e2dbe331d962f6f4807d0613ae8f6ebb2a08209ceca39b23cf2"
+          "contract_sha256": "80604a48d3defa50c8c6b39ef73b88136294e421524cac3ddefed5da41761b47"
         },
         {
           "capability_id": "C6-TOOL-DISPATCH",
           "relation": "execution",
           "required_implementation_state": "wired",
-          "contract_sha256": "4cb5a7114370be7a4e3810970e0989a480445527a5cff7d959b853603cb8b74c"
+          "contract_sha256": "554b741fedde887ad10981675225884bc96239c9bb1b425b22dfc23427575474"
         },
         {
           "capability_id": "C7-PERMISSION-DECISION",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "f347173365df730be2abf7aaed1648a499ade8897509a0a6a990d89ee433b2f5"
+          "contract_sha256": "d8d8ca49c13d07ca07fa5d8208625993d6762df43ea5058453b174b326a85a2c"
         }
       ]
     },
@@ -5967,9 +5967,9 @@
           "contract_id": "C13-WORKTREE-ISOLATION/v1",
           "decision_scope": "Own the semantic decision boundary for C13-WORKTREE-ISOLATION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C13-WORKTREE-ISOLATION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C13-WORKTREE-ISOLATION"
         },
-        "contract_sha256": "3ade53ed5202aca513865402977a6e08310d9c8c9d9401b9c3b1476317578b52"
+        "contract_sha256": "1cda1f4c5903147d20babd32a87bd8f52b72d33092ecb4beff0d12bc58d2ef3f"
       },
       "implementation_state": "proposed",
       "qualification_claims": [],
@@ -5980,13 +5980,13 @@
           "capability_id": "C7-WORKSPACE-MUTATION",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "3d40c41d418c02213eacbcbce6f25bbb71b65c0c4bfe819ea3e43e8ef73566c6"
+          "contract_sha256": "dedd2b4e7003aaa1cc7ad65bb8dcf634b1dc2a478e27e6025348915adfbe8782"
         },
         {
           "capability_id": "C7-EXTERNAL-EFFECT",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+          "contract_sha256": "36c1544f01e09d89d699a8d648ee5dc683e0cc1f0c3d31cab6626c6f331c4082"
         }
       ]
     },
@@ -6011,9 +6011,9 @@
           "contract_id": "C13-EXTENSION-CONFORMANCE/v1",
           "decision_scope": "Own the semantic decision boundary for C13-EXTENSION-CONFORMANCE.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C13-EXTENSION-CONFORMANCE"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C13-EXTENSION-CONFORMANCE"
         },
-        "contract_sha256": "d8355245d3d793762a5e2d58adc4144acd73a83492198134a0efcd9682fc08a5"
+        "contract_sha256": "d6e741de2754eb022fd6d31fa615d4d0ecc282ccd29b2a0207abe9eaed235bde"
       },
       "implementation_state": "proposed",
       "qualification_claims": [],
@@ -6024,31 +6024,31 @@
           "capability_id": "C13-SKILL-BOUNDARY",
           "relation": "extension",
           "required_implementation_state": "wired",
-          "contract_sha256": "bda6ed6c28b4af57cc0f7c53238c61711e8fb24c247a63b8e64e5f8693893563"
+          "contract_sha256": "e0eae48b1b719863de5e0eb3d014376e74ebe52480cf9657192f5945c8b3300c"
         },
         {
           "capability_id": "C13-HOOK-BOUNDARY",
           "relation": "extension",
           "required_implementation_state": "wired",
-          "contract_sha256": "561fb25193f018eab9f79e3200a8165791f84f6a6595c6e8a4bf00bad9d872d0"
+          "contract_sha256": "89042a9336f5e352164a882bea37bd60b8738ac2d2b47e1112dd06e6cbb20e04"
         },
         {
           "capability_id": "C13-MCP-BOUNDARY",
           "relation": "extension",
           "required_implementation_state": "wired",
-          "contract_sha256": "02eb49f0e34dcbfc087bc5df3816259ae15825a933d9d7f2443579affa41af65"
+          "contract_sha256": "9364695a50d7a9b45d822b64d2639d43deab4c6f8fa23694f3a388c995710453"
         },
         {
           "capability_id": "C13-SUBAGENT-DELEGATION",
           "relation": "extension",
           "required_implementation_state": "wired",
-          "contract_sha256": "5438abb3f349953a559b54869cd67c41d2698682877397d72c3c6b4ecfc5f3c8"
+          "contract_sha256": "a16f0d67787b751701401eef8883e122f13749b6d0f38ee4da7aec654c8c6102"
         },
         {
           "capability_id": "C13-WORKTREE-ISOLATION",
           "relation": "extension",
           "required_implementation_state": "wired",
-          "contract_sha256": "3ade53ed5202aca513865402977a6e08310d9c8c9d9401b9c3b1476317578b52"
+          "contract_sha256": "1cda1f4c5903147d20babd32a87bd8f52b72d33092ecb4beff0d12bc58d2ef3f"
         }
       ]
     },
@@ -6073,9 +6073,9 @@
           "contract_id": "C13-PLUGIN-SUPPLY-CHAIN/v1",
           "decision_scope": "Own the semantic decision boundary for C13-PLUGIN-SUPPLY-CHAIN.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C13-PLUGIN-SUPPLY-CHAIN"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C13-PLUGIN-SUPPLY-CHAIN"
         },
-        "contract_sha256": "2392a3f242936a1cb2b08d1568125de0205b9ceeadf9a24413344499818f2bbc"
+        "contract_sha256": "71c9a800921206094ef5c743b2ebbd773c6f60ed81f1262a460f6f80b6a068ac"
       },
       "implementation_state": "proposed",
       "qualification_claims": [],
@@ -6086,19 +6086,19 @@
           "capability_id": "C13-EXTENSION-CONFORMANCE",
           "relation": "extension",
           "required_implementation_state": "wired",
-          "contract_sha256": "d8355245d3d793762a5e2d58adc4144acd73a83492198134a0efcd9682fc08a5"
+          "contract_sha256": "d6e741de2754eb022fd6d31fa615d4d0ecc282ccd29b2a0207abe9eaed235bde"
         },
         {
           "capability_id": "C7-SECRETS-REDACTION",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "1c1dbdeae68c8b9864608d53d79b21848a4e0a3a83401f1edaead035ac0f6e6a"
+          "contract_sha256": "3eefdfd2cd31c6ecdafc0f72fafeb5bbd9a71914bb19ab51c3d2404d5819c4b0"
         },
         {
           "capability_id": "C7-PERMISSION-DECISION",
           "relation": "authority",
           "required_implementation_state": "wired",
-          "contract_sha256": "f347173365df730be2abf7aaed1648a499ade8897509a0a6a990d89ee433b2f5"
+          "contract_sha256": "d8d8ca49c13d07ca07fa5d8208625993d6762df43ea5058453b174b326a85a2c"
         }
       ]
     },
@@ -6122,9 +6122,9 @@
           "contract_id": "C13-PEER-AGENT-COORDINATION/v1",
           "decision_scope": "Own the semantic decision boundary for C13-PEER-AGENT-COORDINATION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C13-PEER-AGENT-COORDINATION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C13-PEER-AGENT-COORDINATION"
         },
-        "contract_sha256": "3cd95913a20124a464449c21c645989e90dc00a884d6530c100a3c8ba9472026"
+        "contract_sha256": "2c8c97226d542303a12f74b7cbd84f0ee811afe11dac23944cd4c05b90f1bbd5"
       },
       "implementation_state": "proposed",
       "qualification_claims": [],
@@ -6135,13 +6135,13 @@
           "capability_id": "C13-SUBAGENT-DELEGATION",
           "relation": "extension",
           "required_implementation_state": "wired",
-          "contract_sha256": "5438abb3f349953a559b54869cd67c41d2698682877397d72c3c6b4ecfc5f3c8"
+          "contract_sha256": "a16f0d67787b751701401eef8883e122f13749b6d0f38ee4da7aec654c8c6102"
         },
         {
           "capability_id": "C13-WORKTREE-ISOLATION",
           "relation": "extension",
           "required_implementation_state": "wired",
-          "contract_sha256": "3ade53ed5202aca513865402977a6e08310d9c8c9d9401b9c3b1476317578b52"
+          "contract_sha256": "1cda1f4c5903147d20babd32a87bd8f52b72d33092ecb4beff0d12bc58d2ef3f"
         }
       ]
     },
@@ -6166,9 +6166,9 @@
           "contract_id": "C13-HEADLESS-SDK/v1",
           "decision_scope": "Own the semantic decision boundary for C13-HEADLESS-SDK.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C13-HEADLESS-SDK"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C13-HEADLESS-SDK"
         },
-        "contract_sha256": "e9f317472be3384730fa4dcd8f6c4f255840fb312bd90676b94d9a49c12464c7"
+        "contract_sha256": "e1f78b8c5887554ec83722fa804b94494122b4b472238b2f15c6b82a7a0bca6c"
       },
       "implementation_state": "proposed",
       "qualification_claims": [],
@@ -6179,13 +6179,13 @@
           "capability_id": "C1-SURFACE-ADAPTER-CONFORMANCE",
           "relation": "control",
           "required_implementation_state": "wired",
-          "contract_sha256": "3ed3b52727759895fde7223977772771677cd3bd68e706f7d5895b802a643ec6"
+          "contract_sha256": "d52d41c3d20bb63ee44c0554f3f372cdb0ff137ca0ff8eaaa2e90c392d6fe10d"
         },
         {
           "capability_id": "C13-EXTENSION-CONFORMANCE",
           "relation": "extension",
           "required_implementation_state": "wired",
-          "contract_sha256": "d8355245d3d793762a5e2d58adc4144acd73a83492198134a0efcd9682fc08a5"
+          "contract_sha256": "d6e741de2754eb022fd6d31fa615d4d0ecc282ccd29b2a0207abe9eaed235bde"
         }
       ]
     },
@@ -6209,9 +6209,9 @@
           "contract_id": "C14-RC-ELIGIBILITY/v1",
           "decision_scope": "Own the semantic decision boundary for C14-RC-ELIGIBILITY.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C14-RC-ELIGIBILITY"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C14-RC-ELIGIBILITY"
         },
-        "contract_sha256": "b81a5ed04863914c86af969e5a392c207c85e3ad8273770a65425f01f33b3691"
+        "contract_sha256": "98d256828a1b3f2504ce42f7cdb6d1cf9a26d3b5c92f29428242973ef1868241"
       },
       "implementation_state": "proposed",
       "qualification_claims": [],
@@ -6222,7 +6222,7 @@
           "capability_id": "C0-QUALIFICATION-AGGREGATOR",
           "relation": "evidence",
           "required_implementation_state": "wired",
-          "contract_sha256": "99fd7b7af1537a3943ff573907e221d07889ba11fc1bc02e5ea24671cd7073f1"
+          "contract_sha256": "fe1511dd564c54c38f814dd9fa5909dcdf02ba700a46ec860ba7d9aee28a7bd2"
         }
       ]
     },
@@ -6246,9 +6246,9 @@
           "contract_id": "C14-LIVE-QUALIFICATION/v1",
           "decision_scope": "Own the semantic decision boundary for C14-LIVE-QUALIFICATION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C14-LIVE-QUALIFICATION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C14-LIVE-QUALIFICATION"
         },
-        "contract_sha256": "9a1d9501231f587fdd562240dc61ab9b31cc08c52abd698370ff47fc53f9e8e8"
+        "contract_sha256": "d29919aa7deefd0c7ecd617f8aec833db71461e63c8a23febcbee6fd773d6d7b"
       },
       "implementation_state": "proposed",
       "qualification_claims": [],
@@ -6259,7 +6259,7 @@
           "capability_id": "C14-RC-ELIGIBILITY",
           "relation": "qualification",
           "required_implementation_state": "wired",
-          "contract_sha256": "b81a5ed04863914c86af969e5a392c207c85e3ad8273770a65425f01f33b3691"
+          "contract_sha256": "98d256828a1b3f2504ce42f7cdb6d1cf9a26d3b5c92f29428242973ef1868241"
         }
       ]
     },
@@ -6283,9 +6283,9 @@
           "contract_id": "C14-HOLDOUT-BLIND-COMPARE/v1",
           "decision_scope": "Own the semantic decision boundary for C14-HOLDOUT-BLIND-COMPARE.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C14-HOLDOUT-BLIND-COMPARE"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C14-HOLDOUT-BLIND-COMPARE"
         },
-        "contract_sha256": "96ec30ab64d31a218f8fde667517a24efeec04d04497dc8f5416cfb33816e8a1"
+        "contract_sha256": "3ea5f6bb49670584728f10bfb73730d847e05b6fa99ceccf4f7955e9ea998730"
       },
       "implementation_state": "proposed",
       "qualification_claims": [],
@@ -6296,7 +6296,7 @@
           "capability_id": "C14-LIVE-QUALIFICATION",
           "relation": "qualification",
           "required_implementation_state": "wired",
-          "contract_sha256": "9a1d9501231f587fdd562240dc61ab9b31cc08c52abd698370ff47fc53f9e8e8"
+          "contract_sha256": "d29919aa7deefd0c7ecd617f8aec833db71461e63c8a23febcbee6fd773d6d7b"
         }
       ]
     },
@@ -6320,9 +6320,9 @@
           "contract_id": "C14-RELEASE-DECISION/v1",
           "decision_scope": "Own the semantic decision boundary for C14-RELEASE-DECISION.",
           "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
-          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C14-RELEASE-DECISION"
+          "source_ref": "docs/top-agent-convergence-audit-20260711/archive/06-能力追踪与文档治理方案.md#C14-RELEASE-DECISION"
         },
-        "contract_sha256": "e0ef79be8986b28caf7b50200aa66ccc01f5efd902f43c89f4047dba6efa6f00"
+        "contract_sha256": "e09aec77a6e9ebda3d8e51fe1dfa216420f54e00bc21f8ef751312030d49bdef"
       },
       "implementation_state": "proposed",
       "qualification_claims": [],
@@ -6333,10 +6333,10 @@
           "capability_id": "C14-HOLDOUT-BLIND-COMPARE",
           "relation": "qualification",
           "required_implementation_state": "wired",
-          "contract_sha256": "96ec30ab64d31a218f8fde667517a24efeec04d04497dc8f5416cfb33816e8a1"
+          "contract_sha256": "3ea5f6bb49670584728f10bfb73730d847e05b6fa99ceccf4f7955e9ea998730"
         }
       ]
     }
   ],
-  "ledger_sha256": "07ef5f1bda4f704aa9fa79b94a6a87f608d573cc92b97a6a44362831e92aba84"
+  "ledger_sha256": "4a94ac0ea06741e7cdd3ba03ac306bf3899f7d38def82d40d795c71025897df1"
 }

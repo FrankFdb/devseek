@@ -29,7 +29,7 @@
       "verification feedback and bounded repair",
       "one evidence-backed completion decision across product surfaces"
     ],
-    "source_ref": "docs/top-agent-convergence-audit-20260711/02-Codex-Claude-Code-DevSeek软件架构对比.md"
+    "source_ref": "docs/top-agent-convergence-audit-20260711/archive/02-Codex-Claude-Code-DevSeek软件架构对比.md"
   },
   "product_routes": [
     {
@@ -3810,5 +3810,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "86c858f10cdf258b24bf8774e03f11786b4a750bb145152c9cfbb53217f2b715"
+  "baseline_sha256": "611de60882213410a84ef180f0ca0bf124504babdcd65e06ada844e300544a6b"
 }

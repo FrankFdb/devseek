@@ -17,7 +17,7 @@
 
 ## Frozen Sources
 
-- Capability ledger: `18a06eeccc6965c80361549f013edf23f272d3f749704f58d5143fff17367153`
+- Capability ledger: `4a94ac0ea06741e7cdd3ba03ac306bf3899f7d38def82d40d795c71025897df1`
 - Milestone profile: `R1-MINIMAL-SEAM/v1` sha256=`27c90f86cab61156766e18b36bcb368842e424d25c5fae2de2534fcdd1753ad9`
 - Claim profile: `DEVSEEK-GATE0-INFRASTRUCTURE/v1` sha256=`23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af`
 
@@ -53,4 +53,4 @@
 
 ## Registry Identity
 
-- Registry SHA-256: `ee98ee1fcb659da872f2d6b74126f3c30ebf25c17f5a268723da2eaedcb8d03c`
+- Registry SHA-256: `0963860d3491f756244cba7dc4e69f8921066a5c27970ce54ef3e93f5d07a54e`

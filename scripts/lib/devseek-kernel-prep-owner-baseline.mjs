@@ -1762,7 +1762,7 @@ export function buildKernelPrepOwnerBaseline(sources) {
         'verification feedback and bounded repair',
         'one evidence-backed completion decision across product surfaces',
       ],
-      source_ref: 'docs/top-agent-convergence-audit-20260711/02-Codex-Claude-Code-DevSeek软件架构对比.md',
+      source_ref: 'docs/top-agent-convergence-audit-20260711/archive/02-Codex-Claude-Code-DevSeek软件架构对比.md',
     },
     product_routes: buildProductRoutes(headlessProductEntrypoints),
     semantic_domains: semanticDomains,

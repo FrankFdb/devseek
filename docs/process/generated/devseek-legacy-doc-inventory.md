@@ -8,16 +8,16 @@
 - schema: `devseek.legacy-doc-inventory/v1`
 - scope: `top-agent-convergence`
 - asserts Gate 0 pass: `false`
-- inventory sha256: `1105eb6962c5442dd42d5cfbe98c498fc400cb939462e9beaa1c1ec45d9b9915`
+- inventory sha256: `3b668b1c55ca02e63147e2e4b42095363d8fa4e9498f06568b58f8b1b3e526f8`
 - active selector: `docs/process/devseek-active-baseline-selector.json`
-- active selector sha256: `7a2148a0e46e6305f7ba220749908974b3bf3f6970a19069b1b56f3e8c46f8c9`
-- governed markdown documents: `40`
+- active selector sha256: `a313e81e91c0a7a0d8e1190c3b18d7b3e47ee3b642a155144544bd09db046ad3`
+- governed markdown documents: `34`
 - active baselines excluded from legacy inventory: `3`
-- inventory entries: `37/37`
+- inventory entries: `31/31`
 - missing coverage: `0`
 - unexpected coverage: `0`
 - unresolved decisions: `0`
-- supporting markdown refs with reverse coverage: `4`
+- supporting markdown refs with reverse coverage: `1`
 - archived numbered documents duplicated at handoff root: `0`
 
 ## Active Baselines
@@ -32,7 +32,7 @@
 
 | Decision | Count |
 | --- | ---: |
-| keep | 31 |
+| keep | 25 |
 | revise | 0 |
 | supersede | 2 |
 | archive | 0 |
@@ -72,12 +72,6 @@
 | `docs/requirements/references/02-openai-codex.md` | requirements | not-applicable | external-reference | - | External capability reference snapshot supporting REQ-02, not a DevSeek backlog or source owner. |
 | `docs/requirements/references/03-github-copilot.md` | requirements | not-applicable | external-reference | - | External capability reference snapshot supporting REQ-02, not a DevSeek backlog or source owner. |
 | `docs/requirements/references/04-other-coding-agents.md` | requirements | not-applicable | external-reference | - | External capability reference snapshot supporting REQ-02, not a DevSeek backlog or source owner. |
-| `docs/top-agent-convergence-audit-20260711/02-Codex-Claude-Code-DevSeek软件架构对比.md` | handoff | keep | legacy-audit-report | - | Retained as comparative architecture evidence; it does not issue current work. |
-| `docs/top-agent-convergence-audit-20260711/03-顶级编程智能体目标软件架构.md` | handoff | keep | supporting-ref | ARCH-01-TOP-AGENT-ARCHITECTURE-BASELINE | G0-01 selector marks this as supporting ARCH-01 target overlay, not a second active architecture owner. |
-| `docs/top-agent-convergence-audit-20260711/04-分能力专项迭代与收敛路线图.md` | handoff | keep | supporting-ref | REQ-02-TOP-AGENT-REQUIREMENT-BASELINE | G0-01 selector marks this as supporting REQ-02 capability route, not an independent backlog. |
-| `docs/top-agent-convergence-audit-20260711/05-黄金用户旅程与正式项目资格方案.md` | handoff | keep | legacy-audit-report | - | Retained as formal qualification design evidence; Gate 0 remains machine-decided. |
-| `docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md` | handoff | keep | legacy-audit-report | - | Retained as document-governance design evidence now being converted into machine gates. |
-| `docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md` | handoff | keep | supporting-ref | PROCESS-CURRENT-CONVERGENCE-PLAN | The active selector marks this as historical engineering guidance supporting the current convergence plan, not a task issuer. |
 | `docs/top-agent-convergence-audit-20260711/README.md` | handoff | keep | supporting-ref | REQ-02-TOP-AGENT-REQUIREMENT-BASELINE | G0-01 selector marks this as supporting REQ-02 audit entry and applicability boundary. |
 
 This generated view is informational only. The machine source is `docs/process/devseek-legacy-doc-inventory.json`.

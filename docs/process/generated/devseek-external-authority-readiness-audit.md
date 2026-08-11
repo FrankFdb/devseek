@@ -52,18 +52,18 @@
 
 ## Source Bindings
 
-- `external_authority_requests`: `docs/process/devseek-external-authority-requests.json` -> `e64a795df9a5aa56788d0c267d8eb573ed57d77cfd1832334c00adf0d4617124`
+- `external_authority_requests`: `docs/process/devseek-external-authority-requests.json` -> `97744c8bb9bbab4ef4972e24706397f945bf18ea1b22fb3597f4f86ba6ed3367`
 - `r4_live_qualification_request_packet`: `docs/process/devseek-r4-live-qualification-request-packet.json` -> `8efb7b899a44b81ab3965e757ec5a38549da4369512a9150f4c2628f6dba4fc7`
 - `r4_live_user_way_holdout_matrix`: `docs/process/devseek-r4-live-user-way-holdout-matrix.json` -> `000a82523ebeb1047518c7ca32f232d1416cfccf8ec6418599428b642ed783cf`
 - `r4_real_provider_failure_taxonomy`: `docs/process/devseek-r4-real-provider-failure-taxonomy.json` -> `f600782836dcd78b8050870f72cdee8e5ae8fecfe6eab9e9410edd439e22ed35`
 - `r4_authorization_and_permission_guide`: `docs/process/devseek-r4-authorization-and-permission-guide.md` -> `826240c4a2cfcae0c6fb1068ed199b1ffed99d64857fd8053d70e3790f40ada5`
-- `r4_process_artifacts_aggregate`: `docs/process/devseek-r4-process-artifacts-aggregate.json` -> `6dac45a810f112a5599ccb1347e58c9430c11a49cafe00255184d344cfd6a06e`
-- `gate0_decision`: `docs/process/devseek-gate0-decision-report.json` -> `95404991f269e5a933abc8171bcca6d43859ebdd60df4305ff45bef34ca1973f`
+- `r4_process_artifacts_aggregate`: `docs/process/devseek-r4-process-artifacts-aggregate.json` -> `373b8688ef2b130ce879d807d229f401597ca9bbadf3d2cfa84fdc5eeeb98067`
+- `gate0_decision`: `docs/process/devseek-gate0-decision-report.json` -> `22a12c6e53702cc58a939bb208ff0d7c5c43f39a846d8e0497b897f958eb1bce`
 - `package_scripts`: `package.json` -> `d31cab51401797bdb7f501f833a396f2fbdf23172e67623025bd9e1180a05ffa`
-- `phase_gate_source`: `scripts/devseek-phase0-12-verify.mjs` -> `db927db5c6d2bf78ba78e62075bdde17a39c26ccdb41fef9f1847bd496b48702`
+- `phase_gate_source`: `scripts/devseek-phase0-12-verify.mjs` -> `f9e850451a613301bd1b7fe2218174b33013693887f04f7b80236bdaffc3038d`
 - `checker_source`: `scripts/devseek-external-authority-readiness-audit-check.mjs` -> `07bcdf406f21ca21f930a1b84b9a06d24f2a2e94ebb34dd1e61ce76f7a7e6944`
 - `oracle_source`: `scripts/test/devseek-external-authority-readiness-audit.test.mjs` -> `2d356a6fe285af4fdc72493e39f88f201b98a9d92a2a27d189d8f4fd1d5af1a5`
 
 ## Audit Identity
 
-- Audit SHA-256: `05a69f9e787d5e41d479af53a53a3319ff96d1549d5616da3b3e6fb3933d648c`
+- Audit SHA-256: `59d1cd01d668b1544d0c005d9a038241e046996e0f269fc4b417fbc095d71358`

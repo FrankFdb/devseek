@@ -9,7 +9,7 @@ import { projectCodingKernelTaskContract } from './coding-kernel';
 import { resolveCodingKernelTaskContract } from './coding-task-contract-resolver';
 
 export const CODING_CONFORMANCE_BENCHMARK_SOURCE =
-  'docs/top-agent-convergence-audit-20260711/02-Codex-Claude-Code-DevSeek软件架构对比.md';
+  'docs/top-agent-convergence-audit-20260711/archive/02-Codex-Claude-Code-DevSeek软件架构对比.md';
 
 const CREATE_AND_VERIFY_PROMPT =
   'Create tools/log_summary.py, keep the change scoped to that file, and verify it with Python.';

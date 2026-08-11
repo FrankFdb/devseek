@@ -21,7 +21,7 @@ export const POST_R4_LOCAL_FULL_REGRESSION_CHECKPOINT_PATH =
 
 export const POST_R4_REQUIRED_SOURCE_PATHS = Object.freeze([
   'docs/top-agent-convergence-audit-20260711/archive/14-未完成事项与后续整体迭代计划.md',
-  'docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md',
+  'docs/top-agent-convergence-audit-20260711/archive/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md',
   'docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md',
   'docs/process/devseek-post-r4-nonpermission-iteration-plan.md',
   'docs/process/devseek-r4-iteration-status-rollup.json',
@@ -61,7 +61,7 @@ const HISTORICAL_SUPPORT_DOCUMENTS = Object.freeze([
   },
   {
     document_id: 'quality-principles-16',
-    path: 'docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md',
+    path: 'docs/top-agent-convergence-audit-20260711/archive/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md',
     role: 'iteration-principles-quality-standards-and-skills-plan',
   },
   {
@@ -243,7 +243,7 @@ export function buildPostR4CompactIndex({ repoRoot = process.cwd(), sources = nu
         sourceContents,
       ),
       top_agent_quality_principles_16: sourceRef(
-        'docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md',
+        'docs/top-agent-convergence-audit-20260711/archive/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md',
         sourceContents,
       ),
       r3_closeout_next_phase_20: sourceRef(

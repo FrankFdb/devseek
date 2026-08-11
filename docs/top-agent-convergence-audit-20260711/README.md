@@ -25,9 +25,9 @@ devseek_governance:
 ## Machine Governance Status
 
 - generator: `devseek-doc-governance/v1`
-- active selector: `docs/process/devseek-active-baseline-selector.json` sha256=`7a2148a0e46e6305f7ba220749908974b3bf3f6970a19069b1b56f3e8c46f8c9`
-- legacy inventory: `docs/process/devseek-legacy-doc-inventory.json` sha256=`1105eb6962c5442dd42d5cfbe98c498fc400cb939462e9beaa1c1ec45d9b9915`
-- governed documents: `40`; active baselines: `3`; legacy/reference: `37`
+- active selector: `docs/process/devseek-active-baseline-selector.json` sha256=`a313e81e91c0a7a0d8e1190c3b18d7b3e47ee3b642a155144544bd09db046ad3`
+- legacy inventory: `docs/process/devseek-legacy-doc-inventory.json` sha256=`3b668b1c55ca02e63147e2e4b42095363d8fa4e9498f06568b58f8b1b3e526f8`
+- governed documents: `34`; active baselines: `3`; legacy/reference: `31`
 - status view: `docs/process/generated/devseek-doc-governance-status.md`
 - Gate 0 / claims effect: `NONE`; this generated status does not assert qualification.
 <!-- DEVSEEK-GOVERNANCE-STATUS:END -->
@@ -92,15 +92,11 @@ Gate 0 仍为 `NOT_PASSED`，qualification claims=0。受控测试、确定性 r
 
 | 文档 | 当前责任 |
 | --- | --- |
-| [02](02-Codex-Claude-Code-DevSeek软件架构对比.md) | Codex、Claude Code、DevSeek 公开行为对标与差距 |
-| [03](03-顶级编程智能体目标软件架构.md) | canonical Kernel 与目标软件架构 overlay |
-| [04](04-分能力专项迭代与收敛路线图.md) | C0～C14 能力定义、适用性和退出指标 |
-| [05](05-黄金用户旅程与正式项目资格方案.md) | 真实用户旅程、RC、holdout 与正式资格协议 |
-| [06](06-能力追踪与文档治理方案.md) | capability ledger、证据和文档治理规范 |
-| [16](16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md) | 设计优先的实现原则和每卡质量门槛 |
-| [PLAN](PLAN-当前收敛迭代计划.md) | 唯一当前状态与下一任务来源 |
+| [PLAN](PLAN-当前收敛迭代计划.md) | 唯一当前状态、下一任务、依赖和完成条件来源 |
+| [README](README.md) | 审计入口、产品目标、资格边界和机器事实索引 |
+| [archive](archive/README.md) | 01～20 历史对标、设计、实施、验收与交接证据 |
 
-01、07～15、17～20 已完成自身责任并完整移入 [archive/](archive/README.md)。根目录没有同名尾页；归档只表示该文档责任完成，不表示 Gate 0 或顶级资格通过。
+01～20 编号文档已完成各自的文档责任并完整移入 [archive/](archive/README.md)，根目录不保留同名尾页。外部 Gate 0、真实 Provider、RC 与 sealed holdout 仍由 PLAN 明确标记为 `blocked_external`；归档历史方案不等于这些资格任务已经完成。
 
 ## 事实来源
 

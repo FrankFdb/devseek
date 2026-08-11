@@ -41,7 +41,7 @@ devseek_governance:
 | 用户仿真 | `completed` | I10～I23 共 72 个增量案例绑定唯一 fixture 与自动化证据；I21/I22/I23 分别覆盖 connector/environment、run collaboration、MCP authority；原始结果只保留在被 Git 忽略的 `code/devseek-tests/` |
 | C14 正式顶级资格 | `blocked_external` | Gate 0=`NOT_PASSED`，6 个外部 authority blocker、7 个 exact claims 尚未满足；RC、真实 Provider wave 与 sealed holdout 不得本地伪造 |
 | 本轮 release loop | `in_progress` | 完成跨包总回归、生成物/治理/架构门禁、VSIX 打包安装、运行时残留检查和 Git 提交后关闭 |
-| 文档治理 | `completed` | 01、07～15、17～20 已完整归档且根目录无尾页；02～06、16 继续承担对标、目标、能力、资格、治理或工程准则责任 |
+| 文档治理 | `completed` | 01～20 编号文档已完整归档且根目录无编号尾页；当前状态与任务只由 PLAN 发放，README 仅提供入口和边界 |
 
 ## 非活跃能力
 

@@ -24,10 +24,10 @@ const baseInventory = readJson(inventoryPath);
 test('legacy document inventory covers every governed non-active document once', () => {
   const result = validateLegacyDocInventory(baseInventory, repoRoot);
   assert.deepEqual(result.errors, []);
-  assert.equal(result.summary.governed_document_count, 40);
+  assert.equal(result.summary.governed_document_count, 34);
   assert.equal(result.summary.active_baseline_count, 3);
-  assert.equal(result.summary.expected_inventory_count, 37);
-  assert.equal(result.summary.inventoried_document_count, 37);
+  assert.equal(result.summary.expected_inventory_count, 31);
+  assert.equal(result.summary.inventoried_document_count, 31);
   assert.equal(result.summary.missing_coverage_count, 0);
   assert.equal(result.summary.unexpected_coverage_count, 0);
   assert.equal(result.summary.unresolved_count, 0);
@@ -108,10 +108,10 @@ test('legacy document inventory fails closed on missing, duplicate, unknown, or 
   );
 
   const wrongSupportingRelationship = cloneInventory();
-  const architectureOverlay = wrongSupportingRelationship.entries.find(entry => (
-    entry.path === 'docs/top-agent-convergence-audit-20260711/03-顶级编程智能体目标软件架构.md'
+  const supportingReadme = wrongSupportingRelationship.entries.find(entry => (
+    entry.path === 'docs/top-agent-convergence-audit-20260711/README.md'
   ));
-  architectureOverlay.relationship = 'legacy-audit-report';
+  supportingReadme.relationship = 'legacy-audit-report';
   assertHasError(wrongSupportingRelationship, 'relationship:supporting-ref-required');
 });
 

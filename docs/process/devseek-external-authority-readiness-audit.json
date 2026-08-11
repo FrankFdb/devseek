@@ -26,9 +26,9 @@
   "source_bindings": {
     "external_authority_requests": {
       "path": "docs/process/devseek-external-authority-requests.json",
-      "source_sha256": "e64a795df9a5aa56788d0c267d8eb573ed57d77cfd1832334c00adf0d4617124",
+      "source_sha256": "97744c8bb9bbab4ef4972e24706397f945bf18ea1b22fb3597f4f86ba6ed3367",
       "request_set_id": "DEVSEEK-GATE0-EXTERNAL-AUTHORITY-REQUESTS/v1",
-      "request_set_sha256": "9c69641cadad73ff93e2d0ac64278d31cc4784f77ac133c87d6ff776398f8aaa",
+      "request_set_sha256": "1ab5f180fda1402b67c93dc9ca988cf06cec172ed7e490fb2055dff8fd9ed9c6",
       "blocked_requests": 5
     },
     "r4_live_qualification_request_packet": {
@@ -56,13 +56,13 @@
     },
     "r4_process_artifacts_aggregate": {
       "path": "docs/process/devseek-r4-process-artifacts-aggregate.json",
-      "source_sha256": "6dac45a810f112a5599ccb1347e58c9430c11a49cafe00255184d344cfd6a06e",
-      "aggregate_sha256": "6fbef9bfa0f6d83abc5e7cf6c6c803df2b8cabab13ab3716fdce521755fb271e",
+      "source_sha256": "373b8688ef2b130ce879d807d229f401597ca9bbadf3d2cfa84fdc5eeeb98067",
+      "aggregate_sha256": "5a5987cdb258ff12c65dd4fb7875b47df4d5f5790506e9801257d28c8d897b3f",
       "artifact_errors": 0
     },
     "gate0_decision": {
       "path": "docs/process/devseek-gate0-decision-report.json",
-      "source_sha256": "95404991f269e5a933abc8171bcca6d43859ebdd60df4305ff45bef34ca1973f",
+      "source_sha256": "22a12c6e53702cc58a939bb208ff0d7c5c43f39a846d8e0497b897f958eb1bce",
       "decision_id": "DEVSEEK-GATE0-INFRASTRUCTURE-DECISION/v1",
       "qualification_status": "NOT_PASSED",
       "external_authority_blockers": 6
@@ -75,7 +75,7 @@
     },
     "phase_gate_source": {
       "path": "scripts/devseek-phase0-12-verify.mjs",
-      "source_sha256": "db927db5c6d2bf78ba78e62075bdde17a39c26ccdb41fef9f1847bd496b48702",
+      "source_sha256": "f9e850451a613301bd1b7fe2218174b33013693887f04f7b80236bdaffc3038d",
       "required_gate": "external-authority-readiness-audit",
       "required_gate_present": true
     },
@@ -443,5 +443,5 @@
     "ledger_writes": 0,
     "provider_actions_performed": 0
   },
-  "audit_sha256": "05a69f9e787d5e41d479af53a53a3319ff96d1549d5616da3b3e6fb3933d648c"
+  "audit_sha256": "59d1cd01d668b1544d0c005d9a038241e046996e0f269fc4b417fbc095d71358"
 }
