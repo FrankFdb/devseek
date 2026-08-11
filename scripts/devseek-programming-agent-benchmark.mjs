@@ -1,14 +1,10 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
 import cp from 'node:child_process';
-import { createServer } from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  DEEPSEEK_WEB_CONNECTOR_CAPABILITIES,
-  DEEPSEEK_WEB_CONNECTOR_PROTOCOL_VERSION,
-} from '../packages/shared/dist/index.js';
+import { withFakeDeepSeekWebBridge as withFakeBridge } from './lib/devseek-fake-deepseek-web-bridge.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const selectedCaseIds = new Set(process.argv.slice(2)
@@ -978,81 +974,6 @@ async function formalMainControlUavWorkflowCase() {
     context: 'requirement,interface,main-control,license-reference',
     eventTypes: events.map(event => event.type),
   };
-}
-
-async function withFakeBridge(responder, fn) {
-  const seenBodies = [];
-  const server = createServer((req, res) => {
-    if (req.method === 'GET' && req.url === '/status') {
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({
-        idle: true,
-        queueLength: 0,
-        browserReady: true,
-        loggedInLikely: true,
-        connector: {
-          protocolVersion: DEEPSEEK_WEB_CONNECTOR_PROTOCOL_VERSION,
-          provider: 'deepseek-web',
-          capabilities: DEEPSEEK_WEB_CONNECTOR_CAPABILITIES,
-          maxAttempts: 2,
-          activeRequestCount: 0,
-        },
-      }));
-      return;
-    }
-    if (req.method === 'POST' && req.url === '/cancel') {
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ cancelled: true }));
-      return;
-    }
-    if (req.method !== 'POST' || req.url !== '/chat') {
-      res.writeHead(404).end();
-      return;
-    }
-    let raw = '';
-    req.setEncoding('utf8');
-    req.on('data', chunk => { raw += chunk; });
-    req.on('end', () => {
-      const body = raw ? JSON.parse(raw) : {};
-      seenBodies.push(body);
-      const response = responder(body);
-      const requestId = String(req.headers['x-devseek-operation-id'] || 'fake-bridge-chat');
-      if (body.stream === false) {
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ content: response.content }));
-        return;
-      }
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream; charset=utf-8',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-      });
-      res.write(`data: ${JSON.stringify({
-        protocolVersion: 'devseek.deepseek-web-stream/v1',
-        requestId,
-        sequence: 1,
-        event: 'delta',
-        delta: `\u0000RESET\u0000${response.content}`,
-        done: false,
-      })}\n\n`);
-      res.write(`data: ${JSON.stringify({
-        protocolVersion: 'devseek.deepseek-web-stream/v1',
-        requestId,
-        sequence: 2,
-        event: 'done',
-        delta: '',
-        done: true,
-      })}\n\n`);
-      res.end();
-    });
-  });
-
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  try {
-    await fn({ port: server.address().port, seenBodies });
-  } finally {
-    await new Promise(resolve => server.close(resolve));
-  }
 }
 
 function runCli(cliArgs, options) {

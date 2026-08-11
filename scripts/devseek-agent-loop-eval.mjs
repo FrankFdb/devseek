@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
 import cp from 'node:child_process';
-import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { withFakeDeepSeekWebBridge as withFakeBridge } from './lib/devseek-fake-deepseek-web-bridge.mjs';
 
 const require = createRequire(import.meta.url);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -182,7 +182,7 @@ async function cliFakeBridgeSseCase() {
   await withFakeBridge(() => ({
     content: 'FAKE_BRIDGE_SSE_OK',
     delayMs: 40,
-  }), async ({ port, seenBodies }) => {
+  }), async ({ port, seenBodies, requestCounts }) => {
     const cwd = makeTempWorkspace('cli-fake-bridge-sse');
     const result = await runCli(['exec', 'L2 fake bridge streaming baseline'], {
       cwd,
@@ -195,6 +195,7 @@ async function cliFakeBridgeSseCase() {
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /FAKE_BRIDGE_SSE_OK/);
     assert.match(result.stderr, /waiting for Bridge provider response/);
+    assert.ok(requestCounts.status >= 1, 'CLI did not verify the versioned connector contract');
     assert.equal(seenBodies.length, 1);
     assert.equal(seenBodies[0].stream, true);
   });
@@ -366,70 +367,6 @@ function runCli(cliArgs, options) {
       });
     });
   });
-}
-
-async function withFakeBridge(responder, fn) {
-  const seenBodies = [];
-  const server = createServer((req, res) => {
-    if (req.method !== 'POST' || req.url !== '/chat') {
-      res.writeHead(404).end();
-      return;
-    }
-    let raw = '';
-    req.setEncoding('utf8');
-    req.on('data', chunk => { raw += chunk; });
-    req.on('end', () => {
-      const body = raw ? JSON.parse(raw) : {};
-      seenBodies.push(body);
-      const response = responder(body);
-      const requestId = String(req.headers['x-devseek-operation-id'] || 'fake-bridge-chat');
-      if (body.stream === false) {
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ content: response.content }));
-        return;
-      }
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream; charset=utf-8',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-      });
-      setTimeout(() => {
-        const first = response.content.slice(0, Math.max(1, Math.floor(response.content.length / 2)));
-        res.write(`data: ${JSON.stringify({
-          protocolVersion: 'devseek.deepseek-web-stream/v1',
-          requestId,
-          sequence: 1,
-          event: 'delta',
-          delta: `\u0000RESET\u0000${first}`,
-          done: false,
-        })}\n\n`);
-        res.write(`data: ${JSON.stringify({
-          protocolVersion: 'devseek.deepseek-web-stream/v1',
-          requestId,
-          sequence: 2,
-          event: 'delta',
-          delta: `\u0000RESET\u0000${response.content}`,
-          done: false,
-        })}\n\n`);
-        res.write(`data: ${JSON.stringify({
-          protocolVersion: 'devseek.deepseek-web-stream/v1',
-          requestId,
-          sequence: 3,
-          event: 'done',
-          delta: '',
-          done: true,
-        })}\n\n`);
-        res.end();
-      }, response.delayMs ?? 0);
-    });
-  });
-
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  try {
-    await fn({ port: server.address().port, seenBodies });
-  } finally {
-    await new Promise(resolve => server.close(resolve));
-  }
 }
 
 function parseJsonl(stdout) {
