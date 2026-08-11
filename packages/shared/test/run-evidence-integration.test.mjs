@@ -913,6 +913,90 @@ test('late provider failure can be superseded only by an already verified local 
   );
 });
 
+test('provider failure before verification settles only through a verified workspace result', t => {
+  const workspaceRoot = tempWorkspace(t);
+  const authority = authoritySet();
+  const session = ProductRunEvidenceSession.forWorkspace({
+    workspaceRoot,
+    runId: 'provider-failure-before-verified-workspace-result',
+    surface: 'vscode',
+    authority: authority.ownerOpen,
+    openIfMissing: true,
+  });
+  for (const [index, [type, payload]] of [
+    ['provider.requested', observed('requested', { operation_id: 'provider:timed-out', boundary: 'bridge-server' })],
+    ['provider.failed', observed('failed', { operation_id: 'provider:timed-out', boundary: 'bridge-server' })],
+    ['side_effect.requested', observed('requested', { operation_id: 'workspace-write:1' })],
+    ['side_effect.authorized', observed('authorized', { operation_id: 'workspace-write:1' })],
+    ['side_effect.started', observed('started', { operation_id: 'workspace-write:1' })],
+    ['side_effect.committed', observed('committed', { operation_id: 'workspace-write:1' })],
+    ['verification.started', observed('started', { operation_id: 'verify-workspace:1' })],
+    ['verification.completed', observed('completed', { operation_id: 'verify-workspace:1' })],
+    ['quality_gate.started', observed('started', { operation_id: 'verify-workspace:1' })],
+    ['quality_gate.passed', observed('passed', { operation_id: 'verify-workspace:1' })],
+    ['recovery.detected', observed('detected', {
+      operation_id: 'recovery:provider-before-workspace',
+      target_operation_ids: ['provider:timed-out'],
+      recovery_trigger: 'provider-failure-before-verified-workspace-result',
+    })],
+    ['recovery.completed', observed('completed', {
+      operation_id: 'recovery:provider-before-workspace',
+      resolves_operation_ids: ['provider:timed-out'],
+      verification_operation_id: 'verify-workspace:1',
+      recovery_trigger: 'provider-failure-before-verified-workspace-result',
+      recovery_resolution: 'provider-failure-superseded-by-verified-workspace-result',
+    })],
+  ].entries()) {
+    session.record({ type, idempotencyKey: `provider-before-workspace:${index}`, payload });
+  }
+
+  assert.equal(
+    session.settleAndSeal({ status: 'completed', idempotencyKey: 'settlement' }).head.sealed,
+    true,
+  );
+});
+
+test('provider failure recovery cannot claim verification without a committed workspace result', t => {
+  const workspaceRoot = tempWorkspace(t);
+  const authority = authoritySet();
+  const session = ProductRunEvidenceSession.forWorkspace({
+    workspaceRoot,
+    runId: 'provider-failure-without-workspace-result',
+    surface: 'strict-provider-recovery-test',
+    authority: authority.ownerOpen,
+    openIfMissing: true,
+  });
+  for (const [index, [type, payload]] of [
+    ['provider.requested', observed('requested', { operation_id: 'provider:timed-out' })],
+    ['provider.failed', observed('failed', { operation_id: 'provider:timed-out' })],
+    ['verification.started', observed('started', { operation_id: 'verify-without-write' })],
+    ['verification.completed', observed('completed', { operation_id: 'verify-without-write' })],
+    ['quality_gate.started', observed('started', { operation_id: 'verify-without-write' })],
+    ['quality_gate.passed', observed('passed', { operation_id: 'verify-without-write' })],
+    ['recovery.detected', observed('detected', {
+      operation_id: 'recovery:provider-without-write',
+      target_operation_ids: ['provider:timed-out'],
+      recovery_trigger: 'provider-failure-before-verified-workspace-result',
+    })],
+  ].entries()) {
+    session.record({ type, idempotencyKey: `provider-without-write:${index}`, payload });
+  }
+  const before = session.head();
+
+  assert.throws(() => session.record({
+    type: 'recovery.completed',
+    idempotencyKey: 'provider-without-write:recovery-completed',
+    payload: observed('completed', {
+      operation_id: 'recovery:provider-without-write',
+      resolves_operation_ids: ['provider:timed-out'],
+      verification_operation_id: 'verify-without-write',
+      recovery_trigger: 'provider-failure-before-verified-workspace-result',
+      recovery_resolution: 'provider-failure-superseded-by-verified-workspace-result',
+    }),
+  }), error => error?.code === 'RUN_SEMANTIC_INVALID');
+  assert.deepEqual(session.head(), before);
+});
+
 test('late provider supersession cannot resolve pre-verification provider or side-effect failures', t => {
   const workspaceRoot = tempWorkspace(t);
   const verifiedLocalResult = [

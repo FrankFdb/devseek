@@ -6,6 +6,10 @@ import {
   type RunEvidenceJson,
   type RunEvidenceSettlementStatus,
   RunEvidenceLedgerError,
+  RUN_EVIDENCE_LATE_PROVIDER_FAILURE_RECOVERY_RESOLUTION,
+  RUN_EVIDENCE_LATE_PROVIDER_FAILURE_RECOVERY_TRIGGER,
+  RUN_EVIDENCE_PROVIDER_FAILURE_RECOVERY_RESOLUTION,
+  RUN_EVIDENCE_PROVIDER_FAILURE_RECOVERY_TRIGGER,
   RUN_EVIDENCE_TERMINAL_DENIAL_RECOVERY_RESOLUTION,
   RUN_EVIDENCE_TERMINAL_DENIAL_RECOVERY_TRIGGER,
 } from './run-evidence-protocol';
@@ -46,9 +50,6 @@ interface RecoveryState {
   detectedSequence?: number;
   terminal?: 'recovery.completed' | 'recovery.failed';
 }
-
-const VERIFIED_LOCAL_PROVIDER_FAILURE_TRIGGER = 'provider-failure-after-verified-local-result' as const;
-const VERIFIED_LOCAL_PROVIDER_FAILURE_RESOLUTION = 'provider-failure-superseded-by-verified-local-result' as const;
 
 export interface RunEvidencePrefixState {
   settled: boolean;
@@ -457,8 +458,12 @@ function hasProviderFailureSupersessionProof(input: {
   verificationStartedSequence: number;
   qualityGateTerminalSequence: number;
 }): boolean {
-  if (input.payload.recovery_trigger !== VERIFIED_LOCAL_PROVIDER_FAILURE_TRIGGER) return false;
-  if (input.payload.recovery_resolution !== VERIFIED_LOCAL_PROVIDER_FAILURE_RESOLUTION) return false;
+  if (input.payload.recovery_trigger === RUN_EVIDENCE_PROVIDER_FAILURE_RECOVERY_TRIGGER
+    && input.payload.recovery_resolution === RUN_EVIDENCE_PROVIDER_FAILURE_RECOVERY_RESOLUTION) {
+    return hasProviderFailureBeforeVerifiedWorkspaceProof(input);
+  }
+  if (input.payload.recovery_trigger !== RUN_EVIDENCE_LATE_PROVIDER_FAILURE_RECOVERY_TRIGGER) return false;
+  if (input.payload.recovery_resolution !== RUN_EVIDENCE_LATE_PROVIDER_FAILURE_RECOVERY_RESOLUTION) return false;
   const verifiedLocalCommit = [...input.sideEffects.values()].some(sideEffect => (
     sideEffect.terminal === 'side_effect.committed'
     && sideEffect.terminalSequence !== undefined
@@ -474,6 +479,40 @@ function hasProviderFailureSupersessionProof(input: {
       terminal.type !== 'provider.failed'
       || terminal.sequence <= input.qualityGateTerminalSequence
       || terminal.sequence >= input.detectionSequence
+    ))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function hasProviderFailureBeforeVerifiedWorkspaceProof(input: {
+  resolvedOperationIds: readonly string[];
+  adverse: readonly AdverseTerminal[];
+  sideEffects: ReadonlyMap<string, OperationState>;
+  detectionSequence: number;
+  verificationStartedSequence: number;
+  qualityGateTerminalSequence: number;
+}): boolean {
+  const verifiedLocalCommit = [...input.sideEffects.values()].some(sideEffect => (
+    sideEffect.terminal === 'side_effect.committed'
+      && sideEffect.requestedSequence !== undefined
+      && sideEffect.authorizedSequence !== undefined
+      && sideEffect.startedSequence !== undefined
+      && sideEffect.terminalSequence !== undefined
+      && sideEffect.requestedSequence < sideEffect.authorizedSequence
+      && sideEffect.authorizedSequence < sideEffect.startedSequence
+      && sideEffect.startedSequence < sideEffect.terminalSequence
+      && sideEffect.terminalSequence < input.verificationStartedSequence
+  ));
+  if (!verifiedLocalCommit || input.qualityGateTerminalSequence >= input.detectionSequence) return false;
+  for (const resolvedOperationId of input.resolvedOperationIds) {
+    const matching = input.adverse.filter(item => (
+      item.resolutionOperationId === resolvedOperationId && item.resolvedBy === undefined
+    ));
+    if (matching.length === 0 || matching.some(terminal => (
+      terminal.type !== 'provider.failed'
+        || terminal.sequence >= input.verificationStartedSequence
     ))) {
       return false;
     }

@@ -224,6 +224,62 @@ test('bridge provider verifies the failed server boundary and preserves the prov
   }
 });
 
+test('bridge provider waits for a server failure recorded after client transport cancellation', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-provider-evidence-'));
+  try {
+    const ownerToken = createProductRunEvidenceAuthorityToken();
+    const participantToken = createProductRunEvidenceAuthorityToken();
+    ProductRunEvidenceSession.forWorkspace({
+      workspaceRoot,
+      runId: 'provider-bridge-delayed-failure',
+      surface: 'vscode',
+      authority: { role: 'owner', token: ownerToken, participantToken },
+      openIfMissing: true,
+    });
+    const errors = [];
+    await assert.rejects(invokeProviderWithRunEvidence({
+      request: {
+        prompt: 'hello',
+        traceRunId: 'provider-bridge-delayed-failure',
+        traceWorkspaceRoot: workspaceRoot,
+        traceOperationId: 'delayed-failed-op',
+        traceEvidenceParticipantToken: participantToken,
+      },
+      providerType: 'bridge',
+      onEvidenceError: error => errors.push(error),
+      invoke: async () => {
+        const bridge = ProductRunEvidenceSession.forWorkspace({
+          workspaceRoot,
+          runId: 'provider-bridge-delayed-failure',
+          surface: 'bridge',
+          authority: { role: 'participant', token: participantToken },
+        });
+        setTimeout(() => {
+          for (const type of ['provider.requested', 'provider.failed']) {
+            bridge.record({
+              type,
+              idempotencyKey: productRunEvidenceIdempotencyKey(`bridge-${type}`, {
+                operationId: 'delayed-failed-op',
+              }),
+              payload: {
+                operation_id: 'delayed-failed-op',
+                boundary: 'bridge-server',
+                status: type.slice('provider.'.length),
+                trust: 'product-runtime-observation',
+              },
+            });
+          }
+        }, 40);
+        throw new Error('client stream timed out');
+      },
+    }), /client stream timed out/);
+
+    assert.deepEqual(errors, []);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('bridge provider accepts server completion when client integrity rejects the response', async () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-provider-evidence-'));
   try {

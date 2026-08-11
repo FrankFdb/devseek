@@ -4,6 +4,10 @@ import {
   createDevSeekTraceLogger,
   ProductRunEvidenceSession,
   productRunEvidenceIdempotencyKey,
+  RUN_EVIDENCE_LATE_PROVIDER_FAILURE_RECOVERY_RESOLUTION,
+  RUN_EVIDENCE_LATE_PROVIDER_FAILURE_RECOVERY_TRIGGER,
+  RUN_EVIDENCE_PROVIDER_FAILURE_RECOVERY_RESOLUTION,
+  RUN_EVIDENCE_PROVIDER_FAILURE_RECOVERY_TRIGGER,
   summarizeTraceText,
   type DevSeekTraceLogger,
   type DevSeekTraceLevel,
@@ -60,9 +64,6 @@ export interface DevSeekRunContext {
 export function createDevSeekRunContext(options: DevSeekRunContextOptions): DevSeekRunContext {
   return new DefaultDevSeekRunContext(options);
 }
-
-const VERIFIED_LOCAL_PROVIDER_FAILURE_TRIGGER = 'provider-failure-after-verified-local-result' as const;
-const VERIFIED_LOCAL_PROVIDER_FAILURE_RESOLUTION = 'provider-failure-superseded-by-verified-local-result' as const;
 
 class DefaultDevSeekRunContext implements DevSeekRunContext {
   readonly runId: string;
@@ -274,7 +275,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
       }).status;
     }
     if (status === 'completed') {
-      this.completeLateProviderFailuresFromVerifiedLocalResult(data);
+      this.completeProviderFailuresFromVerifiedLocalResult(data);
     }
     let settlement = decideSettlementState({
       requestedStatus: status,
@@ -820,7 +821,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     }
   }
 
-  private completeLateProviderFailuresFromVerifiedLocalResult(data: Record<string, unknown>): void {
+  private completeProviderFailuresFromVerifiedLocalResult(data: Record<string, unknown>): void {
     if (!this.evidence || this.currentRecovery) return;
     try {
       const events = this.evidence.readEvents();
@@ -836,30 +837,60 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
         failures.push(event);
         unresolvedProviderFailuresByOperation.set(operationId, failures);
       }
-      const targetOperationIds = [...unresolvedProviderFailuresByOperation.entries()]
+      const earlyTargetOperationIds = [...unresolvedProviderFailuresByOperation.entries()]
         .filter(([, failures]) => (
           failures.length > 0
+          && failures.every(event => event.sequence < verifiedLocalResult.verificationStartedSequence)
+        ))
+        .map(([operationId]) => operationId);
+      this.recordVerifiedProviderFailureRecovery({
+        data,
+        targetOperationIds: earlyTargetOperationIds,
+        verificationOperationId: verifiedLocalResult.verificationOperationId,
+        trigger: RUN_EVIDENCE_PROVIDER_FAILURE_RECOVERY_TRIGGER,
+        resolution: RUN_EVIDENCE_PROVIDER_FAILURE_RECOVERY_RESOLUTION,
+      });
+      const lateTargetOperationIds = [...unresolvedProviderFailuresByOperation.entries()]
+        .filter(([operationId, failures]) => (
+          !earlyTargetOperationIds.includes(operationId)
+          && failures.length > 0
           && failures.every(event => event.sequence > verifiedLocalResult.qualityGatePassedSequence)
         ))
         .map(([operationId]) => operationId);
-      if (targetOperationIds.length === 0) return;
-      this.recoverySequence += 1;
-      const operationId = `vscode-recovery-${this.recoverySequence}`;
-      const summary = summarizeTraceText(safeCompletionSummary(data));
-      this.recordOperationEvent('recovery.detected', operationId, 'detected', summary, {
-        target_operation_ids: targetOperationIds,
-        recovery_trigger: VERIFIED_LOCAL_PROVIDER_FAILURE_TRIGGER,
+      this.recordVerifiedProviderFailureRecovery({
+        data,
+        targetOperationIds: lateTargetOperationIds,
+        verificationOperationId: verifiedLocalResult.verificationOperationId,
+        trigger: RUN_EVIDENCE_LATE_PROVIDER_FAILURE_RECOVERY_TRIGGER,
+        resolution: RUN_EVIDENCE_LATE_PROVIDER_FAILURE_RECOVERY_RESOLUTION,
       });
-      this.recordOperationEvent('recovery.completed', operationId, 'completed', summary, {
-        resolves_operation_ids: targetOperationIds,
-        verification_operation_id: verifiedLocalResult.verificationOperationId,
-        recovery_trigger: VERIFIED_LOCAL_PROVIDER_FAILURE_TRIGGER,
-        recovery_resolution: VERIFIED_LOCAL_PROVIDER_FAILURE_RESOLUTION,
-      });
-      targetOperationIds.forEach(targetOperationId => this.deletePendingAdverseOperation(targetOperationId));
     } catch (error) {
       this.markEvidenceDegraded(error);
     }
+  }
+
+  private recordVerifiedProviderFailureRecovery(input: {
+    readonly data: Record<string, unknown>;
+    readonly targetOperationIds: readonly string[];
+    readonly verificationOperationId: string;
+    readonly trigger: string;
+    readonly resolution: string;
+  }): void {
+    if (input.targetOperationIds.length === 0) return;
+    this.recoverySequence += 1;
+    const operationId = `vscode-recovery-${this.recoverySequence}`;
+    const summary = summarizeTraceText(safeCompletionSummary(input.data));
+    this.recordOperationEvent('recovery.detected', operationId, 'detected', summary, {
+      target_operation_ids: [...input.targetOperationIds],
+      recovery_trigger: input.trigger,
+    });
+    this.recordOperationEvent('recovery.completed', operationId, 'completed', summary, {
+      resolves_operation_ids: [...input.targetOperationIds],
+      verification_operation_id: input.verificationOperationId,
+      recovery_trigger: input.trigger,
+      recovery_resolution: input.resolution,
+    });
+    input.targetOperationIds.forEach(targetOperationId => this.deletePendingAdverseOperation(targetOperationId));
   }
 
   private addPendingAdverseOperation(operationId: string, operationKey?: string): void {
@@ -1050,9 +1081,14 @@ function collectResolvedOperationIds(events: readonly RunEvidenceEvent[]): Set<s
 
 function findLatestVerifiedLocalResult(events: readonly RunEvidenceEvent[]): {
   verificationOperationId: string;
+  verificationStartedSequence: number;
   qualityGatePassedSequence: number;
 } | undefined {
-  let latest: { verificationOperationId: string; qualityGatePassedSequence: number } | undefined;
+  let latest: {
+    verificationOperationId: string;
+    verificationStartedSequence: number;
+    qualityGatePassedSequence: number;
+  } | undefined;
   for (const gatePassed of events) {
     if (gatePassed.type !== 'quality_gate.passed') continue;
     const verificationOperationId = evidenceOperationId(gatePassed);
@@ -1077,6 +1113,7 @@ function findLatestVerifiedLocalResult(events: readonly RunEvidenceEvent[]): {
     if (!latest || gatePassed.sequence > latest.qualityGatePassedSequence) {
       latest = {
         verificationOperationId,
+        verificationStartedSequence: verificationStarted.sequence,
         qualityGatePassedSequence: gatePassed.sequence,
       };
     }

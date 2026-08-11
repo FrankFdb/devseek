@@ -853,6 +853,73 @@ test('RunContext: local file fallback resolves provider failures after task alre
   }
 });
 
+test('RunContext: canonical workspace evidence settles an earlier provider timeout', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  const runId = 'run-context-provider-timeout-before-canonical-write';
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId,
+      userPrompt: '修改 src/main.cpp 并运行测试',
+      traceLevel: 'debug',
+    });
+    const participant = ProductRunEvidenceSession.forWorkspace({
+      workspaceRoot,
+      runId,
+      surface: 'canonical-participant',
+      authority: { role: 'participant', token: context.evidenceParticipantToken },
+    });
+    for (const [index, [type, status, payload]] of [
+      ['provider.requested', 'requested', { operation_id: 'provider:stream-timeout', boundary: 'vscode-provider-client' }],
+      ['provider.failed', 'failed', { operation_id: 'provider:stream-timeout', boundary: 'vscode-provider-client' }],
+      ['side_effect.requested', 'requested', { operation_id: 'canonical-write:1', boundary: 'vscode-workspace-mutation' }],
+      ['side_effect.authorized', 'authorized', { operation_id: 'canonical-write:1', boundary: 'vscode-workspace-mutation' }],
+      ['side_effect.started', 'started', { operation_id: 'canonical-write:1', boundary: 'vscode-workspace-mutation' }],
+      ['side_effect.committed', 'committed', { operation_id: 'canonical-write:1', boundary: 'vscode-workspace-mutation' }],
+    ].entries()) {
+      participant.record({
+        type,
+        idempotencyKey: `canonical-provider-recovery:${index}`,
+        payload: observed(status, payload),
+      });
+    }
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'validate', state: 'started',
+      title: '运行测试', evidenceOperationId: 'verify-canonical-write',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'validate', state: 'completed',
+      title: '测试通过', evidenceOperationId: 'verify-canonical-write',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'quality', state: 'started',
+      title: '评估质量门禁', evidenceOperationId: 'verify-canonical-write',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'quality', state: 'completed',
+      title: '质量门禁通过', evidenceOperationId: 'verify-canonical-write',
+    });
+
+    assert.equal(context.complete('completed', {
+      tasksTotal: 1,
+      tasksApplied: 1,
+      tasksFailed: 0,
+      changedPaths: ['src/main.cpp'],
+    }), 'completed');
+
+    const events = participant.readEvents();
+    const recovery = events.find(event => (
+      event.type === 'recovery.completed'
+      && event.payload.recovery_trigger === 'provider-failure-before-verified-workspace-result'
+    ));
+    assert.deepEqual(recovery?.payload.resolves_operation_ids, ['provider:stream-timeout']);
+    assert.equal(recovery?.payload.verification_operation_id, 'verify-canonical-write');
+    assert.equal(events.find(event => event.type === 'run.settled')?.payload.status, 'completed');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('RunContext: post-verification provider failure cannot overturn recovered local write completion', () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
   const runId = 'run-context-post-recovery-provider-failure';

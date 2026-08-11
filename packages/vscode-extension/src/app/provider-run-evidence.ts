@@ -38,7 +38,7 @@ export async function invokeProviderWithRunEvidence(input: ProviderRunEvidenceIn
       response: summarizeTraceText(response),
     });
     if (input.providerType === 'bridge') {
-      assertBridgeParticipantTerminal(evidence, operationId, 'provider.completed', input);
+      await assertBridgeParticipantTerminal(evidence, operationId, 'provider.completed', input);
     }
     return response;
   } catch (error) {
@@ -49,7 +49,7 @@ export async function invokeProviderWithRunEvidence(input: ProviderRunEvidenceIn
       error: summarizeTraceText(message),
     });
     if (input.providerType === 'bridge') {
-      assertBridgeParticipantTerminal(evidence, operationId, 'provider.failed', input);
+      await assertBridgeParticipantTerminal(evidence, operationId, 'provider.failed', input);
     }
     throw error;
   }
@@ -105,33 +105,46 @@ function record(
   }
 }
 
-function assertBridgeParticipantTerminal(
+async function assertBridgeParticipantTerminal(
   evidence: ProductRunEvidenceSession | undefined,
   operationId: string,
   expectedTerminal: 'provider.completed' | 'provider.failed',
   input: ProviderRunEvidenceInput,
-): void {
+): Promise<void> {
   if (!evidence) return;
   try {
-    const matching = evidence.readEvents().filter(event => {
-      if (!event.type.startsWith('provider.')) return false;
-      if (!event.payload || typeof event.payload !== 'object' || Array.isArray(event.payload)) return false;
-      return event.payload.operation_id === operationId && event.payload.boundary === 'bridge-server';
-    });
-    const requested = matching.filter(event => event.type === 'provider.requested').length;
-    const terminal = matching.filter(event => event.type === 'provider.completed' || event.type === 'provider.failed').length;
-    const actualTerminal = matching.at(-1)?.type;
-    const terminalMatches = expectedTerminal === 'provider.completed'
-      ? actualTerminal === 'provider.completed'
-      : actualTerminal === 'provider.completed' || actualTerminal === 'provider.failed';
-    if (requested !== 1 || terminal !== 1 || !terminalMatches) {
-      throw new Error(
-        `Bridge evidence boundary is incomplete for operation ${operationId}; expected ${describeExpectedBridgeTerminal(expectedTerminal)}`,
-      );
+    const deadline = Date.now() + 1_000;
+    while (true) {
+      if (bridgeParticipantTerminalIsComplete(evidence, operationId, expectedTerminal)) return;
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `Bridge evidence boundary is incomplete for operation ${operationId}; expected ${describeExpectedBridgeTerminal(expectedTerminal)}`,
+        );
+      }
+      await new Promise(resolve => setTimeout(resolve, 25));
     }
   } catch (error) {
     input.onEvidenceError?.(error);
   }
+}
+
+function bridgeParticipantTerminalIsComplete(
+  evidence: ProductRunEvidenceSession,
+  operationId: string,
+  expectedTerminal: 'provider.completed' | 'provider.failed',
+): boolean {
+  const matching = evidence.readEvents().filter(event => {
+    if (!event.type.startsWith('provider.')) return false;
+    if (!event.payload || typeof event.payload !== 'object' || Array.isArray(event.payload)) return false;
+    return event.payload.operation_id === operationId && event.payload.boundary === 'bridge-server';
+  });
+  const requested = matching.filter(event => event.type === 'provider.requested').length;
+  const terminal = matching.filter(event => event.type === 'provider.completed' || event.type === 'provider.failed').length;
+  const actualTerminal = matching.at(-1)?.type;
+  const terminalMatches = expectedTerminal === 'provider.completed'
+    ? actualTerminal === 'provider.completed'
+    : actualTerminal === 'provider.completed' || actualTerminal === 'provider.failed';
+  return requested === 1 && terminal === 1 && terminalMatches;
 }
 
 function describeExpectedBridgeTerminal(expectedTerminal: 'provider.completed' | 'provider.failed'): string {

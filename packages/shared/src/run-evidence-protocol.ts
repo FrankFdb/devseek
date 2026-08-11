@@ -21,6 +21,14 @@ export const RUN_EVIDENCE_TERMINAL_DENIAL_RECOVERY_TRIGGER =
   'terminal-denial-before-verified-workspace-result' as const;
 export const RUN_EVIDENCE_TERMINAL_DENIAL_RECOVERY_RESOLUTION =
   'terminal-denial-superseded-by-verified-workspace-result' as const;
+export const RUN_EVIDENCE_PROVIDER_FAILURE_RECOVERY_TRIGGER =
+  'provider-failure-before-verified-workspace-result' as const;
+export const RUN_EVIDENCE_PROVIDER_FAILURE_RECOVERY_RESOLUTION =
+  'provider-failure-superseded-by-verified-workspace-result' as const;
+export const RUN_EVIDENCE_LATE_PROVIDER_FAILURE_RECOVERY_TRIGGER =
+  'provider-failure-after-verified-local-result' as const;
+export const RUN_EVIDENCE_LATE_PROVIDER_FAILURE_RECOVERY_RESOLUTION =
+  'provider-failure-superseded-by-verified-local-result' as const;
 export const RUN_EVIDENCE_AUTHORITY_PROTOCOL = 'devseek.product-run-evidence-authority/v1' as const;
 export const RUN_EVIDENCE_AUTHORITY_PAYLOAD_KEY = '_devseek_run_evidence_authority' as const;
 export const RUN_EVIDENCE_AUTHORITY_TOKEN_PREFIX = DEVSEEK_AUTHORITY_CAPABILITY_PREFIX;
