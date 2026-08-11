@@ -689,7 +689,7 @@ async function runActiveChat(
               }
             },
             onWorkflowStatus: async (s) => { postWebviewEvent(webview, { kind: 'workflow', status: s }); },
-            onAgentStatus: async (s) => { postAgent(s); },
+            ...agentPresenter.runtimeObservers,
             onAppliedChange: async (c) => { await pendingEditCoordinator.registerChange(webview, c); },
             onResponseMeta: async (_raw) => { /* suppressed in agent mode */ },
             onAgentAnnouncement: (text) => {

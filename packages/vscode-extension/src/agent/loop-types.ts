@@ -8,6 +8,7 @@ import type { ExecutionMode } from '../intent/intent-types';
 import type { AgentFileWriteContext } from '../app/agent-file-write-policy';
 import type { ArtifactClaim, EvidenceRef, VerificationResult } from './evidence-grounding';
 import type { ValidationCommandRunner } from '../workspace/validation-service';
+import type { WorkspaceMutationLifecycleObserver } from '../workspace/workspace-mutation-observer';
 import type {
   CodingCompletionAcceptanceDecision,
   CodingCompletionDecision,
@@ -61,6 +62,8 @@ export interface AgentLoopCallbacks {
   onAgentStatus: (status: AgentStatusMessage) => void | Promise<void>;
   /** A file was applied — register for Keep/Undo */
   onAppliedChange: (change: AppliedChangeRecord) => void | Promise<void>;
+  /** Product-runtime observation of canonical workspace mutation lifecycle. */
+  onWorkspaceMutation?: WorkspaceMutationLifecycleObserver;
   /** Post a responseMeta message after all tasks done */
   onResponseMeta: (text: string) => void | Promise<void>;
   /**

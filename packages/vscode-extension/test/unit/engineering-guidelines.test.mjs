@@ -43,6 +43,8 @@ test('EngineeringGuidelines: agent prompt carries file and function size constra
   assert.match(prompt, /response JSON 示例/);
   assert.match(prompt, /```json/);
   assert.match(prompt, /原有代码修改清单/);
+  assert.match(prompt, /既有公共 API、类型名和无告警编译行为默认属于兼容契约/);
+  assert.match(prompt, /不得擅自重命名、废弃或用 deprecated 别名替代/);
 });
 
 test('EngineeringGuidelines: planner prompt tells Architect to split responsibilities', () => {

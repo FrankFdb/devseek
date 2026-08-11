@@ -1,5 +1,5 @@
 import type * as vscode from 'vscode';
-import type { AgentStatusMessage } from '../agent/loop-types';
+import type { AgentLoopCallbacks, AgentStatusMessage } from '../agent/loop-types';
 import { AgentDisplayPresenter } from '../app/agent-display-presenter';
 import type { DevSeekRunContext } from '../app/run-context';
 import type { PendingEditCoordinator } from '../pending-edit-coordinator';
@@ -47,6 +47,13 @@ export class AgentTurnPresenter {
     this.runContext.recordToolActivity(kind, label);
     void this.webview.postMessage(this.display.presentToolActivity(kind, label));
   };
+
+  get runtimeObservers(): Pick<AgentLoopCallbacks, 'onAgentStatus' | 'onWorkspaceMutation'> {
+    return {
+      onAgentStatus: async message => { this.postStatus(message); },
+      onWorkspaceMutation: event => { this.runContext.recordWorkspaceMutation(event); },
+    };
+  }
 
   postSettlementRefusal(): void {
     postAgentSettlementRefusal(this.webview, this.display);

@@ -109,8 +109,27 @@ test('ValidationService rejects compiler warnings emitted for changed C++ source
 
   assert.equal(observation.status, 'failed');
   assert.equal(observation.exitCode, 0);
-  assert.match(observation.summary, /warning\(s\) in changed source/);
+  assert.match(observation.summary, /warning\(s\) in or caused by changed source/);
   assert.ok(observation.evidenceRefs.includes('compiler-warning:src/job_scheduler.cpp:61:8'));
+});
+
+test('ValidationService attributes use-site warnings to declarations in changed C++ headers', async () => {
+  const warning = [
+    '/repo/tests/public_test.cpp:10:29: warning: TokenBucketLimiter is deprecated [-Wdeprecated-declarations]',
+    '   10 | TokenBucketLimiter limiter(2.0, 2.0, clock);',
+    '/repo/include/rate_limiter.hpp:67:7: note: declared here',
+  ].join('\n');
+  const service = new ValidationService({
+    commandRunner: async () => commandResult({ stderr: warning, output: warning }),
+  });
+  const observation = await service.execute(processStep('/repo', {
+    invocation: { kind: 'process', command: 'bash', args: ['test.sh'] },
+    scopePaths: ['include/rate_limiter.hpp', 'src/rate_limiter.cpp'],
+  }));
+
+  assert.equal(observation.status, 'failed');
+  assert.match(observation.summary, /include\/rate_limiter\.hpp:67:7/);
+  assert.ok(observation.evidenceRefs.includes('compiler-warning:include/rate_limiter.hpp:67:7'));
 });
 
 test('ValidationService does not attribute unrelated compiler warnings to the changed scope', async () => {

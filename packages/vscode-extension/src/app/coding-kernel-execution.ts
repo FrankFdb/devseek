@@ -12,6 +12,7 @@ import {
 import type { ExecutionMode } from '../intent/intent-types';
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import type { AgentLoopCallbacks, AgentLoopResult } from '../agent/loop-types';
+import { observeWorkspaceMutationTransaction } from '../workspace/workspace-mutation-observer';
 import {
   getPendingKernelRecoveryTasks,
   renderCodingKernelRecoveryContext,
@@ -107,7 +108,10 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
       canonicalToolDispatch: kernelRequest.toolDispatch,
       canonicalToolExecution: kernelRequest.toolExecution,
       canonicalToolAuthority: kernelRequest.toolAuthority,
-      canonicalWorkspaceMutations: kernelRequest.workspaceMutations,
+      canonicalWorkspaceMutations: observeWorkspaceMutationTransaction(
+        kernelRequest.workspaceMutations,
+        request.callbacks.onWorkspaceMutation,
+      ),
       canonicalExternalEffects: kernelRequest.externalEffects,
       canonicalVerifierSelection: kernelRequest.verifierSelection,
       canonicalBuildOrchestration: kernelRequest.buildOrchestration,

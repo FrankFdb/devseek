@@ -10,6 +10,7 @@ import {
   CODING_KERNEL_REQUEST_VERSION,
   CanonicalCodingKernel,
   InMemoryCodingOperationJournal,
+  buildCodingWorkspaceMutationPlan,
   buildCodingVerificationPlan,
   buildCodingKernelTaskContract,
   createFixtureCodingKernelEnvironment,
@@ -82,6 +83,69 @@ test('canonical Kernel sends VS Code work through its runtime adapter', async ()
   assert.equal(calls[0].callbacks.traceRunId, output.runId);
   assert.equal(typeof calls[0].callbacks.canonicalToolAuthority.authorize, 'function');
   assert.equal(typeof calls[0].callbacks.canonicalExternalEffects.execute, 'function');
+});
+
+test('canonical Kernel observes actual workspace apply lifecycle without replaying mutation evidence', async () => {
+  const lifecycle = [];
+  let applyCount = 0;
+  const kernel = createKernel({
+    async runCanonical(request) {
+      const plan = buildCodingWorkspaceMutationPlan({
+        runId: request.callbacks.traceRunId,
+        sequence: 1,
+        actionId: 'write-rate-limiter-source',
+        idempotencyKey: `${request.callbacks.traceRunId}:write-rate-limiter-source`,
+        paths: ['src/rate_limiter.cpp'],
+        payload: { content: 'int rate_limiter = 1;' },
+        evidenceRefs: ['fixture:workspace-write'],
+      });
+      const host = {
+        captureBaseline: async () => ({
+          baselineRef: 'fixture:baseline',
+          state: { content: '' },
+          evidenceRefs: ['fixture:baseline'],
+        }),
+        apply: async () => {
+          applyCount += 1;
+          return {
+            status: 'applied',
+            applied: {
+              state: { content: 'int rate_limiter = 1;' },
+              result: { changed: true },
+              evidenceRefs: ['fixture:apply'],
+            },
+          };
+        },
+        readback: async () => ({
+          matches: true,
+          readbackRef: 'fixture:readback',
+          evidenceRefs: ['fixture:readback'],
+        }),
+        rollback: async () => ({ rolledBack: true, evidenceRefs: ['fixture:rollback'] }),
+      };
+      const first = await request.callbacks.canonicalWorkspaceMutations.execute(plan, host);
+      const replay = await request.callbacks.canonicalWorkspaceMutations.execute(plan, host);
+      assert.equal(first.receipt.status, 'committed');
+      assert.equal(replay.replayed, true);
+      return result('canonical');
+    },
+  });
+
+  await execute(kernel, {
+    ...baseRequest(),
+    callbacks: {
+      executionMode: 'edit',
+      onWorkspaceMutation: event => lifecycle.push(event),
+    },
+  });
+
+  assert.equal(applyCount, 1);
+  assert.deepEqual(lifecycle.map(event => event.state), ['started', 'committed']);
+  assert.deepEqual(lifecycle.map(event => event.paths), [
+    ['src/rate_limiter.cpp'],
+    ['src/rate_limiter.cpp'],
+  ]);
+  assert.equal(lifecycle[1].replayed, false);
 });
 
 test('canonical Kernel envelope is the only VS Code prompt and workspace authority', async () => {

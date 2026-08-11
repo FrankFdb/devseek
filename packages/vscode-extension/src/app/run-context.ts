@@ -15,6 +15,7 @@ import {
   type RunEvidenceJson,
 } from '@devseek-netai/shared';
 import type { AgentStatusEvent } from '../agent/events';
+import type { WorkspaceMutationLifecycleEvent } from '../workspace/workspace-mutation-observer';
 import { hasSourceClaimArtifactContract, type TaskContract } from '../agent/task-contract';
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import { resolveTaskSemanticContract } from '../intent/task-semantic-contract-service';
@@ -51,6 +52,7 @@ export interface DevSeekRunContext {
   readonly evidenceParticipantToken: string;
   childTrace(source: string): DevSeekTraceLogger;
   recordAgentStatus(status: AgentStatusEvent): void;
+  recordWorkspaceMutation(event: WorkspaceMutationLifecycleEvent): void;
   recordToolActivity(kind: string, label: string): void;
   recordCheckpoint(firstUnfinishedIndex: number | null, remainingCount: number, reason: string): void;
   markEvidenceDegraded(error: unknown): void;
@@ -174,6 +176,52 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
       },
     });
     this.recordLifecycleFromAgentStatus(status, statusSummary);
+  }
+
+  recordWorkspaceMutation(event: WorkspaceMutationLifecycleEvent): void {
+    if (this.settlementStatus) {
+      this.trace.info('run-context', 'post-terminal-workspace-mutation-ignored', {
+        terminalStatus: this.settlementStatus,
+        mutation: summarizeWorkspaceMutationForTrace(event),
+      });
+      return;
+    }
+    const mutation = summarizeWorkspaceMutationForTrace(event);
+    this.trace.info('workspace-mutation', 'workspace-mutation-lifecycle', mutation);
+    const summary = summarizeTraceText(safeCompletionSummary(mutation));
+    const operationKey = workspaceMutationOperationKey(event);
+    const operationId = workspaceMutationOperationId(event);
+    const activeOperationId = this.activeSideEffectOperations.get(operationKey);
+
+    if (event.state === 'started') {
+      if (activeOperationId) {
+        this.markEvidenceDegraded(new Error(`Workspace mutation ${operationKey} started more than once`));
+        return;
+      }
+      this.beginImplicitMutationRecovery(operationKey, summary);
+      this.activeSideEffectOperations.set(operationKey, operationId);
+      this.recordSideEffectStart(operationId, summary, this.workspaceMutationEvidenceDetails(event));
+      this.hasSideEffectEvidence = true;
+      return;
+    }
+
+    if (activeOperationId !== operationId) {
+      this.markEvidenceDegraded(new Error(`Workspace mutation ${operationKey} settled without its observed apply start`));
+      return;
+    }
+    const details = this.workspaceMutationEvidenceDetails(event);
+    if (event.state === 'committed') {
+      this.recordOperationEvent('side_effect.committed', operationId, 'committed', summary, details);
+      this.committedSideEffectOperationIdsByKey.set(operationKey, operationId);
+    } else if (event.state === 'indeterminate') {
+      this.recordOperationEvent('side_effect.indeterminate', operationId, 'indeterminate', summary, details);
+      this.addPendingAdverseOperation(operationId, operationKey);
+    } else {
+      this.recordOperationEvent('side_effect.failed', operationId, 'failed', summary, details);
+      this.addPendingAdverseOperation(operationId, operationKey);
+    }
+    this.activeSideEffectOperations.delete(operationKey);
+    this.hasSideEffectEvidence = true;
   }
 
   recordToolActivity(kind: string, label: string): void {
@@ -478,6 +526,23 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
       this.recordOperationEvent('side_effect.committed', operationId, 'committed', summary, recoveryDetails);
       this.hasSideEffectEvidence = true;
     }
+  }
+
+  private workspaceMutationEvidenceDetails(
+    event: WorkspaceMutationLifecycleEvent,
+  ): Record<string, import('@devseek-netai/shared').RunEvidenceJson> {
+    return {
+      boundary: 'vscode-canonical-workspace-mutation',
+      canonical_run_id: event.runId,
+      canonical_action_id: event.actionId,
+      canonical_sequence: event.sequence,
+      mutation_paths: [...event.paths],
+      mutation_status: event.state,
+      evidence_refs: [...event.evidenceRefs],
+      ...(event.errorCode ? { error_code: event.errorCode } : {}),
+      ...(event.replayed !== undefined ? { replayed: event.replayed } : {}),
+      ...(this.currentRecovery ? { recovery_operation_id: this.currentRecovery.operationId } : {}),
+    };
   }
 
   private passedQualityGateCount(): number {
@@ -1185,6 +1250,31 @@ function sideEffectOperationBaseId(runId: string, status: AgentStatusEvent): str
     ?? (status.taskIndex !== undefined ? `task-${status.taskIndex}` : undefined)
     ?? summarizeTraceText(`${status.taskAction ?? 'mutation'}\n${status.taskFile ?? ''}\n${status.taskDesc ?? ''}`).sha256.slice(0, 24);
   return `vscode-side-effect-${runId.slice(-16)}-${identity}`.slice(0, 480);
+}
+
+function workspaceMutationOperationKey(event: WorkspaceMutationLifecycleEvent): string {
+  const paths = [...event.paths].map(path => path.replace(/\\/gu, '/')).sort();
+  return `workspace:${paths.join('|') || event.actionId}`;
+}
+
+function workspaceMutationOperationId(event: WorkspaceMutationLifecycleEvent): string {
+  const identity = summarizeTraceText(`${event.runId}\n${event.sequence}\n${event.actionId}`).sha256.slice(0, 32);
+  return `vscode-workspace-mutation-${identity}`;
+}
+
+function summarizeWorkspaceMutationForTrace(
+  event: WorkspaceMutationLifecycleEvent,
+): Record<string, unknown> {
+  return {
+    state: event.state,
+    runId: event.runId,
+    sequence: event.sequence,
+    actionId: event.actionId,
+    paths: [...event.paths],
+    evidenceRefs: [...event.evidenceRefs],
+    errorCode: event.errorCode ?? null,
+    replayed: event.replayed ?? null,
+  };
 }
 
 function safeCompletionSummary(data: Record<string, unknown>): string {

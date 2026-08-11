@@ -43,6 +43,16 @@ function observed(status, payload = {}) {
   return { ...payload, status, trust: 'product-runtime-observation' };
 }
 
+function workspaceMutation(runId, sequence, actionId, paths) {
+  return {
+    runId,
+    sequence,
+    actionId,
+    paths,
+    evidenceRefs: [`workspace-mutation:${actionId}`],
+  };
+}
+
 test('RunContext: owns one run id and one chronological log file', () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
   try {
@@ -608,12 +618,9 @@ test('RunContext: a broader verified coding mutation supersedes an earlier parti
       userPrompt: '实现 include/rate_limiter.hpp 和 src/rate_limiter.cpp 并运行项目测试',
       traceLevel: 'debug',
     });
-    const headerWrite = {
-      type: 'agentStatus', phase: 'execute', taskId: 'write-header',
-      taskFile: 'include/rate_limiter.hpp', taskAction: 'modify', title: '修改头文件',
-    };
-    context.recordAgentStatus({ ...headerWrite, state: 'started' });
-    context.recordAgentStatus({ ...headerWrite, state: 'completed' });
+    const headerWrite = workspaceMutation(runId, 1, 'write-header', ['include/rate_limiter.hpp']);
+    context.recordWorkspaceMutation({ ...headerWrite, state: 'started' });
+    context.recordWorkspaceMutation({ ...headerWrite, state: 'committed' });
     for (const [phase, state, title] of [
       ['validate', 'started', '验证头文件'],
       ['validate', 'failed', '头文件中间验证失败'],
@@ -627,12 +634,9 @@ test('RunContext: a broader verified coding mutation supersedes an earlier parti
       });
     }
 
-    const sourceWrite = {
-      type: 'agentStatus', phase: 'execute', taskId: 'write-source',
-      taskFile: 'src/rate_limiter.cpp', taskAction: 'modify', title: '修改实现文件',
-    };
-    context.recordAgentStatus({ ...sourceWrite, state: 'started' });
-    context.recordAgentStatus({ ...sourceWrite, state: 'completed' });
+    const sourceWrite = workspaceMutation(runId, 2, 'write-source', ['src/rate_limiter.cpp']);
+    context.recordWorkspaceMutation({ ...sourceWrite, state: 'started' });
+    context.recordWorkspaceMutation({ ...sourceWrite, state: 'committed' });
     for (const [phase, state, title] of [
       ['validate', 'started', '验证累计变更'],
       ['validate', 'completed', '累计验证通过'],
@@ -672,11 +676,9 @@ test('RunContext: a narrower successful verification cannot clear an unrelated v
       userPrompt: '修改 include/api.hpp 和 src/other.cpp',
       traceLevel: 'debug',
     });
-    const headerWrite = {
-      type: 'agentStatus', phase: 'execute', taskId: 'write-header',
-      taskFile: 'include/api.hpp', taskAction: 'modify', title: '修改头文件',
-    };
-    context.recordAgentStatus({ ...headerWrite, state: 'completed' });
+    const headerWrite = workspaceMutation(runId, 1, 'write-header', ['include/api.hpp']);
+    context.recordWorkspaceMutation({ ...headerWrite, state: 'started' });
+    context.recordWorkspaceMutation({ ...headerWrite, state: 'committed' });
     for (const [phase, state] of [
       ['validate', 'started'], ['validate', 'failed'],
       ['quality', 'started'], ['quality', 'failed'],
@@ -686,10 +688,9 @@ test('RunContext: a narrower successful verification cannot clear an unrelated v
         evidenceOperationId: 'verify-api-header', verificationScopePaths: ['include/api.hpp'],
       });
     }
-    context.recordAgentStatus({
-      type: 'agentStatus', phase: 'execute', state: 'completed',
-      taskId: 'write-other', taskFile: 'src/other.cpp', taskAction: 'modify', title: '修改其他实现',
-    });
+    const otherWrite = workspaceMutation(runId, 2, 'write-other', ['src/other.cpp']);
+    context.recordWorkspaceMutation({ ...otherWrite, state: 'started' });
+    context.recordWorkspaceMutation({ ...otherWrite, state: 'committed' });
     for (const [phase, state] of [
       ['validate', 'started'], ['validate', 'completed'],
       ['quality', 'started'], ['quality', 'completed'],

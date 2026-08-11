@@ -2886,12 +2886,19 @@ test('Architecture: ARCH-17 agent runs are created through RunContext', () => {
   const agentSettlement = src('src/app/agent-run-settlement.ts');
   const runContext = src('src/app/run-context.ts');
   const terminalCoordinator = src('src/app/terminal-permission-coordinator.ts');
+  const codingExecution = src('src/app/coding-kernel-execution.ts');
+  const mutationObserver = src('src/workspace/workspace-mutation-observer.ts');
+  const turnPresenter = src('src/ui/agent-turn-presenter.ts');
 
   assertContains(appIndex, "export * from './run-context';", 'RunContext owner must be exported through app boundary');
   assertContains(appIndex, "export * from './agent-kernel-service';", 'AgentKernel owner must be exported through app boundary');
   assertContains(runContext, 'createDevSeekRunContext', 'RunContext owner must expose context creation');
   assertContains(runContext, 'agent-run-started', 'RunContext must record top-level run start facts');
   assertContains(runContext, 'agent-run-completed', 'RunContext must record top-level convergence facts');
+  assertContains(runContext, 'recordWorkspaceMutation(event:', 'RunContext must consume explicit workspace mutation facts');
+  assertContains(codingExecution, 'observeWorkspaceMutationTransaction(', 'Kernel runtime must observe its canonical workspace transaction');
+  assertContains(mutationObserver, "apply: async (activePlan, baseline) =>", 'mutation observation must begin at the actual host apply boundary');
+  assertContains(turnPresenter, 'this.runContext.recordWorkspaceMutation(event)', 'turn composition must bind mutation facts to its owning RunContext');
   assertContains(agentKernel, 'class AgentKernelService', 'Kernel service must own agent run composition');
   assertContains(agentKernel, 'resolveSemanticExecutionContext({', 'Kernel service must bind one execution semantic contract before RunContext');
   assertContains(semanticExecution, 'resolveTaskSemanticContract(input.userPrompt)', 'semantic execution boundary must preserve the raw-prompt compatibility entry');

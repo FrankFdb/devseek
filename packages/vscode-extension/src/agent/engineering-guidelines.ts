@@ -57,6 +57,7 @@ export function buildEngineeringGuidelinesPrompt(
     `- 生产代码文件超过 ${CODE_FILE_REVIEW_LINE_LIMIT} 行必须先审计职责；超过 ${CODE_FILE_SPLIT_PLAN_LINE_LIMIT} 行必须优先制定拆分/迁移方案；超过 ${CODE_FILE_REFACTOR_PRIORITY_LINE_LIMIT} 行视为重构优先级。`,
     `- 普通函数目标控制在 ${FUNCTION_LINE_LIMIT} 行以内；复杂编排函数不得超过 ${COMPLEX_FUNCTION_LINE_LIMIT} 行。`,
     '- 修复问题时要修缺陷类别：审计同类入口、状态流、工具/协议边界、验证和 UI 展示路径；相同逻辑原则上只能有一份。',
+    '- 既有公共 API、类型名和无告警编译行为默认属于兼容契约；除非用户明确要求破坏性迁移，不得擅自重命名、废弃或用 deprecated 别名替代，应在原接口后重构职责。',
     '- 除非用户明确要求单文件交付，否则不要生成超长单文件或超长函数；必要时拆分文件并说明边界。',
   ].join('\n');
 }
