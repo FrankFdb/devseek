@@ -17,7 +17,7 @@
 - Implementation state: `wired`
 - Source owners: `1`
 - Schema owners: `1`
-- Source SHA-256: `4e2faf1b579c049dd0cb8f51d393fcf2bda12b3ca695593c739efb3aded5286f`
+- Source SHA-256: `18a06eeccc6965c80361549f013edf23f272d3f749704f58d5143fff17367153`
 
 ## Governed Consumers
 
@@ -41,4 +41,4 @@
 
 ## Wiring Identity
 
-- Wiring SHA-256: `820565a3a53590e0815aaba1dd0ff0a4c0cb5d3a93689839ddec1a2b622f5f44`
+- Wiring SHA-256: `e2d371f810eb3ef82d280e446416a0287294208945dea543b35e8d653b574bcc`

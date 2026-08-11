@@ -17,7 +17,7 @@
       "path": "docs/process/devseek-capability-ledger.json",
       "schema_version": "devseek.capability-ledger/v1",
       "ledger_id": "DEVSEEK-CAPABILITY-LEDGER/v1",
-      "source_sha256": "4e2faf1b579c049dd0cb8f51d393fcf2bda12b3ca695593c739efb3aded5286f"
+      "source_sha256": "18a06eeccc6965c80361549f013edf23f272d3f749704f58d5143fff17367153"
     },
     "milestone_profile": {
       "path": "docs/process/devseek-milestone-profiles.json",
@@ -2866,5 +2866,5 @@
     "catalog_metadata_executions": 0,
     "qualification_claims": 0
   },
-  "registry_sha256": "cc3fe0a98efe53589f5472a9698f8a94aae5a520d94f6fda0eb74544ccc85356"
+  "registry_sha256": "ee98ee1fcb659da872f2d6b74126f3c30ebf25c17f5a268723da2eaedcb8d03c"
 }
