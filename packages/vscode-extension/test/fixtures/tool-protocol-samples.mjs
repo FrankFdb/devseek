@@ -85,6 +85,24 @@ export const TOOL_PROTOCOL_SAMPLES = [
     expectedToolNames: ['list_dir', 'file_search', 'read_file'],
   },
   {
+    id: 'deepseek-tool-use-multi-call',
+    text: [
+      'I will inspect each source boundary.',
+      '<TOOL_USE>{"name":"list_dir","arguments":{"path":"/tmp/project/include"}}</TOOL_USE>',
+      '<TOOL_USE>{"name":"list_dir","arguments":{"path":"/tmp/project/src"}}</TOOL_USE>',
+      '<TOOL_USE>{"name":"read_file","arguments":{"path":"/tmp/project/include/order_book.hpp"}}</TOOL_USE>',
+    ].join(''),
+    expectedVisible: 'I will inspect each source boundary.',
+    expectedToolNames: ['list_dir', 'list_dir', 'read_file'],
+  },
+  {
+    id: 'deepseek-quote-damaged-tool-use-create',
+    text: String.raw`I will rewrite the implementation.
+<TOOL_USE>{"name":"create_file","arguments":{"path":"/tmp/project/src/order_book.cpp","content":"#include "order_book.hpp"\n#include <map>\n\nnamespace devseek_case {\n}\n"}}</TOOL_USE>`,
+    expectedVisible: 'I will rewrite the implementation.',
+    expectedToolNames: ['create_file'],
+  },
+  {
     id: 'tool-call-envelope',
     text: [
       'I will run validation.',
@@ -258,6 +276,12 @@ export const TOOL_PROTOCOL_STREAMING_TAIL_SAMPLES = [
     id: 'incomplete-generic-tool-envelope',
     text: 'I will inspect the file.<TOOL>read_file {"path":"/tmp/project/main.cpp"',
     expectedVisible: 'I will inspect the file.',
+    expectedToolNames: [],
+  },
+  {
+    id: 'incomplete-tool-use-envelope',
+    text: 'I will rewrite the file.<TOOL_USE>{"name":"create_file","arguments":{"path":"/tmp/project/main.cpp","content":"#include "main.hpp"',
+    expectedVisible: 'I will rewrite the file.',
     expectedToolNames: [],
   },
   {

@@ -59,6 +59,24 @@ test('FakeToolParser: unwraps fenced structured text emitted around a complete t
   assert.equal(stripToolCallBlocks(text), '我先查看工作区。');
 });
 
+test('FakeToolParser: unwraps fenced structured text containing DeepSeek TOOL_USE', () => {
+  const text = [
+    'I will inspect the source.',
+    '```json',
+    JSON.stringify({
+      type: 'text',
+      text: '<TOOL_USE>{"name":"read_file","arguments":{"path":"/tmp/project/main.cpp"}}</TOOL_USE>',
+    }),
+    '```',
+  ].join('\n');
+
+  assert.deepEqual(parseFakeToolCalls(text), [{
+    name: 'read_file',
+    input: { path: '/tmp/project/main.cpp' },
+  }]);
+  assert.equal(stripToolCallBlocks(text), 'I will inspect the source.');
+});
+
 test('FakeToolParser: keeps ordinary structured text JSON inert', () => {
   const text = '```json\n[{"type":"text","text":"ordinary report content"}]\n```';
 
@@ -1342,6 +1360,42 @@ test('FakeToolParser: parses DeepSeek XML tool tags with JSON bodies', () => {
   });
   assert.equal(containsFakeToolCallProtocol(text), true);
   assert.equal(stripToolCallBlocks(text), '我理解质量门禁的要求。现在我来补充读取关键证据。');
+});
+
+test('FakeToolParser: recovers quote-damaged C++ writes from bounded TOOL_USE envelopes', () => {
+  const response = String.raw`I will rewrite the implementation.
+<TOOL_USE>{"name":"create_file","arguments":{"path":"/tmp/project/src/order_book.cpp","content":"#include "order_book.hpp"\n#include <map>\n\nnamespace devseek_case {\n}\n"}}</TOOL_USE>`;
+  const [tool] = parseFakeToolCalls(response);
+
+  assert.equal(tool.name, 'create_file');
+  assert.equal(tool.input.path, '/tmp/project/src/order_book.cpp');
+  assert.equal(
+    tool.input.content,
+    '#include "order_book.hpp"\n#include <map>\n\nnamespace devseek_case {\n}\n',
+  );
+  assert.equal(hasIncompleteFakeToolCallProtocol(response), false);
+});
+
+test('FakeToolParser: recovers quote-damaged C++ replacements from bounded TOOL_USE envelopes', () => {
+  const response = String.raw`I will update the include.
+<TOOL_USE>{"name":"replace_in_file","arguments":{"path":"/tmp/project/src/order_book.cpp","old_str":"#include "order_book.hpp"\n#include <map>","new_str":"#include "order_book.hpp"\n#include <map>\n#include <memory>"}}</TOOL_USE>`;
+  const [tool] = parseFakeToolCalls(response);
+
+  assert.equal(tool.name, 'replace_in_file');
+  assert.deepEqual(tool.input, {
+    path: '/tmp/project/src/order_book.cpp',
+    old_str: '#include "order_book.hpp"\n#include <map>',
+    new_str: '#include "order_book.hpp"\n#include <map>\n#include <memory>',
+  });
+});
+
+test('FakeToolParser: never executes truncated or unregistered TOOL_USE envelopes', () => {
+  const truncated = String.raw`Working.<TOOL_USE>{"name":"create_file","arguments":{"path":"/tmp/main.cpp","content":"#include "main.hpp"`;
+  const unregistered = '<TOOL_USE>{"name":"read_file_extra","arguments":{"path":"/tmp/main.cpp"}}</TOOL_USE>';
+
+  assert.equal(parseFakeToolCalls(truncated).length, 0);
+  assert.equal(hasIncompleteFakeToolCallProtocol(truncated), true);
+  assert.equal(parseFakeToolCalls(unregistered).length, 0);
 });
 
 test('FakeToolParser: shared protocol fixture parses and strips every complete dialect', () => {

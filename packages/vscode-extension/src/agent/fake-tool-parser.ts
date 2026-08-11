@@ -9,7 +9,7 @@ import {
   stripModelToolProtocolBlocks,
   type ModelToolProtocolDialect,
 } from './model-tool-protocol-adapter';
-import { createGenericToolEnvelopeDialect } from './generic-tool-envelope-dialect';
+import { createStructuredToolEnvelopeDialects } from './structured-tool-envelope-dialects';
 import { parseLosslessXmlMutationInput } from './lossless-xml-tool-input';
 import { normalizeFakeTool, normalizeToolInput } from './fake-tool-input-normalizer';
 import { createFakeToolJsonUtils, decodeLooseJsonString, findJsonArrayEnd, findJsonObjectEnd, type FakeTool } from './fake-tool-json-utils';
@@ -461,10 +461,10 @@ function parseToolArgumentsRecord(name: string, value: unknown): Record<string, 
   }
 }
 
-const genericToolEnvelopeDialect = createGenericToolEnvelopeDialect<FakeTool>({
+const structuredToolEnvelopes = createStructuredToolEnvelopeDialects<FakeTool>({
   isRegisteredName: isRegisteredFakeToolName,
   normalizeName: normalizeAgentToolName,
-  parseCompatibleInput: parseToolArgumentsRecord,
+  parseInput: parseToolArgumentsRecord,
   createTool: (name, input) => normalizeFakeTool({ name, input: normalizeToolInput(name, input) }),
 });
 
@@ -578,7 +578,7 @@ function parseToolCallEnvelopeCalls(text: string): FakeTool[] {
         tools.push({ index: match.index, tool: namedParameterTool });
         continue;
       }
-      const named = genericToolEnvelopeDialect.parseBody(body);
+      const named = structuredToolEnvelopes.parseGenericBody(body);
       if (named) {
         tools.push({ index: match.index, tool: named });
         continue;
@@ -1636,7 +1636,7 @@ const MODEL_TOOL_PROTOCOL_DIALECTS: readonly ModelToolProtocolDialect<FakeTool>[
     findStart: findBracketToolStart,
     strip: stripBracketToolBlocks,
   },
-  genericToolEnvelopeDialect,
+  ...structuredToolEnvelopes.dialects,
   {
     name: 'tool-call-envelope',
     parse: parseToolCallEnvelopeCalls,
@@ -1741,7 +1741,7 @@ function collapseSupersededFullFileWrites(tools: FakeTool[]): FakeTool[] {
 
 export function hasIncompleteFakeToolCallProtocol(text: string): boolean {
   const requestText = isolateModelToolRequestText(text).text;
-  if (genericToolEnvelopeDialect.hasIncomplete(requestText)) return true;
+  if (structuredToolEnvelopes.hasIncomplete(requestText)) return true;
   return findFirstModelToolProtocolStart(requestText, MODEL_TOOL_PROTOCOL_DIALECTS) >= 0
     && parseModelToolProtocol(requestText, MODEL_TOOL_PROTOCOL_DIALECTS).length === 0;
 }

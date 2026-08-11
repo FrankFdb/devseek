@@ -1,6 +1,6 @@
 const FENCED_JSON_RE = /```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```/gi;
 const BRACKET_TOOL_RE = /\[TOOL:[A-Za-z_]\w*(?:\s*\]|\s+)\s*\{/i;
-const XML_TOOL_RE = /<tool_calls?\b[\s\S]*<\/tool_calls?>/i;
+const XML_TOOL_RE = /<(tool_calls?|tool_use)\b[\s\S]*<\/\1>/i;
 
 /**
  * Unwraps the strict text-content envelope occasionally emitted by Web LLMs.

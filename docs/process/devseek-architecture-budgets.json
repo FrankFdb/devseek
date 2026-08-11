@@ -57,6 +57,16 @@
       "targetLines": 512,
       "boundary": "DeepSeek generic TOOL envelope protocol strategy"
     },
+    "packages/vscode-extension/src/agent/tool-use-envelope-dialect.ts": {
+      "maxLines": 121,
+      "targetLines": 256,
+      "boundary": "DeepSeek named TOOL_USE envelope protocol strategy"
+    },
+    "packages/vscode-extension/src/agent/structured-tool-envelope-dialects.ts": {
+      "maxLines": 27,
+      "targetLines": 128,
+      "boundary": "text-tool envelope strategy composition"
+    },
     "packages/vscode-extension/src/agent/tool-protocol-text.ts": {
       "maxLines": 14,
       "targetLines": 128,

@@ -507,9 +507,8 @@ const DSML_INCOMPLETE_TAIL_REGEX = new RegExp(
   `${DSML_OPEN_PREFIX_PATTERN}(?:${DSML_BAR_PATTERN}\\s*(?:D(?:S(?:M(?:L)?)?)?(?:\\s*${DSML_BAR_PATTERN})?)?)?$`,
   'i',
 );
-const TOOL_CALL_OPEN_PATTERN = '(?:<|&lt;)\\s*TOOL_CALL\\s*(?:>|&gt;)';
-const TOOL_CALL_CLOSE_PATTERN = '(?:<\\/|&lt;\\/)\\s*TOOL_CALL\\s*(?:>|&gt;)';
-const TOOL_CALL_INCOMPLETE_TAIL_REGEX = /(?:<|&lt;)\s*(?:T|TO|TOO|TOOL|TOOL_|TOOL_C|TOOL_CA|TOOL_CAL|TOOL_CALL)?$/i;
+const TOOL_CALL_OPEN_PATTERN = '(?:<|&lt;)\\s*TOOL_(?:CALL|USE)\\s*(?:>|&gt;)';
+const TOOL_CALL_INCOMPLETE_TAIL_REGEX = /(?:<|&lt;)\s*(?:T|TO|TOO|TOOL|TOOL_|TOOL_C|TOOL_CA|TOOL_CAL|TOOL_CALL|TOOL_U|TOOL_US|TOOL_USE)?$/i;
 
 function makeDsmlStartRegexInText() {
   return new RegExp(`${DSML_OPEN_PREFIX_PATTERN}${DSML_MARKER_PATTERN}\\s*${DSML_START_NAMES_PATTERN}\\b`, 'gi');
@@ -567,7 +566,10 @@ function makeToolCallEnvelopeOpenRegexInText() {
 }
 
 function makeToolCallEnvelopeBlockRegexInText() {
-  return new RegExp(TOOL_CALL_OPEN_PATTERN + '[\\s\\S]*?' + TOOL_CALL_CLOSE_PATTERN, 'gi');
+  return new RegExp(
+    '(?:<|&lt;)\\s*TOOL_(CALL|USE)\\s*(?:>|&gt;)[\\s\\S]*?(?:<\\/|&lt;\\/)\\s*TOOL_\\1\\s*(?:>|&gt;)',
+    'gi',
+  );
 }
 
 function findNextToolCallEnvelopeStartInText(text, startAt = 0) {

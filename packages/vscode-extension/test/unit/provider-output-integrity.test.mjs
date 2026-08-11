@@ -169,6 +169,27 @@ test('provider output integrity: accepts a complete quote-damaged replace call a
   assert.equal(result.toolCallCount, 1);
 });
 
+test('provider output integrity: counts every DeepSeek TOOL_USE request', () => {
+  const result = classifyProviderOutputIntegrity([
+    'I will inspect both boundaries.',
+    '<TOOL_USE>{"name":"list_dir","arguments":{"path":"/tmp/project/include"}}</TOOL_USE>',
+    '<TOOL_USE>{"name":"list_dir","arguments":{"path":"/tmp/project/src"}}</TOOL_USE>',
+  ].join(''));
+
+  assert.equal(result.kind, 'tool_call');
+  assert.equal(result.okForSettlement, false);
+  assert.equal(result.toolCallCount, 2);
+});
+
+test('provider output integrity: accepts bounded quote-damaged TOOL_USE writes and blocks truncated ones', () => {
+  const complete = String.raw`Writing.<TOOL_USE>{"name":"create_file","arguments":{"path":"/tmp/main.cpp","content":"#include "main.hpp"\n"}}</TOOL_USE>`;
+  const truncated = String.raw`Writing.<TOOL_USE>{"name":"create_file","arguments":{"path":"/tmp/main.cpp","content":"#include "main.hpp"`;
+
+  assert.equal(classifyProviderOutputIntegrity(complete).kind, 'tool_call');
+  assert.equal(classifyProviderOutputIntegrity(complete).toolCallCount, 1);
+  assert.equal(classifyProviderOutputIntegrity(truncated).kind, 'truncated');
+});
+
 test('provider output integrity: accepts real malformed read-only DeepSeek calls as executable requests', () => {
   const grepResult = classifyProviderOutputIntegrity(
     '让我搜索 mc_log.h：[调用 grep_search] {"pattern": "mc_log\\.h", "path": "/tmp/project", "isRegexp": false, "maxResults": 10}',
