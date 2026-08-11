@@ -173,3 +173,44 @@ test('directory-only coding scope excludes prohibited paths and ignores technolo
     [{ id: 'source-change', kind: 'source-change' }],
   );
 });
+
+test('mixed Chinese allow and deny lists bind every path to its nearest action', () => {
+  const prompt = [
+    '修复并重构 C++17 限流器。',
+    '只允许修改 include/ 和 src/，不得修改 tests/、CMakeLists.txt 或 test.sh。',
+    '运行 ./test.sh 验证。',
+  ].join('\n');
+  const contract = resolveCodingKernelTaskContract({ prompt, surface: 'vscode' });
+
+  assert.deepEqual(extractCodingWorkspacePaths(prompt), [
+    'include/',
+    'src/',
+    'tests/',
+    'CMakeLists.txt',
+    'test.sh',
+  ]);
+  assert.deepEqual(contract.scope.include, ['include/**', 'src/**']);
+  assert.deepEqual(contract.scope.exclude, ['CMakeLists.txt', 'test.sh', 'tests/**']);
+  assert.equal(contract.constraints.includes('no-other-files'), true);
+});
+
+test('postfix actions do not claim a context path when they name another target', () => {
+  const contract = resolveCodingKernelTaskContract({
+    prompt: 'Read docs/example.md and fix src/value.cpp, then run tests.',
+    surface: 'cli',
+  });
+
+  assert.deepEqual(contract.scope.include, ['src/value.cpp']);
+  assert.deepEqual(contract.scope.exclude, []);
+});
+
+test('a do-not-modify-other-files guard preserves the named repair target', () => {
+  const contract = resolveCodingKernelTaskContract({
+    prompt: 'Fix add(a, b) in src/math.js, do not modify other files, and verify the result.',
+    surface: 'vscode',
+  });
+
+  assert.deepEqual(contract.scope.include, ['src/math.js']);
+  assert.deepEqual(contract.scope.exclude, []);
+  assert.equal(contract.constraints.includes('no-other-files'), true);
+});
