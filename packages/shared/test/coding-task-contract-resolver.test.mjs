@@ -51,6 +51,12 @@ test('task-contract mode resolution preserves read-only questions and explicit c
 
 test('terminal effect classification is command-owned and conservative for package operations', () => {
   assert.deepEqual(classifyCodingTerminalEffects('node --test test/value.test.js'), ['process']);
+  assert.deepEqual(classifyCodingTerminalEffects('./test.sh 2>&1'), ['process']);
+  assert.deepEqual(classifyCodingTerminalEffects('cmake -S . -B build 2>&1'), ['process']);
+  assert.deepEqual(classifyCodingTerminalEffects('printf result > result.txt'), [
+    'process',
+    'workspace-mutation',
+  ]);
   assert.deepEqual(classifyCodingTerminalEffects('npm install left-pad'), [
     'process',
     'network',

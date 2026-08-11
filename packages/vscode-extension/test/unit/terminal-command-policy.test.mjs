@@ -269,4 +269,23 @@ test('TerminalCommandPolicy: C++ compile-run inside workspace is validation evid
   }
 });
 
+test('TerminalCommandPolicy: project scripts and bounded CMake builds remain validation with fd merging', () => {
+  for (const command of [
+    'cd /workspace/devseek && ./test.sh 2>&1',
+    'cd /workspace/devseek && cmake -S . -B build 2>&1 && cmake --build build -j2 2>&1 && ctest --test-dir build --output-on-failure',
+  ]) {
+    const decision = decideTerminalCommandPermission({ command, workspaceRoot });
+    assert.equal(decision.risk, 'validation', command);
+    assert.equal(decision.canRememberDecision, true, command);
+  }
+  assert.equal(
+    decideTerminalCommandPermission({ command: 'cmake --install build', workspaceRoot }).risk,
+    'unknown',
+  );
+  assert.equal(
+    decideTerminalCommandPermission({ command: './test.sh > validation.log', workspaceRoot }).risk,
+    'mutating',
+  );
+});
+
 console.log('\nTerminal command policy tests passed.\n');

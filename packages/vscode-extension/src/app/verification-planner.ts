@@ -56,9 +56,86 @@ export class VerificationPlanner {
     const packageCandidate = discoverPackageCandidate(rootFsPath, changedPaths, fsNode);
     if (packageCandidate) return [packageCandidate];
 
+    const cmakeCandidate = discoverCmakeCandidate(rootFsPath, changedPaths, fsNode);
+    if (cmakeCandidate) return [cmakeCandidate];
+
     const languageCandidate = discoverLanguageCandidate(rootFsPath, changedPaths, fsNode);
     return languageCandidate ? [languageCandidate] : [];
   }
+}
+
+function discoverCmakeCandidate(
+  root: string,
+  changedPaths: readonly string[],
+  fsNode: VerificationPlannerFs,
+): CodingVerifierCandidate | undefined {
+  if (!changedPaths.some(path => /\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)$/iu.test(path))) return undefined;
+  const cmakePath = nodePath.join(root, 'CMakeLists.txt');
+  if (!fsNode.existsSync(cmakePath)) return undefined;
+
+  const scriptPath = nodePath.join(root, 'test.sh');
+  if (fsNode.existsSync(scriptPath)) {
+    return candidate({
+      id: 'vscode-cmake-project-test',
+      source: 'CMakeLists.txt+test.sh',
+      strength: 'test',
+      priority: 12,
+      scopePaths: changedPaths,
+      steps: [processStep({
+        id: 'vscode-cmake-test-script',
+        role: 'test',
+        cwd: root,
+        command: './test.sh',
+        args: [],
+        timeoutMs: PROCESS_VALIDATION_TIMEOUT_MS,
+        evidenceRefs: ['config:CMakeLists.txt', 'script:test.sh'],
+      })],
+      evidenceRefs: ['config:CMakeLists.txt', 'script:test.sh'],
+    });
+  }
+
+  const cmakeText = fsNode.readFileSync(cmakePath, 'utf8');
+  const steps = [
+    processStep({
+      id: 'vscode-cmake-configure',
+      role: 'build',
+      cwd: root,
+      command: 'cmake',
+      args: ['-S', '.', '-B', 'build'],
+      timeoutMs: PROCESS_VALIDATION_TIMEOUT_MS,
+      evidenceRefs: ['config:CMakeLists.txt'],
+    }),
+    processStep({
+      id: 'vscode-cmake-build',
+      role: 'build',
+      cwd: root,
+      command: 'cmake',
+      args: ['--build', 'build'],
+      timeoutMs: PROCESS_VALIDATION_TIMEOUT_MS,
+      evidenceRefs: ['config:CMakeLists.txt'],
+    }),
+  ];
+  const hasCtest = /\b(?:enable_testing|add_test|include\s*\(\s*CTest\b)/iu.test(cmakeText);
+  if (hasCtest) {
+    steps.push(processStep({
+      id: 'vscode-cmake-ctest',
+      role: 'test',
+      cwd: root,
+      command: 'ctest',
+      args: ['--test-dir', 'build', '--output-on-failure'],
+      timeoutMs: PROCESS_VALIDATION_TIMEOUT_MS,
+      evidenceRefs: ['config:CMakeLists.txt#ctest'],
+    }));
+  }
+  return candidate({
+    id: 'vscode-cmake-project',
+    source: 'CMakeLists.txt',
+    strength: hasCtest ? 'test' : 'build',
+    priority: 13,
+    scopePaths: changedPaths,
+    steps,
+    evidenceRefs: ['config:CMakeLists.txt'],
+  });
 }
 
 function discoverConfiguredCandidate(

@@ -92,6 +92,34 @@ test('VerificationPlanner maps package build and test scripts to ordered structu
   });
 });
 
+test('VerificationPlanner prefers the project CMake test entry point over a context-free compiler check', () => {
+  const candidates = discover(['src/job_scheduler.cpp'], {
+    '/repo/CMakeLists.txt': 'enable_testing()\nadd_test(NAME public_tests COMMAND public_tests)\n',
+    '/repo/test.sh': '#!/usr/bin/env bash\ncmake -S . -B build && cmake --build build && ctest --test-dir build\n',
+  });
+
+  assert.equal(candidates[0].id, 'vscode-cmake-project-test');
+  assert.equal(candidates[0].strength, 'test');
+  assert.deepEqual(candidates[0].steps[0].invocation, {
+    kind: 'process',
+    command: './test.sh',
+    args: [],
+  });
+});
+
+test('VerificationPlanner builds and tests a CMake project when no test wrapper exists', () => {
+  const candidate = discover(['include/cache.hpp', 'src/cache.cpp'], {
+    '/repo/CMakeLists.txt': 'include(CTest)\nadd_test(NAME cache_test COMMAND cache_test)\n',
+  })[0];
+
+  assert.equal(candidate.id, 'vscode-cmake-project');
+  assert.deepEqual(candidate.steps.map(step => [step.id, step.role]), [
+    ['vscode-cmake-configure', 'build'],
+    ['vscode-cmake-build', 'build'],
+    ['vscode-cmake-ctest', 'test'],
+  ]);
+});
+
 test('VerificationPlanner uses static language checks without inventing runtime behavior', () => {
   const scenarios = [
     [['src/app.js'], ['node', '--check', 'src/app.js']],

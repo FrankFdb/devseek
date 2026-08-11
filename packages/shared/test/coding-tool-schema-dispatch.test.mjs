@@ -143,6 +143,12 @@ test('CanonicalToolDispatchService projects artifact paths and terminal effects 
     name: 'run_terminal',
     input: { command: 'ruby custom_task.rb' },
   }, { source: 'surface', workspaceRoot: '/workspace' });
+  const projectValidation = dispatch.dispatch({
+    name: 'run_terminal',
+    input: {
+      command: 'cd /workspace && ./test.sh 2>&1 && cmake -S . -B build 2>&1 && cmake --build build -j2 2>&1',
+    },
+  }, { source: 'surface', workspaceRoot: '/workspace' });
 
   assert.equal(workspace.decision, 'accepted');
   assert.deepEqual(workspace.call.targetPaths, ['src/new.ts', '/workspace/config/.env.local']);
@@ -151,6 +157,9 @@ test('CanonicalToolDispatchService projects artifact paths and terminal effects 
   assert.equal(unknownTerminal.call.risk, 'high');
   assert.equal(unknownTerminal.call.purpose, 'external-effect');
   assert.deepEqual(unknownTerminal.call.effects, ['process', 'workspace-mutation']);
+  assert.equal(projectValidation.call.risk, 'medium');
+  assert.equal(projectValidation.call.purpose, 'verify');
+  assert.deepEqual(projectValidation.call.effects, ['process']);
 });
 
 test('CanonicalProviderEventService validates and snapshots provider output', () => {

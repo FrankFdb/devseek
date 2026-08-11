@@ -51,10 +51,7 @@ export function decideTerminalCommandPermission(input: TerminalCommandPermission
   if (!command) return decision('unknown', 'empty-command');
 
   if (DESTRUCTIVE_RE.test(command)) return decision('destructive', 'destructive-command');
-  if (isNodeInlineCommand(command) && NODE_INLINE_SIDE_EFFECT_RE.test(command)) {
-    return decision('mutating', 'node-inline-side-effect');
-  }
-  if (hasShellWriteRedirection(command) || hasAllowlistedCommandSideEffect(command) || hasValidationWrapperSideEffect(command) || PYTHON_FILE_WRITE_RE.test(command) || IN_PLACE_EDIT_RE.test(command) || MUTATING_RE.test(command)) {
+  if (hasTerminalCommandWorkspaceMutation(command)) {
     return decision('mutating', 'mutating-command');
   }
   if (COMMAND_SUBSTITUTION_RE.test(command)) return decision('unknown', 'command-substitution');
@@ -78,6 +75,20 @@ export function decideTerminalCommandPermission(input: TerminalCommandPermission
   return sawValidation
     ? decision('validation', 'validation-command')
     : decision('read-only', 'read-only-workspace-inspection');
+}
+
+/** Intrinsic source/workspace writes, shared by permission and effect projection. */
+export function hasTerminalCommandWorkspaceMutation(command: string): boolean {
+  const normalized = String(command || '').trim();
+  if (!normalized) return false;
+  return DESTRUCTIVE_RE.test(normalized)
+    || (isNodeInlineCommand(normalized) && NODE_INLINE_SIDE_EFFECT_RE.test(normalized))
+    || hasShellWriteRedirection(normalized)
+    || hasAllowlistedCommandSideEffect(normalized)
+    || hasValidationWrapperSideEffect(normalized)
+    || PYTHON_FILE_WRITE_RE.test(normalized)
+    || IN_PLACE_EDIT_RE.test(normalized)
+    || MUTATING_RE.test(normalized);
 }
 
 function decision(risk: TerminalCommandRiskClass, reason: string): TerminalCommandPermissionDecision {
@@ -268,6 +279,7 @@ function isValidationSegment(rawSegment: string, workspaceRoot?: string, workdir
     return /\bnode\s+(?:--test\b|(?:\.\/)?test\/|[\w./-]+\.test\.(?:mjs|cjs|js))\b/i.test(segment)
       || isNodeInlineValidationSegment(segment);
   }
+  if (command === 'cmake') return isCmakeValidationSegment(segment);
   if (/^python3?$/.test(command)) return isPythonValidationSegment(segment, workspaceRoot, workdir);
   if (['pytest', 'ctest'].includes(command)) return true;
   if (command === 'go') return /\bgo\s+test\b/i.test(segment);
@@ -277,6 +289,20 @@ function isValidationSegment(rawSegment: string, workspaceRoot?: string, workdir
   if (isCppCompilerCommand(command)) return isCppCompilerValidationSegment(segment);
   if (isWorkspaceExecutableValidationSegment(token, workspaceRoot, workdir)) return true;
   return false;
+}
+
+function isCmakeValidationSegment(segment: string): boolean {
+  const args = splitShellWords(stripLeadingAssignments(segment)).slice(1).map(cleanToken);
+  if (args.length === 0 || args.some(arg => ['-E', '-P', '--install'].includes(arg))) return false;
+  const buildIndex = args.indexOf('--build');
+  if (buildIndex >= 0) {
+    const targetIndex = args.indexOf('--target');
+    const target = targetIndex >= 0 ? (args[targetIndex + 1] || '').toLowerCase() : '';
+    return Boolean(args[buildIndex + 1]) && !['install', 'package'].includes(target);
+  }
+  const hasSource = args.some((arg, index) => arg === '-S' ? Boolean(args[index + 1]) : arg.startsWith('-S') && arg.length > 2);
+  const hasBuild = args.some((arg, index) => arg === '-B' ? Boolean(args[index + 1]) : arg.startsWith('-B') && arg.length > 2);
+  return hasSource && hasBuild;
 }
 
 function isPythonValidationSegment(segment: string, workspaceRoot?: string, workdir?: string): boolean {
