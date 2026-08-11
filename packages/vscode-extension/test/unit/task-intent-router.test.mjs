@@ -204,4 +204,28 @@ test('TaskIntentRouter: a negated push cannot be reopened by a downstream keywor
   assert.equal(route.semanticContract.intent.context.externalEffect, 'none');
 });
 
+test('TaskIntentRouter: EventBus publish behavior routes to existing-project editing', () => {
+  const route = routeTaskIntent([
+    '请重构 C++17 EventBus。',
+    'publish 使用订阅快照；本轮新增订阅不执行，被取消的 handler 不执行。',
+    '只允许修改 include/ 和 src/，不得修改 tests/、CMakeLists.txt 或 test.sh。',
+    '运行 ./test.sh。',
+  ].join('\n'));
+
+  assert.equal(route.family, 'existing-project-edit');
+  assert.equal(route.mode, 'edit');
+  assert.equal(route.mutation.requested, true);
+  assert.equal(route.mutation.sourceChange, true);
+  assert.equal(route.validation.runProhibited, false);
+  assert.equal(route.validation.commandEvidenceRequired, true);
+  assert.equal(route.semanticContract.intent.context.externalEffect, 'none');
+});
+
+test('TaskIntentRouter: publishing an extension remains a release external effect', () => {
+  const route = routeTaskIntent('请发布当前扩展到 VS Code Marketplace。');
+
+  assert.equal(route.family, 'release-external-effect');
+  assert.equal(route.semanticContract.intent.context.externalEffect, 'requested');
+});
+
 console.log('\nTask-intent-router tests passed.\n');

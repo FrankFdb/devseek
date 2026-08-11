@@ -56,7 +56,7 @@ export interface TaskContract {
 
 const CONTRACT_FILE_EXTENSION_PATTERN = '(?:cxx|cpp|cc|c|hxx|hpp|hh|h|tsx|ts|jsx|js|mjs|cjs|py|json|ya?ml|toml|xml|txt|log|csv|ini|conf|cfg|proto|graphql|sh|bash|zsh|ps1|sql|cmake|gradle|markdown|md)';
 const PATH_RE = new RegExp(`(?:^|[^A-Za-z0-9_.@+~/-])((?:(?:/|\\./|\\.\\./)[\\w.@+~/-]+(?:\\.[\\w-]+)?)|(?:[\\w.@+~-]+(?:/[\\w.@+~-]+)*\\.${CONTRACT_FILE_EXTENSION_PATTERN}))`, 'gi');
-const DOCUMENT_RE = /(?:文档|报告|说明|设计|方案|markdown|\.md\b|document|report)/i;
+const DOCUMENT_RE = /(?:文档|报告|说明|设计|方案|markdown|\.md\b|\bdocuments?\b|\breports?\b)/i;
 const INSPECTION_RE = /(?:读取|提取|检查|审计|分析|列出|查看|总结|摘要|概括|翻译|只读|read|extract|inspect|audit|analy[sz]e|summari[sz]e|translate)/i;
 const CHANGE_RE = /(?:修复|修正|修改|实现|新增|添加|重构|集成|落地|替换|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|删除|移除|fix|repair|modify|implement|add|refactor|replace|rename|move|copy|append|insert|delete|remove)/i;
 const CODE_GENERATION_RE = /(?:(?:编写|写一个|写个|创建|新建|生成|实现|新增|添加|制作)[^，,。；;\n]{0,36}(?:C\+\+|C#|C\s*语言|JavaScript|TypeScript|Python|Java|Go|Rust|程序|脚本|源码|代码|函数|类|模块)|\b(?:create|write|generate|implement|add|build)\b[^,.;\n]{0,36}\b(?:C\+\+|C#|JavaScript|TypeScript|Python|Java|Go|Rust|program|script|code|function|class|module)\b)/i;
@@ -76,8 +76,8 @@ const NO_SOURCE_CHANGE_RE = /(?:不要|禁止|无需|不允许|不得).{0,24}(?:
 const OUTPUT_STYLE_GUIDANCE_RE = /(?:报告正文请|正文请)[^。\n；;]{0,120}|(?:(?:技术标识符|协议名|文件路径|验收锚点|术语|专有名词)[、,，和及与\s]*){1,8}[^。\n；;]{0,80}(?:保持原文|保留原文|保持原样|不翻译|verbatim|exact)/gi;
 const ARTIFACT_WRITE_ACTION_PATTERN = '(?:(?:通过|以|用|使用)[^，,。；;\\n]{0,12}(?:md|markdown|\\.md)(?:文档|文件|报告)?[^，,。；;\\n]{0,16}(?:提供|输出|给出|返回|保存|生成|产出)|创建|新建|生成|编写|制作|做成|形成|整理成|记录|汇总(?:成|为|到|至|入)|翻译(?=[^，,。；;\\n]{0,24}(?:成|为|到|至|入|保存|输出|写入|文档|文件|报告|markdown|md))|(?:总结|摘要|概括|提取)(?=[^，,。；;\\n]{0,24}(?:成|为|到|至|入|保存|输出|写入|文档|文件|报告|markdown|md))|写入|写出|写到|保存|产出|落盘|修复|修正|解决|处理|更新|修改|改写|改动|编辑|覆盖|删除|删|移除|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|写(?!法)|改(?!进)|输出(?=[^，,。；;\\n]{0,16}(?:到|至|为|成|入|markdown|文档|报告))|(?:提供|给出|交付)(?=[^，,。；;\\n]{0,16}(?:markdown|文档|报告))|\\b(?:create|write|compose|draft|render|record|save|generate|produce|fix|repair|resolve|update|modify|revise|replace|overwrite|edit|change|delete|remove|touch|rename|move|copy|append|insert|translate)\\b|\\bmake\\s+(?:a\\s+)?changes?\\b|\\boutput(?=[^,.;\\n]{0,20}\\b(?:to|into|as|markdown|report|document)\\b)|\\b(?:provide|deliver)(?=[^,.;\\n]{0,20}\\b(?:markdown|report|document)\\b|[^,.;\\n]{0,36}\\b(?:through|via|as)\\s+(?:an?\\s+)?(?:markdown\\s+)?(?:document|report)\\b)|\\bsummari[sz]e(?:\\s+(?:it|them|the\\s+(?:facts?|results?)))?\\s+(?:into|to|as)\\b)';
 const FILE_READ_ACTION_PATTERN = '(?:只读|读取|读出|查看|检查|审计|分析|解释|核对|参考|总结|摘要|概括|提取|翻译|\\b(?:read|inspect|view|check|audit|analy[sz]e|explain|extract|reference|translate)\\b|\\bsummari[sz]e\\b)';
-const ARTIFACT_TARGET_HINT_RE = /(?:\.md\b|markdown|文档|报告|文件|artifact|document|report|file)/i;
-const MARKDOWN_ARTIFACT_TARGET_HINT_RE = /(?:\.(?:md|markdown)\b|markdown|md\s*(?:文档|文件|报告)|文档|报告|文件|document|report|files?)/i;
+const ARTIFACT_TARGET_HINT_RE = /(?:\.md\b|markdown|文档|报告|文件|\bartifacts?\b|\bdocuments?\b|\breports?\b|\bfiles?\b)/i;
+const MARKDOWN_ARTIFACT_TARGET_HINT_RE = /(?:\.(?:md|markdown)\b|markdown|md\s*(?:文档|文件|报告)|文档|报告|文件|\bdocuments?\b|\breports?\b|\bfiles?\b)/i;
 const STRONG_NEGATED_WRITE_PREFIX_RE = /(?:不要|不得|禁止|严禁|不可|无需|不用|不需要|不允许|勿|do\s+not|don't|should\s+not|must\s+not|may\s+not|shall\s+not|never)[^，,。；;\n]{0,20}$/i;
 const NO_CHANGE_FACT_PREFIX_RE = /(?:无(?!需|须)|没有|未发现|未产生|不存在|并无(?!需|须)|暂无(?!需|须))[^，,。；;\n]{0,16}(?:文件|代码|源码|内容|变更|修改|改动|变化|change|changes|modification|modifications)?\s*$/i;
 const NON_WRITE_NEGATION_THEN_ACTION_RE = /(?:无需|不用|不需要)[^，,。；;\n]{0,16}(?:并|但|然后|而|同时|直接)\s*$/i;

@@ -946,6 +946,18 @@ test('existing TypeScript bugfix requires scoped change evidence and validation'
   assert.ok(!contract.qualityObligations.includes('interface-contract'));
 });
 
+test('code identifiers ending in Report do not create documentation deliverables', () => {
+  const contract = buildTaskContract([
+    '请重构现有 C++ EventBus。',
+    '在 PublishReport.failures 中按调用顺序记录 handler 异常。',
+    '只允许修改 include/ 和 src/，运行 ./test.sh。',
+  ].join('\n'));
+
+  assert.equal(contract.taskShapes.includes('documentation'), false);
+  assert.equal(contract.deliverables.includes('report'), false);
+  assert.ok(contract.deliverables.includes('source-change'));
+});
+
 test('standalone Python tool does not inherit existing-project integration obligations', () => {
   const contract = buildTaskContract('从零创建独立 Python CSV 清理工具，并运行测试');
   assert.ok(contract.taskShapes.includes('standalone'));

@@ -313,6 +313,60 @@ test('TaskSemanticContract v3: coding directory allowlist is not an exact delive
   assert.ok(contract.completion.doneIff.some(item => item.kind === 'test-passed'));
 });
 
+test('TaskSemanticContract v3: event publishing vocabulary stays inside the code domain', () => {
+  const contract = buildTaskSemanticContract([
+    '请重构 C++17 EventBus，修复订阅在发布期间变化和异常传播导致的缺陷。',
+    'publish 以调用开始时的订阅 id 快照为准；本轮新增订阅不执行；在轮到前被取消的订阅不执行。',
+    'handler 可以安全地 subscribe、unsubscribe 或递归 publish。',
+    '只允许修改 include/ 和 src/，不得修改 tests/、CMakeLists.txt 或 test.sh。',
+    '请建立明确的订阅存储与发布快照边界，不要只加 try/catch。运行 ./test.sh。',
+  ].join('\n'));
+
+  assert.equal(contract.kind, 'existing-project-code');
+  assert.equal(contract.mutation.requested, true);
+  assert.equal(contract.mutation.prohibited, false);
+  assert.equal(contract.mutation.sourceChange, true);
+  assert.equal(contract.validation.runProhibited, false);
+  assert.equal(contract.validation.runRequested, true);
+  assert.equal(contract.validation.testRequested, true);
+  assert.equal(contract.intent.context.externalEffect, 'none');
+  assert.ok(contract.signals.includes('scoped-path-prohibition'));
+  assert.ok(contract.completion.doneIff.some(item => item.kind === 'code-written'));
+  assert.ok(contract.completion.doneIff.some(item => item.kind === 'test-passed'));
+});
+
+test('TaskSemanticContract v3: an unscoped no-write clause remains globally read-only', () => {
+  const contract = buildTaskSemanticContract(
+    '分析 src/a.ts 的职责，不要修改任何文件。',
+  );
+
+  assert.equal(contract.kind, 'read-only');
+  assert.equal(contract.mutation.requested, false);
+  assert.equal(contract.mutation.prohibited, true);
+  assert.equal(contract.read.requested, true);
+});
+
+test('TaskSemanticContract v3: a scoped restriction cannot hide a later global no-write clause', () => {
+  const contract = buildTaskSemanticContract(
+    '请创建 report.md。不要创建目录。不要修改任何文件。',
+  );
+
+  assert.equal(contract.mutation.requested, false);
+  assert.equal(contract.mutation.prohibited, true);
+  assert.ok(contract.signals.includes('scoped-write-object-prohibition'));
+});
+
+test('TaskSemanticContract v3: a lone target prohibition is read-only without another deliverable', () => {
+  const contract = buildTaskSemanticContract(
+    '不允许生成 Markdown 报告 /workspace/report.md。',
+  );
+
+  assert.equal(contract.kind, 'read-only');
+  assert.equal(contract.mutation.requested, false);
+  assert.equal(contract.mutation.prohibited, true);
+  assert.ok(contract.signals.includes('scoped-path-prohibition'));
+});
+
 test('TaskSemanticContract v3: source-derived reports require read and artifact evidence', () => {
   const contract = buildTaskSemanticContract('读取 src/a.ts 并生成 report.md，总结主要函数。');
 

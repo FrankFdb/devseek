@@ -7,6 +7,7 @@ import {
   isScopedNoChangeWithDeliverableWriteRequest,
 } from './advisory-patterns';
 import { isUnsafeSecretHarvestingImplementationRequest } from './safety-intent';
+import { classifyExternalEffectIntent } from './operational-language-boundary';
 import type { SemanticTaskKind } from './semantic-intent';
 import type { ExecutionMode } from './intent-types';
 import type { TaskSemanticKind, TaskSemanticScope } from '../task-semantic-contract';
@@ -67,8 +68,6 @@ const EXPLICIT_NO_CHANGE_RE = /(不要修改|无需修改|不修改|不要改|�
 const GREETING_ONLY_RE = /^(?:hi|hello|ello|hey|你好|您好|嗨|哈喽|早上好|上午好|下午好|晚上好|在吗|在不在|辛苦了)[\s!.。！？?]*$/i;
 const GREETING_PREFIX_RE = /^(?:hi|hello|hey|你好|您好|嗨|哈喽)[,，\s]+/i;
 const EDIT_RE = /(修复|修正|修改|改一下|改成|改为|改用|换成|换为|调整为|实现|编写|写一个|写个|创建|新建|生成|新增|添加|补全|完善|重构|改造|替换|替换为|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|删除|移除|删掉|优化|升级|接入|封装|拆分|发布|上线|部署|安装插件|安装扩展|fix|repair|modify|change|implement|create|write|add|update|refactor|generate|replace|rename|move|copy|append|insert|delete|remove|release|deploy|publish|install\s+extension)/i;
-const EXTERNAL_EFFECT_RE = /(?:发布|上线|部署|安装插件|安装扩展|提交(?:当前)?(?:修改|变更)?|推送(?:当前)?(?:分支)?|拉取(?:最新)?代码|安装\s*(?:依赖|npm\s*包|包)|release|deploy|publish|install\s+extension|git\s+(?:commit|push|pull|fetch|merge|rebase)|commit\s+(?:changes?|current)|push\s+(?:current\s+)?branch|npm\s+(?:install|i|add|ci)|pnpm\s+(?:install|i|add)|yarn\s+(?:install|add)|pip\s+install)/i;
-const EXTERNAL_EFFECT_QUESTION_RE = /(?:如何|怎么|怎样|为什么|什么是|介绍|说明|方案|计划|how\s+to|what\s+is|why|plan|design|approach)/i;
 const NEGATED_EDIT_CLAUSE_RE = /(?:当前不准备|先不准备|不准备|先不要|暂不|不要|不得|禁止|不允许|无需|无须|不需要|别)[^，,。；;\n]{0,24}(?:修复|修正|修改|改动|创建|新建|生成|编写|写入|保存|输出|新增|添加|实现|重构|替换|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|发布|上线|部署|安装|提交|推送|拉取)|不(?:修复|修正|修改|改动|创建|新建|生成|编写|写入|保存|输出|新增|添加|实现|重构|替换|发布|上线|部署|安装|提交|推送|拉取)|(?:do\s+not|don't|must\s+not|should\s+not|never|without)[^,.;\n]{0,32}(?:fix|repair|modify|change|create|write|generate|save|add|update|implement|refactor|replace|rename|move|copy|append|insert|release|deploy|publish|install|commit|push|pull|fetch|merge|rebase)/gi;
 const RUN_RE = /(运行|执行|编译|构建|测试|跑一下|验证|启动|调试|\b(?:run|execute|compile|build|test|start)\b)/i;
 const FOLLOW_UP_RUN_RE = /(?:能(?:否)?(?:执行|运行|编译|构建|测试|验证)|看(?:一下|下|看)?(?:执行|运行|编译|构建|测试|验证)?结果|看到(?:执行|运行|编译|构建|测试|验证)?结果|(?:给(?:我)?|输出|展示|显示|提供|返回).{0,12}(?:执行|运行|编译|构建|测试|验证)?结果|(?:执行|运行|编译|构建|测试|验证|跑)(?:一下|下|一遍|一次)?(?:看看|看结果)|(?:执行|运行|编译|构建|测试|验证|跑).{0,8}结果|(?:show|see|view).{0,20}(?:result|output)|(?:can|could).{0,20}(?:run|execute|compile|build|test|verify))/i;
@@ -106,16 +105,14 @@ export function buildLocalIntentContract(
     && !READ_ONLY_CAPABILITY_QUESTION_RE.test(withoutGreeting);
   const hasDeliverableWriteRequest = isDeliverableWriteRequest(text);
   const hasScopedNoChangeWithDeliverableWrite = isScopedNoChangeWithDeliverableWriteRequest(text);
-  const externalEffectMentioned = EXTERNAL_EFFECT_RE.test(positiveActionText);
+  const externalEffect = classifyExternalEffectIntent(positiveActionText);
   const context: LocalIntentContext = {
     empty: !text,
     greetingOnly: GREETING_ONLY_RE.test(text),
     hasExplicitWorkspacePath: hasPath,
     reviewRequested: REVIEW_RE.test(text),
     failureContext: FAILURE_RE.test(text),
-    externalEffect: externalEffectMentioned
-      ? EXTERNAL_EFFECT_QUESTION_RE.test(text) ? 'question' : 'requested'
-      : 'none',
+    externalEffect,
     broadScope: BROAD_SCOPE_RE.test(text),
     complexAction: COMPLEX_ACTION_RE.test(text),
     planningOnly: isPlanningOnlyRequest(text),

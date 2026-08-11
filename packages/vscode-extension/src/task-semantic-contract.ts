@@ -10,6 +10,10 @@ import { isCodeArtifactPathValue } from './artifact-path-kind';
 import { stripAgentProceduralExecutionPhrases } from './intent/agent-procedure-text';
 import { hasDestructiveIntent } from './intent/destructive-intent';
 import {
+  hasOperationalRunProhibition,
+  splitOperationalClauses,
+} from './intent/operational-language-boundary';
+import {
   buildLocalIntentContract,
   type LocalIntentContract,
 } from './intent/local-intent-contract';
@@ -116,6 +120,7 @@ const OTHER_FILE_SCOPE_RE = /(?:其他|其它|其余|用户)(?:的)?(?:文件|�
 const FORMAL_SOURCE_SCOPE_RE = /(?:正式|原有|现有|既有|生产|主线|原项目|任何|所有|全部)?[^，,。；;\n]{0,8}(?:源码|源码目录|source\s+code)|(?:正式|原有|现有|既有|生产|主线|原项目)[^，,。；;\n]{0,8}(?:代码|代码目录|code)|(?:formal|production|existing|original|any|all)\s+(?:source\s+code|source|code)/i;
 const HISTORICAL_REQUIREMENT_SCOPE_RE = /(?:旧要求|旧需求|旧版本|原要求|原需求|先前要求|之前要求|前面(?:曾)?说|历史要求|历史需求|old|previous|prior|earlier)/i;
 const VERSION_CONTROL_SCOPE_RE = /(?:\bgit\b|版本控制|仓库状态|提交记录|分支)|(?:version\s+control|repository\s+state|commit\s+history|branch)/i;
+const NARROW_WRITE_OBJECT_SCOPE_RE = /(?:目录|文件夹|directories?|folders?)/i;
 const CODE_DELIVERY_RE = /(?:代码实现|实现代码|实现接口|交付代码|代码副本|新增或修改代码|新增代码|修改代码|落地实现|implement(?:ing)?\s+(?:code|interface)|code\s+delivery)/i;
 const ARTIFACT_PATH_QUERY_RE = /(?:(?:可执行文件|执行文件|二进制|binary|executable|build\s+artifact|构建产物|生成的文件|创建的文件|写入的文件|输出文件|产物|artifact).{0,18}(?:在哪里|在哪|哪里|路径|位置|path|where)|(?:在哪里|在哪|哪里|路径|位置|path|where).{0,18}(?:可执行文件|执行文件|二进制|binary|executable|build\s+artifact|构建产物|生成的文件|创建的文件|写入的文件|输出文件|产物|artifact))/i;
 const VALIDATION_RE = /(?:验证|测试|编译|构建|运行|执行|确认|检查|读回|重新读取|test|verify|compile|\bbuild\b(?!\s*(?:目录|文件夹|dir|directory))|run|execute|check|read\s*back)/i;
@@ -124,7 +129,6 @@ const RUN_RE = /(?:运行|执行|启动|跑一下|\b(?:run|execute|start)\b)/i;
 const TEST_RE = /(?:测试|单元测试|test|ctest|pytest|npm\s+test|pnpm\s+test|yarn\s+test|bun\s+test|go\s+test|cargo\s+test|unit\s+tests?)/i;
 const STDOUT_RE = /(?:打印|输出|stdout|std::cout|\bcout\b|console\.log|print)/i;
 const OUTPUT_ARTIFACT_RE = /(?:(?:输出|打印)[^，,。；;\n]{0,20}(?:文件|文档|报告|Markdown|md|目录|路径|清单|内容)|(?:文件|文档|报告|内容|最后一行|每行|一行)[^，,。；;\n]{0,24}(?:打印|输出|console\.log|print)|(?:output|print)[^,.;\n]{0,24}(?:file|document|report|markdown|content|line))/i;
-const NO_RUN_RE = /(?:不(?:要|用|需|需要|必|得|准|能)?|禁止|别|勿|请勿|未)[^，,。；;\n]{0,24}(?:运行|执行|启动|测试)|(?:do\s+not|don't|without|no)\s+(?:run|execute|start|test)/i;
 const NO_RUN_CLAUSE_RE = /(?:不(?:要|用|需|需要|必|得|准|能)?|禁止|别|勿|请勿|未)[^，,。；;\n]{0,32}(?:运行|执行|启动|测试)[^，,。；;\n]*|(?:do\s+not|don't|without|no)\s+[^,.;\n]*(?:run|execute|start|test)[^,.;\n]*/gi;
 const TEST_AS_IMPLEMENTATION_CONSTRAINT_RE = /(?:不要|不得|禁止|别|勿|请勿)[^，,。；;\n]{0,20}(?:为(?:了)?(?:通)?过|迎合|针对)\s*(?:测试|tests?)[^，,。；;\n]*|\b(?:do\s+not|don't|never)\b[^,.;\n]{0,24}\bhardcode\b[^,.;\n]{0,16}\btests?\b/gi;
 const EXPLICIT_TEST_COMMAND_RE = /(?:运行|执行|run|execute)[^，,。；;\n]{0,24}(?:\.\/?|\b)(?:test\.sh|tests?|ctest|pytest|jest|vitest|mocha)\b/i;
@@ -146,15 +150,24 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const sourceMutationTargets = requestedMutationTargets.filter(isSourcePath);
   const nonCodeMutationTargets = requestedMutationTargets.filter(isNonCodeArtifactPath);
   const artifactPathQuery = ARTIFACT_PATH_QUERY_RE.test(prompt);
-  const hasScopedOtherFileProhibition = NO_WRITE_RE.test(prompt) && OTHER_FILE_SCOPE_RE.test(prompt);
-  const hasScopedFormalSourceProhibition = NO_WRITE_RE.test(prompt) && FORMAL_SOURCE_SCOPE_RE.test(prompt);
-  const hasScopedHistoricalRequirementProhibition = NO_WRITE_RE.test(prompt) && HISTORICAL_REQUIREMENT_SCOPE_RE.test(prompt);
-  const hasScopedVersionControlProhibition = NO_WRITE_RE.test(prompt) && VERSION_CONTROL_SCOPE_RE.test(prompt);
-  const hasScopedWriteProhibition = hasScopedOtherFileProhibition
-    || hasScopedFormalSourceProhibition
-    || hasScopedHistoricalRequirementProhibition
-    || hasScopedVersionControlProhibition;
-  const hasUnscopedNoWrite = NO_WRITE_RE.test(prompt) && !hasScopedWriteProhibition;
+  const writeProhibitionClauses = splitOperationalClauses(prompt)
+    .filter(clause => NO_WRITE_RE.test(clause));
+  const hasScopedOtherFileProhibition = writeProhibitionClauses.some(clause => OTHER_FILE_SCOPE_RE.test(clause));
+  const hasScopedFormalSourceProhibition = writeProhibitionClauses.some(clause => FORMAL_SOURCE_SCOPE_RE.test(clause));
+  const hasScopedHistoricalRequirementProhibition = writeProhibitionClauses.some(clause => HISTORICAL_REQUIREMENT_SCOPE_RE.test(clause));
+  const hasScopedVersionControlProhibition = writeProhibitionClauses.some(clause => VERSION_CONTROL_SCOPE_RE.test(clause));
+  const hasScopedWriteObjectProhibition = writeProhibitionClauses.some(clause => NARROW_WRITE_OBJECT_SCOPE_RE.test(clause));
+  const hasScopedPathProhibition = writeProhibitionClauses.some(clause => (
+    taskContract.inputs.some(target => clauseMentionsTaskPath(clause, target))
+  ));
+  const hasUnscopedNoWrite = writeProhibitionClauses.some(clause => !(
+    OTHER_FILE_SCOPE_RE.test(clause)
+      || FORMAL_SOURCE_SCOPE_RE.test(clause)
+      || HISTORICAL_REQUIREMENT_SCOPE_RE.test(clause)
+      || VERSION_CONTROL_SCOPE_RE.test(clause)
+      || NARROW_WRITE_OBJECT_SCOPE_RE.test(clause)
+      || taskContract.inputs.some(target => clauseMentionsTaskPath(clause, target))
+  ));
   const positiveIntentText = prompt
     .replace(NO_WRITE_CLAUSE_RE, ' ')
     .replace(EXISTING_IMPLEMENTATION_CONTEXT_RE, ' ')
@@ -185,7 +198,7 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const sourceChange = taskContractSourceChange || explicitSourceFileWrite || standaloneCode || existingProjectCodeDelivery;
   const fileArtifact = (taskContract.deliverables.includes('report') && effectivePositiveWriteAction)
     || explicitNonCodeFileWrite;
-  const prohibited = NO_WRITE_RE.test(prompt) && !hasScopedWriteProhibition && !sourceChange && !fileArtifact;
+  const prohibited = writeProhibitionClauses.length > 0 && !sourceChange && !fileArtifact;
   const destructiveIntent = hasDestructiveIntent(prompt) && !prohibited;
   const mutationRequested = (sourceChange || fileArtifact || taskContract.deliverableTargets.length > 0)
     && !prohibited;
@@ -200,7 +213,7 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const positiveValidationText = maskTaskTargetPaths(validationPrompt.replace(NO_RUN_CLAUSE_RE, ' '), taskContract.inputs);
   const compileRequested = !artifactPathQuery && COMPILE_RE.test(positiveValidationText);
   const stdoutRequested = !artifactPathQuery && STDOUT_RE.test(validationText) && !OUTPUT_ARTIFACT_RE.test(validationText);
-  const runProhibited = !artifactPathQuery && NO_RUN_RE.test(validationText);
+  const runProhibited = !artifactPathQuery && hasOperationalRunProhibition(validationText);
   const testRequested = !runProhibited
     && !artifactPathQuery
     && (TEST_RE.test(positiveValidationText) || EXPLICIT_TEST_COMMAND_RE.test(validationPrompt));
@@ -252,6 +265,8 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     hasScopedFormalSourceProhibition ? 'scoped-formal-source-prohibition' : '',
     hasScopedHistoricalRequirementProhibition ? 'scoped-historical-requirement-prohibition' : '',
     hasScopedVersionControlProhibition ? 'scoped-version-control-prohibition' : '',
+    hasScopedWriteObjectProhibition ? 'scoped-write-object-prohibition' : '',
+    hasScopedPathProhibition ? 'scoped-path-prohibition' : '',
     formalProjectRequired ? 'formal-project-quality-required' : '',
     runRequested ? 'run-requested' : '',
     testRequested ? 'test-requested' : '',
@@ -440,4 +455,12 @@ function maskTaskTargetPaths(text: string, paths: readonly string[]): string {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function clauseMentionsTaskPath(clause: string, target: string): boolean {
+  const normalizedClause = clause.toLowerCase().replace(/[`'"“”]/g, '');
+  const normalizedTarget = target.toLowerCase().replace(/^[.`'"“”]+|[`'"“”]+$/g, '');
+  if (normalizedTarget.length < 3) return false;
+  return normalizedClause.includes(normalizedTarget)
+    || normalizedClause.includes(normalizedTarget.replace(/^\.\//, ''));
 }
