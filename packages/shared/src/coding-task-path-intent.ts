@@ -2,14 +2,20 @@ const WORKSPACE_PATH_TOKEN_RE = /(?:^|[\s("'`:：])((?:\.{0,2}\/)?[A-Za-z0-9_.?*
 const ROOT_WORKSPACE_FILE_RE = /(?:\.(?:bash|c|cc|cjs|cpp|css|cxx|env|go|h|hh|hpp|html|java|js|json|jsonc|jsx|local|lock|md|mdx|mjs|py|rs|scss|sh|sql|svelte|toml|ts|tsx|txt|vue|xml|ya?ml)|^(?:containerfile|dockerfile|license|makefile))$/iu;
 const CLAUSE_MUTATION_RE = /(?:\b(?:add|create|delete|edit|fix|generate|implement|modify|refactor|remove|save|update|write)\b|创建|新增|添加|删除|编辑|修复|生成|实现|修改|重构|移除|保存|更新|写入)/iu;
 const MUTATION_SUFFIX_RE = /^\s*(?:(?:,|，)?\s*(?:and|then|并|然后)\s*)?(?:(?:fix|modify|refactor|remove|update)\b|修复|修改|重构|移除|更新)/iu;
+const NEGATED_MUTATION_PREFIX_RE = /(?:(?:\b(?:do\s+not|don't|must\s+not|should\s+not|never)\b\s*(?:add|create|delete|edit|fix|generate|implement|modify|refactor|remove|save|update|write)\b)|(?:(?:不要|不得|禁止|严禁|不可|不允许|勿|别)(?:再)?\s*(?:创建|新增|添加|删除|编辑|修复|生成|实现|修改|重构|移除|保存|更新|写入)))[^.!?;。！？；\n]{0,96}$/iu;
+const NEGATED_MUTATION_SUFFIX_RE = /^\s*[`'"’”)}\]、,，:：-]*\s*(?:(?:must\s+not|should\s+not|may\s+not)\s+(?:be\s+)?(?:created|deleted|edited|modified|removed|updated|written)\b|(?:不得|不要|禁止|严禁|不可|不允许)(?:被)?(?:创建|删除|编辑|修改|移除|更新|写入))/iu;
 const REFERENCE_PREFIX_RE = /(?:\b(?:according\s+to|based\s+on|compare\s+with|inspect|read|reference|review|using)\s+|参考|基于|依据|按照|对标|读取|查看|分析)\s*$/iu;
 const DATA_PREFIX_RE = /(?:\b(?:example|input|stdin|url|value)\s+|输入|示例|网址|值)\s*$/iu;
 const DIRECTORY_SUFFIX_RE = /^\s*(?:directory|folder|目录)(?:\b|下|内)/iu;
+const TECHNOLOGY_LABEL_RE = /^(?:bun|deno|electron|next|node|nuxt|react|vue)\.(?:js|ts)$/iu;
+const TECHNOLOGY_CONTEXT_RE = /^\s*(?:(?:project|application|app|runtime|ecosystem)\b|(?:项目|工程|应用|运行时|生态)(?=$|[\s,，;；]))/iu;
 
 export interface CodingTaskPathIntent {
   readonly mentionedPaths: readonly string[];
   readonly mutationFileTargets: readonly string[];
   readonly mutationDirectoryTargets: readonly string[];
+  readonly excludedFileTargets: readonly string[];
+  readonly excludedDirectoryTargets: readonly string[];
 }
 
 export interface TaskPathIntentPort {
@@ -33,10 +39,16 @@ export class CanonicalTaskPathIntentService implements TaskPathIntentPort {
     const mentionedPaths = mentions.map(mention => mention.path);
     const mutationFileTargets: string[] = [];
     const mutationDirectoryTargets: string[] = [];
+    const excludedFileTargets: string[] = [];
+    const excludedDirectoryTargets: string[] = [];
 
     for (const mention of mentions) {
-      if (!hasMutationIntent(mention)) continue;
-      (mention.directory ? mutationDirectoryTargets : mutationFileTargets).push(mention.path);
+      const intent = classifyMutationIntent(mention);
+      if (intent === 'mutation') {
+        (mention.directory ? mutationDirectoryTargets : mutationFileTargets).push(mention.path);
+      } else if (intent === 'excluded') {
+        (mention.directory ? excludedDirectoryTargets : excludedFileTargets).push(mention.path);
+      }
     }
     for (const rawTarget of input.targetPaths ?? []) {
       const target = normalizeWorkspacePath(rawTarget);
@@ -50,6 +62,8 @@ export class CanonicalTaskPathIntentService implements TaskPathIntentPort {
       mentionedPaths: Object.freeze(uniquePaths(mentionedPaths)),
       mutationFileTargets: Object.freeze(uniquePaths(mutationFileTargets)),
       mutationDirectoryTargets: Object.freeze(uniquePaths(mutationDirectoryTargets)),
+      excludedFileTargets: Object.freeze(uniquePaths(excludedFileTargets)),
+      excludedDirectoryTargets: Object.freeze(uniquePaths(excludedDirectoryTargets)),
     });
   }
 }
@@ -78,6 +92,7 @@ function parsePathMentions(prompt: string): PathMention[] {
     const before = source.slice(bounds.start, matchStart);
     const after = source.slice(matchStart + rawPath.length, bounds.end);
     if (DATA_PREFIX_RE.test(before)) continue;
+    if (TECHNOLOGY_LABEL_RE.test(path) && TECHNOLOGY_CONTEXT_RE.test(after)) continue;
     mentions.push({
       path,
       before,
@@ -88,10 +103,12 @@ function parsePathMentions(prompt: string): PathMention[] {
   return mentions;
 }
 
-function hasMutationIntent(mention: PathMention): boolean {
-  if (MUTATION_SUFFIX_RE.test(mention.after)) return true;
-  if (REFERENCE_PREFIX_RE.test(mention.before)) return false;
-  return CLAUSE_MUTATION_RE.test(mention.before);
+function classifyMutationIntent(mention: PathMention): 'mutation' | 'excluded' | 'none' {
+  if (NEGATED_MUTATION_PREFIX_RE.test(mention.before)
+    || NEGATED_MUTATION_SUFFIX_RE.test(mention.after)) return 'excluded';
+  if (MUTATION_SUFFIX_RE.test(mention.after)) return 'mutation';
+  if (REFERENCE_PREFIX_RE.test(mention.before)) return 'none';
+  return CLAUSE_MUTATION_RE.test(mention.before) ? 'mutation' : 'none';
 }
 
 function isDirectoryMention(rawPath: string, path: string, before: string, after: string): boolean {

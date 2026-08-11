@@ -758,4 +758,28 @@ test('AgentFileWritePolicy: explicit nested standalone source target survives no
   assert.equal(extra.reason, 'artifact-other-file-write-prohibited');
 });
 
+test('AgentFileWritePolicy: an explicit source directory authorizes nested semantic owners only', () => {
+  const requestPrompt = [
+    '请直接修改当前既有 Node.js 项目。',
+    '只允许修改 `src/` 下的生产代码，不得修改 `tests/`、`package.json`。',
+  ].join('\n');
+  const decide = relativePath => decideAgentFileWrite({
+    absPath: `/workspace/${relativePath}`,
+    workspaceRoot: '/workspace',
+    autopilotMode: true,
+    context: {
+      purpose: 'tool-write',
+      userRequested: false,
+      taskAction: 'replace_in_file',
+      displayName: relativePath,
+      requestPrompt,
+    },
+  });
+
+  assert.equal(decide('src/domain/maintenance-window.js').action, 'allow');
+  assert.equal(decide('src/index.js').action, 'allow');
+  assert.equal(decide('tests/maintenance-window.test.js').action, 'deny');
+  assert.equal(decide('package.json').action, 'deny');
+});
+
 console.log('\nAgent file write policy tests passed.\n');

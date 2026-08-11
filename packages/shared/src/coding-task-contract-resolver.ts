@@ -17,7 +17,7 @@ import {
 import { resolveCodingTaskPathIntent } from './coding-task-path-intent';
 
 const VERIFICATION_REQUEST_RE = /(?:\bverif(?:y|ied|ication)\b|\bvalidat(?:e|ed|ion)\b|\btests?\b|\bchecks?\b|\bcompile\b|\brun\b|验证|校验|测试|检查|编译|运行|自测)/iu;
-const SCOPED_CHANGE_RE = /(?:keep\s+the\s+change\s+scoped|do\s+not\s+(?:modify|change|touch)\s+(?:any\s+)?other\s+files?|only\s+[^.\n]{0,80}\s+changes?|不要(?:修改|改动|新增)(?:任何)?其他文件|只(?:修改|改动)[^，。；\n]{0,80})/iu;
+const SCOPED_CHANGE_RE = /(?:keep\s+the\s+change\s+scoped|do\s+not\s+(?:modify|change|touch)\s+(?:any\s+)?other\s+files?|(?:only|solely)\s+(?:modify|change|edit|touch)\b[^.\n]{0,80}|only\s+[^.\n]{0,80}\s+changes?|不要(?:修改|改动|新增)(?:任何)?其他文件|(?:只|仅)(?:允许)?(?:修改|改动)[^，。；\n]{0,80})/iu;
 const NO_DEPENDENCY_RE = /(?:do\s+not\s+(?:add|introduce)\s+(?:any\s+)?dependenc|no\s+(?:new\s+)?dependenc|不要(?:新增|引入)(?:任何)?依赖|不(?:新增|引入)依赖)/iu;
 const DEPENDENCY_EFFECT_RE = /(?:\binstall\b[^.\n]{0,80}\b(?:package|dependency)\b|\b(?:npm|pnpm|yarn|bun|pip)\s+(?:install|add)\b|安装[^，。；\n]{0,80}(?:包|依赖))/iu;
 const NETWORK_EFFECT_RE = /(?:\bnetwork\b|\bdownload\b|\bupload\b|\bregistry\b|\bcurl\b|\bwget\b|网络|下载|上传|仓库|注册表)/iu;
@@ -55,6 +55,10 @@ export function resolveCodingKernelTaskContract(
     ...declaredTargets,
     ...pathIntent.mutationDirectoryTargets.map(path => `${path}/**`),
   ]);
+  const excludedScope = uniquePaths([
+    ...pathIntent.excludedFileTargets,
+    ...pathIntent.excludedDirectoryTargets.map(path => `${path}/**`),
+  ]);
   const include = dependencyEffect && mutationScope.length === 0
     ? ['package.json', 'package-lock.json', 'src/**']
     : mutating
@@ -88,6 +92,7 @@ export function resolveCodingKernelTaskContract(
     mode,
     orientation,
     include,
+    exclude: mutating ? excludedScope : [],
     deliverables,
     constraints: resolveConstraints({
       mutating,

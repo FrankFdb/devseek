@@ -812,9 +812,10 @@ export function authorizeAgentFileWriteContract(input: {
   }
   const scopeRestriction = getLatestFileScopeRestriction(promptText, input.workspaceRoot);
   if (scopeRestriction && !targetExcepted) {
-    const namedByRestriction = scopeRestriction.allowedTargets.has(target);
+    const namedByRestriction = isTargetInsideMutationScope(target, scopeRestriction);
     if (!namedByRestriction
-      && (scopeRestriction.allowedTargets.size > 0 || (!input.allowExactScopedArtifact && !targetMutation.requested))) {
+      && (mutationScopeSize(scopeRestriction) > 0
+        || (!input.allowExactScopedArtifact && !targetMutation.requested))) {
       return { allowed: false, reason: 'artifact-other-file-write-prohibited', requestedTargets };
     }
   }
@@ -824,16 +825,16 @@ export function authorizeAgentFileWriteContract(input: {
     && !(targetMutation.requested && (targetMutation.actionIndex ?? -1) > typeProhibitionIndex)) {
     return { allowed: false, reason: 'target-file-write-prohibited', requestedTargets };
   }
-  const requestedFileTargets = collectRequestedFileMutationTargets(promptText, input.workspaceRoot);
-  if (requestedFileTargets.size > 0
-    && !isRequestedFileMutationTarget(target, requestedFileTargets)
+  const requestedMutationScope = collectRequestedMutationScope(promptText, input.workspaceRoot);
+  if (mutationScopeSize(requestedMutationScope) > 0
+    && !isTargetInsideMutationScope(target, requestedMutationScope)
     && !targetExcepted
     && !input.allowScopedSourceArtifact
     && !input.allowImplicitPrimaryArtifact) {
     return { allowed: false, reason: 'target-file-write-prohibited', requestedTargets };
   }
   const standaloneCodeArtifactAuthority = hasStandaloneCodeGenerationIntent(promptText)
-    && requestedFileTargets.size === 0
+    && mutationScopeSize(requestedMutationScope) === 0
     && !targetMutation.requested;
   const sourceChangeAuthority = contract.deliverables.includes('source-change')
     && (!standaloneCodeArtifactAuthority
@@ -892,7 +893,8 @@ function lastAllFileWriteProhibitionIndex(
 
 interface FileScopeRestriction {
   index: number;
-  allowedTargets: Set<string>;
+  exactTargets: Set<string>;
+  directoryTargets: Set<string>;
 }
 
 function getLatestFileScopeRestriction(prompt: string, workspaceRoot?: string): FileScopeRestriction | undefined {
@@ -913,23 +915,53 @@ function getLatestFileScopeRestriction(prompt: string, workspaceRoot?: string): 
   const index = latestMatch.index ?? 0;
   const bounds = findClauseBounds(prompt, index);
   const occurrences = extractPathOccurrences(prompt);
-  const allowedTargets = new Set<string>();
+  const allowedScope = emptyMutationScope();
   for (const occurrence of occurrences.filter(item => item.index >= bounds.start && item.index < bounds.end)) {
     const decision = classifyPathOccurrenceMutation(prompt, occurrence, occurrences, true);
-    if (decision.requested) allowedTargets.add(resolveRequestedFileTarget(occurrence.path, workspaceRoot));
+    if (decision.requested) addMutationScopeTarget(allowedScope, occurrence.path, workspaceRoot);
   }
-  return { index, allowedTargets };
+  return { index, ...allowedScope };
 }
 
-function collectRequestedFileMutationTargets(prompt: string, workspaceRoot?: string): Set<string> {
+interface FileMutationScope {
+  exactTargets: Set<string>;
+  directoryTargets: Set<string>;
+}
+
+function collectRequestedMutationScope(prompt: string, workspaceRoot?: string): FileMutationScope {
   const occurrences = extractPathOccurrences(prompt);
-  const targets = new Set<string>();
+  const scope = emptyMutationScope();
   for (const occurrence of occurrences) {
     if (classifyPathOccurrenceMutation(prompt, occurrence, occurrences, true).requested) {
-      targets.add(resolveRequestedFileTarget(occurrence.path, workspaceRoot));
+      addMutationScopeTarget(scope, occurrence.path, workspaceRoot);
     }
   }
-  return targets;
+  return scope;
+}
+
+function emptyMutationScope(): FileMutationScope {
+  return { exactTargets: new Set<string>(), directoryTargets: new Set<string>() };
+}
+
+function addMutationScopeTarget(
+  scope: FileMutationScope,
+  requestedPath: string,
+  workspaceRoot?: string,
+): void {
+  const target = resolveRequestedFileTarget(requestedPath, workspaceRoot);
+  (/[\\/]$/u.test(requestedPath) ? scope.directoryTargets : scope.exactTargets).add(target);
+}
+
+function mutationScopeSize(scope: FileMutationScope): number {
+  return scope.exactTargets.size + scope.directoryTargets.size;
+}
+
+function isTargetInsideMutationScope(targetPath: string, scope: FileMutationScope): boolean {
+  if (isRequestedFileMutationTarget(targetPath, scope.exactTargets)) return true;
+  return [...scope.directoryTargets].some(directory => {
+    const relative = nodePath.relative(directory, targetPath);
+    return relative === '' || (!!relative && !relative.startsWith('..') && !nodePath.isAbsolute(relative));
+  });
 }
 
 function lastGenericArtifactWriteProhibitionIndex(prompt: string): number | undefined {
@@ -1300,6 +1332,9 @@ function extractPathOccurrences(prompt: string): PathOccurrence[] {
     add(match[1], matchStart + match[0].lastIndexOf(match[1]));
   }
   const quotedPatterns = [
+    /(["'`])((?:(?:[\\/]|\.{1,2}[\\/])?[\w.@+~-]+[\\/])+?)\1/giu,
+    /“((?:(?:[\\/]|\.{1,2}[\\/])?[\w.@+~-]+[\\/])+)”/giu,
+    /‘((?:(?:[\\/]|\.{1,2}[\\/])?[\w.@+~-]+[\\/])+)’/giu,
     new RegExp(`(["'\\x60])([^"'\\x60\\r\\n]+?\\.${CONTRACT_FILE_EXTENSION_PATTERN})\\1`, 'gi'),
     new RegExp(`“([^”\\r\\n]+?\\.${CONTRACT_FILE_EXTENSION_PATTERN})”`, 'gi'),
     new RegExp(`‘([^’\\r\\n]+?\\.${CONTRACT_FILE_EXTENSION_PATTERN})’`, 'gi'),

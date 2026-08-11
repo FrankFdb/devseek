@@ -142,3 +142,28 @@ test('host-declared target paths remain exact mutation deliverables', () => {
   assert.deepEqual(contract.scope.include, ['src/feature.ts']);
   assert.equal(contract.deliverables.find(item => item.kind === 'source-change')?.path, 'src/feature.ts');
 });
+
+test('directory-only coding scope excludes prohibited paths and ignores technology labels', () => {
+  const contract = resolveCodingKernelTaskContract({
+    prompt: [
+      '直接修改当前既有 Node.js 项目。',
+      '只允许修改 `src/` 下的生产代码，不得修改 `tests/`、`package.json`。',
+      '`src/domain/policy.js` 负责领域规则，执行 npm test。',
+    ].join('\n'),
+    surface: 'vscode',
+  });
+
+  assert.deepEqual(extractCodingWorkspacePaths(contract.goal), [
+    'src/',
+    'tests/',
+    'package.json',
+    'src/domain/policy.js',
+  ]);
+  assert.deepEqual(contract.scope.include, ['src/**']);
+  assert.deepEqual(contract.scope.exclude, ['package.json', 'tests/**']);
+  assert.equal(contract.constraints.includes('no-other-files'), true);
+  assert.deepEqual(
+    contract.deliverables.filter(item => item.kind === 'source-change'),
+    [{ id: 'source-change', kind: 'source-change' }],
+  );
+});

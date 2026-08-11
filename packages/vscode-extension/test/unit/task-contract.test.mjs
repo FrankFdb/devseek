@@ -565,6 +565,11 @@ test('file-write authorization covers neutral, prohibited, exclusive, and correc
   assert.equal(decide('不要创建 report.md；更正：请创建 report.md。', `${root}/report.md`).allowed, true);
   assert.equal(decide('请创建 report.md；更正：不要创建 report.md。', `${root}/report.md`).allowed, false);
 
+  const directoryScope = '只允许修改 `src/` 下的生产代码，不得修改 `tests/`、`package.json`。';
+  assert.equal(decide(directoryScope, `${root}/src/domain/policy.js`).allowed, true);
+  assert.equal(decide(directoryScope, `${root}/tests/policy.test.js`).allowed, false);
+  assert.equal(decide(directoryScope, `${root}/package.json`).allowed, false);
+
   const dedupePrompt = `请将仿真测试结果输出到 ${root}/docs/warranty-maintenance-advice-simulation.md，文件名需要保留 simulation 标识。`;
   assert.equal(decide(dedupePrompt, `${root}/docs/warranty-maintenance-advice-simulation-1.md`).allowed, true);
   assert.equal(
