@@ -21,6 +21,10 @@ export const RUN_EVIDENCE_TERMINAL_DENIAL_RECOVERY_TRIGGER =
   'terminal-denial-before-verified-workspace-result' as const;
 export const RUN_EVIDENCE_TERMINAL_DENIAL_RECOVERY_RESOLUTION =
   'terminal-denial-superseded-by-verified-workspace-result' as const;
+export const RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_TRIGGER =
+  'terminal-validation-failure-before-verified-workspace-result' as const;
+export const RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_RESOLUTION =
+  'terminal-validation-failure-superseded-by-verified-workspace-result' as const;
 export const RUN_EVIDENCE_PROVIDER_FAILURE_RECOVERY_TRIGGER =
   'provider-failure-before-verified-workspace-result' as const;
 export const RUN_EVIDENCE_PROVIDER_FAILURE_RECOVERY_RESOLUTION =

@@ -9,6 +9,8 @@ import {
   LEGACY_EVIDENCE_TRUST,
   PRODUCT_RUNTIME_OBSERVATION_TRUST,
   ProductRunEvidenceSession,
+  RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_RESOLUTION,
+  RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_TRIGGER,
   createProductRunEvidenceAuthorityToken,
   createProductRunEvidenceId,
   productRunEvidenceRoot,
@@ -780,6 +782,116 @@ test('bounded recovery can be proven by a captured validation command', t => {
     session.settleAndSeal({ status: 'completed', idempotencyKey: 'settlement' }).head.sealed,
     true,
   );
+});
+
+test('a verified workspace result supersedes an earlier terminal validation failure', t => {
+  const workspaceRoot = tempWorkspace(t);
+  const authority = authoritySet();
+  const session = ProductRunEvidenceSession.forWorkspace({
+    workspaceRoot,
+    runId: 'terminal-validation-workspace-supersession',
+    surface: 'vscode',
+    authority: authority.ownerOpen,
+    openIfMissing: true,
+  });
+  const terminal = status => observed(status, {
+    operation_id: 'terminal:test-before-change',
+    boundary: 'vscode-terminal-coordinator',
+  });
+  const workspace = status => observed(status, {
+    operation_id: 'workspace:replacement',
+    boundary: 'vscode-workspace-mutation-adapter',
+  });
+  const verification = status => observed(status, { operation_id: 'verification:replacement' });
+  const events = [
+    ['side_effect.requested', terminal('requested')],
+    ['side_effect.authorized', terminal('authorized')],
+    ['side_effect.started', terminal('started')],
+    ['side_effect.failed', { ...terminal('failed'), exit_code: 8 }],
+    ['side_effect.requested', workspace('requested')],
+    ['side_effect.authorized', workspace('authorized')],
+    ['side_effect.started', workspace('started')],
+    ['side_effect.committed', workspace('committed')],
+    ['recovery.detected', observed('detected', {
+      operation_id: 'recovery:validation-replacement',
+      recovery_lane: 'validation',
+    })],
+    ['verification.started', verification('started')],
+    ['verification.completed', verification('completed')],
+    ['quality_gate.started', verification('started')],
+    ['quality_gate.passed', verification('passed')],
+    ['recovery.completed', observed('completed', {
+      operation_id: 'recovery:validation-replacement',
+      resolves_operation_ids: ['terminal:test-before-change'],
+      verification_operation_id: 'verification:replacement',
+      recovery_lane: 'validation',
+      recovery_trigger: RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_TRIGGER,
+      recovery_resolution: RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_RESOLUTION,
+    })],
+  ];
+  for (const [index, [type, payload]] of events.entries()) {
+    session.record({ type, idempotencyKey: `validation-workspace:${index}`, payload });
+  }
+
+  assert.equal(session.settleAndSeal({
+    status: 'completed',
+    idempotencyKey: 'settlement',
+  }).head.sealed, true);
+});
+
+test('terminal validation supersession cannot complete without a later workspace commit', t => {
+  const workspaceRoot = tempWorkspace(t);
+  const authority = authoritySet();
+  const session = ProductRunEvidenceSession.forWorkspace({
+    workspaceRoot,
+    runId: 'terminal-validation-supersession-without-workspace',
+    surface: 'vscode',
+    authority: authority.ownerOpen,
+    openIfMissing: true,
+  });
+  const events = [
+    ['side_effect.requested', observed('requested', {
+      operation_id: 'terminal:test-before-change',
+      boundary: 'vscode-terminal-coordinator',
+    })],
+    ['side_effect.authorized', observed('authorized', {
+      operation_id: 'terminal:test-before-change',
+      boundary: 'vscode-terminal-coordinator',
+    })],
+    ['side_effect.started', observed('started', {
+      operation_id: 'terminal:test-before-change',
+      boundary: 'vscode-terminal-coordinator',
+    })],
+    ['side_effect.failed', observed('failed', {
+      operation_id: 'terminal:test-before-change',
+      boundary: 'vscode-terminal-coordinator',
+      exit_code: 8,
+    })],
+    ['recovery.detected', observed('detected', {
+      operation_id: 'recovery:validation-replacement',
+      recovery_lane: 'validation',
+    })],
+    ['verification.started', observed('started', { operation_id: 'verification:replacement' })],
+    ['verification.completed', observed('completed', { operation_id: 'verification:replacement' })],
+    ['quality_gate.started', observed('started', { operation_id: 'verification:replacement' })],
+    ['quality_gate.passed', observed('passed', { operation_id: 'verification:replacement' })],
+  ];
+  for (const [index, [type, payload]] of events.entries()) {
+    session.record({ type, idempotencyKey: `validation-no-workspace:${index}`, payload });
+  }
+
+  assert.throws(() => session.record({
+    type: 'recovery.completed',
+    idempotencyKey: 'validation-no-workspace:completed',
+    payload: observed('completed', {
+      operation_id: 'recovery:validation-replacement',
+      resolves_operation_ids: ['terminal:test-before-change'],
+      verification_operation_id: 'verification:replacement',
+      recovery_lane: 'validation',
+      recovery_trigger: RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_TRIGGER,
+      recovery_resolution: RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_RESOLUTION,
+    }),
+  }), error => error?.code === 'RUN_SEMANTIC_INVALID');
 });
 
 test('recovery completion requires one fully correlated post-detection mutation and ordered verification gate', t => {

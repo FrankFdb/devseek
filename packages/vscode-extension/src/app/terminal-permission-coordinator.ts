@@ -6,6 +6,8 @@ import {
   ProductRunEvidenceSession,
   RUN_EVIDENCE_TERMINAL_DENIAL_RECOVERY_RESOLUTION,
   RUN_EVIDENCE_TERMINAL_DENIAL_RECOVERY_TRIGGER,
+  RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_RESOLUTION,
+  RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_TRIGGER,
   productRunEvidenceIdempotencyKey,
   summarizeTraceText,
   type CodingToolHostResult,
@@ -96,6 +98,7 @@ interface TerminalRunEvidenceContext {
 
 export type TerminalCommandOutcome = 'committed' | 'failed' | 'indeterminate';
 export type TerminalCommandRecoveryLane = 'interactive' | 'validation';
+type TerminalCommandRecoveryProof = 'captured-retry' | 'verified-workspace-result';
 
 export interface TerminalCommandExecutionResult {
   output: string;
@@ -229,11 +232,15 @@ export class TerminalPermissionCoordinator {
   finishCommandRecovery(input: FinishTerminalCommandRecoveryInput): boolean {
     const session = attachTerminalRecoveryEvidence(input);
     if (!session) return false;
+    let proof: TerminalCommandRecoveryProof | undefined;
     if (input.status === 'completed') {
       const verificationOperationId = input.verificationOperationId?.trim();
-      if (!verificationOperationId || !hasStrictRecoveryProof(session, input, verificationOperationId)) {
+      proof = verificationOperationId
+        ? terminalCommandRecoveryProof(session, input, verificationOperationId)
+        : undefined;
+      if (!verificationOperationId || !proof) {
         reportTerminalEvidenceError(input, new Error(
-          'Terminal recovery completion requires adverse < detected < captured retry lifecycle < matching verification < quality gate',
+          'Terminal recovery completion requires a captured retry or a later verified workspace result',
         ));
         return false;
       }
@@ -248,6 +255,10 @@ export class TerminalPermissionCoordinator {
             resolves_operation_ids: [...new Set(input.targetOperationIds)],
             verification_operation_id: input.verificationOperationId!,
             recovery_lane: input.recoveryLane ?? 'interactive',
+            ...(proof === 'verified-workspace-result' ? {
+              recovery_trigger: RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_TRIGGER,
+              recovery_resolution: RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_RESOLUTION,
+            } : {}),
           }
         : {
             reason: input.reason ?? 'terminal-retry-failed',
@@ -257,9 +268,9 @@ export class TerminalPermissionCoordinator {
   }
 
   /**
-   * Resolve coordinator-owned failures only after replay proves that a later,
-   * captured terminal command committed and its verification/quality gate passed.
-   * Merely dispatching a repair command is deliberately insufficient.
+   * Resolve coordinator-owned failures only after replay proves either a later
+   * captured retry or a committed workspace result whose canonical verification
+   * and quality gate passed. Merely dispatching a repair is insufficient.
    */
   resolveCommandFailuresAfterQualityGate(input: ResolveTerminalCommandRecoveryInput): boolean {
     if (!this.resolveSupersededCommandDenialsAfterQualityGate(input)) return false;
@@ -378,12 +389,12 @@ export class TerminalPermissionCoordinator {
         .filter((operationId): operationId is string => typeof operationId === 'string')
         .reverse();
       const verificationOperationId = verificationOperationIds.find(operationId => (
-        hasStrictRecoveryProof(session, {
+        terminalCommandRecoveryProof(session, {
           ...recoveryInput,
           targetOperationIds,
           recoveryOperationId: activeRecovery.operationId,
           status: 'completed',
-        }, operationId)
+        }, operationId) !== undefined
       ));
       if (!verificationOperationId) return false;
       if (!this.finishCommandRecovery({
@@ -392,7 +403,7 @@ export class TerminalPermissionCoordinator {
         recoveryOperationId: activeRecovery.operationId,
         status: 'completed',
         verificationOperationId,
-        reason: 'captured-terminal-retry-and-quality-gate-passed',
+        reason: 'terminal-recovery-proof-and-quality-gate-passed',
       })) return false;
       this.adverseCommandOperationsByLane.delete(recoveryKey);
       this.activeCommandRecoveryByLane.delete(recoveryKey);
@@ -416,6 +427,25 @@ export class TerminalPermissionCoordinator {
     );
   }
 
+  private closeUnresolvedCommandRecoveries(
+    input: ResolveTerminalCommandRecoveryInput,
+    reason: string,
+  ): void {
+    for (const key of terminalCommandRecoveryKeys(input.runId)) {
+      const active = this.activeCommandRecoveryByLane.get(key);
+      if (!active) continue;
+      this.finishCommandRecovery({
+        ...input,
+        targetOperationIds: active.targetOperationIds,
+        recoveryOperationId: active.operationId,
+        recoveryLane: active.lane,
+        status: 'failed',
+        reason,
+      });
+      this.activeCommandRecoveryByLane.delete(key);
+    }
+  }
+
   completeRunContext(
     runContext: DevSeekRunContext,
     requestedStatus: RunContextStatus,
@@ -423,22 +453,22 @@ export class TerminalPermissionCoordinator {
   ): RunContextStatus {
     let status = requestedStatus;
     let completionData = data;
-    if (
-      requestedStatus === 'completed'
-      && this.hasPendingCommandFailures(runContext.runId)
-      && !this.resolveCommandFailuresAfterQualityGate({
+    if (requestedStatus === 'completed' && this.hasPendingCommandFailures(runContext.runId)) {
+      const recoveryInput: ResolveTerminalCommandRecoveryInput = {
         workspaceRoot: runContext.workspaceRoot,
         runId: runContext.runId,
         traceEvidenceParticipantToken: runContext.evidenceParticipantToken,
         onTraceEvidenceError: error => runContext.markEvidenceDegraded(error),
-      })
-    ) {
-      status = 'failed';
-      completionData = {
-        ...data,
-        reason: 'unresolved-terminal-failure',
-        requestedStatus,
       };
+      if (!this.resolveCommandFailuresAfterQualityGate(recoveryInput)) {
+        this.closeUnresolvedCommandRecoveries(recoveryInput, 'run-settlement-without-terminal-recovery-proof');
+        status = 'failed';
+        completionData = {
+          ...data,
+          reason: 'unresolved-terminal-failure',
+          requestedStatus,
+        };
+      }
     }
     status = status === 'cancelled'
       ? runContext.cancel(completionData)
@@ -1251,6 +1281,45 @@ function recordTerminalRecoveryEvidence(
     reportTerminalEvidenceError(input, error);
     return false;
   }
+}
+
+function terminalCommandRecoveryProof(
+  session: ProductRunEvidenceSession,
+  input: FinishTerminalCommandRecoveryInput,
+  verificationOperationId: string,
+): TerminalCommandRecoveryProof | undefined {
+  if (hasStrictRecoveryProof(session, input, verificationOperationId)) return 'captured-retry';
+  return hasVerifiedWorkspaceValidationSupersessionProof(session, input, verificationOperationId)
+    ? 'verified-workspace-result'
+    : undefined;
+}
+
+function hasVerifiedWorkspaceValidationSupersessionProof(
+  session: ProductRunEvidenceSession,
+  input: FinishTerminalCommandRecoveryInput,
+  verificationOperationId: string,
+): boolean {
+  if (input.recoveryLane !== 'validation') return false;
+  const events = session.readEvents();
+  const detected = events.find(event => (
+    event.type === 'recovery.detected'
+    && evidencePayloadObject(event.payload)?.operation_id === input.recoveryOperationId
+    && evidencePayloadObject(event.payload)?.recovery_lane === 'validation'
+  ));
+  const proof = findLatestVerifiedWorkspaceResult(events);
+  if (!detected || !proof || proof.verificationOperationId !== verificationOperationId) return false;
+  const targetOperationIds = [...new Set(input.targetOperationIds)];
+  if (targetOperationIds.length === 0) return false;
+  return targetOperationIds.every(operationId => events.some(event => {
+    const payload = evidencePayloadObject(event.payload);
+    return event.type === 'side_effect.failed'
+      && payload?.operation_id === operationId
+      && payload.boundary === 'vscode-terminal-coordinator'
+      && typeof payload.exit_code === 'number'
+      && payload.exit_code !== 0
+      && event.sequence < proof.workspaceRequestedSequence
+      && event.sequence < detected.sequence;
+  }));
 }
 
 function hasStrictRecoveryProof(

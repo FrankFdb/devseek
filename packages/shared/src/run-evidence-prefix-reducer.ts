@@ -12,6 +12,8 @@ import {
   RUN_EVIDENCE_PROVIDER_FAILURE_RECOVERY_TRIGGER,
   RUN_EVIDENCE_TERMINAL_DENIAL_RECOVERY_RESOLUTION,
   RUN_EVIDENCE_TERMINAL_DENIAL_RECOVERY_TRIGGER,
+  RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_RESOLUTION,
+  RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_TRIGGER,
 } from './run-evidence-protocol';
 
 export type RunEvidenceSemanticEvent = Pick<
@@ -48,6 +50,7 @@ interface AdverseTerminal {
 interface RecoveryState {
   detected: boolean;
   detectedSequence?: number;
+  recoveryLane?: string;
   terminal?: 'recovery.completed' | 'recovery.failed';
 }
 
@@ -291,6 +294,7 @@ function reduceRecovery(
     if (state.detected || state.terminal) semanticFailure(`Recovery ${operationId} was detected twice`);
     state.detected = true;
     state.detectedSequence = event.sequence;
+    state.recoveryLane = typeof payload.recovery_lane === 'string' ? payload.recovery_lane : undefined;
     return;
   }
   if (!state.detected) semanticFailure(`Recovery ${operationId} terminated before detection`);
@@ -378,12 +382,30 @@ function reduceRecovery(
     qualityGateTerminalSequence,
     recoveryTerminalSequence: event.sequence,
   });
+  const terminalValidationFailureSupersession = hasTerminalValidationFailureSupersessionProof({
+    payload,
+    resolvedOperationIds,
+    adverse,
+    sideEffects,
+    detectionSequence,
+    detectedRecoveryLane: state.recoveryLane,
+    verificationStartedSequence,
+    verificationTerminalSequence,
+    qualityGateStartedSequence,
+    qualityGateTerminalSequence,
+    recoveryTerminalSequence: event.sequence,
+  });
   if (
     !orderedVerificationGate
-    || (!orderedRecoveryMutation && !providerFailureSupersession && !terminalDenialSupersession)
+    || (
+      !orderedRecoveryMutation
+      && !providerFailureSupersession
+      && !terminalDenialSupersession
+      && !terminalValidationFailureSupersession
+    )
   ) {
     semanticFailure(
-      `Recovery ${operationId} requires detected < correlated requested < authorized < started < committed < verification < quality gate < completed`,
+      `Recovery ${operationId} requires an ordered retry or verified workspace supersession before verification and quality gate completion`,
     );
   }
   for (const resolvedOperationId of resolvedOperationIds) {
@@ -400,6 +422,58 @@ function reduceRecovery(
     }
     for (const terminal of matching) terminal.resolvedBy = operationId;
   }
+}
+
+function hasTerminalValidationFailureSupersessionProof(input: {
+  payload: { [key: string]: RunEvidenceJson };
+  resolvedOperationIds: readonly string[];
+  adverse: readonly AdverseTerminal[];
+  sideEffects: ReadonlyMap<string, OperationState>;
+  detectionSequence: number;
+  detectedRecoveryLane?: string;
+  verificationStartedSequence: number;
+  verificationTerminalSequence: number;
+  qualityGateStartedSequence: number;
+  qualityGateTerminalSequence: number;
+  recoveryTerminalSequence: number;
+}): boolean {
+  if (input.payload.recovery_trigger
+    !== RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_TRIGGER) return false;
+  if (input.payload.recovery_resolution
+    !== RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_RESOLUTION) return false;
+  if (input.payload.recovery_lane !== 'validation') return false;
+  if (input.detectedRecoveryLane !== 'validation') return false;
+  const matching = input.resolvedOperationIds.flatMap(operationId => input.adverse.filter(item => (
+    item.resolutionOperationId === operationId && item.resolvedBy === undefined
+  )));
+  if (matching.length !== input.resolvedOperationIds.length || matching.some(item => (
+    item.type !== 'side_effect.failed'
+      || item.payload.boundary !== 'vscode-terminal-coordinator'
+      || typeof item.payload.exit_code !== 'number'
+      || item.payload.exit_code === 0
+  ))) {
+    return false;
+  }
+  const latestFailureSequence = Math.max(...matching.map(item => item.sequence));
+  const verifiedWorkspaceCommit = [...input.sideEffects.values()].some(sideEffect => (
+    sideEffect.boundary !== 'vscode-terminal-coordinator'
+      && sideEffect.terminal === 'side_effect.committed'
+      && sideEffect.requestedSequence !== undefined
+      && sideEffect.authorizedSequence !== undefined
+      && sideEffect.startedSequence !== undefined
+      && sideEffect.terminalSequence !== undefined
+      && latestFailureSequence < sideEffect.requestedSequence
+      && sideEffect.requestedSequence < sideEffect.authorizedSequence
+      && sideEffect.authorizedSequence < sideEffect.startedSequence
+      && sideEffect.startedSequence < sideEffect.terminalSequence
+      && sideEffect.terminalSequence < input.verificationStartedSequence
+  ));
+  return verifiedWorkspaceCommit
+    && latestFailureSequence < input.detectionSequence
+    && input.verificationStartedSequence < input.verificationTerminalSequence
+    && input.verificationTerminalSequence < input.qualityGateStartedSequence
+    && input.qualityGateStartedSequence < input.qualityGateTerminalSequence
+    && input.qualityGateTerminalSequence < input.recoveryTerminalSequence;
 }
 
 function hasTerminalDenialSupersessionProof(input: {

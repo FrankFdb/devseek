@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { execSync, spawn as realSpawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import Module from 'node:module';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -68,6 +68,8 @@ const {
   createProductRunEvidenceAuthorityToken,
   FileSystemRunEvidenceLedger,
   ProductRunEvidenceSession,
+  RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_RESOLUTION,
+  RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_TRIGGER,
   productRunEvidenceRoot,
   productRunEvidenceIdempotencyKey,
 } = req(path.join(rootDir, '../shared/dist/index.js'));
@@ -473,6 +475,139 @@ test('Terminal evidence: a failed command is resolved only after an observable r
   const events = owner.readEvents();
   assert.ok(events.findIndex(event => event.type === 'quality_gate.passed')
     < events.findIndex(event => event.type === 'recovery.completed'));
+  assert.equal(owner.settleAndSeal({ status: 'completed', idempotencyKey: 'settlement' }).head.sealed, true);
+});
+
+test('Terminal evidence: canonical validation closes an earlier failure in the validation lane', async t => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-terminal-validation-recovery-'));
+  t.after(() => rmSync(workspaceRoot, { recursive: true, force: true }));
+  const runId = 'terminal-canonical-validation-recovery';
+  const { owner, participantToken } = openRun(workspaceRoot, runId);
+  const coordinator = new TerminalPermissionCoordinator();
+  const scriptPath = path.join(workspaceRoot, 'test.sh');
+  writeFileSync(scriptPath, '#!/usr/bin/env bash\nexit 8\n', 'utf8');
+  chmodSync(scriptPath, 0o755);
+
+  const failed = await coordinator.runCommandWithPermissionDetailed({
+    webview: { postMessage() { return true; } },
+    command: './test.sh',
+    workdir: workspaceRoot,
+    workspaceRoot,
+    mode: 'run',
+    toolPolicy: allowTerminalPolicy,
+    traceRunId: runId,
+    traceEvidenceParticipantToken: participantToken,
+    userConfirmed: true,
+  });
+  assert.equal(failed.outcome, 'failed');
+
+  writeFileSync(scriptPath, '#!/usr/bin/env bash\nexit 0\n', 'utf8');
+  const validationRunner = coordinator.createValidationCommandRunner({
+    workspaceRoot,
+    mode: 'run',
+    toolPolicy: allowTerminalPolicy,
+    traceRunId: runId,
+    traceEvidenceParticipantToken: participantToken,
+  });
+  const validation = await validationRunner({
+    command: 'bash test.sh',
+    cwd: workspaceRoot,
+    timeoutMs: 5000,
+  });
+  assert.equal(validation.ok, true);
+  assert.equal(coordinator.resolveCommandFailuresAfterQualityGate({
+    workspaceRoot,
+    runId,
+    traceEvidenceParticipantToken: participantToken,
+  }), true);
+
+  const recoveries = owner.readEvents().filter(event => event.type.startsWith('recovery.'));
+  assert.deepEqual(recoveries.map(event => event.type), ['recovery.detected', 'recovery.completed']);
+  assert.equal(owner.settleAndSeal({ status: 'completed', idempotencyKey: 'settlement' }).head.sealed, true);
+});
+
+test('Terminal evidence: a changed workspace and canonical gate supersede a pre-change validation failure', async t => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-terminal-workspace-recovery-'));
+  t.after(() => rmSync(workspaceRoot, { recursive: true, force: true }));
+  const runId = 'terminal-workspace-validation-recovery';
+  const { owner, participantToken } = openRun(workspaceRoot, runId);
+  const coordinator = new TerminalPermissionCoordinator();
+  const scriptPath = path.join(workspaceRoot, 'test.sh');
+  writeFileSync(scriptPath, '#!/usr/bin/env bash\nexit 8\n', 'utf8');
+  chmodSync(scriptPath, 0o755);
+
+  const failed = await coordinator.runCommandWithPermissionDetailed({
+    webview: { postMessage() { return true; } },
+    command: './test.sh',
+    workdir: workspaceRoot,
+    workspaceRoot,
+    mode: 'run',
+    toolPolicy: allowTerminalPolicy,
+    traceRunId: runId,
+    traceEvidenceParticipantToken: participantToken,
+    userConfirmed: true,
+  });
+  assert.equal(failed.outcome, 'failed');
+
+  const participant = ProductRunEvidenceSession.forWorkspace({
+    workspaceRoot,
+    runId,
+    surface: 'terminal-workspace-validation-recovery-test',
+    authority: { role: 'participant', token: participantToken },
+  });
+  const record = (type, operationId, status, extra = {}) => participant.record({
+    type,
+    idempotencyKey: productRunEvidenceIdempotencyKey(`workspace-validation-recovery-${type}`, {
+      runId,
+      operationId,
+    }),
+    payload: {
+      operation_id: operationId,
+      status,
+      trust: 'product-runtime-observation',
+      ...extra,
+    },
+  });
+  for (const [type, status] of [
+    ['side_effect.requested', 'requested'],
+    ['side_effect.authorized', 'authorized'],
+    ['side_effect.started', 'started'],
+    ['side_effect.committed', 'committed'],
+  ]) {
+    record(type, 'workspace-write:1', status, { boundary: 'vscode-workspace-mutation-adapter' });
+  }
+  const recoveryInput = {
+    workspaceRoot,
+    runId,
+    traceEvidenceParticipantToken: participantToken,
+    targetOperationIds: [failed.operationId],
+    recoveryLane: 'validation',
+  };
+  const recoveryOperationId = coordinator.beginCommandRecovery(recoveryInput);
+  for (const [type, status] of [
+    ['verification.started', 'started'],
+    ['verification.completed', 'completed'],
+    ['quality_gate.started', 'started'],
+    ['quality_gate.passed', 'passed'],
+  ]) {
+    record(type, 'canonical-validation:1', status);
+  }
+
+  assert.equal(coordinator.finishCommandRecovery({
+    ...recoveryInput,
+    recoveryOperationId,
+    status: 'completed',
+    verificationOperationId: 'canonical-validation:1',
+  }), true);
+  const completed = owner.readEvents().find(event => event.type === 'recovery.completed');
+  assert.equal(
+    completed?.payload.recovery_trigger,
+    RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_TRIGGER,
+  );
+  assert.equal(
+    completed?.payload.recovery_resolution,
+    RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_RESOLUTION,
+  );
   assert.equal(owner.settleAndSeal({ status: 'completed', idempotencyKey: 'settlement' }).head.sealed, true);
 });
 

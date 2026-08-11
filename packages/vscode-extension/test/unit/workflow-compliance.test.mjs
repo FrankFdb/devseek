@@ -2911,8 +2911,13 @@ test('Architecture: ARCH-17 agent runs are created through RunContext', () => {
   assertContains(terminalCoordinator, 'runContext.complete(status, completionData)', 'convergence boundary must settle RunContext');
   assertContains(
     terminalCoordinator,
-    'resolveCommandFailuresAfterQualityGate({',
+    'resolveCommandFailuresAfterQualityGate(recoveryInput)',
     'completed settlement must resolve terminal failures only after replayed quality evidence',
+  );
+  assertContains(
+    terminalCoordinator,
+    'closeUnresolvedCommandRecoveries(recoveryInput',
+    'completed settlement must terminate recoveries that lack replayed quality evidence',
   );
   assertDoesNotContain(
     extension,
