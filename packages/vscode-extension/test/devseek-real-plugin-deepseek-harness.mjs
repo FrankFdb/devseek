@@ -1696,6 +1696,16 @@ function selectedArtifactRecords(paths, before, normalizedChangedPaths) {
   });
 }
 
+function selectedCodeArtifactRecords(paths, before, normalizedChangedPaths) {
+  return selectedArtifactRecords(paths, before, normalizedChangedPaths).map((record) => ({
+    ...record,
+    qualitySignals: assessCodeArtifactSignals(
+      record.path,
+      record.exists ? fs.readFileSync(record.absolutePath, 'utf8') : '',
+    ),
+  }));
+}
+
 function isHarnessCodeArtifact(relative) {
   const normalized = String(relative || '').replace(/\\/g, '/');
   if (/(^|\/)docs?\//i.test(normalized)) return false;
@@ -1756,34 +1766,22 @@ function assessCodeArtifactSignals(relative, content) {
   const text = String(content || '');
   const isTestLike = /(?:^|\/)(?:tests?|selftests?|__tests__)(?:\/|$)/i.test(normalizedPath)
     || /(?:test|spec|selftest|verify|validation)/i.test(base);
-  const hasImplementationSyntax = /(?:#include|namespace\s+\w+|class\s+\w+|struct\s+\w+|enum\s+(?:class\s+)?\w+|\b(?:void|bool|int|double|float|std::string)\s+\w+\s*\()/i.test(text);
-  const hasFormalProjectAnchor = /(?:UAV_EVENT|MAVLink|mavlink|remote.?controller|RemoteController|platform|Platform|warranty|Warranty|maintenance|Maintenance|主控|遥控器|平台|维保)/i.test(text);
-  const hasValidationHook = /(?:assert\s*\(|static_assert|EXPECT_|ASSERT_|self.?test|SelfTest|verify|validate|validation|单元测试|自测|验证)/i.test(text);
-  const hasStandaloneSampleMain = /\bint\s+main\s*\(/.test(text) && !isTestLike;
-  const hasToySample = /hello\s+world|Hello\s+World|TODO:\s*implement/i.test(text);
+  const hasPlaceholderImplementation = /(?:TODO|FIXME)\s*:?\s*(?:implement|complete|finish)|\bnot[_ -]?implemented\b/i.test(text);
   const hasMarkdownDunderCorruption = /\*\*(?:init|name|main|str|repr|len|iter|next|enter|exit|eq|ne|lt|le|gt|ge|hash|call|dict|class|module|all|file|doc|annotations|slots|getattr|setattr|delattr|contains|getitem|setitem|delitem|bool|bytes|format|new|del)\*\*/.test(text);
   const hasToolProtocolContamination = /(?:\[调用\s+(?:create_file|write_file|replace_in_file|run_terminal|read_file|list_dir|search_file)\]|\bCalling:\s*(?:create_file|write_file|replace_in_file|run_terminal|read_file|list_dir|search_file)\b|<TOOL_[A-Za-z0-9_]+>|<\/TOOL_[A-Za-z0-9_]+>)/.test(text);
   return {
     isTestLike,
-    hasImplementationSyntax,
-    hasFormalProjectAnchor,
-    hasValidationHook,
-    hasStandaloneSampleMain,
-    hasToySample,
+    hasPlaceholderImplementation,
     hasMarkdownDunderCorruption,
     hasToolProtocolContamination,
   };
 }
 
-function assessCodeDirQuality(records, promptText) {
+function assessCodeQuality(records) {
   const changedRecords = records.filter(record => record.exists && (record.created || record.changed) && record.size > 0);
   const productionRecords = changedRecords.filter(record => !record.qualitySignals.isTestLike);
-  const validationRequired = /(?:自闭环|测试|验证|单体|单元|self.?loop|test|verify|validation)/i.test(promptText || '');
-  const hasImplementationSyntax = productionRecords.some(record => record.qualitySignals.hasImplementationSyntax);
-  const hasFormalProjectAnchor = changedRecords.some(record => record.qualitySignals.hasFormalProjectAnchor);
-  const hasValidationHook = changedRecords.some(record => record.qualitySignals.hasValidationHook || record.qualitySignals.isTestLike);
-  const standaloneSampleRecords = changedRecords
-    .filter(record => record.qualitySignals.hasStandaloneSampleMain || record.qualitySignals.hasToySample)
+  const placeholderRecords = productionRecords
+    .filter(record => record.qualitySignals.hasPlaceholderImplementation)
     .map(record => record.path);
   const markdownDunderCorruptionRecords = changedRecords
     .filter(record => record.qualitySignals.hasMarkdownDunderCorruption)
@@ -1794,10 +1792,7 @@ function assessCodeDirQuality(records, promptText) {
   const reasons = [
     changedRecords.length === 0 ? 'no-code-change' : '',
     productionRecords.length === 0 ? 'no-production-code-artifact' : '',
-    !hasImplementationSyntax ? 'missing-implementation-syntax' : '',
-    !hasFormalProjectAnchor ? 'missing-formal-project-anchor' : '',
-    validationRequired && !hasValidationHook ? 'missing-validation-hook' : '',
-    standaloneSampleRecords.length > 0 ? 'standalone-sample-code' : '',
+    placeholderRecords.length > 0 ? 'placeholder-implementation' : '',
     markdownDunderCorruptionRecords.length > 0 ? 'code-markdown-emphasis-corruption' : '',
     toolProtocolContaminationRecords.length > 0 ? 'code-tool-protocol-contamination' : '',
   ].filter(Boolean);
@@ -1805,20 +1800,22 @@ function assessCodeDirQuality(records, promptText) {
     ok: reasons.length === 0,
     changedCount: changedRecords.length,
     productionCount: productionRecords.length,
-    validationRequired,
-    hasImplementationSyntax,
-    hasFormalProjectAnchor,
-    hasValidationHook,
-    standaloneSampleRecords,
+    placeholderRecords,
     markdownDunderCorruptionRecords,
     toolProtocolContaminationRecords,
     reasons,
   };
 }
 
+function mergeCodeArtifactRecords(...groups) {
+  const records = new Map();
+  for (const record of groups.flat()) records.set(record.path, record);
+  return [...records.values()].sort((left, right) => left.path.localeCompare(right.path));
+}
+
 function assessStageArtifactQuality(input) {
   const formal = input.formalProjectQuality || {};
-  const codeQuality = input.expectedCodeDirQuality || { ok: true, reasons: [], hasValidationHook: false };
+  const codeQuality = input.expectedCodeQuality || { ok: true, reasons: [] };
   const promptText = String(input.promptText || '');
   const formalSignal = (key) => Object.prototype.hasOwnProperty.call(formal, key)
     ? Boolean(formal[key])
@@ -1875,7 +1872,6 @@ function assessStageArtifactQuality(input) {
     validationRequired && !input.successTerminal ? 'agent-run-not-successful' : '',
     validationRequired && Number(input.tasksApplied || 0) <= 0 ? 'no-applied-task' : '',
     validationRequired && Number(input.tasksFailed || 0) > 0 ? 'task-failed' : '',
-    codeEvidenceRequired && !codeQuality.hasValidationHook ? 'missing-code-validation-hook' : '',
   ].filter(Boolean);
   stages.push({
     id: 'verification',
@@ -2088,7 +2084,7 @@ function evaluate(before, startedAtMs, expectedCodeBefore = new Map(), expectedC
   const expectedArtifactInRunLog = expectedArtifacts.length > 0
     ? expectedArtifactRecords.every((record) => record.inRunLog)
     : changedMarkdownByLog;
-  const expectedCodeArtifactRecords = selectedArtifactRecords(expectedCodeArtifacts, expectedCodeBefore, normalizedChangedPaths);
+  const expectedCodeArtifactRecords = selectedCodeArtifactRecords(expectedCodeArtifacts, expectedCodeBefore, normalizedChangedPaths);
   const expectedCodeArtifactsWritten = expectedCodeArtifacts.length > 0
     ? expectedCodeArtifactRecords.every((record) => record.exists && (record.created || record.changed) && record.size > 0)
     : true;
@@ -2096,7 +2092,7 @@ function evaluate(before, startedAtMs, expectedCodeBefore = new Map(), expectedC
     ? expectedCodeArtifactRecords.every((record) => record.inRunLog)
     : true;
   const expectedCodeDirRecords = selectedCodeDirRecords(expectedCodeDirs, expectedCodeDirBefore, normalizedChangedPaths);
-  const expectedCodeDirQuality = assessCodeDirQuality(expectedCodeDirRecords, prompt);
+  const expectedCodeDirQuality = assessCodeQuality(expectedCodeDirRecords);
   const expectedCodeDirArtifactsWritten = expectedCodeDirs.length > 0
     ? expectedCodeDirRecords.some((record) => record.exists && (record.created || record.changed) && record.size > 0)
     : true;
@@ -2107,6 +2103,11 @@ function evaluate(before, startedAtMs, expectedCodeBefore = new Map(), expectedC
     ? expectedCodeDirQuality.ok
     : true;
   const codeEvidenceRequired = expectedCodeArtifacts.length > 0 || expectedCodeDirs.length > 0;
+  const expectedCodeQuality = assessCodeQuality(mergeCodeArtifactRecords(
+    expectedCodeArtifactRecords,
+    expectedCodeDirRecords,
+  ));
+  const expectedCodeQualityOk = codeEvidenceRequired ? expectedCodeQuality.ok : true;
   const markdownRequired = expectedArtifacts.length > 0 || !codeEvidenceRequired;
   const markdownEvidenceOk = markdownRequired
     ? changedMarkdownByLog && hasUsefulMarkdown && expectedArtifactWritten && expectedArtifactInRunLog
@@ -2119,7 +2120,7 @@ function evaluate(before, startedAtMs, expectedCodeBefore = new Map(), expectedC
     && tasksFailed === 0;
   const stageArtifactQuality = assessStageArtifactQuality({
     formalProjectQuality,
-    expectedCodeDirQuality,
+    expectedCodeQuality,
     expectedCodeArtifactsWritten,
     expectedCodeArtifactsInRunLog,
     expectedCodeDirArtifactsWritten,
@@ -2139,7 +2140,7 @@ function evaluate(before, startedAtMs, expectedCodeBefore = new Map(), expectedC
     && expectedCodeArtifactsInRunLog
     && expectedCodeDirArtifactsWritten
     && expectedCodeDirArtifactsInRunLog
-    && expectedCodeDirQualityOk
+    && expectedCodeQualityOk
     && formalProjectQualityOk
     && stageArtifactQuality.ok);
   return {
@@ -2173,6 +2174,8 @@ function evaluate(before, startedAtMs, expectedCodeBefore = new Map(), expectedC
       expectedCodeDirArtifactsInRunLog,
       expectedCodeDirQuality,
       expectedCodeDirQualityOk,
+      expectedCodeQuality,
+      expectedCodeQualityOk,
       stageArtifactQuality,
       staleAnalysisChanged,
     },

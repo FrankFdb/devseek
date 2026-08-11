@@ -11,12 +11,12 @@ const extensionRoot = path.resolve(__dirname, '../..');
 const harnessPath = path.join(extensionRoot, 'test/devseek-controlled-vsix-harness.mjs');
 const realPluginHarnessPath = path.join(extensionRoot, 'test/devseek-real-plugin-deepseek-harness.mjs');
 
-function evaluateHarnessFunctions(source, startMarker, endMarker, names) {
+function evaluateHarnessFunctions(source, startMarker, endMarker, names, globals = {}) {
   const start = source.indexOf(startMarker);
   const end = source.indexOf(endMarker);
   assert.ok(start >= 0, `missing ${startMarker}`);
   assert.ok(end > start, `missing ${endMarker}`);
-  const context = {};
+  const context = { ...globals };
   vm.runInNewContext(`${source.slice(start, end)}\nresult = { ${names.join(', ')} };`, context);
   return context.result;
 }
@@ -82,8 +82,38 @@ test('real plugin VSIX harness reports generated artifact quality details', () =
   assert.match(source, /requiredContentMatches/, 'report artifacts must expose required snippet matches');
   assert.match(source, /forbiddenContentMatches/, 'report artifacts must expose stale-domain forbidden snippet matches');
   assert.match(source, /reportLanguageQuality/, 'report artifacts must expose language quality checks');
+  assert.match(source, /selectedCodeArtifactRecords/, 'explicit code artifacts must use the shared code quality owner');
+  assert.match(source, /expectedCodeQuality/, 'file and directory code evidence must converge before quality settlement');
+  assert.doesNotMatch(source, /missing-formal-project-anchor/, 'generic code quality must not require one historical product domain');
+  assert.doesNotMatch(source, /missing-code-validation-hook/, 'verification evidence must not be inferred from names inside changed production code');
   assert.match(source, /stageArtifactQuality/, 'report checks must include generated artifact stage quality');
   assert.match(source, /阶段成果物质量不达标/, 'failed generated artifact quality must be surfaced in report errors');
+});
+
+test('real plugin VSIX harness accepts domain-neutral production code and rejects placeholders', () => {
+  const source = readFileSync(realPluginHarnessPath, 'utf8');
+  const { assessCodeArtifactSignals, assessCodeQuality } = evaluateHarnessFunctions(
+    source,
+    'function assessCodeArtifactSignals',
+    'function mergeCodeArtifactRecords',
+    ['assessCodeArtifactSignals', 'assessCodeQuality'],
+    { path },
+  );
+  const record = (content) => ({
+    path: 'src/job_scheduler.cpp',
+    exists: true,
+    created: false,
+    changed: true,
+    size: Buffer.byteLength(content),
+    qualitySignals: assessCodeArtifactSignals('src/job_scheduler.cpp', content),
+  });
+
+  const implementation = '#include "job_scheduler.hpp"\nnamespace scheduler { void run() {} }\n';
+  assert.equal(assessCodeQuality([record(implementation)]).ok, true);
+  assert.deepEqual(
+    [...assessCodeQuality([record('// TODO: implement scheduler\n')]).reasons],
+    ['placeholder-implementation'],
+  );
 });
 
 test('real plugin VSIX harness chooses the agent run log over bridge status probes', () => {
