@@ -3,6 +3,7 @@ import {
   CanonicalCodingKernel,
   CodingKernelExecutionError,
   FileSystemCodingOperationJournal,
+  createCodingKernelEnvironmentSync,
   projectSettledCodingConformanceRun,
   type CodingConformanceProjection,
   type CodingCheckpoint,
@@ -10,6 +11,8 @@ import {
   type CodingKernelExecutionOutput,
   type CodingKernelRuntimePort,
   type CodingKernelTaskContract,
+  type CodingKernelEnvironmentInput,
+  type LLMProviderType,
   type CodingMemoryCandidate,
   type CodingResumeOperationReceipt,
 } from '@devseek-netai/shared';
@@ -29,6 +32,8 @@ export interface HeadlessCodingRunInput<TRuntimeContext> {
   readonly resumeCheckpoint?: CodingCheckpoint;
   readonly resumeReceipts?: readonly CodingResumeOperationReceipt[];
   readonly runtimeContext: TRuntimeContext;
+  readonly provider?: LLMProviderType;
+  readonly environment?: CodingKernelEnvironmentInput;
   readonly signal?: AbortSignal;
 }
 
@@ -85,6 +90,10 @@ export class HeadlessCodingKernelExecutor<TRuntimeContext, TResult> {
         resumeCheckpoint: input.resumeCheckpoint,
         resumeReceipts: input.resumeReceipts,
         operationJournal: FileSystemCodingOperationJournal.forWorkspace(input.workspaceRoot),
+        environment: input.environment ?? createCodingKernelEnvironmentSync({
+          workspaceRoot: input.workspaceRoot,
+          provider: input.provider ?? 'local-api',
+        }),
         runtimeContext: input.runtimeContext,
         signal: command.request.signal,
       });

@@ -2,7 +2,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as nodePath from 'path';
 
-import { redactDevSeekAuthorityCapabilities } from './persisted-secret';
+import { isCodingSecretFieldName, redactCodingSecretsInText } from './coding-secret-redaction';
 
 export type DevSeekTraceLevel = 'off' | 'error' | 'info' | 'debug' | 'trace';
 
@@ -54,7 +54,6 @@ const TRACE_LEVELS: Record<DevSeekTraceLevel, number> = {
 };
 
 const REDACTED = '[REDACTED]';
-const SENSITIVE_KEY_RE = /(?:token|cookie|authorization|password|secret|api[_-]?key|session|credential)/i;
 const TRACE_SEQ_BY_RUN = new Map<string, number>();
 const MAX_TRACE_STRING_LENGTH = 8000;
 
@@ -111,9 +110,9 @@ export class DevSeekTraceLogger {
 
   constructor(options: DevSeekTraceLoggerOptions) {
     this.workspaceRoot = nodePath.resolve(options.workspaceRoot);
-    this.source = redactDevSeekAuthorityCapabilities(options.source);
+    this.source = redactCodingSecretsInText(options.source).text;
     this.level = resolveDevSeekTraceLevel(String(options.level ?? process.env.DEVSEEK_TRACE_LEVEL ?? 'debug'));
-    this.runId = redactDevSeekAuthorityCapabilities(options.runId || createDevSeekRunId(options.now));
+    this.runId = redactCodingSecretsInText(options.runId || createDevSeekRunId(options.now)).text;
     this.runDir = getDevSeekTraceRoot(this.workspaceRoot);
     this.logPath = nodePath.join(this.runDir, traceLogFileName(this.runId));
     this.buildInfo = resolveBuildInfo(options);
@@ -315,9 +314,9 @@ function sanitizeTraceData(
   options: TraceSanitizeOptions = {},
 ): unknown {
   if (value === null || value === undefined) return value;
-  if (SENSITIVE_KEY_RE.test(key)) return REDACTED;
+  if (isCodingSecretFieldName(key)) return REDACTED;
   if (typeof value === 'string') {
-    const redacted = redactDevSeekAuthorityCapabilities(value);
+    const redacted = redactCodingSecretsInText(value).text;
     if (options.preservePayloadContent && path.join('.') === 'data.content') return redacted;
     return redacted.length > MAX_TRACE_STRING_LENGTH
       ? `${redacted.slice(0, MAX_TRACE_STRING_LENGTH)}...[truncated:${redacted.length}]`
@@ -327,7 +326,7 @@ function sanitizeTraceData(
   if (Array.isArray(value)) return value.map((item, index) => sanitizeTraceData(item, key, path.concat(String(index)), options));
   const out: Record<string, unknown> = {};
   for (const [entryKey, entryValue] of Object.entries(value as Record<string, unknown>)) {
-    const safeKey = redactDevSeekAuthorityCapabilities(entryKey);
+    const safeKey = redactCodingSecretsInText(entryKey).text;
     out[safeKey] = sanitizeTraceData(entryValue, safeKey, path.concat(safeKey), options);
   }
   return out;

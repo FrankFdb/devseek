@@ -1079,6 +1079,232 @@
           }
         }
       ]
+    },
+    {
+      "iteration_id": "I21",
+      "status": "verified-local",
+      "goal": "Converge provider capability negotiation, the DeepSeek Web connector, secret handling, dirty-worktree preservation, and platform effect boundaries.",
+      "delta_from_baseline": "Adds unsupported provider negotiation, retry-lifecycle browser exclusivity, recursive credential redaction, overlap-aware user-change preservation, and exact platform boundary certification; none is exercised by the fixed five coding fixtures or I10-I20.",
+      "fixture_path": "scripts/test/fixtures/user-simulations/i21-connector-environment.json",
+      "local_artifact_root": "code/devseek-tests/connector-environment",
+      "capability_ids": [
+        "C6-CAPABILITY-NEGOTIATION",
+        "C6-DEEPSEEK-WEB-CONNECTOR",
+        "C7-SECRETS-REDACTION",
+        "C7-DIRTY-WORKTREE",
+        "C7-PLATFORM-ADAPTER-CONFORMANCE"
+      ],
+      "cases": [
+        {
+          "case_id": "I21-PRV-01",
+          "capability_ids": ["C6-CAPABILITY-NEGOTIATION"],
+          "surface": "shared-kernel",
+          "user_action": "Request a code or release workflow through a provider that does not advertise the required tool protocol, then request an unknown capability.",
+          "expected_outcomes": [
+            "Negotiation blocks the missing tool protocol before product execution.",
+            "Unknown requirements remain machine-readable and cannot be inferred as supported."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-provider-capability.test.mjs",
+            "test_name": "I21-PRV-01 user journey: provider capability negotiation blocks missing and unknown requirements"
+          }
+        },
+        {
+          "case_id": "I21-CNT-01",
+          "capability_ids": ["C6-DEEPSEEK-WEB-CONNECTOR"],
+          "surface": "bridge",
+          "user_action": "Submit two DeepSeek Web requests while the first request fails once and performs its bounded retry.",
+          "expected_outcomes": [
+            "The first request retains the single browser slot for its complete retry lifecycle.",
+            "The second request begins only after the first request completes, with no interleaved provider attempt."
+          ],
+          "evidence": {
+            "test_path": "packages/bridge/test/deepseek-web-connector.test.mjs",
+            "test_name": "I21-CNT-01 user journey: connector retries remain inside one exclusive browser slot"
+          }
+        },
+        {
+          "case_id": "I21-SEC-01",
+          "capability_ids": ["C7-SECRETS-REDACTION"],
+          "surface": "shared-kernel",
+          "user_action": "Send nested diagnostic content containing bearer, GitHub, DeepSeek, and private-key credentials through the canonical redactor twice.",
+          "expected_outcomes": [
+            "Every supported credential class is removed before diagnostic delivery.",
+            "A second redaction pass is identical and cannot reveal or further mutate the protected content."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-secret-redaction.test.mjs",
+            "test_name": "I21-SEC-01 user journey: canonical redaction removes credential classes idempotently"
+          }
+        },
+        {
+          "case_id": "I21-DTY-01",
+          "capability_ids": ["C7-DIRTY-WORKTREE"],
+          "surface": "shared-kernel",
+          "user_action": "Plan a mutation where one target overlaps a user-edited path while a second user edit is disjoint.",
+          "expected_outcomes": [
+            "The overlapping target is blocked before mutation authority is issued.",
+            "Disjoint user changes remain preserved and do not cause unrelated planned paths to be discarded."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-dirty-worktree.test.mjs",
+            "test_name": "I21-DTY-01 user journey: dirty worktree policy preserves disjoint changes and blocks overlap"
+          }
+        },
+        {
+          "case_id": "I21-PLT-01",
+          "capability_ids": ["C7-PLATFORM-ADAPTER-CONFORMANCE"],
+          "surface": "vscode",
+          "user_action": "Certify a Linux runtime with complete, missing, and duplicate effect-boundary observations.",
+          "expected_outcomes": [
+            "Exactly one supported observation for sandbox, workspace mutation, and external effect certifies the runtime.",
+            "Missing or duplicate boundary evidence fails closed instead of inheriting another platform's result."
+          ],
+          "evidence": {
+            "test_path": "packages/vscode-extension/test/unit/platform-runtime.test.mjs",
+            "test_name": "I21-PLT-01 user journey: platform conformance requires one observation for every effect boundary"
+          }
+        }
+      ]
+    },
+    {
+      "iteration_id": "I22",
+      "status": "verified-local",
+      "goal": "Converge cancellation, steering, user collaboration, and accessibility into one run-control and Surface contract.",
+      "delta_from_baseline": "Adds cancellation reconciliation with in-flight effects, duplicate-safe steering that can revoke writes, complete user control and review affordances, and visual/programmatic accessibility contracts; none is covered by the fixed five coding fixtures or I10-I21.",
+      "fixture_path": "scripts/test/fixtures/user-simulations/i22-run-collaboration.json",
+      "local_artifact_root": "code/devseek-tests/run-collaboration",
+      "capability_ids": [
+        "C11-CANCEL-INTERRUPT",
+        "C11-STEERING",
+        "C11-USER-COLLABORATION",
+        "C11-SURFACE-ACCESSIBILITY"
+      ],
+      "cases": [
+        {
+          "case_id": "I22-CAN-01",
+          "capability_ids": ["C11-CANCEL-INTERRUPT"],
+          "surface": "shared-kernel",
+          "user_action": "Cancel a run while one workspace mutation effect is in flight and then attempt a new external effect.",
+          "expected_outcomes": [
+            "Cancellation freezes new effects immediately and records the exact in-flight set.",
+            "The run cannot settle cancelled until the existing lease is reconciled."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-run-control.test.mjs",
+            "test_name": "I22-CAN-01 user journey: cancellation freezes effects until in-flight work is reconciled"
+          }
+        },
+        {
+          "case_id": "I22-STR-01",
+          "capability_ids": ["C11-STEERING"],
+          "surface": "shared-kernel",
+          "user_action": "Send one write-revoking steering instruction twice, followed by a validation-focused instruction.",
+          "expected_outcomes": [
+            "Duplicate delivery is idempotent and the first instruction revokes write authority.",
+            "Receipts retain hashes and policy decisions without persisting raw steering text."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-run-control.test.mjs",
+            "test_name": "I22-STR-01 user journey: steering is idempotent and can revoke write authority"
+          }
+        },
+        {
+          "case_id": "I22-COL-01",
+          "capability_ids": ["C11-USER-COLLABORATION"],
+          "surface": "vscode",
+          "user_action": "Use a VS Code run that must expose progress, cancellation, steering, diff review, and completion evidence.",
+          "expected_outcomes": [
+            "The Surface certifies only when every control and review path is interactive.",
+            "An attractive but non-interactive declaration cannot satisfy collaboration conformance."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-user-collaboration.test.mjs",
+            "test_name": "I22-COL-01 user journey: collaboration requires a complete interactive control and review path"
+          }
+        },
+        {
+          "case_id": "I22-ACC-01",
+          "capability_ids": ["C11-SURFACE-ACCESSIBILITY"],
+          "surface": "cross-surface",
+          "user_action": "Evaluate accessibility for the visual VS Code Surface and programmatic CLI and Headless Surfaces.",
+          "expected_outcomes": [
+            "Visual controls require keyboard, focus, labels, and non-color state communication.",
+            "Programmatic Surfaces require structured output, stable errors, cancellation, and progress without pretending to be visual."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-user-collaboration.test.mjs",
+            "test_name": "I22-ACC-01 user journey: accessibility requirements follow visual and programmatic surfaces"
+          }
+        }
+      ]
+    },
+    {
+      "iteration_id": "I23",
+      "status": "verified-local",
+      "goal": "Replace the hand-rolled MCP transport with the official SDK and keep optional tooling low-friction without allowing risky or replayed effects.",
+      "delta_from_baseline": "Adds user-owned session launch, prompt-free closed-world read-only calls, exact user receipts for risky calls, one-shot invocation receipts, an official SDK stdio handshake, and bounded configuration/schema/argument processing; none is covered by the fixed five coding fixtures or I10-I22.",
+      "fixture_path": "scripts/test/fixtures/user-simulations/i23-mcp-authority.json",
+      "local_artifact_root": "code/devseek-tests/mcp-authority",
+      "capability_ids": ["C13-MCP-BOUNDARY"],
+      "cases": [
+        {
+          "case_id": "I23-AUT-01",
+          "capability_ids": ["C13-MCP-BOUNDARY"],
+          "surface": "vscode",
+          "user_action": "Discover an MCP server configuration and deny its launch before connection.",
+          "expected_outcomes": [
+            "Configuration discovery alone grants no execution authority.",
+            "No MCP client or child process is created after the user's denial."
+          ],
+          "evidence": {
+            "test_path": "packages/vscode-extension/test/unit/mcp-manager.test.mjs",
+            "test_name": "I23-AUT-01 user journey: denied MCP discovery cannot spawn a client"
+          }
+        },
+        {
+          "case_id": "I23-SDK-01",
+          "capability_ids": ["C13-MCP-BOUNDARY"],
+          "surface": "vscode",
+          "user_action": "Launch a local stdio MCP fixture, paginate tool discovery, and invoke one tool through the production client.",
+          "expected_outcomes": [
+            "The official MCP SDK completes initialization and protocol negotiation.",
+            "Discovery and the tool result traverse the versioned SDK transport without a hand-rolled process protocol."
+          ],
+          "evidence": {
+            "test_path": "packages/vscode-extension/test/unit/mcp-manager.test.mjs",
+            "test_name": "I23-SDK-01 user journey: official MCP SDK completes stdio discovery and a tool call"
+          }
+        },
+        {
+          "case_id": "I23-CAL-01",
+          "capability_ids": ["C13-MCP-BOUNDARY"],
+          "surface": "shared-kernel",
+          "user_action": "After approving an MCP server for the session, invoke a closed-world read-only tool and then a destructive tool; attempt to replay the read receipt.",
+          "expected_outcomes": [
+            "The read-only call uses the approved session policy without another prompt, while the destructive call still requires exact user evidence.",
+            "Arguments remain immutable and an exact receipt can release its external effect only once."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-mcp-boundary.test.mjs",
+            "test_name": "I23-CAL-01 user journey: session-approved read-only MCP stays low-friction while risky calls require user evidence"
+          }
+        },
+        {
+          "case_id": "I23-BND-01",
+          "capability_ids": ["C13-MCP-BOUNDARY"],
+          "surface": "shared-kernel",
+          "user_action": "Present oversized and deeply nested MCP configuration, schemas, and call arguments.",
+          "expected_outcomes": [
+            "Every untrusted structure is bounded by depth, node count, and canonical size before use.",
+            "Rejected payloads fail categorically without leaking their content into error receipts."
+          ],
+          "evidence": {
+            "test_path": "packages/shared/test/coding-mcp-boundary.test.mjs",
+            "test_name": "I23-BND-01 user journey: MCP configuration schemas and arguments obey resource bounds"
+          }
+        }
+      ]
     }
   ]
 }

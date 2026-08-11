@@ -196,10 +196,10 @@ const gates = [
     purpose: 'Engineering context, ignore policy, runtime detection, dependency/docs/preview/conflict/root/replay contracts.',
   },
   {
-    id: 'P12-top-agent-enhancements',
+    id: 'P12-top-agent-convergence',
     phases: '12',
     command: ['npm', 'run', 'verify:phase12'],
-    purpose: 'Hooks, skills, subagents, MCP/Git contracts plus CLI type/build/test gate.',
+    purpose: 'Active conditional capabilities, MCP authority, workspace safety, and CLI/headless convergence gates.',
   },
   {
     id: 'agent-loop-subloops',
@@ -395,7 +395,7 @@ function nextActionFor(gate) {
     'P0-P9-vscode-extension-unit': 'Fix the failing extension unit suite or update the runner only if the oracle is invalid, then rerun verify:phase0-12.',
     'P10-runtime-surface': 'Fix shared/bridge/CLI/extension compile or runtime-surface tests, then rerun verify:phase10 and verify:phase0-12.',
     'P11-engineering-integrity': 'Fix engineering context shared-core regressions, then rerun verify:phase11 and verify:phase0-12.',
-    'P12-top-agent-enhancements': 'Fix hooks/skills/subagents/MCP/Git shared-core or CLI regressions, then rerun verify:phase12 and verify:phase0-12.',
+    'P12-top-agent-convergence': 'Fix active capability, MCP authority, workspace safety, shared-core, CLI, or headless regressions, then rerun verify:phase12 and verify:phase0-12.',
     'agent-loop-subloops': 'Classify the failed subloop, add deterministic replay if needed, fix DevSeek, then rerun verify:agent-loop-eval.',
     'agent-loop-live-deepseek-cli': 'Classify live DeepSeek failure as environment, model protocol, or DevSeek runtime gap; capture artifacts, add deterministic replay if possible, then rerun verify:phase0-12:real.',
     'programming-agent-pa0-pa13': 'Fix the exposed coding-agent capability gap, then rerun verify:programming-agent-benchmark.',

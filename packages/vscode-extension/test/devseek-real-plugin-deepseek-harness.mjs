@@ -403,15 +403,11 @@ function createFixtureWorkspace(root, options = {}) {
   if (scenarioSpec.id === 'r3-08a-vscode-collaboration') {
     return createR3VSCodeCollaborationFixture(root, scenarioSpec);
   }
-  if (scenarioSpec.id === 'r3-07h-required-kinds-aggregate') {
-    return createR3RequiredKindsAggregateFixture(root, scenarioSpec);
+  if (scenarioSpec.id === 'c13-mcp-authority-boundary') {
+    return createC13McpAuthorityFixture(root, scenarioSpec);
   }
-  if (
-    scenarioSpec.profileKind
-    && scenarioSpec.id.startsWith('r3-07g-')
-    && scenarioSpec.id.endsWith('-aggregate')
-  ) {
-    return createR3KindAggregateFixture(root, scenarioSpec);
+  if (scenarioSpec.id === 'c11-cancel-steer-reconciliation') {
+    return createC11RunControlFixture(root, scenarioSpec);
   }
 
   const maintenanceDir = path.join(root, 'src/oam/src/lifting/maintenance');
@@ -511,142 +507,107 @@ function createFixtureWorkspace(root, options = {}) {
   };
 }
 
-function createR3KindAggregateFixture(root, scenarioSpec) {
-  const docsDir = path.join(root, 'docs/r3-iteration');
-  const sourceDir = path.join(root, 'src/devseek-profile');
+function createC11RunControlFixture(root, scenarioSpec) {
+  const docsDir = path.join(root, 'docs/convergence');
+  const sourceDir = path.join(root, 'src/devseek-run-control');
   const requestedOutputDoc = path.join(root, scenarioSpec.requestedOutputDocRel);
-  const profileKind = scenarioSpec.profileKind || 'skill';
-  const detail = R3_KIND_AGGREGATE_FIXTURE_DETAILS[profileKind] ?? R3_KIND_AGGREGATE_FIXTURE_DETAILS.skill;
-  const displayKind = profileKind.charAt(0).toUpperCase() + profileKind.slice(1);
-  const denominatorPlanPath = path.join(docsDir, `${profileKind}-denominator-plan.md`);
-  const contractPath = path.join(sourceDir, `${profileKind}-extension-profile-plan-service-contract.ts`);
+  const contractPath = path.join(sourceDir, 'canonical-run-control-contract.ts');
+  const casesPath = path.join(docsDir, 'cancel-steer-cases.md');
   fs.mkdirSync(docsDir, { recursive: true });
   fs.mkdirSync(sourceDir, { recursive: true });
-  fs.mkdirSync(path.dirname(requestedOutputDoc), { recursive: true });
 
   writeText(path.join(root, 'README.md'), [
-    '# DevSeek R3-07G aggregate fixture',
+    '# C11 run-control reconciliation fixture',
     '',
-    'This workspace is created by the visible real-plugin harness for the current R3 iteration.',
-  ].join('\n'));
-  writeText(denominatorPlanPath, [
-    `# R3-07G ${displayKind} Denominator Plan`,
-    '',
-    `- Profile kind: ${profileKind}`,
-    '- Required denominator: 20 task slots and 100 permission-fault slots.',
-    '- Parent owner: ExtensionProfilePlanService.',
-    '- Aggregate settlement is read-only and must not execute child slots.',
-    '- Blocking classes: missing/failed/vetoed/blocked/duplicate/foreign.',
-    ...detail.denominatorLines,
+    'This fixture models one cancellation arriving while a workspace effect is in flight and one steering message revoking writes.',
   ].join('\n'));
   writeText(contractPath, [
-    'export const EXTENSION_PROFILE_KIND_AGGREGATE_PROTOCOL = "devseek.extension-profile-kind-aggregate/v1";',
-    `export const profileKind = "${profileKind}";`,
-    `export const schemaVersion = "${detail.schemaVersion}";`,
-    'export const aggregateExecutionAllowed = false;',
-    'export const slotExecutionAllowed = false;',
-    `export const ${profileKind}TaskSlotCount = 20;`,
-    `export const ${profileKind}PermissionFaultSlotCount = 100;`,
-    'export const aggregateOwner = "ExtensionProfilePlanService";',
-    ...detail.contractLines,
+    'export const owner = "CanonicalRunControlService";',
+    'export const lifecycle = ["active", "cancelling before cancelled", "settled"] as const;',
+    'export const frozenError = "effect-frozen";',
+    'export const cancellationRule = "in-flight effect reconciliation";',
+    'export const steeringEvidence = "steering receipt";',
+    'export const persistedInstruction = "instructionSha256";',
+    'export const scopeRevision = "TaskContract revision";',
+    'export const mutationPostcondition = "no post-cancel mutation";',
+  ].join('\n'));
+  writeText(casesPath, [
+    '# Cancellation and Steering Cases',
+    '',
+    '1. Cancel while write-A is in flight: freeze admission, await the existing lease, then seal cancelled.',
+    '2. Try write-B after cancellation: reject it with effect-frozen before host dispatch.',
+    '3. Steer to read-only: retain only instructionSha256 and require a TaskContract revision before continuing.',
+    '4. Duplicate steer: preserve one semantic decision and a duplicate receipt.',
   ].join('\n'));
 
-  const anchorLines = scenarioSpec.requiredArtifactSnippets
-    .map(snippet => `- ${snippet}`)
-    .join('\n');
-  const defaultPrompt = [
-    `请基于 ${denominatorPlanPath} 和 ${contractPath} 创建 Markdown 审计报告。`,
-    `请把报告保存到 ${requestedOutputDoc}。`,
-    `报告主题是 ${scenarioSpec.promptTitle}。`,
-    '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要运行编译或测试命令。',
-    '',
-    '报告必须解释：',
-    '- 为什么 aggregate 只能读取已有 signed plan 和 owned slot receipts，不能在 aggregate 阶段执行 slot。',
-    '- 为什么完整通过需要 20 task slots 与 100 permission-fault slots 全部有唯一 parent-owned passed receipt。',
-    '- 为什么 missing/failed/vetoed/blocked/duplicate/foreign 任一类 receipt 都必须阻断结算。',
-    ...detail.promptLines,
-    '- 生成文件要包含本次测试结论、风险、验证建议和用户可检查的证据路径。',
-    '',
-    '报告必须逐字包含以下验收锚点：',
-    anchorLines,
-  ].join('\n');
-
+  const anchors = scenarioSpec.requiredArtifactSnippets.map(value => `- ${value}`).join('\n');
   return {
     requestedOutputDoc,
     expectedArtifactRel: scenarioSpec.expectedArtifactRel,
     scenarioSpec,
-    defaultPrompt,
+    defaultPrompt: [
+      `请阅读 ${contractPath} 与 ${casesPath}，创建一份中文取消/转向一致性审计报告。`,
+      `请把报告保存到 ${requestedOutputDoc}。`,
+      '只创建这一份 Markdown 报告，不修改夹具源码，不运行编译或测试。',
+      '报告必须按时间线解释取消请求、effect lease 对账、终态封印，以及转向导致写权限收缩的 TaskContract 修订。',
+      '必须明确证明取消后新写入无法进入 host，并区分 cancelling 与 cancelled。',
+      '报告必须逐字包含以下验收锚点：',
+      anchors,
+    ].join('\n'),
   };
 }
 
-function createR3RequiredKindsAggregateFixture(root, scenarioSpec) {
-  const docsDir = path.join(root, 'docs/r3-iteration');
-  const sourceDir = path.join(root, 'src/devseek-profile');
+function createC13McpAuthorityFixture(root, scenarioSpec) {
+  const docsDir = path.join(root, 'docs/convergence');
+  const sourceDir = path.join(root, 'src/devseek-mcp');
   const requestedOutputDoc = path.join(root, scenarioSpec.requestedOutputDocRel);
-  const planPath = path.join(docsDir, 'required-kinds-aggregate-plan.md');
-  const contractPath = path.join(sourceDir, 'required-kinds-extension-profile-plan-service-contract.ts');
+  const contractPath = path.join(sourceDir, 'mcp-authority-contract.ts');
+  const threatPath = path.join(docsDir, 'mcp-threat-cases.md');
   fs.mkdirSync(docsDir, { recursive: true });
   fs.mkdirSync(sourceDir, { recursive: true });
-  fs.mkdirSync(path.dirname(requestedOutputDoc), { recursive: true });
 
   writeText(path.join(root, 'README.md'), [
-    '# DevSeek R3-07H required-kinds fixture',
+    '# C13 MCP authority fixture',
     '',
-    'This workspace is created by the visible real-plugin harness for the current R3 iteration.',
-  ].join('\n'));
-  writeText(planPath, [
-    '# R3-07H Required Kinds Aggregate Plan',
-    '',
-    '- Required kinds: skill, hook, mcp, plugin, subagent.',
-    '- Parent owner: ExtensionProfilePlanService.',
-    '- Required input: five passed 07G claim receipts.',
-    '- Aggregate settlement is read-only and must not execute child slots.',
-    '- One kind cannot substitute another.',
-    '- Blocking classes: missing, duplicate, foreign, blocked, wrong-candidate.',
-    '- Veto evidence includes required-kinds-missing-veto, required-kinds-duplicate-veto, required-kinds-foreign-veto, and required-kinds-blocked-veto.',
+    'This fixture separates configuration, session launch trust, and risky invocation authority.',
   ].join('\n'));
   writeText(contractPath, [
-    'export const EXTENSION_PROFILE_REQUIRED_KINDS_AGGREGATE_PROTOCOL = "devseek.extension-profile-required-kinds-aggregate/v1";',
-    'export const aggregateOwner = "ExtensionProfilePlanService";',
-    'export const aggregateRequiredKinds = "aggregateRequiredKinds";',
-    'export const requiredKinds = ["skill", "hook", "mcp", "plugin", "subagent"] as const;',
-    'export const requiredClaim = "07G claim";',
-    'export const aggregateExecutionAllowed = false;',
-    'export const slotExecutionAllowed = false;',
-    'export const missingVeto = "required-kinds-missing-veto";',
-    'export const duplicateVeto = "required-kinds-duplicate-veto";',
-    'export const foreignVeto = "required-kinds-foreign-veto";',
-    'export const blockedVeto = "required-kinds-blocked-veto";',
-    'export const wrongCandidateClass = "wrong-candidate";',
-    'export const substitutionRule = "one kind cannot substitute another";',
+    'export const protocolEngine = "@modelcontextprotocol/sdk";',
+    'export const launchAuthority = "server launch request and receipt";',
+    'export const invocationAuthority = "tool call request and receipt";',
+    'export const configRule = "configuration is not authority";',
+    'export const lowFrictionRule = "session-approved read-only tools";',
+    'export const riskyCallRule = "risky calls require user evidence";',
+    'export const replayRule = "receipt replay is rejected";',
+    'export const environmentRule = "safe inherited environment";',
+    'export const outputTrust = "untrusted MCP result";',
+    'export const integrationOracle = "official stdio handshake";',
+  ].join('\n'));
+  writeText(threatPath, [
+    '# MCP Threat Cases',
+    '',
+    '- Configured server denied by the user: no transport or process may be created.',
+    '- A session-approved, read-only, closed-world tool may run without another prompt; unknown or risky tools still require user evidence.',
+    '- Reusing an exact call receipt must not execute the external effect twice.',
+    '- Tool alias collision: reject registration before either alias becomes callable.',
+    '- Binary response: omit payload bytes and retain typed metadata.',
+    '- Connection failure: close the SDK client and return a redacted stage/code report.',
   ].join('\n'));
 
-  const anchorLines = scenarioSpec.requiredArtifactSnippets
-    .map(snippet => `- ${snippet}`)
-    .join('\n');
-  const defaultPrompt = [
-    `请基于 ${planPath} 和 ${contractPath} 创建 Markdown 审计报告。`,
-    `请把报告保存到 ${requestedOutputDoc}。`,
-    `报告主题是 ${scenarioSpec.promptTitle}。`,
-    '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要运行编译或测试命令。',
-    '',
-    '报告必须解释：',
-    '- 为什么 R3-07H 只能聚合已有 07G claim receipts，不能执行新的 task slot 或 permission/fault slot。',
-    '- 为什么 skill、hook、mcp、plugin、subagent 五类 kind 都必须各自有唯一 owner-issued passed aggregate。',
-    '- 为什么一种 kind 不能替代另一种 kind。',
-    '- 为什么 missing、duplicate、foreign、blocked、wrong-candidate 任一类 07G claim 都必须阻断 required-kinds 结算。',
-    '- 为什么 aggregateExecutionAllowed: false 与 slotExecutionAllowed: false 必须保留为可审计证据。',
-    '- 生成文件要包含本次测试结论、风险、验证建议和用户可检查的证据路径。',
-    '',
-    '报告必须逐字包含以下验收锚点：',
-    anchorLines,
-  ].join('\n');
-
+  const anchors = scenarioSpec.requiredArtifactSnippets.map(value => `- ${value}`).join('\n');
   return {
     requestedOutputDoc,
     expectedArtifactRel: scenarioSpec.expectedArtifactRel,
     scenarioSpec,
-    defaultPrompt,
+    defaultPrompt: [
+      `请阅读 ${contractPath} 与 ${threatPath}，创建一份中文 MCP 协议与权限边界审计报告。`,
+      `请把报告保存到 ${requestedOutputDoc}。`,
+      '只创建这一份 Markdown 报告，不修改夹具源码，不启动外部 MCP 服务器。',
+      '报告必须分别说明配置发现、会话启动授权、只读调用低摩擦策略、高风险调用授权、SDK 传输和不可信结果投影。',
+      '必须检讨 receipt 重放、环境继承、别名碰撞、连接失败清理和二进制输出泄露风险。',
+      '报告必须逐字包含以下验收锚点：',
+      anchors,
+    ].join('\n'),
   };
 }
 

@@ -14,6 +14,9 @@ const cliRoot = path.resolve(__dirname, '..');
 const bin = path.join(cliRoot, 'dist/index.js');
 const require = createRequire(import.meta.url);
 const {
+  createDeepSeekStreamFrame,
+  DEEPSEEK_WEB_CONNECTOR_CAPABILITIES,
+  DEEPSEEK_WEB_CONNECTOR_PROTOCOL_VERSION,
   ProductRunEvidenceSession,
   productRunEvidenceIdempotencyKey,
   summarizeTraceText,
@@ -1162,13 +1165,30 @@ async function withTestBridge(fn, responder = () => ({ content: 'delayed bridge 
   const seenBodies = [];
   const seenHeaders = [];
   const server = createServer((req, res) => {
-    if (req.method !== 'POST' || req.url !== '/chat') {
-      res.writeHead(404).end();
-      return;
-    }
     if (expectedToken && req.headers['x-devseek-token'] !== expectedToken) {
       res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ error: 'bad token' }));
+      return;
+    }
+    if (req.method === 'GET' && req.url === '/status') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({
+        idle: true,
+        queueLength: 0,
+        browserReady: true,
+        loggedInLikely: true,
+        connector: {
+          protocolVersion: DEEPSEEK_WEB_CONNECTOR_PROTOCOL_VERSION,
+          provider: 'deepseek-web',
+          capabilities: DEEPSEEK_WEB_CONNECTOR_CAPABILITIES,
+          maxAttempts: 2,
+          activeRequestCount: 0,
+        },
+      }));
+      return;
+    }
+    if (req.method !== 'POST' || req.url !== '/chat') {
+      res.writeHead(404).end();
       return;
     }
 
@@ -1238,9 +1258,22 @@ async function withTestBridge(fn, responder = () => ({ content: 'delayed bridge 
       });
       setTimeout(() => {
         const first = response.content.slice(0, Math.max(1, Math.floor(response.content.length / 2)));
-        res.write(`data: ${JSON.stringify({ delta: `\u0000RESET\u0000${first}`, done: false })}\n\n`);
-        res.write(`data: ${JSON.stringify({ delta: `\u0000RESET\u0000${response.content}`, done: false })}\n\n`);
-        res.write(`data: ${JSON.stringify({ delta: '', done: true })}\n\n`);
+        res.write(`data: ${JSON.stringify(createDeepSeekStreamFrame({
+          requestId: operationId,
+          sequence: 1,
+          delta: `\u0000RESET\u0000${first}`,
+        }))}\n\n`);
+        res.write(`data: ${JSON.stringify(createDeepSeekStreamFrame({
+          requestId: operationId,
+          sequence: 2,
+          delta: `\u0000RESET\u0000${response.content}`,
+        }))}\n\n`);
+        res.write(`data: ${JSON.stringify(createDeepSeekStreamFrame({
+          requestId: operationId,
+          sequence: 3,
+          event: 'done',
+          done: true,
+        }))}\n\n`);
         recordEvidence('provider.completed');
         res.end();
       }, response.delayMs ?? 0);

@@ -22,6 +22,7 @@ function bundle(entry, name) {
 }
 
 const runtime = bundle('../shared/src/platform-runtime.ts', 'platform-runtime');
+const conformance = bundle('../shared/src/coding-platform-conformance.ts', 'coding-platform-conformance');
 const surface = bundle('../shared/src/surface-adapter.ts', 'surface-adapter');
 
 test('PlatformRuntimeAdapter detects Linux POSIX shell and path behavior', () => {
@@ -104,6 +105,43 @@ test('PlatformRuntimeAdapter profiles OS, shell, path, and storage applicability
   assert.equal(applicability.adapterProfiles.every(adapter => adapter.status === 'supported'), true);
 });
 
+test('I21-PLT-01 user journey: platform conformance requires one observation for every effect boundary', () => {
+  const profile = runtime.detectPlatformProfile({
+    platform: 'linux',
+    shellPath: '/bin/bash',
+    env: {},
+  });
+  const service = new conformance.CanonicalPlatformAdapterConformanceService();
+  const supported = service.certify({
+    profile,
+    boundaries: [
+      { kind: 'sandbox', adapterId: 'linux-workspace-sandbox/v1', status: 'supported' },
+      { kind: 'workspace-mutation', adapterId: 'canonical-workspace-mutation/v1', status: 'supported' },
+      { kind: 'external-effect', adapterId: 'canonical-external-effect/v1', status: 'supported' },
+    ],
+  });
+  assert.equal(supported.supported, true);
+  assert.deepEqual(supported.boundaries.map(boundary => boundary.kind), [
+    'sandbox',
+    'workspace-mutation',
+    'external-effect',
+  ]);
+
+  const missing = service.certify({ profile, boundaries: [] });
+  assert.equal(missing.supported, false);
+  assert.equal(missing.deferredBoundaries.length, 3);
+
+  const duplicate = service.certify({
+    profile,
+    boundaries: [
+      { kind: 'sandbox', adapterId: 'one', status: 'supported' },
+      { kind: 'sandbox', adapterId: 'two', status: 'supported' },
+    ],
+  });
+  assert.equal(duplicate.supported, false);
+  assert.equal(duplicate.unsupportedBoundaries[0].reason, 'duplicate-platform-boundary-observation');
+});
+
 test('PlatformRuntimeAdapter fails closed for unknown OS or shell before command creation', () => {
   const unknownOs = runtime.detectPlatformProfile({
     platform: 'sunos',
@@ -144,7 +182,7 @@ function linuxCheck(report, kind) {
 }
 
 test('R3-08D-LINUX-CONFORMANCE profiles native and container shell path storage browser bridge independently', () => {
-  const native = runtime.evaluateLinuxPlatformConformance({
+  const native = conformance.evaluateLinuxPlatformConformance({
     platform: 'linux',
     shellPath: '/usr/bin/bash',
     env: {
@@ -155,7 +193,7 @@ test('R3-08D-LINUX-CONFORMANCE profiles native and container shell path storage 
     workspaceRoot: '/home/dev/work/devseek',
     bridgeExecutableMode: 0o755,
   });
-  const container = runtime.evaluateLinuxPlatformConformance({
+  const container = conformance.evaluateLinuxPlatformConformance({
     platform: 'linux',
     shellPath: '/bin/sh',
     env: {
@@ -184,7 +222,7 @@ test('R3-08D-LINUX-CONFORMANCE profiles native and container shell path storage 
 });
 
 test('R3-08D-LINUX-CONFORMANCE reports path storage browser permission and shell fault sequence separately', () => {
-  const pathFault = runtime.evaluateLinuxPlatformConformance({
+  const pathFault = conformance.evaluateLinuxPlatformConformance({
     profile: {
       os: 'linux',
       shell: 'posix',
@@ -197,28 +235,28 @@ test('R3-08D-LINUX-CONFORMANCE reports path storage browser permission and shell
     workspaceRoot: 'C:\\devseek',
     canExecuteBridge: true,
   });
-  const storageFault = runtime.evaluateLinuxPlatformConformance({
+  const storageFault = conformance.evaluateLinuxPlatformConformance({
     platform: 'linux',
     shellPath: '/bin/bash',
     env: { DISPLAY: ':1' },
     workspaceRoot: '/home/dev/devseek',
     canExecuteBridge: true,
   });
-  const browserFault = runtime.evaluateLinuxPlatformConformance({
+  const browserFault = conformance.evaluateLinuxPlatformConformance({
     platform: 'linux',
     shellPath: '/bin/bash',
     env: { HOME: '/home/dev' },
     workspaceRoot: '/home/dev/devseek',
     canExecuteBridge: true,
   });
-  const permissionFault = runtime.evaluateLinuxPlatformConformance({
+  const permissionFault = conformance.evaluateLinuxPlatformConformance({
     platform: 'linux',
     shellPath: '/bin/bash',
     env: { HOME: '/home/dev', DISPLAY: ':1' },
     workspaceRoot: '/home/dev/devseek',
     bridgeExecutableMode: 0o644,
   });
-  const shellFault = runtime.evaluateLinuxPlatformConformance({
+  const shellFault = conformance.evaluateLinuxPlatformConformance({
     platform: 'linux',
     shellPath: '/opt/custom-shell',
     env: { HOME: '/home/dev', DISPLAY: ':1' },
@@ -245,7 +283,7 @@ function windowsWslCheck(report, kind) {
 }
 
 test('R3-08E-WINDOWS-WSL-CONFORMANCE profiles Windows native and WSL independently', () => {
-  const native = runtime.evaluateWindowsWslPlatformConformance({
+  const native = conformance.evaluateWindowsWslPlatformConformance({
     platform: 'win32',
     shellPath: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
     env: {
@@ -256,7 +294,7 @@ test('R3-08E-WINDOWS-WSL-CONFORMANCE profiles Windows native and WSL independent
     bridgeExecutablePath: 'C:\\Users\\dev\\.vscode\\extensions\\devseek\\bridge\\server.cmd',
     canExecuteBridge: true,
   });
-  const wsl = runtime.evaluateWindowsWslPlatformConformance({
+  const wsl = conformance.evaluateWindowsWslPlatformConformance({
     platform: 'win32',
     shellPath: '/bin/bash',
     env: {
@@ -290,7 +328,7 @@ test('R3-08E-WINDOWS-WSL-CONFORMANCE profiles Windows native and WSL independent
 });
 
 test('R3-08E-WINDOWS-WSL-CONFORMANCE reports path line-ending permission interop and shell faults separately', () => {
-  const nativePathFault = runtime.evaluateWindowsWslPlatformConformance({
+  const nativePathFault = conformance.evaluateWindowsWslPlatformConformance({
     profile: {
       os: 'win32',
       shell: 'powershell',
@@ -302,7 +340,7 @@ test('R3-08E-WINDOWS-WSL-CONFORMANCE reports path line-ending permission interop
     workspaceRoot: '/mnt/c/devseek',
     canExecuteBridge: true,
   });
-  const wslPathFault = runtime.evaluateWindowsWslPlatformConformance({
+  const wslPathFault = conformance.evaluateWindowsWslPlatformConformance({
     profile: {
       os: 'win32',
       shell: 'posix',
@@ -315,7 +353,7 @@ test('R3-08E-WINDOWS-WSL-CONFORMANCE reports path line-ending permission interop
     workspaceRoot: 'C:\\Users\\dev\\work\\devseek',
     canExecuteBridge: true,
   });
-  const lineEndingFault = runtime.evaluateWindowsWslPlatformConformance({
+  const lineEndingFault = conformance.evaluateWindowsWslPlatformConformance({
     platform: 'win32',
     shellPath: 'C:\\Windows\\System32\\cmd.exe',
     lineEnding: 'lf',
@@ -323,14 +361,14 @@ test('R3-08E-WINDOWS-WSL-CONFORMANCE reports path line-ending permission interop
     workspaceRoot: 'C:\\Users\\dev\\work\\devseek',
     canExecuteBridge: true,
   });
-  const interopFault = runtime.evaluateWindowsWslPlatformConformance({
+  const interopFault = conformance.evaluateWindowsWslPlatformConformance({
     platform: 'win32',
     shellPath: '/bin/bash',
     env: { HOME: '/home/dev', WSL_DISTRO_NAME: 'Ubuntu' },
     workspaceRoot: '/home/dev/work/devseek',
     canExecuteBridge: true,
   });
-  const permissionFault = runtime.evaluateWindowsWslPlatformConformance({
+  const permissionFault = conformance.evaluateWindowsWslPlatformConformance({
     platform: 'win32',
     shellPath: 'C:\\Windows\\System32\\cmd.exe',
     env: { USERPROFILE: 'C:\\Users\\dev' },
@@ -338,7 +376,7 @@ test('R3-08E-WINDOWS-WSL-CONFORMANCE reports path line-ending permission interop
     bridgeExecutablePath: 'C:\\Users\\dev\\.vscode\\extensions\\devseek\\bridge\\server.cmd',
     canExecuteBridge: false,
   });
-  const shellFault = runtime.evaluateWindowsWslPlatformConformance({
+  const shellFault = conformance.evaluateWindowsWslPlatformConformance({
     platform: 'win32',
     shellPath: '/bin/bash',
     env: { HOME: '/home/dev' },
@@ -367,7 +405,7 @@ function macOSCheck(report, kind) {
 }
 
 test('R3-08F-MACOS-CONFORMANCE defers non-macOS evidence and profiles macOS independently', () => {
-  const linux = runtime.evaluateMacOSPlatformConformance({
+  const linux = conformance.evaluateMacOSPlatformConformance({
     platform: 'linux',
     shellPath: '/bin/bash',
     env: {
@@ -379,7 +417,7 @@ test('R3-08F-MACOS-CONFORMANCE defers non-macOS evidence and profiles macOS inde
     browserBridgeAvailable: true,
     runtimeAvailable: true,
   });
-  const macos = runtime.evaluateMacOSPlatformConformance({
+  const macos = conformance.evaluateMacOSPlatformConformance({
     platform: 'darwin',
     shellPath: '/bin/zsh',
     env: {
@@ -422,7 +460,7 @@ test('R3-08F-MACOS-CONFORMANCE defers non-macOS evidence and profiles macOS inde
 });
 
 test('R3-08F-MACOS-CONFORMANCE reports macOS shell path keychain browser and runtime faults separately', () => {
-  const shellFault = runtime.evaluateMacOSPlatformConformance({
+  const shellFault = conformance.evaluateMacOSPlatformConformance({
     platform: 'darwin',
     shellPath: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
     env: { HOME: '/Users/dev' },
@@ -431,7 +469,7 @@ test('R3-08F-MACOS-CONFORMANCE reports macOS shell path keychain browser and run
     browserBridgeAvailable: true,
     runtimeAvailable: true,
   });
-  const pathFault = runtime.evaluateMacOSPlatformConformance({
+  const pathFault = conformance.evaluateMacOSPlatformConformance({
     profile: {
       os: 'darwin',
       shell: 'posix',
@@ -445,7 +483,7 @@ test('R3-08F-MACOS-CONFORMANCE reports macOS shell path keychain browser and run
     browserBridgeAvailable: true,
     runtimeAvailable: true,
   });
-  const keychainFault = runtime.evaluateMacOSPlatformConformance({
+  const keychainFault = conformance.evaluateMacOSPlatformConformance({
     platform: 'darwin',
     shellPath: '/bin/zsh',
     env: { HOME: '/Users/dev' },
@@ -454,7 +492,7 @@ test('R3-08F-MACOS-CONFORMANCE reports macOS shell path keychain browser and run
     browserBridgeAvailable: true,
     runtimeAvailable: true,
   });
-  const browserDeferred = runtime.evaluateMacOSPlatformConformance({
+  const browserDeferred = conformance.evaluateMacOSPlatformConformance({
     platform: 'darwin',
     shellPath: '/bin/zsh',
     env: { HOME: '/Users/dev', DEVSEEK_MACOS_KEYCHAIN: '1' },
@@ -462,7 +500,7 @@ test('R3-08F-MACOS-CONFORMANCE reports macOS shell path keychain browser and run
     keychainAvailable: true,
     runtimeAvailable: true,
   });
-  const runtimeFault = runtime.evaluateMacOSPlatformConformance({
+  const runtimeFault = conformance.evaluateMacOSPlatformConformance({
     platform: 'darwin',
     shellPath: '/bin/zsh',
     env: {

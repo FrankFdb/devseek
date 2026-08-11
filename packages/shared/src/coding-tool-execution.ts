@@ -15,6 +15,7 @@ import {
   uniqueCodingRefs,
 } from './coding-contract-utils';
 import { codingSemanticDigest } from './coding-semantic-digest';
+import type { CodingEffectGuardPort, CodingEffectLeasePort } from './coding-run-control';
 
 export const CODING_TOOL_ACTION_VERSION = 'devseek.coding-tool-action/v1' as const;
 export const CODING_TOOL_RECEIPT_VERSION = 'devseek.coding-tool-receipt/v1' as const;
@@ -132,6 +133,7 @@ export interface ToolExecutionPort {
   bind(input: {
     readonly runId: string;
     readonly executor?: ToolExecutorPort;
+    readonly effectGuard?: CodingEffectGuardPort;
   }): CodingToolExecutionSessionPort;
 }
 
@@ -223,6 +225,7 @@ export class CanonicalToolExecutionService implements ToolExecutionPort {
     const occurrences = new Map<string, number>();
     const issued = new Map<string, IssuedToolAction>();
     const receipts = new Map<string, CodingToolExecutionReceipt<unknown>>();
+    const inFlight = new Set<string>();
     let sequence = 0;
 
     return Object.freeze({
@@ -251,7 +254,20 @@ export class CanonicalToolExecutionService implements ToolExecutionPort {
         if (codingToolOperationSha256(action) !== expected.operationSha256) {
           throw new Error('coding-tool-execution:issued-operation-mismatch');
         }
-        const outcome = await executor.execute(action, host, authority);
+        let lease: CodingEffectLeasePort | undefined;
+        if (input.effectGuard && !receipts.has(action.actionId) && !inFlight.has(action.actionId)) {
+          lease = input.effectGuard.beginEffect(`tool:${action.actionId}`);
+          inFlight.add(action.actionId);
+        }
+        let outcome: CodingToolExecutionOutcome<TResult>;
+        try {
+          outcome = await executor.execute(action, host, authority);
+        } finally {
+          if (lease) {
+            inFlight.delete(action.actionId);
+            lease.release();
+          }
+        }
         const existing = receipts.get(action.actionId);
         if (existing && canonicalCodingJson(existing) !== canonicalCodingJson(outcome.receipt)) {
           throw new Error('coding-tool-execution:conflicting-session-receipt');

@@ -259,12 +259,12 @@ test('ChatRouteController: a source read constraint does not cancel an explicit 
   assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
 });
 
-test('ChatRouteController: R3 aggregate Markdown deliverable routes to edit workflow from user entry', () => {
+test('ChatRouteController: C13 MCP Markdown deliverable routes to edit workflow from user entry', () => {
   const controller = new ChatRouteController();
   const prompt = [
-    '请基于 /tmp/devseek-real-plugin-deepseek/workspace/docs/r3-iteration/skill-denominator-plan.md 和 /tmp/devseek-real-plugin-deepseek/workspace/src/devseek-profile/extension-profile-plan-service-contract.ts 创建 Markdown 审计报告。',
-    '请把报告保存到 /tmp/devseek-real-plugin-deepseek/workspace/docs/r3-iteration/r3-07g-skill-aggregate-denominator.md。',
-    '报告主题是 R3-07G-skill-AGGREGATE denominator aggregation audit。',
+    '请基于 /tmp/devseek-real-plugin-deepseek/workspace/docs/convergence/mcp-threat-cases.md 和 /tmp/devseek-real-plugin-deepseek/workspace/src/devseek-mcp/mcp-authority-contract.ts 创建 Markdown 审计报告。',
+    '请把报告保存到 /tmp/devseek-real-plugin-deepseek/workspace/docs/convergence/c13-mcp-authority-boundary.md。',
+    '报告主题是 C13 MCP protocol and two-stage authority audit。',
     '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要运行编译或测试命令。',
   ].join('\n');
   const decision = controller.decide({

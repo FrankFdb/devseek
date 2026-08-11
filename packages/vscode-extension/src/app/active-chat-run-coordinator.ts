@@ -1,12 +1,12 @@
 import type { AgentKernelRun } from './agent-kernel-service';
-import type { RunContextStatus } from './run-context';
 
-type CancellableAgentKernelRun = Pick<AgentKernelRun, 'cancelRun'>;
+type CancellableAgentKernelRun = Pick<AgentKernelRun, 'requestCancellation' | 'cancelRun'>;
 
 interface ActiveChatRunState {
   readonly abortController: AbortController;
   readonly steerQueue: string[];
   agentKernelRun?: CancellableAgentKernelRun;
+  cancellationData?: Readonly<Record<string, unknown>>;
 }
 
 export interface ActiveChatRunHandle {
@@ -16,7 +16,8 @@ export interface ActiveChatRunHandle {
   bindAgentKernelRun(run: CancellableAgentKernelRun): boolean;
   clearAgentKernelRun(run: CancellableAgentKernelRun): void;
   consumeAgentSteer(): string[];
-  finish(): RunContextStatus | undefined;
+  cancellationData(): Readonly<Record<string, unknown>> | undefined;
+  finish(): void;
 }
 
 /** Owns cancellation and steering state for exactly one active VS Code chat request. */
@@ -39,21 +40,20 @@ export class ActiveChatRunCoordinator {
       bindAgentKernelRun: run => this.bindAgentKernelRun(state, run),
       clearAgentKernelRun: run => this.clearAgentKernelRun(state, run),
       consumeAgentSteer: () => this.consumeAgentSteer(state),
+      cancellationData: () => state.cancellationData,
       finish: () => this.finishRun(state),
     };
   }
 
-  cancelActiveRun(data: Record<string, unknown> = {}): RunContextStatus | undefined {
+  cancelActiveRun(data: Record<string, unknown> = {}): void {
     const state = this.activeRun;
-    if (!state) return undefined;
+    if (!state) return;
 
     this.activeRun = undefined;
     state.steerQueue.length = 0;
-    try {
-      return state.agentKernelRun?.cancelRun(data);
-    } finally {
-      state.abortController.abort();
-    }
+    state.cancellationData = Object.freeze({ ...data });
+    state.agentKernelRun?.requestCancellation(state.cancellationData);
+    state.abortController.abort(state.cancellationData);
   }
 
   pushAgentSteer(text: string): boolean {
@@ -65,6 +65,10 @@ export class ActiveChatRunCoordinator {
 
   private bindAgentKernelRun(state: ActiveChatRunState, run: CancellableAgentKernelRun): boolean {
     if (this.activeRun !== state || state.abortController.signal.aborted) {
+      run.requestCancellation({
+        reason: 'superseded-before-kernel-bind',
+        source: 'active-chat-run-coordinator',
+      });
       run.cancelRun({
         reason: 'superseded-before-kernel-bind',
         source: 'active-chat-run-coordinator',
@@ -73,10 +77,23 @@ export class ActiveChatRunCoordinator {
     }
 
     if (state.agentKernelRun && state.agentKernelRun !== run) {
-      state.agentKernelRun.cancelRun({
+      state.agentKernelRun.requestCancellation({
         reason: 'replaced-by-new-kernel-run',
         source: 'active-chat-run-coordinator',
       });
+      state.abortController.abort({
+        reason: 'replaced-by-new-kernel-run',
+        source: 'active-chat-run-coordinator',
+      });
+      run.requestCancellation({
+        reason: 'duplicate-kernel-bind-refused',
+        source: 'active-chat-run-coordinator',
+      });
+      run.cancelRun({
+        reason: 'duplicate-kernel-bind-refused',
+        source: 'active-chat-run-coordinator',
+      });
+      return false;
     }
     state.agentKernelRun = run;
     return true;
@@ -93,17 +110,20 @@ export class ActiveChatRunCoordinator {
     return state.steerQueue.splice(0, state.steerQueue.length);
   }
 
-  private finishRun(state: ActiveChatRunState): RunContextStatus | undefined {
-    if (this.activeRun !== state) return undefined;
+  private finishRun(state: ActiveChatRunState): void {
+    if (this.activeRun !== state) return;
 
     this.activeRun = undefined;
     state.steerQueue.length = 0;
-    if (!state.agentKernelRun) return undefined;
+    if (!state.agentKernelRun) return;
 
-    state.abortController.abort();
-    return state.agentKernelRun.cancelRun({
+    const cancellationData = Object.freeze({
       reason: 'request-finished-with-active-kernel',
       source: 'active-chat-run-coordinator',
     });
+    state.cancellationData = cancellationData;
+    state.agentKernelRun.requestCancellation(cancellationData);
+    state.abortController.abort(cancellationData);
+    state.agentKernelRun.cancelRun(cancellationData);
   }
 }

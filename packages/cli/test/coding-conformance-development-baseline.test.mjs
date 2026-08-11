@@ -23,6 +23,7 @@ import {
   evaluateCodingConformanceFixture,
   projectSettledCodingConformanceRun,
   resolveCodingKernelTaskContract,
+  createFixtureCodingKernelEnvironment,
 } from '../../shared/dist/index.js';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
@@ -119,6 +120,7 @@ async function runCliProductRoute(fixture, scenario, cwd) {
     workspaceRoot: cwd,
     signal: new AbortController().signal,
     operationJournal: new InMemoryCodingOperationJournal(),
+    environment: createFixtureCodingKernelEnvironment(cwd, 'local-api'),
     taskContract: resolveCodingKernelTaskContract({ prompt: fixture.prompt, surface: 'cli' }),
     runtimeContext: {
       response: scenario.response,

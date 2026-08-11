@@ -2,6 +2,10 @@ import * as vscode from 'vscode';
 import {
   createChatRequestCommand,
   certifySurfaceAdapter,
+  CanonicalSurfaceAccessibilityService,
+  CanonicalUserCollaborationService,
+  CODING_CANCELLATION_RECEIPT_VERSION,
+  CODING_STEERING_RECEIPT_VERSION,
   detectPlatformProfile,
   VSCODE_SURFACE_CAPABILITIES,
   type AgentEvent,
@@ -10,6 +14,8 @@ import {
   type SurfaceAdapterConformanceReceipt,
   type SurfaceChatInput,
   type SurfaceCapabilities,
+  type CodingSurfaceAccessibilityDecision,
+  type CodingUserCollaborationDecision,
 } from '@devseek-netai/shared';
 import { postWebviewMessage } from './webview-event-adapter';
 import type { WebviewOutboundMessage } from './webview-protocol';
@@ -56,6 +62,55 @@ export class VSCodeSurfaceAdapter implements SurfaceAdapter {
         ordering: 'host-ordered',
         backpressure: 'host-managed',
       },
+    });
+  }
+
+  collaboration(): CodingUserCollaborationDecision {
+    return new CanonicalUserCollaborationService().assess({
+      surface: this.kind,
+      interactions: [
+        'clarification',
+        'progress',
+        'plan-review',
+        'diff-review',
+        'permission-decision',
+        'steering',
+        'cancellation',
+        'resume',
+        'error-explanation',
+      ],
+      eventTypes: [
+        'chat.started',
+        'provider.status',
+        'permission.requested',
+        'fileChanges.proposed',
+        'validation.completed',
+        'checkpoint.available',
+        'error',
+      ],
+      traceBound: true,
+      cancellationProtocol: CODING_CANCELLATION_RECEIPT_VERSION,
+      steeringProtocol: CODING_STEERING_RECEIPT_VERSION,
+      evidenceRefs: [
+        'vscode-surface:event-projection',
+        'vscode-surface:run-control',
+        'vscode-surface:plan-diff-permission-review',
+      ],
+    });
+  }
+
+  accessibility(): CodingSurfaceAccessibilityDecision {
+    return new CanonicalSurfaceAccessibilityService().assess({
+      surface: this.kind,
+      channels: ['keyboard', 'screen-reader', 'text-status'],
+      statusNotColorOnly: true,
+      cancellationReachable: true,
+      recoveryReachable: true,
+      evidenceRefs: [
+        'vscode-webview:aria-live-status',
+        'vscode-webview:keyboard-actions',
+        'vscode-webview:textual-workflow-state',
+      ],
     });
   }
 

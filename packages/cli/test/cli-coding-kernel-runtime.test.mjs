@@ -13,6 +13,7 @@ import {
   InMemoryCodingOperationJournal,
   buildCodingVerificationPlan,
   buildCodingKernelTaskContract,
+  createFixtureCodingKernelEnvironment,
 } from '../../shared/dist/index.js';
 import { loadUserSimulationCase } from '../../../scripts/lib/devseek-user-simulation-fixture.mjs';
 
@@ -184,6 +185,7 @@ function createHarness({
       provenanceRefs: ['test-prompt'],
     }),
     operationJournal: new InMemoryCodingOperationJournal(),
+    environment: createFixtureCodingKernelEnvironment('/workspace', usesBridge ? 'bridge' : 'local-api'),
     runtimeContext: {
       response: 'initial response',
       usesBridge,

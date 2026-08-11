@@ -123,11 +123,11 @@ test('TaskIntentRouter: read-only advisory cannot request mutation', () => {
   assert.ok(route.blockers.includes('explicit-no-change') || route.signals.includes('read-only-route'));
 });
 
-test('TaskIntentRouter: saving an R3 aggregate audit Markdown is file-artifact work despite source no-change', () => {
+test('TaskIntentRouter: saving a C13 MCP audit is file-artifact work despite source no-change', () => {
   const route = routeTaskIntent([
-    '请基于 /tmp/devseek-real-plugin-deepseek/workspace/docs/r3-iteration/skill-denominator-plan.md 和 /tmp/devseek-real-plugin-deepseek/workspace/src/devseek-profile/extension-profile-plan-service-contract.ts 创建 Markdown 审计报告。',
-    '请把报告保存到 /tmp/devseek-real-plugin-deepseek/workspace/docs/r3-iteration/r3-07g-skill-aggregate-denominator.md。',
-    '报告主题是 R3-07G-skill-AGGREGATE denominator aggregation audit。',
+    '请基于 /tmp/devseek-real-plugin-deepseek/workspace/docs/convergence/mcp-threat-cases.md 和 /tmp/devseek-real-plugin-deepseek/workspace/src/devseek-mcp/mcp-authority-contract.ts 创建 Markdown 审计报告。',
+    '请把报告保存到 /tmp/devseek-real-plugin-deepseek/workspace/docs/convergence/c13-mcp-authority-boundary.md。',
+    '报告主题是 C13 MCP protocol and two-stage authority audit。',
     '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要运行编译或测试命令。',
   ].join('\n'));
 
@@ -139,7 +139,7 @@ test('TaskIntentRouter: saving an R3 aggregate audit Markdown is file-artifact w
   assert.equal(route.mutation.prohibited, false);
   assert.equal(route.mutation.fileArtifact, true);
   assert.deepEqual(route.mutation.targets, [
-    '/tmp/devseek-real-plugin-deepseek/workspace/docs/r3-iteration/r3-07g-skill-aggregate-denominator.md',
+    '/tmp/devseek-real-plugin-deepseek/workspace/docs/convergence/c13-mcp-authority-boundary.md',
   ]);
   assert.ok(route.signals.includes('explicit-file-artifact-target'));
   assert.ok(route.signals.includes('scoped-formal-source-prohibition'));

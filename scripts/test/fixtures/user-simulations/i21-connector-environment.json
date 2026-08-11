@@ -1,0 +1,49 @@
+{
+  "schema_version": "devseek.user-simulation-scenario/v1",
+  "iteration_id": "I21",
+  "name": "connector-environment",
+  "purpose": "Exercise provider negotiation, exclusive DeepSeek connector retries, canonical secret redaction, dirty-worktree preservation, and platform effect-boundary conformance.",
+  "cases": [
+    {
+      "case_id": "I21-PRV-01",
+      "input": {
+        "surface": "shared-kernel",
+        "task": "code-change",
+        "provider_tool_protocol": "unsupported"
+      }
+    },
+    {
+      "case_id": "I21-CNT-01",
+      "input": {
+        "surface": "bridge",
+        "requests": 2,
+        "first_request_attempts": 2,
+        "browser_slots": 1
+      }
+    },
+    {
+      "case_id": "I21-SEC-01",
+      "input": {
+        "surface": "shared-kernel",
+        "credential_classes": ["bearer", "github", "deepseek", "private-key"],
+        "redaction_passes": 2
+      }
+    },
+    {
+      "case_id": "I21-DTY-01",
+      "input": {
+        "surface": "shared-kernel",
+        "user_changed_paths": ["notes/user.md", "src/owned.ts"],
+        "planned_paths": ["src/owned.ts", "src/new.ts"]
+      }
+    },
+    {
+      "case_id": "I21-PLT-01",
+      "input": {
+        "surface": "vscode",
+        "platform": "linux",
+        "required_effect_boundaries": ["sandbox", "path", "storage", "browser-bridge", "permissions", "runtime"]
+      }
+    }
+  ]
+}

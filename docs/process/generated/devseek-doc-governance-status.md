@@ -6,10 +6,10 @@
 
 - generator: `devseek-doc-governance/v1`
 - active selector sha256: `7a2148a0e46e6305f7ba220749908974b3bf3f6970a19069b1b56f3e8c46f8c9`
-- legacy inventory sha256: `6aaa11bc64d6166da5f62ea6727f1f4f64ec76feaecc919589d31f51575ae0cc`
-- governed documents: `43`
+- legacy inventory sha256: `1105eb6962c5442dd42d5cfbe98c498fc400cb939462e9beaa1c1ec45d9b9915`
+- governed documents: `40`
 - active baselines: `3`
-- legacy documents: `40`
+- legacy documents: `37`
 - asserts Gate 0 pass: `false`
 
 ## Active Baselines
@@ -25,7 +25,7 @@
 | Decision | Count |
 | --- | ---: |
 | active | 3 |
-| keep | 34 |
+| keep | 31 |
 | revise | 0 |
 | supersede | 2 |
 | archive | 0 |
@@ -70,8 +70,5 @@
 | `docs/top-agent-convergence-audit-20260711/04-分能力专项迭代与收敛路线图.md` | handoff | historical | keep | supporting-ref | `docs/requirements/02-顶级编程智能体需求基线.md` |
 | `docs/top-agent-convergence-audit-20260711/05-黄金用户旅程与正式项目资格方案.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
 | `docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
-| `docs/top-agent-convergence-audit-20260711/07-原需求与架构设计正确性审计.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
-| `docs/top-agent-convergence-audit-20260711/08-决策结论与最短收敛实施方案.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
-| `docs/top-agent-convergence-audit-20260711/09-文档自闭环反证审计报告.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
 | `docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md` | handoff | historical | keep | supporting-ref | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
 | `docs/top-agent-convergence-audit-20260711/README.md` | handoff | historical | keep | supporting-ref | `docs/requirements/02-顶级编程智能体需求基线.md` |

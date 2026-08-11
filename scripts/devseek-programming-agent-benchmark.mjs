@@ -5,6 +5,10 @@ import { createServer } from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  DEEPSEEK_WEB_CONNECTOR_CAPABILITIES,
+  DEEPSEEK_WEB_CONNECTOR_PROTOCOL_VERSION,
+} from '../packages/shared/dist/index.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const selectedCaseIds = new Set(process.argv.slice(2)
@@ -979,6 +983,28 @@ async function formalMainControlUavWorkflowCase() {
 async function withFakeBridge(responder, fn) {
   const seenBodies = [];
   const server = createServer((req, res) => {
+    if (req.method === 'GET' && req.url === '/status') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({
+        idle: true,
+        queueLength: 0,
+        browserReady: true,
+        loggedInLikely: true,
+        connector: {
+          protocolVersion: DEEPSEEK_WEB_CONNECTOR_PROTOCOL_VERSION,
+          provider: 'deepseek-web',
+          capabilities: DEEPSEEK_WEB_CONNECTOR_CAPABILITIES,
+          maxAttempts: 2,
+          activeRequestCount: 0,
+        },
+      }));
+      return;
+    }
+    if (req.method === 'POST' && req.url === '/cancel') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ cancelled: true }));
+      return;
+    }
     if (req.method !== 'POST' || req.url !== '/chat') {
       res.writeHead(404).end();
       return;

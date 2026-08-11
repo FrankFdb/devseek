@@ -20,12 +20,17 @@ const req = createRequire(import.meta.url);
 const { ActiveChatRunCoordinator } = req(bundlePath);
 
 function createKernelRun(id) {
-  const cancellations = [];
+  const cancellationRequests = [];
+  const settlements = [];
   return {
     id,
-    cancellations,
+    cancellationRequests,
+    settlements,
+    requestCancellation(data) {
+      cancellationRequests.push(data);
+    },
     cancelRun(data) {
-      cancellations.push(data);
+      settlements.push(data);
       return 'cancelled';
     },
   };
@@ -61,10 +66,11 @@ test('a new request cancels the previous Kernel, AbortSignal, and steer queue', 
   });
 
   assert.equal(first.signal.aborted, true);
-  assert.deepEqual(firstKernel.cancellations, [{
+  assert.deepEqual(firstKernel.cancellationRequests, [{
     reason: 'superseded-by-new-run',
     source: 'test-user',
   }]);
+  assert.deepEqual(firstKernel.settlements, []);
   assert.deepEqual(first.consumeAgentSteer(), []);
   assert.equal(coordinator.pushAgentSteer('belongs to second'), true);
   assert.deepEqual(second.consumeAgentSteer(), ['belongs to second']);
@@ -80,31 +86,40 @@ test('a superseded request cannot bind a late Kernel run', () => {
   const lateKernel = createKernelRun('late');
 
   assert.equal(first.bindAgentKernelRun(lateKernel), false);
-  assert.deepEqual(lateKernel.cancellations, [{
+  assert.deepEqual(lateKernel.cancellationRequests, [{
+    reason: 'superseded-before-kernel-bind',
+    source: 'active-chat-run-coordinator',
+  }]);
+  assert.deepEqual(lateKernel.settlements, [{
     reason: 'superseded-before-kernel-bind',
     source: 'active-chat-run-coordinator',
   }]);
   assert.equal(second.isCurrent(), true);
 });
 
-test('user cancellation settles the active Kernel once and aborts host work', () => {
+test('user cancellation records cancelling and aborts host work before terminal settlement', () => {
   const coordinator = new ActiveChatRunCoordinator();
   const run = coordinator.startRun();
   const kernel = createKernelRun('active');
   run.bindAgentKernelRun(kernel);
 
-  const status = coordinator.cancelActiveRun({
+  coordinator.cancelActiveRun({
     reason: 'user-cancelled',
     source: 'vscode-webview-cancel',
   });
 
-  assert.equal(status, 'cancelled');
   assert.equal(run.signal.aborted, true);
   assert.equal(run.isCurrent(), false);
   assert.equal(coordinator.pushAgentSteer('after cancel'), false);
-  assert.equal(kernel.cancellations.length, 1);
+  assert.equal(kernel.cancellationRequests.length, 1);
+  assert.equal(kernel.settlements.length, 0);
+  assert.deepEqual(run.cancellationData(), {
+    reason: 'user-cancelled',
+    source: 'vscode-webview-cancel',
+  });
   run.finish();
-  assert.equal(kernel.cancellations.length, 1);
+  assert.equal(kernel.cancellationRequests.length, 1);
+  assert.equal(kernel.settlements.length, 0);
 });
 
 test('finishing an exceptional request cancels a Kernel that was not explicitly cleared', () => {
@@ -113,9 +128,13 @@ test('finishing an exceptional request cancels a Kernel that was not explicitly 
   const kernel = createKernelRun('leaked');
   run.bindAgentKernelRun(kernel);
 
-  assert.equal(run.finish(), 'cancelled');
+  run.finish();
   assert.equal(run.signal.aborted, true);
-  assert.deepEqual(kernel.cancellations, [{
+  assert.deepEqual(kernel.cancellationRequests, [{
+    reason: 'request-finished-with-active-kernel',
+    source: 'active-chat-run-coordinator',
+  }]);
+  assert.deepEqual(kernel.settlements, [{
     reason: 'request-finished-with-active-kernel',
     source: 'active-chat-run-coordinator',
   }]);

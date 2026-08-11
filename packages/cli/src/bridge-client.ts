@@ -1,19 +1,32 @@
-import { randomBytes } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { dirname, join, parse, resolve } from 'path';
-import type { BridgeAgentChatRequest, ChatResponse, StreamDelta } from '@devseek-netai/shared';
+import {
+  BridgeStreamCorrelator,
+  parseDeepSeekStreamFrameData,
+  requireDeepSeekWebConnectorAdvertisement,
+  type BridgeAgentChatRequest,
+  type ChatResponse,
+  type StatusResponse,
+} from '@devseek-netai/shared';
 
 const DEFAULT_BRIDGE_PORT = 3721;
-const RESET_DELTA_MARKER = '\x00RESET\x00';
 const TRACE_RUN_ID_HEADER = 'X-DevSeek-Run-Id';
 const TRACE_WORKSPACE_ROOT_HEADER = 'X-DevSeek-Trace-Workspace-Root';
 const TRACE_OPERATION_ID_HEADER = 'X-DevSeek-Operation-Id';
 const EVIDENCE_AUTHORITY_HEADER = 'X-DevSeek-Evidence-Authority';
+const TARGET_OPERATION_ID_HEADER = 'X-DevSeek-Target-Operation-Id';
+let verifiedConnector: { readonly endpoint: string; readonly token: string } | undefined;
 
 export async function bridgeChat(cwd: string, request: BridgeAgentChatRequest): Promise<string> {
   const port = Number(process.env.DEVSEEK_BRIDGE_PORT ?? DEFAULT_BRIDGE_PORT);
   const token = await readOrCreateBridgeToken(cwd);
-  const response = await fetch(`http://127.0.0.1:${port}/chat`, {
+  const endpoint = `http://127.0.0.1:${port}`;
+  if (verifiedConnector?.endpoint !== endpoint || verifiedConnector.token !== token) {
+    await bridgeStatus(cwd, endpoint, token);
+  }
+  const operationId = request.traceOperationId?.trim() || `bridge-chat-${randomUUID()}`;
+  const response = await fetch(`${endpoint}/chat`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -22,7 +35,7 @@ export async function bridgeChat(cwd: string, request: BridgeAgentChatRequest): 
       ...(request.traceWorkspaceRoot
         ? { [TRACE_WORKSPACE_ROOT_HEADER]: request.traceWorkspaceRoot }
         : { [TRACE_WORKSPACE_ROOT_HEADER]: cwd }),
-      ...(request.traceOperationId ? { [TRACE_OPERATION_ID_HEADER]: request.traceOperationId } : {}),
+      [TRACE_OPERATION_ID_HEADER]: operationId,
       ...(request.evidenceCapability
         ? { [EVIDENCE_AUTHORITY_HEADER]: request.evidenceCapability.token }
         : {}),
@@ -43,7 +56,7 @@ export async function bridgeChat(cwd: string, request: BridgeAgentChatRequest): 
   }
 
   if (request.stream !== false) {
-    return readBridgeStream(response, request);
+    return readBridgeStream(response, request, operationId);
   }
 
   const payload = await response.json() as ChatResponse;
@@ -53,27 +66,49 @@ export async function bridgeChat(cwd: string, request: BridgeAgentChatRequest): 
   return payload.content ?? '';
 }
 
-export async function bridgeCancel(cwd: string): Promise<void> {
+export async function bridgeCancel(cwd: string, requestId?: string): Promise<void> {
   const port = Number(process.env.DEVSEEK_BRIDGE_PORT ?? DEFAULT_BRIDGE_PORT);
   const token = await readOrCreateBridgeToken(cwd);
   await fetch(`http://127.0.0.1:${port}/cancel`, {
     method: 'POST',
     headers: {
       'X-DevSeek-Token': token,
+      ...(requestId?.trim() ? { [TARGET_OPERATION_ID_HEADER]: requestId.trim() } : {}),
     },
     signal: AbortSignal.timeout(3000),
   });
 }
 
-async function readBridgeStream(response: Response, request: BridgeAgentChatRequest): Promise<string> {
+export async function bridgeStatus(
+  cwd: string,
+  endpoint = `http://127.0.0.1:${Number(process.env.DEVSEEK_BRIDGE_PORT ?? DEFAULT_BRIDGE_PORT)}`,
+  token?: string,
+): Promise<StatusResponse> {
+  const bridgeToken = token ?? await readOrCreateBridgeToken(cwd);
+  const response = await fetch(`${endpoint}/status`, {
+    headers: { 'X-DevSeek-Token': bridgeToken },
+    signal: AbortSignal.timeout(3000),
+  });
+  if (!response.ok) throw new Error(`Bridge status HTTP ${response.status}`);
+  const status = await response.json() as StatusResponse;
+  requireDeepSeekWebConnectorAdvertisement(status.connector);
+  verifiedConnector = { endpoint, token: bridgeToken };
+  return status;
+}
+
+async function readBridgeStream(
+  response: Response,
+  request: BridgeAgentChatRequest,
+  operationId: string,
+): Promise<string> {
   if (!response.body) {
     throw new Error('Bridge stream response did not include a body');
   }
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
+  const correlator = new BridgeStreamCorrelator(operationId);
   let buffer = '';
-  let content = '';
 
   try {
     while (true) {
@@ -83,57 +118,26 @@ async function readBridgeStream(response: Response, request: BridgeAgentChatRequ
       buffer = events.remainder;
 
       for (const rawEvent of events.items) {
-        const parsed = parseBridgeStreamEvent(rawEvent);
-        if (!parsed) continue;
-        if (parsed.error) {
-          throw new Error(parsed.error);
-        }
-        if (parsed.delta) {
-          const applied = applyBridgeDelta(content, parsed.delta);
-          content = applied.content;
-          if (applied.visibleDelta) {
-            request.onDelta?.(applied.visibleDelta);
-          }
-        }
-        if (parsed.done) {
-          return content;
-        }
+        const data = parseSseData(rawEvent);
+        if (!data) continue;
+        const observed = correlator.observe(parseDeepSeekStreamFrameData(data));
+        if (observed.safeToApply) request.onDelta?.(observed.delta);
       }
 
       if (done) break;
     }
 
-    const tail = parseBridgeStreamEvent(buffer);
-    if (tail?.error) {
-      throw new Error(tail.error);
+    const tail = parseSseData(buffer);
+    if (tail) {
+      const observed = correlator.observe(parseDeepSeekStreamFrameData(tail));
+      if (observed.safeToApply) request.onDelta?.(observed.delta);
     }
-    if (tail?.delta) {
-      const applied = applyBridgeDelta(content, tail.delta);
-      content = applied.content;
-      if (applied.visibleDelta) {
-        request.onDelta?.(applied.visibleDelta);
-      }
-    }
-    return content;
+    correlator.assertComplete();
+    return correlator.fullText;
   } finally {
     await reader.cancel().catch(() => {});
     reader.releaseLock();
   }
-}
-
-function applyBridgeDelta(previous: string, delta: string): { content: string; visibleDelta: string } {
-  if (!delta.startsWith(RESET_DELTA_MARKER)) {
-    return { content: previous + delta, visibleDelta: delta };
-  }
-
-  const next = delta.slice(RESET_DELTA_MARKER.length);
-  if (next.startsWith(previous)) {
-    return { content: next, visibleDelta: next.slice(previous.length) };
-  }
-  return {
-    content: next,
-    visibleDelta: previous ? `\n${next}` : next,
-  };
 }
 
 function drainSseEvents(buffer: string): { items: string[]; remainder: string } {
@@ -145,7 +149,7 @@ function drainSseEvents(buffer: string): { items: string[]; remainder: string } 
   };
 }
 
-function parseBridgeStreamEvent(rawEvent: string): StreamDelta | undefined {
+function parseSseData(rawEvent: string): string | undefined {
   const dataLines = rawEvent
     .split(/\n/)
     .map(line => line.trimEnd())
@@ -154,8 +158,8 @@ function parseBridgeStreamEvent(rawEvent: string): StreamDelta | undefined {
 
   if (dataLines.length === 0) return undefined;
   const data = dataLines.join('\n');
-  if (!data || data === '[DONE]') return { delta: '', done: true };
-  return JSON.parse(data) as StreamDelta;
+  if (!data || data === '[DONE]') return undefined;
+  return data;
 }
 
 function resolveBridgeFiles(cwd: string, files: readonly string[] | undefined): string[] | undefined {

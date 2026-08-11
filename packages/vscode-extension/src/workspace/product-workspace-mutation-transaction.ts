@@ -1,7 +1,9 @@
 import {
   CanonicalWorkspaceMutationTransaction,
+  CanonicalDirtyWorktreePolicyService,
   FileSystemCodingOperationJournal,
   codingSemanticDigest,
+  observeGitWorktreeSync,
   type WorkspaceMutationTransactionPort,
 } from '@devseek-netai/shared';
 import * as nodePath from 'path';
@@ -23,10 +25,17 @@ export interface ProductWorkspaceMutationSession {
 export function resolveProductWorkspaceMutationTransaction(
   workspaceRoot: string,
   canonical?: WorkspaceMutationTransactionPort,
+  runId = `vscode-product-workspace-${codingSemanticDigest({ workspaceRoot: nodePath.resolve(workspaceRoot) }).slice(0, 24)}`,
 ): WorkspaceMutationTransactionPort {
   if (canonical) return canonical;
+  const dirtyWorktree = new CanonicalDirtyWorktreePolicyService().bind({
+    runId,
+    snapshot: observeGitWorktreeSync({ workspaceRoot }),
+  });
   return new CanonicalWorkspaceMutationTransaction(
     FileSystemCodingOperationJournal.forWorkspace(workspaceRoot),
+    undefined,
+    dirtyWorktree,
   );
 }
 
@@ -47,6 +56,7 @@ export function resolveProductWorkspaceMutationSession(
     transaction: resolveProductWorkspaceMutationTransaction(
       input.workspaceRoot,
       input.canonicalTransaction,
+      runId,
     ),
     runId,
   });

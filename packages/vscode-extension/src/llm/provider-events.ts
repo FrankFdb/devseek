@@ -9,6 +9,7 @@ import {
   type CodingToolDispatchEnvelope,
   type ProviderEventPort,
   type ToolDispatchPort,
+  redactCodingSecretsInText,
 } from '@devseek-netai/shared';
 import type { LLMProviderType, TokenUsage } from './types';
 
@@ -102,8 +103,5 @@ function defaultProviderNormalizationBoundary(): ProviderNormalizationBoundary {
 }
 
 export function redactProviderSecrets(text: string): string {
-  return String(text ?? '')
-    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, 'Bearer ***')
-    .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, 'sk-***')
-    .replace(/\b(api[_-]?key|token|cookie|authorization)\b\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, '$1=***');
+  return redactCodingSecretsInText(text, { replacement: '***' }).text;
 }

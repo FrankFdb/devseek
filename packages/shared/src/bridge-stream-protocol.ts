@@ -174,7 +174,7 @@ export class BridgeStreamCorrelator {
     }
     if (frame.event === 'cancelled') {
       this.finished = true;
-      return observation('', true, false, false, 'stream-cancelled');
+      throw new Error('Cancelled');
     }
     if (frame.done || frame.event === 'done') {
       this.finished = true;
@@ -182,12 +182,17 @@ export class BridgeStreamCorrelator {
     }
 
     const delta = frame.delta ?? '';
+    let visibleDelta = delta;
     if (delta.startsWith(DEEPSEEK_WEB_STREAM_RESET_PREFIX)) {
-      this.accumulatedText = delta.slice(DEEPSEEK_WEB_STREAM_RESET_PREFIX.length);
+      const replacement = delta.slice(DEEPSEEK_WEB_STREAM_RESET_PREFIX.length);
+      visibleDelta = replacement.startsWith(this.accumulatedText)
+        ? replacement.slice(this.accumulatedText.length)
+        : this.accumulatedText ? `\n${replacement}` : replacement;
+      this.accumulatedText = replacement;
     } else {
       this.accumulatedText += delta;
     }
-    return observation(delta, false, false, delta.length > 0, 'stream-delta');
+    return observation(visibleDelta, false, false, visibleDelta.length > 0, 'stream-delta');
   }
 
   assertComplete(): void {

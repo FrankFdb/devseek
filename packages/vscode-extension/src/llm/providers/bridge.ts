@@ -3,6 +3,7 @@
  * 将 bridge-client.ts 的 chat() 适配到 LLMProvider 接口
  */
 import * as vscode from 'vscode';
+import { knownCodingProviderCapabilities } from '@devseek-netai/shared';
 import { LLMProvider, LLMProviderType, LLMChatOptions } from '../types';
 import * as bridgeClient from '../../bridge-client';
 import {
@@ -19,7 +20,7 @@ import {
 export class BridgeProvider implements LLMProvider {
   readonly type: LLMProviderType = 'bridge';
   readonly displayName = '$(globe) 网页';
-  readonly capabilities = ['text', 'vision', 'streaming', 'text-tools', 'web'] as const;
+  readonly capabilities = knownCodingProviderCapabilities('bridge');
 
   async available(): Promise<boolean> {
     try {
@@ -55,6 +56,7 @@ export class BridgeProvider implements LLMProvider {
       traceWorkspaceRoot: opts.traceWorkspaceRoot,
       traceOperationId: opts.traceOperationId,
       traceEvidenceParticipantToken: opts.evidenceCapability?.token,
+      signal: opts.signal,
     });
     new ResponseIntegrityChecker().assertSafeForExecution(response);
     const providerOutput = classifyProviderOutputIntegrity(response);

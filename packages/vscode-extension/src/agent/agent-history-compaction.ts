@@ -1,10 +1,10 @@
 import {
   CODING_CONTEXT_COMPACTION_VERSION,
+  redactCodingSecretsInText,
   renderCodingContextCompactionReceipt,
   type CodingContextCompactionReceipt,
 } from '@devseek-netai/shared';
 import type { ChatMessage } from '../llm/types';
-import { redactProviderSecrets } from '../llm/provider-events';
 import {
   findFirstToolCallStart,
   parseFakeToolCalls,
@@ -164,15 +164,8 @@ function numericField(value: unknown): number | undefined {
 }
 
 export function redactSecretsInText(text: string): { text: string; count: number } {
-  const normalized = String(text ?? '');
-  const providerRedacted = redactProviderSecrets(normalized).replace(/\*\*\*/g, SECRET_REDACTION);
-  const redacted = providerRedacted
-    .replace(/-----BEGIN\s+(?:RSA\s+|OPENSSH\s+|EC\s+|DSA\s+)?PRIVATE KEY-----[\s\S]*?-----END\s+(?:RSA\s+|OPENSSH\s+|EC\s+|DSA\s+)?PRIVATE KEY-----/gi, SECRET_REDACTION)
-    .replace(/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,}\b/g, SECRET_REDACTION)
-    .replace(/\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, SECRET_REDACTION)
-    .replace(/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, SECRET_REDACTION)
-    .replace(/\bAKIA[0-9A-Z]{16}\b/g, SECRET_REDACTION);
-  return { text: redacted, count: countOccurrences(redacted, SECRET_REDACTION) };
+  const redacted = redactCodingSecretsInText(text, { replacement: SECRET_REDACTION });
+  return { text: redacted.text, count: redacted.redactionCount };
 }
 
 function rewriteMessagesWithContextSummary(
@@ -225,10 +218,6 @@ function isContextCompactionSummary(content: string): boolean {
 function clampPositiveInteger(value: number | undefined, fallback: number, min: number): number {
   const integer = Number.isFinite(value) ? Math.trunc(value as number) : fallback;
   return Math.max(min, integer);
-}
-
-function countOccurrences(text: string, pattern: string): number {
-  return String(text || '').split(pattern).length - 1;
 }
 
 function truncateOneLine(text: string, maxChars: number): string {

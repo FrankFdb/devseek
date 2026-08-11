@@ -148,7 +148,7 @@ Anthropic 官方把 Claude Code 的核心循环明确描述为“获取上下文
 | 代码库探索 | 按需文件搜索、诊断、符号/引用查询；观察结果反馈给循环 | VS Code 工具较多，所谓 semantic search 仍偏文本 grep；CLI 使用另一套能力 | I/W部分 | P1 |
 | 外部资料与边界 | Web/MCP/官方文档按需使用，来源可追踪，受网络权限约束 | shared `ExternalBoundaryPort` / `SourceGroundingPort` 要求 source 精确绑定 boundary、locator、内容摘要及 tool/effect evidence；缺来源时 Kernel 返回 exploration-required。实时 Web/MCP 获取循环仍待接线 | D/I/W本地，Q✗ | P0-安全 |
 | 设计与规划 | 复杂任务先探索和规划，可审阅、可因新证据重规划 | shared `DesignDecisionPort` / `ChangePlanPort` 统一备选方案、trade-off、影响集、迁移/删除/回退和验收映射；`ChangePlanRevisionPort` 将工具提议的具体目标在执行前收口为证据化修订，authority 只消费当前计划。用户 review、clarification/steer 和外部证据触发的需求/设计修订仍待产品化 | D/I/W本地，Q✗ | P0 |
-| 架构一致性 | 依据仓库规则、责任边界和影响分析约束修改 | change plan 已声明 owner/dependency checks、删除项和 acceptance mapping；v30 静态 owner 基线以 45 个语义域和 138 条源码断言防止 Surface 旁路。跨语言完整影响图和正式项目资格仍未完成 | D/I/W部分，Q✗ | P1 |
+| 架构一致性 | 依据仓库规则、责任边界和影响分析约束修改 | change plan 已声明 owner/dependency checks、删除项和 acceptance mapping；v31 静态 owner 基线以 55 个语义域和 150 条源码断言防止 Surface 旁路。58/58 个 active capability 已接线；跨语言完整影响图和正式项目资格仍未完成 | D/I/W部分，Q✗ | P1 |
 | Provider 协议 | 模型方言在 Adapter 归一，Core 只消费结构化 ToolCall | Extension 有大型 fake/parser 兼容层，CLI 又维护 JSON/XML/diff 解析 | D/I/W分叉 | P1 |
 | 工具注册与执行 | 单一注册表、策略判定、执行器和结果协议 | ToolRegistry/Executor 已有，但 Extension 大循环仍自行调度，CLI 不复用 | D/I/W部分 | P0 |
 | 文件 mutation | edit/delete/mkdir/undo 经同一受控、可回滚事务 | 新 baseline/CAS/atomic commit 主要只接入 Markdown；旧写入入口仍广泛存在 | D/I，W很少 | P0 |

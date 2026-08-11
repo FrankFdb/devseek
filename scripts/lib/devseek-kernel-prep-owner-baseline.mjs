@@ -3,8 +3,8 @@ import {
   sha256Object,
 } from './devseek-capability-ledger.mjs';
 
-export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v30';
-export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v30';
+export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v31';
+export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v31';
 
 const SOURCE_PATHS = Object.freeze({
   gate0: 'docs/process/devseek-gate0-decision-report.json',
@@ -64,6 +64,17 @@ const SOURCE_PATHS = Object.freeze({
   sharedArtifactIdentity: 'packages/shared/src/coding-artifact-identity.ts',
   sharedDelivery: 'packages/shared/src/coding-delivery.ts',
   sharedRelease: 'packages/shared/src/coding-release.ts',
+  sharedKernelEnvironment: 'packages/shared/src/coding-kernel-environment.ts',
+  sharedProviderCapability: 'packages/shared/src/coding-provider-capability.ts',
+  sharedSecretRedaction: 'packages/shared/src/coding-secret-redaction.ts',
+  sharedDirtyWorktree: 'packages/shared/src/coding-dirty-worktree.ts',
+  sharedPlatformConformance: 'packages/shared/src/coding-platform-conformance.ts',
+  sharedRunControl: 'packages/shared/src/coding-run-control.ts',
+  sharedUserCollaboration: 'packages/shared/src/coding-user-collaboration.ts',
+  sharedMcpBoundary: 'packages/shared/src/coding-mcp-boundary.ts',
+  bridgeConnector: 'packages/bridge/src/deepseek-web-connector.ts',
+  vscodeMcpClient: 'packages/vscode-extension/src/mcp/client.ts',
+  vscodeMcpRuntime: 'packages/vscode-extension/src/mcp/vscode-mcp-runtime.ts',
   sharedStructuralAcceptance: 'packages/shared/src/coding-structural-acceptance.ts',
   sharedCompletion: 'packages/shared/src/coding-completion.ts',
   cliCodingConformanceProbe: 'packages/cli/test/coding-conformance-development-baseline.test.mjs',
@@ -166,8 +177,8 @@ const SOURCE_CHECKS = Object.freeze([
     "command: 'npm run headless:test'",
   ], ['Headless Agent Core shared by VS Code and CLI']),
   check('shared-canonical-coding-kernel', SOURCE_PATHS.sharedCodingKernel, [
-    "CODING_KERNEL_REQUEST_VERSION = 'devseek.coding-kernel-request/v1'",
-    "CODING_KERNEL_OUTPUT_VERSION = 'devseek.coding-kernel-output/v1'",
+    "CODING_KERNEL_REQUEST_VERSION = 'devseek.coding-kernel-request/v2'",
+    "CODING_KERNEL_OUTPUT_VERSION = 'devseek.coding-kernel-output/v2'",
     'export interface CodingKernelExecutionRequest<TRuntimeContext>',
     'export interface CodingKernelExecutionOutput<TResult>',
     'export interface CodingKernelRuntimePort<TRuntimeContext, TResult>',
@@ -1232,7 +1243,9 @@ const SOURCE_CHECKS = Object.freeze([
     'memoryContextText: request.memoryContextText,',
     'const kernel = new CanonicalCodingKernel(runtime)',
     "surface: 'vscode'",
-    'taskContract: projectVsCodeCodingKernelTaskContract({',
+    'const taskContract = projectVsCodeCodingKernelTaskContract({',
+    'environment: createCodingKernelEnvironmentSync({',
+    'provider: request.providerType,',
     'contextSeed: projectVsCodeCodingContextSeed(request.contextFiles, request.semanticContract)',
     'operationJournal: FileSystemCodingOperationJournal.forWorkspace(request.workspaceRoot)',
     'retainVsCodeCodingRunLifecycle({',
@@ -1517,7 +1530,9 @@ const SOURCE_CHECKS = Object.freeze([
     'const output = await kernel.execute({',
     "route: 'canonical'",
     "surface: 'cli'",
-    'taskContract: buildCliCodingKernelTaskContract(userPrompt, contextFiles)',
+    'const taskContract = buildCliCodingKernelTaskContract(userPrompt, contextFiles)',
+    'environment: createCodingKernelEnvironmentSync({',
+    "provider: input.usesBridge ? 'bridge' : 'local-api'",
     'contextSeed: { files: contextFiles.map(path => ({ path })) }',
     'operationJournal: FileSystemCodingOperationJournal.forWorkspace(workspaceRoot)',
     'const codingConformance = projectSettledCodingConformanceRun({',
@@ -1610,6 +1625,85 @@ const SOURCE_CHECKS = Object.freeze([
     'CanonicalVerificationService',
     'HeadlessVerificationAdapter',
     'ValidationService',
+  ]),
+  check('shared-canonical-kernel-environment-owner', SOURCE_PATHS.sharedKernelEnvironment, [
+    'export class CanonicalCodingKernelEnvironmentService implements CodingKernelEnvironmentPort',
+    'new CanonicalProviderCapabilityService().bind(input.environment.provider)',
+    'new CanonicalDirtyWorktreePolicyService().bind({',
+    'new CanonicalPlatformAdapterConformanceService().certify(',
+    'secretRedaction: new CanonicalSecretRedactionService()',
+  ]),
+  check('shared-canonical-provider-capability-owner', SOURCE_PATHS.sharedProviderCapability, [
+    'export interface ProviderCapabilityPort',
+    'export class CanonicalProviderCapabilityService implements ProviderCapabilityPort',
+    "? 'unknown-capability' as const",
+    "? 'missing-capability' as const",
+  ]),
+  check('shared-canonical-secret-redaction-owner', SOURCE_PATHS.sharedSecretRedaction, [
+    'export interface SecretRedactionPort',
+    'export class CanonicalSecretRedactionService implements SecretRedactionPort',
+    'export function redactCodingSecretsInValue<T>',
+    'export function containsCodingSecrets(value: unknown)',
+  ]),
+  check('shared-canonical-dirty-worktree-owner', SOURCE_PATHS.sharedDirtyWorktree, [
+    'export interface DirtyWorktreePolicyPort',
+    'export class CanonicalDirtyWorktreePolicyService implements DirtyWorktreePolicyPort',
+    'export function observeGitWorktreeSync',
+    'const reason = decideReason(snapshot, conflicts)',
+    "reason === 'overlapping-user-changes' || reason === 'worktree-unavailable'",
+  ]),
+  check('shared-canonical-platform-conformance-owner', SOURCE_PATHS.sharedPlatformConformance, [
+    'export interface PlatformAdapterConformancePort',
+    'export class CanonicalPlatformAdapterConformanceService implements PlatformAdapterConformancePort',
+    "reason: 'duplicate-platform-boundary-observation'",
+  ]),
+  check('shared-canonical-run-control-owner', SOURCE_PATHS.sharedRunControl, [
+    'export interface CancellationPort extends CodingEffectGuardPort',
+    'export interface SteeringPort',
+    'export class CanonicalRunControlService implements RunControlPort',
+    "throw new Error('coding-run-control:in-flight-effects-not-reconciled')",
+    'throw new Error(`coding-run-control:conflicting-steering-id:${steeringId}`)',
+  ]),
+  check('shared-canonical-user-collaboration-owners', SOURCE_PATHS.sharedUserCollaboration, [
+    'export class CanonicalUserCollaborationService implements UserCollaborationPort',
+    'export class CanonicalSurfaceAccessibilityService implements SurfaceAccessibilityPort',
+    "jsonl: ['programmatic', 'text-status']",
+    "vscode: ['keyboard', 'screen-reader', 'text-status']",
+  ]),
+  check('shared-canonical-mcp-boundary-owner', SOURCE_PATHS.sharedMcpBoundary, [
+    'export interface CodingMcpBoundarySessionPort',
+    'export class CanonicalMcpBoundaryService',
+    "approval.actor !== 'user'",
+    'requires-user-approval',
+  ]),
+  check('shared-kernel-environment-and-run-control-binding', SOURCE_PATHS.sharedCodingKernel, [
+    'const KERNEL_ENVIRONMENT = new CanonicalCodingKernelEnvironmentService()',
+    'const runControl = RUN_CONTROL.bind({',
+    'effectGuard: runControl',
+    'signal: runControl.signal',
+    'runControl.settle(settlement.status)',
+  ]),
+  check('bridge-canonical-deepseek-connector-owner', SOURCE_PATHS.bridgeConnector, [
+    'export class CanonicalDeepSeekWebConnectorExecutionService',
+    'return this.options.exclusive.execute(async () => {',
+    'export class CanonicalDeepSeekWebConnectorService implements DeepSeekWebConnectorPort',
+    'if (this.providerDeltaCount > 0)',
+  ]),
+  check('vscode-official-mcp-sdk-client', SOURCE_PATHS.vscodeMcpClient, [
+    "from '@modelcontextprotocol/sdk/client/index.js'",
+    "from '@modelcontextprotocol/sdk/client/stdio.js'",
+    'new StdioClientTransport({',
+    'new CanonicalMcpBoundaryService().bind({ workspaceRoot })',
+  ], [
+    "from 'child_process'",
+    'spawn(',
+  ]),
+  check('vscode-mcp-surface-authority', SOURCE_PATHS.vscodeMcpRuntime, [
+    'export interface VscodeMcpSurfacePort',
+    'export function createVscodeMcpManager(',
+    'export async function initializeWorkspaceMcp(',
+    "actor: 'user'",
+    '配置文件本身不代表执行授权',
   ]),
   check('cli-completion-evidence', SOURCE_PATHS.cliEvidence, [
     'export class CliRunEvidence',
@@ -1910,11 +2004,41 @@ function buildSemanticDomains() {
     domain('run-lifecycle', 'RunLifecyclePort', [
       owner('shared-CanonicalRunLifecycleService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedRunLifecycle),
     ], []),
+    domain('run-cancellation', 'CancellationPort', [
+      owner('shared-CanonicalRunControlService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedRunControl),
+    ], []),
+    domain('run-steering', 'SteeringPort', [
+      owner('shared-CanonicalRunControlService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedRunControl),
+    ], []),
+    domain('user-collaboration', 'UserCollaborationPort', [
+      owner('shared-CanonicalUserCollaborationService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedUserCollaboration),
+    ], []),
+    domain('surface-accessibility', 'SurfaceAccessibilityPort', [
+      owner('shared-CanonicalSurfaceAccessibilityService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedUserCollaboration),
+    ], []),
     domain('settlement-decision', 'SettlementDecisionPort', [
       owner('shared-CanonicalSettlementDecisionService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedSettlement),
     ], []),
     domain('provider-normalization', 'ProviderEventPort', [
       owner('shared-CanonicalProviderEventService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedProviderEvents),
+    ], []),
+    domain('kernel-environment', 'CodingKernelEnvironmentPort', [
+      owner('shared-CanonicalCodingKernelEnvironmentService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedKernelEnvironment),
+    ], []),
+    domain('provider-capability', 'ProviderCapabilityPort', [
+      owner('shared-CanonicalProviderCapabilityService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedProviderCapability),
+    ], []),
+    domain('secret-redaction', 'SecretRedactionPort', [
+      owner('shared-CanonicalSecretRedactionService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedSecretRedaction),
+    ], []),
+    domain('dirty-worktree', 'DirtyWorktreePolicyPort', [
+      owner('shared-CanonicalDirtyWorktreePolicyService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedDirtyWorktree),
+    ], []),
+    domain('platform-adapter-conformance', 'PlatformAdapterConformancePort', [
+      owner('shared-CanonicalPlatformAdapterConformanceService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedPlatformConformance),
+    ], []),
+    domain('mcp-boundary', 'McpBoundaryPort', [
+      owner('shared-CanonicalMcpBoundaryService', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedMcpBoundary),
     ], []),
     domain('tool-schema', 'ToolSchemaRegistryPort', [
       owner('shared-CanonicalToolSchemaRegistry', ['vscode', 'cli', 'headless'], SOURCE_PATHS.sharedToolSchema),

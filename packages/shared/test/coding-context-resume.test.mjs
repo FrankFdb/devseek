@@ -12,6 +12,7 @@ import {
   CanonicalTaskContractService,
   CodingKernelExecutionError,
   codingSemanticDigest,
+  createFixtureCodingKernelEnvironment,
   renderCodingContextCompactionReceipt,
 } from '../dist/index.js';
 
@@ -297,6 +298,7 @@ test('CanonicalCodingKernel exposes compaction receipts and blocks indeterminate
     workspaceRoot: '/repo',
     taskContract: fixture().taskContract,
     operationJournal: new InMemoryCodingOperationJournal(),
+    environment: createFixtureCodingKernelEnvironment('/repo'),
     contextSeed: { files: [{ path: 'src/resume.ts', contentSample: 'export const resume = true;' }] },
     runtimeContext: {},
   };

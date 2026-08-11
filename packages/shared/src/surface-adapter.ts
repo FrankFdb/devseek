@@ -11,6 +11,10 @@ import { assertPlatformRuntimeProfileSupported } from './platform-runtime';
 import { acceptAgentCommand } from './agent-command';
 import type { CanonicalAgentCommand } from './agent-command';
 import type { SurfaceAdapterConformanceReceipt } from './surface-adapter-conformance';
+import type {
+  CodingSurfaceAccessibilityDecision,
+  CodingUserCollaborationDecision,
+} from './coding-user-collaboration';
 
 export interface SurfaceAdapter {
   readonly kind: AgentSurfaceKind;
@@ -19,6 +23,8 @@ export interface SurfaceAdapter {
   toChatCommand(input: SurfaceChatInput): CanonicalAgentCommand<ChatRequestCommand>;
   renderEvent(event: AgentEvent): void | Promise<void>;
   conformance(): SurfaceAdapterConformanceReceipt;
+  collaboration(): CodingUserCollaborationDecision;
+  accessibility(): CodingSurfaceAccessibilityDecision;
 }
 
 export interface SurfaceChatInput {

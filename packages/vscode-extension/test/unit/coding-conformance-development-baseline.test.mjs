@@ -14,6 +14,7 @@ import {
   bindSettledCodingConformanceObservation,
   evaluateCodingConformanceFixture,
   resolveCodingKernelTaskContract,
+  createFixtureCodingKernelEnvironment,
 } from '../../../shared/dist/index.js';
 import { createCanonicalCheckpointFixture } from '../helpers/canonical-checkpoint-fixture.mjs';
 import { exerciseCanonicalDevelopmentRoute } from '../helpers/canonical-development-route-fixture.mjs';
@@ -203,6 +204,7 @@ function routeInput(recovery, fixture) {
     workspaceRoot: '/workspace',
     taskContract,
     operationJournal: new InMemoryCodingOperationJournal(),
+    environment: createFixtureCodingKernelEnvironment('/workspace'),
     ...(canonicalCheckpoint ? { resumeCheckpoint: canonicalCheckpoint } : {}),
     runtimeContext,
   };

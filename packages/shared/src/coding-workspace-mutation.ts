@@ -10,12 +10,15 @@ import {
   type CodingOperationJournalRecord,
 } from './coding-operation-journal';
 import { codingSemanticDigest } from './coding-semantic-digest';
+import type { DirtyWorktreePolicySessionPort } from './coding-dirty-worktree';
+import type { CodingEffectGuardPort } from './coding-run-control';
 
 export const CODING_WORKSPACE_MUTATION_PLAN_VERSION = 'devseek.coding-workspace-mutation-plan/v1' as const;
 export const CODING_WORKSPACE_MUTATION_RECEIPT_VERSION = 'devseek.coding-workspace-mutation-receipt/v1' as const;
 
 export type CodingWorkspaceMutationStatus = 'committed' | 'rolled-back' | 'failed' | 'indeterminate';
 export type CodingWorkspaceMutationFailure =
+  | 'dirty-worktree-conflict'
   | 'baseline-failed'
   | 'apply-failed'
   | 'apply-evidence-missing'
@@ -169,6 +172,8 @@ export class CanonicalWorkspaceMutationTransaction implements WorkspaceMutationT
   constructor(
     private readonly journal?: CodingOperationJournalPort,
     private readonly replayRunId?: string,
+    private readonly dirtyWorktree?: DirtyWorktreePolicySessionPort,
+    private readonly effectGuard?: CodingEffectGuardPort,
   ) {}
 
   async execute<TPayload, TBaseline, TApplied, TResult>(
@@ -189,7 +194,9 @@ export class CanonicalWorkspaceMutationTransaction implements WorkspaceMutationT
       return outcome;
     }
 
-    const execution = this.executeOnce(snapshot, host, canonicalPlan);
+    const lease = this.effectGuard?.beginEffect(`workspace-mutation:${snapshot.actionId}`);
+    const execution = this.executeOnce(snapshot, host, canonicalPlan)
+      .finally(() => lease?.release());
     this.executions.set(key, {
       canonicalPlan,
       receipt: execution.then(outcome => outcome.receipt) as Promise<CodingWorkspaceMutationReceipt<unknown>>,
@@ -231,6 +238,17 @@ export class CanonicalWorkspaceMutationTransaction implements WorkspaceMutationT
         recovered.preparation.baseline as CodingWorkspaceBaseline<TBaseline>,
         operationSha256,
       );
+    }
+
+    const dirtyWorktreeDecision = this.dirtyWorktree?.authorize({
+      actionId: plan.actionId,
+      paths: plan.paths,
+    });
+    if (dirtyWorktreeDecision?.decision === 'deny') {
+      return {
+        receipt: failedMutationReceipt(plan, 'dirty-worktree-conflict', dirtyWorktreeDecision.evidenceRefs),
+        replayed: false,
+      };
     }
 
     let baseline: CodingWorkspaceBaseline<TBaseline>;

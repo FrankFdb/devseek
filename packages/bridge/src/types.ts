@@ -1,6 +1,7 @@
 // bridge 本地类型定义（与 packages/shared/src/index.ts 保持同步）
 import type { BrowserSessionSnapshot } from './browser-session';
 import type { DeepSeekDomFingerprint, DeepSeekPageKind } from './bridge-health-check';
+import type { DeepSeekWebConnectorAdvertisement } from '@devseek-netai/shared';
 
 export interface ChatRequest {
   prompt: string;
@@ -49,8 +50,11 @@ export interface StatusResponse {
   buildChannel?: string;
   buildId?: string;
   gitCommit?: string;
+  connector: DeepSeekWebConnectorAdvertisement;
 }
 
 export interface CancelResponse {
   ok: boolean;
+  requestId?: string;
+  decision: 'accepted' | 'not-found' | 'ambiguous' | 'already-terminal';
 }

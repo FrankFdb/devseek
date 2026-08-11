@@ -1,6 +1,9 @@
 import {
   HEADLESS_SURFACE_CAPABILITIES,
   certifySurfaceAdapter,
+  CanonicalSurfaceAccessibilityService,
+  CanonicalUserCollaborationService,
+  CODING_CANCELLATION_RECEIPT_VERSION,
   createChatRequestCommand,
   detectPlatformProfile,
   type AgentEvent,
@@ -9,6 +12,8 @@ import {
   type SurfaceAdapterConformanceReceipt,
   type SurfaceChatInput,
   type SurfaceCapabilities,
+  type CodingSurfaceAccessibilityDecision,
+  type CodingUserCollaborationDecision,
 } from '@devseek-netai/shared';
 
 export interface HeadlessSurfaceAdapterOptions {
@@ -75,6 +80,35 @@ export class HeadlessSurfaceAdapter implements SurfaceAdapter {
         ordering: 'serialized',
         backpressure: 'awaited',
       },
+    });
+  }
+
+  collaboration(): CodingUserCollaborationDecision {
+    return new CanonicalUserCollaborationService().assess({
+      surface: this.kind,
+      interactions: ['progress', 'cancellation', 'resume', 'error-explanation'],
+      eventTypes: ['chat.started', 'provider.status', 'checkpoint.available', 'error'],
+      traceBound: true,
+      cancellationProtocol: CODING_CANCELLATION_RECEIPT_VERSION,
+      evidenceRefs: [
+        'headless-surface:serialized-callback-events',
+        'headless-surface:abort-signal',
+        'headless-surface:checkpoint-input',
+      ],
+    });
+  }
+
+  accessibility(): CodingSurfaceAccessibilityDecision {
+    return new CanonicalSurfaceAccessibilityService().assess({
+      surface: this.kind,
+      channels: ['programmatic'],
+      statusNotColorOnly: true,
+      cancellationReachable: true,
+      recoveryReachable: true,
+      evidenceRefs: [
+        'headless-surface:typed-events',
+        'headless-surface:typed-terminal-output',
+      ],
     });
   }
 }

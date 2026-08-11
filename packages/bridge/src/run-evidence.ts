@@ -6,7 +6,8 @@ import {
   normalizeRunEvidenceJson,
   productRunEvidenceIdempotencyKey,
   requireRunEvidenceBoundedText,
-  redactDevSeekAuthorityCapabilities,
+  isCodingSecretFieldName,
+  redactCodingSecretsInText,
   sha256RunEvidence,
   summarizeTraceText,
   type RunEvidenceJson,
@@ -17,8 +18,6 @@ export type BridgeProviderEvidenceType = 'provider.requested' | 'provider.comple
 export const BRIDGE_CONNECTOR_REPLAY_PROTOCOL = 'devseek.bridge-connector-replay/v1' as const;
 export const BRIDGE_CONNECTOR_REDACTED_SECRET = '[REDACTED-BRIDGE-CONNECTOR-SECRET]' as const;
 
-const SENSITIVE_CONNECTOR_KEY_RE = /(?:token|cookie|authorization|password|secret|api[_-]?key|session|credential|header)/i;
-const SECRET_CONNECTOR_VALUE_RE = /(?:sk-[A-Za-z0-9_-]{8,}|bearer\s+[A-Za-z0-9._~+/=-]{6,}|(?:api[_-]?key|authorization|cookie|token|password|secret|session|credential)\s*[:=]\s*[^,\s;]+)/i;
 const SUMMARY_TEXT_KEY_RE = /^(?:prompt|response|error|message|transcript|content|html|raw|body)$/i;
 
 export interface BridgeRunEvidence {
@@ -108,7 +107,7 @@ function sanitizeBridgeConnectorObject(value: { [key: string]: RunEvidenceJson }
       output[key] = summarizeBridgeConnectorReplay(rawValue);
       continue;
     }
-    if (SENSITIVE_CONNECTOR_KEY_RE.test(rawKey)) {
+    if (isCodingSecretFieldName(rawKey)) {
       output[key] = BRIDGE_CONNECTOR_REDACTED_SECRET;
       continue;
     }
@@ -153,7 +152,7 @@ function isTraceTextSummary(value: { [key: string]: RunEvidenceJson }): boolean 
 }
 
 function redactBridgeConnectorText(value: string): string {
-  const withoutCapabilities = redactDevSeekAuthorityCapabilities(value);
-  if (SECRET_CONNECTOR_VALUE_RE.test(withoutCapabilities)) return BRIDGE_CONNECTOR_REDACTED_SECRET;
-  return withoutCapabilities;
+  return redactCodingSecretsInText(value, {
+    replacement: BRIDGE_CONNECTOR_REDACTED_SECRET,
+  }).text;
 }

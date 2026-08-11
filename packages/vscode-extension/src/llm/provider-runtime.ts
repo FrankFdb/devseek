@@ -1,4 +1,10 @@
-import type { CodingToolCall } from '@devseek-netai/shared';
+import {
+  CanonicalProviderCapabilityService,
+  CODING_PROVIDER_ADVERTISEMENT_VERSION,
+  type CodingProviderCapabilityDecision,
+  type CodingProviderRequestKind,
+  type CodingToolCall,
+} from '@devseek-netai/shared';
 import type { ChatMessage, ContentPart, LLMChatOptions, LLMProviderCapability, LLMProviderHealth, LLMProviderType } from './types';
 import {
   negotiateProviderCapabilities,
@@ -17,6 +23,9 @@ export interface ProviderWorkflowContext {
   idempotencyLedgerId?: string;
   preferredProvider?: LLMProviderType;
   requiredCapabilities?: readonly string[];
+  requestKind?: CodingProviderRequestKind;
+  cancellationRequired?: boolean;
+  correlationRequired?: boolean;
 }
 
 export type ProviderRouteDecisionKind = 'allow' | 'blocked';
@@ -28,6 +37,7 @@ export interface ProviderRoutePlan {
   fallbacks: LLMProviderConfig[];
   candidates: LLMProviderConfig[];
   capabilityNegotiation: ProviderCapabilityNegotiation;
+  capabilityDecisions: readonly CodingProviderCapabilityDecision[];
   unsupportedCapabilities: string[];
   blockedReason?: ProviderCapabilityNegotiationReason;
 }
@@ -122,6 +132,7 @@ export class LLMProviderRuntime {
         fallbacks: [],
         candidates: [],
         capabilityNegotiation,
+        capabilityDecisions: [],
         unsupportedCapabilities: capabilityNegotiation.unsupportedCapabilities,
         blockedReason: capabilityNegotiation.reason,
       };
@@ -129,12 +140,44 @@ export class LLMProviderRuntime {
 
     const preferred = context.preferredProvider ?? this.snapshot.activeProvider;
     const orderedTypes = uniqueProviderTypes([preferred, ...this.snapshot.fallbackOrder]);
-    const candidates = orderedTypes
+    const capabilityService = new CanonicalProviderCapabilityService();
+    const evaluated = orderedTypes
       .map(type => this.snapshot.providers[type])
       .filter((provider): provider is LLMProviderConfig => Boolean(provider))
-      .filter(provider => provider.enabled && hasCapabilities(provider, requiredCapabilities))
+      .filter(provider => provider.enabled)
+      .map(provider => ({
+        provider,
+        decision: capabilityService.bind({
+          version: CODING_PROVIDER_ADVERTISEMENT_VERSION,
+          provider: provider.type,
+          capabilities: provider.capabilities,
+          evidenceRefs: [`provider-config:${provider.type}`],
+        }).negotiate({
+          requestKind: context.requestKind ?? 'chat',
+          requiredCapabilities,
+          cancellationRequired: context.cancellationRequired,
+          correlationRequired: context.correlationRequired,
+        }),
+      }));
+    const capabilityDecisions = Object.freeze(evaluated.map(item => item.decision));
+    const candidates = evaluated
+      .filter(item => item.decision.decision === 'allow')
+      .map(item => item.provider)
       .filter(provider => this.health[provider.type]?.status !== 'unavailable');
-    const primary = candidates[0] ?? this.snapshot.providers.bridge;
+    const primary = candidates[0];
+    if (!primary) {
+      return {
+        workflow: { ...context, requiredCapabilities },
+        decision: 'blocked',
+        primary: undefined,
+        fallbacks: [],
+        candidates: [],
+        capabilityNegotiation,
+        capabilityDecisions,
+        unsupportedCapabilities: uniqueStrings(capabilityDecisions.flatMap(item => item.missingCapabilities)),
+        blockedReason: 'missing-capability',
+      };
+    }
     return {
       workflow: { ...context, requiredCapabilities },
       decision: 'allow',
@@ -142,6 +185,7 @@ export class LLMProviderRuntime {
       fallbacks: candidates.filter(provider => provider.type !== primary.type),
       candidates,
       capabilityNegotiation,
+      capabilityDecisions,
       unsupportedCapabilities: [],
     };
   }
@@ -212,13 +256,6 @@ export function providerSupports(
   capability: LLMProviderCapability,
 ): boolean {
   return provider.capabilities.includes(capability);
-}
-
-function hasCapabilities(
-  provider: LLMProviderConfig,
-  requiredCapabilities: readonly LLMProviderCapability[],
-): boolean {
-  return requiredCapabilities.every(capability => providerSupports(provider, capability));
 }
 
 function isDestructiveOperation(fact: ProviderOperationFact): boolean {

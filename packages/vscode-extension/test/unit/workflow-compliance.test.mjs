@@ -665,1095 +665,84 @@ test('R3-05F: TaskHistory lifecycle, redacted export, retention, and resume gati
   assertContains(webviewTests, 'R3-05F TaskHistoryUiService', 'R3-05F must have UI lifecycle oracle');
 });
 
-test('R3-06A: Subagent contract isolates child context, permission, budget, and evidence-only output', () => {
-  const appIndex = src('src/app/index.ts');
-  const subagent = src('src/app/subagent-contract-service.ts');
-  const tests = src('test/unit/subagent-contract-service.test.mjs');
-
-  assertContains(appIndex, "export * from './subagent-contract-service';", 'R3-06A SubagentContractService must be exported');
-  assertContains(subagent, 'SUBAGENT_CONTRACT_PROTOCOL', 'Subagent contract must expose a versioned protocol marker');
-  assertContains(subagent, 'SUBAGENT_CHILD_OUTPUT_PROTOCOL', 'Subagent output must expose a versioned protocol marker');
-  assertContains(subagent, 'SubagentContractService', 'Subagent contract owner service must exist');
-  assertContains(subagent, 'settlementAuthority', 'Subagent contract must bind settlement authority to parent Kernel');
-  assertContains(subagent, 'parent-kernel', 'Subagent terminal settlement must remain parent-owned');
-  assertContains(subagent, 'terminalClaimsAllowed: false', 'Subagent output contract must reject terminal claims');
-  assertContains(subagent, 'directEffectsAllowed: false', 'Subagent output contract must reject direct effects');
-  assertContains(subagent, 'SensitiveMemoryGuard', 'Subagent inputs and outputs must use secret redaction');
-  assertContains(subagent, 'SurfaceToolPolicyEvaluator', 'Subagent policy must reuse the Surface evaluator');
-  assertContains(subagent, 'child-terminal-claim-rejected', 'Subagent outputs must flag terminal claims');
-  assertContains(subagent, 'child-direct-effect-rejected', 'Subagent outputs must flag direct effects');
-  assertContains(subagent, 'rawContent', 'Subagent context isolation must strip raw context content');
-  assertContains(tests, 'R3-06A SubagentContractService', 'R3-06A must have subagent failure-first oracle');
-});
-
-test('R3-06B: Subagent parallel merge, orphan rejection, and cancellation stay parent Kernel-owned', () => {
-  const subagent = src('src/app/subagent-contract-service.ts');
-  const tests = src('test/unit/subagent-contract-service.test.mjs');
-
-  assertContains(subagent, 'SUBAGENT_PARALLEL_MERGE_PROTOCOL', 'Subagent merge must expose a versioned protocol marker');
-  assertContains(subagent, 'SUBAGENT_CANCEL_RECEIPT_PROTOCOL', 'Subagent cancel must expose a versioned receipt protocol');
-  assertContains(subagent, 'mergeChildResults', 'Subagent contract owner must merge child results');
-  assertContains(subagent, 'cancelParallelRun', 'Subagent contract owner must emit cancel receipts');
-  assertContains(subagent, 'acceptChildResultAfterCancel', 'Subagent contract owner must reject child results after cancel');
-  assertContains(subagent, 'parentKernelMergeDecision', 'Subagent merge result must carry parent Kernel merge decision');
-  assertContains(subagent, 'parallel-write-conflict', 'Subagent merge must flag parallel write conflicts');
-  assertContains(subagent, 'orphan-child-result-rejected', 'Subagent merge must reject orphan child results');
-  assertContains(subagent, 'child-result-after-cancel-rejected', 'Subagent cancel must reject post-cancel child actions');
-  assertContains(subagent, 'postCancelEffectsAllowed: false', 'Subagent cancel receipt must freeze new effects');
-  assertContains(subagent, 'acceptedProposals', 'Subagent merge must distinguish accepted proposals');
-  assertContains(subagent, 'rejectedProposals', 'Subagent merge must distinguish rejected proposals');
-  assertContains(subagent, 'settlementAuthority', 'Subagent merge/cancel must bind settlement authority');
-  assertContains(subagent, 'parent-kernel', 'Subagent merge/cancel must remain parent Kernel-owned');
-  assertContains(tests, 'R3-06B SubagentContractService', 'R3-06B must have subagent merge/cancel failure-first oracle');
-});
-
-test('R3-07A: Skill discovery/execution is progressive, schema-bound, and parent Kernel-permissioned', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_EXECUTION_PROTOCOL', 'Skill execution must expose a versioned protocol marker');
-  assertContains(sharedEnhancements, 'SkillExecutionReceipt', 'Skill execution must produce a receipt');
-  assertContains(sharedEnhancements, 'planExecution', 'SkillDiscoveryService must plan skill execution');
-  assertContains(sharedEnhancements, 'inputSchema', 'Skill execution must carry a parsed input schema');
-  assertContains(sharedEnhancements, 'selectedByTrigger', 'Skill execution must expose trigger provenance');
-  assertContains(sharedEnhancements, "settlementAuthority: 'parent-kernel'", 'Skill execution must remain parent Kernel-owned');
-  assertContains(sharedEnhancements, 'completionClaimsAllowed: false', 'Skills must not be able to claim task completion');
-  assertContains(sharedEnhancements, 'skill-completion-claim-rejected', 'Skill completion claims must be rejected');
-  assertContains(sharedEnhancements, 'skill-tool-kind-denied', 'Skill mutable/unsafe tool declarations must be denied');
-  assertContains(sharedEnhancements, 'unmatched-skill-not-loaded', 'Unmatched skills must not be loaded');
-  assertContains(sharedEnhancements, 'evidenceRefs', 'Skill execution must be evidence-backed');
-  assertContains(sharedTests, 'R3-07A SkillDiscoveryService', 'R3-07A must have skill execution failure-first oracle');
-});
-
-test('R3-07B: Hook policy/evidence receipts are versioned, visible, and non-writer', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'HOOK_POLICY_PROTOCOL', 'Hook policy must expose a versioned protocol marker');
-  assertContains(sharedEnhancements, 'HookPolicyReceipt', 'Hook policy must produce a receipt');
-  assertContains(sharedEnhancements, 'planPolicy', 'HookPlanner must own hook policy planning');
-  assertContains(sharedEnhancements, 'policyKind', 'Hook policy must distinguish veto/warning/evidence');
-  assertContains(sharedEnhancements, 'policyVersion', 'Hook policy must carry policy version provenance');
-  assertContains(sharedEnhancements, "settlementAuthority: 'parent-kernel'", 'Hook policy must remain parent Kernel-owned');
-  assertContains(sharedEnhancements, 'trustRoot: false', 'Hooks must not become a trust root');
-  assertContains(sharedEnhancements, 'directWriteAllowed: false', 'Hooks must not be direct writers');
-  assertContains(sharedEnhancements, 'hook-failure-visible', 'Hook failures must stay visible');
-  assertContains(sharedEnhancements, 'hook-bypass-visible', 'Hook bypass must stay visible');
-  assertContains(sharedEnhancements, 'hook-direct-writer-denied', 'Direct hook writers must be denied');
-  assertContains(sharedEnhancements, 'evidenceRefs', 'Hook policy must be evidence-backed');
-  assertContains(sharedEnhancements, 'vetoes', 'Hook veto results must be surfaced');
-  assertContains(sharedTests, 'R3-07B HookPlanner', 'R3-07B must have hook policy failure-first oracle');
-});
-
-test('R3-07C: MCP trust and permission reuse B4 Effect authority without capability escape', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'MCP_TRUST_PROTOCOL', 'MCP trust must expose a versioned protocol marker');
-  assertContains(sharedEnhancements, 'McpTrustReceipt', 'MCP trust must produce a receipt');
-  assertContains(sharedEnhancements, 'evaluateTrust', 'McpPermissionService must own trust evaluation');
-  assertContains(sharedEnhancements, 'B4_EFFECT_AUTHORITY', 'MCP permission must reuse B4 Effect authority');
-  assertContains(sharedEnhancements, "settlementAuthority: 'parent-kernel'", 'MCP trust must remain parent Kernel-owned');
-  assertContains(sharedEnhancements, 'capabilityEscapesAllowed: false', 'MCP capabilities must not escape the permission boundary');
-  assertContains(sharedEnhancements, 'mcp-unknown-mutable-veto', 'Unknown mutable MCP tools must be vetoed');
-  assertContains(sharedEnhancements, 'mcp-unsigned-server-veto', 'Unsigned MCP servers must be vetoed');
-  assertContains(sharedEnhancements, 'mcp-permission-escape-veto', 'MCP permission escape must be vetoed');
-  assertContains(sharedEnhancements, 'mcp-revoked-server-veto', 'Revoked MCP servers must be vetoed');
-  assertContains(sharedEnhancements, 'capabilityRefs', 'MCP capability references must be detached evidence');
-  assertContains(sharedEnhancements, 'evidenceRefs', 'MCP trust must be evidence-backed');
-  assertContains(sharedTests, 'R3-07C McpPermissionService', 'R3-07C must have MCP trust failure-first oracle');
-});
-
-test('R3-07D: Plugin supply-chain policy rejects unsigned, tampered, stale, and revoked plugins', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'PLUGIN_SUPPLY_CHAIN_PROTOCOL', 'Plugin supply-chain must expose a versioned protocol marker');
-  assertContains(sharedEnhancements, 'PluginSupplyChainReceipt', 'Plugin supply-chain must produce a receipt');
-  assertContains(sharedEnhancements, 'PluginSupplyChainService', 'Plugin supply-chain must have one explicit owner');
-  assertContains(sharedEnhancements, "settlementAuthority: 'parent-kernel'", 'Plugin supply-chain must remain parent Kernel-owned');
-  assertContains(sharedEnhancements, 'B4_EFFECT_AUTHORITY', 'Plugin supply-chain effects must reuse B4 Effect authority');
-  assertContains(sharedEnhancements, 'manifestEvidenceRefs', 'Plugin manifest evidence must be retained');
-  assertContains(sharedEnhancements, 'signatureVerified', 'Plugin signature verification must be explicit');
-  assertContains(sharedEnhancements, 'dependencyClosure', 'Plugin dependency closure must be explicit');
-  assertContains(sharedEnhancements, 'revocationStatus', 'Plugin revocation status must be explicit');
-  assertContains(sharedEnhancements, 'updateChain', 'Plugin update chain must be explicit');
-  assertContains(sharedEnhancements, 'plugin-unsigned-veto', 'Unsigned plugins must be vetoed');
-  assertContains(sharedEnhancements, 'plugin-tampered-veto', 'Tampered plugins must be vetoed');
-  assertContains(sharedEnhancements, 'plugin-stale-version-veto', 'Stale plugins must be vetoed');
-  assertContains(sharedEnhancements, 'plugin-revoked-veto', 'Revoked plugins must be vetoed');
-  assertContains(sharedEnhancements, 'plugin-dependency-veto', 'Unsafe plugin dependencies must be vetoed');
-  assertContains(sharedEnhancements, 'plugin-downgrade-update-veto', 'Unsafe plugin downgrade updates must be vetoed');
-  assertContains(sharedTests, 'R3-07D PluginSupplyChainService', 'R3-07D must have plugin supply-chain failure-first oracle');
-});
-
-test('R3-07E: Worktree isolation receipts preserve dirty user state and reject cross-worktree effects', () => {
-  const worktreeService = src('src/app/worktree-conflict-service.ts');
-  const worktreeTests = src('test/unit/worktree-conflict-service.test.mjs');
-
-  assertContains(worktreeService, 'WORKTREE_ISOLATION_PROTOCOL', 'Worktree isolation must expose a versioned protocol marker');
-  assertContains(worktreeService, 'WORKTREE_ISOLATION_PROTOCOL_VERSION', 'Worktree isolation protocol must be exported');
-  assertContains(worktreeService, 'WorktreeIsolationReceipt', 'Worktree isolation must produce a receipt');
-  assertContains(worktreeService, 'evaluateWorktreeIsolation', 'WorktreeConflictService must own worktree isolation');
-  assertContains(worktreeService, "singleOwner: 'WorktreeConflictService'", 'Worktree isolation must keep one owner');
-  assertContains(worktreeService, "settlementAuthority: 'parent-kernel'", 'Worktree isolation must remain parent Kernel-owned');
-  assertContains(worktreeService, "mutationAuthority: 'Mutation/Evidence'", 'Worktree isolation must route merge and cleanup through Mutation/Evidence');
-  assertContains(worktreeService, 'baselineStatusEntries', 'Worktree isolation must capture the parent baseline status');
-  assertContains(worktreeService, 'childEffectAbsPaths', 'Child effects must be constrained to the child worktree');
-  assertContains(worktreeService, 'mergeTargetAbsPaths', 'Merge targets must be separately checked against parent baseline');
-  assertContains(worktreeService, 'cleanupPaths', 'Cleanup paths must be constrained to the child worktree');
-  assertContains(worktreeService, 'worktree-cross-effect-veto', 'Cross-worktree child effects must be vetoed');
-  assertContains(worktreeService, 'worktree-user-dirty-preserved-veto', 'Dirty user files must be preserved during merge');
-  assertContains(worktreeService, 'worktree-cleanup-outside-child-veto', 'Cleanup must not escape the child worktree');
-  assertContains(worktreeTests, 'R3-07E WorktreeConflictService', 'R3-07E must have worktree isolation failure-first oracle');
-});
-
-test('R3-07F-skill: Extension profile planner signs one immutable skill plan without executing denominator', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'EXTENSION_PROFILE_PLAN_PROTOCOL', 'Extension profile plans must expose a versioned protocol marker');
-  assertContains(sharedEnhancements, 'ExtensionProfilePlanService', 'Extension profile plan signing must have one explicit owner');
-  assertContains(sharedEnhancements, 'ExtensionProfilePlanReceipt', 'Extension profile plans must produce a receipt');
-  assertContains(sharedEnhancements, 'createProfilePlan', 'Extension profile planner must create profile plans');
-  assertContains(sharedEnhancements, "singleOwner: 'ExtensionProfilePlanService'", 'Extension profile plans must keep one owner');
-  assertContains(sharedEnhancements, "settlementAuthority: 'parent-kernel'", 'Extension profile plans must remain parent Kernel-owned');
-  assertContains(sharedEnhancements, 'taskSlots', 'Profile plan must freeze 20 task slots');
-  assertContains(sharedEnhancements, 'permissionFaultSlots', 'Profile plan must freeze 100 permission/fault slots');
-  assertContains(sharedEnhancements, 'oracleCatalog', 'Profile plan must bind oracle refs');
-  assertContains(sharedEnhancements, 'denominatorExecutionAllowed: false', 'R3-07F must not execute the denominator');
-  assertContains(sharedEnhancements, 'slotExecutionAllowed: false', 'R3-07F must not execute a slot');
-  assertContains(sharedEnhancements, 'aggregateExecutionAllowed: false', 'R3-07F must not aggregate slots');
-  assertContains(sharedEnhancements, 'planSignature', 'Profile plan must be signed');
-  assertContains(sharedEnhancements, 'R3-07S', 'Profile plan must generate concrete R3-07S slot IDs');
-  assertContains(sharedEnhancements, 'candidateCommit', 'Profile plan must bind candidate identity');
-  assertContains(sharedEnhancements, 'schemaVersion', 'Profile plan must bind schema identity');
-  assertContains(sharedTests, 'R3-07F-skill ExtensionProfilePlanService', 'R3-07F-skill must have profile-plan failure-first oracle');
-});
-
-test('R3-07F-hook: Extension profile planner binds hook plans to hook policy schema', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'EXPECTED_EXTENSION_PROFILE_SCHEMAS', 'Extension profile planner must carry expected schema per kind');
-  assertContains(sharedEnhancements, 'hook: HOOK_POLICY_PROTOCOL', 'Hook profile plans must bind to hook policy schema');
-  assertContains(sharedEnhancements, 'profile-plan-schema-kind-mismatch', 'Kind/schema mismatches must be blocked');
-  assertContains(sharedEnhancements, 'R3-07S-${input.kind}', 'Hook profile plan must generate concrete R3-07S hook slot IDs through the shared kind template');
-  assertContains(sharedTests, 'R3-07F-hook ExtensionProfilePlanService', 'R3-07F-hook must have profile-plan failure-first oracle');
-});
-
-test('R3-07F-mcp: Extension profile planner binds MCP plans to MCP trust schema', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'mcp: MCP_TRUST_PROTOCOL', 'MCP profile plans must bind to MCP trust schema');
-  assertContains(sharedEnhancements, 'profile-plan-invalid-kind', 'Invalid profile kinds must be blocked');
-  assertContains(sharedEnhancements, 'profile-plan-schema-kind-mismatch', 'MCP kind/schema mismatches must be blocked');
-  assertContains(sharedEnhancements, 'R3-07S-${input.kind}', 'MCP profile plan must generate concrete R3-07S MCP slot IDs through the shared kind template');
-  assertContains(sharedTests, 'R3-07F-mcp ExtensionProfilePlanService', 'R3-07F-mcp must have profile-plan failure-first oracle');
-});
-
-test('R3-07F-plugin: Extension profile planner binds plugin plans to supply-chain schema', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'plugin: PLUGIN_SUPPLY_CHAIN_PROTOCOL', 'Plugin profile plans must bind to plugin supply-chain schema');
-  assertContains(sharedEnhancements, 'denominatorExecutionAllowed: false', 'Plugin profile plan must not execute its denominator');
-  assertContains(sharedEnhancements, 'slotExecutionAllowed: false', 'Plugin profile plan must not execute slots');
-  assertContains(sharedEnhancements, 'aggregateExecutionAllowed: false', 'Plugin profile plan must not aggregate slots');
-  assertContains(sharedEnhancements, 'profile-plan-schema-kind-mismatch', 'Plugin kind/schema mismatches must be blocked');
-  assertContains(sharedTests, 'R3-07F-plugin ExtensionProfilePlanService', 'R3-07F-plugin must have profile-plan failure-first oracle');
-});
-
-test('R3-07F-subagent: Extension profile planner binds subagent plans to subagent contract schema', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SUBAGENT_CONTRACT_PROTOCOL', 'Subagent profile plans must expose a shared subagent contract protocol marker');
-  assertContains(sharedEnhancements, 'subagent: SUBAGENT_CONTRACT_PROTOCOL', 'Subagent profile plans must bind to the subagent contract schema constant');
-  assertContains(sharedEnhancements, 'profile-plan-schema-kind-mismatch', 'Subagent kind/schema mismatches must be blocked');
-  assertContains(sharedEnhancements, 'R3-07S-${input.kind}', 'Subagent profile plan must generate concrete R3-07S subagent slot IDs through the shared kind template');
-  assertContains(sharedTests, 'R3-07F-subagent ExtensionProfilePlanService', 'R3-07F-subagent must have profile-plan failure-first oracle');
-});
-
-test('R3-07S-skill-TASK-001: Extension profile planner records append-only skill slot execution', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'EXTENSION_PROFILE_SLOT_EXECUTION_PROTOCOL', 'R3-07S slot execution must expose a versioned protocol marker');
-  assertContains(sharedEnhancements, 'ExtensionProfileSlotExecutionReceipt', 'R3-07S slot execution must produce a receipt');
-  assertContains(sharedEnhancements, 'recordSlotExecution', 'R3-07S slot execution must stay on the profile plan owner');
-  assertContains(sharedEnhancements, "singleOwner: 'ExtensionProfilePlanService'", 'R3-07S slot execution must not add a second owner');
-  assertContains(sharedEnhancements, "priorAttemptPolicy: 'append-only-no-replacement'", 'R3-07S failed attempts must remain append-only');
-  assertContains(sharedEnhancements, 'slot-replacement-veto', 'R3-07S must veto replacement attempts');
-  assertContains(sharedEnhancements, 'slot-not-in-profile-veto', 'R3-07S must veto slots not signed by the profile plan');
-  assertContains(sharedTests, 'R3-07S-skill-TASK-001 ExtensionProfilePlanService', 'R3-07S-skill-TASK-001 must have slot execution failure-first oracle');
-});
-
-test('R3-07S-skill-TASK-002: passed skill slot execution must bind child receipt protocol', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'childReceipt', 'R3-07S-skill-TASK-002 must accept a child receipt at the profile owner boundary');
-  assertContains(sharedEnhancements, 'childReceiptRequired', 'R3-07S-skill-TASK-002 must expose that passed slots require child evidence');
-  assertContains(sharedEnhancements, 'childProtocol', 'R3-07S-skill-TASK-002 must record the child receipt protocol');
-  assertContains(sharedEnhancements, 'childEvidenceRefs', 'R3-07S-skill-TASK-002 must carry child evidence into the slot receipt');
-  assertContains(sharedEnhancements, 'slot-child-receipt-missing-veto', 'R3-07S-skill-TASK-002 must veto passed slots with no child receipt');
-  assertContains(sharedEnhancements, 'slot-child-protocol-mismatch-veto', 'R3-07S-skill-TASK-002 must veto wrong child protocols');
-  assertContains(sharedTests, 'R3-07S-skill-TASK-002 ExtensionProfilePlanService', 'R3-07S-skill-TASK-002 must have child receipt failure-first oracle');
-});
-
-test('R3-07S-skill-TASK-003: child receipts must carry evidence and parent authority', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'childSettlementAuthority', 'R3-07S-skill-TASK-003 must record child settlement authority');
-  assertContains(sharedEnhancements, 'childEvidenceRequired', 'R3-07S-skill-TASK-003 must expose child evidence requirement');
-  assertContains(sharedEnhancements, 'slot-child-evidence-missing-veto', 'R3-07S-skill-TASK-003 must veto child receipts without evidence');
-  assertContains(sharedEnhancements, 'slot-child-settlement-authority-veto', 'R3-07S-skill-TASK-003 must veto non-parent child authority');
-  assertContains(sharedTests, 'R3-07S-skill-TASK-003 ExtensionProfilePlanService', 'R3-07S-skill-TASK-003 must have child authority/evidence oracle');
-});
-
-test('R3-07S-skill-TASK-004: replacement attempts must be scoped to signed plan identity', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'receipt.profileId === profileProjection.profileId', 'R3-07S-skill-TASK-004 must scope prior attempts by profile identity');
-  assertContains(sharedEnhancements, 'receipt.candidateCommit === profileProjection.candidateCommit', 'R3-07S-skill-TASK-004 must scope prior attempts by candidate commit');
-  assertContains(sharedEnhancements, 'receipt.schemaVersion === profileProjection.schemaVersion', 'R3-07S-skill-TASK-004 must scope prior attempts by schema version');
-  assertContains(sharedTests, 'R3-07S-skill-TASK-004 ExtensionProfilePlanService', 'R3-07S-skill-TASK-004 must have signed-plan prior attempt oracle');
-});
-
-test('R3-07S-skill-TASK-005: failed slots must be failure-only evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'slot-failure-evidence-missing-veto', 'R3-07S-skill-TASK-005 must veto failed slots without failure evidence');
-  assertContains(sharedEnhancements, "const effectRefs = status === 'passed'", 'R3-07S-skill-TASK-005 must keep effect refs pass-only');
-  assertContains(sharedEnhancements, "const receiptRefs = status === 'passed'", 'R3-07S-skill-TASK-005 must keep receipt refs pass-only');
-  assertContains(sharedTests, 'R3-07S-skill-TASK-005 ExtensionProfilePlanService', 'R3-07S-skill-TASK-005 must have failure-only slot oracle');
-});
-
-test('R3-07S-skill-TASK-006: vetoed slots must remain distinct from blocked input', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'slot-veto-evidence-missing-veto', 'R3-07S-skill-TASK-006 must veto missing veto evidence');
-  assertContains(sharedEnhancements, "inputStatus === 'vetoed' ? inputVetoRefs : blockingVetoes", 'R3-07S-skill-TASK-006 must preserve owner-derived vetoed status evidence');
-  assertContains(sharedEnhancements, "blockingVetoes.length > 0 ? 'blocked' : inputStatus", 'R3-07S-skill-TASK-006 must block only invalid slot receipts');
-  assertContains(sharedTests, 'R3-07S-skill-TASK-006 ExtensionProfilePlanService', 'R3-07S-skill-TASK-006 must have vetoed-vs-blocked oracle');
-});
-
-test('R3-07S-skill-TASK-007: non-passed slots must not project child evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, "const childEvidenceRefsForReceipt = status === 'passed' ? childEvidenceRefs : []", 'R3-07S-skill-TASK-007 must keep child evidence pass-only');
-  assertContains(sharedEnhancements, "const failureRefsForReceipt = status === 'failed'", 'R3-07S-skill-TASK-007 must keep failure evidence failure-only');
-  assertContains(sharedEnhancements, "const vetoEvidenceRefs = status === 'vetoed' || status === 'blocked' ? vetoes : []", 'R3-07S-skill-TASK-007 must keep veto evidence veto-or-blocked only');
-  assertContains(sharedTests, 'R3-07S-skill-TASK-007 ExtensionProfilePlanService', 'R3-07S-skill-TASK-007 must have non-passed child evidence oracle');
-});
-
-test('R3-07S-skill-TASK-008: slot status must be normalized at runtime', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'toExtensionProfileSlotExecutionStatus', 'R3-07S-skill-TASK-008 must normalize runtime slot status');
-  assertContains(sharedEnhancements, 'slot-invalid-status-veto', 'R3-07S-skill-TASK-008 must veto invalid runtime slot status');
-  assertContains(sharedEnhancements, "const inputStatus = requestedStatus ?? 'blocked'", 'R3-07S-skill-TASK-008 must fail closed on invalid status');
-  assertContains(sharedTests, 'R3-07S-skill-TASK-008 ExtensionProfilePlanService', 'R3-07S-skill-TASK-008 must have invalid status oracle');
-});
-
-test('R3-07S-skill-TASK-009: blocked is not caller-supplied terminal input', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'EXTENSION_PROFILE_SLOT_EXECUTION_INPUT_STATUSES', 'R3-07S-skill-TASK-009 must separate caller input statuses from receipt statuses');
-  assertContains(sharedEnhancements, "['passed', 'failed', 'vetoed']", 'R3-07S-skill-TASK-009 must exclude blocked from caller input statuses');
-  assertContains(sharedTests, 'R3-07S-skill-TASK-009 ExtensionProfilePlanService', 'R3-07S-skill-TASK-009 must have blocked-input oracle');
-});
-
-test('R3-07S-skill-TASK-010: terminal evidence fields must match final status', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, "const childEvidenceRefsForReceipt = status === 'passed' ? childEvidenceRefs : []", 'R3-07S-skill-TASK-010 must keep structured child evidence pass-only');
-  assertContains(sharedEnhancements, "const failureRefsForReceipt = status === 'failed'", 'R3-07S-skill-TASK-010 must keep structured failure refs failure-only');
-  assertContains(sharedEnhancements, 'const childViolationsForReceipt = childReceiptVetoes.length > 0 ? childViolations : requestedPermissionFaultViolations', 'R3-07S-skill-TASK-010 must expose only child violations that explain a child-receipt block or a requested permission/fault denial');
-  assertContains(sharedTests, 'R3-07S-skill-TASK-010 ExtensionProfilePlanService', 'R3-07S-skill-TASK-010 must have terminal-field oracle');
-});
-
-test('R3-07S-skill-TASK-011: slot execution must verify profile plan authenticity', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'extensionProfilePlanAuthenticityVetoes', 'R3-07S-skill-TASK-011 must keep profile plan authenticity in the slot settlement owner');
-  assertContains(sharedEnhancements, 'slot-plan-signature-mismatch-veto', 'R3-07S-skill-TASK-011 must veto forged profile plan signatures');
-  assertContains(sharedEnhancements, 'slot-plan-owner-mismatch-veto', 'R3-07S-skill-TASK-011 must veto non-owner profile plan receipts');
-  assertContains(sharedEnhancements, 'slot-plan-origin-mismatch-veto', 'R3-07S-skill-TASK-011 must reject cloned profile plans that were not signed by this owner');
-  assertContains(sharedEnhancements, 'const planAuthentic = planAuthenticityVetoes.length === 0', 'R3-07S-skill-TASK-011 must compute a single plan authenticity gate');
-  assertContains(sharedEnhancements, 'const planEvidenceRefs = profileProjection.evidenceRefs', 'R3-07S-skill-TASK-011 must not project forged plan evidence');
-  assertContains(sharedEnhancements, 'const slot = planAuthentic ? findExtensionProfileSlot(plan, slotId) : undefined', 'R3-07S-skill-TASK-011 must not project forged plan slot evidence');
-  assertContains(sharedTests, 'R3-07S-skill-TASK-011 ExtensionProfilePlanService', 'R3-07S-skill-TASK-011 must have forged-plan oracle');
-});
-
-test('R3-07S-skill-TASK-012: signed profile plans must be immutable evidence objects', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'freezeExtensionProfilePlan', 'R3-07S-skill-TASK-012 must freeze signed plan receipts in the existing owner');
-  assertContains(sharedEnhancements, 'Object.freeze(plan.evidenceRefs)', 'R3-07S-skill-TASK-012 must freeze plan evidence refs');
-  assertContains(sharedEnhancements, 'Object.freeze(plan.taskSlots)', 'R3-07S-skill-TASK-012 must freeze task slot containers');
-  assertContains(sharedEnhancements, 'slot-plan-evidence-extra-veto', 'R3-07S-skill-TASK-012 must reject extra plan evidence refs');
-  assertContains(sharedTests, 'R3-07S-skill-TASK-012 ExtensionProfilePlanService', 'R3-07S-skill-TASK-012 must have mutable-plan oracle');
-});
-
-test('R3-07S-skill-TASK-013: skill child receipts must be owner-authentic', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'ownedSkillExecutionReceipts', 'R3-07S-skill-TASK-013 must register child receipts in the existing skill owner');
-  assertContains(sharedEnhancements, "singleOwner: 'SkillDiscoveryService'", 'R3-07S-skill-TASK-013 must mark SkillDiscoveryService as child receipt owner');
-  assertContains(sharedEnhancements, 'skillExecutionReceiptAuthenticityVetoes', 'R3-07S-skill-TASK-013 must verify skill child receipt authenticity');
-  assertContains(sharedEnhancements, 'slot-child-origin-mismatch-veto', 'R3-07S-skill-TASK-013 must reject forged child receipts');
-  assertContains(sharedTests, 'R3-07S-skill-TASK-013 ExtensionProfilePlanService', 'R3-07S-skill-TASK-013 must have forged-child oracle');
-});
-
-test('R3-07S-skill-TASK-014: passed slot success refs must be owner-derived', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'createExtensionProfileSlotEffectRefs', 'R3-07S-skill-TASK-014 must derive effect refs inside the slot owner');
-  assertContains(sharedEnhancements, 'createExtensionProfileSlotReceiptRefs', 'R3-07S-skill-TASK-014 must derive receipt refs inside the slot owner');
-  assertContains(sharedEnhancements, 'extension-profile-slot-effect', 'R3-07S-skill-TASK-014 must use owner-scoped effect evidence refs');
-  assertContains(sharedEnhancements, 'extension-profile-slot-receipt', 'R3-07S-skill-TASK-014 must use owner-scoped receipt evidence refs');
-  assertDoesNotContain(sharedEnhancements, 'uniqueStrings(input.effectRefs ?? [])', 'R3-07S-skill-TASK-014 must not trust caller effect refs');
-  assertDoesNotContain(sharedEnhancements, 'uniqueStrings(input.receiptRefs ?? [])', 'R3-07S-skill-TASK-014 must not trust caller receipt refs');
-  assertContains(sharedTests, 'R3-07S-skill-TASK-014 ExtensionProfilePlanService', 'R3-07S-skill-TASK-014 must have caller-success-ref oracle');
-});
-
-test('R3-07S-skill-TASK-015: failed slot failure refs must be owner-derived', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'createExtensionProfileSlotFailureRefs', 'R3-07S-skill-TASK-015 must derive failure refs inside the slot owner');
-  assertContains(sharedEnhancements, 'extension-profile-slot-failure', 'R3-07S-skill-TASK-015 must use owner-scoped failure evidence refs');
-  assertDoesNotContain(sharedEnhancements, "const failureRefsForReceipt = status === 'failed' ? failureRefs : []", 'R3-07S-skill-TASK-015 must not trust caller failure refs');
-  assertContains(sharedTests, 'R3-07S-skill-TASK-015 ExtensionProfilePlanService', 'R3-07S-skill-TASK-015 must have caller-failure-ref oracle');
-});
-
-test('R3-07S-skill-TASK-016: terminal veto refs must be owner-derived', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'createExtensionProfileSlotVetoRefs', 'R3-07S-skill-TASK-016 must derive veto refs inside the slot owner');
-  assertContains(sharedEnhancements, 'extension-profile-slot-veto', 'R3-07S-skill-TASK-016 must use owner-scoped veto evidence refs');
-  assertDoesNotContain(sharedEnhancements, "const terminalVetoes = inputStatus === 'vetoed' ? inputVetoes : blockingVetoes", 'R3-07S-skill-TASK-016 must not trust caller terminal veto refs');
-  assertDoesNotContain(sharedEnhancements, "...(inputStatus === 'vetoed' ? [] : inputVetoes)", 'R3-07S-skill-TASK-016 must not trust caller blocking veto refs');
-  assertContains(sharedTests, 'R3-07S-skill-TASK-016 ExtensionProfilePlanService', 'R3-07S-skill-TASK-016 must have caller-veto-ref oracle');
-});
-
-test('R3-07S-skill-TASK-017: previous slot receipts must be owner-authentic and immutable', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'ownedSlotExecutionReceipts', 'R3-07S-skill-TASK-017 must register slot receipts in the existing profile owner');
-  assertContains(sharedEnhancements, 'freezeExtensionProfileSlotExecutionReceipt', 'R3-07S-skill-TASK-017 must freeze owner-issued slot receipts');
-  assertContains(sharedEnhancements, 'this.ownedSlotExecutionReceipts.has(receipt)', 'R3-07S-skill-TASK-017 must ignore caller-forged previous receipts');
-  assertContains(sharedTests, 'R3-07S-skill-TASK-017 ExtensionProfilePlanService', 'R3-07S-skill-TASK-017 must have forged previous-receipt oracle');
-});
-
-test('R3-07S-skill-TASK-018: slot execution receipts must be owner-signed evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'slotExecutionSignature', 'R3-07S-skill-TASK-018 must expose a slot execution signature');
-  assertContains(sharedEnhancements, 'createExtensionProfileSlotExecutionSignature', 'R3-07S-skill-TASK-018 must derive slot execution signatures inside the profile owner');
-  assertContains(sharedEnhancements, 'extension-profile-slot-execution', 'R3-07S-skill-TASK-018 must project an owner-scoped slot execution evidence ref');
-  assertContains(sharedTests, 'R3-07S-skill-TASK-018 ExtensionProfilePlanService', 'R3-07S-skill-TASK-018 must have slot execution signature oracle');
-});
-
-test('R3-07S-skill-TASK-019: unauthentic profile plan identity must be quarantined on blocked receipts', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'createExtensionProfilePlanProjection', 'R3-07S-skill-TASK-019 must derive receipt identity through the profile owner');
-  assertContains(sharedEnhancements, 'R3-07F-unauthenticated-PROFILE-PLAN', 'R3-07S-skill-TASK-019 must use a canonical unauthenticated profile identity');
-  assertContains(sharedEnhancements, 'profileProjection.profileId', 'R3-07S-skill-TASK-019 must not project caller plan profileId directly');
-  assertContains(sharedTests, 'R3-07S-skill-TASK-019 ExtensionProfilePlanService', 'R3-07S-skill-TASK-019 must have forged-plan identity quarantine oracle');
-});
-
-test('R3-07S-skill-TASK-020: slot replacement must use owner-issued attempt ledger without caller replay', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'settledSlotExecutionReceipts', 'R3-07S-skill-TASK-020 must keep settled slot attempts in the profile owner');
-  assertContains(sharedEnhancements, '...this.settledSlotExecutionReceipts', 'R3-07S-skill-TASK-020 must include owner-issued attempts without caller replay');
-  assertContains(sharedEnhancements, "frozenReceipt.status !== 'blocked'", 'R3-07S-skill-TASK-020 must not let blocked attempts consume a slot');
-  assertContains(sharedTests, 'R3-07S-skill-TASK-020 ExtensionProfilePlanService', 'R3-07S-skill-TASK-020 must have owner-ledger replacement oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-001: permission/fault slots must own expected skill denial evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'extension-profile-slot-permission-fault', 'R3-07S-skill-PERMISSION-FAULT-001 must project owner-scoped permission/fault evidence');
-  assertContains(sharedEnhancements, 'createExtensionProfileSlotPermissionFaultRefs', 'R3-07S-skill-PERMISSION-FAULT-001 must derive permission/fault refs in the profile owner');
-  assertContains(sharedEnhancements, 'expectedPermissionFaultViolations', 'R3-07S-skill-PERMISSION-FAULT-001 must distinguish expected permission/fault evidence from dirty child receipt');
-  assertContains(sharedEnhancements, 'skillPermissionFaultViolations', 'R3-07S-skill-PERMISSION-FAULT-001 must preserve skill-specific denial evidence under the kind-aware owner');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-001 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-001 must have expected permission denial oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-002: permission/fault evidence cannot be reused across slots', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'settledPermissionFaultEvidenceKeys', 'R3-07S-skill-PERMISSION-FAULT-002 must keep permission/fault evidence reuse state in the profile owner');
-  assertContains(sharedEnhancements, 'createExtensionProfilePermissionFaultEvidenceKey', 'R3-07S-skill-PERMISSION-FAULT-002 must derive reusable evidence identity inside the profile owner');
-  assertContains(sharedEnhancements, 'slot-permission-fault-evidence-reuse-veto', 'R3-07S-skill-PERMISSION-FAULT-002 must veto reused permission/fault evidence across slots');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-002 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-002 must have evidence reuse oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-003: permission/fault evidence must describe one denial', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'slot-child-permission-fault-ambiguous-veto', 'R3-07S-skill-PERMISSION-FAULT-003 must veto ambiguous multi-denial permission/fault evidence');
-  assertContains(sharedEnhancements, 'expectedPermissionFaultViolations.length > 1', 'R3-07S-skill-PERMISSION-FAULT-003 must detect multi-denial evidence in the profile owner');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-003 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-003 must have ambiguous denial oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-004: permission/fault evidence refs stay parent-owned', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'projectedChildEvidenceRefs', 'R3-07S-skill-PERMISSION-FAULT-004 must route child evidence projection through the profile owner');
-  assertContains(sharedEnhancements, "status === 'passed' && !isPermissionFaultSlot", 'R3-07S-skill-PERMISSION-FAULT-004 must avoid direct child evidence projection for permission/fault slots');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-004 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-004 must have parent-owned evidence oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-005: permission/fault denial must be requested by the task', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'requestedToolKinds', 'R3-07S-skill-PERMISSION-FAULT-005 must preserve requested skill tools in the child receipt');
-  assertContains(sharedEnhancements, 'requestedSkillPermissionFaultViolations', 'R3-07S-skill-PERMISSION-FAULT-005 must derive requested permission/fault evidence in the profile owner');
-  assertContains(sharedEnhancements, 'slot-child-permission-fault-unrequested-veto', 'R3-07S-skill-PERMISSION-FAULT-005 must veto declaration-only permission denial evidence');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-005 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-005 must have unrequested-denial oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-006: unknown requested skill tools cannot become permission/fault evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'parseSkillToolKindValues', 'R3-07S-skill-PERMISSION-FAULT-006 must parse runtime requested tool kinds before permission planning');
-  assertContains(sharedEnhancements, 'skill-tool-kind-invalid', 'R3-07S-skill-PERMISSION-FAULT-006 must expose invalid requested skill tools as dirty child evidence');
-  assertContains(sharedEnhancements, 'invalidRequestedToolKinds', 'R3-07S-skill-PERMISSION-FAULT-006 must keep invalid requested tool ownership in SkillDiscoveryService');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-006 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-006 must have unknown requested tool oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-007: invalid declared skill tools keep child receipts dirty', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'invalidDeclaredToolKinds', 'R3-07S-skill-PERMISSION-FAULT-007 must keep invalid declared skill tools in SkillDiscoveryService');
-  assertContains(sharedEnhancements, 'declaredToolKindValues.invalidToolKinds', 'R3-07S-skill-PERMISSION-FAULT-007 must convert invalid skill metadata into parse issues');
-  assertContains(sharedEnhancements, 'skill-tool-kind-invalid', 'R3-07S-skill-PERMISSION-FAULT-007 must expose invalid declared skill tools as dirty child evidence');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-007 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-007 must have invalid declared tool oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-008: skill trigger selection must be token bounded', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'skillTriggerMatchesPrompt', 'R3-07S-skill-PERMISSION-FAULT-008 must keep trigger matching in SkillDiscoveryService');
-  assertContains(sharedEnhancements, 'SKILL_TRIGGER_WORD_BOUNDARY_PATTERN', 'R3-07S-skill-PERMISSION-FAULT-008 must use token-bounded trigger matching');
-  assertContains(sharedEnhancements, 'escapeRegExp', 'R3-07S-skill-PERMISSION-FAULT-008 must escape skill trigger metadata before matching');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-008 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-008 must have substring trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-009: duplicate skill paths keep child receipts dirty', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'duplicateSkillPaths', 'R3-07S-skill-PERMISSION-FAULT-009 must keep duplicate skill path detection in SkillDiscoveryService');
-  assertContains(sharedEnhancements, 'skill-path-collision', 'R3-07S-skill-PERMISSION-FAULT-009 must expose duplicate skill path metadata as dirty child evidence');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-009 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-009 must have duplicate path oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-010: noncanonical skill paths keep child receipts dirty', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'skillPathParseIssues', 'R3-07S-skill-PERMISSION-FAULT-010 must keep path metadata validation in SkillDiscoveryService');
-  assertContains(sharedEnhancements, 'skill-path-noncanonical', 'R3-07S-skill-PERMISSION-FAULT-010 must expose noncanonical Skill paths as dirty child evidence');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-010 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-010 must have noncanonical path oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-011: generic inferred trigger words cannot load skills', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_INFERRED_TRIGGER_STOP_WORDS', 'R3-07S-skill-PERMISSION-FAULT-011 must keep generic inferred trigger filtering in SkillDiscoveryService');
-  assertContains(sharedEnhancements, "'skill'", 'R3-07S-skill-PERMISSION-FAULT-011 must filter generic singular skill trigger inference');
-  assertContains(sharedEnhancements, "'skills'", 'R3-07S-skill-PERMISSION-FAULT-011 must filter generic plural skills trigger inference');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-011 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-011 must have generic inferred trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-012: Skill discovery requires exact SKILL.md basename', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'isSkillDefinitionPath', 'R3-07S-skill-PERMISSION-FAULT-012 must keep exact Skill file detection in SkillDiscoveryService');
-  assertContains(sharedEnhancements, "name === 'SKILL.md'", 'R3-07S-skill-PERMISSION-FAULT-012 must reject suffix-confused NOTSKILL.md paths');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-012 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-012 must have suffix-confused Skill path oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-013: fenced Skill examples cannot provide permission metadata', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'skillMetadataLines', 'R3-07S-skill-PERMISSION-FAULT-013 must route Skill metadata parsing through fence-aware lines');
-  assertContains(sharedEnhancements, 'insideFence', 'R3-07S-skill-PERMISSION-FAULT-013 must track fenced blocks while parsing Skill metadata');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-013 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-013 must have fenced metadata oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-014: commented Skill metadata cannot provide permission evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'insideHtmlComment', 'R3-07S-skill-PERMISSION-FAULT-014 must track HTML comments while parsing Skill metadata');
-  assertContains(sharedEnhancements, '<!--', 'R3-07S-skill-PERMISSION-FAULT-014 must recognize HTML comment metadata boundaries');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-014 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-014 must have commented metadata oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-015: generic inferred helper trigger words cannot load skills', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, "'helper'", 'R3-07S-skill-PERMISSION-FAULT-015 must filter generic helper trigger inference');
-  assertContains(sharedEnhancements, "'generic'", 'R3-07S-skill-PERMISSION-FAULT-015 must filter generic description trigger inference');
-  assertContains(sharedEnhancements, "'reference'", 'R3-07S-skill-PERMISSION-FAULT-015 must filter generic reference trigger inference');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-015 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-015 must have generic helper inferred trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-016: example Skill metadata cannot provide permission evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_BODY_SECTION_MARKER', 'R3-07S-skill-PERMISSION-FAULT-016 must filter body/example metadata in the existing Skill parser owner');
-  assertContains(sharedEnhancements, 'insideBodySection', 'R3-07S-skill-PERMISSION-FAULT-016 must keep body-section state inside skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-016 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-016 must have example metadata oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-017: natural-language example metadata cannot provide permission evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'for\\s+(?:example|instance)', 'R3-07S-skill-PERMISSION-FAULT-017 must filter natural-language example markers');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-017 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-017 must have natural-language example metadata oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-018: bare example headings cannot provide permission evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, '(?:\\s*:)?', 'R3-07S-skill-PERMISSION-FAULT-018 must treat bare body section headings as metadata boundaries');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-018 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-018 must have bare heading metadata oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-019: closed frontmatter body cannot provide permission evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'insideFrontmatter', 'R3-07S-skill-PERMISSION-FAULT-019 must keep frontmatter body filtering in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-019 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-019 must have closed frontmatter metadata oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-020: unclosed frontmatter cannot provide permission evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'frontmatterEndLine', 'R3-07S-skill-PERMISSION-FAULT-020 must require a closed frontmatter boundary');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-020 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-020 must have unclosed frontmatter metadata oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-021: generic action words cannot infer Skill triggers', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, "'edits'", 'R3-07S-skill-PERMISSION-FAULT-021 must filter generic edit action trigger inference');
-  assertContains(sharedEnhancements, "'executes'", 'R3-07S-skill-PERMISSION-FAULT-021 must filter generic execute action trigger inference');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-021 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-021 must have generic action inferred trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-022: inline HTML comments cannot provide Skill metadata', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, "trimmed.indexOf('<!--')", 'R3-07S-skill-PERMISSION-FAULT-022 must detect inline HTML comment openings');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-022 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-022 must have inline HTML comment metadata oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-023: top-level example headings cannot provide Skill metadata', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, '#{1,}\\s+', 'R3-07S-skill-PERMISSION-FAULT-023 must treat top-level example headings as body metadata boundaries');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-023 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-023 must have top-level example heading metadata oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-024: generic artifact nouns cannot infer Skill triggers', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, "'component'", 'R3-07S-skill-PERMISSION-FAULT-024 must filter generic component inferred triggers');
-  assertContains(sharedEnhancements, "'configuration'", 'R3-07S-skill-PERMISSION-FAULT-024 must filter generic configuration inferred triggers');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-024 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-024 must have generic artifact inferred trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-025: compound artifact identifiers cannot infer Skill triggers', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'splitSkillTriggerTokens', 'R3-07S-skill-PERMISSION-FAULT-025 must split inferred trigger tokens at identifier separators');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-025 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-025 must have compound artifact inferred trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-026: numeric-only tokens cannot infer Skill triggers', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'hasSkillTriggerLetter', 'R3-07S-skill-PERMISSION-FAULT-026 must require letters in inferred trigger tokens');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-026 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-026 must have numeric inferred trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-027: Markdown horizontal rules stop Skill metadata parsing', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_BODY_SEPARATOR', 'R3-07S-skill-PERMISSION-FAULT-027 must keep horizontal-rule body filtering in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-027 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-027 must have horizontal-rule metadata oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-028: spaced Markdown thematic breaks stop Skill metadata parsing', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'isSkillMetadataBodySeparator', 'R3-07S-skill-PERMISSION-FAULT-028 must normalize spaced thematic break body separators');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-028 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-028 must have spaced horizontal-rule metadata oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-029: subsequent top-level Markdown headings stop Skill metadata parsing', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'isSkillMetadataTitleHeading', 'R3-07S-skill-PERMISSION-FAULT-029 must keep top-level heading title/body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-029 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-029 must have top-level heading body metadata oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-030: tips body labels stop Skill metadata parsing', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'tips?', 'R3-07S-skill-PERMISSION-FAULT-030 must treat tips body labels as metadata boundaries');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-030 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-030 must have tips body metadata oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-031: details HTML blocks stop Skill metadata parsing', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_BODY_HTML_BLOCK_MARKER', 'R3-07S-skill-PERMISSION-FAULT-031 must treat details HTML body blocks as metadata boundaries');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-031 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-031 must have details body metadata oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-032: table HTML blocks stop Skill metadata parsing', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_BODY_HTML_TAG_NAME_MARKER', 'R3-07S-skill-PERMISSION-FAULT-032 must treat table HTML body blocks through the shared HTML tag boundary owner');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-032 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-032 must have table body metadata oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-033: pre HTML blocks stop Skill metadata parsing', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_BODY_HTML_TAG_NAME_MARKER', 'R3-07S-skill-PERMISSION-FAULT-033 must treat pre HTML body blocks through the shared HTML tag boundary owner');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-033 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-033 must have pre body metadata oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-034: common HTML container blocks stop Skill metadata parsing', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_BODY_HTML_TAG_NAME_MARKER', 'R3-07S-skill-PERMISSION-FAULT-034 must treat common HTML container body blocks through the shared HTML tag boundary owner');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-034 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-034 must have div body metadata oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-035: plain body paragraphs stop Skill metadata parsing', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'isSkillMetadataHeaderLine', 'R3-07S-skill-PERMISSION-FAULT-035 must keep plain paragraph boundary ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-035 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-035 must have plain paragraph metadata oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-036: non-ASCII triggers require token boundaries', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_TRIGGER_WORD_BOUNDARY_PATTERN', 'R3-07S-skill-PERMISSION-FAULT-036 must keep Unicode trigger boundary ownership in SkillDiscoveryService');
-  assertContains(sharedEnhancements, '\\\\p{L}\\\\p{N}_', 'R3-07S-skill-PERMISSION-FAULT-036 must not match non-ASCII triggers by raw substring includes');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-036 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-036 must have non-ASCII substring trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-037: permission fault evidence must name one skill evidence source', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'slot-child-permission-fault-evidence-ambiguous-veto', 'R3-07S-skill-PERMISSION-FAULT-037 must veto multi-skill permission/fault child evidence');
-  assertContains(sharedEnhancements, 'childEvidenceRefs.length > 1', 'R3-07S-skill-PERMISSION-FAULT-037 must keep single evidence-source ownership in ExtensionProfilePlanService');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-037 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-037 must have multi-skill same-denial oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-038: Markdown blockquote body cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_BLOCKQUOTE_MARKER', 'R3-07S-skill-PERMISSION-FAULT-038 must keep Markdown blockquote body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-038 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-038 must have Markdown blockquote inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-039: inferred Skill path triggers require a single canonical segment', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_INFERRED_TRIGGER_PATH_SEGMENT_PATTERN', 'R3-07S-skill-PERMISSION-FAULT-039 must keep inferred path trigger ownership in SkillDiscoveryService');
-  assertContains(sharedEnhancements, 'inferredSkillPathTriggerSource', 'R3-07S-skill-PERMISSION-FAULT-039 must not infer triggers from compound Skill directory names');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-039 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-039 must have compound path inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-040: Markdown list bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_LIST_MARKER', 'R3-07S-skill-PERMISSION-FAULT-040 must keep Markdown list body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-040 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-040 must have Markdown list inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-041: Markdown table bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_TABLE_ROW_MARKER', 'R3-07S-skill-PERMISSION-FAULT-041 must keep Markdown table row body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-041 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-041 must have Markdown table inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-042: Markdown link bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_LINK_MARKER', 'R3-07S-skill-PERMISSION-FAULT-042 must keep Markdown link body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-042 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-042 must have Markdown link inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-043: inline HTML bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_BODY_HTML_BLOCK_MARKER', 'R3-07S-skill-PERMISSION-FAULT-043 must keep HTML body ownership in skillMetadataLines');
-  assertContains(sharedEnhancements, '(?:>.*)?', 'R3-07S-skill-PERMISSION-FAULT-043 must treat inline HTML body content as metadata boundary');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-043 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-043 must have inline HTML inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-044: inline HTML table-child bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_BODY_HTML_TAG_NAME_MARKER', 'R3-07S-skill-PERMISSION-FAULT-044 must treat HTML child body tags through the shared HTML tag boundary owner');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-044 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-044 must have inline HTML table-child inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-045: Markdown autolink bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_AUTOLINK_MARKER', 'R3-07S-skill-PERMISSION-FAULT-045 must keep Markdown autolink body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-045 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-045 must have Markdown autolink inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-046: inline HTML media bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_BODY_HTML_TAG_NAME_MARKER', 'R3-07S-skill-PERMISSION-FAULT-046 must treat HTML media body tags through the shared HTML tag boundary owner');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-046 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-046 must have inline HTML media inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-047: inline HTML control bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_BODY_HTML_TAG_NAME_MARKER', 'R3-07S-skill-PERMISSION-FAULT-047 must consolidate HTML tag body ownership instead of growing tag allowlists');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-047 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-047 must have inline HTML control inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-048: Markdown setext heading bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_SETEXT_UNDERLINE_MARKER', 'R3-07S-skill-PERMISSION-FAULT-048 must keep Markdown setext body heading ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-048 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-048 must have Markdown setext inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-049: Markdown definition list bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_DEFINITION_LIST_DETAIL_MARKER', 'R3-07S-skill-PERMISSION-FAULT-049 must keep Markdown definition-list body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-049 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-049 must have Markdown definition-list inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-050: Markdown indented code bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_INDENTED_CODE_MARKER', 'R3-07S-skill-PERMISSION-FAULT-050 must keep Markdown indented-code body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-050 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-050 must have Markdown indented-code inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-051: Markdown inline code bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_INLINE_CODE_MARKER', 'R3-07S-skill-PERMISSION-FAULT-051 must keep Markdown inline-code body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-051 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-051 must have Markdown inline-code inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-052: Markdown emphasis bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_EMPHASIS_MARKER', 'R3-07S-skill-PERMISSION-FAULT-052 must keep Markdown emphasis body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-052 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-052 must have Markdown emphasis inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-053: Markdown bare URL bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_BARE_URL_MARKER', 'R3-07S-skill-PERMISSION-FAULT-053 must keep Markdown bare URL body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-053 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-053 must have Markdown bare URL inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-054: Markdown escaped HTML bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_ESCAPED_HTML_MARKER', 'R3-07S-skill-PERMISSION-FAULT-054 must keep Markdown escaped HTML body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-054 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-054 must have Markdown escaped HTML inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-055: Markdown escaped autolink bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_ESCAPED_AUTOLINK_MARKER', 'R3-07S-skill-PERMISSION-FAULT-055 must keep Markdown escaped autolink body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-055 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-055 must have Markdown escaped autolink inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-056: Markdown backslash escaped HTML bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_BACKSLASH_ESCAPED_HTML_MARKER', 'R3-07S-skill-PERMISSION-FAULT-056 must keep Markdown backslash escaped HTML body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-056 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-056 must have Markdown backslash escaped HTML inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-057: Markdown backslash escaped autolink bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_BACKSLASH_ESCAPED_AUTOLINK_MARKER', 'R3-07S-skill-PERMISSION-FAULT-057 must keep Markdown backslash escaped autolink body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-057 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-057 must have Markdown backslash escaped autolink inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-058: Markdown container directive bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_CONTAINER_DIRECTIVE_MARKER', 'R3-07S-skill-PERMISSION-FAULT-058 must keep Markdown container directive body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-058 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-058 must have Markdown container directive inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-059: Markdown admonition bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_ADMONITION_MARKER', 'R3-07S-skill-PERMISSION-FAULT-059 must keep Markdown admonition body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-059 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-059 must have Markdown admonition inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-060: Markdown math block bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_MATH_BLOCK_MARKER', 'R3-07S-skill-PERMISSION-FAULT-060 must keep Markdown math block body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-060 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-060 must have Markdown math block inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-061: Markdown MDX comment bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_MDX_COMMENT_MARKER', 'R3-07S-skill-PERMISSION-FAULT-061 must keep Markdown MDX comment body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-061 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-061 must have Markdown MDX comment inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-062: Markdown MDX fragment bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_MDX_FRAGMENT_MARKER', 'R3-07S-skill-PERMISSION-FAULT-062 must keep Markdown MDX fragment body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-062 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-062 must have Markdown MDX fragment inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-063: Markdown backslash escaped emphasis bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_BACKSLASH_ESCAPED_PUNCTUATION_MARKER', 'R3-07S-skill-PERMISSION-FAULT-063 must keep Markdown backslash escaped punctuation body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-063 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-063 must have Markdown backslash escaped emphasis inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-064: Markdown backslash escaped heading bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_BACKSLASH_ESCAPED_PUNCTUATION_MARKER', 'R3-07S-skill-PERMISSION-FAULT-064 must keep Markdown backslash escaped punctuation body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-064 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-064 must have Markdown backslash escaped heading inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-065: Markdown backslash escaped blockquote bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_BACKSLASH_ESCAPED_PUNCTUATION_MARKER', 'R3-07S-skill-PERMISSION-FAULT-065 must keep Markdown backslash escaped punctuation body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-065 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-065 must have Markdown backslash escaped blockquote inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-066: Markdown backslash escaped link bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_BACKSLASH_ESCAPED_PUNCTUATION_MARKER', 'R3-07S-skill-PERMISSION-FAULT-066 must keep Markdown backslash escaped punctuation body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-066 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-066 must have Markdown backslash escaped link inferred-trigger oracle');
-});
-
-test('R3-07S-skill-PERMISSION-FAULT-067: Markdown backslash escaped table bodies cannot infer Skill trigger evidence', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_BACKSLASH_ESCAPED_PUNCTUATION_MARKER', 'R3-07S-skill-PERMISSION-FAULT-067 must keep Markdown backslash escaped punctuation body ownership in skillMetadataLines');
-  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-067 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-067 must have Markdown backslash escaped table inferred-trigger oracle');
-});
-
-[
-  ['068', 'Markdown shortcut link bodies', 'SKILL_METADATA_MARKDOWN_SHORTCUT_REFERENCE_MARKER', 'Markdown shortcut link'],
-  ['069', 'Markdown shortcut image bodies', 'SKILL_METADATA_MARKDOWN_SHORTCUT_REFERENCE_MARKER', 'Markdown shortcut image'],
-  ['070', 'Markdown footnote reference bodies', 'SKILL_METADATA_MARKDOWN_SHORTCUT_REFERENCE_MARKER', 'Markdown footnote reference'],
-  ['071', 'Markdown wikilink bodies', 'SKILL_METADATA_MARKDOWN_WIKILINK_MARKER', 'Markdown wikilink'],
-  ['072', 'Markdown MDX expression bodies', 'SKILL_METADATA_MARKDOWN_MDX_EXPRESSION_MARKER', 'Markdown MDX expression'],
-  ['073', 'Markdown MDX export bodies', 'SKILL_METADATA_MARKDOWN_MDX_ESM_MARKER', 'Markdown MDX export'],
-  ['074', 'Markdown MDX import bodies', 'SKILL_METADATA_MARKDOWN_MDX_ESM_MARKER', 'Markdown MDX import'],
-  ['075', 'Markdown numeric escaped bracket reference bodies', 'SKILL_METADATA_MARKDOWN_ESCAPED_BRACKET_REFERENCE_MARKER', 'Markdown numeric escaped bracket reference'],
-  ['076', 'Markdown named escaped bracket reference bodies', 'SKILL_METADATA_MARKDOWN_ESCAPED_BRACKET_REFERENCE_MARKER', 'Markdown named escaped bracket reference'],
-  ['077', 'Markdown HTML doctype bodies', 'SKILL_METADATA_MARKDOWN_HTML_SPECIAL_MARKER', 'Markdown HTML doctype'],
-  ['078', 'Markdown CDATA bodies', 'SKILL_METADATA_MARKDOWN_HTML_SPECIAL_MARKER', 'Markdown CDATA'],
-  ['079', 'Markdown XML processing instruction bodies', 'SKILL_METADATA_MARKDOWN_HTML_SPECIAL_MARKER', 'Markdown XML processing instruction'],
-  ['080', 'Markdown ERB template bodies', 'SKILL_METADATA_MARKDOWN_ANGLE_TEMPLATE_MARKER', 'Markdown ERB template'],
-  ['081', 'Markdown ERB output bodies', 'SKILL_METADATA_MARKDOWN_ANGLE_TEMPLATE_MARKER', 'Markdown ERB output'],
-  ['082', 'Markdown empty reference definition bodies', 'SKILL_METADATA_MARKDOWN_REFERENCE_DEFINITION_MARKER', 'Markdown empty reference definition'],
-  ['083', 'Markdown abbreviation definition bodies', 'SKILL_METADATA_MARKDOWN_REFERENCE_DEFINITION_MARKER', 'Markdown abbreviation definition'],
-  ['084', 'Markdown highlight bodies', 'SKILL_METADATA_MARKDOWN_INLINE_DECORATION_MARKER', 'Markdown highlight'],
-  ['085', 'Markdown superscript bodies', 'SKILL_METADATA_MARKDOWN_INLINE_DECORATION_MARKER', 'Markdown superscript'],
-  ['086', 'Markdown subscript bodies', 'SKILL_METADATA_MARKDOWN_INLINE_DECORATION_MARKER', 'Markdown subscript'],
-  ['087', 'Markdown compact math bodies', 'SKILL_METADATA_MARKDOWN_COMPACT_MATH_MARKER', 'Markdown compact math'],
-  ['088', 'Markdown compact admonition bodies', 'SKILL_METADATA_MARKDOWN_COMPACT_ADMONITION_MARKER', 'Markdown compact admonition'],
-  ['089', 'Markdown YAML directive bodies', 'SKILL_METADATA_MARKDOWN_YAML_DIRECTIVE_MARKER', 'Markdown YAML directive'],
-  ['090', 'Markdown double-brace template bodies', 'SKILL_METADATA_MARKDOWN_BRACE_TEMPLATE_MARKER', 'Markdown double-brace template'],
-  ['091', 'Markdown emoji shortcode bodies', 'SKILL_METADATA_MARKDOWN_EMOJI_SHORTCODE_MARKER', 'Markdown emoji shortcode'],
-  ['092', 'Markdown unknown label bodies', 'SKILL_METADATA_MARKDOWN_UNKNOWN_LABEL_MARKER', 'Markdown unknown label'],
-  ['093', 'Markdown at-mention bodies', 'SKILL_METADATA_MARKDOWN_AT_MENTION_MARKER', 'Markdown at-mention'],
-  ['094', 'Markdown named entity prefix bodies', 'SKILL_METADATA_MARKDOWN_LEADING_ENTITY_MARKER', 'Markdown named entity prefix'],
-  ['095', 'Markdown numeric entity prefix bodies', 'SKILL_METADATA_MARKDOWN_LEADING_ENTITY_MARKER', 'Markdown numeric entity prefix'],
-  ['096', 'Markdown hex entity prefix bodies', 'SKILL_METADATA_MARKDOWN_LEADING_ENTITY_MARKER', 'Markdown hex entity prefix'],
-  ['097', 'Markdown triple-brace template bodies', 'SKILL_METADATA_MARKDOWN_BRACE_TEMPLATE_MARKER', 'Markdown triple-brace template'],
-  ['098', 'Markdown fullwidth bracket bodies', 'SKILL_METADATA_MARKDOWN_FULLWIDTH_REFERENCE_MARKER', 'Markdown fullwidth bracket'],
-  ['099', 'Markdown fullwidth wikilink bodies', 'SKILL_METADATA_MARKDOWN_FULLWIDTH_REFERENCE_MARKER', 'Markdown fullwidth wikilink'],
-  ['100', 'Markdown fullwidth reference definition bodies', 'SKILL_METADATA_MARKDOWN_FULLWIDTH_REFERENCE_MARKER', 'Markdown fullwidth reference definition'],
-].forEach(([id, bodyKind, ownerMarker, oracleKind]) => {
-  test(`R3-07S-skill-PERMISSION-FAULT-${id}: ${bodyKind} cannot infer Skill trigger evidence`, () => {
-    const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-    const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-    assertContains(sharedEnhancements, ownerMarker, `R3-07S-skill-PERMISSION-FAULT-${id} must keep ${oracleKind} body ownership in skillMetadataLines`);
-    assertContains(sharedTests, `R3-07S-skill-PERMISSION-FAULT-${id} ExtensionProfilePlanService`, `R3-07S-skill-PERMISSION-FAULT-${id} must have ${oracleKind} inferred-trigger oracle`);
+test('C11: one shared run-control owner freezes effects and settles cancellation after reconciliation', () => {
+  const runControl = repoSrc('packages/shared/src/coding-run-control.ts');
+  const kernel = repoSrc('packages/shared/src/coding-kernel.ts');
+  const toolExecution = repoSrc('packages/shared/src/coding-tool-execution.ts');
+  const workspaceMutation = repoSrc('packages/shared/src/coding-workspace-mutation.ts');
+  const externalEffect = repoSrc('packages/shared/src/coding-external-effect.ts');
+  const coordinator = src('src/app/active-chat-run-coordinator.ts');
+  const runControlTests = repoSrc('packages/shared/test/coding-run-control.test.mjs');
+
+  assertContains(runControl, 'CanonicalRunControlService', 'C11 must have one shared run-control owner');
+  assertContains(runControl, 'beginEffect', 'C11 run control must issue effect leases');
+  assertContains(runControl, 'consumeSteering', 'C11 run control must own steering intake');
+  assertContains(kernel, 'runControl', 'Kernel must bind the canonical run-control session');
+  [toolExecution, workspaceMutation, externalEffect].forEach(source => {
+    assertContains(source, 'effectGuard', 'every side-effect owner must consume the cancellation guard');
   });
+  assertContains(coordinator, 'requestCancellation', 'VS Code cancellation must first record nonterminal intent');
+  assertContains(coordinator, 'cancellationData', 'VS Code must retain cancellation correlation until settlement');
+  assertContains(runControlTests, 'I22-CAN-01 user journey', 'C11 needs a post-cancel effect rejection oracle');
+  assertContains(runControlTests, 'I22-STR-01 user journey', 'steering receipts must not persist prompts');
 });
 
-test('R3-07G-skill-AGGREGATE: skill denominator aggregation is read-only and parent-owned', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+test('C11: collaboration and accessibility are native, surface-specific contracts', () => {
+  const collaboration = repoSrc('packages/shared/src/coding-user-collaboration.ts');
+  const surface = repoSrc('packages/shared/src/surface-adapter.ts');
+  const vscodeAdapter = src('src/ui/vscode-surface-adapter.ts');
+  const cliAdapter = repoSrc('packages/cli/src/cli-surface-adapter.ts');
+  const headlessAdapter = repoSrc('packages/headless/src/headless-surface-adapter.ts');
+  const collaborationTests = repoSrc('packages/shared/test/coding-user-collaboration.test.mjs');
 
-  assertContains(sharedEnhancements, 'EXTENSION_PROFILE_KIND_AGGREGATE_PROTOCOL', 'R3-07G-skill aggregate must have an explicit aggregate receipt protocol');
-  assertContains(sharedEnhancements, 'ExtensionProfileKindAggregateReceipt', 'R3-07G-skill aggregate must have a typed receipt');
-  assertContains(sharedEnhancements, 'aggregateKindProfile', 'ExtensionProfilePlanService must own kind aggregation');
-  assertContains(sharedEnhancements, 'aggregateExecutionAllowed: false', 'R3-07G aggregate must remain read-only and cannot execute missing slots');
-  assertContains(sharedEnhancements, 'ownedSlotExecutionReceipts.has(receipt)', 'R3-07G aggregate must reject caller-forged or foreign slot receipts');
-  assertContains(sharedTests, 'R3-07G-skill-AGGREGATE ExtensionProfilePlanService blocks incomplete skill denominator', 'R3-07G-skill aggregate must have an incomplete denominator oracle');
-  assertContains(sharedTests, 'R3-07G-skill-AGGREGATE ExtensionProfilePlanService passes only a complete owned skill denominator', 'R3-07G-skill aggregate must have a complete denominator oracle');
-  assertContains(sharedTests, 'R3-07G-skill-AGGREGATE ExtensionProfilePlanService rejects duplicate foreign and failed skill slot receipts', 'R3-07G-skill aggregate must have duplicate/foreign/failed receipt oracles');
-});
-
-test('R3-07G-hook-AGGREGATE: hook denominator aggregation is kind-specific and parent-owned', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'extensionProfilePermissionFaultViolations', 'R3-07G-hook aggregate must use kind-aware permission/fault settlement');
-  assertContains(sharedEnhancements, 'hookPermissionFaultViolations', 'Hook permission/fault slots must be owned by HookPolicy evidence');
-  assertContains(sharedEnhancements, "violation.startsWith('hook-direct-writer-denied:')", 'Hook direct-writer refusal must qualify only as hook permission/fault evidence');
-  assertContains(sharedEnhancements, "violation.startsWith('hook-failure-visible:')", 'Hook failure visibility must qualify only as hook permission/fault evidence');
-  assertContains(sharedEnhancements, "violation.startsWith('hook-bypass-visible:')", 'Hook bypass visibility must qualify only as hook permission/fault evidence');
-  assertContains(sharedTests, 'R3-07G-hook-AGGREGATE ExtensionProfilePlanService blocks incomplete hook denominator', 'R3-07G-hook aggregate must have an incomplete denominator oracle');
-  assertContains(sharedTests, 'R3-07G-hook-AGGREGATE ExtensionProfilePlanService passes only a complete owned hook denominator', 'R3-07G-hook aggregate must have a complete denominator oracle');
-  assertContains(sharedTests, 'R3-07G-hook-AGGREGATE ExtensionProfilePlanService rejects duplicate foreign wrong-protocol and failed hook slot receipts', 'R3-07G-hook aggregate must reject duplicate, wrong-kind, wrong-protocol, and failed receipts');
-  assertContains(sharedTests, 'skill-cannot-qualify-hook', 'R3-07G-hook aggregate must prove skill receipts cannot qualify hook slots');
-});
-
-test('R3-07G remaining kind aggregates: mcp plugin and subagent use kind-owned permission faults', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  [
-    ['mcp', 'mcpPermissionFaultViolations', "violation.startsWith('mcp-unknown-mutable-veto:')", 'skill-cannot-qualify-mcp'],
-    ['plugin', 'pluginPermissionFaultViolations', "violation.startsWith('plugin-unsigned-veto:')", 'skill-cannot-qualify-plugin'],
-    ['subagent', 'subagentPermissionFaultViolations', "violation === 'child-direct-effect-rejected'", 'skill-cannot-qualify-subagent'],
-  ].forEach(([kind, owner, faultMarker, foreignMarker]) => {
-    assertContains(sharedEnhancements, owner, `R3-07G-${kind} aggregate must have a kind-specific permission/fault owner`);
-    assertContains(sharedEnhancements, faultMarker, `R3-07G-${kind} aggregate must accept its own fault evidence`);
-    assertContains(sharedTests, `kind: '${kind}'`, `R3-07G-${kind} aggregate must be registered in the denominator oracle table`);
-    assertContains(sharedTests, 'aggregates only complete owned ${spec.kind} receipts', `R3-07G-${kind} aggregate must have a complete/incomplete denominator oracle`);
-    assertContains(sharedTests, 'rejects duplicate foreign wrong-protocol and failed ${spec.kind} receipts', `R3-07G-${kind} aggregate must reject duplicate, foreign, wrong-protocol, and failed receipts`);
-    assertContains(sharedTests, foreignMarker, `R3-07G-${kind} aggregate must prove skill receipts cannot qualify ${kind} slots`);
+  assertContains(collaboration, 'CanonicalUserCollaborationService', 'collaboration needs one semantic owner');
+  assertContains(collaboration, 'CanonicalSurfaceAccessibilityService', 'accessibility needs one semantic owner');
+  assertContains(surface, 'collaboration()', 'every SurfaceAdapter must expose collaboration conformance');
+  assertContains(surface, 'accessibility()', 'every SurfaceAdapter must expose accessibility conformance');
+  [vscodeAdapter, cliAdapter, headlessAdapter].forEach(source => {
+    assertContains(source, 'collaboration()', 'each production surface must project its native collaboration contract');
+    assertContains(source, 'accessibility()', 'each production surface must project its native accessibility contract');
   });
+  assertContains(collaborationTests, 'I22-COL-01 user journey', 'collaboration needs a product-path oracle');
+  assertContains(collaborationTests, 'I22-ACC-01 user journey', 'accessibility needs a product-path oracle');
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// §九: Vision / image input
-// ─────────────────────────────────────────────────────────────────────────────
+test('C13: MCP uses the official protocol engine and risk-scaled session authority', () => {
+  const boundary = repoSrc('packages/shared/src/coding-mcp-boundary.ts');
+  const manager = src('src/mcp/client.ts');
+  const callBoundary = src('src/app/evidence-aware-mcp-tool-call.ts');
+  const packageJson = JSON.parse(src('package.json'));
+
+  assert.equal(packageJson.dependencies['@modelcontextprotocol/sdk'], '^1.30.0');
+  assertContains(boundary, 'prepareServerLaunch', 'MCP config must first produce a launch request');
+  assertContains(boundary, 'authorizeServerLaunch', 'MCP server launch needs an exact user receipt');
+  assertContains(boundary, 'prepareToolCall', 'MCP invocation must produce a separate request');
+  assertContains(boundary, "tool.risk !== 'medium'", 'only risky MCP calls should interrupt the user after session launch');
+  assertContains(boundary, 'tool-call-effect-already-claimed', 'an MCP call receipt must not replay an external effect');
+  assertContains(callBoundary, 'session-approved-read-only-mcp-tool-call', 'read-only session calls need a visible policy receipt');
+  assertContains(manager, 'StdioClientTransport', 'MCP transport must use the official SDK');
+  assertContains(manager, 'getDefaultEnvironment()', 'MCP must inherit only the SDK safe environment baseline');
+  assertContains(manager, 'listAllTools', 'MCP discovery must handle pagination');
+  assertContains(manager, 'UNTRUSTED MCP RESULT', 'MCP results must be labeled as untrusted data');
+  assertDoesNotContain(manager, 'child_process', 'MCP must not revive the hand-written process protocol');
+  assertDoesNotContain(callBoundary, 'autopilotMode', 'autopilot must not bypass risk classification');
+});
+
+test('C13: inactive extension prototypes stay absent until a product trigger exists', () => {
+  const obsoletePaths = [
+    'packages/shared/src/agent-enhancements.ts',
+    'packages/shared/test/agent-enhancements.test.mjs',
+    'packages/vscode-extension/src/app/subagent-contract-service.ts',
+    'packages/vscode-extension/src/app/worktree-conflict-service.ts',
+    'packages/vscode-extension/test/unit/subagent-contract-service.test.mjs',
+    'packages/vscode-extension/test/unit/worktree-conflict-service.test.mjs',
+  ];
+  for (const relPath of obsoletePaths) {
+    assert.equal(existsSync(path.join(repositoryRoot, relPath)), false, `${relPath} must remain deleted`);
+  }
+  assertDoesNotContain(repoSrc('packages/shared/src/index.ts'), './agent-enhancements', 'shared API must not advertise inactive prototypes');
+  assertDoesNotContain(src('src/app/index.ts'), './subagent-contract-service', 'VS API must not advertise an unreachable subagent owner');
+});
 
 test('§9 Vision: pendingImages array in webview.js', () => {
   const code = webviewRuntime();
@@ -2284,173 +1273,26 @@ test('Real DeepSeek harness: quality gates are scenario-driven and task-specific
   assertDoesNotContain(harness, 'containsMaintenanceAnalysis', 'generic harness must not hard-code the maintenance benchmark domain');
 });
 
-test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visible cases', () => {
+test('Real DeepSeek harness: active convergence scenarios are task-specific and replace obsolete prototypes', () => {
   const harness = src('test/devseek-real-plugin-deepseek-harness.mjs');
   const profile = src('test/harness/real-plugin-quality-profile.mjs');
-  const runBudget = repoSrc('packages/shared/src/coding-run-budget.ts');
-  assertContains(profile, 'buildRealPluginScenarioSpec', 'real harness must expose named scenario contracts');
-  assertContains(profile, 'listRealPluginIterationScenarioSpecs', 'R3 visible simulations must be enumerable for freshness checks');
-  assertContains(profile, 'freshCaseMarker', 'R3 scenarios must carry a unique fresh-case marker');
-  assertContains(profile, 'semanticAcceptance', 'R3 scenarios must name semantic acceptance anchors');
-  assertContains(profile, 'expectedReportLanguage', 'Chinese R3 live cases must declare report language expectations in the scenario contract');
-  assertContains(profile, 'rejectFixedLineCountOnly', 'R3 scenarios must reject fixed line-count-only settlement');
-  assertContains(profile, 'not fixed line-count smoke', 'R3 scenarios must reject stale fixed-shape smoke settlement');
-  assertContains(profile, 'id: `r3-07g-${profileKind}-aggregate`', 'R3-07G named scenarios must use kind-specific ids');
-  assertContains(profile, "profileKind: 'skill'", 'R3-07G must have a dedicated skill real-plugin scenario');
-  assertContains(profile, "profileKind: 'hook'", 'R3-07G hook iteration must have a fresh dedicated real-plugin scenario');
-  assertContains(profile, "profileKind: 'mcp'", 'R3-07G mcp iteration must have a fresh dedicated real-plugin scenario');
-  assertContains(profile, "profileKind: 'plugin'", 'R3-07G plugin iteration must have a fresh dedicated real-plugin scenario');
-  assertContains(profile, "profileKind: 'subagent'", 'R3-07G subagent iteration must have a fresh dedicated real-plugin scenario');
-  assertContains(profile, 'markdown-file-deliverable', 'R3-07G scenario must stay on a Markdown file deliverable route');
-  assertContains(profile, 'r3-07g-${profileKind}-aggregate-denominator.md', 'R3-07G scenarios must write distinct kind-specific artifacts');
-  assertContains(profile, '20 task slots', 'R3-07G artifact gate must assert the task denominator');
-  assertContains(profile, '100 permission-fault slots', 'R3-07G artifact gate must assert the permission-fault denominator');
-  assertContains(profile, 'hook-direct-writer-denied', 'R3-07G hook artifact gate must assert hook permission/fault evidence');
-  assertContains(profile, 'skill receipts cannot qualify hook slots', 'R3-07G hook artifact gate must reject cross-kind settlement');
-  assertContains(profile, 'mcp-unknown-mutable-veto', 'R3-07G mcp artifact gate must assert mcp permission/fault evidence');
-  assertContains(profile, 'plugin-unsigned-veto', 'R3-07G plugin artifact gate must assert plugin permission/fault evidence');
-  assertContains(profile, 'child-direct-effect-rejected', 'R3-07G subagent artifact gate must assert subagent permission/fault evidence');
-  assertContains(profile, 'skill receipts cannot qualify mcp slots', 'R3-07G mcp artifact gate must reject cross-kind settlement');
-  assertContains(profile, 'skill receipts cannot qualify plugin slots', 'R3-07G plugin artifact gate must reject cross-kind settlement');
-  assertContains(profile, 'skill receipts cannot qualify subagent slots', 'R3-07G subagent artifact gate must reject cross-kind settlement');
-  assertContains(profile, 'missing/failed/vetoed/blocked/duplicate/foreign', 'R3-07G artifact gate must assert aggregate veto classes');
-  assertContains(profile, 'minimumMarkdownLines', 'R3-07G artifact gate must check scenario-specific document shape');
-  assertContains(profile, 'forbiddenArtifactSnippets', 'R3-07G artifact gate must reject stale benchmark-domain artifacts');
-  assertContains(profile, 'uav-warranty-reminder', 'R3-07G artifact gate must reject the old warranty simulation artifact family');
-  assertContains(profile, 'r3-07h-required-kinds-aggregate', 'R3-07H must add a fresh required-kinds real-plugin scenario');
-  assertContains(profile, 'r3-07h-required-kinds-aggregate.md', 'R3-07H scenario must write a distinct artifact');
-  assertContains(profile, 'aggregateRequiredKinds', 'R3-07H artifact gate must assert the new aggregate owner entry point');
-  assertContains(profile, 'required-kinds-missing-veto', 'R3-07H artifact gate must assert missing-kind veto evidence');
-  assertContains(profile, 'required-kinds-duplicate-veto', 'R3-07H artifact gate must assert duplicate-kind veto evidence');
-  assertContains(profile, 'required-kinds-foreign-veto', 'R3-07H artifact gate must assert foreign-kind veto evidence');
-  assertContains(profile, 'required-kinds-blocked-veto', 'R3-07H artifact gate must assert blocked-kind veto evidence');
-  assertContains(profile, 'wrong-candidate', 'R3-07H artifact gate must assert wrong-candidate rejection');
-  assertContains(profile, 'one kind cannot substitute another', 'R3-07H artifact gate must assert cross-kind substitution rejection');
-  assertContains(profile, 'r3-08a-vscode-collaboration', 'R3-08A must add a fresh VS Code collaboration real-plugin scenario');
-  assertContains(profile, 'r3-08a-vscode-collaboration.md', 'R3-08A scenario must write a distinct artifact');
-  assertContains(profile, 'VSCodeSurfaceAdapter', 'R3-08A artifact gate must assert the VS Code surface owner');
-  assertContains(profile, 'SurfaceAdapter.renderEvent', 'R3-08A artifact gate must assert the renderEvent contract');
-  assertContains(profile, 'same trace/event', 'R3-08A artifact gate must assert trace identity');
-  assertContains(profile, 'surfaceTrace', 'R3-08A artifact gate must require user-visible trace metadata');
-  assertContains(profile, 'provider.status', 'R3-08A artifact gate must assert provider progress projection');
-  assertContains(profile, 'permission.requested', 'R3-08A artifact gate must assert permission projection');
-  assertContains(profile, 'fileChanges.proposed', 'R3-08A artifact gate must assert diff/file-change projection');
-  assertContains(profile, 'validation.completed', 'R3-08A artifact gate must assert validation projection');
-  assertContains(profile, 'qualityGate.completed', 'R3-08A artifact gate must assert quality gate projection');
-  assertContains(profile, 'checkpoint.available', 'R3-08A artifact gate must assert checkpoint projection');
-  assertContains(profile, 'agentCheckpointAvailable', 'R3-08A artifact gate must assert resume UI projection');
-  assertContains(profile, 'not only DOM fixture', 'R3-08A artifact gate must reject fixed DOM-only acceptance');
-  assertContains(profile, 'r3-08c-accessibility', 'R3-08C must add a fresh accessibility real-plugin scenario');
-  assertContains(profile, 'r3-08c-accessibility.md', 'R3-08C scenario must write a distinct artifact');
-  assertContains(profile, 'keyboard-navigation', 'R3-08C artifact gate must assert keyboard coverage');
-  assertContains(profile, 'screen-reader-live-status', 'R3-08C artifact gate must assert screen-reader status coverage');
-  assertContains(profile, 'focusable-action-surfaces', 'R3-08C artifact gate must assert focusable action surfaces');
-  assertContains(profile, 'status-not-color-only', 'R3-08C artifact gate must assert non-color-only status');
-  assertContains(profile, 'r3-08d-linux-conformance', 'R3-08D must add a fresh Linux conformance real-plugin scenario');
-  assertContains(profile, 'r3-08d-linux-conformance.md', 'R3-08D scenario must write a distinct artifact');
-  assertContains(profile, 'evaluateLinuxPlatformConformance', 'R3-08D artifact gate must assert the platform-runtime owner');
-  assertContains(profile, 'linux-local-xdg', 'R3-08D artifact gate must assert native Linux storage coverage');
-  assertContains(profile, 'linux-container-xdg', 'R3-08D artifact gate must assert container Linux storage coverage');
-  assertContains(profile, 'display-server', 'R3-08D artifact gate must assert native browser bridge reachability');
-  assertContains(profile, 'external-bridge-url', 'R3-08D artifact gate must assert container browser bridge reachability');
-  assertContains(profile, 'linux-browser-bridge-unreachable', 'R3-08D artifact gate must assert browser bridge fault evidence');
-  assertContains(profile, 'bridge-executable-not-executable', 'R3-08D artifact gate must assert bridge permission fault evidence');
-  assertContains(profile, 'linux-requires-posix-lf-case-sensitive-paths', 'R3-08D artifact gate must assert Linux path fault evidence');
-  assertContains(profile, 'r3-08e-windows-wsl-conformance', 'R3-08E must add a fresh Windows/WSL conformance real-plugin scenario');
-  assertContains(profile, 'r3-08e-windows-wsl-conformance.md', 'R3-08E scenario must write a distinct artifact');
-  assertContains(profile, 'evaluateWindowsWslPlatformConformance', 'R3-08E artifact gate must assert the platform-runtime owner');
-  assertContains(profile, 'windows-native-path', 'R3-08E artifact gate must assert Windows native path coverage');
-  assertContains(profile, 'wsl-posix-path', 'R3-08E artifact gate must assert WSL POSIX path coverage');
-  assertContains(profile, 'windows-crlf', 'R3-08E artifact gate must assert Windows native line-ending coverage');
-  assertContains(profile, 'wsl-lf', 'R3-08E artifact gate must assert WSL line-ending coverage');
-  assertContains(profile, 'windows-native-no-wsl', 'R3-08E artifact gate must assert native interop separation');
-  assertContains(profile, 'wsl-interop', 'R3-08E artifact gate must assert WSL interop coverage');
-  assertContains(profile, 'wsl-interop-missing', 'R3-08E artifact gate must assert WSL interop fault evidence');
-  assertContains(profile, 'r3-08f-macos-conformance', 'R3-08F must add a fresh macOS conformance real-plugin scenario');
-  assertContains(profile, 'r3-08f-macos-conformance.md', 'R3-08F scenario must write a distinct artifact');
-  assertContains(profile, 'evaluateMacOSPlatformConformance', 'R3-08F artifact gate must assert the platform-runtime owner');
-  assertContains(profile, 'macos-darwin', 'R3-08F artifact gate must assert Darwin OS coverage');
-  assertContains(profile, 'macos-posix-shell', 'R3-08F artifact gate must assert POSIX shell coverage');
-  assertContains(profile, 'macos-posix-path', 'R3-08F artifact gate must assert POSIX path coverage');
-  assertContains(profile, 'macos-keychain', 'R3-08F artifact gate must assert keychain coverage');
-  assertContains(profile, 'macos-browser-bridge', 'R3-08F artifact gate must assert browser bridge coverage');
-  assertContains(profile, 'macos-runtime', 'R3-08F artifact gate must assert runtime coverage');
-  assertContains(profile, 'r3-08f-macos-environment-deferred', 'R3-08F artifact gate must assert deferred non-macOS evidence');
-  assertContains(profile, 'macos-browser-bridge-evidence-deferred', 'R3-08F artifact gate must assert browser evidence deferral');
-  assertContains(profile, 'r3-09a-run-metrics-schema', 'R3-09A must add a fresh run metrics schema real-plugin scenario');
-  assertContains(profile, 'r3-09a-run-metrics-schema.md', 'R3-09A scenario must write a distinct artifact');
-  assertContains(profile, 'ProductRunEvidenceSession.recordRunMetrics', 'R3-09A artifact gate must assert the run evidence session owner');
-  assertContains(profile, 'run.metrics', 'R3-09A artifact gate must assert the append-only metrics event');
-  assertContains(profile, 'devseek.run-metrics/v1', 'R3-09A artifact gate must assert the metrics schema protocol');
-  assertContains(profile, 'token/tool/latency/retry/cost/evidence-size', 'R3-09A artifact gate must assert the full metrics denominator');
-  assertContains(profile, 'unknown-not-omitted', 'R3-09A artifact gate must assert explicit unknown metrics');
-  assertContains(profile, 'content-secret-free', 'R3-09A artifact gate must assert no contents or secrets in metrics');
-  assertContains(profile, 'r3-09b-budget-policy-decision', 'R3-09B must add a fresh budget policy real-plugin scenario');
-  assertContains(profile, 'r3-09b-budget-policy-decision.md', 'R3-09B scenario must write a distinct artifact');
-  assertContains(profile, 'decideRunBudgetPolicy', 'R3-09B artifact gate must assert the budget policy owner');
-  assertContains(profile, 'devseek.run-budget-policy/v1', 'R3-09B artifact gate must assert the policy protocol');
-  assertContains(profile, 'allow/replan/blocked', 'R3-09B artifact gate must assert the decision triad');
-  assertContains(profile, 'safety-and-acceptance-protected', 'R3-09B artifact gate must assert safety and acceptance protection');
-  assertContains(profile, 'no-progress-budget-exhausted', 'R3-09B artifact gate must assert bounded no-progress exhaustion');
-  assertContains(profile, 'r3-live-deepseek-login-ready-state', 'R3 live provider must add a fresh DeepSeek login-ready real-plugin scenario');
-  assertContains(profile, 'r3-live-deepseek-login-ready-state.md', 'R3 live login-ready scenario must write a distinct artifact');
-  assertContains(profile, 'plugin-opened DeepSeek page', 'R3 live login-ready artifact gate must assert the plugin-opened user path');
-  assertContains(profile, 'chatInput evidence', 'R3 live login-ready artifact gate must assert chat input evidence');
-  assertContains(profile, 'login-state-not-send-button', 'R3 live login-ready artifact gate must separate login state from send button readiness');
-  assertContains(profile, 'send button selector drift is not LOGIN_REQUIRED', 'R3 live login-ready artifact gate must reject relogin misclassification');
-  assertContains(runBudget, 'RUN_BUDGET_POLICY_PROTOCOL', 'R3-09B must define the budget policy protocol in the shared owner');
-  assertContains(runBudget, 'function decideRunBudgetPolicy', 'R3-09B budget decisions must be owned by canonical-run-budget');
-  assertContains(runBudget, 'RUN_BUDGET_REQUIRED_PHASES', 'R3-09B must protect required safety and acceptance phases');
-  assertContains(runBudget, 'required-budget-exceeded-blocked', 'R3-09B must block rather than skip exhausted required phases');
-  assertContains(harness, 'createR3KindAggregateFixture', 'real harness must share the R3 kind aggregate fixture instead of duplicating skill/hook setup');
-  assertContains(harness, 'createR3RequiredKindsAggregateFixture', 'real harness must add the R3-07H required-kinds fixture');
-  assertContains(harness, 'createR3VSCodeCollaborationFixture', 'real harness must add the R3-08A VS Code collaboration fixture');
-  assertContains(harness, 'createR3AccessibilityFixture', 'real harness must add the R3-08C accessibility fixture');
-  assertContains(harness, 'createR3LinuxConformanceFixture', 'real harness must add the R3-08D Linux conformance fixture');
-  assertContains(harness, 'createR3WindowsWslConformanceFixture', 'real harness must add the R3-08E Windows/WSL conformance fixture');
-  assertContains(harness, 'createR3MacOSConformanceFixture', 'real harness must add the R3-08F macOS conformance fixture');
-  assertContains(harness, 'createR3RunMetricsSchemaFixture', 'real harness must add the R3-09A run metrics schema fixture');
-  assertContains(harness, 'createR3BudgetPolicyDecisionFixture', 'real harness must add the R3-09B budget policy fixture');
-  assertContains(harness, 'createR3LiveDeepSeekLoginReadyStateFixture', 'real harness must add the R3 live DeepSeek login-ready fixture');
-  assertContains(harness, 'webview-accessibility-surface-contract.ts', 'R3-08C fixture must expose an accessibility contract instead of only prompt text');
-  assertContains(harness, 'vscode-surface-adapter-collaboration-contract.ts', 'R3-08A fixture must expose a source contract instead of only prompt text');
-  assertContains(harness, 'linux-platform-conformance-contract.ts', 'R3-08D fixture must expose a platform conformance contract instead of only prompt text');
-  assertContains(harness, 'windows-wsl-platform-conformance-contract.ts', 'R3-08E fixture must expose a Windows/WSL conformance contract instead of only prompt text');
-  assertContains(harness, 'macos-platform-conformance-contract.ts', 'R3-08F fixture must expose a macOS conformance contract instead of only prompt text');
-  assertContains(harness, 'run-metrics-schema-contract.ts', 'R3-09A fixture must expose a run metrics schema contract instead of only prompt text');
-  assertContains(harness, 'budget-policy-decision-contract.ts', 'R3-09B fixture must expose a budget policy contract instead of only prompt text');
-  assertContains(harness, 'deepseek-login-ready-state-contract.ts', 'R3 live login-ready fixture must expose a DeepSeek health contract instead of only prompt text');
-  assertContains(harness, 'R3_KIND_AGGREGATE_FIXTURE_DETAILS', 'real harness must keep R3 kind fixture data table-driven');
-  assert.ok(
-    harness.indexOf('const R3_KIND_AGGREGATE_FIXTURE_DETAILS') < harness.indexOf('const fixture = usesExistingWorkspace'),
-    'R3 kind fixture details must initialize before top-level workspace creation',
-  );
-  assertContains(harness, 'scenarioSpec.requiredArtifactSnippets', 'real harness must combine scenario-specific content gates');
-  assertContains(harness, 'forbiddenArtifactSnippets', 'real harness must enforce scenario-specific forbidden content gates');
-  assertContains(harness, 'shapeQuality', 'real harness must enforce scenario-specific Markdown shape gates');
-  assertContains(harness, 'assessReportLanguageQuality', 'real harness must enforce scenario-specific report language without product hardcoding');
-  assertContains(harness, '报告正文请使用与本测试 case 相同的中文撰写', 'Chinese live case prompt must ask for Chinese report text in the test fixture');
-  assertContains(harness, 'fixture.scenarioSpec', 'driver report must disclose the scenario contract used');
-});
 
-test('R3-07H-required-kinds-AGGREGATE: required kind claims must settle in the existing profile owner', () => {
-  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
-  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
-
-  assertContains(sharedEnhancements, 'EXTENSION_PROFILE_REQUIRED_KINDS_AGGREGATE_PROTOCOL', 'R3-07H must define a required-kinds aggregate protocol');
-  assertContains(sharedEnhancements, 'ExtensionProfileRequiredKindsAggregateReceipt', 'R3-07H must expose a required-kinds aggregate receipt');
-  assertContains(sharedEnhancements, 'aggregateRequiredKinds', 'R3-07H must settle in ExtensionProfilePlanService');
-  assertContains(sharedEnhancements, 'ownedKindAggregateReceipts.has', 'R3-07H must accept only kind aggregates owned by the same service');
-  assertContains(sharedEnhancements, 'settledKindAggregateReceipts', 'R3-07H must reuse the owner ledger instead of replaying caller claims');
-  assertContains(sharedEnhancements, 'aggregateExecutionAllowed: false', 'R3-07H aggregate must not execute aggregate children');
-  assertContains(sharedEnhancements, 'slotExecutionAllowed: false', 'R3-07H aggregate must not execute slots');
-  assertContains(sharedEnhancements, 'required-kinds-missing-veto', 'R3-07H must veto missing required kind claims');
-  assertContains(sharedEnhancements, 'required-kinds-duplicate-veto', 'R3-07H must veto duplicate required kind claims');
-  assertContains(sharedEnhancements, 'required-kinds-foreign-veto', 'R3-07H must veto foreign or wrong-candidate kind claims');
-  assertContains(sharedEnhancements, 'required-kinds-blocked-veto', 'R3-07H must veto blocked kind claims');
-  assertContains(sharedTests, 'R3-07H-required-kinds-AGGREGATE', 'R3-07H must have failure-first shared oracles');
-  assertContains(sharedTests, 'createCompleteRequiredKindAggregateReceipts', 'R3-07H tests must construct complete required-kind receipts');
-  assertContains(sharedTests, 'wrong-candidate', 'R3-07H tests must cover wrong-candidate kind claims');
+  assertContains(profile, 'listRealPluginIterationScenarioSpecs', 'visible simulations must be enumerable for freshness checks');
+  assertContains(profile, 'c11-cancel-steer-reconciliation', 'C11 must have a distinct user journey');
+  assertContains(profile, 'c13-mcp-authority-boundary', 'C13 must have a distinct user journey');
+  assertContains(profile, 'C11-CANCEL-STEER-RECONCILIATION', 'C11 must use a fresh acceptance marker');
+  assertContains(profile, 'C13-MCP-AUTHORITY-BOUNDARY', 'C13 must use a fresh acceptance marker');
+  assertContains(profile, 'expectedReportLanguage: \'zh-CN\'', 'current Chinese cases must declare report language');
+  assertContains(profile, 'rejectFixedLineCountOnly', 'scenario settlement must remain semantic');
+  assertContains(profile, 'not fixed line-count smoke', 'stale fixed-shape smoke must be rejected');
+  assertContains(harness, 'createC11RunControlFixture', 'C11 needs a purpose-built cancellation/steering fixture');
+  assertContains(harness, 'createC13McpAuthorityFixture', 'C13 needs a purpose-built MCP authority fixture');
+  assertContains(harness, 'canonical-run-control-contract.ts', 'C11 fixture must expose a source contract');
+  assertContains(harness, 'mcp-authority-contract.ts', 'C13 fixture must expose a source contract');
+  assertDoesNotContain(profile, 'r3-07g-', 'obsolete extension-profile simulations must be removed');
+  assertDoesNotContain(profile, 'r3-07h-', 'obsolete required-kind simulations must be removed');
+  assertDoesNotContain(harness, 'createR3KindAggregateFixture', 'obsolete aggregate fixture must stay deleted');
+  assertDoesNotContain(harness, 'createR3RequiredKindsAggregateFixture', 'obsolete required-kind fixture must stay deleted');
 });
 
 test('R3-08A-VSCODE-USER-COLLABORATION: VS Code surface adapter projects core events visibly', () => {
@@ -2545,41 +1387,41 @@ test('R3-08C-ACCESSIBILITY: WebView surfaces expose keyboard and screen-reader s
   assertContains(accessibilityTest, 'aria-label', 'R3-08C oracle must guard screen-reader labels');
 });
 
-test('R3-08D-LINUX-CONFORMANCE: platform runtime exposes independent Linux conformance gates', () => {
-  const platformRuntime = src('../shared/src/platform-runtime.ts');
+test('R3-08D-LINUX-CONFORMANCE: platform conformance owner exposes independent Linux gates', () => {
+  const platformConformance = src('../shared/src/coding-platform-conformance.ts');
   const platformRuntimeTest = src('test/unit/platform-runtime.test.mjs');
 
-  assertContains(platformRuntime, 'evaluateLinuxPlatformConformance', 'R3-08D must keep the conformance evaluator in the platform-runtime owner');
-  assertContains(platformRuntime, 'R3-08D-LINUX-CONFORMANCE', 'R3-08D report must expose the exact leaf id');
-  assertContains(platformRuntime, "'browser-bridge'", 'R3-08D must include browser bridge as an independent check');
-  assertContains(platformRuntime, "'permissions'", 'R3-08D must include bridge executable permissions as an independent check');
-  assertContains(platformRuntime, 'linux-local-xdg', 'R3-08D must recognize native Linux XDG storage');
-  assertContains(platformRuntime, 'linux-container-xdg', 'R3-08D must recognize container Linux XDG storage');
-  assertContains(platformRuntime, 'linux-browser-bridge-unreachable', 'R3-08D must fail closed when browser bridge reachability is absent');
-  assertContains(platformRuntime, 'bridge-executable-not-executable', 'R3-08D must fail closed when Bridge executable permission is absent');
-  assertContains(platformRuntime, 'linux-requires-posix-lf-case-sensitive-paths', 'R3-08D must reject Windows/CRLF/case-insensitive Linux path profiles');
-  assertContains(platformRuntime, 'DEVSEEK_BROWSER_BRIDGE_URL', 'R3-08D container browser bridge must have an external bridge signal');
+  assertContains(platformConformance, 'evaluateLinuxPlatformConformance', 'R3-08D must keep the evaluator in the platform-conformance owner');
+  assertContains(platformConformance, 'R3-08D-LINUX-CONFORMANCE', 'R3-08D report must expose the exact leaf id');
+  assertContains(platformConformance, "'browser-bridge'", 'R3-08D must include browser bridge as an independent check');
+  assertContains(platformConformance, "'permissions'", 'R3-08D must include bridge executable permissions as an independent check');
+  assertContains(platformConformance, 'linux-local-xdg', 'R3-08D must recognize native Linux XDG storage');
+  assertContains(platformConformance, 'linux-container-xdg', 'R3-08D must recognize container Linux XDG storage');
+  assertContains(platformConformance, 'linux-browser-bridge-unreachable', 'R3-08D must fail closed when browser bridge reachability is absent');
+  assertContains(platformConformance, 'bridge-executable-not-executable', 'R3-08D must fail closed when Bridge executable permission is absent');
+  assertContains(platformConformance, 'linux-requires-posix-lf-case-sensitive-paths', 'R3-08D must reject Windows/CRLF/case-insensitive Linux path profiles');
+  assertContains(platformConformance, 'DEVSEEK_BROWSER_BRIDGE_URL', 'R3-08D container browser bridge must have an external bridge signal');
 
   assertContains(platformRuntimeTest, 'profiles native and container shell path storage browser bridge independently', 'R3-08D must keep a native/container green oracle');
   assertContains(platformRuntimeTest, 'reports path storage browser permission and shell fault sequence separately', 'R3-08D must keep a fault-sequence oracle');
 });
 
-test('R3-08E-WINDOWS-WSL-CONFORMANCE: platform runtime splits Windows native and WSL gates', () => {
-  const platformRuntime = src('../shared/src/platform-runtime.ts');
+test('R3-08E-WINDOWS-WSL-CONFORMANCE: platform conformance owner splits Windows native and WSL gates', () => {
+  const platformConformance = src('../shared/src/coding-platform-conformance.ts');
   const platformRuntimeTest = src('test/unit/platform-runtime.test.mjs');
 
-  assertContains(platformRuntime, 'evaluateWindowsWslPlatformConformance', 'R3-08E must keep the conformance evaluator in the platform-runtime owner');
-  assertContains(platformRuntime, 'R3-08E-WINDOWS-WSL-CONFORMANCE', 'R3-08E report must expose the exact leaf id');
-  assertContains(platformRuntime, "'line-ending'", 'R3-08E must include line-ending as an independent check');
-  assertContains(platformRuntime, "'interop'", 'R3-08E must include Windows/WSL interop as an independent check');
-  assertContains(platformRuntime, 'windows-native-path', 'R3-08E must recognize Windows native path profile');
-  assertContains(platformRuntime, 'wsl-posix-path', 'R3-08E must recognize WSL POSIX path profile');
-  assertContains(platformRuntime, 'windows-crlf', 'R3-08E must recognize Windows CRLF profile');
-  assertContains(platformRuntime, 'wsl-lf', 'R3-08E must recognize WSL LF profile');
-  assertContains(platformRuntime, 'windows-native-no-wsl', 'R3-08E must keep native Windows interop separate');
-  assertContains(platformRuntime, 'wsl-interop', 'R3-08E must require WSL interop evidence');
-  assertContains(platformRuntime, 'windows-native-requires-windows-paths', 'R3-08E must fail closed on native path mismatch');
-  assertContains(platformRuntime, 'wsl-interop-missing', 'R3-08E must fail closed when WSL interop is absent');
+  assertContains(platformConformance, 'evaluateWindowsWslPlatformConformance', 'R3-08E must keep the evaluator in the platform-conformance owner');
+  assertContains(platformConformance, 'R3-08E-WINDOWS-WSL-CONFORMANCE', 'R3-08E report must expose the exact leaf id');
+  assertContains(platformConformance, "'line-ending'", 'R3-08E must include line-ending as an independent check');
+  assertContains(platformConformance, "'interop'", 'R3-08E must include Windows/WSL interop as an independent check');
+  assertContains(platformConformance, 'windows-native-path', 'R3-08E must recognize Windows native path profile');
+  assertContains(platformConformance, 'wsl-posix-path', 'R3-08E must recognize WSL POSIX path profile');
+  assertContains(platformConformance, 'windows-crlf', 'R3-08E must recognize Windows CRLF profile');
+  assertContains(platformConformance, 'wsl-lf', 'R3-08E must recognize WSL LF profile');
+  assertContains(platformConformance, 'windows-native-no-wsl', 'R3-08E must keep native Windows interop separate');
+  assertContains(platformConformance, 'wsl-interop', 'R3-08E must require WSL interop evidence');
+  assertContains(platformConformance, 'windows-native-requires-windows-paths', 'R3-08E must fail closed on native path mismatch');
+  assertContains(platformConformance, 'wsl-interop-missing', 'R3-08E must fail closed when WSL interop is absent');
 
   assertContains(platformRuntimeTest, 'profiles Windows native and WSL independently', 'R3-08E must keep a native/WSL green oracle');
   assertContains(platformRuntimeTest, 'reports path line-ending permission interop and shell faults separately', 'R3-08E must keep a fault-sequence oracle');
@@ -2934,52 +1776,43 @@ test('R2-03D: FileContextService owns large-file range, generated, and symbol pr
   assertContains(fileContext, 'inReturnedRange', 'symbol outline must reveal whether a symbol body is actually present');
 });
 
-test('R2-03E: WorktreeConflictService owns dirty worktree and generated owner decisions', () => {
-  const worktreeConflict = src('src/app/worktree-conflict-service.ts');
+test('C7: canonical dirty-worktree policy protects user changes at the Kernel mutation boundary', () => {
+  const dirtyWorktree = repoSrc('packages/shared/src/coding-dirty-worktree.ts');
+  const kernel = repoSrc('packages/shared/src/coding-kernel.ts');
+  const tests = repoSrc('packages/shared/test/coding-dirty-worktree.test.mjs');
 
-  assertContains(worktreeConflict, "version: 'devseek.worktree-conflict/v1'", 'worktree conflict owner must expose a versioned contract');
-  assertContains(worktreeConflict, 'parseGitStatusPorcelain', 'git porcelain parsing must stay in the worktree conflict owner');
-  assertContains(worktreeConflict, 'worktreeState', 'dirty/staged/untracked state must be machine-visible');
-  assertContains(worktreeConflict, "'dirty-user-changes-require-approval'", 'dirty user changes must not be silently overwritten');
-  assertContains(worktreeConflict, "'staged-user-changes-require-approval'", 'staged user changes must not be silently overwritten');
-  assertContains(worktreeConflict, "'untracked-target-requires-approval'", 'untracked targets must be observable before overwrite');
-  assertContains(worktreeConflict, "'generated-boundary-owner-mismatch'", 'handwritten edits must not reverse-write generated boundaries');
-  assertContains(worktreeConflict, "'handwritten-owner-mismatch'", 'generated output must not reverse-write handwritten source');
-  assertContains(worktreeConflict, 'statusEvidence', 'decisions must preserve the git status evidence line');
-  assertContains(worktreeConflict, 'evaluateGitDeliveryEffect', 'git delivery effect decisions must stay in the worktree conflict owner');
-  assertContains(worktreeConflict, "'push-requires-explicit-authorization'", 'push must require explicit authorization');
-  assertContains(worktreeConflict, "'ci-failure-blocks-delivery'", 'failed CI must block git delivery');
-  assertContains(worktreeConflict, "'dirty-or-staged-worktree-requires-approval'", 'git delivery must expose dirty and staged worktree boundaries');
+  assertContains(dirtyWorktree, 'CanonicalDirtyWorktreePolicyService', 'dirty worktree policy must have one shared owner');
+  assertContains(dirtyWorktree, "'overlapping-user-changes'", 'overlapping user changes must fail closed');
+  assertContains(dirtyWorktree, "'worktree-unavailable'", 'unobservable worktree state must fail closed');
+  assertContains(dirtyWorktree, "'disjoint-user-changes'", 'unrelated user changes must remain intact without blocking all work');
+  assertContains(dirtyWorktree, "'--porcelain=v1'", 'the Node adapter must use machine-readable Git status');
+  assertContains(dirtyWorktree, "'-z'", 'the Node adapter must use NUL-delimited Git status');
+  assertContains(kernel, 'dirtyWorktree', 'Kernel mutations must consume the canonical dirty-worktree session');
+  assertContains(tests, 'dirty-worktree-conflict', 'the mutation path needs an overlapping-change rejection oracle');
 });
 
-test('R2-06C: WorktreeConflictService owns generated compatibility migration cleanup', () => {
-  const worktreeConflict = src('src/app/worktree-conflict-service.ts');
-
-  assertContains(worktreeConflict, 'validateGeneratedCompatMigration', 'generated compatibility migration checks must stay with the worktree owner');
-  assertContains(worktreeConflict, 'GeneratedCompatMigrationInput', 'migration inputs must be part of the worktree owner contract');
-  assertContains(worktreeConflict, 'compatibilityChecks', 'API compatibility must be explicit before migrating generated/handwritten ownership');
-  assertContains(worktreeConflict, 'deleteSteps', 'old owner deletion must be explicit before settlement');
-  assertContains(worktreeConflict, 'rollbackSteps', 'rollback steps must be explicit before settlement');
-  assertContains(worktreeConflict, 'fallbackFlags', 'compat flags must be visible to prevent long-term runtime fallback');
-  assertContains(worktreeConflict, 'legacyOwnerReferences', 'old owner references must be guarded against revival');
-  assertContains(worktreeConflict, "'long-term-fallback-flag'", 'long-term fallback flags must fail closed');
-  assertContains(worktreeConflict, "'legacy-owner-revival-risk'", 'legacy owner revival risk must fail closed');
-});
-
-test('R2-07A: ProviderConfigService owns secret refs and capability negotiation', () => {
+test('R2-07A: shared provider capability owner governs config, runtime, and concrete providers', () => {
   const providerConfig = src('src/llm/provider-config-service.ts');
   const providerRuntime = src('src/llm/provider-runtime.ts');
+  const providerCapability = repoSrc('packages/shared/src/coding-provider-capability.ts');
+  const bridgeProvider = src('src/llm/providers/bridge.ts');
+  const apiProvider = src('src/llm/providers/deepseek-api.ts');
+  const openAiProvider = src('src/llm/providers/openai-compat.ts');
+  const vscodeLmProvider = src('src/llm/providers/vscode-lm.ts');
 
   assertContains(providerConfig, "PROVIDER_CONFIG_ADAPTER_PROTOCOL_VERSION = 'devseek.provider-config-adapter/v1'", 'provider config adapter must expose a versioned contract');
-  assertContains(providerConfig, 'negotiateProviderCapabilities', 'capability negotiation must stay with the provider config owner');
-  assertContains(providerConfig, 'SUPPORTED_PROVIDER_CAPABILITIES', 'provider capabilities must be allowlisted centrally');
+  assertContains(providerCapability, 'CODING_PROVIDER_CAPABILITIES', 'provider capabilities must be allowlisted by one shared owner');
+  assertContains(providerCapability, 'CanonicalProviderCapabilityService', 'capability negotiation must stay with the shared provider owner');
+  assertContains(providerCapability, "'unknown-capability'", 'unknown capabilities must be explicit fail-closed reasons');
   assertContains(providerConfig, "secretRef: 'devseek.apiKey'", 'DeepSeek API must expose only a secretRef in config snapshots');
   assertContains(providerConfig, "secretRef: 'devseek.openaiCompatApiKey'", 'OpenAI-compatible API must expose only a secretRef in config snapshots');
   assertContains(providerConfig, "secretRef: 'devseek.localApiApiKey'", 'local API must expose only a secretRef in config snapshots');
-  assertContains(providerConfig, "'unknown-capability'", 'unknown capabilities must be explicit fail-closed reasons');
-  assertContains(providerRuntime, 'capabilityNegotiation', 'runtime routing must consume the provider config negotiation report');
-  assertContains(providerRuntime, "decision: 'blocked'", 'runtime routing must block unknown capability negotiation');
+  assertContains(providerRuntime, 'CanonicalProviderCapabilityService', 'runtime routing must consume the shared capability decision');
+  assertContains(providerRuntime, 'capabilityDecisions', 'runtime snapshots must expose capability decisions');
   assertContains(providerRuntime, 'primary: undefined', 'blocked provider routes must not fall back to Bridge');
+  for (const provider of [bridgeProvider, apiProvider, openAiProvider, vscodeLmProvider]) {
+    assertContains(provider, 'knownCodingProviderCapabilities', 'concrete providers must project the canonical capability profile');
+  }
 });
 
 test('R2-07B: shared ToolDispatch owns tool call/result envelopes and fail-closed provider dialects', () => {
@@ -3577,8 +2410,11 @@ test('R2-07D: DeepSeek Web connector owns auth/session/page/DOM fingerprint heal
 
 test('R2-07E: DeepSeek Web stream correlation and recovery protocol has one shared owner', () => {
   const streamProtocol = src('../shared/src/bridge-stream-protocol.ts');
+  const connectorProtocol = src('../shared/src/deepseek-web-connector-protocol.ts');
+  const connector = src('../bridge/src/deepseek-web-connector.ts');
   const server = src('../bridge/src/server.ts');
   const bridgeClient = src('src/bridge-client.ts');
+  const cliBridgeClient = src('../cli/src/bridge-client.ts');
   const controlledHarness = src('test/devseek-controlled-vsix-harness.mjs');
 
   assertContains(streamProtocol, 'DEEPSEEK_WEB_STREAM_PROTOCOL_VERSION', 'DeepSeek Web stream protocol must be versioned');
@@ -3587,13 +2423,22 @@ test('R2-07E: DeepSeek Web stream correlation and recovery protocol has one shar
   assertContains(streamProtocol, 'stream-truncated', 'EOF without done must not settle provider output');
   assertContains(streamProtocol, 'stream-duplicate-replay', 'duplicate replay frames must have zero output effect');
   assertContains(streamProtocol, 'deepSeekStreamBackoffMs', 'rate-limit/reconnect backoff must be part of the protocol contract');
-  assertContains(server, 'createDeepSeekStreamFrame', 'Bridge server must sign every SSE frame with the shared protocol');
+  assertContains(connectorProtocol, 'DEEPSEEK_WEB_CONNECTOR_PROTOCOL_VERSION', 'connector capability advertisement must be versioned');
+  assertContains(connector, 'CanonicalDeepSeekWebConnectorService', 'request lifecycle and terminal frames must have one connector owner');
+  assertContains(connector, 'DEEPSEEK_WEB_CONNECTOR_MAX_ATTEMPTS = 2', 'provider retry must be explicitly bounded');
+  assertContains(connector, "reason: 'partial-output'", 'connector must never retry after partial provider output');
+  assertContains(server, 'connectorExecution.execute', 'Bridge route must dispatch through the connector state machine');
+  assertContains(server, 'connectorSession.acceptProviderDelta', 'Bridge route must delegate SSE frame creation to the connector owner');
   assertContains(server, 'streamRequestId', 'Bridge server must bind SSE frames to the request operation id');
-  assertContains(server, 'streamSequence', 'Bridge server must emit monotonic stream sequence numbers');
+  assertContains(server, 'connector.cancel(targetRequestId', 'Bridge cancel must target a correlated request');
   assertContains(server, 'cancel-requested', 'Bridge cancel must be traceable by operation id');
   assertContains(bridgeClient, 'BridgeStreamCorrelator', 'Bridge client must validate request/stream correlation');
   assertContains(bridgeClient, 'parseDeepSeekStreamFrameData', 'Bridge client must fail closed on malformed SSE JSON');
+  assertContains(bridgeClient, 'requireDeepSeekWebConnectorAdvertisement', 'VS Code must negotiate the connector protocol before chat');
+  assertContains(bridgeClient, 'TARGET_OPERATION_ID_HEADER', 'VS Code cancellation must carry the target operation id');
   assertContains(bridgeClient, 'correlator.assertComplete()', 'Bridge client must reject truncated SSE streams');
+  assertContains(cliBridgeClient, 'BridgeStreamCorrelator', 'CLI must consume the same correlated stream owner');
+  assertContains(cliBridgeClient, 'requireDeepSeekWebConnectorAdvertisement', 'CLI must negotiate the same connector protocol');
   assertContains(controlledHarness, 'devseek.deepseek-web-stream/v1', 'controlled VSIX fake bridge must use the same stream protocol');
   assertContains(controlledHarness, 'r2-07e-stream-protocol', 'controlled VSIX must include R2-07E-specific stream fault cases');
   assertContains(controlledHarness, 'truncated-before-done', 'controlled VSIX must inject truncated stream faults');
@@ -3868,7 +2713,7 @@ test('R3-05C: MemoryService owns memory secret redaction and legacy import inval
   assertContains(memoryTypes, 'sensitiveMatches', 'memory lifecycle receipts must expose sensitive match labels');
   assertContains(memoryTypes, 'redactionCount', 'memory lifecycle receipts must expose redaction count');
   assertContains(sensitiveGuard, 'redact(content: string)', 'SensitiveMemoryGuard must expose a reusable redaction API');
-  assertContains(sensitiveGuard, '[REDACTED_TOKEN]', 'SensitiveMemoryGuard must redact token-shaped secrets');
+  assertContains(sensitiveGuard, 'CanonicalSecretRedactionService', 'SensitiveMemoryGuard must delegate token detection to the canonical secret-redaction owner');
   assertContains(memoryService, 'sanitizeSensitiveMemoryRecords', 'MemoryService must sanitize persisted records before retrieval/prompt projection');
   assertContains(memoryService, 'retrieveCodingMemoryCandidates', 'MemoryService must expose policy candidates to the canonical Kernel');
   assertContains(memoryService, 'renderCodingMemoryContext', 'MemoryService prompt projection must consume the shared sealed policy decision');

@@ -34,6 +34,7 @@ import type { TerminalPermissionCoordinator } from './app/terminal-permission-co
 import { extendRepairRoundBudget, normalizeRepairRoundBudget } from '@devseek-netai/shared';
 import type { AgentKernelService } from './app/agent-kernel-service';
 import { createLocalValidationKernelRecovery } from './app/coding-kernel-recovery';
+import type { LLMProviderType } from './llm/types';
 
 export interface LocalExecutionRouteChatOptions {
   prompt: string;
@@ -59,6 +60,7 @@ export interface LocalExecutionChatRunnerInput {
   toolPolicy: ToolPolicy;
   terminalPermissionCoordinator: TerminalPermissionCoordinator;
   agentKernelService: Pick<AgentKernelService, 'executeCanonicalTask'>;
+  providerType: LLMProviderType;
   traceRunId: string;
   traceEvidenceParticipantToken: string;
   onTraceEvidenceError: (error: unknown) => void;
@@ -428,6 +430,7 @@ async function runAgentRepairRound(
     contextFiles: repairContextFiles,
     mode: input.mode,
     workspaceRoot: repairWsRoot,
+    providerType: input.providerType,
     callbacks: buildLocalExecutionAgentCallbacks({
       webview: input.webview,
       workflowReporter: input.workflowReporter,

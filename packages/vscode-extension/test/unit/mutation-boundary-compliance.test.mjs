@@ -33,7 +33,6 @@ test('Mutation guard: process creation remains confined to named transport/execu
   assert.deepEqual(processOwners, [
     'src/bridge-client.ts',
     'src/execution-outcome-classifier.ts',
-    'src/mcp/client.ts',
     'src/tools/terminal.ts',
   ]);
 
@@ -191,8 +190,11 @@ test('Mutation guard: MCP tools have one authorized product boundary and honest 
   assert.equal((mcpBoundary.match(/deps\.mcpManager\.callTool\s*\(/g) ?? []).length, 1);
   assert.equal((extension.match(/createEvidenceAwareMcpToolCall\s*\(/g) ?? []).length, 2);
   assert.match(extension, /createEvidenceAwareMcpToolCallFactory\(\{[\s\S]*?terminalPermissions:[\s\S]*?mcpManager/);
-  assert.match(mcpBoundary, /kind:\s*'mcp-tool'[\s\S]*?kind:\s*'invocation-receipt'[\s\S]*?mcp-json-rpc-call-resolved/);
-  assert.match(mcpBoundary, /requestInlineConfirmation\(webview, `MCP:/);
+  assert.match(mcpBoundary, /kind:\s*'mcp-tool'[\s\S]*?kind:\s*'invocation-receipt'[\s\S]*?official-mcp-sdk-call-resolved/);
+  assert.match(
+    mcpBoundary,
+    /requestInlineConfirmation\(\s*webview,\s*`MCP \$\{authorityRequest\.risk\}:/,
+  );
 });
 
 test('Mutation guard: durable settlement controls every completed success projection', () => {
@@ -306,9 +308,12 @@ test('Mutation guard: tool planning consumes policy before every execution branc
 test('Mutation guard: participant capability is sent only through the Bridge provider envelope', () => {
   const loopChat = source('src/agent/loop-chat.ts');
   const llmTypes = source('src/llm/types.ts');
+  const sharedLlmTypes = readFileSync(path.join(packageRoot, '../shared/src/llm-types.ts'), 'utf8');
   const bridgeProvider = source('src/llm/providers/bridge.ts');
   assert.equal((loopChat.match(/provider\.type === 'bridge' && traceEvidenceParticipantToken/g) ?? []).length, 2);
   assert.doesNotMatch(llmTypes, /traceEvidenceParticipantToken\?:/);
-  assert.match(llmTypes, /evidenceCapability\?:/);
+  assert.match(llmTypes, /LLMChatOptions as SharedLLMChatOptions/);
+  assert.doesNotMatch(llmTypes, /evidenceCapability\?:/);
+  assert.match(sharedLlmTypes, /evidenceCapability\?:/);
   assert.match(bridgeProvider, /opts\.evidenceCapability\?\.token/);
 });

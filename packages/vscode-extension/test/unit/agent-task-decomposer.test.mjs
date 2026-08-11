@@ -580,26 +580,26 @@ test('agent-task-decomposer: explicit Markdown output path wins and keeps simula
   }
 });
 
-test('agent-task-decomposer: R3 real scenario prompt creates the dedicated aggregate Markdown report', async () => {
-  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-r3-real-scenario-'));
+test('agent-task-decomposer: C13 real scenario prompt creates the dedicated MCP audit report', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-c13-real-scenario-'));
   try {
     fakeWorkspace.workspaceFolders = [{ uri: Uri.file(workspaceRoot), name: 'devseek', index: 0 }];
-    const docsDir = path.join(workspaceRoot, 'docs/r3-iteration');
-    const sourceDir = path.join(workspaceRoot, 'src/devseek-profile');
-    const planDoc = path.join(docsDir, 'skill-denominator-plan.md');
-    const contractSource = path.join(sourceDir, 'extension-profile-plan-service-contract.ts');
-    const target = path.join(docsDir, 'r3-07g-skill-aggregate-denominator.md');
+    const docsDir = path.join(workspaceRoot, 'docs/convergence');
+    const sourceDir = path.join(workspaceRoot, 'src/devseek-mcp');
+    const planDoc = path.join(docsDir, 'mcp-threat-cases.md');
+    const contractSource = path.join(sourceDir, 'mcp-authority-contract.ts');
+    const target = path.join(docsDir, 'c13-mcp-authority-boundary.md');
     mkdirSync(docsDir, { recursive: true });
     mkdirSync(sourceDir, { recursive: true });
-    writeFileSync(planDoc, '# R3-07G Skill Denominator Plan\n');
-    writeFileSync(contractSource, 'export const aggregateExecutionAllowed = false;\n');
+    writeFileSync(planDoc, '# C13 MCP Threat Cases\n');
+    writeFileSync(contractSource, 'export const configurationIsAuthority = false;\n');
 
     const prompt = [
       `请基于 ${planDoc} 和 ${contractSource} 创建 Markdown 审计报告。`,
       `请把报告保存到 ${target}。`,
-      '报告主题是 R3-07G-skill-AGGREGATE denominator aggregation audit。',
+      '报告主题是 C13 MCP protocol and risk-scaled session authority audit。',
       '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要运行编译或测试命令。',
-      '报告必须逐字包含 R3-07G-skill-AGGREGATE、20 task slots、100 permission-fault slots。',
+      '报告必须逐字包含 configuration is not authority、session-approved read-only tools、risky calls require user evidence、receipt replay is rejected、official stdio handshake。',
     ].join('\n');
 
     let plannerCalled = false;
@@ -612,7 +612,7 @@ test('agent-task-decomposer: R3 real scenario prompt creates the dedicated aggre
     assert.equal(plannerCalled, false);
     assert.equal(result.tasks.length, 1);
     assert.equal(result.tasks[0].action, 'create');
-    assert.equal(result.tasks[0].file, 'docs/r3-iteration/r3-07g-skill-aggregate-denominator.md');
+    assert.equal(result.tasks[0].file, 'docs/convergence/c13-mcp-authority-boundary.md');
     assert.equal(result.tasks[0].absPath, target);
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });

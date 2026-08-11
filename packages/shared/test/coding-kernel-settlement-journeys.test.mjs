@@ -6,6 +6,7 @@ import {
   InMemoryCodingOperationJournal,
   buildCodingKernelTaskContract,
   buildCodingVerificationPlan,
+  createFixtureCodingKernelEnvironment,
 } from '../dist/index.js';
 import { loadUserSimulationCase } from '../../../scripts/lib/devseek-user-simulation-fixture.mjs';
 import { commitCanonicalWorkspaceChange } from './support/canonical-code-change-fixture.mjs';
@@ -204,6 +205,7 @@ function executeScenario(scenario, runtime) {
     workspaceRoot: '/workspace',
     taskContract,
     operationJournal: new InMemoryCodingOperationJournal(),
+    environment: createFixtureCodingKernelEnvironment('/workspace'),
     runtimeContext: { simulationCaseId: scenario.case_id },
   });
 }

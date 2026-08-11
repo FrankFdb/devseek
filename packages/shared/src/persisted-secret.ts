@@ -27,7 +27,24 @@ export function containsDevSeekAuthorityCapability(value: string): boolean {
 
 /** Removes complete DevSeek bearer capabilities before diagnostic text is persisted. */
 export function redactDevSeekAuthorityCapabilities(value: string): string {
-  return value.replace(CAPABILITY_GLOBAL_RE, REDACTED_CAPABILITY);
+  return redactDevSeekAuthorityCapabilitiesWithCount(value).text;
+}
+
+export interface DevSeekAuthorityCapabilityRedaction {
+  readonly text: string;
+  readonly count: number;
+}
+
+/** Redacts complete bearer capabilities while retaining an auditable count. */
+export function redactDevSeekAuthorityCapabilitiesWithCount(
+  value: string,
+): DevSeekAuthorityCapabilityRedaction {
+  let count = 0;
+  const text = value.replace(CAPABILITY_GLOBAL_RE, () => {
+    count += 1;
+    return REDACTED_CAPABILITY;
+  });
+  return Object.freeze({ text, count });
 }
 
 /**

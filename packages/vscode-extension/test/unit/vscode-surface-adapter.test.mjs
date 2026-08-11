@@ -112,6 +112,8 @@ test('VSCodeSurfaceAdapter exposes canonical command and host delivery conforman
   const adapter = new VSCodeSurfaceAdapter();
   const command = adapter.toChatCommand({ prompt: ' inspect repo ', commandId: 'vscode-command' });
   const receipt = adapter.conformance();
+  const collaboration = adapter.collaboration();
+  const accessibility = adapter.accessibility();
 
   assert.equal(command.version, 'devseek.agent-command/v1');
   assert.equal(command.surface, 'vscode');
@@ -122,4 +124,6 @@ test('VSCodeSurfaceAdapter exposes canonical command and host delivery conforman
     ordering: 'host-ordered',
     backpressure: 'host-managed',
   });
+  assert.equal(collaboration.status, 'conformant');
+  assert.equal(accessibility.status, 'conformant');
 });

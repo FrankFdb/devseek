@@ -28,80 +28,50 @@ test('required artifact snippets are explicit task assertions, not domain keywor
   );
 });
 
-test('R3-07G real plugin scenario binds aggregate denominator artifact acceptance', () => {
-  const profile = buildRealPluginQualityProfile('r3-07g-skill-aggregate');
-  const spec = buildRealPluginScenarioSpec('r3-07g-skill-aggregate');
+test('C11 real plugin scenario audits cancellation and steering reconciliation', () => {
+  const profile = buildRealPluginQualityProfile('c11-cancel-steer-reconciliation');
+  const spec = buildRealPluginScenarioSpec('c11-cancel-steer-reconciliation');
 
   assert.equal(profile.kind, 'iteration');
-  assert.equal(profile.minimumMarkdownBytes, 900);
-  assert.equal(profile.minimumMarkdownLines, 18);
-  assert.equal(profile.minimumMarkdownHeadings, 4);
-  assert.equal(profile.requireFormalProjectQuality, false);
-  assert.equal(spec.id, 'r3-07g-skill-aggregate');
-  assert.equal(spec.deliveryMode, 'markdown-file-deliverable');
-  assert.equal(spec.expectedArtifactRel, 'docs/r3-iteration/r3-07g-skill-aggregate-denominator.md');
-  assert.match(spec.promptTitle, /R3-07G-skill-AGGREGATE/);
-  assert.deepEqual(spec.requiredArtifactSnippets, [
-    'R3-07G-skill-AGGREGATE',
-    'ExtensionProfilePlanService',
-    '20 task slots',
-    '100 permission-fault slots',
-    'missing/failed/vetoed/blocked/duplicate/foreign',
-    'aggregateExecutionAllowed: false',
-    'slotExecutionAllowed: false',
-    'not fixed line-count smoke',
-  ]);
-  assert.deepEqual(spec.forbiddenArtifactSnippets, [
-    'UAV 吊运维保',
-    '维保提醒',
-    'maintenance_threshold_engine',
-    'uav-warranty-reminder',
-    'uav_warranty_reminder',
-    'warranty reminder',
-    'warranty_types',
-    'test_warranty',
-  ]);
+  assert.equal(profile.minimumMarkdownBytes, 1000);
+  assert.equal(spec.expectedReportLanguage, 'zh-CN');
+  assert.equal(spec.expectedArtifactRel, 'docs/convergence/c11-cancel-steer-reconciliation.md');
+  for (const marker of [
+    'CanonicalRunControlService',
+    'cancelling before cancelled',
+    'effect-frozen',
+    'in-flight effect reconciliation',
+    'steering receipt',
+    'instructionSha256',
+    'TaskContract revision',
+    'no post-cancel mutation',
+  ]) {
+    assert.ok(spec.requiredArtifactSnippets.includes(marker), `C11 must require ${marker}`);
+  }
 });
 
-test('R3-07G hook real plugin scenario binds hook-specific aggregate artifact acceptance', () => {
-  const profile = buildRealPluginQualityProfile('r3-07g-hook-aggregate');
-  const spec = buildRealPluginScenarioSpec('r3-07g-hook-aggregate');
+test('C13 real plugin scenario audits official MCP protocol and risk-scaled session authority', () => {
+  const profile = buildRealPluginQualityProfile('c13-mcp-authority-boundary');
+  const spec = buildRealPluginScenarioSpec('c13-mcp-authority-boundary');
 
   assert.equal(profile.kind, 'iteration');
-  assert.equal(profile.minimumMarkdownBytes, 950);
-  assert.equal(profile.minimumMarkdownLines, 22);
-  assert.equal(profile.minimumMarkdownHeadings, 5);
-  assert.equal(profile.requireFormalProjectQuality, false);
-  assert.equal(spec.id, 'r3-07g-hook-aggregate');
-  assert.equal(spec.profileKind, 'hook');
-  assert.equal(spec.deliveryMode, 'markdown-file-deliverable');
-  assert.equal(spec.expectedArtifactRel, 'docs/r3-iteration/r3-07g-hook-aggregate-denominator.md');
-  assert.match(spec.promptTitle, /R3-07G-hook-AGGREGATE/);
-  assert.deepEqual(spec.requiredArtifactSnippets, [
-    'R3-07G-hook-AGGREGATE',
-    'ExtensionProfilePlanService',
-    'HookPlanner',
-    'HookPolicy',
-    '20 task slots',
-    '100 permission-fault slots',
-    'hook-direct-writer-denied',
-    'hook-failure-visible',
-    'hook-bypass-visible',
-    'skill receipts cannot qualify hook slots',
-    'aggregateExecutionAllowed: false',
-    'slotExecutionAllowed: false',
-    'not fixed line-count smoke',
-  ]);
-  assert.deepEqual(spec.forbiddenArtifactSnippets, [
-    'UAV 吊运维保',
-    '维保提醒',
-    'maintenance_threshold_engine',
-    'uav-warranty-reminder',
-    'uav_warranty_reminder',
-    'warranty reminder',
-    'warranty_types',
-    'test_warranty',
-  ]);
+  assert.equal(profile.minimumMarkdownBytes, 1050);
+  assert.equal(spec.expectedReportLanguage, 'zh-CN');
+  assert.equal(spec.expectedArtifactRel, 'docs/convergence/c13-mcp-authority-boundary.md');
+  for (const marker of [
+    '@modelcontextprotocol/sdk',
+    'server launch request and receipt',
+    'tool call request and receipt',
+    'configuration is not authority',
+    'session-approved read-only tools',
+    'risky calls require user evidence',
+    'receipt replay is rejected',
+    'safe inherited environment',
+    'untrusted MCP result',
+    'official stdio handshake',
+  ]) {
+    assert.ok(spec.requiredArtifactSnippets.includes(marker), `C13 must require ${marker}`);
+  }
 });
 
 test('R3 live login-ready artifact gate allows warranty as historical meta wording only', () => {
@@ -114,111 +84,6 @@ test('R3 live login-ready artifact gate allows warranty as historical meta wordi
   assert.equal(spec.forbiddenArtifactSnippets.some((snippet) => staleDomainText.includes(snippet)), true);
 });
 
-[
-  {
-    scenario: 'r3-07g-mcp-aggregate',
-    profileKind: 'mcp',
-    artifactRel: 'docs/r3-iteration/r3-07g-mcp-aggregate-denominator.md',
-    requiredSnippets: [
-      'R3-07G-mcp-AGGREGATE',
-      'McpPermissionService',
-      'MCP_TRUST_PROTOCOL',
-      'mcp-unknown-mutable-veto',
-      'mcp-unsigned-server-veto',
-      'mcp-permission-escape-veto',
-      'skill receipts cannot qualify mcp slots',
-    ],
-  },
-  {
-    scenario: 'r3-07g-plugin-aggregate',
-    profileKind: 'plugin',
-    artifactRel: 'docs/r3-iteration/r3-07g-plugin-aggregate-denominator.md',
-    requiredSnippets: [
-      'R3-07G-plugin-AGGREGATE',
-      'PluginSupplyChainService',
-      'PLUGIN_SUPPLY_CHAIN_PROTOCOL',
-      'plugin-unsigned-veto',
-      'plugin-tampered-veto',
-      'plugin-dependency-veto',
-      'skill receipts cannot qualify plugin slots',
-    ],
-  },
-  {
-    scenario: 'r3-07g-subagent-aggregate',
-    profileKind: 'subagent',
-    artifactRel: 'docs/r3-iteration/r3-07g-subagent-aggregate-denominator.md',
-    requiredSnippets: [
-      'R3-07G-subagent-AGGREGATE',
-      'SUBAGENT_CONTRACT_PROTOCOL',
-      'Subagent contract',
-      'child-direct-effect-rejected',
-      'child-terminal-claim-rejected',
-      'skill receipts cannot qualify subagent slots',
-    ],
-  },
-].forEach(({ scenario, profileKind, artifactRel, requiredSnippets }) => {
-  test(`R3-07G ${profileKind} real plugin scenario adds a fresh visible case`, () => {
-    const profile = buildRealPluginQualityProfile(scenario);
-    const spec = buildRealPluginScenarioSpec(scenario);
-
-    assert.equal(profile.kind, 'iteration');
-    assert.equal(profile.minimumMarkdownBytes, 950);
-    assert.equal(profile.minimumMarkdownLines, 22);
-    assert.equal(profile.minimumMarkdownHeadings, 5);
-    assert.equal(profile.requireFormalProjectQuality, false);
-    assert.equal(spec.profileKind, profileKind);
-    assert.equal(spec.deliveryMode, 'markdown-file-deliverable');
-    assert.equal(spec.expectedArtifactRel, artifactRel);
-    assert.match(spec.promptTitle, new RegExp(`R3-07G-${profileKind}-AGGREGATE`));
-    for (const snippet of [
-      'ExtensionProfilePlanService',
-      '20 task slots',
-      '100 permission-fault slots',
-      'aggregateExecutionAllowed: false',
-      'slotExecutionAllowed: false',
-      ...requiredSnippets,
-    ]) {
-      assert.ok(spec.requiredArtifactSnippets.includes(snippet), `${scenario} must require ${snippet}`);
-    }
-    assert.ok(spec.forbiddenArtifactSnippets.includes('uav-warranty-reminder'));
-  });
-});
-
-test('R3-07H required-kinds real plugin scenario adds a fresh visible case', () => {
-  const profile = buildRealPluginQualityProfile('r3-07h-required-kinds-aggregate');
-  const spec = buildRealPluginScenarioSpec('r3-07h-required-kinds-aggregate');
-
-  assert.equal(profile.kind, 'iteration');
-  assert.equal(profile.minimumMarkdownBytes, 1000);
-  assert.equal(profile.minimumMarkdownLines, 24);
-  assert.equal(profile.minimumMarkdownHeadings, 5);
-  assert.equal(profile.requireFormalProjectQuality, false);
-  assert.equal(spec.id, 'r3-07h-required-kinds-aggregate');
-  assert.equal(spec.deliveryMode, 'markdown-file-deliverable');
-  assert.equal(spec.expectedArtifactRel, 'docs/r3-iteration/r3-07h-required-kinds-aggregate.md');
-  assert.match(spec.promptTitle, /R3-07H-required-kinds-AGGREGATE/);
-  assert.deepEqual(spec.requiredArtifactSnippets, [
-    'R3-07H-required-kinds-AGGREGATE',
-    'ExtensionProfilePlanService',
-    'aggregateRequiredKinds',
-    '07G claim',
-    'skill',
-    'hook',
-    'mcp',
-    'plugin',
-    'subagent',
-    'required-kinds-missing-veto',
-    'required-kinds-duplicate-veto',
-    'required-kinds-foreign-veto',
-    'required-kinds-blocked-veto',
-    'wrong-candidate',
-    'one kind cannot substitute another',
-    'aggregateExecutionAllowed: false',
-    'slotExecutionAllowed: false',
-    'not fixed line-count smoke',
-  ]);
-  assert.ok(spec.forbiddenArtifactSnippets.includes('uav-warranty-reminder'));
-});
 
 test('R3-08A VS Code collaboration real plugin scenario adds a fresh visible case', () => {
   const profile = buildRealPluginQualityProfile('r3-08a-vscode-collaboration');
@@ -255,27 +120,26 @@ test('R3-08A VS Code collaboration real plugin scenario adds a fresh visible cas
   assert.ok(spec.forbiddenArtifactSnippets.includes('uav-warranty-reminder'));
 });
 
-test('R3 iteration visible scenarios are fresh semantic cases, not fixed line-count smoke', () => {
-  const specs = listRealPluginIterationScenarioSpecs();
-  const r3Specs = specs.filter((spec) => /^r3-/i.test(spec.id));
+test('visible iteration scenarios are fresh semantic cases, not fixed line-count smoke', () => {
+  const iterationSpecs = listRealPluginIterationScenarioSpecs();
 
-  assert.ok(r3Specs.length >= 8, 'R3 iteration harness must carry every visible R3 leaf as a scenario');
-  assert.deepEqual(new Set(r3Specs.map((spec) => spec.id)).size, r3Specs.length, 'scenario ids must be unique');
+  assert.ok(iterationSpecs.length >= 10, 'iteration harness must carry every active visible leaf as a scenario');
+  assert.deepEqual(new Set(iterationSpecs.map((spec) => spec.id)).size, iterationSpecs.length, 'scenario ids must be unique');
   assert.deepEqual(
-    new Set(r3Specs.map((spec) => spec.expectedArtifactRel)).size,
-    r3Specs.length,
-    'expected artifact paths must be unique per R3 leaf',
+    new Set(iterationSpecs.map((spec) => spec.expectedArtifactRel)).size,
+    iterationSpecs.length,
+    'expected artifact paths must be unique per active leaf',
   );
   assert.deepEqual(
-    new Set(r3Specs.map((spec) => spec.freshCaseMarker)).size,
-    r3Specs.length,
-    'fresh case markers must be unique per R3 leaf',
+    new Set(iterationSpecs.map((spec) => spec.freshCaseMarker)).size,
+    iterationSpecs.length,
+    'fresh case markers must be unique per active leaf',
   );
 
-  for (const spec of r3Specs) {
+  for (const spec of iterationSpecs) {
     assert.equal(spec.kind, 'iteration', `${spec.id} must be an iteration profile`);
     assert.ok(spec.changedSurface, `${spec.id} must name the changed surface being tested`);
-    assert.ok(spec.semanticAcceptance && spec.semanticAcceptance.length >= 4, `${spec.id} must define semantic acceptance anchors`);
+    assert.ok(spec.semanticAcceptance && spec.semanticAcceptance.length >= 3, `${spec.id} must define semantic acceptance anchors`);
     assert.ok(spec.rejectFixedLineCountOnly, `${spec.id} must reject fixed line-count-only settlement`);
     assert.ok(spec.requiredArtifactSnippets.includes(spec.freshCaseMarker), `${spec.id} must require its fresh marker in the artifact`);
     assert.ok(spec.requiredArtifactSnippets.length > Number(spec.minimumMarkdownHeadings || 0), `${spec.id} must require semantic anchors beyond heading counts`);

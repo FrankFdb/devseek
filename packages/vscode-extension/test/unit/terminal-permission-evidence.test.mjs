@@ -292,7 +292,6 @@ test('Terminal evidence: static process guard allows only the coordinator and ex
   assert.deepEqual(childProcessImports, [
     'src/bridge-client.ts',
     'src/execution-outcome-classifier.ts',
-    'src/mcp/client.ts',
     'src/tools/terminal.ts',
   ]);
 });

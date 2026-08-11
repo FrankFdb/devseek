@@ -94,8 +94,10 @@ function parseArgs(argv: readonly string[]): CliOptions {
 async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
   const surface = new CliSurfaceAdapter({ jsonl: options.jsonl });
   const renderEvent = (event: AgentEvent) => surface.renderEvent(event);
+  const initialProviderOperationId = 'cli-provider-1';
+  let activeProviderOperationId = initialProviderOperationId;
   const cancellation = createCliCancellationController(() => {
-    if (!options.mock) void callBridgeCancel(options.cwd).catch(() => {});
+    if (!options.mock) void callBridgeCancel(options.cwd, activeProviderOperationId).catch(() => {});
   });
   const runId = createProductRunEvidenceId();
   const evidence = CliRunEvidence.open({
@@ -104,7 +106,6 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
     prompt,
     surface: options.jsonl ? 'jsonl' : 'cli',
   });
-  const initialProviderOperationId = 'cli-provider-1';
   const service = new AgentApplicationService({
     getProviderType: () => options.mock ? 'local-api' : 'bridge',
     getProvider: () => createMockProvider(),
@@ -189,7 +190,13 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
             signal: request.signal,
           },
         });
-        return extractCompletedResponse(await service.handle(repairCommand));
+        const previousOperationId = activeProviderOperationId;
+        activeProviderOperationId = request.operationId;
+        try {
+          return extractCompletedResponse(await service.handle(repairCommand));
+        } finally {
+          activeProviderOperationId = previousOperationId;
+        }
       },
       recordOperationEvidence: (entry, operationId, boundary) => {
         evidence.recordOperation(entry, operationId, boundary);

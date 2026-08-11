@@ -10,6 +10,7 @@
 import * as https from 'https';
 import * as http from 'http';
 import * as vscode from 'vscode';
+import { knownCodingProviderCapabilities } from '@devseek-netai/shared';
 import { LLMProvider, LLMProviderType, LLMChatOptions, TokenUsage } from '../types';
 
 export interface OpenAICompatProviderOptions {
@@ -25,7 +26,9 @@ export interface OpenAICompatProviderOptions {
 export class OpenAICompatProvider implements LLMProvider {
   readonly type: LLMProviderType;
   readonly displayName: string;
-  readonly capabilities = ['text', 'streaming', 'native-tools'] as const;
+  get capabilities() {
+    return knownCodingProviderCapabilities(this.type);
+  }
 
   private readonly options: Required<OpenAICompatProviderOptions>;
 

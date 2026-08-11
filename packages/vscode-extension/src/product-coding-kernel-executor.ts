@@ -3,6 +3,7 @@ import {
   CanonicalCodingKernel,
   CodingKernelExecutionError,
   FileSystemCodingOperationJournal,
+  createCodingKernelEnvironmentSync,
   createProductRunEvidenceId,
 } from '@devseek-netai/shared';
 import { runAgenticLoop } from './agent/agentic-loop';
@@ -59,6 +60,12 @@ export const productCodingKernelExecutor: CodingKernelExecutionPort = {
           relatedPaths: [...request.contextFiles, ...(request.memoryRelatedPaths ?? [])],
           requireContextMatch: true,
         });
+      const taskContract = projectVsCodeCodingKernelTaskContract({
+        userPrompt: request.userPrompt,
+        workflowMode: request.workflowMode,
+        contextFiles: request.contextFiles,
+        taskContract: request.semanticContract.taskContract,
+      });
       const output = await kernel.execute({
         version: CODING_KERNEL_REQUEST_VERSION,
         route: 'canonical',
@@ -66,18 +73,17 @@ export const productCodingKernelExecutor: CodingKernelExecutionPort = {
         runId,
         userPrompt: request.userPrompt,
         workspaceRoot: request.workspaceRoot,
-        taskContract: projectVsCodeCodingKernelTaskContract({
-          userPrompt: request.userPrompt,
-          workflowMode: request.workflowMode,
-          contextFiles: request.contextFiles,
-          taskContract: request.semanticContract.taskContract,
-        }),
+        taskContract,
         contextSeed: projectVsCodeCodingContextSeed(request.contextFiles, request.semanticContract),
         memoryCandidates,
         resumeCheckpoint: request.recovery?.kind === 'checkpoint-resume'
           ? request.recovery.checkpoint
           : undefined,
         operationJournal: FileSystemCodingOperationJournal.forWorkspace(request.workspaceRoot),
+        environment: createCodingKernelEnvironmentSync({
+          workspaceRoot: request.workspaceRoot,
+          provider: request.providerType,
+        }),
         runtimeContext: {
           contextFiles: request.contextFiles,
           mode: request.mode,
@@ -87,8 +93,14 @@ export const productCodingKernelExecutor: CodingKernelExecutionPort = {
           memoryRelatedPaths: request.memoryRelatedPaths,
           semanticContract: request.semanticContract,
           recovery: request.recovery,
+          providerType: request.providerType,
         },
         signal: request.callbacks.signal,
+        ...(request.callbacks.onUserSteer ? {
+          steeringSource: {
+            drain: () => request.callbacks.onUserSteer?.() ?? [],
+          },
+        } : {}),
       });
       retainLifecycle(output.lifecycle);
       const productOutput = projectVsCodeCodingKernelOutput(output);

@@ -9,6 +9,7 @@ import {
 } from './coding-checkpoint';
 import type { CodingMemoryContextDecision } from './coding-memory-policy';
 import { codingSemanticDigest } from './coding-semantic-digest';
+import { redactCodingSecretsInText, redactCodingSecretsInValue } from './coding-secret-redaction';
 import {
   CanonicalTaskContractService,
   type CodingKernelTaskContract,
@@ -305,45 +306,15 @@ function requireTrigger(value: unknown): CodingContextCompactionTrigger {
 }
 
 function redactValue<T>(value: T): { value: T; count: number } {
-  let count = 0;
-  const visit = (item: unknown): unknown => {
-    if (typeof item === 'string') {
-      const redacted = redactText(item);
-      count += redacted.count;
-      return redacted.text;
-    }
-    if (Array.isArray(item)) return item.map(visit);
-    if (item && typeof item === 'object') {
-      return Object.fromEntries(Object.entries(item).map(([key, child]) => [key, visit(child)]));
-    }
-    return item;
-  };
-  return { value: visit(structuredClone(value)) as T, count };
-}
-
-function redactText(value: string): { text: string; count: number } {
-  let count = 0;
-  const replace = (text: string, pattern: RegExp, replacement: string | ((match: string, prefix?: string) => string)) => (
-    text.replace(pattern, (...args: unknown[]) => {
-      count += 1;
-      return typeof replacement === 'function'
-        ? replacement(String(args[0]), typeof args[1] === 'string' ? args[1] : undefined)
-        : replacement;
-    })
-  );
-  let text = String(value);
-  text = replace(text, /-----BEGIN\s+(?:RSA\s+|OPENSSH\s+|EC\s+|DSA\s+)?PRIVATE KEY-----[\s\S]*?-----END\s+(?:RSA\s+|OPENSSH\s+|EC\s+|DSA\s+)?PRIVATE KEY-----/giu, '[REDACTED_SECRET]');
-  text = replace(text, /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,}\b/gu, '[REDACTED_SECRET]');
-  text = replace(text, /\bgithub_pat_[A-Za-z0-9_]{20,}\b/gu, '[REDACTED_SECRET]');
-  text = replace(text, /\bsk-[A-Za-z0-9_-]{8,}\b/gu, '[REDACTED_SECRET]');
-  text = replace(text, /\bAKIA[0-9A-Z]{16}\b/gu, '[REDACTED_SECRET]');
-  text = replace(text, /\b(authorization\s*:\s*bearer\s+)(?!\[REDACTED_SECRET\])[A-Za-z0-9._~+/=-]{8,}\b/giu, (_match, prefix) => `${prefix}[REDACTED_SECRET]`);
-  text = replace(text, /\b((?:api[_-]?key|token|password|secret)\s*[:=]\s*)(?!\[REDACTED_SECRET\])[^\s,;]+/giu, (_match, prefix) => `${prefix}[REDACTED_SECRET]`);
-  return { text, count };
+  const receipt = redactCodingSecretsInValue(structuredClone(value), {
+    replacement: '[REDACTED_SECRET]',
+    sensitiveFieldReplacement: '[REDACTED_SECRET]',
+  });
+  return { value: receipt.value, count: receipt.redactionCount };
 }
 
 function hasSecretMaterial(value: string): boolean {
-  return redactText(value).count > 0;
+  return redactCodingSecretsInText(value).redacted;
 }
 
 function uniqueText(value: unknown, reason: string): string[] {

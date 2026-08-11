@@ -209,7 +209,10 @@ test('AgentKernelService: extension Surface does not own agent completion decisi
   assert.match(extension, /agentKernelRun\.settleAgentLoopResult/);
   assert.match(extension, /agentKernelRun\.failRun/);
   assert.match(extension, /activeChatRunCoordinator\.cancelActiveRun/);
-  assert.match(activeRunCoordinator, /state\.agentKernelRun\?\.cancelRun\(data\)/);
+  assert.match(
+    activeRunCoordinator,
+    /state\.agentKernelRun\?\.requestCancellation\(state\.cancellationData\)/,
+  );
   assert.equal(importsKernelLoop(extension), false);
   assert.doesNotMatch(extension, /await\s+runAgent(?:ic)?Loop\s*\(/u);
   assert.match(localExecutionRunner, /input\.agentKernelService\.executeCanonicalTask\(\{[\s\S]*createLocalValidationKernelRecovery\(\{/);

@@ -3,6 +3,9 @@ import {
   CLI_SURFACE_CAPABILITIES,
   JSONL_SURFACE_CAPABILITIES,
   certifySurfaceAdapter,
+  CanonicalSurfaceAccessibilityService,
+  CanonicalUserCollaborationService,
+  CODING_CANCELLATION_RECEIPT_VERSION,
   createChatRequestCommand,
   detectPlatformProfile,
   type AgentEvent,
@@ -11,6 +14,8 @@ import {
   type SurfaceAdapterConformanceReceipt,
   type SurfaceCapabilities,
   type SurfaceChatInput,
+  type CodingSurfaceAccessibilityDecision,
+  type CodingUserCollaborationDecision,
 } from '@devseek-netai/shared';
 
 export type CliSurfaceKind = Extract<AgentSurfaceKind, 'cli' | 'jsonl'>;
@@ -100,6 +105,37 @@ export class CliSurfaceAdapter implements SurfaceAdapter {
         ordering: 'serialized',
         backpressure: 'awaited',
       },
+    });
+  }
+
+  collaboration(): CodingUserCollaborationDecision {
+    return new CanonicalUserCollaborationService().assess({
+      surface: this.kind,
+      interactions: ['progress', 'cancellation', 'resume', 'error-explanation'],
+      eventTypes: ['chat.started', 'provider.status', 'checkpoint.available', 'error'],
+      traceBound: true,
+      cancellationProtocol: CODING_CANCELLATION_RECEIPT_VERSION,
+      evidenceRefs: [
+        `${this.kind}-surface:serialized-events`,
+        `${this.kind}-surface:signal-cancellation`,
+        `${this.kind}-surface:resume-command`,
+      ],
+    });
+  }
+
+  accessibility(): CodingSurfaceAccessibilityDecision {
+    return new CanonicalSurfaceAccessibilityService().assess({
+      surface: this.kind,
+      channels: this.kind === 'jsonl'
+        ? ['programmatic', 'text-status']
+        : ['keyboard', 'text-status'],
+      statusNotColorOnly: true,
+      cancellationReachable: true,
+      recoveryReachable: true,
+      evidenceRefs: [
+        `${this.kind}-surface:terminal-status`,
+        `${this.kind}-surface:machine-readable-lifecycle`,
+      ],
     });
   }
 

@@ -6,6 +6,8 @@ test('HeadlessSurfaceAdapter exposes canonical command and callback conformance'
   const adapter = new HeadlessSurfaceAdapter();
   const command = adapter.toChatCommand({ prompt: ' inspect repo ', commandId: 'headless-command' });
   const receipt = adapter.conformance();
+  const collaboration = adapter.collaboration();
+  const accessibility = adapter.accessibility();
 
   assert.equal(command.version, 'devseek.agent-command/v1');
   assert.equal(command.surface, 'headless');
@@ -16,6 +18,8 @@ test('HeadlessSurfaceAdapter exposes canonical command and callback conformance'
     ordering: 'serialized',
     backpressure: 'awaited',
   });
+  assert.equal(collaboration.status, 'conformant');
+  assert.equal(accessibility.status, 'conformant');
 });
 
 test('HeadlessSurfaceAdapter serializes concurrent event delivery and preserves sink failure', async () => {

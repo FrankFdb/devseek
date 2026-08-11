@@ -48,9 +48,9 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    semantic_domains: 45,
-    converged_semantic_domains: 45,
-    source_checks: 138,
+    semantic_domains: 55,
+    converged_semantic_domains: 55,
+    source_checks: 150,
     failed_source_checks: 0,
   });
   assert.deepEqual(
@@ -110,8 +110,18 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     'change-plan',
     'change-plan-revision',
     'run-lifecycle',
+    'run-cancellation',
+    'run-steering',
+    'user-collaboration',
+    'surface-accessibility',
     'settlement-decision',
     'provider-normalization',
+    'kernel-environment',
+    'provider-capability',
+    'secret-redaction',
+    'dirty-worktree',
+    'platform-adapter-conformance',
+    'mcp-boundary',
     'tool-schema',
     'tool-dispatch',
     'tool-execution',
@@ -168,6 +178,16 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     ['context-graph', 'shared-CanonicalContextGraphService'],
     ['context-provenance', 'shared-CanonicalContextProvenanceService'],
     ['instruction-precedence', 'shared-CanonicalInstructionPrecedenceService'],
+    ['run-cancellation', 'shared-CanonicalRunControlService'],
+    ['run-steering', 'shared-CanonicalRunControlService'],
+    ['user-collaboration', 'shared-CanonicalUserCollaborationService'],
+    ['surface-accessibility', 'shared-CanonicalSurfaceAccessibilityService'],
+    ['kernel-environment', 'shared-CanonicalCodingKernelEnvironmentService'],
+    ['provider-capability', 'shared-CanonicalProviderCapabilityService'],
+    ['secret-redaction', 'shared-CanonicalSecretRedactionService'],
+    ['dirty-worktree', 'shared-CanonicalDirtyWorktreePolicyService'],
+    ['platform-adapter-conformance', 'shared-CanonicalPlatformAdapterConformanceService'],
+    ['mcp-boundary', 'shared-CanonicalMcpBoundaryService'],
   ]) {
     const contextDomain = actual.semantic_domains.find(domain => domain.domain_id === domainId);
     assert.equal(contextDomain.convergence_status, 'converged');
@@ -264,6 +284,7 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
       'shared-settled-conformance-projection-owner',
       'shared-coding-conformance-export',
       'shared-canonical-integration-conformance-owner',
+      'shared-canonical-platform-conformance-owner',
     ],
   );
 
@@ -387,7 +408,7 @@ test('kernel prep owner baseline checker validates the current generated artifac
     legacy_recovery_routes: 0,
     legacy_execution_owners: 0,
     cross_surface_kernel_routes: 4,
-    converged_semantic_domains: 45,
+    converged_semantic_domains: 55,
     failed_source_checks: 0,
     qualification_effect: 'NONE',
   });

@@ -7,7 +7,10 @@ export type LLMProviderCapability =
   | 'native-tools'
   | 'web'
   | 'local'
-  | 'vscode-lm';
+  | 'vscode-lm'
+  | 'cancellation'
+  | 'request-correlation'
+  | 'bounded-retry';
 
 export interface ContentPart {
   type: 'text' | 'image_url';
@@ -43,6 +46,11 @@ export interface LLMChatOptions {
   traceWorkspaceRoot?: string;
   /** Correlates one provider operation across client, transport and server boundaries. */
   traceOperationId?: string;
+  /** Bridge-only authority envelope. Callers must omit it for non-Bridge providers. */
+  evidenceCapability?: {
+    readonly role: 'participant';
+    readonly token: string;
+  };
 }
 
 export interface LLMProvider {

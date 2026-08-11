@@ -1,3 +1,5 @@
+import { redactCodingSecretsInText } from './coding-secret-redaction';
+
 export type LanguageId = 'typescript' | 'javascript' | 'python' | 'go' | 'rust' | 'cpp' | 'unknown';
 
 export interface WorkspaceFileCandidate {
@@ -422,7 +424,7 @@ export class AgentEvalReplayStore {
   createCase(input: { id: string; prompt: string; providerType?: string; events: readonly { type: string }[]; evidenceRefs?: readonly string[] }): ReplayCase {
     return {
       id: input.id,
-      prompt: redactSecrets(input.prompt),
+      prompt: redactCodingSecretsInText(input.prompt, { replacement: '[REDACTED]' }).text,
       providerType: input.providerType,
       expectedEvents: input.events.map(event => event.type),
       evidenceRefs: input.evidenceRefs ?? [],
@@ -543,10 +545,4 @@ function isConfigPath(path: string): boolean {
 
 function isGeneratedPath(path: string): boolean {
   return /(^|\/)(dist|build|coverage|generated)\//.test(path) || /\.generated\./.test(path);
-}
-
-function redactSecrets(text: string): string {
-  return text
-    .replace(/sk-[A-Za-z0-9_-]{8,}/g, 'sk-redacted')
-    .replace(/(api[_-]?key\s*[:=]\s*)[^\s]+/gi, '$1redacted');
 }

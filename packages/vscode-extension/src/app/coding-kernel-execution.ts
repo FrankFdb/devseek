@@ -7,6 +7,7 @@ import {
   type CodingKernelRuntimeRequest,
   type CodingKernelRuntimeOutput,
   type CodingKernelRuntimePort,
+  type LLMProviderType,
 } from '@devseek-netai/shared';
 import type { ExecutionMode } from '../intent/intent-types';
 import type { TaskSemanticContract } from '../task-semantic-contract';
@@ -33,6 +34,7 @@ export interface VsCodeCodingKernelRuntimeContext {
   readonly memoryRelatedPaths?: readonly string[];
   readonly semanticContract?: TaskSemanticContract;
   readonly recovery?: CodingKernelRecovery;
+  readonly providerType: LLMProviderType;
 }
 
 export interface CanonicalKernelExecutionRequest extends VsCodeCodingKernelRuntimeContext {
@@ -113,6 +115,8 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
       canonicalDiagnostics: kernelRequest.diagnostics,
       canonicalVerificationAcceptance: kernelRequest.verificationAcceptance,
       canonicalVerification: kernelRequest.verification,
+      onUserSteer: () => kernelRequest.runControl.consumeSteering()
+        .map(decision => decision.instruction),
       ...(originalCheckpoint ? {
         onTaskCheckpoint: async (firstUnfinishedIndex, remainingTasks, reason) => {
           if (firstUnfinishedIndex === null || reason === 'paused' || reason === 'completed') {

@@ -5,6 +5,7 @@
  */
 import * as https from 'https';
 import * as vscode from 'vscode';
+import { knownCodingProviderCapabilities } from '@devseek-netai/shared';
 import { LLMProvider, LLMProviderType, LLMChatOptions, TokenUsage } from '../types';
 
 const API_HOSTNAME = 'api.deepseek.com';
@@ -14,7 +15,7 @@ const DEFAULT_MODEL = 'deepseek-chat';
 export class DeepSeekApiProvider implements LLMProvider {
   readonly type: LLMProviderType = 'deepseek-api';
   readonly displayName = '$(key) API';
-  readonly capabilities = ['text', 'streaming', 'native-tools'] as const;
+  readonly capabilities = knownCodingProviderCapabilities('deepseek-api');
 
   private apiKey(): string {
     return vscode.workspace.getConfiguration('devseek').get<string>('apiKey', '').trim();

@@ -8,7 +8,9 @@ import {
   BridgeStreamCorrelator,
   createDevSeekTraceLogger,
   parseDeepSeekStreamFrameData,
+  requireDeepSeekWebConnectorAdvertisement,
   summarizeTraceText,
+  type DeepSeekWebConnectorAdvertisement,
   type DevSeekTraceLogger,
 } from '@devseek-netai/shared';
 import { getWorkspaceRootFsPath, resolveWorkspaceFileUri } from './workspace-roots';
@@ -18,11 +20,14 @@ const TOKEN_REL_PATH = nodePath.join('.devseek', 'bridge-token');
 const TRACE_RUN_ID_HEADER = 'X-DevSeek-Run-Id';
 const TRACE_WORKSPACE_ROOT_HEADER = 'X-DevSeek-Trace-Workspace-Root';
 const TRACE_OPERATION_ID_HEADER = 'X-DevSeek-Operation-Id';
+const TARGET_OPERATION_ID_HEADER = 'X-DevSeek-Target-Operation-Id';
 const EVIDENCE_AUTHORITY_HEADER = 'X-DevSeek-Evidence-Authority';
 const BRIDGE_STREAM_HTTP_TIMEOUT_MIN_MS = 120_000;
 const BRIDGE_STREAM_HTTP_TIMEOUT_MAX_MS = 210_000;
 const BRIDGE_STREAM_HTTP_TIMEOUT_FACTOR = 2;
 let extensionRootFsPath: string | undefined;
+let connectorContractVerified = false;
+const activeChatOperationIds = new Set<string>();
 
 interface DevSeekRuntimeBuildInfo {
   appVersion?: string;
@@ -53,6 +58,7 @@ interface BridgeStatusResponse extends DevSeekRuntimeBuildInfo {
     missingRequired: string[];
     evidenceRefs: string[];
   };
+  connector: DeepSeekWebConnectorAdvertisement;
 }
 
 export function setBridgeExtensionRoot(fsPath: string): void {
@@ -194,6 +200,7 @@ export interface ChatOptions {
   traceOperationId?: string;
   /** owner 签发给 Bridge participant 的 run capability。 */
   traceEvidenceParticipantToken?: string;
+  signal?: AbortSignal;
 }
 
 /** 检查 bridge server 是否在线 */
@@ -208,29 +215,41 @@ export async function ping(): Promise<boolean> {
 
 /** 获取 bridge 状态 */
 export async function status(): Promise<BridgeStatusResponse | null> {
+  connectorContractVerified = false;
   try {
     const res = await fetch(`${baseUrl()}/status`, { headers: authHeaders(), signal: AbortSignal.timeout(800) });
     if (!res.ok) return null;
-    return res.json() as Promise<BridgeStatusResponse>;
+    const value = await res.json() as BridgeStatusResponse;
+    requireDeepSeekWebConnectorAdvertisement(value.connector);
+    connectorContractVerified = true;
+    return value;
   } catch {
     return null;
   }
 }
 
-/** 取消当前请求 */
-export async function cancel(): Promise<void> {
+/** 精确取消指定请求；仅有一个本地活跃请求时可省略 id。 */
+export async function cancel(targetOperationId?: string): Promise<void> {
   const trace = createBridgeClientTraceLogger();
   const operationId = createBridgeOperationId('cancel');
-  trace.info('bridge-client', 'cancel-requested', { operationId });
+  const inferredTarget = targetOperationId?.trim()
+    || (activeChatOperationIds.size === 1 ? activeChatOperationIds.values().next().value : undefined);
+  trace.info('bridge-client', 'cancel-requested', { operationId, targetOperationId: inferredTarget });
   await fetch(`${baseUrl()}/cancel`, {
     method: 'POST',
-    headers: traceHeaders(trace, undefined, undefined, operationId),
+    headers: traceHeaders(
+      trace,
+      inferredTarget ? { [TARGET_OPERATION_ID_HEADER]: inferredTarget } : undefined,
+      undefined,
+      operationId,
+    ),
     signal: AbortSignal.timeout(3000),
   }).catch(() => {});
 }
 
 /** 关闭正在运行的 Bridge（用于重启前调用） */
 async function shutdownBridge(): Promise<void> {
+  connectorContractVerified = false;
   try {
     await fetch(`${baseUrl()}/shutdown`, { method: 'POST', headers: authHeaders(), signal: AbortSignal.timeout(2000) });
     await new Promise<void>(r => setTimeout(r, 400)); // 等待进程退出
@@ -435,6 +454,12 @@ export async function chat(opts: ChatOptions): Promise<string> {
   const useStream = opts.stream !== false;
   const trace = createBridgeClientTraceLogger(opts.traceRunId, opts.traceWorkspaceRoot);
   const operationId = opts.traceOperationId?.trim() || createBridgeOperationId('chat');
+  if (!connectorContractVerified && !await status()) {
+    throw new Error('BRIDGE_CONNECTOR_UNAVAILABLE: Bridge capability negotiation failed.');
+  }
+  activeChatOperationIds.add(operationId);
+  const onExternalAbort = () => { void cancel(operationId); };
+  opts.signal?.addEventListener('abort', onExternalAbort, { once: true });
 
   const body = JSON.stringify({
     prompt: opts.prompt,
@@ -463,18 +488,23 @@ export async function chat(opts: ChatOptions): Promise<string> {
   //     → res.json() throws "Unexpected token 'd', "data: {"de"... is not valid JSON"
   //  2. The non-stream path uses AbortSignal.timeout(62s) which is far too short
   //     for large files; the stream path uses timeoutMs×10 (up to 20 min).
-  if (useStream) {
-    return chatStream(
-      body,
-      opts.onDelta ?? (() => {}),
-      trace,
-      opts.traceWorkspaceRoot,
-      operationId,
-      opts.traceEvidenceParticipantToken,
-    );
-  }
-
   try {
+    if (useStream) {
+      return await chatStream(
+        body,
+        opts.onDelta ?? (() => {}),
+        trace,
+        opts.traceWorkspaceRoot,
+        operationId,
+        opts.traceEvidenceParticipantToken,
+        opts.signal,
+      );
+    }
+    const requestAbort = createTimedAbortSignal(
+      opts.timeoutMs ?? config.get<number>('requestTimeoutMs', 120000),
+      opts.signal,
+    );
+    try {
     const res = await fetch(`${baseUrl()}/chat`, {
       method: 'POST',
       headers: traceHeaders(
@@ -485,7 +515,7 @@ export async function chat(opts: ChatOptions): Promise<string> {
         opts.traceEvidenceParticipantToken,
       ),
       body,
-      signal: AbortSignal.timeout(opts.timeoutMs ?? config.get<number>('requestTimeoutMs', 120000)),
+      signal: requestAbort.signal,
     });
 
     const json = await res.json() as { content?: string; error?: string };
@@ -499,9 +529,15 @@ export async function chat(opts: ChatOptions): Promise<string> {
     assertProviderReturnedContent(content);
     trace.info('bridge-client', 'chat-request-complete', { response: summarizeTraceText(content) });
     return content;
+    } finally {
+      requestAbort.dispose();
+    }
   } catch (error) {
     trace.error('bridge-client', 'chat-request-failed', { message: (error as Error).message });
     throw error;
+  } finally {
+    opts.signal?.removeEventListener('abort', onExternalAbort);
+    activeChatOperationIds.delete(operationId);
   }
 }
 
@@ -512,6 +548,7 @@ async function chatStream(
   traceWorkspaceRoot?: string,
   traceOperationId?: string,
   traceEvidenceParticipantToken?: string,
+  externalSignal?: AbortSignal,
 ): Promise<string> {
   const config = vscode.workspace.getConfiguration('devseek');
   const timeoutMs = JSON.parse(body).timeoutMs ?? config.get<number>('requestTimeoutMs', 120000);
@@ -520,87 +557,112 @@ async function chatStream(
   // an interactive wall-clock cap. Bridge has its own Playwright deadline; this
   // client-side cap is the backstop when the bridge process or web page stalls.
   const httpTimeout = bridgeStreamHttpTimeoutMs(timeoutMs);
-  let res: Response;
+  const requestAbort = createTimedAbortSignal(httpTimeout, externalSignal);
   try {
-    res = await fetch(`${baseUrl()}/chat`, {
-      method: 'POST',
-      headers: traceHeaders(
-        trace,
-        { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
-        traceWorkspaceRoot,
-        traceOperationId,
-        traceEvidenceParticipantToken,
-      ),
-      body,
-      signal: AbortSignal.timeout(httpTimeout),
-    });
-  } catch (error) {
-    const message = (error as Error).message || String(error);
-    trace.error('bridge-client', 'chat-request-failed', { message });
-    if (/abort|timeout|timed out|signal/i.test(message)) {
-      throw new Error(`RESPONSE_CORRUPTED:stream-timeout:Bridge SSE stream exceeded ${httpTimeout}ms without completion.`);
-    }
-    throw error;
-  }
-
-  if (!res.ok) {
-    const text = await res.text();
-    // 401 表示需要重新登录，使用特殊错误消息以便上层识别
-    if (res.status === 401) throw new Error('LOGIN_REQUIRED');
-    throw new Error(`HTTP ${res.status}: ${text}`);
-  }
-
-  const reader = res.body?.getReader();
-  if (!reader) throw new Error('No response body');
-
-  const decoder = new TextDecoder();
-  const correlator = new BridgeStreamCorrelator(traceOperationId || createBridgeOperationId('chat'));
-  let buffer = '';
-
-  const consumeSseLine = (line: string): void => {
-    if (!line.startsWith('data: ')) return;
-    const data = line.slice(6).trim();
-    if (!data) return;
-    const frame = parseDeepSeekStreamFrameData(data);
-    const observed = correlator.observe(frame);
-    if (observed.duplicate) {
-      trace.debug('bridge-client', 'stream-duplicate-replay', {
-        operationId: frame.requestId,
-        sequence: frame.sequence,
+    let res: Response;
+    try {
+      res = await fetch(`${baseUrl()}/chat`, {
+        method: 'POST',
+        headers: traceHeaders(
+          trace,
+          { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+          traceWorkspaceRoot,
+          traceOperationId,
+          traceEvidenceParticipantToken,
+        ),
+        body,
+        signal: requestAbort.signal,
       });
-      return;
-    }
-    if (observed.safeToApply) onDelta(observed.delta);
-  };
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-
-      for (const line of lines) {
-        consumeSseLine(line);
+    } catch (error) {
+      const message = (error as Error).message || String(error);
+      trace.error('bridge-client', 'chat-request-failed', { message });
+      if (externalSignal?.aborted) throw externalSignal.reason ?? new Error('Cancelled');
+      if (/abort|timeout|timed out|signal/i.test(message)) {
+        throw new Error(`RESPONSE_CORRUPTED:stream-timeout:Bridge SSE stream exceeded ${httpTimeout}ms without completion.`);
       }
+      throw error;
     }
-    if (buffer.trim()) consumeSseLine(buffer.trimEnd());
-    correlator.assertComplete();
-  } catch (error) {
-    const message = (error as Error).message || String(error);
-    trace.error('bridge-client', 'chat-request-failed', { message });
-    if (/abort|timeout|timed out|signal/i.test(message)) {
-      throw new Error(`RESPONSE_CORRUPTED:stream-timeout:Bridge SSE stream exceeded ${httpTimeout}ms without completion.`);
-    }
-    throw error;
-  }
 
-  const fullText = correlator.fullText;
-  const responsePayloadId = trace.payload('provider', 'extension.response.raw', fullText);
-  trace.debug('bridge-client', 'response-payload-recorded', { payloadId: responsePayloadId });
-  assertProviderReturnedContent(fullText);
-  trace.info('bridge-client', 'chat-request-complete', { response: summarizeTraceText(fullText) });
-  return fullText;
+    if (!res.ok) {
+      const text = await res.text();
+      // 401 表示需要重新登录，使用特殊错误消息以便上层识别
+      if (res.status === 401) throw new Error('LOGIN_REQUIRED');
+      throw new Error(`HTTP ${res.status}: ${text}`);
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error('No response body');
+
+    const decoder = new TextDecoder();
+    const correlator = new BridgeStreamCorrelator(traceOperationId || createBridgeOperationId('chat'));
+    let buffer = '';
+
+    const consumeSseLine = (line: string): void => {
+      if (!line.startsWith('data: ')) return;
+      const data = line.slice(6).trim();
+      if (!data) return;
+      const frame = parseDeepSeekStreamFrameData(data);
+      const observed = correlator.observe(frame);
+      if (observed.duplicate) {
+        trace.debug('bridge-client', 'stream-duplicate-replay', {
+          operationId: frame.requestId,
+          sequence: frame.sequence,
+        });
+        return;
+      }
+      if (observed.safeToApply) onDelta(observed.delta);
+    };
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          consumeSseLine(line);
+        }
+      }
+      if (buffer.trim()) consumeSseLine(buffer.trimEnd());
+      correlator.assertComplete();
+    } catch (error) {
+      const message = (error as Error).message || String(error);
+      trace.error('bridge-client', 'chat-request-failed', { message });
+      if (externalSignal?.aborted) throw externalSignal.reason ?? new Error('Cancelled');
+      if (/abort|timeout|timed out|signal/i.test(message)) {
+        throw new Error(`RESPONSE_CORRUPTED:stream-timeout:Bridge SSE stream exceeded ${httpTimeout}ms without completion.`);
+      }
+      throw error;
+    }
+
+    const fullText = correlator.fullText;
+    const responsePayloadId = trace.payload('provider', 'extension.response.raw', fullText);
+    trace.debug('bridge-client', 'response-payload-recorded', { payloadId: responsePayloadId });
+    assertProviderReturnedContent(fullText);
+    trace.info('bridge-client', 'chat-request-complete', { response: summarizeTraceText(fullText) });
+    return fullText;
+  } finally {
+    requestAbort.dispose();
+  }
+}
+
+function createTimedAbortSignal(timeoutMs: number, externalSignal?: AbortSignal): {
+  readonly signal: AbortSignal;
+  dispose(): void;
+} {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(new Error(`Bridge request timed out after ${timeoutMs}ms`)), timeoutMs);
+  const relayExternalAbort = () => controller.abort(externalSignal?.reason ?? new Error('Cancelled'));
+  if (externalSignal?.aborted) relayExternalAbort();
+  else externalSignal?.addEventListener('abort', relayExternalAbort, { once: true });
+  return {
+    signal: controller.signal,
+    dispose() {
+      clearTimeout(timeout);
+      externalSignal?.removeEventListener('abort', relayExternalAbort);
+    },
+  };
 }

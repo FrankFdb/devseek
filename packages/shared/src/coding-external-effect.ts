@@ -16,6 +16,7 @@ import type {
   CodingOperationJournalRecord,
 } from './coding-operation-journal';
 import { codingSemanticDigest } from './coding-semantic-digest';
+import type { CodingEffectGuardPort } from './coding-run-control';
 import type {
   CodingToolAuthorityReceipt,
   CodingToolAuthoritySessionPort,
@@ -131,6 +132,7 @@ export interface ExternalEffectPort {
     readonly executor?: ToolExecutorPort;
     readonly journal?: CodingOperationJournalPort;
     readonly replayRunId?: string;
+    readonly effectGuard?: CodingEffectGuardPort;
   }): CodingExternalEffectSessionPort;
 }
 
@@ -173,6 +175,7 @@ export class CanonicalExternalEffectService implements ExternalEffectPort {
           }));
         }
 
+        const lease = input.effectGuard?.beginEffect(`external-effect:${execution.actionId}`);
         const outcome = this.executeOnce(
           runId,
           execution,
@@ -186,7 +189,8 @@ export class CanonicalExternalEffectService implements ExternalEffectPort {
           .then(value => {
             receipts.push(value.receipt as CodingExternalEffectReceipt<unknown>);
             return value;
-          });
+          })
+          .finally(() => lease?.release());
         settled.set(execution.actionId, {
           canonicalInput,
           outcome: outcome as Promise<CodingExternalEffectOutcome<unknown>>,

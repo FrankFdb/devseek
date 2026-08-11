@@ -74,6 +74,26 @@ test('BridgeStreamCorrelator: duplicate replay frames have zero output effect', 
   assert.doesNotThrow(() => correlator.assertComplete());
 });
 
+test('BridgeStreamCorrelator: reset frames rebuild text without exposing transport markers', () => {
+  const correlator = new BridgeStreamCorrelator('bridge-op-reset');
+  const first = correlator.observe(frame({
+    requestId: 'bridge-op-reset',
+    sequence: 1,
+    delta: '\u0000RESET\u0000hello',
+  }));
+  const second = correlator.observe(frame({
+    requestId: 'bridge-op-reset',
+    sequence: 2,
+    delta: '\u0000RESET\u0000hello world',
+  }));
+
+  assert.equal(first.delta, 'hello');
+  assert.equal(second.delta, ' world');
+  assert.equal(first.delta.includes('RESET'), false);
+  assert.equal(second.delta.includes('RESET'), false);
+  assert.equal(correlator.fullText, 'hello world');
+});
+
 test('BridgeStreamCorrelator: same sequence with different content is corrupt', () => {
   const correlator = new BridgeStreamCorrelator('bridge-op-1');
   correlator.observe(frame());
@@ -93,6 +113,23 @@ test('BridgeStreamCorrelator: stream cannot settle without a done frame', () => 
     () => correlator.assertComplete(),
     /RESPONSE_CORRUPTED:stream-truncated/,
   );
+});
+
+test('BridgeStreamCorrelator: a correlated cancelled terminal never becomes partial success', () => {
+  const correlator = new BridgeStreamCorrelator('bridge-op-cancelled');
+  correlator.observe(frame({
+    requestId: 'bridge-op-cancelled',
+    sequence: 1,
+    event: 'delta',
+    delta: 'partial',
+  }));
+  assert.throws(() => correlator.observe(frame({
+    requestId: 'bridge-op-cancelled',
+    sequence: 2,
+    event: 'cancelled',
+    done: true,
+    errorCategory: 'cancelled',
+  })), /Cancelled/);
 });
 
 test('parseDeepSeekStreamFrameData: malformed SSE data fails closed', () => {

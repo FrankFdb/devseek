@@ -2,6 +2,7 @@ import {
   CODING_KERNEL_REQUEST_VERSION,
   CanonicalCodingKernel,
   FileSystemCodingOperationJournal,
+  createCodingKernelEnvironmentSync,
   projectSettledCodingConformanceRun,
   type CodingKernelExecutionOutput,
 } from '@devseek-netai/shared';
@@ -56,6 +57,7 @@ export const productCliCodingKernelExecutor = {
       signal,
       ...runtimeContext
     } = input;
+    const taskContract = buildCliCodingKernelTaskContract(userPrompt, contextFiles);
     const output = await kernel.execute({
       version: CODING_KERNEL_REQUEST_VERSION,
       route: 'canonical',
@@ -63,9 +65,13 @@ export const productCliCodingKernelExecutor = {
       runId,
       userPrompt,
       workspaceRoot,
-      taskContract: buildCliCodingKernelTaskContract(userPrompt, contextFiles),
+      taskContract,
       contextSeed: { files: contextFiles.map(path => ({ path })) },
       operationJournal: FileSystemCodingOperationJournal.forWorkspace(workspaceRoot),
+      environment: createCodingKernelEnvironmentSync({
+        workspaceRoot,
+        provider: input.usesBridge ? 'bridge' : 'local-api',
+      }),
       runtimeContext,
       signal,
     });

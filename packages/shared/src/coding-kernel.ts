@@ -45,6 +45,14 @@ import {
   type CodingResumeOperationReceipt,
 } from './coding-resume-idempotency';
 import {
+  CanonicalRunControlService,
+  type CodingCancellationReceipt,
+  type CodingRunControlSessionPort,
+  type CodingRunControlSnapshot,
+  type CodingSteeringReceipt,
+  type CodingSteeringSourcePort,
+} from './coding-run-control';
+import {
   CanonicalToolAuthorityService,
   type CodingToolAuthorization,
   type CodingToolAuthoritySessionPort,
@@ -166,6 +174,15 @@ import {
   type CodingChangePlanRevisionDecision,
   type CodingChangePlanRevisionSessionPort,
 } from './coding-change-plan-revision';
+import {
+  CanonicalCodingKernelEnvironmentService,
+  type CodingKernelEnvironmentInput,
+  type CodingKernelEnvironmentRuntime,
+} from './coding-kernel-environment';
+import type { CodingPlatformAdapterConformanceReport } from './coding-platform-conformance';
+import type { CodingProviderCapabilityDecision, ProviderCapabilitySessionPort } from './coding-provider-capability';
+import type { DirtyWorktreePolicySessionPort, CodingWorktreeSnapshot } from './coding-dirty-worktree';
+import type { SecretRedactionPort } from './coding-secret-redaction';
 
 export {
   CODING_KERNEL_TASK_CONTRACT_VERSION,
@@ -178,8 +195,8 @@ export {
   type TaskContractPort,
 } from './coding-task-contract';
 
-export const CODING_KERNEL_REQUEST_VERSION = 'devseek.coding-kernel-request/v1' as const;
-export const CODING_KERNEL_OUTPUT_VERSION = 'devseek.coding-kernel-output/v1' as const;
+export const CODING_KERNEL_REQUEST_VERSION = 'devseek.coding-kernel-request/v2' as const;
+export const CODING_KERNEL_OUTPUT_VERSION = 'devseek.coding-kernel-output/v2' as const;
 export type CodingKernelSurface = 'vscode' | 'cli' | 'headless';
 
 export interface CodingKernelExecutionRequest<TRuntimeContext> {
@@ -195,8 +212,10 @@ export interface CodingKernelExecutionRequest<TRuntimeContext> {
   readonly resumeCheckpoint?: CodingCheckpoint;
   readonly resumeReceipts?: readonly CodingResumeOperationReceipt[];
   readonly operationJournal: CodingOperationJournalPort;
+  readonly environment: CodingKernelEnvironmentInput;
   readonly runtimeContext: TRuntimeContext;
   readonly signal?: AbortSignal;
+  readonly steeringSource?: CodingSteeringSourcePort;
 }
 
 export interface CodingKernelRuntimeRequest<TRuntimeContext>
@@ -210,6 +229,12 @@ export interface CodingKernelRuntimeRequest<TRuntimeContext>
   readonly checkpoint: CodingCheckpointSessionPort;
   readonly contextCompaction: CodingContextCompactionSessionPort;
   readonly providerEvents: ProviderEventPort;
+  readonly providerCapabilities: ProviderCapabilitySessionPort;
+  readonly providerCapabilityDecision: CodingProviderCapabilityDecision;
+  readonly dirtyWorktree: DirtyWorktreePolicySessionPort;
+  readonly platformConformance: CodingPlatformAdapterConformanceReport;
+  readonly secretRedaction: SecretRedactionPort;
+  readonly runControl: CodingRunControlSessionPort;
   readonly toolSchemas: ToolSchemaRegistryPort;
   readonly toolDispatch: ToolDispatchPort;
   readonly toolExecution: CodingToolExecutionSessionPort;
@@ -259,6 +284,13 @@ export interface CodingKernelExecutionOutput<TResult> {
   readonly changePlanHistory: readonly CodingChangePlan[];
   readonly changePlanRevisionDecisions: readonly CodingChangePlanRevisionDecision[];
   readonly memoryPolicy: CodingMemoryContextDecision;
+  readonly providerCapabilityDecision: CodingProviderCapabilityDecision;
+  readonly dirtyWorktreeSnapshot: CodingWorktreeSnapshot;
+  readonly dirtyWorktreeDecisions: ReturnType<DirtyWorktreePolicySessionPort['decisions']>;
+  readonly platformConformance: CodingPlatformAdapterConformanceReport;
+  readonly runControl: CodingRunControlSnapshot;
+  readonly cancellationReceipts: readonly CodingCancellationReceipt[];
+  readonly steeringReceipts: readonly CodingSteeringReceipt[];
   readonly resume?: CodingCheckpointRestoreDecision;
   readonly contextCompactions: readonly CodingContextCompactionReceipt[];
   readonly toolAuthorizations: readonly CodingToolAuthorization[];
@@ -316,6 +348,10 @@ export class CodingKernelExecutionError extends Error {
   readonly resumeReceipts: readonly CodingResumeOperationReceipt[];
   readonly completion: CodingCompletionDecision;
   readonly runtimeCause: unknown;
+  readonly environment?: CodingKernelEnvironmentRuntime;
+  readonly runControl?: CodingRunControlSnapshot;
+  readonly cancellationReceipts: readonly CodingCancellationReceipt[];
+  readonly steeringReceipts: readonly CodingSteeringReceipt[];
 
   constructor(
     message: string,
@@ -343,6 +379,10 @@ export class CodingKernelExecutionError extends Error {
     releaseGateDecisions: readonly CodingReleaseGateDecision[] = [],
     deploymentDecisions: readonly CodingDeploymentDecision[] = [],
     rollbackDecisions: readonly CodingRollbackDecision[] = [],
+    environment?: CodingKernelEnvironmentRuntime,
+    runControl?: CodingRunControlSnapshot,
+    cancellationReceipts: readonly CodingCancellationReceipt[] = [],
+    steeringReceipts: readonly CodingSteeringReceipt[] = [],
   ) {
     super(message);
     this.name = 'CodingKernelExecutionError';
@@ -370,6 +410,10 @@ export class CodingKernelExecutionError extends Error {
     this.resumeReceipts = resumeReceipts;
     this.completion = completion;
     this.runtimeCause = runtimeCause;
+    this.environment = environment;
+    this.runControl = runControl;
+    this.cancellationReceipts = cancellationReceipts;
+    this.steeringReceipts = steeringReceipts;
   }
 }
 
@@ -381,6 +425,7 @@ const MEMORY_POLICY = new CanonicalMemoryPolicyService();
 const CHECKPOINT = new CanonicalCheckpointService();
 const CONTEXT_COMPACTION = new CanonicalContextCompactionService();
 const RESUME_IDEMPOTENCY = new CanonicalResumeIdempotencyService();
+const RUN_CONTROL = new CanonicalRunControlService();
 const PROVIDER_EVENTS = new CanonicalProviderEventService();
 const TOOL_SCHEMAS = new CanonicalToolSchemaRegistry();
 const TOOL_DISPATCH = new CanonicalToolDispatchService(TOOL_SCHEMAS);
@@ -407,6 +452,7 @@ const REQUIREMENTS = new CanonicalRequirementDecisionService();
 const DESIGN = new CanonicalDesignDecisionService();
 const CHANGE_PLAN = new CanonicalChangePlanService();
 const CHANGE_PLAN_REVISION = new CanonicalChangePlanRevisionService(DESIGN, CHANGE_PLAN);
+const KERNEL_ENVIRONMENT = new CanonicalCodingKernelEnvironmentService();
 
 /**
  * The product-level execution owner shared by every Surface. Runtime adapters
@@ -422,7 +468,18 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
     request: CodingKernelExecutionRequest<TRuntimeContext>,
   ): Promise<CodingKernelExecutionOutput<TResult>> {
     assertCanonicalRequest(request);
+    const runControl = RUN_CONTROL.bind({
+      runId: request.runId,
+      ...(request.signal ? { signal: request.signal } : {}),
+      ...(request.steeringSource ? { steeringSource: request.steeringSource } : {}),
+    });
     const taskContract = TASK_CONTRACT.snapshot(request.taskContract);
+    const environmentRuntime = KERNEL_ENVIRONMENT.prepare({
+      runId: request.runId,
+      mode: taskContract.mode,
+      signalProvided: request.signal !== undefined,
+      environment: request.environment,
+    });
     assertCodingOrientationPrompt(taskContract.orientation, request.userPrompt);
     const contextGraph = CONTEXT_GRAPH.build({
       workspaceRoot: request.workspaceRoot,
@@ -487,10 +544,15 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       taskContract,
       changePlanRevision,
     });
-    const toolExecution = TOOL_EXECUTION.bind({ runId: request.runId });
+    const toolExecution = TOOL_EXECUTION.bind({
+      runId: request.runId,
+      effectGuard: runControl,
+    });
     const workspaceMutations = new CanonicalWorkspaceMutationTransaction(
       request.operationJournal,
       resume?.originRunId,
+      environmentRuntime.dirtyWorktree,
+      runControl,
     );
     const verificationAcceptance = Object.freeze(taskContract.acceptance
       .filter(criterion => criterion.oracle.kind === 'verification')
@@ -525,6 +587,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       journal: request.operationJournal,
       ...(resume ? { replayRunId: resume.originRunId } : {}),
       ...(resumeIdempotency ? { resume: resumeIdempotency } : {}),
+      effectGuard: runControl,
     });
     const lifecycle = RUN_LIFECYCLE.start({ runId: request.runId, surface: request.surface });
     const terminalContext: CodingKernelTerminalContext = {
@@ -549,9 +612,11 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       ciDeployObserve,
       rollback,
       resumeIdempotency,
+      runControl,
+      environment: environmentRuntime,
       completion: this.completion,
     };
-    if (request.signal?.aborted) {
+    if (runControl.cancellationRequested()) {
       throw lifecycleError(
         'coding-kernel-execution:cancelled-before-start',
         lifecycle,
@@ -567,6 +632,15 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         'blocked',
       );
     }
+    if (!environmentRuntime.ready) {
+      throw lifecycleError(
+        `coding-kernel-execution:environment-blocked:${environmentRuntime.blockers.join(',')}`,
+        lifecycle,
+        terminalContext,
+        'blocked',
+        environmentRuntime,
+      );
+    }
 
     const runtimeRequest = Object.freeze({
       ...request,
@@ -580,6 +654,13 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       checkpoint,
       contextCompaction,
       providerEvents: PROVIDER_EVENTS,
+      providerCapabilities: environmentRuntime.providerCapabilities,
+      providerCapabilityDecision: environmentRuntime.providerCapabilityDecision,
+      dirtyWorktree: environmentRuntime.dirtyWorktree,
+      platformConformance: environmentRuntime.platformConformance,
+      secretRedaction: environmentRuntime.secretRedaction,
+      runControl,
+      signal: runControl.signal,
       toolSchemas: TOOL_SCHEMAS,
       toolDispatch: TOOL_DISPATCH,
       toolExecution,
@@ -762,6 +843,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         taskContract,
         mutations: workspaceMutations.receipts(),
       });
+      const cancellationRequested = runControl.cancellationRequested();
       const completion = this.completion.decide({
         runId: request.runId,
         decisionId: 'kernel-completion',
@@ -769,7 +851,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         acceptance: taskContract.acceptance,
         verificationRequired: codingTaskContractRequiresVerification(taskContract),
         reviewRequired: completionReviewRequired,
-        ...(request.signal?.aborted ? { requestedTerminalStatus: 'cancelled' as const } : {}),
+        ...(cancellationRequested ? { requestedTerminalStatus: 'cancelled' as const } : {}),
         toolExecutions: toolExecution.receipts(),
         mutations: workspaceMutations.receipts(),
         verifications: verification.receipts(),
@@ -789,7 +871,10 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
             evidenceRefs: review.evidenceRefs,
           },
         } : {}),
-        pendingRefs: [...completionEvidence.pendingRefs, ...c8PendingRefs, ...c10PendingRefs],
+        pendingRefs: [
+          ...completionEvidence.pendingRefs,
+          ...(cancellationRequested ? [] : [...c8PendingRefs, ...c10PendingRefs]),
+        ],
         adverseEvidenceRefs: [
           ...completionEvidence.adverseEvidenceRefs,
           ...c8AdverseRefs,
@@ -812,6 +897,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         lifecycle: lifecycleSnapshot,
         completion,
       });
+      const runControlSnapshot = runControl.settle(settlement.status);
       return {
         version: CODING_KERNEL_OUTPUT_VERSION,
         route: 'canonical',
@@ -830,6 +916,13 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         changePlanHistory: changePlanRevision.planHistory(),
         changePlanRevisionDecisions: changePlanRevision.decisions(),
         memoryPolicy,
+        providerCapabilityDecision: environmentRuntime.providerCapabilityDecision,
+        dirtyWorktreeSnapshot: environmentRuntime.dirtyWorktree.snapshot,
+        dirtyWorktreeDecisions: environmentRuntime.dirtyWorktree.decisions(),
+        platformConformance: environmentRuntime.platformConformance,
+        runControl: runControlSnapshot,
+        cancellationReceipts: runControl.cancellationReceipts(),
+        steeringReceipts: runControl.steeringReceipts(),
         ...(resume ? { resume } : {}),
         contextCompactions: contextCompaction.receipts(),
         toolAuthorizations: toolAuthority.authorizations(),
@@ -861,7 +954,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         errorMessage(error),
         lifecycle,
         terminalContext,
-        request.signal?.aborted ? 'cancelled' : 'failed',
+        runControl.cancellationRequested() ? 'cancelled' : 'failed',
         error,
       );
     }
@@ -890,6 +983,8 @@ interface CodingKernelTerminalContext {
   readonly ciDeployObserve: CiDeployObservePort;
   readonly rollback: RollbackPort;
   readonly resumeIdempotency?: CodingResumeIdempotencySessionPort;
+  readonly runControl: CodingRunControlSessionPort;
+  readonly environment: CodingKernelEnvironmentRuntime;
   readonly completion: CanonicalCompletionDecisionService;
 }
 
@@ -929,6 +1024,7 @@ function lifecycleError(
     lifecycle: snapshot,
     completion,
   });
+  const runControlSnapshot = context.runControl.settle(settlement.status);
   return new CodingKernelExecutionError(
     message,
     snapshot,
@@ -955,6 +1051,10 @@ function lifecycleError(
     context.releaseGate.decisions(),
     context.ciDeployObserve.decisions(),
     context.rollback.decisions(),
+    context.environment,
+    runControlSnapshot,
+    context.runControl.cancellationReceipts(),
+    context.runControl.steeringReceipts(),
   );
 }
 
@@ -1070,6 +1170,9 @@ function assertCanonicalRequest(request: CodingKernelExecutionRequest<unknown>):
     || typeof request.operationJournal.prepare !== 'function'
     || typeof request.operationJournal.settle !== 'function') {
     throw new Error('coding-kernel-execution:missing-operation-journal');
+  }
+  if (!request.environment || typeof request.environment !== 'object') {
+    throw new Error('coding-kernel-execution:missing-environment');
   }
 }
 

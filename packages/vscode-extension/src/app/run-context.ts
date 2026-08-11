@@ -49,6 +49,8 @@ export interface DevSeekRunContext {
   recordToolActivity(kind: string, label: string): void;
   recordCheckpoint(firstUnfinishedIndex: number | null, remainingCount: number, reason: string): void;
   markEvidenceDegraded(error: unknown): void;
+  /** Records a non-terminal cancellation request before in-flight effects reconcile. */
+  requestCancellation(data?: Record<string, unknown>): void;
   /** Cancels the run through the same durable settlement owner used by completion/failure. */
   cancel(data?: Record<string, unknown>): RunContextStatus;
   /** Returns the durable settlement status; requested completion may fail closed. */
@@ -96,6 +98,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
   private readonly committedSideEffectOperationIdsByKey = new Map<string, string>();
   private hasSideEffectEvidence = false;
   private settlementStatus?: RunContextStatus;
+  private cancellationRequested = false;
 
   constructor(options: DevSeekRunContextOptions) {
     this.runId = options.runId || createProductRunEvidenceId(options.now);
@@ -252,8 +255,14 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
 
   cancel(data: Record<string, unknown> = {}): RunContextStatus {
     const completionData = normalizeCancellationData(data);
-    if (!this.settlementStatus) this.recordCancellation(completionData);
+    this.requestCancellation(completionData);
     return this.complete('cancelled', completionData);
+  }
+
+  requestCancellation(data: Record<string, unknown> = {}): void {
+    if (this.settlementStatus || this.cancellationRequested) return;
+    this.cancellationRequested = true;
+    this.recordCancellation(normalizeCancellationData(data));
   }
 
   complete(status: RunContextStatus, data: Record<string, unknown> = {}): RunContextStatus {
@@ -356,8 +365,8 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
       }),
       payload: {
         trust: 'product-runtime-observation',
-        status: 'cancelled',
-        phase: 'done',
+        status: 'cancelling',
+        phase: 'cancel',
         summary,
       },
     });

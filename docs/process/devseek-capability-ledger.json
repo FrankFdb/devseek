@@ -2709,10 +2709,39 @@
         },
         "contract_sha256": "6e86daedd4515ae7af4b93512e789f3479d72f828b0deb8858759867b16990d3"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-provider-capability.ts"
+        },
+        {
+          "role": "canonical-kernel-environment",
+          "path": "packages/shared/src/coding-kernel-environment.ts"
+        },
+        {
+          "role": "canonical-kernel-binding",
+          "path": "packages/shared/src/coding-kernel.ts"
+        },
+        {
+          "role": "vscode-provider-runtime-binding",
+          "path": "packages/vscode-extension/src/llm/provider-runtime.ts"
+        },
+        {
+          "role": "vscode-provider-adapters",
+          "path": "packages/vscode-extension/src/llm/providers"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/coding-provider-capability.test.mjs"
+        },
+        {
+          "role": "kernel-fail-closed-tests",
+          "path": "packages/shared/test/coding-kernel.test.mjs"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C6-PROVIDER-NORMALIZATION",
@@ -2726,7 +2755,17 @@
           "required_implementation_state": "wired",
           "contract_sha256": "08a390eea1ecb473dc09da20671fbaafa2df634719176ba9dcc8ee66e230b268"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run shared:test",
+          "npm run cli:typecheck",
+          "npm run headless:typecheck",
+          "npx tsc -p packages/vscode-extension/tsconfig.json --noEmit",
+          "npm test --workspace=packages/vscode-extension"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C6-DEEPSEEK-WEB-CONNECTOR",
@@ -2752,10 +2791,39 @@
         },
         "contract_sha256": "560d04ac339f8f65228d7e99aa194f8fbf0a01b0df224cccdd00aa24a52bdad3"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "shared-protocol",
+          "path": "packages/shared/src/deepseek-web-connector-protocol.ts"
+        },
+        {
+          "role": "semantic-authority",
+          "path": "packages/bridge/src/deepseek-web-connector.ts"
+        },
+        {
+          "role": "bridge-product-binding",
+          "path": "packages/bridge/src/server.ts"
+        },
+        {
+          "role": "vscode-client-binding",
+          "path": "packages/vscode-extension/src/bridge-client.ts"
+        },
+        {
+          "role": "cli-client-binding",
+          "path": "packages/cli/src/bridge-client.ts"
+        },
+        {
+          "role": "connector-contract-tests",
+          "path": "packages/bridge/test/deepseek-web-connector.test.mjs"
+        },
+        {
+          "role": "stream-contract-tests",
+          "path": "packages/shared/test/bridge-stream-protocol.test.mjs"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C6-PROVIDER-NORMALIZATION",
@@ -2775,7 +2843,17 @@
           "required_implementation_state": "wired",
           "contract_sha256": "1c1dbdeae68c8b9864608d53d79b21848a4e0a3a83401f1edaead035ac0f6e6a"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run shared:test",
+          "npm test --workspace=packages/bridge",
+          "npm run cli:typecheck",
+          "npx tsc -p packages/vscode-extension/tsconfig.json --noEmit",
+          "npm test --workspace=packages/vscode-extension"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C6-VISUAL-COMPUTER-USE",
@@ -3259,10 +3337,39 @@
         },
         "contract_sha256": "1c1dbdeae68c8b9864608d53d79b21848a4e0a3a83401f1edaead035ac0f6e6a"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-secret-redaction.ts"
+        },
+        {
+          "role": "canonical-kernel-environment",
+          "path": "packages/shared/src/coding-kernel-environment.ts"
+        },
+        {
+          "role": "persisted-secret-boundary",
+          "path": "packages/shared/src/persisted-secret.ts"
+        },
+        {
+          "role": "bridge-evidence-binding",
+          "path": "packages/bridge/src/run-evidence.ts"
+        },
+        {
+          "role": "vscode-memory-binding",
+          "path": "packages/vscode-extension/src/memory/sensitive-memory-guard.ts"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/coding-secret-redaction.test.mjs"
+        },
+        {
+          "role": "kernel-runtime-tests",
+          "path": "packages/shared/test/coding-kernel.test.mjs"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C7-EXTERNAL-EFFECT",
@@ -3270,7 +3377,15 @@
           "required_implementation_state": "wired",
           "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run shared:test",
+          "npm test --workspace=packages/bridge",
+          "npm test --workspace=packages/vscode-extension"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C7-DIRTY-WORKTREE",
@@ -3296,10 +3411,35 @@
         },
         "contract_sha256": "f53335c33f0991f53caea7835b5d359fb0c39b3fec849eb63343d9ddfe27045d"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-dirty-worktree.ts"
+        },
+        {
+          "role": "canonical-kernel-environment",
+          "path": "packages/shared/src/coding-kernel-environment.ts"
+        },
+        {
+          "role": "workspace-mutation-binding",
+          "path": "packages/shared/src/coding-workspace-mutation.ts"
+        },
+        {
+          "role": "vscode-product-binding",
+          "path": "packages/vscode-extension/src/workspace/product-workspace-mutation-transaction.ts"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/coding-dirty-worktree.test.mjs"
+        },
+        {
+          "role": "kernel-fail-closed-tests",
+          "path": "packages/shared/test/coding-kernel.test.mjs"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C7-WORKSPACE-MUTATION",
@@ -3307,7 +3447,16 @@
           "required_implementation_state": "wired",
           "contract_sha256": "3d40c41d418c02213eacbcbce6f25bbb71b65c0c4bfe819ea3e43e8ef73566c6"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run shared:test",
+          "npm run cli:test",
+          "npm run headless:test",
+          "npm test --workspace=packages/vscode-extension"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C7-PLATFORM-ADAPTER-CONFORMANCE",
@@ -3333,10 +3482,35 @@
         },
         "contract_sha256": "75433b00d4a023800a950f109f7b9c79b5233617b10b49512cde68e05b63182c"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-platform-conformance.ts"
+        },
+        {
+          "role": "platform-runtime-adapter",
+          "path": "packages/shared/src/platform-runtime.ts"
+        },
+        {
+          "role": "canonical-kernel-environment",
+          "path": "packages/shared/src/coding-kernel-environment.ts"
+        },
+        {
+          "role": "canonical-kernel-binding",
+          "path": "packages/shared/src/coding-kernel.ts"
+        },
+        {
+          "role": "platform-contract-tests",
+          "path": "packages/vscode-extension/test/unit/platform-runtime.test.mjs"
+        },
+        {
+          "role": "kernel-fail-closed-tests",
+          "path": "packages/shared/test/coding-kernel.test.mjs"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C7-SANDBOX-POLICY",
@@ -3356,7 +3530,16 @@
           "required_implementation_state": "wired",
           "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run shared:test",
+          "npm run cli:test",
+          "npm run headless:test",
+          "npm test --workspace=packages/vscode-extension"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C8-CODE-CHANGE",
@@ -4879,10 +5062,43 @@
         },
         "contract_sha256": "d85aeaa0f8c1b57adf9dba0cc5e3c955b822a68d91343bcb96e1e414d5abc387"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-run-control.ts"
+        },
+        {
+          "role": "canonical-kernel-binding",
+          "path": "packages/shared/src/coding-kernel.ts"
+        },
+        {
+          "role": "effect-guard-binding",
+          "path": "packages/shared/src/coding-tool-execution.ts"
+        },
+        {
+          "role": "workspace-effect-guard-binding",
+          "path": "packages/shared/src/coding-workspace-mutation.ts"
+        },
+        {
+          "role": "external-effect-guard-binding",
+          "path": "packages/shared/src/coding-external-effect.ts"
+        },
+        {
+          "role": "vscode-request-coordinator",
+          "path": "packages/vscode-extension/src/app/active-chat-run-coordinator.ts"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/coding-run-control.test.mjs"
+        },
+        {
+          "role": "vscode-coordinator-tests",
+          "path": "packages/vscode-extension/test/unit/active-chat-run-coordinator.test.mjs"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C1-AGENT-COMMAND",
@@ -4890,7 +5106,16 @@
           "required_implementation_state": "wired",
           "contract_sha256": "1cdf7be1d9b1b6830bd533e8b9a7aecdf34d2b0c4f43d8abaf7fe7415949daad"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run shared:test",
+          "npm run cli:test",
+          "npm run headless:test",
+          "npm test --workspace=packages/vscode-extension"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C11-STEERING",
@@ -4916,10 +5141,35 @@
         },
         "contract_sha256": "a191f503198bb14f32e5e81bb45e12037d4f2bbcafa7a869587cd85c096ebbb9"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-run-control.ts"
+        },
+        {
+          "role": "canonical-kernel-binding",
+          "path": "packages/shared/src/coding-kernel.ts"
+        },
+        {
+          "role": "vscode-runtime-binding",
+          "path": "packages/vscode-extension/src/app/coding-kernel-execution.ts"
+        },
+        {
+          "role": "vscode-product-binding",
+          "path": "packages/vscode-extension/src/product-coding-kernel-executor.ts"
+        },
+        {
+          "role": "single-write-revocation-owner",
+          "path": "packages/vscode-extension/src/agent/user-steer.ts"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/coding-run-control.test.mjs"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C1-AGENT-COMMAND",
@@ -4933,7 +5183,16 @@
           "required_implementation_state": "wired",
           "contract_sha256": "2f7c8833fb07d3515342649b184c9079f84a5ed5c1cea952b384dfa4a25ae55e"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run shared:test",
+          "npm run cli:test",
+          "npm run headless:test",
+          "npm test --workspace=packages/vscode-extension"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C11-USER-COLLABORATION",
@@ -4959,10 +5218,39 @@
         },
         "contract_sha256": "4f443efaf241d9367616a903fb633a8acdfd95057279a192ec0846f6c2f0f7cf"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-user-collaboration.ts"
+        },
+        {
+          "role": "surface-contract",
+          "path": "packages/shared/src/surface-adapter.ts"
+        },
+        {
+          "role": "vscode-surface-binding",
+          "path": "packages/vscode-extension/src/ui/vscode-surface-adapter.ts"
+        },
+        {
+          "role": "cli-surface-binding",
+          "path": "packages/cli/src/cli-surface-adapter.ts"
+        },
+        {
+          "role": "headless-surface-binding",
+          "path": "packages/headless/src/headless-surface-adapter.ts"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/coding-user-collaboration.test.mjs"
+        },
+        {
+          "role": "cli-surface-tests",
+          "path": "packages/cli/test/cli-surface-conformance.test.mjs"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C1-AGENT-COMMAND",
@@ -4988,7 +5276,16 @@
           "required_implementation_state": "wired",
           "contract_sha256": "a191f503198bb14f32e5e81bb45e12037d4f2bbcafa7a869587cd85c096ebbb9"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run shared:test",
+          "npm run cli:test",
+          "npm run headless:test",
+          "npm test --workspace=packages/vscode-extension"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C11-SURFACE-ACCESSIBILITY",
@@ -5014,10 +5311,39 @@
         },
         "contract_sha256": "9c2dbb75d6923cbe80504944c2e46991b215b4cdf3a2c0e547015e3607e3455c"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-user-collaboration.ts"
+        },
+        {
+          "role": "surface-contract",
+          "path": "packages/shared/src/surface-adapter.ts"
+        },
+        {
+          "role": "vscode-surface-binding",
+          "path": "packages/vscode-extension/src/ui/vscode-surface-adapter.ts"
+        },
+        {
+          "role": "cli-surface-binding",
+          "path": "packages/cli/src/cli-surface-adapter.ts"
+        },
+        {
+          "role": "headless-surface-binding",
+          "path": "packages/headless/src/headless-surface-adapter.ts"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/coding-user-collaboration.test.mjs"
+        },
+        {
+          "role": "vscode-surface-tests",
+          "path": "packages/vscode-extension/test/unit/vscode-surface-adapter.test.mjs"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C11-USER-COLLABORATION",
@@ -5025,7 +5351,16 @@
           "required_implementation_state": "wired",
           "contract_sha256": "4f443efaf241d9367616a903fb633a8acdfd95057279a192ec0846f6c2f0f7cf"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run shared:test",
+          "npm run cli:test",
+          "npm run headless:test",
+          "npm test --workspace=packages/vscode-extension"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C11-BACKGROUND-AUTOMATION",
@@ -5488,10 +5823,43 @@
         },
         "contract_sha256": "02eb49f0e34dcbfc087bc5df3816259ae15825a933d9d7f2443579affa41af65"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "semantic-authority",
+          "path": "packages/shared/src/coding-mcp-boundary.ts"
+        },
+        {
+          "role": "official-sdk-protocol-adapter",
+          "path": "packages/vscode-extension/src/mcp/client.ts"
+        },
+        {
+          "role": "tool-call-authority-binding",
+          "path": "packages/vscode-extension/src/app/evidence-aware-mcp-tool-call.ts"
+        },
+        {
+          "role": "vscode-server-launch-binding",
+          "path": "packages/vscode-extension/src/extension.ts"
+        },
+        {
+          "role": "untrusted-prompt-projection",
+          "path": "packages/vscode-extension/src/agent/agentic-system-prompt.ts"
+        },
+        {
+          "role": "official-sdk-dependency",
+          "path": "packages/vscode-extension/package.json"
+        },
+        {
+          "role": "shared-contract-tests",
+          "path": "packages/shared/test/coding-mcp-boundary.test.mjs"
+        },
+        {
+          "role": "stdio-integration-tests",
+          "path": "packages/vscode-extension/test/unit/mcp-manager.test.mjs"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C6-TOOL-EXECUTION",
@@ -5511,7 +5879,16 @@
           "required_implementation_state": "wired",
           "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run shared:test",
+          "npm run cli:test",
+          "npm run headless:test",
+          "npm test --workspace=packages/vscode-extension"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C13-SUBAGENT-DELEGATION",
@@ -5961,5 +6338,5 @@
       ]
     }
   ],
-  "ledger_sha256": "18a06eeccc6965c80361549f013edf23f272d3f749704f58d5143fff17367153"
+  "ledger_sha256": "07ef5f1bda4f704aa9fa79b94a6a87f608d573cc92b97a6a44362831e92aba84"
 }

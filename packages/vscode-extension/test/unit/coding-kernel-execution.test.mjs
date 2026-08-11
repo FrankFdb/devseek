@@ -12,6 +12,7 @@ import {
   InMemoryCodingOperationJournal,
   buildCodingVerificationPlan,
   buildCodingKernelTaskContract,
+  createFixtureCodingKernelEnvironment,
 } from '../../../shared/dist/index.js';
 import { createCanonicalCheckpointFixture } from '../helpers/canonical-checkpoint-fixture.mjs';
 import {
@@ -113,6 +114,7 @@ test('canonical Kernel envelope is the only VS Code prompt and workspace authori
       provenanceRefs: ['vscode-test'],
     }),
     operationJournal: new InMemoryCodingOperationJournal(),
+    environment: createFixtureCodingKernelEnvironment('/canonical-workspace'),
     runtimeContext: {
       ...baseRequest(),
       callbacks: { executionMode: 'inspect' },
@@ -332,6 +334,7 @@ function baseRequest() {
     workspaceRoot: '/workspace',
     mode: 'fast',
     workflowMode: 'edit',
+    providerType: 'bridge',
   };
 }
 
@@ -386,6 +389,7 @@ function execute(kernel, runtimeContext) {
     taskContract,
     contextSeed,
     operationJournal: new InMemoryCodingOperationJournal(),
+    environment: createFixtureCodingKernelEnvironment(runtimeContext.workspaceRoot, runtimeContext.providerType ?? 'bridge'),
     ...(runtimeContext.memoryCandidates ? { memoryCandidates: runtimeContext.memoryCandidates } : {}),
     ...(recovery?.kind === 'checkpoint-resume' ? { resumeCheckpoint: recovery.checkpoint } : {}),
     runtimeContext: effectiveRuntimeContext,

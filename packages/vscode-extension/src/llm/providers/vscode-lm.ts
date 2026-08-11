@@ -1,10 +1,11 @@
 import * as vscode from 'vscode';
+import { knownCodingProviderCapabilities } from '@devseek-netai/shared';
 import { type ChatMessage, type LLMChatOptions, type LLMProvider, type LLMProviderType } from '../types';
 
 export class VSCodeLmProvider implements LLMProvider {
   readonly type: LLMProviderType = 'vscode-lm';
   readonly displayName = '$(sparkle) VS Code LM';
-  readonly capabilities = ['text', 'streaming', 'vscode-lm'] as const;
+  readonly capabilities = knownCodingProviderCapabilities('vscode-lm');
 
   async available(): Promise<boolean> {
     const lm = (vscode as unknown as { lm?: unknown }).lm;

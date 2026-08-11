@@ -188,7 +188,7 @@ test('R3-05C MemoryService: structured legacy imports are invalidated and cannot
     assert.equal(records[0].provenance.sourceKind, 'legacy-import');
     assert.equal(records[0].provenance.trusted, false);
     assert.doesNotMatch(records[0].content, /legacysecretvalue12345/);
-    assert.match(records[0].content, /token=\[REDACTED\]/);
+    assert.match(records[0].content, /token=\[REDACTED_SECRET\]/);
     assert.ok(
       service.getLifecycleReceipts().some((receipt) => (
         receipt.action === 'legacy-import-invalidated'

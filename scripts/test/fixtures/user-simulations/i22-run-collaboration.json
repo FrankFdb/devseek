@@ -1,0 +1,38 @@
+{
+  "schema_version": "devseek.user-simulation-scenario/v1",
+  "iteration_id": "I22",
+  "name": "run-collaboration",
+  "purpose": "Exercise cancellation reconciliation, idempotent steering with write revocation, interactive collaboration controls, and surface-specific accessibility.",
+  "cases": [
+    {
+      "case_id": "I22-CAN-01",
+      "input": {
+        "surface": "shared-kernel",
+        "in_flight_effect": "workspace-mutation:write-a",
+        "user_action": "cancel"
+      }
+    },
+    {
+      "case_id": "I22-STR-01",
+      "input": {
+        "surface": "shared-kernel",
+        "steering": ["Continue, but do not create files.", "Focus validation on the parser boundary."],
+        "duplicate_delivery": true
+      }
+    },
+    {
+      "case_id": "I22-COL-01",
+      "input": {
+        "surface": "vscode",
+        "required_controls": ["progress", "cancel", "steer", "diff-review", "completion-evidence"]
+      }
+    },
+    {
+      "case_id": "I22-ACC-01",
+      "input": {
+        "surfaces": ["vscode", "cli", "headless"],
+        "required_modes": ["visual", "programmatic"]
+      }
+    }
+  ]
+}

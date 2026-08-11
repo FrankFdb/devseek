@@ -20,7 +20,6 @@ export * from './local-attachment-context';
 export * from './memory-service';
 export * from './pending-edit-service';
 export * from './permission-service';
-export * from './subagent-contract-service';
 export * from './project-init-service';
 export * from './project-instruction-service';
 export * from './quality-gate-service';

@@ -226,7 +226,7 @@ test('R3-05F TaskHistoryProjectionService: lifecycle receipts preserve evidence,
 
     const exported = await service.exportRecord('run-sensitive');
     assert.match(exported, /devseek\.task-history-export\/v1/);
-    assert.match(exported, /\[REDACTED\]/);
+    assert.match(exported, /\[REDACTED_SECRET\]/);
     assert.doesNotMatch(exported, /supersecretvalue12345/);
     assert.match(exported, /"retentionUntil"/);
     assert.match(exported, /"lifecycleReceipts"/);

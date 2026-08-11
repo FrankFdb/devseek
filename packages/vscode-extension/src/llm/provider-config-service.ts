@@ -1,3 +1,8 @@
+import {
+  CODING_PROVIDER_CAPABILITIES,
+  knownCodingProviderCapabilities,
+  normalizeCodingProviderCapability,
+} from '@devseek-netai/shared';
 import type { LLMProviderCapability, LLMProviderType } from './types';
 
 export interface ProviderConfigReader {
@@ -32,19 +37,10 @@ export const SUPPORTED_PROVIDER_TYPES: readonly LLMProviderType[] = [
   'vscode-lm',
 ];
 
-export const SUPPORTED_PROVIDER_CAPABILITIES: readonly LLMProviderCapability[] = [
-  'text',
-  'vision',
-  'streaming',
-  'text-tools',
-  'native-tools',
-  'web',
-  'local',
-  'vscode-lm',
-];
+export const SUPPORTED_PROVIDER_CAPABILITIES: readonly LLMProviderCapability[] = CODING_PROVIDER_CAPABILITIES;
 
 export type ProviderCapabilityNegotiationDecisionKind = 'allow' | 'blocked';
-export type ProviderCapabilityNegotiationReason = 'unknown-capability';
+export type ProviderCapabilityNegotiationReason = 'unknown-capability' | 'missing-capability';
 
 export interface ProviderCapabilityNegotiation {
   version: typeof PROVIDER_CONFIG_ADAPTER_PROTOCOL_VERSION;
@@ -99,7 +95,7 @@ export class ProviderConfigService {
         type: 'bridge',
         displayName: 'DeepSeek 网页',
         enabled: true,
-        capabilities: ['text', 'vision', 'streaming', 'text-tools', 'web'],
+        capabilities: [...knownCodingProviderCapabilities('bridge')],
       },
       'deepseek-api': {
         type: 'deepseek-api',
@@ -109,7 +105,7 @@ export class ProviderConfigService {
         baseUrl: 'https://api.deepseek.com/v1',
         secretRef: 'devseek.apiKey',
         secretConfigured: hasSecret(this.reader.get<string>('apiKey', '')),
-        capabilities: ['text', 'streaming', 'native-tools'],
+        capabilities: [...knownCodingProviderCapabilities('deepseek-api')],
       },
       'openai-compat': {
         type: 'openai-compat',
@@ -119,7 +115,7 @@ export class ProviderConfigService {
         baseUrl: trimTrailingSlash(this.reader.get<string>('openaiCompatBaseUrl', 'http://localhost:11434/v1')),
         secretRef: 'devseek.openaiCompatApiKey',
         secretConfigured: hasSecret(this.reader.get<string>('openaiCompatApiKey', '')),
-        capabilities: ['text', 'streaming', 'native-tools'],
+        capabilities: [...knownCodingProviderCapabilities('openai-compat')],
       },
       'local-api': {
         type: 'local-api',
@@ -129,14 +125,14 @@ export class ProviderConfigService {
         baseUrl: trimTrailingSlash(this.reader.get<string>('localApiBaseUrl', 'http://localhost:11434/v1')),
         secretRef: 'devseek.localApiApiKey',
         secretConfigured: hasSecret(this.reader.get<string>('localApiApiKey', '')),
-        capabilities: ['text', 'streaming', 'native-tools', 'local'],
+        capabilities: [...knownCodingProviderCapabilities('local-api')],
       },
       'vscode-lm': {
         type: 'vscode-lm',
         displayName: 'VS Code LM',
         enabled: true,
         model: cleanString(this.reader.get<string>('vscodeLmModel', '')),
-        capabilities: ['text', 'streaming', 'vscode-lm'],
+        capabilities: [...knownCodingProviderCapabilities('vscode-lm')],
       },
     };
   }
@@ -200,8 +196,7 @@ export function normalizeProviderType(value: string | undefined | null, fallback
 }
 
 export function normalizeProviderCapability(value: string | undefined | null): LLMProviderCapability | null {
-  const candidate = cleanString(String(value ?? '')) as LLMProviderCapability;
-  return (SUPPORTED_PROVIDER_CAPABILITIES as readonly string[]).includes(candidate) ? candidate : null;
+  return normalizeCodingProviderCapability(value);
 }
 
 function uniqueProviders(values: LLMProviderType[]): LLMProviderType[] {

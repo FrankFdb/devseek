@@ -35,7 +35,7 @@ import { getAgentTaskDisplayTarget, type AgentTask } from './agent-task-decompos
 import type { AgentLoopResult } from './agent/loop-types';
 import { createAgentHostToolCallbacks } from './agent/agent-host-tools';
 import { getTaskWorkspaceRootFsPath, resolveWorkspaceFileUri } from './workspace-roots';
-import { McpManager } from './mcp/client';
+import { createVscodeMcpManager, initializeWorkspaceMcp } from './mcp/vscode-mcp-runtime';
 import type { AgentFileWriteContext } from './app/agent-file-write-policy';
 import { recoverApplyFailureIfPossible } from './app/apply-failure-recovery-service';
 import { responseClaimsStatusOk, shouldRunClosedLoopRepair } from './app/agentic-repair-service';
@@ -149,8 +149,7 @@ const runChangedPathRecorder = new RunChangedPathRecorder({
     emitLearningEvent({ type: 'files_cochanged', paths, sessionId: activeSessionId });
   },
 });
-// P3-5: MCP manager (singleton; initialized lazily in activate)
-const mcpManager = new McpManager();
+const mcpManager = createVscodeMcpManager();
 const resolveAgentFileWriteConstraint = createAgentFileWriteConstraintResolver(terminalPermissionCoordinator);
 const createEvidenceAwareMcpToolCall = createEvidenceAwareMcpToolCallFactory({
   terminalPermissions: terminalPermissionCoordinator,
@@ -205,15 +204,6 @@ function getActiveEditorContextPath(): string | undefined {
   return sanitizeWorkspaceContextAnchorPath(rawPath, workspaceRoots);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// P3-2: @workspace file tree builder
-// Builds a compact, prompt-friendly representation of the workspace file structure.
-// Max 3 levels deep, skips build/node_modules/hidden dirs.
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ─────────────────────────────────────────────────────────────────────────────
-// P3-5: @git — inject git diff via VS Code git extension
-// ─────────────────────────────────────────────────────────────────────────────
 function loadAgentSessionState(sessionId = activeSessionId): AgentSessionState | undefined {
   if (!sessionId) return undefined;
   return getSessionService()?.getSessionAgentState<AgentSessionState>(sessionId);
@@ -676,6 +666,7 @@ async function runActiveChat(
           semanticContract: agentKernelRun.semanticContract,
           contextFiles,
           workspaceRoot: agWsRoot,
+          providerType: getActiveProviderType(),
           mode,
           callbacks: {
             executionMode: workflow.toolPolicyMode,
@@ -722,7 +713,7 @@ async function runActiveChat(
             }),
             mcpToolRefs: mcpManager.hasMcpTools ? mcpManager.toolRefs : undefined,
             onPrepareMcpToolCall: mcpManager.hasMcpTools
-              ? createEvidenceAwareMcpToolCall(agentRunContext, webview)
+              ? createEvidenceAwareMcpToolCall(agentRunContext, webview, chatSignal)
               : undefined,
             onPrepareTerminalCommand: async (command, workdir) => {
               return terminalPermissionCoordinator.prepareToolExecutionWithPermission({
@@ -830,64 +821,82 @@ async function runActiveChat(
         changedPaths: loopResult?.changedPaths ?? [],
       });
       const msg = (e as Error).message;
-      const recovery = new ProviderRecoveryService().classify({
-        providerType: getActiveProviderType(),
-        message: msg,
-        code: msg,
-        signals: [msg],
-      });
-      if (recovery.kind !== 'Unknown' && isCheckpointableProviderRecoveryError(e)) {
-        const savedAt = Date.now();
-        const wsRootFsPath = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath)
-          ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
-          ?? '';
-        const recoveryCheckpoint = buildProviderRecoveryCheckpointRecord({
-          error: e,
-          prompt,
-          displayPrompt: userDisplay,
-          mode,
-          files: effectiveFiles,
-          workspaceRootFsPath: wsRootFsPath,
-          savedAt,
-          sessionId: activeSessionId || 'provider-recovery',
-          recoveryKind: recovery.kind,
-          pauseReason: recovery.pauseReason,
+      if (activeRun.signal.aborted) {
+        const cancellationData = {
+          ...(activeRun.cancellationData() ?? {}),
+          changedPaths: failedRunChangedPaths,
+        };
+        postAgent({ type: 'agentStatus', phase: 'done', state: 'skipped', title: 'Agent run cancelled' });
+        agentHistoryText = agentHistoryText || '[Agent run cancelled]';
+        saveAgentSessionState({
+          lastUserPrompt: userDisplay,
+          lastSummary: agentHistoryText,
+          changedPaths: failedRunChangedPaths.slice(0, 12),
+          completed: false,
+          savedAt: Date.now(),
+          semanticContract: agentSemanticContract,
         });
-        await agentCheckpointService.save(recoveryCheckpoint);
-        webview.postMessage({
-          type: 'agentCheckpointAvailable',
-          resumeTaskIndex: 0,
-          totalTasks: recoveryCheckpoint.allTasks.length,
-          userPrompt: userDisplay,
-          savedAt,
-          recoveryKind: recovery.kind,
-          pauseReason: recovery.pauseReason,
-        });
-        const recoveryDisplay = buildProviderRecoveryDisplay(recovery, msg);
-        postAgent({ type: 'agentStatus', phase: 'error', state: 'failed', title: recoveryDisplay.title, detail: recoveryDisplay.detail });
-        postWebviewMessage(webview, {
-          type: 'error',
-          text: recoveryDisplay.text,
-          loginRequired: recovery.kind === 'LoginRequired',
-        });
-        agentHistoryText = agentHistoryText || recoveryDisplay.historyText;
+        agentKernelRun.cancelRun(cancellationData);
       } else {
-        postAgent({ type: 'agentStatus', phase: 'error', state: 'failed', title: `Agent 执行出错：${msg}` });
-        postWebviewMessage(webview, { type: 'error', text: msg, loginRequired: msg === 'LOGIN_REQUIRED' });
-        agentHistoryText = agentHistoryText || `[Agent 执行出错] ${msg.slice(0, 200)}`;
+        const recovery = new ProviderRecoveryService().classify({
+          providerType: getActiveProviderType(),
+          message: msg,
+          code: msg,
+          signals: [msg],
+        });
+        if (recovery.kind !== 'Unknown' && isCheckpointableProviderRecoveryError(e)) {
+          const savedAt = Date.now();
+          const wsRootFsPath = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath)
+            ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+            ?? '';
+          const recoveryCheckpoint = buildProviderRecoveryCheckpointRecord({
+            error: e,
+            prompt,
+            displayPrompt: userDisplay,
+            mode,
+            files: effectiveFiles,
+            workspaceRootFsPath: wsRootFsPath,
+            savedAt,
+            sessionId: activeSessionId || 'provider-recovery',
+            recoveryKind: recovery.kind,
+            pauseReason: recovery.pauseReason,
+          });
+          await agentCheckpointService.save(recoveryCheckpoint);
+          webview.postMessage({
+            type: 'agentCheckpointAvailable',
+            resumeTaskIndex: 0,
+            totalTasks: recoveryCheckpoint.allTasks.length,
+            userPrompt: userDisplay,
+            savedAt,
+            recoveryKind: recovery.kind,
+            pauseReason: recovery.pauseReason,
+          });
+          const recoveryDisplay = buildProviderRecoveryDisplay(recovery, msg);
+          postAgent({ type: 'agentStatus', phase: 'error', state: 'failed', title: recoveryDisplay.title, detail: recoveryDisplay.detail });
+          postWebviewMessage(webview, {
+            type: 'error',
+            text: recoveryDisplay.text,
+            loginRequired: recovery.kind === 'LoginRequired',
+          });
+          agentHistoryText = agentHistoryText || recoveryDisplay.historyText;
+        } else {
+          postAgent({ type: 'agentStatus', phase: 'error', state: 'failed', title: `Agent 执行出错：${msg}` });
+          postWebviewMessage(webview, { type: 'error', text: msg, loginRequired: msg === 'LOGIN_REQUIRED' });
+          agentHistoryText = agentHistoryText || `[Agent 执行出错] ${msg.slice(0, 200)}`;
+        }
+        saveAgentSessionState({
+          lastUserPrompt: userDisplay,
+          lastSummary: agentHistoryText,
+          changedPaths: failedRunChangedPaths.slice(0, 12),
+          completed: false,
+          savedAt: Date.now(),
+          semanticContract: agentSemanticContract,
+        });
+        agentKernelRun.failRun({
+          reason: 'agent-error',
+          changedPaths: failedRunChangedPaths,
+        });
       }
-      saveAgentSessionState({
-        lastUserPrompt: userDisplay,
-        lastSummary: agentHistoryText,
-        changedPaths: failedRunChangedPaths.slice(0, 12),
-        completed: false,
-        savedAt: Date.now(),
-        semanticContract: agentSemanticContract,
-      });
-      agentKernelRun.failRun({
-        reason: 'agent-error',
-        changedPaths: failedRunChangedPaths,
-      });
     }
 
     // L1a: persist agent turn to session history so sessions can be saved and restored
@@ -1129,6 +1138,7 @@ async function runActiveChat(
         toolPolicy,
         terminalPermissionCoordinator,
         agentKernelService,
+        providerType: getActiveProviderType(),
         traceRunId: chatRunContext.runId,
         traceEvidenceParticipantToken: chatRunContext.evidenceParticipantToken,
         onTraceEvidenceError: error => chatRunContext?.markEvidenceDegraded(error),
@@ -1137,7 +1147,9 @@ async function runActiveChat(
         registerToMemory,
         sessionRecentFiles,
         mcpToolRefs: mcpManager.hasMcpTools ? mcpManager.toolRefs : undefined,
-        onPrepareMcpToolCall: mcpManager.hasMcpTools ? createEvidenceAwareMcpToolCall(chatRunContext, webview) : undefined,
+        onPrepareMcpToolCall: mcpManager.hasMcpTools
+          ? createEvidenceAwareMcpToolCall(chatRunContext, webview, chatSignal)
+          : undefined,
         signal: chatSignal,
         sessionId: activeSessionId,
         onChangedPaths: (paths) => { chatRunChangedPaths.add(paths); },
@@ -1646,16 +1658,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   rulesWatcher.onDidDelete(() => invalidateProjectRulesCache());
   context.subscriptions.push(rulesWatcher);
 
-  // ── P3-5: MCP 客户端初始化 ─────────────────────────────────────────
-  // Load MCP server config from .devseek/mcp.json in any workspace folder.
-  // This is fire-and-forget; MCP failing never blocks extension activation.
-  void (async () => {
-    const folders = vscode.workspace.workspaceFolders;
-    if (folders && folders.length > 0) {
-      const configPath = nodePath.join(folders[0].uri.fsPath, '.devseek', 'mcp.json');
-      await mcpManager.load(configPath);
-    }
-  })();
+  void initializeWorkspaceMcp(mcpManager);
   context.subscriptions.push({ dispose: () => mcpManager.dispose() });
 
   context.subscriptions.push(

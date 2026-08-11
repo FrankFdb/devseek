@@ -9,9 +9,12 @@ import {
   CanonicalCodingKernel,
   CanonicalRunLifecycleService,
   CodingKernelExecutionError,
+  CodingRunCancelledError,
   InMemoryCodingOperationJournal,
   buildCodingVerificationPlan,
   buildCodingKernelTaskContract,
+  createFixtureCodingKernelEnvironment,
+  createCodingWorktreeSnapshot,
   projectCodingKernelTaskContract,
 } from '../dist/index.js';
 import { commitCanonicalWorkspaceChange } from './support/canonical-code-change-fixture.mjs';
@@ -76,6 +79,7 @@ function request(overrides = {}) {
     workspaceRoot: '/workspace',
     taskContract: taskContract(),
     operationJournal: new InMemoryCodingOperationJournal(),
+    environment: createFixtureCodingKernelEnvironment('/workspace'),
     contextSeed: {
       files: [{ path: '/workspace/src/value.ts', sizeBytes: 120 }],
       manifests: { 'package.json': JSON.stringify({ scripts: { build: 'tsc', test: 'node --test' } }) },
@@ -142,6 +146,10 @@ test('CanonicalCodingKernel preserves one versioned request and terminal output 
       assert.equal(typeof input.releaseGate.assess, 'function');
       assert.equal(typeof input.ciDeployObserve.assess, 'function');
       assert.equal(typeof input.rollback.assess, 'function');
+      assert.equal(input.providerCapabilityDecision.decision, 'allow');
+      assert.equal(input.providerCapabilityDecision.requestKind, 'code-change');
+      assert.equal(input.platformConformance.supported, true);
+      assert.equal(input.secretRedaction.redactText('api_key=sk-secret123').redacted, true);
       const planned = await commitCanonicalWorkspaceChange(input, {
         paths: ['src/value.ts'],
         marker: 'planned-target',
@@ -239,10 +247,85 @@ test('CanonicalCodingKernel preserves one versioned request and terminal output 
   assert.deepEqual(output.releaseGateDecisions.map(item => item.status), ['not-applicable']);
   assert.deepEqual(output.deploymentDecisions.map(item => item.status), ['not-applicable']);
   assert.deepEqual(output.rollbackDecisions.map(item => item.status), ['not-required']);
+  assert.equal(output.providerCapabilityDecision.decision, 'allow');
+  assert.equal(output.platformConformance.supported, true);
+  assert.equal(output.runControl.state, 'settled');
+  assert.equal(output.runControl.terminalStatus, 'completed');
+  assert.deepEqual(output.cancellationReceipts, []);
+  assert.deepEqual(output.steeringReceipts, []);
+  assert.deepEqual(output.dirtyWorktreeDecisions.map(item => item.reason), ['clean', 'clean']);
   assert.equal(output.evidenceRefs.includes('code-change:path:src/value.ts'), true);
   assert.equal(output.evidenceRefs.includes('code-change:path:src/auth.ts'), true);
   assert.equal(output.evidenceRefs.includes('verify:passed'), true);
   assert.deepEqual(output.settlement.evidenceRefs, output.evidenceRefs);
+});
+
+test('CanonicalCodingKernel blocks incompatible providers and unsupported platforms before runtime', async () => {
+  let calls = 0;
+  const kernel = new CanonicalCodingKernel({
+    async executeCanonical() {
+      calls += 1;
+      return { result: undefined, completionEvidence: completionEvidence() };
+    },
+  });
+
+  await assert.rejects(kernel.execute(request({
+    runId: 'run-provider-blocked',
+    environment: createFixtureCodingKernelEnvironment('/workspace', 'vscode-lm'),
+  })), error => {
+    assert.equal(error instanceof CodingKernelExecutionError, true);
+    assert.equal(error.lifecycle.status, 'blocked');
+    assert.equal(error.environment.providerCapabilityDecision.reason, 'missing-capability');
+    assert.deepEqual(error.environment.providerCapabilityDecision.missingCapabilities, ['native-tools|text-tools']);
+    return true;
+  });
+
+  const environment = createFixtureCodingKernelEnvironment('/workspace');
+  await assert.rejects(kernel.execute(request({
+    runId: 'run-platform-blocked',
+    environment: {
+      ...environment,
+      platform: {
+        ...environment.platform,
+        profile: { ...environment.platform.profile, os: 'unknown' },
+      },
+    },
+  })), error => {
+    assert.equal(error instanceof CodingKernelExecutionError, true);
+    assert.equal(error.lifecycle.status, 'blocked');
+    assert.equal(error.environment.platformConformance.supported, false);
+    return true;
+  });
+  assert.equal(calls, 0);
+});
+
+test('CanonicalCodingKernel applies dirty-worktree policy to runtime workspace mutations', async () => {
+  const kernel = new CanonicalCodingKernel({
+    async executeCanonical(input) {
+      const attempted = await commitCanonicalWorkspaceChange(input, {
+        paths: ['src/value.ts'],
+        marker: 'overlap-existing-user-change',
+      });
+      assert.equal(attempted.outcome.receipt.status, 'failed');
+      return { result: undefined, completionEvidence: completionEvidence() };
+    },
+  });
+  const environment = createFixtureCodingKernelEnvironment('/workspace');
+  const output = await kernel.execute(request({
+    environment: {
+      ...environment,
+      worktree: createCodingWorktreeSnapshot({
+        workspaceRoot: '/workspace',
+        repositoryState: 'git',
+        entries: [{ path: 'src/value.ts', status: 'modified' }],
+      }),
+    },
+  }));
+
+  assert.equal(output.status, 'failed');
+  assert.equal(output.workspaceMutationReceipts[0].errorCode, 'dirty-worktree-conflict');
+  assert.equal(output.dirtyWorktreeDecisions[0].reason, 'overlapping-user-changes');
+  assert.deepEqual(output.dirtyWorktreeDecisions[0].conflictingEntries.map(item => item.path), ['src/value.ts']);
 });
 
 test('CanonicalCodingKernel blocks release without independent review and exact delivery evidence', async () => {
@@ -368,6 +451,38 @@ test('CanonicalCodingKernel fails closed before invoking runtime for invalid rou
     return true;
   });
   assert.equal(calls, 0);
+});
+
+test('CanonicalCodingKernel cancellation freezes new runtime effects before terminal settlement', async () => {
+  const controller = new AbortController();
+  const kernel = new CanonicalCodingKernel({
+    async executeCanonical(input) {
+      controller.abort('user-cancelled');
+      await assert.rejects(
+        commitCanonicalWorkspaceChange(input, {
+          paths: ['src/value.ts'],
+          marker: 'must-not-run-after-cancel',
+        }),
+        error => error instanceof CodingRunCancelledError,
+      );
+      return {
+        result: { changedPaths: [] },
+        completionEvidence: completionEvidence(),
+      };
+    },
+  });
+
+  const output = await kernel.execute(request({
+    runId: 'run-cancel-freezes-effects',
+    signal: controller.signal,
+  }));
+
+  assert.equal(output.status, 'cancelled');
+  assert.equal(output.runControl.terminalStatus, 'cancelled');
+  assert.equal(output.cancellationReceipts.length, 1);
+  assert.equal(output.cancellationReceipts[0].effectsFrozen, true);
+  assert.deepEqual(output.toolExecutionReceipts, []);
+  assert.deepEqual(output.workspaceMutationReceipts, []);
 });
 
 test('CanonicalCodingKernel seals blocked and failed runtime outcomes through one lifecycle owner', async () => {

@@ -4,7 +4,7 @@
 
 - Schema: `devseek.capability-ledger/v1`
 - Capabilities: 76
-- Ledger SHA-256: `18a06eeccc6965c80361549f013edf23f272d3f749704f58d5143fff17367153`
+- Ledger SHA-256: `07ef5f1bda4f704aa9fa79b94a6a87f608d573cc92b97a6a44362831e92aba84`
 - Qualification claim policy: `deny-until-signed-evidence-validator`
 
 | Capability | Priority | Applicability | Claim scopes | Implementation | Qualification | Authority port | Typed dependencies |
@@ -28,19 +28,19 @@
 | `C10-RELEASE-GATE` | P2 | conditional | release-capable | wired | — | `ReleaseGatePort` | C10-DELIVERY-MANIFEST (delivery/wired)<br>C10-GIT-DELIVERY (delivery/wired)<br>C10-ARTIFACT-IDENTITY (delivery/wired) |
 | `C10-ROLLBACK` | P2 | conditional | release-capable | wired | — | `RollbackPort` | C10-CI-DEPLOY-OBSERVE (delivery/wired) |
 | `C11-BACKGROUND-AUTOMATION` | P2 | deferred | background-automation | proposed | — | `BackgroundAutomationPort` | C11-CHECKPOINT (recovery/wired)<br>C11-RESUME-IDEMPOTENCY (recovery/wired)<br>C11-CANCEL-INTERRUPT (recovery/wired)<br>C7-EXTERNAL-EFFECT (authority/wired) |
-| `C11-CANCEL-INTERRUPT` | P1 | active | core-coding | proposed | — | `CancellationPort` | C1-AGENT-COMMAND (control/wired) |
+| `C11-CANCEL-INTERRUPT` | P1 | active | core-coding | wired | — | `CancellationPort` | C1-AGENT-COMMAND (control/wired) |
 | `C11-CHECKPOINT` | P1 | active | core-coding | wired | — | `CheckpointPort` | C1-RUN-LIFECYCLE (control/wired)<br>C0-RUN-EVIDENCE-LEDGER (evidence/wired) |
 | `C11-RESUME-IDEMPOTENCY` | P1 | active | core-coding | wired | — | `ResumeIdempotencyPort` | C11-CHECKPOINT (recovery/wired)<br>C7-EXTERNAL-EFFECT (authority/wired)<br>C7-WORKSPACE-MUTATION (authority/wired) |
-| `C11-STEERING` | P1 | active | core-coding | proposed | — | `SteeringPort` | C1-AGENT-COMMAND (control/wired)<br>C2-TASK-CONTRACT (semantic/wired) |
-| `C11-SURFACE-ACCESSIBILITY` | P1 | active | core-coding | proposed | — | `SurfaceAccessibilityPort` | C11-USER-COLLABORATION (recovery/wired) |
-| `C11-USER-COLLABORATION` | P1 | active | core-coding | proposed | — | `UserCollaborationPort` | C1-AGENT-COMMAND (control/wired)<br>C2-TASK-CONTRACT (semantic/wired)<br>C11-CANCEL-INTERRUPT (recovery/wired)<br>C11-STEERING (recovery/wired) |
+| `C11-STEERING` | P1 | active | core-coding | wired | — | `SteeringPort` | C1-AGENT-COMMAND (control/wired)<br>C2-TASK-CONTRACT (semantic/wired) |
+| `C11-SURFACE-ACCESSIBILITY` | P1 | active | core-coding | wired | — | `SurfaceAccessibilityPort` | C11-USER-COLLABORATION (recovery/wired) |
+| `C11-USER-COLLABORATION` | P1 | active | core-coding | wired | — | `UserCollaborationPort` | C1-AGENT-COMMAND (control/wired)<br>C2-TASK-CONTRACT (semantic/wired)<br>C11-CANCEL-INTERRUPT (recovery/wired)<br>C11-STEERING (recovery/wired) |
 | `C12-CONTEXT-COMPACTION` | P1 | active | core-coding | wired | — | `ContextCompactionPort` | C3-CONTEXT-GRAPH (semantic/wired)<br>C11-CHECKPOINT (recovery/wired) |
 | `C12-MEMORY-POLICY` | P1 | active | core-coding | wired | — | `MemoryPolicyPort` | C3-INSTRUCTION-PRECEDENCE (semantic/wired)<br>C12-RUN-EVIDENCE-RETENTION (context/wired) |
 | `C12-RUN-EVIDENCE-RETENTION` | P0 | active | core-coding, safety | wired | — | `RunEvidenceRetentionPort` | C0-RUN-EVIDENCE-LEDGER (evidence/wired) |
 | `C13-EXTENSION-CONFORMANCE` | P2 | conditional | orchestration-capable, extension-capable | proposed | — | `ExtensionConformancePort` | C13-SKILL-BOUNDARY (extension/wired)<br>C13-HOOK-BOUNDARY (extension/wired)<br>C13-MCP-BOUNDARY (extension/wired)<br>C13-SUBAGENT-DELEGATION (extension/wired)<br>C13-WORKTREE-ISOLATION (extension/wired) |
 | `C13-HEADLESS-SDK` | P2 | conditional | orchestration-capable, extension-capable | proposed | — | `HeadlessSdkPort` | C1-SURFACE-ADAPTER-CONFORMANCE (control/wired)<br>C13-EXTENSION-CONFORMANCE (extension/wired) |
 | `C13-HOOK-BOUNDARY` | P2 | conditional | orchestration-capable, extension-capable | proposed | — | `HookBoundaryPort` | C6-TOOL-EXECUTION (execution/wired)<br>C7-PERMISSION-DECISION (authority/wired)<br>C7-EXTERNAL-EFFECT (authority/wired)<br>C0-RUN-EVIDENCE-LEDGER (evidence/wired) |
-| `C13-MCP-BOUNDARY` | P0 | active | mcp-exposed-safety-boundary | proposed | — | `McpBoundaryPort` | C6-TOOL-EXECUTION (execution/wired)<br>C7-PERMISSION-DECISION (authority/wired)<br>C7-EXTERNAL-EFFECT (authority/wired) |
+| `C13-MCP-BOUNDARY` | P0 | active | mcp-exposed-safety-boundary | wired | — | `McpBoundaryPort` | C6-TOOL-EXECUTION (execution/wired)<br>C7-PERMISSION-DECISION (authority/wired)<br>C7-EXTERNAL-EFFECT (authority/wired) |
 | `C13-PEER-AGENT-COORDINATION` | P2 | experimental | peer-agent | proposed | — | `PeerAgentCoordinationPort` | C13-SUBAGENT-DELEGATION (extension/wired)<br>C13-WORKTREE-ISOLATION (extension/wired) |
 | `C13-PLUGIN-SUPPLY-CHAIN` | P2 | conditional | orchestration-capable, extension-capable | proposed | — | `PluginSupplyChainPort` | C13-EXTENSION-CONFORMANCE (extension/wired)<br>C7-SECRETS-REDACTION (authority/wired)<br>C7-PERMISSION-DECISION (authority/wired) |
 | `C13-SKILL-BOUNDARY` | P2 | conditional | orchestration-capable, extension-capable | proposed | — | `SkillBoundaryPort` | C3-INSTRUCTION-PRECEDENCE (semantic/wired)<br>C6-TOOL-SCHEMA (execution/wired) |
@@ -63,19 +63,19 @@
 | `C4-SOURCE-GROUNDING` | P1 | active | core-coding | wired | — | `SourceGroundingPort` | C4-EXTERNAL-BOUNDARY (semantic/wired)<br>C6-TOOL-EXECUTION (execution/wired)<br>C7-EXTERNAL-EFFECT (authority/wired) |
 | `C5-CHANGE-PLAN` | P1 | active | core-coding | wired | — | `ChangePlanPort` | C5-DESIGN-DECISION (semantic/wired) |
 | `C5-DESIGN-DECISION` | P1 | active | core-coding | wired | — | `DesignDecisionPort` | C4-ACCEPTANCE-CONTRACT (semantic/wired) |
-| `C6-CAPABILITY-NEGOTIATION` | P0 | active | core-coding | proposed | — | `ProviderCapabilityPort` | C6-PROVIDER-NORMALIZATION (execution/wired)<br>C6-TOOL-SCHEMA (execution/wired) |
-| `C6-DEEPSEEK-WEB-CONNECTOR` | P0 | active | core-coding | proposed | — | `DeepSeekWebConnectorPort` | C6-PROVIDER-NORMALIZATION (execution/wired)<br>C7-EXTERNAL-EFFECT (authority/wired)<br>C7-SECRETS-REDACTION (authority/wired) |
+| `C6-CAPABILITY-NEGOTIATION` | P0 | active | core-coding | wired | — | `ProviderCapabilityPort` | C6-PROVIDER-NORMALIZATION (execution/wired)<br>C6-TOOL-SCHEMA (execution/wired) |
+| `C6-DEEPSEEK-WEB-CONNECTOR` | P0 | active | core-coding | wired | — | `DeepSeekWebConnectorPort` | C6-PROVIDER-NORMALIZATION (execution/wired)<br>C7-EXTERNAL-EFFECT (authority/wired)<br>C7-SECRETS-REDACTION (authority/wired) |
 | `C6-PROVIDER-NORMALIZATION` | P0 | active | core-coding | wired | — | `ProviderEventPort` | C1-RUN-LIFECYCLE (control/wired) |
 | `C6-TOOL-DISPATCH` | P0 | active | core-coding | wired | — | `ToolDispatchPort` | C6-TOOL-SCHEMA (execution/wired)<br>C1-AGENT-COMMAND (control/wired) |
 | `C6-TOOL-EXECUTION` | P0 | active | core-coding | wired | — | `ToolExecutionPort` | C6-TOOL-DISPATCH (execution/wired) |
 | `C6-TOOL-SCHEMA` | P0 | active | core-coding | wired | — | `ToolSchemaRegistryPort` | C1-RUN-LIFECYCLE (control/wired) |
 | `C6-VISUAL-COMPUTER-USE` | P2 | conditional | visual-computer-use | proposed | — | `VisualComputerUsePort` | C6-TOOL-EXECUTION (execution/wired)<br>C7-EXTERNAL-EFFECT (authority/wired)<br>C7-SECRETS-REDACTION (authority/wired) |
-| `C7-DIRTY-WORKTREE` | P0 | active | core-coding | proposed | — | `DirtyWorktreePolicyPort` | C7-WORKSPACE-MUTATION (authority/wired) |
+| `C7-DIRTY-WORKTREE` | P0 | active | core-coding | wired | — | `DirtyWorktreePolicyPort` | C7-WORKSPACE-MUTATION (authority/wired) |
 | `C7-EXTERNAL-EFFECT` | P0 | active | core-coding | wired | — | `ExternalEffectPort` | C7-PERMISSION-DECISION (authority/wired)<br>C7-SANDBOX-POLICY (authority/wired)<br>C6-TOOL-EXECUTION (execution/wired) |
 | `C7-PERMISSION-DECISION` | P0 | active | core-coding | wired | — | `PermissionDecisionPort` | C2-TASK-CONTRACT (semantic/wired) |
-| `C7-PLATFORM-ADAPTER-CONFORMANCE` | P0 | active | core-coding | proposed | — | `PlatformAdapterConformancePort` | C7-SANDBOX-POLICY (authority/wired)<br>C7-WORKSPACE-MUTATION (authority/wired)<br>C7-EXTERNAL-EFFECT (authority/wired) |
+| `C7-PLATFORM-ADAPTER-CONFORMANCE` | P0 | active | core-coding | wired | — | `PlatformAdapterConformancePort` | C7-SANDBOX-POLICY (authority/wired)<br>C7-WORKSPACE-MUTATION (authority/wired)<br>C7-EXTERNAL-EFFECT (authority/wired) |
 | `C7-SANDBOX-POLICY` | P0 | active | core-coding | wired | — | `SandboxPolicyPort` | C7-PERMISSION-DECISION (authority/wired) |
-| `C7-SECRETS-REDACTION` | P0 | active | core-coding | proposed | — | `SecretRedactionPort` | C7-EXTERNAL-EFFECT (authority/wired) |
+| `C7-SECRETS-REDACTION` | P0 | active | core-coding | wired | — | `SecretRedactionPort` | C7-EXTERNAL-EFFECT (authority/wired) |
 | `C7-WORKSPACE-MUTATION` | P0 | active | core-coding | wired | — | `WorkspaceMutationPort` | C7-PERMISSION-DECISION (authority/wired)<br>C7-SANDBOX-POLICY (authority/wired)<br>C6-TOOL-EXECUTION (execution/wired) |
 | `C8-CODE-CHANGE` | P0 | active | core-coding | wired | — | `CodeChangePort` | C5-CHANGE-PLAN (semantic/wired)<br>C7-WORKSPACE-MUTATION (authority/wired) |
 | `C8-INTEGRATION-CONFORMANCE` | P0 | active | core-coding | wired | — | `IntegrationConformancePort` | C8-CODE-CHANGE (execution/wired)<br>C6-TOOL-DISPATCH (execution/wired) |

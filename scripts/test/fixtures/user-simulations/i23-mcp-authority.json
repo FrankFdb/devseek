@@ -1,0 +1,42 @@
+{
+  "schema_version": "devseek.user-simulation-scenario/v1",
+  "iteration_id": "I23",
+  "name": "mcp-authority",
+  "purpose": "Exercise low-friction session authority for read-only MCP tools, exact authority for risky calls, the official SDK stdio protocol, and bounded treatment of untrusted server data.",
+  "cases": [
+    {
+      "case_id": "I23-AUT-01",
+      "input": {
+        "surface": "vscode",
+        "discovered_server": "workspace-tools",
+        "launch_decision": "deny"
+      }
+    },
+    {
+      "case_id": "I23-SDK-01",
+      "input": {
+        "surface": "vscode",
+        "transport": "stdio",
+        "protocol_implementation": "official-sdk"
+      }
+    },
+    {
+      "case_id": "I23-CAL-01",
+      "input": {
+        "surface": "shared-kernel",
+        "session_launch": "user-approved",
+        "read_only_call": "session-policy",
+        "risky_call": "exact-user-receipt",
+        "replay_policy": "one-shot"
+      }
+    },
+    {
+      "case_id": "I23-BND-01",
+      "input": {
+        "surface": "shared-kernel",
+        "untrusted_inputs": ["configuration", "schema", "arguments"],
+        "expected_policy": "bounded-fail-closed"
+      }
+    }
+  ]
+}

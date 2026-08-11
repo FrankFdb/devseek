@@ -1,10 +1,11 @@
 // ============================================================
+
+import type { DeepSeekWebConnectorAdvertisement } from './deepseek-web-connector-protocol';
 // 共享类型定义 — bridge 与 vscode-extension 共同使用
 // ============================================================
 
 export * from './agent-application-service';
 export * from './agent-command';
-export * from './agent-enhancements';
 export * from './agent-protocol';
 export * from './bridge-stream-protocol';
 export * from './build-profile';
@@ -18,6 +19,7 @@ export * from './coding-context-graph';
 export * from './coding-context-provenance';
 export * from './coding-requirements';
 export * from './coding-design-plan';
+export * from './coding-dirty-worktree';
 export * from './coding-engineering-orientation';
 export * from './coding-external-effect';
 export * from './coding-instruction-precedence';
@@ -28,13 +30,19 @@ export * from './coding-change-plan-revision';
 export * from './coding-workspace-scope';
 export * from './coding-terminal-effects';
 export * from './coding-kernel';
+export * from './coding-kernel-environment';
+export * from './coding-mcp-boundary';
 export * from './coding-memory-policy';
 export * from './coding-operation-journal';
+export * from './coding-platform-conformance';
 export * from './coding-resume-idempotency';
 export * from './coding-orientation';
 export * from './coding-provider-events';
+export * from './coding-provider-capability';
 export * from './coding-run-evidence-retention';
 export * from './coding-run-lifecycle';
+export * from './coding-run-control';
+export * from './coding-secret-redaction';
 export * from './coding-semantic-digest';
 export * from './coding-safety-policy';
 export * from './coding-settlement';
@@ -43,6 +51,7 @@ export * from './coding-tool-execution';
 export * from './coding-tool-dispatch';
 export * from './coding-tool-schema';
 export * from './coding-tool-authority';
+export * from './coding-user-collaboration';
 export * from './coding-workspace-mutation';
 export * from './coding-verification';
 export * from './coding-verifier-selection';
@@ -60,6 +69,7 @@ export * from './coding-release';
 export * from './coding-completion';
 export * from './coding-structural-acceptance';
 export * from './diagnostic-logger';
+export * from './deepseek-web-connector-protocol';
 export * from './engineering-context';
 export * from './llm-types';
 export * from './platform-runtime';
@@ -110,9 +120,12 @@ export interface StatusResponse {
   buildChannel?: string;
   buildId?: string;
   gitCommit?: string;
+  connector: DeepSeekWebConnectorAdvertisement;
 }
 
 /** POST /cancel 响应 */
 export interface CancelResponse {
   ok: boolean;
+  requestId?: string;
+  decision?: 'accepted' | 'not-found' | 'ambiguous' | 'already-terminal';
 }
