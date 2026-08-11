@@ -102,8 +102,8 @@ test('VerificationPlanner prefers the project CMake test entry point over a cont
   assert.equal(candidates[0].strength, 'test');
   assert.deepEqual(candidates[0].steps[0].invocation, {
     kind: 'process',
-    command: './test.sh',
-    args: [],
+    command: 'bash',
+    args: ['test.sh'],
   });
 });
 

@@ -140,6 +140,43 @@ test('Agent auto validation settles a selected project verifier as completion ev
   }
 });
 
+test('Agent auto validation selects and runs a discovered CMake project test script', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-cmake-'));
+  try {
+    seed(root, 'src/scheduler.cpp', 'int scheduler() { return 1; }\n');
+    seed(root, 'CMakeLists.txt', 'enable_testing()\nadd_test(NAME scheduler COMMAND scheduler)\n');
+    seed(root, 'test.sh', '#!/usr/bin/env bash\ncmake -S . -B build && ctest --test-dir build\n');
+    const invocations = [];
+    const context = verificationContext(root, ['src/scheduler.cpp'], [], [], async invocation => {
+      invocations.push(invocation);
+      return {
+        ran: true,
+        ok: true,
+        command: invocation.command,
+        exitCode: 0,
+        stdout: 'PASS\n',
+        stderr: '',
+        output: 'PASS\n',
+        cwd: invocation.cwd,
+      };
+    });
+
+    const result = await runAgentAutoValidationForWrites(
+      [written(root, 'src/scheduler.cpp')],
+      root,
+      '实现 C++ 调度器并运行项目测试',
+      context.callbacks,
+      { verificationAcceptance: context.acceptance },
+    );
+
+    assert.equal(result.verificationReceipt.status, 'passed');
+    assert.equal(result.evidence.ok, true);
+    assert.deepEqual(invocations.map(invocation => invocation.command), ['bash test.sh']);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('Agent auto validation preserves a real failing process and blocks completion', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-fail-'));
   try {
