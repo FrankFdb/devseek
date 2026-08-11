@@ -2562,6 +2562,37 @@ test('Architecture: Bridge does not use Playwright fill for oversized prompts', 
   );
 });
 
+test('Architecture: validated source changes require fresh source review before completion', () => {
+  const agenticLoop = src('src/agent/agentic-loop.ts');
+  const reviewLedger = src('src/agent/requirement-review-ledger.ts');
+
+  assertContains(
+    agenticLoop,
+    'requirementReview.beforeNoToolCompletion()',
+    'no-tool completion must pass through the requirement review owner',
+  );
+  assertContains(
+    agenticLoop,
+    'if (loopRes.taskComplete && !reviewFeedback)',
+    'task_complete in a tool round must not bypass pending review feedback',
+  );
+  assertContains(
+    agenticLoop,
+    'roundReadFiles: loopRes.readFiles ?? []',
+    'review evidence must come from the current tool round',
+  );
+  assertContains(
+    reviewLedger,
+    'freshSourceEvidenceReady',
+    'the review owner must distinguish scheduled review from fresh-source evidence',
+  );
+  assertContains(
+    reviewLedger,
+    '写入工具的自动读回不算独立复核',
+    'mutation readback must not satisfy independent final-source review',
+  );
+});
+
 test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempotency guards', () => {
   const checkpoint = src('src/app/task-checkpoint-store.ts');
   const history = src('src/app/task-history-store.ts');

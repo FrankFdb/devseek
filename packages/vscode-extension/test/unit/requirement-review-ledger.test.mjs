@@ -25,29 +25,39 @@ test('requirement review is scheduled once for each newly validated source mutat
     sourceChangeRequested: true,
     qualityGate: passedGate,
     writtenFiles: firstWrites,
-    roundHasWorkTools: true,
+    roundReadFiles: [],
   });
   assert.match(first, /通过可见测试只证明已覆盖行为/);
   assert.match(first, /时间回拨、状态迁移、重入、顺序、容量、边界值和异常路径/);
+  assert.match(first, /read_file/);
+  assert.match(ledger.beforeNoToolCompletion(), /不能跳过需求覆盖复核/);
+
   assert.match(ledger.request({
     sourceChangeRequested: true,
     qualityGate: passedGate,
     writtenFiles: firstWrites,
-    roundHasWorkTools: true,
-  }), /复核仍在进行/);
+    roundReadFiles: ['include/cache.hpp'],
+  }), /src\/cache\.cpp/);
 
+  assert.match(ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: passedGate,
+    writtenFiles: firstWrites,
+    roundReadFiles: ['/workspace/include/cache.hpp', '/workspace/src/cache.cpp'],
+  }), /最终源码已重新读取/);
+  assert.equal(ledger.beforeNoToolCompletion(), undefined);
   assert.equal(ledger.request({
     sourceChangeRequested: true,
     qualityGate: passedGate,
     writtenFiles: firstWrites,
-    roundHasWorkTools: false,
+    roundReadFiles: [],
   }), undefined);
 
   const repaired = ledger.request({
     sourceChangeRequested: true,
     qualityGate: passedGate,
     writtenFiles: [...firstWrites, sourceWrite('src/cache.cpp')],
-    roundHasWorkTools: true,
+    roundReadFiles: [],
   });
   assert.match(repaired, /src\/cache\.cpp/);
 });
@@ -58,18 +68,19 @@ test('requirement review ignores unverified, non-source, and non-code work', () 
     sourceChangeRequested: true,
     qualityGate: { status: 'fail', summary: 'tests failed' },
     writtenFiles: [sourceWrite('src/cache.cpp')],
-    roundHasWorkTools: true,
+    roundReadFiles: [],
   }), undefined);
   assert.equal(ledger.request({
     sourceChangeRequested: false,
     qualityGate: passedGate,
     writtenFiles: [sourceWrite('src/cache.cpp')],
-    roundHasWorkTools: true,
+    roundReadFiles: [],
   }), undefined);
   assert.equal(ledger.request({
     sourceChangeRequested: true,
     qualityGate: passedGate,
     writtenFiles: [sourceWrite('docs/report.md')],
-    roundHasWorkTools: true,
+    roundReadFiles: [],
   }), undefined);
+  assert.equal(ledger.beforeNoToolCompletion(), undefined);
 });

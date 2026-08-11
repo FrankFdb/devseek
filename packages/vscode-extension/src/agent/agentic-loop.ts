@@ -627,6 +627,18 @@ export async function runAgenticLoop(
         continue;
       }
       const stripped = stripToolCallBlocks(text).trim();
+      const requirementReviewFeedback = requirementReview.beforeNoToolCompletion();
+      if (!callbacks.signal?.aborted && requirementReviewFeedback) {
+        noToolRounds++;
+        await emitAgenticCorrectionStatus(
+          '正在复核最终源码与用户需求',
+          '公开测试已经通过，但最终源码尚未经过独立需求覆盖复核。DevSeek 正在要求模型重新读取变更后的实现，再逐条核对用户行为要求。',
+          '要求重新读取最终源码',
+        );
+        messages.push({ role: 'user', content: requirementReviewFeedback });
+        totalChars += requirementReviewFeedback.length;
+        continue;
+      }
       const danglingActionWithoutTools = promptRequiresTools && hasDanglingAgentActionIntent(stripped);
       if (!callbacks.signal?.aborted && danglingActionWithoutTools && noToolRounds < 4) {
         noToolRounds++;
@@ -965,17 +977,18 @@ export async function runAgenticLoop(
       ].join('\n'));
     }
 
+    let reviewFeedback: string | undefined;
     if (!callbacks.signal?.aborted
       && promptRequiresTools
       && sawWorkTool
       && missingAfterTools.length === 0
       && !blockingFailureAfterTools
       && summaryFactFailuresAfterTools.length === 0) {
-      const reviewFeedback = requirementReview.request({
+      reviewFeedback = requirementReview.request({
         sourceChangeRequested: effectiveTaskIntent.mutation.sourceChange,
         qualityGate: normalizedAutoValidation.qualityGate,
         writtenFiles: allWrittenFiles,
-        roundHasWorkTools,
+        roundReadFiles: loopRes.readFiles ?? [],
       });
       if (reviewFeedback) {
         loopWarnings.push(reviewFeedback);
@@ -1005,7 +1018,7 @@ export async function runAgenticLoop(
       continue;
     }
 
-    if (loopRes.taskComplete) {
+    if (loopRes.taskComplete && !reviewFeedback) {
       if (promptRequiresTools && !sawWorkTool && noToolRounds < 2 && !callbacks.signal?.aborted) {
         noToolRounds++;
         const retryMessage = '【系统反馈】你调用了 task_complete，但还没有执行任何实际工具。请继续完成任务：更新 todo 状态，并调用必要的文件/终端工具后再完成。';
@@ -1026,7 +1039,9 @@ export async function runAgenticLoop(
     // (plan + execute + verify) in a single response without calling task_complete.
     // Treat all-todos-completed as an equivalent signal to avoid a redundant
     // round-2 request that often causes DeepSeek to repeat all tools again.
-    if (loopRes.allTodosCompleted && (!promptRequiresTools || (sawWorkTool && !blockingFailureAfterTools))) {
+    if (!reviewFeedback
+      && loopRes.allTodosCompleted
+      && (!promptRequiresTools || (sawWorkTool && !blockingFailureAfterTools))) {
       break;
     }
     if (loopRes.allTodosCompleted && promptRequiresTools && !sawWorkTool && noToolRounds < 2 && !callbacks.signal?.aborted) {
