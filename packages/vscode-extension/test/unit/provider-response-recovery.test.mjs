@@ -88,7 +88,9 @@ test('Agent provider recovery prompt keeps only durable facts and forces small t
   assert.match(prompt, /本轮只输出 1 个工具调用/);
   assert.match(prompt, /不要再次把含源码双引号或多行文本的 old_str\/new_str 手写进 JSON/);
   assert.match(prompt, /<replace_in_file>/);
-  assert.match(prompt, /<old_str>#include "old\.hpp"<\/old_str>/);
+  assert.match(prompt, /<old_str><!\[CDATA\[if \(ready\) \{/);
+  assert.match(prompt, /<new_str><!\[CDATA\[if \(ready\) \{/);
+  assert.match(prompt, /每轮只修复 1 个多行替换/);
   assert.match(prompt, /command 必须是合法 JSON 字符串/);
   assert.match(prompt, /输出工具块后立即停止/);
   assert.match(prompt, /正式既有工程任务必须继续沿既有入口/);

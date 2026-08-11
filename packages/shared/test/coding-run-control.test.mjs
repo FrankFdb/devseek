@@ -74,6 +74,15 @@ test('I22-STR-01 user journey: steering is idempotent and can revoke write autho
   assert.equal(codingSteeringRevokesWrites('停止写入。'), true);
 });
 
+test('write revocation distinguishes global stop commands from scoped mutation constraints', () => {
+  assert.equal(codingSteeringRevokesWrites('不要修改，只分析这个文件。'), true);
+  assert.equal(codingSteeringRevokesWrites('Do not create any files.'), true);
+  assert.equal(codingSteeringRevokesWrites('只允许修改 src/，不得修改 tests/ 或 package.json。'), false);
+  assert.equal(codingSteeringRevokesWrites('请保持函数为纯函数，不要修改调用方输入。'), false);
+  assert.equal(codingSteeringRevokesWrites('Modify src/index.js but do not modify tests.'), false);
+  assert.equal(codingSteeringRevokesWrites('请创建报告，不要修改其他用户文件。'), false);
+});
+
 test('SteeringPort fails closed when one steering identity changes meaning', () => {
   const queued = [
     { steeringId: 'stable-steer', instruction: 'Inspect only.' },

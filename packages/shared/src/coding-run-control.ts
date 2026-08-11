@@ -236,18 +236,16 @@ export class CanonicalRunControlService implements RunControlPort {
 }
 
 export function codingSteeringRevokesWrites(text: string): boolean {
-  const normalized = String(text || '');
-  if (/(?:停止写入|不要创建任何文件|不要(?:再)?(?:修改|改写|写入)(?:任何)?文件|禁止(?:创建|修改|改写|写入)(?:任何)?文件|stop\s+(?:writing|editing))/iu.test(normalized)) {
-    return true;
-  }
-  const broadRevoke = /(?:停止(?:创建|修改|改写)|不要(?:再)?(?:创建|修改|改写|写入)|禁止(?:创建|修改|改写|写入)|do\s+not\s+(?:create|modify|write))/igu;
-  for (const match of normalized.matchAll(broadRevoke)) {
-    const tail = normalized.slice(match.index, match.index + 48);
-    if (!/(?:源码|源代码|正式源码|既有文件|其他文件|其他用户文件|别的文件|无关文件|source\s+(?:code|files?)|other\s+files?)/iu.test(tail)) {
-      return true;
-    }
-  }
-  return false;
+  const normalized = String(text || '').trim();
+  if (!normalized) return false;
+
+  // This owner answers only the global authority question. Target-scoped
+  // constraints such as "do not modify tests" remain mutation policy input.
+  return /(?:停止(?:所有|任何)?(?:创建|修改|改写|写入)|停止写入)(?:任何|任意|所有)?(?:文件|代码|源码|源代码|内容)?(?=$|[\s，,。；;！!])/iu.test(normalized)
+    || /(?:不要|禁止|不得)(?:再)?(?:创建|修改|改写|写入)(?:任何|任意|所有)?(?:文件|代码|源码|源代码|内容)(?=$|[\s，,。；;！!])/iu.test(normalized)
+    || /(?:不要|禁止|不得)(?:再)?(?:创建|修改|改写|写入)(?=$|[，,。；;！!])/iu.test(normalized)
+    || /(?:stop\s+(?:all\s+)?(?:writing|editing)|do\s+not\s+(?:create|modify|write)(?:\s+(?:any|more|all))?\s+(?:files?|code|source\s+code))\b/iu.test(normalized)
+    || /do\s+not\s+(?:create|modify|write)\s*[,.!;]?\s*$/iu.test(normalized);
 }
 
 function snapshotCancellationRequest(input: CodingCancellationRequest): CodingCancellationRequest {
