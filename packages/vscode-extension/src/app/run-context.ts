@@ -198,7 +198,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
         this.markEvidenceDegraded(new Error(`Workspace mutation ${operationKey} started more than once`));
         return;
       }
-      this.beginImplicitMutationRecovery(operationKey, summary);
+      this.ensureImplicitMutationRecovery(operationKey, summary);
       this.activeSideEffectOperations.set(operationKey, operationId);
       this.recordSideEffectStart(operationId, summary, this.workspaceMutationEvidenceDetails(event));
       this.hasSideEffectEvidence = true;
@@ -431,8 +431,8 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     if (status.phase === 'execute' && isMutatingTaskAction(status.taskAction)) {
       const operationKey = sideEffectOperationKey(status);
       let operationId = this.activeSideEffectOperations.get(operationKey);
-      if ((status.state === 'started' || status.state === 'completed') && !this.currentRecovery) {
-        this.beginImplicitMutationRecovery(operationKey, summary);
+      if (status.state === 'started' || status.state === 'completed') {
+        this.ensureImplicitMutationRecovery(operationKey, summary);
       }
       if ((status.state === 'started' || status.state === 'completed') && !this.currentRecovery) {
         this.beginImplicitProviderFallbackRecovery(status, summary);
@@ -824,10 +824,18 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     this.sideEffectOperations.add(operationId);
   }
 
-  private beginImplicitMutationRecovery(
+  private ensureImplicitMutationRecovery(
     operationKey: string,
     summary: { length: number; sha256: string },
   ): void {
+    if (this.currentRecovery) {
+      this.trace.info('run-context', 'mutation-joined-active-recovery', {
+        recoveryOperationId: this.currentRecovery.operationId,
+        operationKey,
+        reason: 'recovery-transaction-already-active',
+      });
+      return;
+    }
     const sameOperationTargetIds = [...(this.pendingAdverseOperationIdsByKey.get(operationKey) ?? [])]
       .filter(operationId => this.pendingAdverseOperationIds.has(operationId));
     const verificationScopeTargetOperationIds = [...this.pendingAdverseOperationIds]

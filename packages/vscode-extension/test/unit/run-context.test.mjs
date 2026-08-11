@@ -666,6 +666,66 @@ test('RunContext: a broader verified coding mutation supersedes an earlier parti
   }
 });
 
+test('RunContext: multiple repair writes join one recovery transaction before shared verification', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  try {
+    const runId = 'run-context-multi-write-verification-recovery';
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId,
+      userPrompt: '修复 include/cache.hpp 和 src/cache.cpp 并运行项目测试',
+      traceLevel: 'debug',
+    });
+    for (const [phase, state] of [
+      ['validate', 'started'], ['validate', 'failed'],
+      ['quality', 'started'], ['quality', 'failed'],
+    ]) {
+      context.recordAgentStatus({
+        type: 'agentStatus', phase, state, title: '初次缓存验证失败',
+        evidenceOperationId: 'verify-cache-initial',
+        verificationScopePaths: ['include/cache.hpp', 'src/cache.cpp'],
+      });
+    }
+
+    const headerWrite = workspaceMutation(runId, 1, 'repair-cache-header', ['include/cache.hpp']);
+    const sourceWrite = workspaceMutation(runId, 2, 'repair-cache-source', ['src/cache.cpp']);
+    context.recordWorkspaceMutation({ ...headerWrite, state: 'started' });
+    context.recordWorkspaceMutation({ ...headerWrite, state: 'committed' });
+    context.recordWorkspaceMutation({ ...sourceWrite, state: 'started' });
+    context.recordWorkspaceMutation({ ...sourceWrite, state: 'committed' });
+
+    for (const [phase, state] of [
+      ['validate', 'started'], ['validate', 'completed'],
+      ['quality', 'started'], ['quality', 'completed'],
+    ]) {
+      context.recordAgentStatus({
+        type: 'agentStatus', phase, state, title: '缓存修复验证通过',
+        evidenceOperationId: 'verify-cache-repaired',
+        verificationScopePaths: ['include/cache.hpp', 'src/cache.cpp'],
+      });
+    }
+
+    assert.equal(context.complete('completed'), 'completed');
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const events = ledger.read(runId);
+    const detected = events.filter(event => event.type === 'recovery.detected');
+    const completed = events.filter(event => event.type === 'recovery.completed');
+    const repairCommits = events.filter(event => (
+      event.type === 'side_effect.committed'
+      && event.payload.recovery_operation_id === detected[0]?.payload.operation_id
+    ));
+    assert.equal(detected.length, 1);
+    assert.equal(completed.length, 1);
+    assert.equal(completed[0].payload.operation_id, detected[0].payload.operation_id);
+    assert.deepEqual(completed[0].payload.resolves_operation_ids, ['verify-cache-initial']);
+    assert.equal(completed[0].payload.verification_operation_id, 'verify-cache-repaired');
+    assert.equal(repairCommits.length, 2);
+    assert.equal(ledger.verify(runId).status, 'valid-sealed');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('RunContext: a narrower successful verification cannot clear an unrelated validation failure', () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
   try {
