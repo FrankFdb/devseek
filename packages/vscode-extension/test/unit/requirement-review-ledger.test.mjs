@@ -29,19 +29,23 @@ test('requirement review is scheduled once for each newly validated source mutat
   });
   assert.match(first, /通过可见测试只证明已覆盖行为/);
   assert.match(first, /时间回拨、状态迁移、重入、顺序、容量、边界值和异常路径/);
+  assert.match(first, /调用方能观察到与正常成功不同的失败通道/);
+  assert.match(first, /完成或取消后的再次使用/);
+  assert.match(first, /数据结构和复杂度要求/);
+  assert.match(first, /一次性最小 probe/);
   assert.match(first, /read_file/);
   assert.match(ledger.beforeNoToolCompletion(), /不能跳过需求覆盖复核/);
 
   assert.match(ledger.request({
     sourceChangeRequested: true,
-    qualityGate: passedGate,
+    qualityGate: undefined,
     writtenFiles: firstWrites,
     roundReadFiles: ['include/cache.hpp'],
   }), /src\/cache\.cpp/);
 
   assert.match(ledger.request({
     sourceChangeRequested: true,
-    qualityGate: passedGate,
+    qualityGate: undefined,
     writtenFiles: firstWrites,
     roundReadFiles: ['/workspace/include/cache.hpp', '/workspace/src/cache.cpp'],
   }), /最终源码已重新读取/);
@@ -60,6 +64,25 @@ test('requirement review is scheduled once for each newly validated source mutat
     roundReadFiles: [],
   });
   assert.match(repaired, /src\/cache\.cpp/);
+});
+
+test('pending requirement review survives read-only rounds without a new quality gate', () => {
+  const ledger = new RequirementReviewLedger();
+  const writes = [sourceWrite('src/order_book.cpp')];
+  assert.match(ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: passedGate,
+    writtenFiles: writes,
+    roundReadFiles: [],
+  }), /完成前需求覆盖复核/);
+
+  assert.match(ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: undefined,
+    writtenFiles: writes,
+    roundReadFiles: ['src/order_book.cpp'],
+  }), /最终源码已重新读取/);
+  assert.equal(ledger.beforeNoToolCompletion(), undefined);
 });
 
 test('requirement review ignores unverified, non-source, and non-code work', () => {

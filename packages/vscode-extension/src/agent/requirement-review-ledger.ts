@@ -19,9 +19,10 @@ export class RequirementReviewLedger {
   private pending?: PendingRequirementReview;
 
   request(input: RequirementReviewInput): string | undefined {
-    if (!input.sourceChangeRequested || input.qualityGate?.status !== 'pass') return undefined;
+    if (!input.sourceChangeRequested) return undefined;
     const sourceWrites = input.writtenFiles.filter(file => isCodeArtifactPath(file.path));
     if (sourceWrites.length > this.reviewedSourceWriteCount) {
+      if (input.qualityGate?.status !== 'pass') return undefined;
       const sourcePaths = Array.from(new Set(sourceWrites
         .slice(this.reviewedSourceWriteCount)
         .map(file => file.path)));
@@ -36,6 +37,8 @@ export class RequirementReviewLedger {
         `下一轮必须先用 read_file 重新读取这些最终源码：${sourcePaths.join('、')}。写入工具的自动读回不算独立复核。`,
         '读取后逐条把用户的行为要求映射到最新实现的不变量，并标明现有测试已覆盖或仅靠代码推演覆盖。',
         '对时间回拨、状态迁移、重入、顺序、容量、边界值和异常路径等适用场景，至少用一组具体值推演完整序列；检查每个新增状态量和中间计算是否真正参与后续决策。',
+        '对“拒绝/报错/无效”类条款，确认调用方能观察到与正常成功不同的失败通道；对“重复/已使用”等身份约束，必须推演完成或取消后的再次使用。',
+        '同时核对用户指定的数据结构和复杂度要求，识别无效状态量、错误所有权和违背约束的线性扫描。公开测试未覆盖但可执行验证的条款，应运行一次性最小 probe，且不得修改受保护测试文件。',
         '若实现与任一条款矛盾，继续使用工具修复并重新验证；若一致，再给出复核结论。不要重复运行相同命令，也不要在重新读取源码的同一轮直接结束。',
       ].join('\n');
     }
@@ -56,6 +59,8 @@ export class RequirementReviewLedger {
     return [
       '【系统反馈：最终源码已重新读取】',
       '现在根据本轮真实源码逐条核对用户行为要求；特别检查未被公开测试覆盖的输入拒绝、边界、状态迁移、重入、顺序与异常路径。',
+      '拒绝必须有调用方可观察且不与正常成功重叠的失败通道；身份约束要推演完成/取消后的再次使用；数据结构与复杂度要求也属于验收条款。',
+      '对可执行但公开测试未覆盖的关键条款，运行一次性最小 probe 验证，不得修改受保护测试文件。',
       '发现不一致就继续修复并重新验证；确认一致后，在下一轮给出复核结论并结束。',
     ].join('\n');
   }
