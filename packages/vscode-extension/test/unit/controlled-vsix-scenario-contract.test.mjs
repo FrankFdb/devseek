@@ -180,7 +180,17 @@ test('real plugin VSIX harness keeps visible DeepSeek pages for user inspection'
   assert.match(source, /\|\| \(headed && keepWindow\)/, 'headed keep-window runs must preserve the DeepSeek page by default');
   assert.match(source, /const cleanup = !keepTmp && !keepWindow && !keepDeepSeekPage && report\.ok/, 'kept visible windows must retain the temporary inspection workspace');
   assert.match(source, /detached: keepDeepSeekPage/, 'relogin bridge/browser must remain detached when kept for inspection');
-  assert.match(source, /DEVSEEK_BRIDGE_KEEP_VISIBLE: keepDeepSeekPage \? '1' : ''/, 'DeepSeek bridge must receive the visible-page retention flag');
+  assert.match(source, /const bridgeKeepVisible = keepDeepSeekPage \? '1' : ''/, 'DeepSeek page retention must have one semantic owner');
+  assert.equal(
+    (source.match(/DEVSEEK_BRIDGE_KEEP_VISIBLE: bridgeKeepVisible/g) || []).length,
+    2,
+    'login and task bridges must share the explicit page-retention contract',
+  );
+  assert.doesNotMatch(
+    source,
+    /DEVSEEK_BRIDGE_KEEP_VISIBLE: headed/,
+    'headed execution alone must not retain the browser after the test',
+  );
   assert.match(source, /keepVisible: keepDeepSeekPage/, 'login report must disclose whether the DeepSeek page was intentionally kept');
   assert.match(source, /if \(keepDeepSeekPage\) \{\s*child\.unref\(\);/s, 'kept relogin browser must not be killed during cleanup');
 });

@@ -51,6 +51,7 @@ const keepWindow = hasFlag('--keep-window') || process.env.DEVSEEK_REAL_PLUGIN_K
 const keepDeepSeekPage = hasFlag('--keep-deepseek-page')
   || process.env.DEVSEEK_REAL_PLUGIN_KEEP_DEEPSEEK_PAGE === '1'
   || (headed && keepWindow);
+const bridgeKeepVisible = keepDeepSeekPage ? '1' : '';
 const autopilot = !hasFlag('--no-autopilot') && process.env.DEVSEEK_REAL_PLUGIN_AUTOPILOT !== '0';
 const promptFromArg = getArgValue('--prompt');
 const scenario = getArgValue('--scenario') || process.env.DEVSEEK_REAL_PLUGIN_SCENARIO || 'formal-simulation';
@@ -1311,7 +1312,7 @@ async function prepareDeepSeekLogin() {
     env: {
       ...process.env,
       HEADLESS: headed ? 'false' : 'true',
-      DEVSEEK_BRIDGE_KEEP_VISIBLE: keepDeepSeekPage ? '1' : '',
+      DEVSEEK_BRIDGE_KEEP_VISIBLE: bridgeKeepVisible,
       WORKSPACE_ROOT: loginWorkspace,
       BRIDGE_PORT: String(port),
       DEVSEEK_BRIDGE_TOKEN: token,
@@ -2431,7 +2432,7 @@ async function runVsCodeDriver() {
       DEVSEEK_REAL_PLUGIN_DEEPSEEK: '1',
       DEVSEEK_REAL_PLUGIN_PROGRESS_PATH: progressPath,
       DEVSEEK_BRIDGE_HEADLESS: headed ? 'false' : 'true',
-      DEVSEEK_BRIDGE_KEEP_VISIBLE: headed ? '1' : '',
+      DEVSEEK_BRIDGE_KEEP_VISIBLE: bridgeKeepVisible,
     },
     stdio: ['ignore', logFd, logFd],
   });
