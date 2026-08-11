@@ -108,8 +108,7 @@ export function classifyDeepSeekStreamErrorMessage(message: string): DeepSeekStr
   if (text.includes('closed') || text.includes('target page') || text.includes('browser')) return 'browser-session-lost';
   if (
     text.includes('429')
-    || text.includes('rate limit')
-    || text.includes('rate-limit')
+    || /\brate[- ]?limit(?:ed|ing)?\b/.test(text)
     || text.includes('too many requests')
     || text.includes('verification')
     || text.includes('captcha')

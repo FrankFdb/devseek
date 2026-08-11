@@ -976,7 +976,7 @@ test('recovery completion requires one fully correlated post-detection mutation 
         }),
       }),
       error => error?.code === 'RUN_SEMANTIC_INVALID'
-        && /correlated requested < authorized < started < committed < verification < quality gate/.test(error.message),
+        && /ordered retry or verified workspace supersession/.test(error.message),
     );
     assert.deepEqual(session.head(), before);
     assert.equal(session.readEvents().some(event => event.type === 'recovery.completed'), false);
@@ -1178,7 +1178,7 @@ test('late provider supersession cannot resolve pre-verification provider or sid
         }),
       }),
       error => error?.code === 'RUN_SEMANTIC_INVALID'
-        && /correlated requested < authorized < started < committed < verification < quality gate/.test(error.message),
+        && /ordered retry or verified workspace supersession/.test(error.message),
     );
     assert.deepEqual(session.head(), before);
     assert.equal(session.readEvents().some(event => event.type === 'recovery.completed'), false);

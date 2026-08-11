@@ -11,6 +11,8 @@ import type {
   CodingVerificationReceiptStatus,
 } from './coding-verification';
 
+const TRANSIENT_DIAGNOSTIC_RE = /timeout|timed out|network|econn|enotfound|\brate[-_ ]?limit(?:ed|ing)?\b|temporar/i;
+
 export const CODING_DIAGNOSTIC_DECISION_VERSION = 'devseek.coding-diagnostic-decision/v1' as const;
 
 export type CodingDiagnosticCategory =
@@ -257,7 +259,7 @@ function snapshotDiagnosticInput(input: NormalizeCodingDiagnosticInput): Normali
 function classifyDiagnostic(observation: CodingDiagnosticObservation): CodingDiagnosticCategory {
   const text = `${observation.checkId} ${observation.command ?? ''} ${observation.summary}`.toLowerCase();
   if (/permission|denied|not authorized|approval|policy refusal/.test(text)) return 'permission';
-  if (/timeout|timed out|network|econn|enotfound|rate limit|temporar/.test(text)) return 'environment';
+  if (TRANSIENT_DIAGNOSTIC_RE.test(text)) return 'environment';
   if (/artifact|checksum|sha256|stale output|package identity/.test(text)) return 'artifact';
   if (/eslint|stylelint|\blint\b|formatter/.test(text)) return 'lint';
   if (/typecheck|tsc\b|type error|not assignable|cannot find name/.test(text)) return 'typecheck';
@@ -291,7 +293,7 @@ function inferDisposition(
 }
 
 function isTransientObservation(observation: CodingDiagnosticObservation): boolean {
-  return /timeout|timed out|network|econn|enotfound|rate limit|temporar/i.test(
+  return TRANSIENT_DIAGNOSTIC_RE.test(
     `${observation.command ?? ''} ${observation.summary}`,
   );
 }

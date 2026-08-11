@@ -52,6 +52,26 @@ test('I19-DGN-01 user journey: verifier failure becomes a stable path-bound diag
   assert.equal(diagnostics.normalizeVerification(verificationReceipt()), decision);
 });
 
+test('C9 diagnostic keeps rate limiter compile failures in the implementation layer', () => {
+  const diagnostics = new CanonicalDiagnosticService().bind({ runId: 'run-rate-limiter-diagnostic' });
+  const decision = diagnostics.normalizeVerification(verificationReceipt({
+    runId: 'run-rate-limiter-diagnostic',
+    checks: [{
+      checkId: 'build',
+      status: 'failed',
+      acceptanceIds: ['verified'],
+      summary: 'src/rate_limiter.cpp:42: rate limiter implementation failed to compile',
+      command: 'cmake --build build',
+      exitCode: 2,
+      evidenceRefs: ['process:build:exit-2'],
+    }],
+  }));
+
+  assert.equal(decision.diagnostics[0].category, 'build');
+  assert.equal(decision.diagnostics[0].rootCauseLayer, 'implementation');
+  assert.equal(decision.diagnostics[0].transient, false);
+});
+
 test('C9 diagnostic normalization fails closed for indeterminate verification', () => {
   const diagnostics = new CanonicalDiagnosticService().bind({ runId: 'run-diagnostic' });
   const decision = diagnostics.normalizeVerification(verificationReceipt({

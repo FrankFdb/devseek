@@ -54,12 +54,25 @@ test('ResponseIntegrityChecker: does not treat business verification-code analys
   assert.equal(result.safeToExecute, true);
 });
 
+test('ResponseIntegrityChecker: does not treat a rate-limiter tool response as provider throttling', () => {
+  const response = [
+    '我会重构 C++17 令牌桶限流器，并运行测试。',
+    '<tool_call name="list_dir">{"path":"/workspace"}</tool_call>',
+    '<tool_call name="manage_todo_list">{"todoList":[{"id":1,"title":"实现限流器","status":"in-progress"}]}</tool_call>',
+  ].join('\n');
+  const result = new ResponseIntegrityChecker().check(response);
+
+  assert.equal(result.status, 'ok');
+  assert.equal(result.safeToExecute, true);
+});
+
 test('ResponseIntegrityChecker: still blocks provider login and captcha control surfaces', () => {
   const checker = new ResponseIntegrityChecker();
 
   assert.equal(checker.check('<html><title>Login</title>请先登录后继续</html>').status, 'login-required');
   assert.equal(checker.check('请输入验证码完成安全验证').status, 'rate-limited');
   assert.equal(checker.check('HTTP 429 Too Many Requests，请稍后再试').status, 'rate-limited');
+  assert.equal(checker.check('当前请求已被限流，请稍后再试').status, 'rate-limited');
 });
 
 test('ResponseIntegrityChecker: blocks truncated markdown and tool blocks', () => {

@@ -23,6 +23,7 @@ const req = createRequire(import.meta.url);
 const {
   BridgeStreamCorrelator,
   DEEPSEEK_WEB_STREAM_PROTOCOL_VERSION,
+  classifyDeepSeekStreamErrorMessage,
   parseDeepSeekStreamFrameData,
 } = req(bundlePath);
 
@@ -137,6 +138,11 @@ test('parseDeepSeekStreamFrameData: malformed SSE data fails closed', () => {
     () => parseDeepSeekStreamFrameData('{"delta": "unterminated"'),
     /RESPONSE_CORRUPTED:stream-malformed-frame/,
   );
+});
+
+test('DeepSeek stream errors distinguish rate limiter code from provider throttling', () => {
+  assert.equal(classifyDeepSeekStreamErrorMessage('HTTP 429 rate limited'), 'rate-limited');
+  assert.equal(classifyDeepSeekStreamErrorMessage('rate limiter.cpp failed to compile'), 'provider-error');
 });
 
 console.log('\nBridge stream protocol tests passed.\n');

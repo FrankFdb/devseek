@@ -82,6 +82,20 @@ test('ProviderRecoveryService: business verification-code analysis is not treate
   assert.equal(plan.requiresUserAction, false);
 });
 
+test('ProviderRecoveryService: rate-limiter tool output is not treated as provider throttling', () => {
+  const plan = new ProviderRecoveryService().classify({
+    providerType: 'bridge',
+    partialResponse: [
+      '我会重构 C++17 令牌桶限流器，并运行测试。',
+      '<tool_call name="list_dir">{"path":"/workspace"}</tool_call>',
+      '<tool_call name="manage_todo_list">{"todoList":[]}</tool_call>',
+    ].join('\n'),
+  });
+
+  assert.equal(plan.kind, 'Unknown');
+  assert.equal(plan.requiresUserAction, false);
+});
+
 test('ProviderRecoveryService: corrupted response is recoverable from checkpoint', () => {
   const plan = new ProviderRecoveryService().classify({
     providerType: 'bridge',

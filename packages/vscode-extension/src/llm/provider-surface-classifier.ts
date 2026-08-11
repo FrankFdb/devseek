@@ -1,3 +1,6 @@
+const PROVIDER_RATE_LIMIT_RE = /(?:\brate[-_ ]?limit(?:ed|ing)?\b|too many requests|HTTP\s*429|429\s+too many requests|请求(?:过于|太)频繁|访问频率(?:过高|太高)|当前访问人数较多|请求达到上限|使用量达到上限|排队(?:中|等待)|(?:触发|受到|遭遇|进入|已被?|被)限流|限流(?:中|保护|限制|状态)|(?:^|[\n:：])\s*限流(?:[，,。.!！：:]|$)|(?:服务|系统)繁忙(?:[，,。.!！]|$)|请?稍后再试|service busy|waiting for verification)/i;
+const PROVIDER_RATE_LIMIT_HTML_RE = new RegExp(`${PROVIDER_RATE_LIMIT_RE.source}|\\b429\\b`, 'i');
+
 export function looksLikeProviderLoginGate(text: string): boolean {
   const normalized = normalizeSurfaceText(text);
   if (!normalized) return false;
@@ -23,10 +26,10 @@ export function looksLikeProviderRateLimitGate(text: string): boolean {
   const normalized = normalizeSurfaceText(text);
   if (!normalized) return false;
   if (looksLikeHtmlSurface(normalized)) {
-    return /(?:rate[-_ ]?limit(?:ed)?|too many requests|429|请求(?:过于|太)频繁|访问频率(?:过高|太高)|当前访问人数较多|请求达到上限|使用量达到上限|排队(?:中|等待)|限流(?:中|保护)?|(?:服务|系统)繁忙(?:[，,。.!！]|$)|稍后再试|service busy)/i.test(stripHtml(normalized));
+    return PROVIDER_RATE_LIMIT_HTML_RE.test(stripHtml(normalized));
   }
   if (!looksLikeProviderControlText(normalized)) return false;
-  return /(?:rate[-_ ]?limit(?:ed)?|too many requests|HTTP\s*429|429\s+too many requests|请求(?:过于|太)频繁|访问频率(?:过高|太高)|当前访问人数较多|请求达到上限|使用量达到上限|排队(?:中|等待)|限流(?:中|保护)?|(?:服务|系统)繁忙(?:[，,。.!！]|$)|请稍后再试|稍后再试|service busy|waiting for verification)/i.test(normalized);
+  return PROVIDER_RATE_LIMIT_RE.test(normalized);
 }
 
 export function looksLikeProviderErrorSurface(text: string): boolean {
@@ -75,7 +78,7 @@ function containsLoginRequiredControlValue(value: unknown): boolean {
 
 function looksLikeProviderControlText(text: string): boolean {
   const head = text.slice(0, 240);
-  if (/^(?:\s|[#>*-])*(?:error|错误|异常|failed|failure|登录|请先?登录|重新登录|sign\s*in|log\s*in|login|required|验证码|请输入|captcha|rate[-_ ]?limit|too many requests|HTTP\s*(?:4\d\d|5\d\d)|服务繁忙|系统繁忙)/i.test(head)) {
+  if (/^(?:\s|[#>*-])*(?:error|错误|异常|failed|failure|登录|请先?登录|重新登录|sign\s*in|log\s*in|login|required|验证码|请输入|captcha|rate[-_ ]?limit(?:ed|ing)?\b|too many requests|HTTP\s*(?:4\d\d|5\d\d)|服务繁忙|系统繁忙|限流(?:中|保护|限制|状态|[，,。.!！：:]))/i.test(head)) {
     return true;
   }
   if (looksLikeModelAnswerText(text)) return false;
@@ -96,5 +99,6 @@ function stripHtml(text: string): string {
 
 function looksLikeModelAnswerText(text: string): boolean {
   return /(?:^|\n)\s*#{1,6}\s+\S/.test(text)
+    || /(?:\[TOOL:[A-Za-z_]|<tool_call\b)/i.test(text)
     || /(?:结论|依据|原因|问题|风险|建议|对策|方案|任务拆解|验证结果|summary|conclusion|evidence|recommendation)/i.test(text);
 }
