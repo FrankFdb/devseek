@@ -34,7 +34,8 @@ import {
   type WrittenFileEvidence,
 } from './completion-evidence';
 import { buildAgenticHistoryText, buildAgenticQualityGateForHistory, type AgenticHistoryQualityGate } from './agentic-history';
-import { runAgentAutoValidationForWrites, type AgentAutoValidationResult } from './auto-validation';
+import { runAgentAutoValidationForWrites } from './auto-validation';
+import { normalizeAgenticAutoValidation } from './agentic-auto-validation-settlement';
 import { buildMissingEvidenceRecoveryInstruction, type TodoItem } from './evidence-recovery';
 import {
   buildDanglingAgentActionFeedback,
@@ -121,45 +122,13 @@ import {
 import { compactAgenticMessageHistory } from './agentic-context-compaction';
 import { ToolFailureRecoveryLedger } from './tool-failure-recovery';
 import { QualityGateStagnationLedger } from './quality-gate-stagnation';
+import { RequirementReviewLedger } from './requirement-review-ledger';
 import { tryRunGroundedMarkdownAgenticTask } from './grounded-markdown-agentic-task';
 import { buildAgenticSystemPrompt } from './agentic-system-prompt';
 import { createSemanticExecutionWriteAuthority } from './semantic-execution-context';
 import { createAgenticInitialPromptContext, type AgenticLoopExecutionContext } from './agentic-execution-context';
-import {
-  classifyAgenticManualReviewEvidence,
-} from './terminal-evidence-settlement';
+import { classifyAgenticManualReviewEvidence } from './terminal-evidence-settlement';
 const AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS = 3;
-
-function normalizeAgenticAutoValidation(input: {
-  autoValidation: AgentAutoValidationResult;
-  userPrompt: string;
-  writtenFiles: WrittenFileEvidence[];
-}): {
-  evidence: TerminalEvidence[];
-  feedbackForAI: string;
-  qualityGate?: AgenticHistoryQualityGate;
-  manualReviewEvidence?: TerminalEvidence;
-} {
-  const evidence = classifyAgenticManualReviewEvidence({
-    evidence: input.autoValidation.evidence ? [input.autoValidation.evidence] : [],
-    feedbackForAI: input.autoValidation.feedbackForAI || '',
-    userPrompt: input.userPrompt,
-    writtenFiles: input.writtenFiles,
-  });
-  const manualReviewEvidence = evidence.find(item => item.reviewRequired);
-  if (manualReviewEvidence) {
-    return {
-      evidence,
-      feedbackForAI: `【系统反馈】运行验证需要人工确认：${manualReviewEvidence.detail || '图形或交互式程序已启动，需人工确认窗口和交互效果。'}`,
-      manualReviewEvidence,
-    };
-  }
-  return {
-    evidence,
-    feedbackForAI: input.autoValidation.feedbackForAI ?? '',
-    qualityGate: input.autoValidation.qualityGate,
-  };
-}
 
 // ----------------------------------------------------------------
 // Canonical agentic loop (Claude Code/Codex style)
@@ -295,6 +264,7 @@ export async function runAgenticLoop(
   const allReadEvidencePaths = new Set<string>();
   const toolFailureRecovery = new ToolFailureRecoveryLedger({ workspaceRoot });
   const qualityGateStagnation = new QualityGateStagnationLedger();
+  const requirementReview = new RequirementReviewLedger();
   let progressEpoch = 0;
   const recordQualityGateFailureFeedback = (qualityGate: AgenticHistoryQualityGate | undefined): string => {
     const observation = qualityGateStagnation.record(qualityGate, progressEpoch);
@@ -1001,10 +971,18 @@ export async function runAgenticLoop(
       && missingAfterTools.length === 0
       && !blockingFailureAfterTools
       && summaryFactFailuresAfterTools.length === 0) {
-      if (loopRes.completeSummary !== undefined) {
-        completeSummary = loopRes.completeSummary ?? '';
+      const reviewFeedback = requirementReview.request({
+        sourceChangeRequested: effectiveTaskIntent.mutation.sourceChange,
+        qualityGate: normalizedAutoValidation.qualityGate,
+        writtenFiles: allWrittenFiles,
+        roundHasWorkTools,
+      });
+      if (reviewFeedback) {
+        loopWarnings.push(reviewFeedback);
+      } else {
+        if (loopRes.completeSummary !== undefined) completeSummary = loopRes.completeSummary ?? '';
+        break;
       }
-      break;
     }
 
     if ((loopRes.taskComplete || loopRes.allTodosCompleted)
