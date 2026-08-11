@@ -66,6 +66,18 @@ test('ResponseIntegrityChecker: does not treat a rate-limiter tool response as p
   assert.equal(result.safeToExecute, true);
 });
 
+test('ResponseIntegrityChecker: does not treat log-index workspace paths as provider login gates', () => {
+  const response = [
+    '我先探索工作区结构，了解现有代码、测试和构建配置。',
+    '[调用 list_dir] {"path":"/workspace/cases/04-log-index/workspace"}',
+    '[调用 file_search] {"glob":"**/*.{h,hpp,cpp,cc}"}',
+  ].join('');
+  const result = new ResponseIntegrityChecker().check(response);
+
+  assert.equal(result.status, 'ok');
+  assert.equal(result.safeToExecute, true);
+});
+
 test('ResponseIntegrityChecker: accepts a complete tool request in a structured text envelope', () => {
   const response = `我先读取实现。\n\n\`\`\`\n${JSON.stringify([{
     type: 'text',
@@ -81,6 +93,8 @@ test('ResponseIntegrityChecker: still blocks provider login and captcha control 
   const checker = new ResponseIntegrityChecker();
 
   assert.equal(checker.check('<html><title>Login</title>请先登录后继续</html>').status, 'login-required');
+  assert.equal(checker.check('Log in to continue').status, 'login-required');
+  assert.equal(checker.check('Sign-in required').status, 'login-required');
   assert.equal(checker.check('请输入验证码完成安全验证').status, 'rate-limited');
   assert.equal(checker.check('HTTP 429 Too Many Requests，请稍后再试').status, 'rate-limited');
   assert.equal(checker.check('当前请求已被限流，请稍后再试').status, 'rate-limited');
