@@ -249,6 +249,88 @@ test('CanonicalCompletionDecisionService keeps rejected control attempts complet
   assert.equal(decision.evidenceRefs.includes('authority:todo-invalid'), true);
 });
 
+test('CanonicalCompletionDecisionService keeps failed read-only exploration completion-neutral', () => {
+  const failedRead = {
+    version: CODING_TOOL_RECEIPT_VERSION,
+    runId: 'completion-run-1',
+    sequence: 1,
+    actionId: 'read-missing-1',
+    tool: 'read_file',
+    purpose: 'observe',
+    effects: ['read'],
+    status: 'failed',
+    permission: {
+      decision: 'allow',
+      status: 'authorized',
+      reason: 'workspace-read',
+      evidenceRefs: ['authority:read'],
+    },
+    errorCode: 'file-not-found',
+    evidenceRefs: ['read:missing-path'],
+  };
+  const decision = new CanonicalCompletionDecisionService().decide(input({
+    toolExecutions: [failedRead],
+  }));
+
+  assert.equal(decision.status, 'completed');
+  assert.equal(decision.reasonCodes.includes('failed-effect'), false);
+  assert.equal(decision.evidenceRefs.includes('read:missing-path'), true);
+});
+
+test('CanonicalCompletionDecisionService keeps failed network observations blocking', () => {
+  const failedFetch = {
+    version: CODING_TOOL_RECEIPT_VERSION,
+    runId: 'completion-run-1',
+    sequence: 1,
+    actionId: 'fetch-failed-1',
+    tool: 'fetch_webpage',
+    purpose: 'observe',
+    effects: ['network'],
+    status: 'failed',
+    permission: {
+      decision: 'allow',
+      status: 'authorized',
+      reason: 'network-read',
+      evidenceRefs: ['authority:network'],
+    },
+    errorCode: 'network-failed',
+    evidenceRefs: ['network:failed'],
+  };
+  const decision = new CanonicalCompletionDecisionService().decide(input({
+    toolExecutions: [failedFetch],
+  }));
+
+  assert.equal(decision.status, 'failed');
+  assert.equal(decision.reasonCodes.includes('failed-effect'), true);
+});
+
+test('CanonicalCompletionDecisionService rejects non-read effects on a read-only tool receipt', () => {
+  const inconsistentRead = {
+    version: CODING_TOOL_RECEIPT_VERSION,
+    runId: 'completion-run-1',
+    sequence: 1,
+    actionId: 'read-inconsistent-1',
+    tool: 'read_file',
+    purpose: 'observe',
+    effects: ['workspace-mutation'],
+    status: 'failed',
+    permission: {
+      decision: 'allow',
+      status: 'authorized',
+      reason: 'inconsistent-adapter',
+      evidenceRefs: ['authority:inconsistent-read'],
+    },
+    errorCode: 'adapter-contract-violation',
+    evidenceRefs: ['read:inconsistent-effect'],
+  };
+  const decision = new CanonicalCompletionDecisionService().decide(input({
+    toolExecutions: [inconsistentRead],
+  }));
+
+  assert.equal(decision.status, 'failed');
+  assert.equal(decision.reasonCodes.includes('failed-effect'), true);
+});
+
 test('CanonicalCompletionDecisionService settles failed edit routes through a read-back and scoped canonical verification', () => {
   const failedEdit = workspaceTool('replace-failed', 1, 'failed');
   const deniedShellWrite = workspaceTool('shell-write-denied', 2, 'denied');

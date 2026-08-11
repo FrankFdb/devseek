@@ -8,9 +8,9 @@ import {
 import { getCodingToolDescriptor } from './coding-tool-schema';
 
 /**
- * Completion-neutral control calls are orchestration hints, not user-facing
- * effects. Their rejected attempts remain auditable but cannot veto an
- * otherwise evidenced delivery.
+ * Side-effect-free observations remain auditable, but a rejected exploratory
+ * attempt cannot veto an otherwise evidenced delivery. Read-only tasks still
+ * require their own acceptance evidence before completion can pass.
  */
 export function codingAdverseToolExecutionBlocksCompletion(
   adverse: CodingToolExecutionReceipt<unknown>,
@@ -19,13 +19,24 @@ export function codingAdverseToolExecutionBlocksCompletion(
   verifications: readonly CodingVerificationReceipt[],
 ): boolean {
   if (adverse.status !== 'failed' && adverse.status !== 'denied') return false;
-  if (getCodingToolDescriptor(adverse.tool)?.kind === 'control') return false;
+  if (isSideEffectFreeObservation(adverse)) return false;
   return !codingAdverseToolExecutionWasRecovered(
     adverse,
     toolExecutions,
     mutations,
     verifications,
   );
+}
+
+function isSideEffectFreeObservation(
+  receipt: CodingToolExecutionReceipt<unknown>,
+): boolean {
+  const descriptor = getCodingToolDescriptor(receipt.tool);
+  return descriptor?.purpose === 'observe'
+    && descriptor.effects.length > 0
+    && descriptor.effects.every(effect => effect === 'read')
+    && receipt.effects.length > 0
+    && receipt.effects.every(effect => effect === 'read');
 }
 
 /**
