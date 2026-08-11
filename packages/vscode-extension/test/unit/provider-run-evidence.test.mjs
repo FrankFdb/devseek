@@ -16,7 +16,11 @@ execSync(
 );
 
 const req = createRequire(import.meta.url);
-const { invokeProviderWithRunEvidence } = req(bundlePath);
+const {
+  BRIDGE_PROVIDER_FAILURE_EVIDENCE_GAP,
+  BridgeProviderFailureEvidenceGapError,
+  invokeProviderWithRunEvidence,
+} = req(bundlePath);
 const {
   FileSystemRunEvidenceLedger,
   ProductRunEvidenceSession,
@@ -340,7 +344,7 @@ test('bridge provider accepts server completion when client integrity rejects th
   }
 });
 
-test('bridge provider marks a missing failed server boundary as degraded without replacing the original error', async () => {
+test('bridge provider reports a recoverable missing failed server boundary without replacing the original error', async () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-provider-evidence-'));
   try {
     const ownerToken = createProductRunEvidenceAuthorityToken();
@@ -366,6 +370,9 @@ test('bridge provider marks a missing failed server boundary as degraded without
       invoke: async () => { throw new Error('transport failed first'); },
     }), /transport failed first/);
     assert.equal(errors.length, 1);
+    assert.equal(errors[0] instanceof BridgeProviderFailureEvidenceGapError, true);
+    assert.equal(errors[0].code, BRIDGE_PROVIDER_FAILURE_EVIDENCE_GAP);
+    assert.equal(errors[0].operationId, 'missing-server-failed-op');
     assert.match(String(errors[0]), /expected provider\.completed or provider\.failed/);
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });

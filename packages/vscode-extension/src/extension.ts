@@ -674,7 +674,7 @@ async function runActiveChat(
             traceRunId: agentTraceRunId,
             traceWorkspaceRoot: agentTraceWorkspaceRoot,
             traceEvidenceParticipantToken: agentRunContext.evidenceParticipantToken,
-            onTraceEvidenceError: error => agentRunContext?.markEvidenceDegraded(error),
+            onTraceEvidenceError: error => agentRunContext?.reportEvidenceIssue(error),
             runDisplayAction: agDisplayProfile.initialTaskAction,
             runDisplayTarget: agDisplayProfile.initialTaskLabel,
             onDelta: (delta) => {
@@ -726,7 +726,7 @@ async function runActiveChat(
                 toolPolicy,
                 traceRunId: agentTraceRunId,
                 traceEvidenceParticipantToken: agentRunContext.evidenceParticipantToken,
-                onTraceEvidenceError: error => agentRunContext?.markEvidenceDegraded(error),
+                onTraceEvidenceError: error => agentRunContext?.reportEvidenceIssue(error),
               });
             },
             onValidationCommand: terminalPermissionCoordinator.createValidationCommandRunner({
@@ -736,7 +736,7 @@ async function runActiveChat(
               toolPolicy,
               traceRunId: agentTraceRunId,
               traceEvidenceParticipantToken: agentRunContext.evidenceParticipantToken,
-              onTraceEvidenceError: error => agentRunContext?.markEvidenceDegraded(error),
+              onTraceEvidenceError: error => agentRunContext?.reportEvidenceIssue(error),
             }),
             onReadFile: async (filePath: string, workDir?: string, range?: { startLine?: number; endLine?: number }) => (
               createFileContextService(agWsRoot).readFileForAi(filePath, { workDir, ...range })
@@ -1051,7 +1051,7 @@ async function runActiveChat(
       toolPolicy,
       traceRunId: chatRunContext.runId,
       traceEvidenceParticipantToken: chatRunContext.evidenceParticipantToken,
-      onTraceEvidenceError: error => chatRunContext?.markEvidenceDegraded(error),
+      onTraceEvidenceError: error => chatRunContext?.reportEvidenceIssue(error),
     });
     chatRunContext.trace.info('routing', 'route-decision', {
       agentEnabled: config.get<boolean>('agentEnabled', true),
@@ -1142,7 +1142,7 @@ async function runActiveChat(
         providerType: getActiveProviderType(),
         traceRunId: chatRunContext.runId,
         traceEvidenceParticipantToken: chatRunContext.evidenceParticipantToken,
-        onTraceEvidenceError: error => chatRunContext?.markEvidenceDegraded(error),
+        onTraceEvidenceError: error => chatRunContext?.reportEvidenceIssue(error),
         consumeAgentSteer,
         registerAppliedChange: (change) => pendingEditCoordinator.registerChange(webview, change),
         registerToMemory,
@@ -1204,7 +1204,7 @@ async function runActiveChat(
       traceRunId: chatRunContext.runId,
       traceWorkspaceRoot: chatRunContext.workspaceRoot,
       traceEvidenceParticipantToken: chatRunContext.evidenceParticipantToken,
-      onTraceEvidenceError: error => chatRunContext?.markEvidenceDegraded(error),
+      onTraceEvidenceError: error => chatRunContext?.reportEvidenceIssue(error),
       onUsage: (usage) => {
         webview.postMessage({ type: 'tokenUsage', promptTokens: usage.promptTokens, completionTokens: usage.completionTokens });
       },
@@ -1259,7 +1259,7 @@ async function runActiveChat(
           traceRunId: chatRunContext.runId,
           traceWorkspaceRoot: chatRunContext.workspaceRoot,
           traceEvidenceParticipantToken: chatRunContext.evidenceParticipantToken,
-          onTraceEvidenceError: error => chatRunContext?.markEvidenceDegraded(error),
+          onTraceEvidenceError: error => chatRunContext?.reportEvidenceIssue(error),
           onDelta: (delta) => {
             if (delta.startsWith('\x00RESET\x00')) {
               postWebviewMessage(webview, { type: 'delta', text: delta.slice(7) });
@@ -1312,7 +1312,7 @@ async function runActiveChat(
           traceRunId: chatRunContext?.runId,
           traceWorkspaceRoot: chatRunContext?.workspaceRoot,
           traceEvidenceParticipantToken: chatRunContext?.evidenceParticipantToken,
-          onTraceEvidenceError: error => chatRunContext?.markEvidenceDegraded(error),
+          onTraceEvidenceError: error => chatRunContext?.reportEvidenceIssue(error),
         }),
         apply: (repairResponse, repairPrompt, onAppliedChange) => applyGeneratedArtifactsWithPrompt(
           repairResponse,
@@ -1342,7 +1342,7 @@ async function runActiveChat(
             traceRunId: request.traceRunId ?? chatRunContext?.runId,
             traceWorkspaceRoot: request.traceWorkspaceRoot ?? chatRunContext?.workspaceRoot,
             traceEvidenceParticipantToken: request.traceEvidenceParticipantToken ?? chatRunContext?.evidenceParticipantToken,
-            onTraceEvidenceError: request.onTraceEvidenceError ?? (error => chatRunContext?.markEvidenceDegraded(error)),
+            onTraceEvidenceError: request.onTraceEvidenceError ?? (error => chatRunContext?.reportEvidenceIssue(error)),
           }),
           registerAppliedChange: async (change) => {
             chatRunChangedPaths.add([change.path]);

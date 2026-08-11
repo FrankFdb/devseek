@@ -61,7 +61,7 @@ export class GeneratedArtifactSurfaceController {
       toolPolicy: buildToolPolicy('edit'),
       traceRunId: runContext.runId,
       traceEvidenceParticipantToken: runContext.evidenceParticipantToken,
-      onTraceEvidenceError: error => runContext.markEvidenceDegraded(error),
+      onTraceEvidenceError: error => runContext.reportEvidenceIssue(error),
     });
     let unresolvedFailure = false;
     const reporter = async (status: ApplyWorkflowStatus) => {
@@ -73,7 +73,7 @@ export class GeneratedArtifactSurfaceController {
       traceRunId: opts.traceRunId ?? runContext.runId,
       traceWorkspaceRoot: opts.traceWorkspaceRoot ?? runContext.workspaceRoot,
       traceEvidenceParticipantToken: opts.traceEvidenceParticipantToken ?? runContext.evidenceParticipantToken,
-      onTraceEvidenceError: opts.onTraceEvidenceError ?? (error => runContext.markEvidenceDegraded(error)),
+      onTraceEvidenceError: opts.onTraceEvidenceError ?? (error => runContext.reportEvidenceIssue(error)),
     });
     try {
       const result = await applyGeneratedArtifactsWithPrompt(
@@ -165,7 +165,7 @@ export class GeneratedArtifactSurfaceController {
       toolPolicy: buildToolPolicy('edit'),
       traceRunId: runContext.runId,
       traceEvidenceParticipantToken: runContext.evidenceParticipantToken,
-      onTraceEvidenceError: error => runContext.markEvidenceDegraded(error),
+      onTraceEvidenceError: error => runContext.reportEvidenceIssue(error),
     });
     let unresolvedFailure = false;
     const reporter = async (status: ApplyWorkflowStatus) => {
@@ -177,7 +177,7 @@ export class GeneratedArtifactSurfaceController {
       traceRunId: opts.traceRunId ?? runContext.runId,
       traceWorkspaceRoot: opts.traceWorkspaceRoot ?? runContext.workspaceRoot,
       traceEvidenceParticipantToken: opts.traceEvidenceParticipantToken ?? runContext.evidenceParticipantToken,
-      onTraceEvidenceError: opts.onTraceEvidenceError ?? (error => runContext.markEvidenceDegraded(error)),
+      onTraceEvidenceError: opts.onTraceEvidenceError ?? (error => runContext.reportEvidenceIssue(error)),
     });
     try {
       const result = await applyGeneratedArtifactPathWithPrompt(

@@ -16,6 +16,35 @@ export interface ProviderRunEvidenceInput {
   onEvidenceError?: (error: unknown) => void;
 }
 
+export const BRIDGE_PROVIDER_FAILURE_EVIDENCE_GAP = 'BRIDGE_PROVIDER_FAILURE_EVIDENCE_GAP';
+
+/**
+ * A failed bridge request already has a trustworthy client-side terminal, but
+ * the server participant disappeared before it could append its own terminal.
+ * RunContext may supersede this gap only with a fully verified local result.
+ */
+export class BridgeProviderFailureEvidenceGapError extends Error {
+  readonly code = BRIDGE_PROVIDER_FAILURE_EVIDENCE_GAP;
+
+  constructor(readonly operationId: string) {
+    super(
+      `Bridge evidence boundary is incomplete for operation ${operationId}; `
+      + 'expected provider.completed or provider.failed',
+    );
+    this.name = 'BridgeProviderFailureEvidenceGapError';
+  }
+}
+
+export function isBridgeProviderFailureEvidenceGap(
+  error: unknown,
+): error is BridgeProviderFailureEvidenceGapError {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { code?: unknown; operationId?: unknown };
+  return candidate.code === BRIDGE_PROVIDER_FAILURE_EVIDENCE_GAP
+    && typeof candidate.operationId === 'string'
+    && candidate.operationId.trim().length > 0;
+}
+
 /**
  * Records the provider boundary for both direct API providers and the bridge
  * client. The bridge server writes its own participant events into the same
@@ -117,9 +146,11 @@ async function assertBridgeParticipantTerminal(
     while (true) {
       if (bridgeParticipantTerminalIsComplete(evidence, operationId, expectedTerminal)) return;
       if (Date.now() >= deadline) {
-        throw new Error(
-          `Bridge evidence boundary is incomplete for operation ${operationId}; expected ${describeExpectedBridgeTerminal(expectedTerminal)}`,
-        );
+        throw expectedTerminal === 'provider.failed'
+          ? new BridgeProviderFailureEvidenceGapError(operationId)
+          : new Error(
+            `Bridge evidence boundary is incomplete for operation ${operationId}; expected ${describeExpectedBridgeTerminal(expectedTerminal)}`,
+          );
       }
       await new Promise(resolve => setTimeout(resolve, 25));
     }

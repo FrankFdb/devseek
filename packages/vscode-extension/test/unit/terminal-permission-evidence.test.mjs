@@ -166,7 +166,7 @@ test('Terminal evidence: the canonical Agent entry point propagates participant 
   assert.equal(tracedTerminalCalls.length, 1);
   for (const call of tracedTerminalCalls) {
     assert.match(call, /traceEvidenceParticipantToken:\s*agentRunContext\.evidenceParticipantToken/);
-    assert.match(call, /onTraceEvidenceError:\s*error\s*=>\s*agentRunContext\?\.markEvidenceDegraded\(error\)/);
+    assert.match(call, /onTraceEvidenceError:\s*error\s*=>\s*agentRunContext\?\.reportEvidenceIssue\(error\)/);
   }
 });
 
@@ -561,7 +561,7 @@ test('Terminal evidence: non-success settlement closes an active recovery before
     runId,
     workspaceRoot,
     evidenceParticipantToken: participantToken,
-    markEvidenceDegraded(error) { evidenceErrors.push(error); },
+    reportEvidenceIssue(error) { evidenceErrors.push(error); },
     complete(status) {
       owner.settleAndSeal({ status, idempotencyKey: `settlement:${status}` });
       return status;
@@ -866,7 +866,7 @@ test('Terminal evidence: a committed command exposes failed owner settlement ins
 
   class EvidenceDegradingCoordinator extends TerminalPermissionCoordinator {
     completeRunContext(runContext, requestedStatus, data) {
-      runContext.markEvidenceDegraded(new Error('simulated owner settlement degradation'));
+      runContext.reportEvidenceIssue(new Error('simulated owner settlement degradation'));
       return super.completeRunContext(runContext, requestedStatus, data);
     }
   }

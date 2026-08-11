@@ -19,6 +19,7 @@ import type { WorkspaceMutationLifecycleEvent } from '../workspace/workspace-mut
 import { hasSourceClaimArtifactContract, type TaskContract } from '../agent/task-contract';
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import { resolveTaskSemanticContract } from '../intent/task-semantic-contract-service';
+import { isBridgeProviderFailureEvidenceGap } from './provider-run-evidence';
 import { buildRunSettlementSealBinding, type RunSettlementBuildIdentity } from './run-settlement-seal-binding';
 import { decideSettlementState, type SettlementTerminalStatus } from './settlement-state';
 import { VerificationScopeRegistry } from './verification-scope-registry';
@@ -55,7 +56,7 @@ export interface DevSeekRunContext {
   recordWorkspaceMutation(event: WorkspaceMutationLifecycleEvent): void;
   recordToolActivity(kind: string, label: string): void;
   recordCheckpoint(firstUnfinishedIndex: number | null, remainingCount: number, reason: string): void;
-  markEvidenceDegraded(error: unknown): void;
+  reportEvidenceIssue(error: unknown): void;
   /** Records a non-terminal cancellation request before in-flight effects reconcile. */
   requestCancellation(data?: Record<string, unknown>): void;
   /** Cancels the run through the same durable settlement owner used by completion/failure. */
@@ -102,6 +103,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
   private readonly pendingAdverseOperationIds = new Set<string>();
   private readonly pendingAdverseOperationIdsByKey = new Map<string, Set<string>>();
   private readonly committedSideEffectOperationIdsByKey = new Map<string, string>();
+  private readonly recoverableProviderBoundaryGapOperationIds = new Set<string>();
   private hasSideEffectEvidence = false;
   private settlementStatus?: RunContextStatus;
   private cancellationRequested = false;
@@ -278,7 +280,22 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     });
   }
 
-  markEvidenceDegraded(error: unknown): void {
+  reportEvidenceIssue(error: unknown): void {
+    if (isBridgeProviderFailureEvidenceGap(error)) {
+      const operationId = error.operationId.trim();
+      this.recoverableProviderBoundaryGapOperationIds.add(operationId);
+      this.trace.error('run-evidence', 'provider-failure-boundary-gap-detected', {
+        operationId,
+        code: error.code,
+        message: error.message,
+        recoverableBy: 'verified-local-result',
+      });
+      return;
+    }
+    this.markEvidenceDegraded(error);
+  }
+
+  private markEvidenceDegraded(error: unknown): void {
     this.evidenceDegraded = true;
     const summary = summarizeEvidenceError(error);
     this.trace.error('run-evidence', 'evidence-degraded', summary);
@@ -327,6 +344,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     }
     if (status === 'completed') {
       this.completeProviderFailuresFromVerifiedLocalResult(data);
+      this.reconcileProviderBoundaryGaps();
     }
     let settlement = decideSettlementState({
       requestedStatus: status,
@@ -998,17 +1016,53 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     this.recoverySequence += 1;
     const operationId = `vscode-recovery-${this.recoverySequence}`;
     const summary = summarizeTraceText(safeCompletionSummary(input.data));
+    const providerBoundaryGapOperationIds = input.targetOperationIds.filter(targetOperationId => (
+      this.recoverableProviderBoundaryGapOperationIds.has(targetOperationId)
+    ));
     this.recordOperationEvent('recovery.detected', operationId, 'detected', summary, {
       target_operation_ids: [...input.targetOperationIds],
       recovery_trigger: input.trigger,
+      ...(providerBoundaryGapOperationIds.length > 0
+        ? { provider_boundary_gap_operation_ids: providerBoundaryGapOperationIds }
+        : {}),
     });
     this.recordOperationEvent('recovery.completed', operationId, 'completed', summary, {
       resolves_operation_ids: [...input.targetOperationIds],
       verification_operation_id: input.verificationOperationId,
       recovery_trigger: input.trigger,
       recovery_resolution: input.resolution,
+      ...(providerBoundaryGapOperationIds.length > 0
+        ? { provider_boundary_gap_operation_ids: providerBoundaryGapOperationIds }
+        : {}),
     });
     input.targetOperationIds.forEach(targetOperationId => this.deletePendingAdverseOperation(targetOperationId));
+  }
+
+  private reconcileProviderBoundaryGaps(): void {
+    if (this.recoverableProviderBoundaryGapOperationIds.size === 0) return;
+    if (!this.evidence) {
+      this.markEvidenceDegraded(new Error('Provider boundary gaps cannot be reconciled without run evidence'));
+      return;
+    }
+    try {
+      const resolved = collectResolvedOperationIds(this.evidence.readEvents());
+      for (const operationId of this.recoverableProviderBoundaryGapOperationIds) {
+        if (!resolved.has(operationId)) continue;
+        this.recoverableProviderBoundaryGapOperationIds.delete(operationId);
+        this.trace.info('run-evidence', 'provider-failure-boundary-gap-recovered', {
+          operationId,
+          recoveryResolution: 'verified-local-result',
+        });
+      }
+      if (this.recoverableProviderBoundaryGapOperationIds.size > 0) {
+        const operationIds = [...this.recoverableProviderBoundaryGapOperationIds].sort();
+        this.markEvidenceDegraded(new Error(
+          `Unresolved bridge provider failure evidence gaps: ${operationIds.join(', ')}`,
+        ));
+      }
+    } catch (error) {
+      this.markEvidenceDegraded(error);
+    }
   }
 
   private addPendingAdverseOperation(operationId: string, operationKey?: string): void {

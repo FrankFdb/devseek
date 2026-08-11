@@ -465,7 +465,7 @@ export class TerminalPermissionCoordinator {
       workspaceRoot: runContext.workspaceRoot,
       runId: runContext.runId,
       traceEvidenceParticipantToken: runContext.evidenceParticipantToken,
-      onTraceEvidenceError: error => runContext.markEvidenceDegraded(error),
+      onTraceEvidenceError: error => runContext.reportEvidenceIssue(error),
     };
     if (requestedStatus === 'completed' && (hasPendingFailures || hasActiveRecovery)) {
       if (!this.resolveCommandFailuresAfterQualityGate(recoveryInput)) {
@@ -622,7 +622,7 @@ export class TerminalPermissionCoordinator {
         toolPolicy: buildToolPolicy(input.mode),
         traceRunId: runContext.runId,
         traceEvidenceParticipantToken: runContext.evidenceParticipantToken,
-        onTraceEvidenceError: error => runContext.markEvidenceDegraded(error),
+        onTraceEvidenceError: error => runContext.reportEvidenceIssue(error),
       });
       const settlementStatus = this.completeRunContext(
         runContext,

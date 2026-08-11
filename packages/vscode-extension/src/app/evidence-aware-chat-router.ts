@@ -66,7 +66,7 @@ export class EvidenceAwareChatRouter {
       traceRunId: requestInput.traceRunId ?? ownedContext?.runId,
       traceWorkspaceRoot: requestInput.traceWorkspaceRoot ?? ownedContext?.workspaceRoot,
       traceEvidenceParticipantToken: requestInput.traceEvidenceParticipantToken ?? ownedContext?.evidenceParticipantToken,
-      onTraceEvidenceError: requestInput.onTraceEvidenceError ?? (error => ownedContext?.markEvidenceDegraded(error)),
+      onTraceEvidenceError: requestInput.onTraceEvidenceError ?? (error => ownedContext?.reportEvidenceIssue(error)),
       traceOperationId: requestInput.traceOperationId ?? crypto.randomUUID(),
     };
     try {

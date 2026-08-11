@@ -84,7 +84,7 @@ export class ProductMutationCoordinator {
         authority: { role: 'participant', token: runContext.evidenceParticipantToken },
       });
     } catch (error) {
-      runContext.markEvidenceDegraded(error);
+      runContext.reportEvidenceIssue(error);
       throw new ProductMutationDeniedError('Mutation evidence authority is unavailable');
     }
   }
@@ -231,7 +231,7 @@ export class ProductMutationCoordinator {
     try {
       this.record(type, operationId, status, observation, details);
     } catch (error) {
-      this.runContext.markEvidenceDegraded(error);
+      this.runContext.reportEvidenceIssue(error);
       throw new ProductMutationDeniedError('Mutation was blocked because evidence could not be durably appended');
     }
   }
@@ -246,7 +246,7 @@ export class ProductMutationCoordinator {
     try {
       this.record(type, operationId, status, observation, details);
     } catch (error) {
-      this.runContext.markEvidenceDegraded(error);
+      this.runContext.reportEvidenceIssue(error);
       if (type === 'side_effect.committed') {
         try {
           this.record('side_effect.indeterminate', operationId, 'indeterminate', observation, {
@@ -254,7 +254,7 @@ export class ProductMutationCoordinator {
             reason: 'committed evidence could not be durably appended',
           });
         } catch (indeterminateError) {
-          this.runContext.markEvidenceDegraded(indeterminateError);
+          this.runContext.reportEvidenceIssue(indeterminateError);
         }
       }
       throw new ProductMutationIndeterminateError(

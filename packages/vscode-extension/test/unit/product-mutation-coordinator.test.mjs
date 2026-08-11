@@ -38,7 +38,7 @@ function createHarness(failOnType) {
     workspaceRoot: '/workspace',
     runId: 'mutation-test-run',
     evidenceParticipantToken: 'participant-test-token',
-    markEvidenceDegraded(error) { degradations.push(error); },
+    reportEvidenceIssue(error) { degradations.push(error); },
   };
   return {
     events,

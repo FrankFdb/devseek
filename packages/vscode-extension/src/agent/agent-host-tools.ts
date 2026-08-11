@@ -158,7 +158,7 @@ export function createAgentHostToolCallbacks(context: AgentHostToolContext): Hos
       timeoutMs,
       traceRunId: runContext.runId,
       traceEvidenceParticipantToken: runContext.evidenceParticipantToken,
-      onTraceEvidenceError: error => runContext.markEvidenceDegraded(error),
+      onTraceEvidenceError: error => runContext.reportEvidenceIssue(error),
     });
     if (result.outcome !== 'committed') {
       throw new Error(`Read-only host inspection did not complete: ${result.output}`);

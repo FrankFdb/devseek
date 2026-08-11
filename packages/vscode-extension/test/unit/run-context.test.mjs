@@ -1198,6 +1198,142 @@ test('RunContext: post-verification provider failure cannot overturn recovered l
   }
 });
 
+test('RunContext: a missing failed bridge terminal is superseded by a verified local result', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  const runId = 'run-context-recovered-bridge-failure-gap';
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId,
+      userPrompt: '修改 src/event_bus.cpp 并运行测试',
+      traceLevel: 'debug',
+    });
+    const participant = ProductRunEvidenceSession.forWorkspace({
+      workspaceRoot,
+      runId,
+      surface: 'canonical-participant',
+      authority: { role: 'participant', token: context.evidenceParticipantToken },
+    });
+    for (const [index, [type, status]] of [
+      ['side_effect.requested', 'requested'],
+      ['side_effect.authorized', 'authorized'],
+      ['side_effect.started', 'started'],
+      ['side_effect.committed', 'committed'],
+    ].entries()) {
+      participant.record({
+        type,
+        idempotencyKey: `bridge-gap-local-write:${index}`,
+        payload: observed(status, {
+          operation_id: 'canonical-write:event-bus',
+          boundary: 'vscode-workspace-mutation',
+        }),
+      });
+    }
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'validate', state: 'started',
+      title: '运行事件总线测试', evidenceOperationId: 'verify-event-bus',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'validate', state: 'completed',
+      title: '事件总线测试通过', evidenceOperationId: 'verify-event-bus',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'quality', state: 'started',
+      title: '评估事件总线质量门禁', evidenceOperationId: 'verify-event-bus',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'quality', state: 'completed',
+      title: '事件总线质量门禁通过', evidenceOperationId: 'verify-event-bus',
+    });
+    for (const [index, [type, status]] of [
+      ['provider.requested', 'requested'],
+      ['provider.failed', 'failed'],
+    ].entries()) {
+      participant.record({
+        type,
+        idempotencyKey: `bridge-gap-provider:${index}`,
+        payload: observed(status, {
+          operation_id: 'provider:final-fetch-failed',
+          boundary: 'vscode-provider-client',
+        }),
+      });
+    }
+    context.reportEvidenceIssue({
+      name: 'BridgeProviderFailureEvidenceGapError',
+      message: 'missing bridge terminal',
+      code: 'BRIDGE_PROVIDER_FAILURE_EVIDENCE_GAP',
+      operationId: 'provider:final-fetch-failed',
+    });
+
+    assert.equal(context.complete('completed', {
+      tasksTotal: 1,
+      tasksApplied: 1,
+      tasksFailed: 0,
+      changedPaths: ['src/event_bus.cpp'],
+    }), 'completed');
+
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const events = ledger.read(runId);
+    const recovery = events.find(event => (
+      event.type === 'recovery.completed'
+      && event.payload.recovery_trigger === 'provider-failure-after-verified-local-result'
+    ));
+    assert.deepEqual(recovery?.payload.resolves_operation_ids, ['provider:final-fetch-failed']);
+    assert.deepEqual(recovery?.payload.provider_boundary_gap_operation_ids, ['provider:final-fetch-failed']);
+    assert.equal(events.some(event => event.type === 'evidence.degraded'), false);
+    assert.equal(events.find(event => event.type === 'run.settled')?.payload.status, 'completed');
+    assert.equal(ledger.verify(runId).status, 'valid-sealed');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('RunContext: an unverified failed bridge terminal gap still fails closed', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  const runId = 'run-context-unverified-bridge-failure-gap';
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId,
+      userPrompt: '解释当前项目状态',
+      traceLevel: 'debug',
+    });
+    const participant = ProductRunEvidenceSession.forWorkspace({
+      workspaceRoot,
+      runId,
+      surface: 'provider-participant',
+      authority: { role: 'participant', token: context.evidenceParticipantToken },
+    });
+    for (const [index, [type, status]] of [
+      ['provider.requested', 'requested'],
+      ['provider.failed', 'failed'],
+    ].entries()) {
+      participant.record({
+        type,
+        idempotencyKey: `unverified-bridge-gap:${index}`,
+        payload: observed(status, {
+          operation_id: 'provider:unverified-fetch-failed',
+          boundary: 'vscode-provider-client',
+        }),
+      });
+    }
+    context.reportEvidenceIssue({
+      code: 'BRIDGE_PROVIDER_FAILURE_EVIDENCE_GAP',
+      operationId: 'provider:unverified-fetch-failed',
+    });
+
+    assert.equal(context.complete('completed', { tasksTotal: 0, tasksFailed: 0 }), 'failed');
+
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const events = ledger.read(runId);
+    assert.equal(events.some(event => event.type === 'evidence.degraded'), true);
+    assert.equal(events.find(event => event.type === 'run.settled')?.payload.status, 'failed');
+    assert.equal(ledger.verify(runId).status, 'valid-sealed');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('RunContext: recovery without a correlated retry mutation fails closed', () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
   try {
@@ -1423,7 +1559,7 @@ test('RunContext: evidence degradation converts completion into one durable fail
       userPrompt: '修改程序',
       traceLevel: 'debug',
     });
-    context.markEvidenceDegraded(new Error('simulated append failure'));
+    context.reportEvidenceIssue(new Error('simulated append failure'));
     const first = context.complete('completed');
     const second = context.complete('completed');
 

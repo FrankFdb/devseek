@@ -78,7 +78,7 @@ function openHarness(t) {
       workspaceRoot,
       runId,
       evidenceParticipantToken: participantToken,
-      markEvidenceDegraded(error) { degradations.push(error); },
+      reportEvidenceIssue(error) { degradations.push(error); },
     },
   });
   return { callbacks, confirmations, degradations, owner };
