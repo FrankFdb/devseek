@@ -2,6 +2,7 @@ export interface SourceSanityIssue {
   kind:
     | 'unterminated-string-literal'
     | 'tool-protocol-contamination'
+    | 'structured-data-source-mismatch'
     | 'markdown-emphasis-dunder-corruption'
     | 'collapsed-preprocessor-directive'
     | 'collapsed-line-comment-code';
@@ -30,10 +31,27 @@ export function findGeneratedSourceSanityIssue(filePath: string, content: string
   return findSourceToolProtocolContamination(content || '')
     || findPythonMarkdownDunderCorruption(filePath, content || '')
     || (CPP_SOURCE_EXT_RE.test(filePath || '')
-      ? findCppCollapsedPreprocessorDirective(content || '')
+      ? findCppStructuredDataMismatch(content || '')
+        || findCppCollapsedPreprocessorDirective(content || '')
         || findCppCollapsedLineCommentCode(content || '')
         || findCppUnterminatedStringLiteral(content || '')
       : undefined);
+}
+
+function findCppStructuredDataMismatch(content: string): SourceSanityIssue | undefined {
+  const trimmed = content.trim();
+  if (!trimmed || (!trimmed.startsWith('{') && !trimmed.startsWith('['))) return undefined;
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!parsed || typeof parsed !== 'object') return undefined;
+    return {
+      kind: 'structured-data-source-mismatch',
+      line: 1,
+      detail: 'C/C++ 源文件内容是完整 JSON 文档，疑似把 todo、工具参数或结构化回复误绑定到了源码路径。请重新发送与目标文件对应的 write_file/replace_in_file 源码内容。',
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 export function repairGeneratedSourceTransportEscapes(filePath: string, content: string): SourceTransportRepairResult {

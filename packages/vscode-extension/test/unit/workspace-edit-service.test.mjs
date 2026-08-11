@@ -328,6 +328,26 @@ test('WorkspaceEditService: blocks tool protocol contamination in generated C++ 
   }
 });
 
+test('WorkspaceEditService: rejects structured control data before it can replace C++ source', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-'));
+  try {
+    const target = path.join(dir, 'config_merge.cpp');
+    const service = new WorkspaceEditService();
+    const controlData = JSON.stringify([
+      { id: 1, title: '调查接口与测试', status: 'completed' },
+      { id: 2, title: '实现配置合并', status: 'in-progress' },
+    ], null, 2);
+
+    assert.throws(
+      () => commitText(service, target, dir, controlData, { validateSourceSanity: true }),
+      /完整 JSON 文档/,
+    );
+    assert.equal(readFileSyncSafe(target), undefined);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('WorkspaceEditService: blocks C++ preprocessor directives collapsed onto one line', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-'));
   try {

@@ -160,6 +160,17 @@ test('source sanity blocks tool protocol text embedded in C++ source', () => {
   assert.match(issue?.detail || '', /工具调用协议文本/);
 });
 
+test('source sanity rejects a complete todo JSON document targeted at C++ source', () => {
+  const issue = findGeneratedSourceSanityIssue('config_merge.cpp', JSON.stringify([
+    { id: 1, title: '调查接口与测试', status: 'completed' },
+    { id: 2, title: '实现配置合并', status: 'in-progress' },
+  ], null, 2));
+
+  assert.equal(issue?.kind, 'structured-data-source-mismatch');
+  assert.equal(issue?.line, 1);
+  assert.match(issue?.detail || '', /完整 JSON 文档/);
+});
+
 test('source sanity repairs Markdown emphasis corruption in Python dunder identifiers', () => {
   const polluted = [
     'class WarrantyTunnelHeader:',

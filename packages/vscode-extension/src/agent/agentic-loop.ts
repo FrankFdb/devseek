@@ -82,7 +82,11 @@ import {
   normalizeVisibleTodos,
   type ToolSuppressionEvidence,
 } from './tool-loop';
-import { applyMarkdownFileArtifactsForLoop } from './markdown-artifact-applier';
+import {
+  isFileMutationToolName,
+  projectMarkdownFileArtifactToolsForLoop,
+  shouldProjectMarkdownFileArtifacts,
+} from './markdown-artifact-tool-projector';
 import {
   buildTaskSettlementFailureStatus,
   completeAgentTodos,
@@ -175,15 +179,6 @@ const CONTEXT_GATHERING_TOOL_NAMES = new Set([
   'file_search',
   'semantic_search',
 ]);
-const FILE_WRITE_PROGRESS_TOOL_NAMES = new Set([
-  'create_file',
-  'write_file',
-  'replace_file',
-  'replace_in_file',
-  'delete_file',
-  'create_directory',
-]);
-
 function makeContextToolSignature(tool: { readonly name: string; readonly input: Readonly<Record<string, unknown>> }): string {
   return `${tool.name}:${stableStringify(tool.input ?? {})}`;
 }
@@ -609,6 +604,22 @@ export async function runAgenticLoop(
     lastProviderText = text;
     totalChars += text.length;
 
+    if (callbacks.canonicalToolDispatch && shouldProjectMarkdownFileArtifacts({
+      taskRequiresTools: promptRequiresTools,
+      workspaceAccess: callbacks.canonicalToolAuthority?.sandbox.workspaceAccess,
+      tools,
+    })) {
+      tools = [
+        ...tools,
+        ...projectMarkdownFileArtifactToolsForLoop({
+          text,
+          userPrompt: writeAuthority.currentPrompt,
+          workspaceRoot,
+          dispatch: callbacks.canonicalToolDispatch,
+        }),
+      ];
+    }
+
     const firstToolIndex = findFirstToolCallStart(text);
     const preToolProse = firstToolIndex >= 0 ? stripToolCallBlocks(text.slice(0, firstToolIndex)).trim() : '';
     const userAnnouncement = normalizeAgentUserAnnouncement(preToolProse);
@@ -627,80 +638,6 @@ export async function runAgenticLoop(
     }
 
     if (!tools.length) {
-      const artifactApply = promptRequiresTools
-        ? await applyMarkdownFileArtifactsForLoop(text, writeAuthority.currentPrompt, workspaceRoot, writeAuthority.callbacks, {
-          requireReadBeforeOverwrite: true,
-          readEvidencePaths: allReadEvidencePaths,
-        })
-        : {
-          feedbackForAI: '',
-          writtenFiles: [] as WrittenFileEvidence[],
-          changeReceipts: [] as CodingWorkspaceMutationReceipt<unknown>[],
-        };
-      if (artifactApply.changeReceipts.length) allChangeReceipts.push(...artifactApply.changeReceipts);
-      if (artifactApply.writtenFiles.length > 0) {
-        sawWorkTool = true;
-        noToolRounds = 0;
-        allWrittenFiles.push(...artifactApply.writtenFiles);
-        progressEpoch++;
-        resetProviderRecoveryAttemptsAfterProgress();
-        const artifactStatusFile = artifactApply.writtenFiles[0];
-        await callbacks.onAgentStatus({
-          type: 'agentStatus',
-          phase: 'execute',
-          state: 'completed',
-          taskId: 'agentic-artifact',
-          taskFile: artifactStatusFile?.basename || 'generated artifact',
-          taskAction: artifactStatusFile?.action === 'create' ? 'create' : 'modify',
-          taskIndex: 1,
-          taskTotal: 1,
-          title: '已落地模型输出文件',
-          detail: artifactApply.writtenFiles
-            .map(file => `${file.basename} (+${file.linesAdded} -${file.linesRemoved})`)
-            .join('、'),
-          editedFiles: artifactApply.writtenFiles,
-        });
-        const autoValidation = await runAgentAutoValidationForWrites(
-          allWrittenFiles.slice(autoValidatedWriteCount),
-          workspaceRoot,
-          writeAuthority.currentPrompt,
-          writeAuthority.callbacks,
-          {
-            qualityWrittenFiles: allWrittenFiles,
-            verificationScopeWrittenFiles: allWrittenFiles,
-            verificationAcceptance: callbacks.canonicalVerificationAcceptance
-              ?? projectTaskContractAcceptance(writeAuthority.semanticContract.taskContract),
-          },
-        );
-        if (autoValidation.verificationReceipt) allVerificationReceipts.push(autoValidation.verificationReceipt);
-        autoValidatedWriteCount = allWrittenFiles.length;
-        const normalizedAutoValidation = normalizeAgenticAutoValidation({
-          autoValidation,
-          userPrompt: writeAuthority.currentPrompt,
-          writtenFiles: allWrittenFiles,
-        });
-        if (normalizedAutoValidation.qualityGate) latestAutoQualityGate = normalizedAutoValidation.qualityGate;
-        if (normalizedAutoValidation.evidence.length) allTerminalEvidence.push(...normalizedAutoValidation.evidence);
-        const qualityGateFeedback = recordQualityGateFailureFeedback(normalizedAutoValidation.qualityGate);
-        if (failedReason) break;
-        if (autoValidation.repairBlockedReason) {
-          if (callbacks.onTodoUpdate && currentTodos.length > 0) {
-            currentTodos = settleValidationFailureTodos(currentTodos);
-            await callbacks.onTodoUpdate(currentTodos);
-          }
-          failedReason = autoValidation.repairBlockedReason;
-          break;
-        }
-        const validationFeedbackText = [normalizedAutoValidation.feedbackForAI, qualityGateFeedback].filter(Boolean).join('\n\n');
-        const validationFeedback = validationFeedbackText ? `\n\n${validationFeedbackText}` : '';
-        const missingAfterArtifact = assessCurrentCompletionEvidence();
-        const continueMessage = missingAfterArtifact.length > 0
-          ? `【系统反馈】已从你输出的文件代码块落地文件，但仍缺少${missingAfterArtifact.join('、')}。请继续调用实际工具修复或补充验证，完成后再 task_complete。\n${artifactApply.feedbackForAI}${validationFeedback}`
-          : `【系统反馈】已从你输出的文件代码块落地文件。请根据工具结果更新 todo，并在必要时调用 task_complete。\n${artifactApply.feedbackForAI}${validationFeedback}`;
-        messages.push({ role: 'user', content: continueMessage });
-        totalChars += continueMessage.length;
-        continue;
-      }
       const rawFallbackTodos = normalizeVisibleTodos(extractPlanningTodoItems(text));
       const fallbackTodos = rawFallbackTodos.length > 0
         ? preserveInitialTodosWhenModelPlanIsTooCoarse(rawFallbackTodos)
@@ -802,27 +739,10 @@ export async function runAgenticLoop(
       ? assessCurrentCompletionEvidence()
       : [];
 
-    const hasExplicitFileWriteTool = tools.some(t => t.name === 'create_file' || t.name === 'write_file');
-    const artifactApply = !hasExplicitFileWriteTool
-      ? await applyMarkdownFileArtifactsForLoop(text, writeAuthority.currentPrompt, workspaceRoot, writeAuthority.callbacks, {
-        requireReadBeforeOverwrite: true,
-        readEvidencePaths: allReadEvidencePaths,
-      })
-      : {
-        feedbackForAI: '',
-        writtenFiles: [] as WrittenFileEvidence[],
-        changeReceipts: [] as CodingWorkspaceMutationReceipt<unknown>[],
-      };
-    if (artifactApply.changeReceipts.length) allChangeReceipts.push(...artifactApply.changeReceipts);
-    if (artifactApply.writtenFiles.length > 0) {
-      allWrittenFiles.push(...artifactApply.writtenFiles);
-      progressEpoch++;
-    }
-
     const blockedRepeatedToolIndexes = new Set<number>();
     const suppressedTools: ToolSuppressionEvidence[] = [];
     const loopWarnings: string[] = [];
-    const hasFileWriteIntentThisRound = hasExplicitFileWriteTool || artifactApply.writtenFiles.length > 0;
+    const hasFileWriteIntentThisRound = tools.some(tool => isFileMutationToolName(tool.name));
     tools.forEach((tool, toolIndex) => {
       if (tool.name !== 'run_terminal') return;
       const command = typeof tool.input.command === 'string' ? tool.input.command.trim() : '';
@@ -883,7 +803,7 @@ export async function runAgenticLoop(
       replaceLatestAssistantToolHistory(messages);
     }
 
-    if (loopRes.workToolCallsMade || artifactApply.writtenFiles.length > 0) {
+    if (loopRes.workToolCallsMade) {
       sawWorkTool = true;
       noToolRounds = 0;
     }
@@ -929,7 +849,7 @@ export async function runAgenticLoop(
     }
     const roundHasWriteProgress = hasFileWriteIntentThisRound
       || (loopRes.writtenFiles?.length ?? 0) > 0
-      || toolsToExecute.some(tool => FILE_WRITE_PROGRESS_TOOL_NAMES.has(tool.name));
+      || toolsToExecute.some(tool => isFileMutationToolName(tool.name));
     const roundHasTerminalProgress = (loopRes.terminalCommands?.length ?? 0) > 0
       || (loopRes.terminalEvidence?.length ?? 0) > 0;
     const roundHasOnlyContextGathering = toolsToExecute.length > 0
@@ -1163,7 +1083,7 @@ export async function runAgenticLoop(
     }
 
     // Inject tool results into next round
-    const combinedFeedback = [artifactApply.feedbackForAI, loopRes.feedbackForAI, autoValidationFeedback, ...loopWarnings].filter(Boolean).join('\n\n');
+    const combinedFeedback = [loopRes.feedbackForAI, autoValidationFeedback, ...loopWarnings].filter(Boolean).join('\n\n');
     const feedback = `[工具结果 Round ${roundCount}]\n${combinedFeedback}`;
     messages.push({ role: 'user', content: feedback });
     totalChars += feedback.length;

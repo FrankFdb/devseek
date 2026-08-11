@@ -15,6 +15,7 @@ test('OrientationDecisionPort resolves explicit intent before fallback hints', (
     ['Review the release workflow and package.json.', 'change', 'review'],
     ['请分析 npm install 的风险。', 'release', 'review'],
     ['Review src/value.ts and fix the incorrect return value.', 'review', 'change'],
+    ['请完善配置合并组件，并检查全部规则。', 'review', 'change'],
     ['Fix the version and then deploy it.', 'review', 'release'],
     ['Run npm install axios.', 'review', 'release'],
     ['Commit the current changes.', 'review', 'release'],

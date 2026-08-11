@@ -108,7 +108,7 @@ test('Mutation guard: workspace writes in audited flows route through the writer
   for (const relativePath of [
     'src/agent/agent-host-tools.ts',
     'src/agent/auto-validation.ts',
-    'src/agent/markdown-artifact-applier.ts',
+    'src/agent/markdown-artifact-tool-projector.ts',
     'src/agent/tool-loop.ts',
     'src/pending-edit-coordinator.ts',
   ]) {
@@ -144,7 +144,6 @@ test('Mutation guard: workspace writes in audited flows route through the writer
     );
   }
   for (const relativePath of [
-    'src/agent/markdown-artifact-applier.ts',
     'src/agent/markdown-deliverable-task.ts',
     'src/agent/simple-file-task.ts',
     'src/agent/tool-loop.ts',

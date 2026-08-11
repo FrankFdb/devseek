@@ -50,7 +50,7 @@ export function looksLikeRawToolCallText(content: string): boolean {
   return false;
 }
 
-function looksLikeToolOrSummaryJson(content: string): boolean {
+function looksLikeToolOrControlJson(content: string, candidatePath: string): boolean {
   const trimmed = content.trim();
   if (looksLikeRawToolCallText(trimmed)) return true;
   if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return false;
@@ -64,7 +64,19 @@ function looksLikeToolOrSummaryJson(content: string): boolean {
         || typeof obj.summary === 'string'
         || Array.isArray(obj.todoList);
     };
-    return Array.isArray(parsed) ? parsed.some(isToolLike) : isToolLike(parsed);
+    const isTodoItem = (value: unknown): boolean => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+      const obj = value as Record<string, unknown>;
+      const hasDescription = typeof obj.title === 'string'
+        || typeof obj.task === 'string'
+        || typeof obj.text === 'string';
+      return hasDescription && typeof obj.status === 'string';
+    };
+    const explicitJsonArtifact = /\.json$/i.test(candidatePath);
+    return Array.isArray(parsed)
+      ? parsed.some(isToolLike)
+        || (!explicitJsonArtifact && parsed.length > 0 && parsed.every(isTodoItem))
+      : isToolLike(parsed) || (!explicitJsonArtifact && isTodoItem(parsed));
   } catch {
     return false;
   }
@@ -166,7 +178,7 @@ export function parseGeneratedArtifacts(markdown: string): GeneratedArtifact[] {
     const path = pathFromFence || pathFromCode?.path || pathFromContext;
     if (!path) continue;
     if (looksLikeShellCommandFenceForNonShellFile(content, fenceInfo, path)) continue;
-    if (looksLikeToolOrSummaryJson(content) || looksLikeRawToolCallText(content)) continue;
+    if (looksLikeToolOrControlJson(content, path) || looksLikeRawToolCallText(content)) continue;
 
     let clean = normalizeCandidatePath(path);
     if (!clean) continue;

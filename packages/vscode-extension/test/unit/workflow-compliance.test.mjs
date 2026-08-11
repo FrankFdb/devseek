@@ -439,11 +439,11 @@ test('§8.3 File edits: code directory prompts force generated code paths under 
 
   const toolLoop = src('src/agent/tool-loop.ts');
   const fileWriter = src('src/agent/tool-loop-file-writer.ts');
-  const markdownArtifactApplier = src('src/agent/markdown-artifact-applier.ts');
+  const markdownArtifactProjector = src('src/agent/markdown-artifact-tool-projector.ts');
   const extension = src('src/extension.ts');
   const discovery = src('src/app/context-discovery-service.ts');
-  assertContains(markdownArtifactApplier, 'promptLooksLikeCppProgram', 'markdown artifact adapter detects C++ prompts separately from C');
-  assertContains(markdownArtifactApplier, 'contentLooksLikeCppProgram', 'markdown artifact adapter detects C++ content separately from C');
+  assertContains(markdownArtifactProjector, 'promptLooksLikeCppProgram', 'markdown artifact projector detects C++ prompts separately from C');
+  assertContains(markdownArtifactProjector, 'contentLooksLikeCppProgram', 'markdown artifact projector detects C++ content separately from C');
   assertContains(toolLoop, 'ToolLoopFileWriter', 'tool loop must delegate create_file/write_file ownership');
   assertContains(fileWriter, 'resolveWorkspaceWritePath', 'file writer delegates create_file/write_file path decisions to shared resolver');
   assert.match(
@@ -1182,7 +1182,7 @@ test('Agentic loop: terminal must not be used as a fallback file writer', () => 
 });
 
 test('Agentic loop: markdown fallback writes C++ code blocks as real artifacts', () => {
-  const code = src('src/agent/markdown-artifact-applier.ts');
+  const code = src('src/agent/markdown-artifact-tool-projector.ts');
   const agenticLoop = src('src/agent/agentic-loop.ts');
   const agenticPrompt = src('src/agent/agentic-system-prompt.ts');
   assertContains(code, 'promptLooksLikeCppProgram(userPrompt)', 'markdown fallback must detect C++ prompts');
@@ -1191,7 +1191,10 @@ test('Agentic loop: markdown fallback writes C++ code blocks as real artifacts',
     /const blockRe = \/```\(\?:c\|cpp\|cxx\|cc\|c\\\+\\\+\)\\s\*\\n/,
     'markdown fallback must scan cpp/cxx/cc code fences, not only c fences',
   );
-  assertContains(code, "defaultCodeArtifactBasename(userPrompt)}${ext}", 'fallback path must use prompt-aware default basename and extension');
+  assertContains(code, "defaultCodeArtifactBasename(userPrompt)}${extension}", 'fallback path must use prompt-aware default basename and extension');
+  assertContains(code, "name: 'write_file'", 'markdown fallback must project through the canonical file tool');
+  assertContains(agenticLoop, 'callbacks.canonicalToolAuthority?.sandbox.workspaceAccess', 'markdown projection must respect canonical sandbox access');
+  assertContains(agenticLoop, 'shouldProjectMarkdownFileArtifacts', 'agentic loop must suppress inferred writes when a file tool already owns the response');
   assertContains(agenticLoop, "from './agentic-system-prompt'", 'agentic loop must use the owned system prompt');
   assertContains(agenticPrompt, '创建/修改/删除文件必须调用 create_file/write_file/replace_in_file/delete_file', 'agent prompt must forbid natural-language-only file mutations');
 });
@@ -2108,9 +2111,9 @@ test('Architecture: canonical tool execution details have explicit owners', () =
   const toolLoop = src('src/agent/tool-loop.ts');
   const terminalAdapter = src('src/agent/tool-loop-terminal-evidence.ts');
   const summary = src('src/agent/agentic-summary.ts');
-  const markdownArtifactApplier = src('src/agent/markdown-artifact-applier.ts');
+  const markdownArtifactProjector = src('src/agent/markdown-artifact-tool-projector.ts');
   assertContains(toolLoop, 'export async function executeFakeToolsForLoop', 'tool loop must own fake-tool dispatch');
-  assertContains(markdownArtifactApplier, 'export async function applyMarkdownFileArtifactsForLoop', 'markdown artifact adapter must own parsed artifact application');
+  assertContains(markdownArtifactProjector, 'export function projectMarkdownFileArtifactToolsForLoop', 'markdown compatibility must only project canonical tool calls');
   assertContains(toolLoop, "export { analyzeTerminalEvidence } from './tool-loop-terminal-evidence'", 'tool loop must preserve its terminal evidence facade');
   assertContains(terminalAdapter, 'export function analyzeTerminalEvidence', 'terminal evidence adapter must own execution analysis');
   assertContains(src('src/execution-outcome-classifier.ts'), 'classifyFormattedTerminalExecutionEvidence', 'execution outcome owner must parse formatted terminal execution evidence');
@@ -2173,7 +2176,7 @@ test('Architecture: shared mutation transaction owns migrated writes and Workspa
   const applier = src('src/workspace-applier.ts');
   const simpleFileTask = src('src/agent/simple-file-task.ts');
   const markdownDeliverableTask = src('src/agent/markdown-deliverable-task.ts');
-  const markdownArtifactApplier = src('src/agent/markdown-artifact-applier.ts');
+  const markdownArtifactProjector = src('src/agent/markdown-artifact-tool-projector.ts');
   assertContains(service, 'class WorkspaceEditService', 'workspace edit service class must exist');
   assertContains(service, 'proposeTextFileWrite', 'workspace edit service must expose edit proposal boundary');
   assertContains(service, 'captureTextFileBaseline', 'workspace edit service must expose the CAS baseline boundary');
@@ -2202,8 +2205,10 @@ test('Architecture: shared mutation transaction owns migrated writes and Workspa
   assertDoesNotContain(fileWriter, 'workspaceEditService.commitTextFileProposal', 'tool-loop file writer must not bypass the shared mutation transaction');
   assertContains(simpleFileTask, 'workspaceMutation.executeTextFileWrite', 'simple file writes must use the shared mutation transaction');
   assertDoesNotContain(simpleFileTask, 'workspaceEditService.commitTextFileProposal', 'simple file task must not bypass the shared mutation transaction');
-  assertContains(markdownArtifactApplier, 'workspaceMutation.executeTextFileWrite', 'Markdown artifact writes must use the shared mutation transaction');
-  assertDoesNotContain(markdownArtifactApplier, 'workspaceEditService.commitTextFileProposal', 'Markdown artifact applier must not bypass the shared mutation transaction');
+  assertContains(markdownArtifactProjector, 'input.dispatch.dispatch', 'Markdown compatibility must route inferred artifacts through canonical dispatch');
+  assertContains(markdownArtifactProjector, "name: 'write_file'", 'Markdown compatibility must use the normal file-write tool owner');
+  assertDoesNotContain(markdownArtifactProjector, 'WorkspaceEditService', 'Markdown projection must not own workspace mutation');
+  assertDoesNotContain(markdownArtifactProjector, 'executeTextFileWrite', 'Markdown projection must not bypass the tool-loop mutation owner');
   assertContains(applier, 'new VsCodeWorkspaceBatchMutationAdapter()', 'workspace applier must delegate multi-file mutation ownership');
   assertContains(applier, 'workspaceMutation.execute({', 'workspace applier must settle writes through the canonical batch transaction');
   assertContains(applier, 'changeReceipts', 'workspace applier must expose mutation receipts to completion settlement');

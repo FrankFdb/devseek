@@ -194,6 +194,27 @@ test('mixed Chinese allow and deny lists bind every path to its nearest action',
   assert.equal(contract.constraints.includes('no-other-files'), true);
 });
 
+test('Chinese completion requests remain mutating when behavior requirements mention inspection', () => {
+  const prompt = [
+    '请完善 C++17 分层配置合并和 schema 验证组件。',
+    'merge 接收从低到高优先级的 layers，输入 layers 不得被修改。',
+    'validate 对每条 Rule 检查 required、ValueType，并返回所有错误。',
+    '只允许修改 include/ 和 src/，不得修改 tests/、CMakeLists.txt 或 test.sh。',
+    '运行 ./test.sh。',
+  ].join('\n');
+  const contract = resolveCodingKernelTaskContract({ prompt, surface: 'vscode' });
+
+  assert.equal(contract.mode, 'change');
+  assert.equal(contract.orientation.mutating, true);
+  assert.deepEqual(contract.scope.include, ['include/**', 'src/**']);
+  assert.deepEqual(contract.scope.exclude, ['CMakeLists.txt', 'test.sh', 'tests/**']);
+  assert.deepEqual(
+    contract.deliverables.map(deliverable => deliverable.kind),
+    ['source-change', 'verification-result'],
+  );
+  assert.equal(contract.nonGoals.includes('workspace-mutation'), false);
+});
+
 test('postfix actions do not claim a context path when they name another target', () => {
   const contract = resolveCodingKernelTaskContract({
     prompt: 'Read docs/example.md and fix src/value.cpp, then run tests.',

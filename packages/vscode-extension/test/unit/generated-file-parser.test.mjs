@@ -172,6 +172,29 @@ cmake -S . -B build && cmake --build build
   assert.equal(artifacts.length, 0);
 });
 
+test('parseGeneratedArtifacts: todo control JSON cannot inherit a nearby C++ source path', () => {
+  const text = `接下来修改 src/config_merge.cpp：
+\`\`\`json
+[
+  {"id":1,"title":"调查接口与测试","status":"completed"},
+  {"id":2,"title":"实现配置合并","status":"in-progress"}
+]
+\`\`\``;
+
+  assert.deepEqual(parseGeneratedArtifacts(text), []);
+});
+
+test('parseGeneratedArtifacts: an explicitly named JSON artifact may contain todo-shaped domain data', () => {
+  const text = `config/todos.json
+\`\`\`json
+[{"id":1,"title":"Ship release","status":"open"}]
+\`\`\``;
+  const artifacts = parseGeneratedArtifacts(text);
+
+  assert.equal(artifacts.length, 1);
+  assert.equal(artifacts[0].path, 'config/todos.json');
+});
+
 test('parseGeneratedArtifacts: loose create_file tool with unescaped C++ string content', () => {
   const text = '[TOOL:create_file {"filePath":"code/deepseek_self_loop/main.cpp","content":"#include <iostream>\\nint main() { std::cout << "DEEPSEEK_AGENT_SELF_LOOP_OK" << std::endl; return 0; }"}]';
   const artifacts = parseGeneratedArtifacts(text);

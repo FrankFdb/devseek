@@ -38,7 +38,7 @@
       "boundary": "VS Code composition root and Surface Adapter"
     },
     "packages/vscode-extension/src/agent/agentic-loop.ts": {
-      "maxLines": 1370,
+      "maxLines": 1255,
       "targetLines": 1024,
       "boundary": "Canonical Agent Core orchestration"
     },
