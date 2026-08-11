@@ -98,6 +98,16 @@ test('VS Code adapter composes discovery, shared selection, orchestration, and a
   }]);
 });
 
+test('VS Code adapter binds verification to the canonical command action that produced it', async () => {
+  const execution = await new VsCodeVerificationAdapter(host()).verify(input({
+    resolveActionIdentity: () => ({ actionId: 'tool-run-terminal-host-1', sequence: 7 }),
+  }), ports());
+
+  assert.equal(execution.outcome.receipt.actionId, 'tool-run-terminal-host-1');
+  assert.equal(execution.outcome.receipt.sequence, 7);
+  assert.equal(execution.outcome.receipt.idempotencyKey, 'run-vscode-verification:tool-run-terminal-host-1');
+});
+
 test('VS Code adapter keeps missing capabilities unverified without executing a host step', async () => {
   let executions = 0;
   const execution = await new VsCodeVerificationAdapter(host({

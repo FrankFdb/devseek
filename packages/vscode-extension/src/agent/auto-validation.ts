@@ -5,6 +5,8 @@ import type {
   CodingVerificationCriterion,
   CodingVerificationReceipt,
   CodingVerificationSessionPort,
+  CodingToolAuthoritySessionPort,
+  CodingToolExecutionSessionPort,
   DiagnosticPort,
   RegressionSelectionPort,
   VerifierSelectionPort,
@@ -45,6 +47,7 @@ import {
 } from '../app/coding-verification-adapter';
 import { validationResultToTerminalEvidence } from './validation-terminal-evidence';
 import { workspaceRelativeVerificationPaths } from './verification-scope';
+import { CanonicalValidationCommandRunner } from './canonical-validation-command-runner';
 
 export interface AgentAutoValidationCallbacks {
   onAgentStatus: (status: AgentStatusEvent) => void | Promise<void>;
@@ -54,6 +57,8 @@ export interface AgentAutoValidationCallbacks {
   traceRunId?: string;
   signal?: AbortSignal;
   canonicalVerification?: CodingVerificationSessionPort;
+  canonicalToolAuthority?: CodingToolAuthoritySessionPort;
+  canonicalToolExecution?: CodingToolExecutionSessionPort;
   canonicalVerifierSelection?: VerifierSelectionPort;
   canonicalBuildOrchestration?: BuildOrchestrationPort;
   canonicalRegressionSelection?: RegressionSelectionPort;
@@ -525,8 +530,16 @@ export async function runAgentAutoValidationForWrites(
           ? '需求质量门禁未通过'
           : undefined;
     const policyCheckId = policyQuality ? `${evidenceOperationId}:policy-quality` : undefined;
+    const canonicalCommandRunner = callbacks.canonicalToolAuthority && callbacks.canonicalToolExecution
+      ? new CanonicalValidationCommandRunner(
+          callbacks.onValidationCommand,
+          callbacks.canonicalToolAuthority,
+          callbacks.canonicalToolExecution,
+          changedPaths,
+        )
+      : undefined;
     const validationService = options.validationService ?? new ValidationService({
-      commandRunner: callbacks.onValidationCommand,
+      commandRunner: canonicalCommandRunner?.run ?? callbacks.onValidationCommand,
       ...(policyCheckId ? {
         hostChecks: {
           [policyCheckId]: async () => ({
@@ -568,6 +581,9 @@ export async function runAgentAutoValidationForWrites(
           id: policyCheckId,
           evidenceRefs: policyQuality?.qualityGate?.evidenceRefs ?? [`host-check:${policyCheckId}`],
         }],
+      } : {}),
+      ...(canonicalCommandRunner ? {
+        resolveActionIdentity: () => canonicalCommandRunner.latestActionIdentity(),
       } : {}),
     }, ports);
     const result = projectAutoValidationResult(execution.selection, execution.orchestration);

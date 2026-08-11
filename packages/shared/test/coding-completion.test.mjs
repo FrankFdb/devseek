@@ -4,6 +4,7 @@ import {
   CanonicalCompletionDecisionService,
   CODING_TOOL_RECEIPT_VERSION,
   CODING_VERIFICATION_RECEIPT_VERSION,
+  CODING_WORKSPACE_MUTATION_RECEIPT_VERSION,
 } from '../dist/index.js';
 
 function verification(status = 'passed') {
@@ -76,6 +77,43 @@ function completedVerificationTool(actionId = 'verify-2', sequence = 2) {
   };
 }
 
+function workspaceTool(actionId, sequence, status = 'completed') {
+  return {
+    version: CODING_TOOL_RECEIPT_VERSION,
+    runId: 'completion-run-1',
+    sequence,
+    actionId,
+    tool: status === 'denied' ? 'run_terminal' : 'create_file',
+    purpose: 'tool-write',
+    effects: status === 'denied' ? ['process', 'workspace-mutation'] : ['workspace-mutation'],
+    status,
+    permission: {
+      decision: status === 'denied' ? 'deny' : 'allow',
+      status: status === 'denied' ? 'denied' : 'authorized',
+      reason: status === 'denied' ? 'shell-write-denied' : 'workspace-write',
+      evidenceRefs: [`authority:${status}`],
+    },
+    ...(status === 'failed' ? { errorCode: 'edit-route-failed' } : {}),
+    evidenceRefs: [`workspace-tool:${actionId}:${status}`],
+  };
+}
+
+function mutation(actionId, sequence, status = 'committed', overrides = {}) {
+  return {
+    version: CODING_WORKSPACE_MUTATION_RECEIPT_VERSION,
+    runId: 'completion-run-1',
+    sequence,
+    actionId,
+    idempotencyKey: `completion-run-1:${actionId}`,
+    status,
+    paths: ['src/value.ts'],
+    baselineRef: `baseline:${actionId}`,
+    readbackRef: `readback:${actionId}`,
+    evidenceRefs: [`mutation:${actionId}:${status}`],
+    ...overrides,
+  };
+}
+
 test('CanonicalCompletionDecisionService completes only fully evidenced acceptance', () => {
   const service = new CanonicalCompletionDecisionService();
   const first = service.decide(input());
@@ -126,6 +164,87 @@ test('CanonicalCompletionDecisionService preserves explicit blocked acceptance e
     status: 'blocked',
     evidenceRefs: ['permission:install-denied'],
   }]);
+});
+
+test('CanonicalCompletionDecisionService settles a denied verification route only through a later canonical pass', () => {
+  const denied = {
+    ...failedVerificationTool('unsafe-shell-write', 1),
+    effects: ['process', 'workspace-mutation'],
+    status: 'denied',
+    permission: {
+      decision: 'deny',
+      status: 'denied',
+      reason: 'workspace-shell-write-denied',
+      evidenceRefs: ['permission:shell-write-denied'],
+    },
+    evidenceRefs: ['permission:shell-write-denied'],
+  };
+  const verifiedTool = completedVerificationTool('host-validation-2', 2);
+  const verified = {
+    ...verification('passed'),
+    sequence: verifiedTool.sequence,
+    actionId: verifiedTool.actionId,
+    idempotencyKey: `completion-run-1:${verifiedTool.actionId}`,
+    evidenceRefs: ['host-validation:exit-0'],
+    acceptance: [{
+      criterionId: 'builds',
+      status: 'passed',
+      evidenceRefs: ['host-validation:exit-0'],
+    }],
+  };
+  const recovered = new CanonicalCompletionDecisionService().decide(input({
+    toolExecutions: [denied, verifiedTool],
+    verifications: [verified],
+  }));
+  const uncorrelated = new CanonicalCompletionDecisionService().decide(input({
+    decisionId: 'completion-uncorrelated-denial',
+    idempotencyKey: 'completion-run-1:completion-uncorrelated-denial',
+    toolExecutions: [denied],
+    verifications: [verified],
+  }));
+
+  assert.equal(recovered.status, 'completed');
+  assert.equal(recovered.reasonCodes.includes('denied-effect'), false);
+  assert.equal(uncorrelated.status, 'blocked');
+  assert.equal(uncorrelated.reasonCodes.includes('denied-effect'), true);
+});
+
+test('CanonicalCompletionDecisionService settles failed edit routes through a read-back and scoped canonical verification', () => {
+  const failedEdit = workspaceTool('replace-failed', 1, 'failed');
+  const deniedShellWrite = workspaceTool('shell-write-denied', 2, 'denied');
+  const replacementTool = workspaceTool('safe-create', 3);
+  const replacementMutation = mutation(replacementTool.actionId, replacementTool.sequence);
+  const verifiedTool = completedVerificationTool('host-validation-4', 4);
+  const verified = {
+    ...verification('passed'),
+    sequence: verifiedTool.sequence,
+    actionId: verifiedTool.actionId,
+    idempotencyKey: `completion-run-1:${verifiedTool.actionId}`,
+  };
+  const recovered = new CanonicalCompletionDecisionService().decide(input({
+    toolExecutions: [failedEdit, deniedShellWrite, replacementTool, verifiedTool],
+    mutations: [
+      mutation(failedEdit.actionId, failedEdit.sequence, 'rolled-back'),
+      replacementMutation,
+    ],
+    verifications: [verified],
+  }));
+  const missingReadback = new CanonicalCompletionDecisionService().decide(input({
+    decisionId: 'completion-missing-readback',
+    idempotencyKey: 'completion-run-1:completion-missing-readback',
+    toolExecutions: [failedEdit, deniedShellWrite, replacementTool, verifiedTool],
+    mutations: [
+      mutation(failedEdit.actionId, failedEdit.sequence, 'rolled-back'),
+      { ...replacementMutation, readbackRef: undefined },
+    ],
+    verifications: [verified],
+  }));
+
+  assert.equal(recovered.status, 'completed');
+  assert.deepEqual(recovered.reasonCodes, []);
+  assert.equal(missingReadback.status, 'failed');
+  assert.equal(missingReadback.reasonCodes.includes('failed-effect'), true);
+  assert.equal(missingReadback.reasonCodes.includes('denied-effect'), true);
 });
 
 test('CanonicalCompletionDecisionService fails verification failure and settled effect failure', () => {

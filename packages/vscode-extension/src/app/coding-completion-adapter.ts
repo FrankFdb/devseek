@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
 import {
+  codingAdverseToolExecutionWasRecovered,
   codingTaskContractRequiresVerification,
   isSecretHarvestingRefusalTaskContract,
   type CodingCompletionAcceptanceDecision,
@@ -27,8 +28,19 @@ export class VsCodeCompletionEvidenceAdapter {
       input.result.changeReceipts ?? [],
     );
     const failureRef = `vscode-agent-result:${input.runId}:tasks-failed`;
-    const deniedEffectRefs = uniqueNonEmpty((input.result.toolExecutionReceipts ?? [])
-      .filter(receipt => receipt.status === 'denied')
+    const toolExecutions = input.result.toolExecutionReceipts ?? [];
+    const mutations = input.result.changeReceipts ?? [];
+    const verifications = input.result.verificationReceipts ?? [];
+    const deniedEffectRefs = uniqueNonEmpty(toolExecutions
+      .filter(receipt => (
+        receipt.status === 'denied'
+          && !codingAdverseToolExecutionWasRecovered(
+            receipt,
+            toolExecutions,
+            mutations,
+            verifications,
+          )
+      ))
       .flatMap(receipt => receipt.evidenceRefs));
     const acceptanceEvidence = buildDirectAcceptanceEvidence({
       acceptance: input.taskContract.acceptance,

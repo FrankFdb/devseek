@@ -239,7 +239,16 @@ test('Terminal evidence: validation execution has one injected authority and no 
   assert.match(coordinator, /stdout:\s*result\.stdout/);
   assert.match(coordinator, /stderr:\s*result\.stderr/);
 
-  assert.match(autoValidation, /commandRunner:\s*callbacks\.onValidationCommand/);
+  assert.match(
+    autoValidation,
+    /callbacks\.canonicalToolAuthority\s*&&\s*callbacks\.canonicalToolExecution/,
+    'canonical validation requires both authority and execution sessions',
+  );
+  assert.match(
+    autoValidation,
+    /commandRunner:\s*canonicalCommandRunner\?\.run\s*\?\?\s*callbacks\.onValidationCommand/,
+    'host validation must prefer the canonical tool timeline',
+  );
   assert.match(workspaceApplier, /commandRunner:\s*input\.validationCommandRunner/);
   assert.match(closedLoop, /validationCommandRunner:\s*input\.validationCommandRunner/);
   assert.equal((extension.match(/createValidationCommandRunner\s*\(\{/g) ?? []).length, 2);
@@ -717,6 +726,69 @@ test('Terminal evidence: policy deny closes the request as failed and vetoes com
     error => error?.code === 'RUN_SEMANTIC_INVALID' && /completed run/.test(error.message),
   );
   assert.equal(owner.settleAndSeal({ status: 'failed', idempotencyKey: 'settlement:failed' }).head.sealed, true);
+});
+
+test('Terminal evidence: a denied shell route settles only after a verified workspace alternative', async t => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-terminal-evidence-'));
+  t.after(() => rmSync(workspaceRoot, { recursive: true, force: true }));
+  const runId = 'terminal-policy-deny-verified-alternative';
+  const { owner, participantToken } = openRun(workspaceRoot, runId);
+  const coordinator = new TerminalPermissionCoordinator();
+
+  const denied = await coordinator.runCommandWithPermissionDetailed(inputFor({
+    workspaceRoot,
+    runId,
+    participantToken,
+    command: 'printf unsafe > src/main.cpp',
+    policy: denyTerminalPolicy,
+    evidenceErrors: [],
+  }));
+  assert.equal(denied.executed, false);
+
+  const participant = ProductRunEvidenceSession.forWorkspace({
+    workspaceRoot,
+    runId,
+    surface: 'terminal-evidence-test-workspace',
+    authority: { role: 'participant', token: participantToken },
+  });
+  const append = (type, operationId, status, extra = {}) => participant.record({
+    type,
+    idempotencyKey: productRunEvidenceIdempotencyKey(`verified-alternative-${type}`, {
+      runId,
+      operationId,
+    }),
+    payload: {
+      operation_id: operationId,
+      boundary: type.startsWith('side_effect.') ? 'vscode-workspace-mutation' : 'vscode-validation',
+      status,
+      trust: 'product-runtime-observation',
+      ...extra,
+    },
+  });
+  for (const [type, status] of [
+    ['side_effect.requested', 'requested'],
+    ['side_effect.authorized', 'authorized'],
+    ['side_effect.started', 'started'],
+    ['side_effect.committed', 'committed'],
+  ]) append(type, 'workspace-write-safe-tool', status);
+  for (const [type, status] of [
+    ['verification.started', 'started'],
+    ['verification.completed', 'completed'],
+    ['quality_gate.started', 'started'],
+    ['quality_gate.passed', 'passed'],
+  ]) append(type, 'verify-safe-workspace-result', status);
+
+  assert.equal(coordinator.resolveCommandFailuresAfterQualityGate({
+    workspaceRoot,
+    runId,
+    traceEvidenceParticipantToken: participantToken,
+  }), true);
+  const recovery = owner.readEvents().find(event => (
+    event.type === 'recovery.completed'
+    && event.payload.recovery_resolution === 'terminal-denial-superseded-by-verified-workspace-result'
+  ));
+  assert.deepEqual(recovery?.payload.resolves_operation_ids, [denied.operationId]);
+  assert.equal(owner.settleAndSeal({ status: 'completed', idempotencyKey: 'settlement' }).head.sealed, true);
 });
 
 test('Terminal evidence: prepared command cannot dispatch before canonical execution starts', async t => {

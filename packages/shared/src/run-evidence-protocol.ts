@@ -17,6 +17,10 @@ export const RUN_EVIDENCE_REPLAY_PROTOCOL = 'devseek.run-evidence-replay/v1' as 
 export const RUN_EVIDENCE_TEXT_MAX_LENGTH = 512 as const;
 export const RUN_EVIDENCE_RUNTIME_TRUST = 'product-runtime-observation' as const;
 export const RUN_EVIDENCE_LEGACY_TRUST = 'legacy-unverified' as const;
+export const RUN_EVIDENCE_TERMINAL_DENIAL_RECOVERY_TRIGGER =
+  'terminal-denial-before-verified-workspace-result' as const;
+export const RUN_EVIDENCE_TERMINAL_DENIAL_RECOVERY_RESOLUTION =
+  'terminal-denial-superseded-by-verified-workspace-result' as const;
 export const RUN_EVIDENCE_AUTHORITY_PROTOCOL = 'devseek.product-run-evidence-authority/v1' as const;
 export const RUN_EVIDENCE_AUTHORITY_PAYLOAD_KEY = '_devseek_run_evidence_authority' as const;
 export const RUN_EVIDENCE_AUTHORITY_TOKEN_PREFIX = DEVSEEK_AUTHORITY_CAPABILITY_PREFIX;

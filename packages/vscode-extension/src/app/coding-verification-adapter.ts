@@ -42,6 +42,10 @@ export interface VsCodeVerificationInput {
   readonly acceptance: readonly CodingVerificationCriterion[];
   readonly evidenceRefs: readonly string[];
   readonly hostChecks?: readonly VsCodeHostCheckCapability[];
+  readonly resolveActionIdentity?: () => {
+    readonly actionId: string;
+    readonly sequence: number;
+  } | undefined;
 }
 
 export interface VsCodeVerificationPorts {
@@ -138,11 +142,12 @@ export class VsCodeVerificationAdapter {
     });
     const executionSelection = regression.verificationSelection;
     const orchestration = await ports.orchestration.execute(executionSelection, this.host);
+    const actionIdentity = input.resolveActionIdentity?.() ?? input;
     const plan = buildCodingVerificationPlan({
       runId: input.runId,
-      sequence: input.sequence,
-      actionId: input.actionId,
-      idempotencyKey: `${input.runId}:${input.actionId}`,
+      sequence: actionIdentity.sequence,
+      actionId: actionIdentity.actionId,
+      idempotencyKey: `${input.runId}:${actionIdentity.actionId}`,
       scopePaths: input.scopePaths,
       acceptance: input.acceptance,
       payload: {

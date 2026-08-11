@@ -2,10 +2,13 @@ import type { CodingTerminalStatus } from './coding-conformance';
 import type { CodingToolExecutionReceipt } from './coding-tool-execution';
 import type { CodingWorkspaceMutationReceipt } from './coding-workspace-mutation';
 import {
-  codingVerificationToolFailureWasRecovered,
   settledCodingVerificationReceipts,
   type CodingVerificationReceipt,
 } from './coding-verification';
+import {
+  codingAdverseToolExecutionWasRecovered,
+  codingAdverseWorkspaceMutationWasRecovered,
+} from './coding-tool-effect-settlement';
 import type { CodingArtifactObservation } from './coding-artifact-identity';
 import type { CodingIndependentReviewObservation } from './coding-independent-review';
 import type {
@@ -157,14 +160,31 @@ function deriveCompletionDecision(input: CodingCompletionDecisionInput): CodingC
   const hasFailedEffect = input.toolExecutions.some(receipt => (
     receipt.status === 'failed'
       && !verificationActionIds.has(receipt.actionId)
-      && !codingVerificationToolFailureWasRecovered(
+      && !codingAdverseToolExecutionWasRecovered(
         receipt,
         input.toolExecutions,
+        input.mutations,
         input.verifications,
       )
   ))
-    || input.mutations.some(receipt => receipt.status === 'failed' || receipt.status === 'rolled-back');
-  const hasDeniedEffect = input.toolExecutions.some(receipt => receipt.status === 'denied');
+    || input.mutations.some(receipt => (
+      (receipt.status === 'failed' || receipt.status === 'rolled-back')
+        && !codingAdverseWorkspaceMutationWasRecovered(
+          receipt,
+          input.toolExecutions,
+          input.mutations,
+          input.verifications,
+        )
+    ));
+  const hasDeniedEffect = input.toolExecutions.some(receipt => (
+    receipt.status === 'denied'
+      && !codingAdverseToolExecutionWasRecovered(
+        receipt,
+        input.toolExecutions,
+        input.mutations,
+        input.verifications,
+      )
+  ));
   const hasFailedVerification = unresolvedVerifications.some(receipt => receipt.status === 'failed');
   const hasUnverified = unresolvedVerifications.some(receipt => (
     receipt.status === 'unverified' || receipt.status === 'indeterminate'

@@ -6,6 +6,8 @@ import {
   type RunEvidenceJson,
   type RunEvidenceSettlementStatus,
   RunEvidenceLedgerError,
+  RUN_EVIDENCE_TERMINAL_DENIAL_RECOVERY_RESOLUTION,
+  RUN_EVIDENCE_TERMINAL_DENIAL_RECOVERY_TRIGGER,
 } from './run-evidence-protocol';
 
 export type RunEvidenceSemanticEvent = Pick<
@@ -15,6 +17,7 @@ export type RunEvidenceSemanticEvent = Pick<
 
 interface OperationState {
   label?: string;
+  boundary?: string;
   requested: boolean;
   authorized: boolean;
   started: boolean;
@@ -34,6 +37,7 @@ interface AdverseTerminal {
   label: string;
   type: RunEvidenceEventType;
   sequence: number;
+  payload: { [key: string]: RunEvidenceJson };
   resolvedBy?: string;
 }
 
@@ -160,7 +164,13 @@ function reduceProvider(
   if (!state.requested) semanticFailure(`Provider operation ${label} terminated before request`);
   setTerminal(state, event, label);
   if (event.type === 'provider.failed') {
-    adverse.push({ resolutionOperationId: operationId, label, type: event.type, sequence: event.sequence });
+    adverse.push({
+      resolutionOperationId: operationId,
+      label,
+      type: event.type,
+      sequence: event.sequence,
+      payload: readObjectPayload(event),
+    });
   }
 }
 
@@ -177,6 +187,7 @@ function reduceSideEffect(
       state.requested = true;
       state.requestedSequence = event.sequence;
       state.requestedRecoveryOperationId = optionalRecoveryOperationId(event);
+      state.boundary = lifecycleBoundary(event);
       return;
     case 'side_effect.authorized':
       if (!state.requested || state.terminal || state.authorized) {
@@ -202,13 +213,25 @@ function reduceSideEffect(
       setTerminal(state, event, operationId);
       state.terminalRecoveryOperationId = optionalRecoveryOperationId(event);
       if (event.type === 'side_effect.indeterminate') {
-        adverse.push({ resolutionOperationId: operationId, label: operationId, type: event.type, sequence: event.sequence });
+        adverse.push({
+          resolutionOperationId: operationId,
+          label: operationId,
+          type: event.type,
+          sequence: event.sequence,
+          payload: readObjectPayload(event),
+        });
       }
       return;
     case 'side_effect.failed':
       if (!state.requested) semanticFailure(`Side effect ${operationId} failed before request`);
       setTerminal(state, event, operationId);
-      adverse.push({ resolutionOperationId: operationId, label: operationId, type: event.type, sequence: event.sequence });
+      adverse.push({
+        resolutionOperationId: operationId,
+        label: operationId,
+        type: event.type,
+        sequence: event.sequence,
+        payload: readObjectPayload(event),
+      });
       return;
   }
 }
@@ -235,7 +258,13 @@ function reduceStartedTerminal(
     || event.type === 'quality_gate.failed'
     || event.type === 'quality_gate.vetoed'
   ) {
-    adverse.push({ resolutionOperationId: operationId, label: operationId, type: event.type, sequence: event.sequence });
+    adverse.push({
+      resolutionOperationId: operationId,
+      label: operationId,
+      type: event.type,
+      sequence: event.sequence,
+      payload: readObjectPayload(event),
+    });
   }
 }
 
@@ -336,9 +365,21 @@ function reduceRecovery(
     verificationStartedSequence,
     qualityGateTerminalSequence,
   });
+  const terminalDenialSupersession = hasTerminalDenialSupersessionProof({
+    payload,
+    resolvedOperationIds,
+    adverse,
+    sideEffects,
+    detectionSequence,
+    verificationStartedSequence,
+    verificationTerminalSequence,
+    qualityGateStartedSequence,
+    qualityGateTerminalSequence,
+    recoveryTerminalSequence: event.sequence,
+  });
   if (
     !orderedVerificationGate
-    || (!orderedRecoveryMutation && !providerFailureSupersession)
+    || (!orderedRecoveryMutation && !providerFailureSupersession && !terminalDenialSupersession)
   ) {
     semanticFailure(
       `Recovery ${operationId} requires detected < correlated requested < authorized < started < committed < verification < quality gate < completed`,
@@ -358,6 +399,53 @@ function reduceRecovery(
     }
     for (const terminal of matching) terminal.resolvedBy = operationId;
   }
+}
+
+function hasTerminalDenialSupersessionProof(input: {
+  payload: { [key: string]: RunEvidenceJson };
+  resolvedOperationIds: readonly string[];
+  adverse: readonly AdverseTerminal[];
+  sideEffects: ReadonlyMap<string, OperationState>;
+  detectionSequence: number;
+  verificationStartedSequence: number;
+  verificationTerminalSequence: number;
+  qualityGateStartedSequence: number;
+  qualityGateTerminalSequence: number;
+  recoveryTerminalSequence: number;
+}): boolean {
+  if (input.payload.recovery_trigger !== RUN_EVIDENCE_TERMINAL_DENIAL_RECOVERY_TRIGGER) return false;
+  if (input.payload.recovery_resolution !== RUN_EVIDENCE_TERMINAL_DENIAL_RECOVERY_RESOLUTION) return false;
+  const matching = input.resolvedOperationIds.flatMap(operationId => input.adverse.filter(item => (
+    item.resolutionOperationId === operationId && item.resolvedBy === undefined
+  )));
+  if (matching.length !== input.resolvedOperationIds.length || matching.some(item => (
+    item.type !== 'side_effect.failed'
+      || item.payload.boundary !== 'vscode-terminal-coordinator'
+      || item.payload.execution_started !== false
+      || (item.payload.failure_phase !== 'policy' && item.payload.failure_phase !== 'confirmation')
+  ))) {
+    return false;
+  }
+  const latestDenialSequence = Math.max(...matching.map(item => item.sequence));
+  const verifiedWorkspaceCommit = [...input.sideEffects.values()].some(sideEffect => (
+    sideEffect.boundary !== 'vscode-terminal-coordinator'
+      && sideEffect.terminal === 'side_effect.committed'
+      && sideEffect.requestedSequence !== undefined
+      && sideEffect.authorizedSequence !== undefined
+      && sideEffect.startedSequence !== undefined
+      && sideEffect.terminalSequence !== undefined
+      && latestDenialSequence < sideEffect.requestedSequence
+      && sideEffect.requestedSequence < sideEffect.authorizedSequence
+      && sideEffect.authorizedSequence < sideEffect.startedSequence
+      && sideEffect.startedSequence < sideEffect.terminalSequence
+      && sideEffect.terminalSequence < input.verificationStartedSequence
+  ));
+  return verifiedWorkspaceCommit
+    && input.verificationStartedSequence < input.verificationTerminalSequence
+    && input.verificationTerminalSequence < input.qualityGateStartedSequence
+    && input.qualityGateStartedSequence < input.qualityGateTerminalSequence
+    && input.qualityGateTerminalSequence < input.detectionSequence
+    && input.detectionSequence < input.recoveryTerminalSequence;
 }
 
 function hasProviderFailureSupersessionProof(input: {

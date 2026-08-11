@@ -139,6 +139,36 @@ export function codingVerificationToolFailureWasRecovered(
   ));
 }
 
+/** Determines whether a denied validation route was replaced by a later canonical verifier. */
+export function codingDeniedVerificationToolWasRecovered(
+  denied: CodingToolExecutionReceipt<unknown>,
+  toolExecutions: readonly CodingToolExecutionReceipt<unknown>[],
+  verifications: readonly CodingVerificationReceipt[],
+): boolean {
+  if (denied.status !== 'denied'
+    || denied.tool !== 'run_terminal'
+    || denied.purpose !== 'verify'
+    || !denied.effects.includes('process')) {
+    return false;
+  }
+  return toolExecutions.some(candidate => (
+    candidate.runId === denied.runId
+      && candidate.sequence > denied.sequence
+      && candidate.tool === 'run_terminal'
+      && candidate.purpose === 'verify'
+      && candidate.effects.includes('process')
+      && candidate.status === 'completed'
+      && verifications.some(receipt => (
+        receipt.runId === denied.runId
+          && receipt.sequence === candidate.sequence
+          && receipt.actionId === candidate.actionId
+          && receipt.status === 'passed'
+          && receipt.acceptance.length > 0
+          && receipt.acceptance.every(result => result.status === 'passed')
+      ))
+  ));
+}
+
 interface ActiveVerification {
   readonly canonicalPlan: string;
   readonly receipt: Promise<CodingVerificationReceipt>;

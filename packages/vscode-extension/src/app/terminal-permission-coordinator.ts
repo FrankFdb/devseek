@@ -4,11 +4,14 @@ import {
   createDevSeekTraceLogger,
   PRODUCT_RUNTIME_OBSERVATION_TRUST,
   ProductRunEvidenceSession,
+  RUN_EVIDENCE_TERMINAL_DENIAL_RECOVERY_RESOLUTION,
+  RUN_EVIDENCE_TERMINAL_DENIAL_RECOVERY_TRIGGER,
   productRunEvidenceIdempotencyKey,
   summarizeTraceText,
   type CodingToolHostResult,
   type CodingToolSurfaceConstraint,
   type RunEvidenceJson,
+  type RunEvidenceEvent,
 } from '@devseek-netai/shared';
 import {
   decideTerminalCommandPermission,
@@ -259,10 +262,80 @@ export class TerminalPermissionCoordinator {
    * Merely dispatching a repair command is deliberately insufficient.
    */
   resolveCommandFailuresAfterQualityGate(input: ResolveTerminalCommandRecoveryInput): boolean {
+    if (!this.resolveSupersededCommandDenialsAfterQualityGate(input)) return false;
     const recoveryKeys = terminalCommandRecoveryKeys(input.runId)
       .filter(key => (this.adverseCommandOperationsByLane.get(key)?.size ?? 0) > 0);
-    if (recoveryKeys.length === 0) return false;
+    if (recoveryKeys.length === 0) return true;
     return recoveryKeys.every(key => this.resolveCommandRecoveryLane(input, key));
+  }
+
+  private resolveSupersededCommandDenialsAfterQualityGate(
+    input: ResolveTerminalCommandRecoveryInput,
+  ): boolean {
+    const trackedOperationIds = new Set(terminalCommandRecoveryKeys(input.runId)
+      .flatMap(key => [...(this.adverseCommandOperationsByLane.get(key) ?? [])]));
+    if (trackedOperationIds.size === 0) return true;
+    const session = attachTerminalRecoveryEvidence({
+      ...input,
+      targetOperationIds: [...trackedOperationIds],
+    });
+    if (!session) return false;
+    try {
+      const events = session.readEvents();
+      const proof = findLatestVerifiedWorkspaceResult(events);
+      if (!proof) return true;
+      const alreadyResolved = collectResolvedTerminalOperationIds(events);
+      const targetOperationIds = events
+        .filter(event => {
+          if (event.type !== 'side_effect.failed' || event.sequence >= proof.workspaceRequestedSequence) {
+            return false;
+          }
+          const payload = evidencePayloadObject(event.payload);
+          const operationId = typeof payload?.operation_id === 'string' ? payload.operation_id : '';
+          return trackedOperationIds.has(operationId)
+            && !alreadyResolved.has(operationId)
+            && payload?.boundary === 'vscode-terminal-coordinator'
+            && payload.execution_started === false
+            && (payload.failure_phase === 'policy' || payload.failure_phase === 'confirmation');
+        })
+        .map(event => evidencePayloadObject(event.payload)?.operation_id)
+        .filter((operationId): operationId is string => typeof operationId === 'string');
+      if (targetOperationIds.length === 0) return true;
+      const recoveryOperationId = `vscode-terminal-recovery-${crypto.randomUUID()}`;
+      const recoveryInput = { ...input, targetOperationIds };
+      if (!recordTerminalRecoveryEvidence(session, recoveryInput, 'recovery.detected', recoveryOperationId, {
+        target_operation_ids: targetOperationIds,
+        recovery_lane: 'interactive',
+        recovery_trigger: RUN_EVIDENCE_TERMINAL_DENIAL_RECOVERY_TRIGGER,
+      })) return false;
+      if (!recordTerminalRecoveryEvidence(session, recoveryInput, 'recovery.completed', recoveryOperationId, {
+        resolves_operation_ids: targetOperationIds,
+        verification_operation_id: proof.verificationOperationId,
+        recovery_lane: 'interactive',
+        recovery_trigger: RUN_EVIDENCE_TERMINAL_DENIAL_RECOVERY_TRIGGER,
+        recovery_resolution: RUN_EVIDENCE_TERMINAL_DENIAL_RECOVERY_RESOLUTION,
+      })) return false;
+      this.forgetResolvedCommandOperations(input.runId, targetOperationIds);
+      return true;
+    } catch (error) {
+      reportTerminalEvidenceError(input, error);
+      return false;
+    }
+  }
+
+  private forgetResolvedCommandOperations(runId: string, operationIds: readonly string[]): void {
+    const resolved = new Set(operationIds);
+    for (const key of terminalCommandRecoveryKeys(runId)) {
+      const tracked = this.adverseCommandOperationsByLane.get(key);
+      if (tracked) {
+        for (const operationId of resolved) tracked.delete(operationId);
+        if (tracked.size === 0) this.adverseCommandOperationsByLane.delete(key);
+      }
+      const active = this.activeCommandRecoveryByLane.get(key);
+      if (active && active.targetOperationIds.every(operationId => resolved.has(operationId))) {
+        this.activeCommandRecoveryByLane.delete(key);
+      }
+    }
   }
 
   private resolveCommandRecoveryLane(
@@ -878,7 +951,13 @@ export class TerminalPermissionCoordinator {
 }
 
 function terminalCommandRecoveryLane(input: RunTerminalWithPermissionInput): TerminalCommandRecoveryLane {
-  return input.executionProfile === 'validation' ? 'validation' : 'interactive';
+  if (input.executionProfile === 'validation') return 'validation';
+  const decision = decideTerminalCommandPermission({
+    command: input.command,
+    workdir: input.workdir,
+    workspaceRoot: input.workspaceRoot,
+  });
+  return decision.risk === 'validation' ? 'validation' : 'interactive';
 }
 
 function terminalCommandRecoveryKey(runId: string, lane: TerminalCommandRecoveryLane): string {
@@ -968,6 +1047,89 @@ function evidencePayloadObject(payload: RunEvidenceJson): Record<string, RunEvid
   return payload !== null && typeof payload === 'object' && !Array.isArray(payload)
     ? payload
     : undefined;
+}
+
+interface VerifiedWorkspaceResult {
+  readonly verificationOperationId: string;
+  readonly workspaceRequestedSequence: number;
+}
+
+function findLatestVerifiedWorkspaceResult(
+  events: readonly RunEvidenceEvent[],
+): VerifiedWorkspaceResult | undefined {
+  const passedGates = events.filter(event => event.type === 'quality_gate.passed').reverse();
+  for (const gate of passedGates) {
+    const gatePayload = evidencePayloadObject(gate.payload);
+    const verificationOperationId = typeof gatePayload?.operation_id === 'string'
+      ? gatePayload.operation_id
+      : '';
+    if (!verificationOperationId) continue;
+    const verificationStarted = events.find(event => (
+      event.type === 'verification.started'
+      && evidencePayloadObject(event.payload)?.operation_id === verificationOperationId
+    ));
+    const verificationCompleted = events.find(event => (
+      event.type === 'verification.completed'
+      && evidencePayloadObject(event.payload)?.operation_id === verificationOperationId
+    ));
+    const gateStarted = events.find(event => (
+      event.type === 'quality_gate.started'
+      && evidencePayloadObject(event.payload)?.operation_id === verificationOperationId
+    ));
+    if (!verificationStarted || !verificationCompleted || !gateStarted
+      || verificationStarted.sequence >= verificationCompleted.sequence
+      || verificationCompleted.sequence >= gateStarted.sequence
+      || gateStarted.sequence >= gate.sequence) {
+      continue;
+    }
+    const workspaceCommit = events
+      .filter(event => (
+        event.type === 'side_effect.committed'
+        && event.sequence < verificationStarted.sequence
+        && evidencePayloadObject(event.payload)?.boundary !== 'vscode-terminal-coordinator'
+      ))
+      .reverse()
+      .find(commit => hasOrderedWorkspaceLifecycle(events, commit));
+    if (!workspaceCommit) continue;
+    const operationId = evidencePayloadObject(workspaceCommit.payload)?.operation_id;
+    const requested = events.find(event => (
+      event.type === 'side_effect.requested'
+      && evidencePayloadObject(event.payload)?.operation_id === operationId
+    ));
+    if (!requested) continue;
+    return { verificationOperationId, workspaceRequestedSequence: requested.sequence };
+  }
+  return undefined;
+}
+
+function hasOrderedWorkspaceLifecycle(events: readonly RunEvidenceEvent[], commit: RunEvidenceEvent): boolean {
+  const operationId = evidencePayloadObject(commit.payload)?.operation_id;
+  if (typeof operationId !== 'string') return false;
+  const lifecycle = ['side_effect.requested', 'side_effect.authorized', 'side_effect.started']
+    .map(type => events.find(event => (
+      event.type === type
+      && evidencePayloadObject(event.payload)?.operation_id === operationId
+    )));
+  const [requested, authorized, started] = lifecycle;
+  return requested !== undefined
+    && authorized !== undefined
+    && started !== undefined
+    && requested.sequence < authorized.sequence
+    && authorized.sequence < started.sequence
+    && started.sequence < commit.sequence;
+}
+
+function collectResolvedTerminalOperationIds(events: readonly RunEvidenceEvent[]): Set<string> {
+  const resolved = new Set<string>();
+  for (const event of events) {
+    if (event.type !== 'recovery.completed') continue;
+    const values = evidencePayloadObject(event.payload)?.resolves_operation_ids;
+    if (!Array.isArray(values)) continue;
+    for (const value of values) {
+      if (typeof value === 'string' && value.trim()) resolved.add(value.trim());
+    }
+  }
+  return resolved;
 }
 
 function attachTerminalRunEvidence(input: RunTerminalWithPermissionInput): TerminalRunEvidenceContext {

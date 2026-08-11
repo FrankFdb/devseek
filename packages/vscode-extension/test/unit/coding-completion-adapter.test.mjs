@@ -99,6 +99,92 @@ test('VS Code evidence projection treats denied effects as blocking evidence', (
   assert.deepEqual(evidence.residualRisks, ['requested-change-not-applied']);
 });
 
+test('VS Code evidence projection clears a denied validation route after a canonical host pass', () => {
+  const denied = {
+    ...deniedTool(),
+    purpose: 'verify',
+    effects: ['process', 'workspace-mutation'],
+  };
+  const completed = {
+    ...deniedTool(),
+    sequence: 2,
+    actionId: 'host-validation-2',
+    purpose: 'verify',
+    effects: ['process'],
+    status: 'completed',
+    permission: {
+      decision: 'allow',
+      status: 'authorized',
+      reason: 'host-validation',
+      evidenceRefs: ['permission:host-validation'],
+    },
+    evidenceRefs: ['host-validation:exit-0'],
+  };
+  const evidence = project({
+    changedPaths: ['src/main.ts'],
+    changeReceipts: [mutation()],
+    toolExecutionReceipts: [denied, completed],
+    verificationReceipts: [verification({
+      sequence: completed.sequence,
+      actionId: completed.actionId,
+      idempotencyKey: `vscode-completion-run:${completed.actionId}`,
+    })],
+  });
+
+  assert.deepEqual(evidence.acceptanceEvidence, []);
+  assert.deepEqual(evidence.residualRisks, []);
+});
+
+test('VS Code evidence projection clears a denied shell write after a verified workspace tool replacement', () => {
+  const denied = {
+    ...deniedTool(),
+    purpose: 'tool-write',
+    sequence: 1,
+  };
+  const replacement = {
+    ...deniedTool(),
+    sequence: 2,
+    actionId: 'safe-create-2',
+    tool: 'create_file',
+    purpose: 'tool-write',
+    effects: ['workspace-mutation'],
+    status: 'completed',
+    permission: {
+      decision: 'allow',
+      status: 'authorized',
+      reason: 'workspace-write',
+      evidenceRefs: ['permission:workspace-write'],
+    },
+    evidenceRefs: ['workspace-write:readback-matched'],
+  };
+  const verified = {
+    ...replacement,
+    sequence: 3,
+    actionId: 'host-validation-3',
+    tool: 'run_terminal',
+    purpose: 'verify',
+    effects: ['process'],
+    evidenceRefs: ['host-validation:exit-0'],
+  };
+  const evidence = project({
+    changedPaths: ['src/main.ts'],
+    changeReceipts: [mutation({
+      sequence: replacement.sequence,
+      actionId: replacement.actionId,
+      idempotencyKey: `vscode-completion-run:${replacement.actionId}`,
+    })],
+    toolExecutionReceipts: [denied, replacement, verified],
+    verificationReceipts: [verification({
+      sequence: verified.sequence,
+      actionId: verified.actionId,
+      idempotencyKey: `vscode-completion-run:${verified.actionId}`,
+    })],
+  });
+
+  assert.deepEqual(evidence.acceptanceEvidence, []);
+  assert.deepEqual(evidence.residualRisks, []);
+});
+
 test('manual review and read-only response evidence remain explicit', () => {
   const manualReview = project({
     changedPaths: ['src/main.ts'],
