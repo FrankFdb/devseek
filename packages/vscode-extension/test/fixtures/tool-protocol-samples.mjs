@@ -74,6 +74,17 @@ export const TOOL_PROTOCOL_SAMPLES = [
     expectedToolNames: ['run_terminal', 'task_complete'],
   },
   {
+    id: 'deepseek-open-generic-json-tools',
+    text: [
+      'I will inspect the project structure.',
+      '<TOOL>list_dir {"path":"/tmp/project"}',
+      '<TOOL>file_search {"glob":"include/**/*.hpp"}',
+      '<TOOL>read_file {"path":"/tmp/project/include/order_book.hpp"}',
+    ].join(''),
+    expectedVisible: 'I will inspect the project structure.',
+    expectedToolNames: ['list_dir', 'file_search', 'read_file'],
+  },
+  {
     id: 'tool-call-envelope',
     text: [
       'I will run validation.',

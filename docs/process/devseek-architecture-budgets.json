@@ -48,9 +48,19 @@
       "boundary": "normalized ToolCall execution"
     },
     "packages/vscode-extension/src/agent/fake-tool-parser.ts": {
-      "maxLines": 1835,
+      "maxLines": 1747,
       "targetLines": 1024,
       "boundary": "DeepSeek Web text-tool compatibility adapter"
+    },
+    "packages/vscode-extension/src/agent/generic-tool-envelope-dialect.ts": {
+      "maxLines": 176,
+      "targetLines": 512,
+      "boundary": "DeepSeek generic TOOL envelope protocol strategy"
+    },
+    "packages/vscode-extension/src/agent/tool-protocol-text.ts": {
+      "maxLines": 14,
+      "targetLines": 128,
+      "boundary": "shared text-tool XML entity and JSON fence codec"
     },
     "packages/vscode-extension/src/agent/fake-tool-json-utils.ts": {
       "maxLines": 455,

@@ -174,6 +174,20 @@ test('FakeToolParser: isolates generic TOOL envelopes from provider-authored too
   assert.equal(stripToolCallBlocks(text), '我先读取当前实现。');
 });
 
+test('FakeToolParser: requires an explicit boundary after open generic TOOL JSON', () => {
+  const trailingProse = '我先读取。<TOOL>read_file {"path":"src/index.ts"} 然后修改实现。';
+  const unknownDelimiter = [
+    '我先读取。',
+    '<TOOL>read_file {"path":"src/index.ts"}',
+    '<TOOL>unknown_tool {"path":"src/other.ts"}',
+  ].join('');
+
+  for (const text of [trailingProse, unknownDelimiter]) {
+    assert.deepEqual(parseFakeToolCalls(text), []);
+    assert.equal(hasIncompleteFakeToolCallProtocol(text), true);
+  }
+});
+
 test('FakeToolParser: does not treat result-only transcripts as fresh tool calls', () => {
   const text = [
     '[工具执行结果]文件内容：',

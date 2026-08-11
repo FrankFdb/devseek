@@ -91,6 +91,8 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
       'packages/shared/src/coding-tool-dispatch.ts',
       'packages/shared/src/coding-provider-events.ts',
       'src/agent/fake-tool-parser.ts',
+      'src/agent/generic-tool-envelope-dialect.ts',
+      'src/agent/tool-protocol-text.ts',
       'src/llm/provider-events.ts',
       'scripts/generate-webview-tool-manifest.mjs',
       'media/webview-agent-tool-manifest.js',
@@ -99,6 +101,7 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
     contractTests: [
       'packages/shared/test/coding-tool-schema-dispatch.test.mjs',
       'test/unit/fake-tool-parser.test.mjs',
+      'test/unit/generic-tool-envelope-dialect.test.mjs',
       'test/unit/tool-protocol-contract.test.mjs',
       'test/unit/webview-logic.test.mjs',
       'test/unit/duplicate-judgment-governance.test.mjs',

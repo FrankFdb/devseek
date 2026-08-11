@@ -252,6 +252,19 @@ test('provider output integrity: classifies real generic TOOL envelopes before s
   assert.equal(result.toolCallCount, 2);
 });
 
+test('provider output integrity: classifies adjacent open generic TOOL frames before settlement', () => {
+  const result = classifyProviderOutputIntegrity([
+    '现在开始调查。',
+    '<TOOL>list_dir {"path":"/tmp/app"}',
+    '<TOOL>file_search {"glob":"include/**/*.hpp"}',
+    '<TOOL>read_file {"path":"/tmp/app/include/order_book.hpp"}',
+  ].join(''));
+
+  assert.equal(result.kind, 'tool_call');
+  assert.equal(result.okForSettlement, false);
+  assert.equal(result.toolCallCount, 3);
+});
+
 test('provider output integrity: classifies named JSON tool_call envelopes before settlement', () => {
   const result = classifyProviderOutputIntegrity([
     'I will inspect the implementation first.',

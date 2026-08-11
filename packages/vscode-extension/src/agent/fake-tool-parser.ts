@@ -9,9 +9,11 @@ import {
   stripModelToolProtocolBlocks,
   type ModelToolProtocolDialect,
 } from './model-tool-protocol-adapter';
+import { createGenericToolEnvelopeDialect } from './generic-tool-envelope-dialect';
 import { parseLosslessXmlMutationInput } from './lossless-xml-tool-input';
 import { normalizeFakeTool, normalizeToolInput } from './fake-tool-input-normalizer';
 import { createFakeToolJsonUtils, decodeLooseJsonString, findJsonArrayEnd, findJsonObjectEnd, type FakeTool } from './fake-tool-json-utils';
+import { decodeXmlishText, stripJsonFence } from './tool-protocol-text';
 
 export { findJsonArrayEnd, findJsonObjectEnd };
 export type { FakeTool } from './fake-tool-json-utils';
@@ -30,9 +32,6 @@ const DSML_START_NAMES_PATTERN = '(?:tool_calls|invoke|parameter)';
 const TOOL_CALL_OPEN_PATTERN = '(?:<|&lt;)\\s*TOOL_CALL\\s*(?:>|&gt;)';
 const TOOL_CALL_CLOSE_PATTERN = '(?:<\\/|&lt;\\/)\\s*TOOL_CALL\\s*(?:>|&gt;)';
 const TOOL_CALL_INCOMPLETE_TAIL_PATTERN = /(?:<|&lt;)\s*(?:T|TO|TOO|TOOL|TOOL_|TOOL_C|TOOL_CA|TOOL_CAL|TOOL_CALL)?$/i;
-const GENERIC_TOOL_ENVELOPE_OPEN_PATTERN = '(?:<|&lt;)\\s*TOOL\\s*(?:>|&gt;)';
-const GENERIC_TOOL_ENVELOPE_CLOSE_PATTERN = '(?:<\\/|&lt;\\/)\\s*TOOL\\s*(?:>|&gt;)';
-const GENERIC_TOOL_ENVELOPE_PREFIX_TAIL_PATTERN = /(?:<|&lt;)\s*(?:T(?:O(?:O(?:L)?)?)?)?$/i;
 const DSML_INCOMPLETE_TAIL_PATTERN = new RegExp(
   `${DSML_OPEN_PREFIX_PATTERN}(?:${DSML_BAR_PATTERN}\\s*(?:D(?:S(?:M(?:L)?)?)?(?:\\s*${DSML_BAR_PATTERN})?)?)?$`,
   'i',
@@ -122,17 +121,6 @@ function makeToolCallEnvelopePairRegex(flags = 'gi'): RegExp {
   return new RegExp(
     `${TOOL_CALL_OPEN_PATTERN}([\\s\\S]*?)${TOOL_CALL_CLOSE_PATTERN}\\s*` +
     `${TOOL_CALL_OPEN_PATTERN}([\\s\\S]*?)${TOOL_CALL_CLOSE_PATTERN}`,
-    flags,
-  );
-}
-
-function makeGenericToolEnvelopeOpenRegex(flags = 'gi'): RegExp {
-  return new RegExp(GENERIC_TOOL_ENVELOPE_OPEN_PATTERN, flags);
-}
-
-function makeGenericToolEnvelopeBlockRegex(flags = 'gi'): RegExp {
-  return new RegExp(
-    `${GENERIC_TOOL_ENVELOPE_OPEN_PATTERN}([\\s\\S]*?)${GENERIC_TOOL_ENVELOPE_CLOSE_PATTERN}`,
     flags,
   );
 }
@@ -308,15 +296,6 @@ function parseFunctionStyleToolCalls(text: string): FakeTool[] {
   return tools.map(normalizeFakeTool);
 }
 
-function decodeXmlishText(text: string): string {
-  return text
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&amp;/gi, '&');
-}
-
 function parseXmlishToolAttributes(rawAttrs: string): Record<string, unknown> {
   const input: Record<string, unknown> = {};
   const attrs = decodeXmlishText(rawAttrs);
@@ -329,12 +308,6 @@ function parseXmlishToolAttributes(rawAttrs: string): Record<string, unknown> {
     input[key] = parseDsmlParameterValue(rawValue);
   }
   return input;
-}
-
-function stripJsonFence(text: string): string {
-  const trimmed = text.trim();
-  const match = /^```(?:json|JSON|javascript|js)?\s*\n?([\s\S]*?)\n?```\s*$/.exec(trimmed);
-  return match ? String(match[1] || '').trim() : trimmed;
 }
 
 function primaryScalarInputKeyForTool(name: string): string | undefined {
@@ -488,43 +461,12 @@ function parseToolArgumentsRecord(name: string, value: unknown): Record<string, 
   }
 }
 
-function parseGenericToolEnvelopeBody(rawBody: string): FakeTool | null {
-  const body = stripJsonFence(decodeXmlishText(rawBody)).trim();
-  const nameMatch = /^([A-Za-z_][A-Za-z0-9_]*)\b/.exec(body);
-  if (!nameMatch || !isRegisteredFakeToolName(nameMatch[1])) return null;
-  const name = normalizeAgentToolName(nameMatch[1]);
-  const rawInput = body.slice(nameMatch[0].length).trim();
-  const input = rawInput ? parseToolArgumentsRecord(name, rawInput) : {};
-  if (!input) return null;
-  return normalizeFakeTool({ name, input });
-}
-
-function parseGenericToolEnvelopeCalls(text: string): FakeTool[] {
-  const tools: FakeTool[] = [];
-  const blockRe = makeGenericToolEnvelopeBlockRegex();
-  let match: RegExpExecArray | null;
-  while ((match = blockRe.exec(text)) !== null) {
-    const tool = parseGenericToolEnvelopeBody(match[1] || '');
-    if (tool) tools.push(tool);
-  }
-  return tools;
-}
-
-function findNextGenericToolEnvelopeStart(text: string, startAt = 0): number {
-  const openRe = makeGenericToolEnvelopeOpenRegex();
-  openRe.lastIndex = startAt;
-  const open = openRe.exec(text);
-  const tail = startAt === 0 ? GENERIC_TOOL_ENVELOPE_PREFIX_TAIL_PATTERN.exec(text) : null;
-  if (!open) return tail?.index ?? -1;
-  return tail ? Math.min(open.index, tail.index) : open.index;
-}
-
-function stripGenericToolEnvelopeBlocks(text: string): string {
-  let cleaned = text.replace(makeGenericToolEnvelopeBlockRegex(), '');
-  const incompleteStart = findNextGenericToolEnvelopeStart(cleaned);
-  if (incompleteStart >= 0) cleaned = cleaned.slice(0, incompleteStart);
-  return cleaned.replace(GENERIC_TOOL_ENVELOPE_PREFIX_TAIL_PATTERN, '').trimEnd();
-}
+const genericToolEnvelopeDialect = createGenericToolEnvelopeDialect<FakeTool>({
+  isRegisteredName: isRegisteredFakeToolName,
+  normalizeName: normalizeAgentToolName,
+  parseCompatibleInput: parseToolArgumentsRecord,
+  createTool: (name, input) => normalizeFakeTool({ name, input: normalizeToolInput(name, input) }),
+});
 
 function jsonFunctionEnvelopeToFakeTool(obj: Record<string, unknown>): FakeTool | null {
   const fn = obj.function;
@@ -636,7 +578,7 @@ function parseToolCallEnvelopeCalls(text: string): FakeTool[] {
         tools.push({ index: match.index, tool: namedParameterTool });
         continue;
       }
-      const named = parseGenericToolEnvelopeBody(body);
+      const named = genericToolEnvelopeDialect.parseBody(body);
       if (named) {
         tools.push({ index: match.index, tool: named });
         continue;
@@ -1694,12 +1636,7 @@ const MODEL_TOOL_PROTOCOL_DIALECTS: readonly ModelToolProtocolDialect<FakeTool>[
     findStart: findBracketToolStart,
     strip: stripBracketToolBlocks,
   },
-  {
-    name: 'generic-tool-envelope',
-    parse: parseGenericToolEnvelopeCalls,
-    findStart: findNextGenericToolEnvelopeStart,
-    strip: stripGenericToolEnvelopeBlocks,
-  },
+  genericToolEnvelopeDialect,
   {
     name: 'tool-call-envelope',
     parse: parseToolCallEnvelopeCalls,
@@ -1804,8 +1741,7 @@ function collapseSupersededFullFileWrites(tools: FakeTool[]): FakeTool[] {
 
 export function hasIncompleteFakeToolCallProtocol(text: string): boolean {
   const requestText = isolateModelToolRequestText(text).text;
-  const genericRemainder = requestText.replace(makeGenericToolEnvelopeBlockRegex(), '');
-  if (findNextGenericToolEnvelopeStart(genericRemainder) >= 0) return true;
+  if (genericToolEnvelopeDialect.hasIncomplete(requestText)) return true;
   return findFirstModelToolProtocolStart(requestText, MODEL_TOOL_PROTOCOL_DIALECTS) >= 0
     && parseModelToolProtocol(requestText, MODEL_TOOL_PROTOCOL_DIALECTS).length === 0;
 }

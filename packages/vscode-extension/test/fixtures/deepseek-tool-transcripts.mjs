@@ -76,6 +76,19 @@ export const DEEPSEEK_TOOL_TRANSCRIPT_FIXTURES = [
     expectedVisibleText: '现在开始调查。首先阅读需求文档，然后追踪license模块实现。',
   },
   {
+    name: 'real DeepSeek open generic TOOL frames from order-book simulation',
+    text: [
+      '首先，我需要了解工作区的完整结构，找到既有文件和测试入口。',
+      '<TOOL>list_dir {"path":"/home/ff/work/devseek_netai/code/devseek-tests/cpp-user-matrix/cases/11-order-book/workspace"}',
+      '<TOOL>file_search {"glob":"include/**/*.hpp"}',
+      '<TOOL>file_search {"glob":"src/**/*.cpp"}',
+      '<TOOL>file_search {"glob":"CMakeLists.txt"}',
+      '<TOOL>file_search {"glob":"test.sh"}',
+    ].join(''),
+    expectedToolNames: ['list_dir', 'file_search', 'file_search', 'file_search', 'file_search'],
+    expectedVisibleText: '首先，我需要了解工作区的完整结构，找到既有文件和测试入口。',
+  },
+  {
     name: 'real DeepSeek terminal call with unescaped shell quotes',
     text: [
       '我立即执行真实验证。',

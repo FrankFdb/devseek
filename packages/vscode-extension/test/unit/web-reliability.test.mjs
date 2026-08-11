@@ -224,6 +224,21 @@ test('ResponseIntegrityChecker: accepts complete DeepSeek TOOL_call inline-name 
   assert.equal(result.safeToExecute, true);
 });
 
+test('ResponseIntegrityChecker: accepts complete open generic TOOL frames and blocks half JSON', () => {
+  const checker = new ResponseIntegrityChecker();
+  const complete = [
+    '我先调查工程结构。',
+    '<TOOL>list_dir {"path":"/tmp/project"}',
+    '<TOOL>read_file {"path":"/tmp/project/include/order_book.hpp"}',
+  ].join('');
+
+  assert.equal(checker.check(complete).status, 'ok');
+  assert.equal(
+    checker.check(`${complete}<TOOL>grep_search {"pattern":"OrderBook"`).status,
+    'incomplete-tool-block',
+  );
+});
+
 test('ResponseIntegrityChecker: accepts complete DeepSeek named-parameter tool_call envelopes', () => {
   const checker = new ResponseIntegrityChecker();
   const content = [
