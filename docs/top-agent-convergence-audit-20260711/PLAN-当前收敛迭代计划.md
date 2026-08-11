@@ -50,7 +50,7 @@ devseek_governance:
 | 范围 | 状态 | 当前事实 |
 | --- | --- | --- |
 | C0 本地实现与机器裁决前置 | `completed` | 7/7 implementation requirements satisfied，repository blockers=0，local conformance=`PASSED` |
-| Extension 类型与发布门禁 | `completed` | TypeScript 基线零错误，本轮 163/163 extension suite 通过；`f11e145` 已重新编译、打包、安装并精确核对 source/artifact/install/runtime，stable runtime=1、stale/unknown/unreadable=0；`realistic-product` 继续作为发版门禁 |
+| Extension 类型与发布门禁 | `completed` | TypeScript 基线零错误，本轮 163/163 extension suite 通过；`37aa2b9` 已重新编译、打包、安装并精确核对 source/artifact/install/runtime，stable runtime=1、stale/unknown/unreadable=0；`realistic-product` 继续作为发版门禁 |
 | Surface 入口盘点 | `completed` | 88/88 入口受 inventory 覆盖，其中 Headless product entry=1；未知入口与未声明 legacy owner 可达性均为 0 |
 | Kernel owner 收敛基线 | `completed` | v30 将本地产品迭代与资格晋级解耦；4 条活跃路由均通过 shared `CanonicalCodingKernel`，legacy execution owner=0；45 个语义域均为 shared 单一 owner、missing Surface=0；138/138 源码断言通过 |
 | VS Code 旧执行 owner 清退 | `completed` | 零生产可达性确认后，旧 `agent-loop.ts`、16 个传递模块、旧 UI 最终授权 owner 和孤立 `llm-agent-loop.ts` 已连同专属测试物理删除；现役执行只保留 `agentic-loop`、canonical tool session 与 shared authority/effect owner |

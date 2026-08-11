@@ -33,7 +33,7 @@ devseek_governance:
 <!-- DEVSEEK-GOVERNANCE-STATUS:END -->
 
 - 本次复核日期：2026-08-11
-- Extension 身份规则：当前开发候选以每轮 release loop 生成的 source/artifact/install/runtime 精确回执为准；本轮最终身份在功能提交后刷新，`2edc604` 是上一稳定回退候选，R4 v2 冻结候选仍为 `4f8a567`，原 `a034e5e` v1 清单仍是历史不可变候选，四者不得互相覆盖身份或资格效力
+- Extension 身份规则：当前开发候选以每轮 release loop 生成的 source/artifact/install/runtime 精确回执为准；当前候选为 `37aa2b9`，上一稳定回退候选为 `f11e145`，R4 v2 冻结候选仍为 `4f8a567`，原 `a034e5e` v1 清单仍是历史不可变候选，四者不得互相覆盖身份或资格效力
 - 复核原则：文档声明只作索引；结论以 `docs/process` 机器源、实际代码可达性、当前工作树和本轮重跑验证为准
 
 ## 1. 本次结论
@@ -61,7 +61,7 @@ devseek_governance:
 | Qualification runner | 19 个入口；1 个本地非资格 runner、10 个 catalog fixture、4 个 production disabled、4 个 historical disabled |
 | R4 | 6/6 原始 leaf completed，blocked=0；冻结时 artifact/install/runtime 与 v2 候选精确绑定，stable runtime=1、window-sensitive leaf=0；当前开发候选另由 current identity 管理 |
 | Frozen R4 candidate | 当前 `R4-RELEASE-CANDIDATE-MANIFEST/v2` 冻结 `4f8a567` VSIX；原 `a034e5e` v1 JSON/schema/view 以固定文件哈希归档为历史不可变候选；两者均无资格效力 |
-| Current local development receipt | 当前 source/artifact/install/runtime 身份在本轮 release loop 完成后刷新；I10～I20 共 59 个增量案例及本轮 C8/C9/C10 产品仿真原始结果仅在本地 `code/devseek-tests/` 保留，不进入 Git。该回执不改写 `4f8a567` 冻结候选，也不是 qualification receipt |
+| Current local development receipt | `37aa2b9` source、`20260811-t114721` artifact/install/runtime 已精确绑定，stable runtime=1、stale/unknown/unreadable=0；I10～I20 共 59 个增量案例及本轮 C8/C9/C10 产品仿真原始结果仅在本地 `code/devseek-tests/` 保留，不进入 Git。该回执不改写 `4f8a567` 冻结候选，也不是 qualification receipt |
 | Post-R4 local track | NP-05/06/07 manifest 已在 `5c32551` 提交；检查覆盖 16 个 source、17/17 anchors、8 个 local-only command，6/6 通过 |
 | Surface inventory | 88 个入口分母全部 covered，无 unknown、重复或待 cutover；source hash 对账通过 |
 | Architecture budget | 设计优先门禁通过，仍有 6 个明确债务热点；`extension.ts` 为 1679/1683 行；大小只作回退护栏，不替代职责、依赖和 owner 判定 |
@@ -194,10 +194,10 @@ devseek_governance:
 | Legacy doc inventory | `PASS`，5/5 tests；40 个 legacy 文档全覆盖，archive 明确排除，root duplicate=0 |
 | Doc governance | `PASS`，4/4 tests；43 个受治理文档，3 个 active baseline、40 个 legacy/reference |
 | Surface product conformance | `PASS`，`2edc604` 精确 VSIX 的 VS Code create/modify/repair/permission-denied/policy-refusal 5/5 通过，并与 CLI、Headless 形成 5/5 三 Surface product-route conformance；repair 保留 action-owned failed→repair→passed，qualification eligible=false |
-| Previous stable VSIX receipt | `PASS`，`devseek-netai-1.0.0-debug.20260810.t170815.g0ed2d7e.vsix`；SHA256 `f94f7cc38de9dc6172f4542aebb4d50b65d10a7eb9306791d23e6fd76afd3cd8`；该回执是本轮 release loop 前的回退基线，不冒充当前源码候选 |
-| Current candidate VSIX receipt | `PASS`，`devseek-netai-1.0.0-debug.20260811.t104900.gf11e145.vsix`；SHA256 `5cea18a1d8c321d962a10b5ddb6bb30a6471f005f730e1ba7122444c9a2f69c2`；build `20260811-t104900`，qualification effect=`NONE` |
-| Candidate identity rule | 当前 `f11e145` source/artifact/install/runtime 已由同一轮 release loop 精确绑定，stable runtime=1、stale/unknown/unreadable=0；identity probe SHA256=`44b4e75b9f2b352cb2bb1f9abdaf3eb1162fb202ab6d1f1da1e74efa4692329d`；禁止从旧稳定或 R4 冻结候选继承当前候选 PASS |
-| 本地用户闭环 | `PASS`，精确已安装 VSIX 的受控普通用户路径与五场景产品路径通过；headed Bridge 已刷新到当前候选并保留已登录 DeepSeek chat 页面，因资格前置未满足未发送 real task |
+| Previous stable VSIX receipt | `PASS`，`devseek-netai-1.0.0-debug.20260811.t104900.gf11e145.vsix`；SHA256 `5cea18a1d8c321d962a10b5ddb6bb30a6471f005f730e1ba7122444c9a2f69c2`；该回执是当前 release loop 的精确回退基线，不冒充当前源码候选 |
+| Current candidate VSIX receipt | `PASS`，`devseek-netai-1.0.0-debug.20260811.t114721.g37aa2b9.vsix`；SHA256 `00fc79864074b102f577d30d89a5be500f3c529706a46bce7bd044e6ca8da221`；build `20260811-t114721`，qualification effect=`NONE` |
+| Candidate identity rule | 当前 `37aa2b9` source/artifact/install/runtime 已由同一轮 release loop 精确绑定，stable runtime=1、stale/unknown/unreadable=0；identity probe SHA256=`f7c66ed3804a62063af2a1dadcfccee011d1a01ce13b209a3ad6b1f42754ea51`；禁止从旧稳定或 R4 冻结候选继承当前候选 PASS |
+| 本地用户闭环 | `PASS`，精确已安装 VSIX 的受控普通用户路径与五场景产品路径通过；headed Bridge 已刷新到当前候选，但当前无浏览器会话；资格前置未满足，未发送 real Provider task |
 | R4 frozen candidate identity | `PASS`，11/11；冻结验证时 stable=1、stale/unknown/unreadable=0；qualification effect=`NONE` |
 | Phase 0-12 | `PASS`，本轮以 clean worktree 完整重跑且全部 phase/gate 通过；deterministic=`passed`，real CLI/plugin Provider=`not-run`，candidate/stable claim 均不允许，Gate 0 仍为 `NOT_PASSED` |
 
