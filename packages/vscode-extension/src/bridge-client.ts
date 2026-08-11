@@ -14,6 +14,7 @@ import {
   type DevSeekTraceLogger,
 } from '@devseek-netai/shared';
 import { getWorkspaceRootFsPath, resolveWorkspaceFileUri } from './workspace-roots';
+import { isTransientProviderTransportError } from './llm/provider-transport-error';
 
 const DEFAULT_PORT = 3721;
 const TOKEN_REL_PATH = nodePath.join('.devseek', 'bridge-token');
@@ -454,7 +455,7 @@ export async function chat(opts: ChatOptions): Promise<string> {
   const useStream = opts.stream !== false;
   const trace = createBridgeClientTraceLogger(opts.traceRunId, opts.traceWorkspaceRoot);
   const operationId = opts.traceOperationId?.trim() || createBridgeOperationId('chat');
-  if (!connectorContractVerified && !await status()) {
+  if (!connectorContractVerified && !await ensureBridgeRunning()) {
     throw new Error('BRIDGE_CONNECTOR_UNAVAILABLE: Bridge capability negotiation failed.');
   }
   activeChatOperationIds.add(operationId);
@@ -533,6 +534,7 @@ export async function chat(opts: ChatOptions): Promise<string> {
       requestAbort.dispose();
     }
   } catch (error) {
+    if (isTransientProviderTransportError(error)) connectorContractVerified = false;
     trace.error('bridge-client', 'chat-request-failed', { message: (error as Error).message });
     throw error;
   } finally {
@@ -575,7 +577,6 @@ async function chatStream(
       });
     } catch (error) {
       const message = (error as Error).message || String(error);
-      trace.error('bridge-client', 'chat-request-failed', { message });
       if (externalSignal?.aborted) throw externalSignal.reason ?? new Error('Cancelled');
       if (/abort|timeout|timed out|signal/i.test(message)) {
         throw new Error(`RESPONSE_CORRUPTED:stream-timeout:Bridge SSE stream exceeded ${httpTimeout}ms without completion.`);
@@ -630,7 +631,6 @@ async function chatStream(
       correlator.assertComplete();
     } catch (error) {
       const message = (error as Error).message || String(error);
-      trace.error('bridge-client', 'chat-request-failed', { message });
       if (externalSignal?.aborted) throw externalSignal.reason ?? new Error('Cancelled');
       if (/abort|timeout|timed out|signal/i.test(message)) {
         throw new Error(`RESPONSE_CORRUPTED:stream-timeout:Bridge SSE stream exceeded ${httpTimeout}ms without completion.`);

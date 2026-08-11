@@ -1492,12 +1492,32 @@ test('Run evidence: changed paths are projected from the canonical current run',
   assertContains(recorder, 'export function projectRunChangedPaths', 'one pure owner must normalize current-run paths');
   assertContains(recorder, 'export class RunChangedPathRecorder', 'one application owner must replace latest run state');
   assertContains(recorder, 'this.deps.replaceLastChangedPaths(relativePaths)', 'empty results must replace stale prior-run state');
-  assertContains(ext, 'const agRunChangedPaths = runChangedPathRecorder.record({', 'canonical runs must record their own result');
+  assertContains(ext, 'const agentChangedPathScope = runChangedPathRecorder.openScope(agentWorkspaceRoot);', 'canonical runs must accumulate committed paths as changes occur');
+  assertContains(ext, 'agentChangedPathScope.add([c.path]);', 'applied writes must enter the current-run path scope immediately');
+  assertContains(ext, 'agentChangedPathScope.add(agResult.changedPaths);', 'successful settlement must merge canonical loop paths');
+  assertContains(ext, 'agentChangedPathScope.add(loopResult?.changedPaths ?? []);', 'failed settlement must retain every path observed before failure');
+  assertContains(ext, 'const failedRunChangedPaths = agentChangedPathScope.commit();', 'failed runs must publish their accumulated path audit');
   assertDoesNotContain(ext, 'const currentRunChangedPaths = runChangedPathRecorder.record({', 'retired planned runs must not own changed-path projection');
   assertContains(ext, 'currentChatRunChangedPaths = chatRunChangedPaths.commit();', 'chat runs must settle from their own accumulated paths');
   assertContains(ext, 'changedPaths: currentChatRunChangedPaths.slice(0, 12)', 'chat completion evidence must use current-run paths');
   assert.doesNotMatch(ext, /settleAgentLoopResult\(agResult,\s*lastAgentChangedPaths/);
   assert.doesNotMatch(ext, /changedPaths:\s*lastAgentChangedPaths\.slice\(0, 12\)/);
+});
+
+test('Provider transport recovery: Bridge retries are bounded and side-effect aware', () => {
+  const retry = src('src/app/provider-invocation-retry.ts');
+  const loopChat = src('src/agent/loop-chat.ts');
+  const bridgeClient = src('src/bridge-client.ts');
+  assertContains(retry, 'PROVIDER_INVOCATION_MAX_ATTEMPTS = 2', 'provider transport retry must stay bounded');
+  assertContains(retry, '!outputObserved', 'provider transport retry must stop after response output starts');
+  assertContains(retry, "input.providerType === 'bridge'", 'client retry policy must be limited to the Bridge transport');
+  assert.match(
+    loopChat,
+    /invoke:\s*async \(\{ markOutputObserved \}\) => \{[\s\S]*?const traceOperationId = crypto\.randomUUID\(\)/,
+    'every retry attempt must receive a fresh evidence operation id',
+  );
+  assertContains(bridgeClient, '!await ensureBridgeRunning()', 'an unverified Bridge must renegotiate or restart before retry');
+  assertContains(bridgeClient, 'if (isTransientProviderTransportError(error)) connectorContractVerified = false;', 'transport failures must invalidate Bridge capability state');
 });
 
 test('Safety refusal: no-mutation delivery has one explicit evidence path', () => {

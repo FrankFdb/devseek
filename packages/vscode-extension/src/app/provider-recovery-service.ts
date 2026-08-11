@@ -4,6 +4,7 @@ import {
   looksLikeProviderRateLimitGate,
   looksLikeProviderVerificationGate,
 } from '../llm/provider-surface-classifier';
+import { isTransientProviderTransportError } from '../llm/provider-transport-error';
 
 export type ProviderRecoveryKind =
   | 'LoginRequired'
@@ -102,7 +103,12 @@ export class ProviderRecoveryService {
       });
     }
 
-    if (anomaly.bridgeRestarted || /(bridge restart|bridge restarted|econnreset|socket hang up|connection closed|disconnected|shutdown)/i.test(text)) {
+    const transportFailure = isTransientProviderTransportError({
+      message: anomaly.message,
+      code: anomaly.code,
+      cause: anomaly.signals?.join('\n'),
+    });
+    if (anomaly.bridgeRestarted || transportFailure || /(bridge restart|bridge restarted|shutdown)/i.test(text)) {
       return makePlan({
         kind: 'BridgeRestarted',
         taskStatus: 'recoverable',

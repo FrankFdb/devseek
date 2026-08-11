@@ -309,7 +309,11 @@ test('Mutation guard: participant capability is sent only through the Bridge pro
   const llmTypes = source('src/llm/types.ts');
   const sharedLlmTypes = readFileSync(path.join(packageRoot, '../shared/src/llm-types.ts'), 'utf8');
   const bridgeProvider = source('src/llm/providers/bridge.ts');
-  assert.equal((loopChat.match(/provider\.type === 'bridge' && traceEvidenceParticipantToken/g) ?? []).length, 2);
+  assert.equal(
+    (loopChat.match(/provider\.type === 'bridge' && input\.traceEvidenceParticipantToken/g) ?? []).length,
+    1,
+    'both chat entry points must share one Bridge participant capability owner',
+  );
   assert.doesNotMatch(llmTypes, /traceEvidenceParticipantToken\?:/);
   assert.match(llmTypes, /LLMChatOptions as SharedLLMChatOptions/);
   assert.doesNotMatch(llmTypes, /evidenceCapability\?:/);

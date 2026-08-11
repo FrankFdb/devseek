@@ -68,6 +68,19 @@ test('ProviderRecoveryService: login required pauses task for user action', () =
   assert.equal(plan.safeToContinueFromCheckpoint, false);
 });
 
+test('ProviderRecoveryService: fetch failure is a recoverable Bridge interruption', () => {
+  const plan = new ProviderRecoveryService().classify({
+    providerType: 'bridge',
+    message: 'TypeError: fetch failed',
+    code: 'ECONNRESET',
+  });
+
+  assert.equal(plan.kind, 'BridgeRestarted');
+  assert.equal(plan.taskStatus, 'recoverable');
+  assert.equal(plan.requiresUserAction, false);
+  assert.equal(plan.canRetry, true);
+});
+
 test('ProviderRecoveryService: business verification-code analysis is not treated as rate limit', () => {
   const plan = new ProviderRecoveryService().classify({
     providerType: 'bridge',

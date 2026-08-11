@@ -595,6 +595,7 @@ async function runActiveChat(
     // L1a: filled inside try/catch, used after to persist agent turn in session history
     let agentHistoryText = '';
     let loopResult: AgentLoopResult | undefined;
+    const agentChangedPathScope = runChangedPathRecorder.openScope(agentWorkspaceRoot);
 
     try {
       const kernelRoute = agentKernelService.decideExecutionRoute({
@@ -690,7 +691,10 @@ async function runActiveChat(
             },
             onWorkflowStatus: async (s) => { postWebviewEvent(webview, { kind: 'workflow', status: s }); },
             ...agentPresenter.runtimeObservers,
-            onAppliedChange: async (c) => { await pendingEditCoordinator.registerChange(webview, c); },
+            onAppliedChange: async (c) => {
+              agentChangedPathScope.add([c.path]);
+              await pendingEditCoordinator.registerChange(webview, c);
+            },
             onResponseMeta: async (_raw) => { /* suppressed in agent mode */ },
             onAgentAnnouncement: (text) => {
               postWebviewMessage(webview, { type: 'agentAnnouncement', text });
@@ -771,10 +775,8 @@ async function runActiveChat(
           memoryRelatedPaths: agMemoryRelatedPaths,
           recovery: kernelRecovery,
         });
-        const agRunChangedPaths = runChangedPathRecorder.record({
-          workspaceRoot: agWsRoot,
-          changedPaths: agResult.changedPaths,
-        });
+        agentChangedPathScope.add(agResult.changedPaths);
+        const agRunChangedPaths = agentChangedPathScope.commit();
         const agSettlement = agentKernelRun.settleAgentLoopResult(agResult, agRunChangedPaths);
         const agDurablyCompleted = agSettlement.completed;
         if (agSettlement.refused) agentPresenter.postSettlementRefusal();
@@ -817,10 +819,8 @@ async function runActiveChat(
       }
 
     } catch (e) {
-      const failedRunChangedPaths = runChangedPathRecorder.record({
-        workspaceRoot: agentWorkspaceRoot,
-        changedPaths: loopResult?.changedPaths ?? [],
-      });
+      agentChangedPathScope.add(loopResult?.changedPaths ?? []);
+      const failedRunChangedPaths = agentChangedPathScope.commit();
       const msg = (e as Error).message;
       if (activeRun.signal.aborted) {
         const cancellationData = {
