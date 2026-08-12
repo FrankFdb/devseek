@@ -164,13 +164,14 @@ test('Agent auto validation selects and runs a discovered CMake project test scr
     const result = await runAgentAutoValidationForWrites(
       [written(root, 'src/scheduler.cpp')],
       root,
-      '实现 C++ 调度器并运行项目测试',
+      '在既有正式项目的 CMake 接口中实现 C++ 调度器并运行项目测试',
       context.callbacks,
       { verificationAcceptance: context.acceptance },
     );
 
     assert.equal(result.verificationReceipt.status, 'passed');
     assert.equal(result.evidence.ok, true);
+    assert.doesNotMatch(result.feedbackForAI, /formal_project_source_quality/);
     assert.deepEqual(invocations.map(invocation => invocation.command), ['bash test.sh']);
   } finally {
     rmSync(root, { recursive: true, force: true });

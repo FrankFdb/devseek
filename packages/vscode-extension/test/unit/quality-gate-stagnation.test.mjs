@@ -18,19 +18,19 @@ execSync(
 const req = createRequire(import.meta.url);
 const { QualityGateStagnationLedger } = req(bundlePath);
 
-const missingValidationHook = {
+const isolatedSampleGate = {
   status: 'fail',
-  summary: '正式项目源码质量门禁未通过：缺少验证钩子/自测入口。',
-  risks: ['缺少验证钩子/自测入口'],
-  evidenceRefs: ['file:src/warranty_worker.cpp'],
-  requiredActions: ['补齐验证钩子后重新验证。'],
+  summary: '正式项目源码质量门禁未通过：正式项目中禁止新建孤岛 main/样例入口。',
+  risks: ['正式项目中禁止新建孤岛 main/样例入口'],
+  evidenceRefs: ['file:src/warranty_demo.cpp'],
+  requiredActions: ['删除孤岛入口并接入既有模块后重新验证。'],
 };
 
 test('QualityGateStagnationLedger: stops after the same complete failure repeats without progress', () => {
   const ledger = new QualityGateStagnationLedger();
-  ledger.record(missingValidationHook, 7);
-  const warning = ledger.record(missingValidationHook, 7);
-  const stopped = ledger.record(missingValidationHook, 7);
+  ledger.record(isolatedSampleGate, 7);
+  const warning = ledger.record(isolatedSampleGate, 7);
+  const stopped = ledger.record(isolatedSampleGate, 7);
 
   assert.match(warning.warning, /没有新增修改证据.*连续 2 次/);
   assert.match(stopped.stopReason, /连续 3 次未通过且没有新增修改证据/);
@@ -38,9 +38,9 @@ test('QualityGateStagnationLedger: stops after the same complete failure repeats
 
 test('QualityGateStagnationLedger: persistent gate summary does not stop while files are changing', () => {
   const ledger = new QualityGateStagnationLedger();
-  assert.equal(ledger.record(missingValidationHook, 1).repeatedWithoutProgress, 1);
-  assert.equal(ledger.record(missingValidationHook, 2).repeatedWithoutProgress, 1);
-  const result = ledger.record(missingValidationHook, 3);
+  assert.equal(ledger.record(isolatedSampleGate, 1).repeatedWithoutProgress, 1);
+  assert.equal(ledger.record(isolatedSampleGate, 2).repeatedWithoutProgress, 1);
+  const result = ledger.record(isolatedSampleGate, 3);
 
   assert.equal(result.repeatedWithoutProgress, 1);
   assert.equal(result.warning, undefined);
@@ -49,11 +49,11 @@ test('QualityGateStagnationLedger: persistent gate summary does not stop while f
 
 test('QualityGateStagnationLedger: detailed gate changes are separate repair states', () => {
   const ledger = new QualityGateStagnationLedger({ stopAfterObservations: 2 });
-  ledger.record(missingValidationHook, 4);
+  ledger.record(isolatedSampleGate, 4);
   const result = ledger.record({
-    ...missingValidationHook,
-    risks: ['验证脚本语法损坏'],
-    requiredActions: ['修复验证脚本并执行 bash -n。'],
+    ...isolatedSampleGate,
+    risks: ['源码中仍有未落定项目事实'],
+    requiredActions: ['补齐项目事实后重新验证。'],
   }, 4);
 
   assert.equal(result.repeatedWithoutProgress, 1);
@@ -62,9 +62,9 @@ test('QualityGateStagnationLedger: detailed gate changes are separate repair sta
 
 test('QualityGateStagnationLedger: a passing gate clears previous failure history', () => {
   const ledger = new QualityGateStagnationLedger({ stopAfterObservations: 2 });
-  ledger.record(missingValidationHook, 5);
+  ledger.record(isolatedSampleGate, 5);
   ledger.record({ status: 'pass', summary: 'QualityGate 通过。' }, 5);
-  const result = ledger.record(missingValidationHook, 5);
+  const result = ledger.record(isolatedSampleGate, 5);
 
   assert.equal(result.repeatedWithoutProgress, 1);
   assert.equal(result.stopReason, undefined);

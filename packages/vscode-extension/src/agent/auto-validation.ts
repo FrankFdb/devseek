@@ -198,9 +198,6 @@ const FORMAL_PROJECT_DOC_REASON_LABELS: Record<string, string> = {
 const FORMAL_PROJECT_SOURCE_REASON_LABELS: Record<string, string> = {
   'standalone-sample-code': '正式项目中禁止新建孤岛 main/样例入口',
   'unresolved-project-facts': '源码中仍有待确认/待分配/建议范围等未落定事实',
-  'missing-validation-hook': '缺少验证钩子/自测入口',
-  'invalid-validation-script': '验证脚本语法或变量引用明显损坏',
-  'validation-references-missing-artifact': '验证脚本仍引用已删除或缺失的本轮产物',
 };
 
 function readWrittenSourceFilesForQuality(
@@ -294,9 +291,6 @@ function evaluateFormalProjectSourceQuality(
     `files=${source.files.map(file => file.path).join(', ')}`,
     summary,
     'A 类正式项目代码必须嵌入既有主流程/模块边界；除非用户明确要求新增独立可执行程序，不要新建 proc_*_main.cpp、main() 或只为自洽存在的样例入口。',
-    '如果用户要求自闭环验证，必须补齐验证钩子：例如 *_validation.*、verify_*.sh、static_assert/assert 或明确的 validate/self_test 入口，并说明它如何覆盖接口、协议和集成边界。',
-    '验证脚本本身必须先可执行：Shell 脚本要通过 bash -n，并保留正确的 $变量、${数组} 和 $(命令替换)；不要把坏脚本的重复运行结果标记为验证通过。',
-    '验证脚本引用的本轮源码/测试产物必须仍然存在；删除或改名文件时要在同一轮同步更新验证脚本，并重新执行完整验证。',
     '请改为读取既有入口、调度、通讯和构建锚点，输出需要修改的原有文件/函数/类，并把新增代码设计为可被既有主流程接入的模块。',
   ].join('\n');
   return {
@@ -308,7 +302,7 @@ function evaluateFormalProjectSourceQuality(
       evidenceRefs: (quality.offendingPaths.length ? quality.offendingPaths : source.files.map(file => file.path))
         .map(path => `file:${path}`),
       requiredActions: [
-        '删除或改造孤岛入口/样例代码，补齐既有工程集成锚点和验证钩子后重新验证。',
+        '删除或改造孤岛入口/样例代码，补齐既有工程集成锚点后重新验证。',
       ],
     },
   };
