@@ -2756,6 +2756,16 @@ test('Architecture: validated source changes require fresh source review before 
     'highest bid',
     'order-book semantic fallback must preserve price-priority direction evidence',
   );
+  assertContains(
+    reviewContract,
+    'Preserve Trade incoming/resting identity fields',
+    'order-book semantic fallback must preserve Trade incoming/resting field semantics',
+  );
+  assertContains(
+    reviewContract,
+    'Report bestBid from the highest bid level',
+    'order-book semantic fallback must preserve bestBid direction semantics',
+  );
   const structuralCompileFailure = src('src/app/structural-compile-failure.ts');
   assertContains(
     structuralCompileFailure,

@@ -238,6 +238,10 @@ function findLocalSemanticContradictions(
     }
     if (requiresPricePriorityDirection(check.requirement.quote)) {
       addFinding(findPricePriorityDirectionContract(check, snapshots));
+      addFinding(findBestBidDirectionContract(check, snapshots));
+    }
+    if (requiresTradeIdentityProjection(check.requirement.quote)) {
+      addFinding(findTradeIdentityProjectionContract(check, snapshots));
     }
   }
   return findings;
@@ -373,6 +377,58 @@ function findPricePriorityDirectionContract(
   return undefined;
 }
 
+function findBestBidDirectionContract(
+  check: NormalizedRequirementCheck,
+  snapshots: readonly RequirementReviewSourceSnapshot[],
+): RequirementReviewFinding | undefined {
+  const combinedSource = stripCppComments(snapshots.map(snapshot => snapshot.content).join('\n'));
+  if (!hasDescendingBidPriceLevels(combinedSource)) return undefined;
+  for (const snapshot of snapshots) {
+    if (!/\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)$/i.test(snapshot.path)) continue;
+    const line = findDescendingBidReverseBestBidLine(snapshot);
+    if (!line) continue;
+    return {
+      requirementId: check.requirement.id,
+      requirement: check.requirement.quote,
+      title: 'Report bestBid from the highest bid level',
+      observedBehavior: 'bestBid() iterates rbegin() on a descending bid map, so it reports the lowest remaining bid instead of the highest bid.',
+      expectedBehavior: 'When bids are stored with std::greater<double>, begin() is already the highest bid; bestBid() must use the same ordering contract as matching.',
+      counterexample: 'With resting buys b1@9 and b2@11, a descending bid map orders b2 first; rbegin() reports b1@9 even though bestBid() should return 11.',
+      priority: 1,
+      confidence: 0.92,
+      path: snapshot.path,
+      line,
+    };
+  }
+  return undefined;
+}
+
+function findTradeIdentityProjectionContract(
+  check: NormalizedRequirementCheck,
+  snapshots: readonly RequirementReviewSourceSnapshot[],
+): RequirementReviewFinding | undefined {
+  const combinedSource = stripCppComments(snapshots.map(snapshot => snapshot.content).join('\n'));
+  if (!hasIncomingRestingTradeFields(combinedSource)) return undefined;
+  for (const snapshot of snapshots) {
+    if (!/\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)$/i.test(snapshot.path)) continue;
+    const line = findReversedTradeIdentityProjectionLine(snapshot);
+    if (!line) continue;
+    return {
+      requirementId: check.requirement.id,
+      requirement: check.requirement.quote,
+      title: 'Preserve Trade incoming/resting identity fields',
+      observedBehavior: 'A sell-side match constructs Trade with the resting buy id as incomingId and the incoming sell id as restingId.',
+      expectedBehavior: 'Trade.incomingId must name the submitted incoming order and Trade.restingId must name the older order already resting in the book.',
+      counterexample: 'Submit resting buy b2@11, then incoming sell s1@9. The first trade must expose incomingId=s1 and restingId=b2; reversed fields report restingId=s1.',
+      priority: 1,
+      confidence: 0.94,
+      path: snapshot.path,
+      line,
+    };
+  }
+  return undefined;
+}
+
 function hasDistinctCppRejectionChannel(source: string): boolean {
   return /\bthrow\b|\b(?:std::|tl::)?expected\s*</.test(stripCppComments(source));
 }
@@ -409,12 +465,30 @@ function requiresPricePriorityDirection(quote: string): boolean {
     && /(?:bid|ask|buy|sell|买|卖|买单|卖单|订单簿|order book|撮合)/iu.test(text);
 }
 
+function requiresTradeIdentityProjection(quote: string): boolean {
+  const text = normalizeRequirementText(quote);
+  return /(?:trade|incoming|resting|restingId|incomingId|成交|撮合)/iu.test(text)
+    && /(?:trade|incoming|resting|restingId|incomingId|实际撮合|撮合顺序|resting order|成交价|成交顺序)/iu
+      .test(text);
+}
+
 function hasAscendingBidPriceLevels(source: string): boolean {
-  const hasTypedefBidMap = /using\s+([A-Za-z_]\w*)\s*=\s*std\s*::\s*map\s*<\s*double\s*,(?![^;]*std\s*::\s*greater)[^;]+>\s*;[\s\S]{0,1000}\b\1\s+bids_/i
+  const hasTypedefBidMap = /using\s+([A-Za-z_]\w*)\s*=\s*std\s*::\s*map\s*<\s*double\s*,(?![^;]*std\s*::\s*greater)[^;]+>\s*;[\s\S]{0,1000}\b\1\s+bids_?\b/i
     .test(source);
-  const hasDirectBidMap = /\bstd\s*::\s*map\s*<\s*double\s*,[^;]+>\s+bids_/i.test(source);
+  const hasDirectBidMap = /\bstd\s*::\s*map\s*<\s*double\s*,(?![^;]*std\s*::\s*greater)[^;]+>\s+bids_?\b/i.test(source);
   return (hasTypedefBidMap || hasDirectBidMap)
-    && !/using\s+PriceLevels\s*=\s*std\s*::\s*map\s*<\s*double\s*,[^;]+,\s*std\s*::\s*greater|std\s*::\s*map\s*<\s*double\s*,[^;]+,\s*std\s*::\s*greater\s*<\s*double\s*>[^;]*>\s+bids_/i.test(source);
+    && !hasDescendingBidPriceLevels(source);
+}
+
+function hasDescendingBidPriceLevels(source: string): boolean {
+  return /using\s+([A-Za-z_]\w*)\s*=\s*std\s*::\s*map\s*<\s*double\s*,[^;]+,\s*std\s*::\s*greater[\s\S]{0,200};[\s\S]{0,1000}\b\1\s+bids_?\b/i
+    .test(source)
+    || /\bstd\s*::\s*map\s*<\s*double\s*,[^;]+,\s*std\s*::\s*greater\s*<\s*double\s*>[^;]*>\s+bids_?\b/i
+      .test(source);
+}
+
+function hasIncomingRestingTradeFields(source: string): boolean {
+  return /\bstruct\s+Trade\s*\{[^}]*\bincomingId\b[^}]*\brestingId\b[^}]*\}/i.test(source);
 }
 
 function findAscendingBidBeginSelectionLine(
@@ -423,7 +497,7 @@ function findAscendingBidBeginSelectionLine(
   const lines = stripCppComments(snapshot.content).split(/\r?\n/);
   for (let index = 0; index < lines.length; index += 1) {
     const windowText = lines.slice(index, Math.min(lines.length, index + 12)).join('\n');
-    const routedOpposingSide = /\b(?:auto|const\s+auto|LevelMap)\s*(?:[*&]\s*)?([A-Za-z_]\w*)\s*=\s*\(\s*\w+\s*(?:->|\.)\s*side\s*==\s*Side\s*::\s*Buy\s*\)\s*\?\s*&?\s*asks_\s*:\s*&?\s*bids_\s*;/i
+    const routedOpposingSide = /\b(?:auto|const\s+auto|LevelMap)\s*(?:[*&]\s*)?([A-Za-z_]\w*)\s*=\s*\(\s*\w+\s*(?:->|\.)\s*side\s*==\s*Side\s*::\s*Buy\s*\)\s*\?\s*&?(?:[A-Za-z_]\w*\s*\.\s*)?asks_?\s*:\s*&?(?:[A-Za-z_]\w*\s*\.\s*)?bids_?\s*;/i
       .exec(windowText);
     if (routedOpposingSide) {
       const iteratorPattern = new RegExp(`\\b${routedOpposingSide[1]}\\s*(?:\\.|->)\\s*begin\\s*\\(`, 'i');
@@ -431,14 +505,49 @@ function findAscendingBidBeginSelectionLine(
         return index + 1 + lineOffset(windowText, iteratorPattern);
       }
     }
-    if (/\bopponent_levels\s*=\s*\(\s*incoming\s*->\s*side\s*==\s*Side\s*::\s*Buy\s*\)\s*\?\s*asks_\s*:\s*bids_\s*;/i.test(windowText)
+    if (/\bopponent_levels\s*=\s*\(\s*incoming\s*->\s*side\s*==\s*Side\s*::\s*Buy\s*\)\s*\?\s*(?:[A-Za-z_]\w*\s*\.\s*)?asks_?\s*:\s*(?:[A-Za-z_]\w*\s*\.\s*)?bids_?\s*;/i.test(windowText)
       && /\b(?:const\s+)?auto\s*&?\s+it\s*=\s*opponent_levels\s*\.\s*begin\s*\(\s*\)\s*;/i.test(windowText)) {
       return index + 1 + lineOffset(windowText, /opponent_levels\s*\.\s*begin\s*\(/i);
     }
     if (/\b(?:matchSell|submit|match)\b/.test(windowText)
-      && /\bbids_\s*\.\s*begin\s*\(\s*\)/i.test(windowText)
-      && !/\bbids_\s*\.\s*rbegin\s*\(\s*\)|std\s*::\s*prev\s*\(\s*bids_\s*\.\s*end\s*\(\s*\)\s*\)/i.test(windowText)) {
-      return index + 1 + lineOffset(windowText, /bids_\s*\.\s*begin\s*\(/i);
+      && /\b(?:[A-Za-z_]\w*\s*\.\s*)?bids_?\s*\.\s*begin\s*\(\s*\)/i.test(windowText)
+      && !/\b(?:[A-Za-z_]\w*\s*\.\s*)?bids_?\s*\.\s*rbegin\s*\(\s*\)|std\s*::\s*prev\s*\(\s*(?:[A-Za-z_]\w*\s*\.\s*)?bids_?\s*\.\s*end\s*\(\s*\)\s*\)/i.test(windowText)) {
+      return index + 1 + lineOffset(windowText, /\b(?:[A-Za-z_]\w*\s*\.\s*)?bids_?\s*\.\s*begin\s*\(/i);
+    }
+  }
+  return undefined;
+}
+
+function findDescendingBidReverseBestBidLine(
+  snapshot: RequirementReviewSourceSnapshot,
+): number | undefined {
+  const lines = stripCppComments(snapshot.content).split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!/\bbestBid\s*\(/.test(lines[index])) continue;
+    const bodyWindow = lines.slice(index, Math.min(lines.length, index + 32)).join('\n');
+    const reverseBidPattern = /\b(?:[A-Za-z_]\w*\s*\.\s*)?bids_?\s*\.\s*rbegin\s*\(/i;
+    if (reverseBidPattern.test(bodyWindow)) {
+      return index + 1 + lineOffset(bodyWindow, reverseBidPattern);
+    }
+  }
+  return undefined;
+}
+
+function findReversedTradeIdentityProjectionLine(
+  snapshot: RequirementReviewSourceSnapshot,
+): number | undefined {
+  const lines = stripCppComments(snapshot.content).split(/\r?\n/);
+  const reversedSellTrade = /\b(?:trades\s*\.\s*(?:push_back|emplace_back)\s*\(\s*)?(?:Trade\s*)?\{\s*(?:buyId|[A-Za-z_]\w*Buy[A-Za-z_]*|buy[A-Za-z_]*Id)\s*,\s*(?:order|incoming)\s*\.\s*id\b/i;
+  const reversedBuyTrade = /\b(?:trades\s*\.\s*(?:push_back|emplace_back)\s*\(\s*)?(?:Trade\s*)?\{\s*(?:sellId|[A-Za-z_]\w*Sell[A-Za-z_]*|sell[A-Za-z_]*Id)\s*,\s*(?:order|incoming)\s*\.\s*id\b/i;
+  for (let index = 0; index < lines.length; index += 1) {
+    const context = lines.slice(Math.max(0, index - 48), Math.min(lines.length, index + 4)).join('\n');
+    if (reversedSellTrade.test(lines[index])
+      && /(?:Side\s*::\s*Sell|else\s*\{|卖单|匹配买盘)/iu.test(context)) {
+      return index + 1;
+    }
+    if (reversedBuyTrade.test(lines[index])
+      && /(?:Side\s*::\s*Buy|买单|匹配卖盘)/iu.test(context)) {
+      return index + 1;
     }
   }
   return undefined;

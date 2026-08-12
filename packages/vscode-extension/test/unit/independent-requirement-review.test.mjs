@@ -375,6 +375,66 @@ test('strict review parser does not flag descending bid maps for price priority'
   assert.equal(decision.status, 'passed');
 });
 
+test('strict review parser cross-checks state-owned trade identity and bestBid direction', () => {
+  const header = snapshot('include/order_book.hpp', [
+    '#include <cstdint>',
+    '#include <optional>',
+    '#include <string>',
+    '#include <vector>',
+    'namespace devseek_case {',
+    'enum class Side { Buy, Sell };',
+    'struct Order { std::string id; Side side; double price; std::int64_t quantity; };',
+    'struct Trade { std::string incomingId; std::string restingId; double price; std::int64_t quantity; };',
+    'class OrderBook {',
+    ' public:',
+    '  std::vector<Trade> submit(Order order);',
+    '  std::optional<double> bestBid() const;',
+    '};',
+    '}',
+  ].join('\n'));
+  const source = snapshot('src/order_book.cpp', [
+    '#include "order_book.hpp"',
+    '#include <map>',
+    '#include <queue>',
+    'namespace devseek_case {',
+    'struct State {',
+    '  std::map<double, std::queue<std::string>, std::greater<double>> bids;',
+    '};',
+    'static State& getState(const OrderBook* book);',
+    'std::vector<Trade> OrderBook::submit(Order order) {',
+    '  auto& state = getState(this);',
+    '  std::vector<Trade> trades;',
+    '  if (order.side == Side::Buy) {',
+    '    return trades;',
+    '  } else {',
+    '    auto bidIt = state.bids.begin();',
+    '    std::string buyId = bidIt->second.front();',
+    '    trades.push_back(Trade{buyId, order.id, bidIt->first, 1});',
+    '  }',
+    '  return trades;',
+    '}',
+    'std::optional<double> OrderBook::bestBid() const {',
+    '  auto& state = getState(this);',
+    '  auto it = state.bids.rbegin();',
+    '  return it->first;',
+    '}',
+    '}',
+  ].join('\n'));
+  const prompt = '卖单与最高买价撮合；返回的 Trade 按实际撮合顺序，quantity 为本次成交量；bestBid 无订单时 nullopt。';
+  const decision = parseIndependentReviewResponse(response({
+    requirement_checks: [requirementCheck('R1', prompt)],
+    findings: [],
+    overall_correctness: 'patch is correct',
+    overall_explanation: 'The final source satisfies all order-book requirements.',
+    overall_confidence_score: 0.95,
+  }), [header, source], prompt);
+
+  assert.equal(decision.status, 'failed');
+  const titles = decision.findings.map(item => item.title).join('\n');
+  assert.match(titles, /Preserve Trade incoming\/resting identity fields/);
+  assert.match(titles, /Report bestBid from the highest bid level/);
+});
+
 test('strict review parser trusts throwing validators and reports later local order-book findings', () => {
   const header = snapshot('include/order_book.hpp', [
     '#include <deque>',
