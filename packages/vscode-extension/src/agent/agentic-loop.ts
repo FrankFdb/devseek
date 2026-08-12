@@ -47,6 +47,7 @@ import {
   parseFakeToolCalls,
   stripToolCallBlocks,
 } from './fake-tool-parser';
+import { recoverRequirementReviewNoToolCompletion } from './provider-authored-transcript-recovery';
 import { isLiteralToolProtocolPrompt } from './agent-run-display';
 import {
   agentAnnouncementKey,
@@ -633,7 +634,7 @@ export async function runAgenticLoop(
         continue;
       }
       const stripped = stripToolCallBlocks(text).trim();
-      const reviewRecovery = requirementReview.recoverNoToolCompletion(noToolRounds + 1);
+      const reviewRecovery = recoverRequirementReviewNoToolCompletion(requirementReview, noToolRounds + 1, text);
       if (!callbacks.signal?.aborted && reviewRecovery) {
         noToolRounds++;
         if (reviewRecovery.kind === 'stop') {
@@ -641,9 +642,9 @@ export async function runAgenticLoop(
           break;
         }
         await emitAgenticCorrectionStatus(
-          '正在复核最终源码与用户需求',
-          '公开测试已经通过，但最终源码尚未经过独立需求覆盖复核。DevSeek 正在要求模型重新读取变更后的实现，再逐条核对用户行为要求。',
-          '要求重新读取最终源码',
+          reviewRecovery.statusTitle,
+          reviewRecovery.statusDetail,
+          reviewRecovery.statusActivity,
         );
         appendUserFeedback(reviewRecovery.feedback);
         continue;

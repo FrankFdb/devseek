@@ -2588,11 +2588,32 @@ test('Architecture: validated source changes require fresh source review before 
   const reviewLedger = src('src/agent/requirement-review-ledger.ts');
   const providerReview = src('src/agent/provider-requirement-review.ts');
   const independentReview = src('src/agent/independent-requirement-review.ts');
+  const providerTranscriptRecovery = src('src/agent/provider-authored-transcript-recovery.ts');
 
   assertContains(
-    agenticLoop,
-    'requirementReview.recoverNoToolCompletion(noToolRounds + 1)',
+    providerTranscriptRecovery,
+    'requirementReview.recoverNoToolCompletion(consecutiveRound)',
     'no-tool completion must pass through the requirement review owner',
+  );
+  assertContains(
+    agenticLoop,
+    'recoverRequirementReviewNoToolCompletion(requirementReview, noToolRounds + 1, text)',
+    'agent loop must delegate no-tool requirement review recovery to the protocol recovery owner',
+  );
+  assertContains(
+    providerTranscriptRecovery,
+    'containsProviderAuthoredToolTranscript(providerText)',
+    'no-tool requirement review recovery must detect model-authored tool transcripts',
+  );
+  assertContains(
+    providerTranscriptRecovery,
+    'buildProviderAuthoredToolTranscriptRecovery(',
+    'no-tool requirement review recovery must steer protocol pollution back to real tool calls',
+  );
+  assertContains(
+    providerTranscriptRecovery,
+    'requirementReview.completionBlocker()',
+    'no-tool requirement review recovery must keep the current review blocker instead of restarting the task',
   );
   assert.match(
     src('src/agent/requirement-review-ledger.ts'),
@@ -2643,6 +2664,21 @@ test('Architecture: validated source changes require fresh source review before 
     independentReview,
     'Return one exact JSON object matching the schema',
     'semantic review must return a machine-checkable verdict',
+  );
+  assertContains(
+    providerTranscriptRecovery,
+    '[DevSeek 已执行工具请求摘要]',
+    'provider-authored transcript recovery must recognize DevSeek internal summary echoes',
+  );
+  assertContains(
+    providerTranscriptRecovery,
+    '[工具结果 Round',
+    'provider-authored transcript recovery must recognize DevSeek tool-result round echoes',
+  );
+  assertContains(
+    providerTranscriptRecovery,
+    '真实工具调用',
+    'provider-authored transcript recovery must force recovery through real tool calls',
   );
 });
 
