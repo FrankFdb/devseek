@@ -261,6 +261,30 @@ test('FakeToolParser: parses Markdown-bold Calling transcript with fenced JSON p
   assert.equal(stripToolCallBlocks(text), '我先核查一下当前代码状态。');
 });
 
+test('FakeToolParser: parses DeepSeek markdown Tool Call links with scalar path payloads', () => {
+  const pathValue = '/home/ff/work/devseek_netai/code/devseek-tests/cpp-user-matrix/cases/11-order-book/workspace/src/order_book.cpp';
+  const text = `我看到审查反馈指出 submit 的拒绝通道仍有问题。让我先读取当前源码确认实际状态，然后修复。[Tool Call: read_file](${pathValue})`;
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'read_file');
+  assert.deepEqual(tools[0].input, { path: pathValue });
+  assert.equal(findFirstToolCallStart(text), text.indexOf('[Tool Call: read_file]'));
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.equal(hasIncompleteFakeToolCallProtocol(text), false);
+  assert.equal(stripToolCallBlocks(text), '我看到审查反馈指出 submit 的拒绝通道仍有问题。让我先读取当前源码确认实际状态，然后修复。');
+});
+
+test('FakeToolParser: treats mutating markdown Tool Call links without content as incomplete protocol', () => {
+  const text = '我来修复源码。[Tool Call: write_file](src/order_book.cpp)';
+
+  assert.deepEqual(parseFakeToolCalls(text), []);
+  assert.equal(findFirstToolCallStart(text), text.indexOf('[Tool Call: write_file]'));
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.equal(hasIncompleteFakeToolCallProtocol(text), true);
+  assert.equal(stripToolCallBlocks(text), '我来修复源码。');
+});
+
 test('FakeToolParser: parses DeepSeek Tool/Arguments transcript format', () => {
   const text = [
     '让我先查看当前代码结构和已有实现。',

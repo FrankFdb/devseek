@@ -47,6 +47,15 @@ const CALLING_LABEL_PATTERN = [
   '[ \\t]*[:：]?',
   `[ \\t]*${CALLING_MARKDOWN_MARKER_PATTERN}[ \\t]*`,
 ].join('');
+const MARKDOWN_TOOL_LINK_SCALAR_NAMES = new Set([
+  'read_file',
+  'list_dir',
+  'file_search',
+  'search_file',
+  'grep_search',
+  'semantic_search',
+  'fetch_webpage',
+]);
 
 function makeCallingToolNamePattern(includeShellNames = false): string {
   const names = listAgentToolNames(true);
@@ -89,6 +98,18 @@ function makeCallingLineRegex(): RegExp {
 
 export function makeIncompleteCallingTailRegex(): RegExp {
   return new RegExp(`${CALLING_LABEL_PATTERN}(?:${makeCallingToolNamePattern(true)})?\\s*$`, 'i');
+}
+
+function makeMarkdownToolLinkRegex(flags = 'gi'): RegExp {
+  const names = listAgentToolNames(true)
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRegExp)
+    .join('|');
+  const mcpPattern = 'mcp__[A-Za-z0-9_]+';
+  return new RegExp(
+    `\\[\\s*(?:Tool[ \\t_-]*Call|工具调用|调用工具)\\s*[:：]\\s*\`?((?:${names ? `${names}|` : ''}${mcpPattern}))\`?\\s*\\]\\(\\s*([^\\)\\r\\n]+?)\\s*\\)`,
+    flags,
+  );
 }
 
 function makeToolArgumentsRegex(): RegExp {
@@ -1176,6 +1197,51 @@ function parseCallingToolCalls(text: string): FakeTool[] {
   return tools;
 }
 
+function parseMarkdownToolLinkCalls(text: string): FakeTool[] {
+  const tools: FakeTool[] = [];
+  const linkRe = makeMarkdownToolLinkRegex();
+  let match: RegExpExecArray | null;
+  while ((match = linkRe.exec(text)) !== null) {
+    const name = normalizeAgentToolName(match[1]);
+    if (!isRegisteredFakeToolName(name) || !MARKDOWN_TOOL_LINK_SCALAR_NAMES.has(name)) continue;
+    const scalarKey = primaryScalarInputKeyForTool(name);
+    if (!scalarKey) continue;
+    const value = normalizeMarkdownToolLinkTarget(match[2]);
+    if (!value) continue;
+    tools.push({
+      name,
+      input: normalizeToolInput(name, { [scalarKey]: value }),
+    });
+  }
+  return tools.map(normalizeFakeTool);
+}
+
+function normalizeMarkdownToolLinkTarget(rawValue: string): string {
+  let value = decodeXmlishText(rawValue || '').trim();
+  if (/^<[^<>]+>$/.test(value)) value = value.slice(1, -1).trim();
+  try {
+    return decodeURI(value);
+  } catch {
+    return value;
+  }
+}
+
+function findMarkdownToolLinkProtocolStart(text: string): number {
+  const linkRe = makeMarkdownToolLinkRegex();
+  let match: RegExpExecArray | null;
+  while ((match = linkRe.exec(text)) !== null) {
+    if (isRegisteredFakeToolName(match[1])) return match.index;
+  }
+  return -1;
+}
+
+function stripMarkdownToolLinkBlocks(text: string): string {
+  const linkRe = makeMarkdownToolLinkRegex();
+  return text.replace(linkRe, (full, name) => (
+    isRegisteredFakeToolName(name) ? '' : full
+  )).trimEnd();
+}
+
 function findCallingProtocolStart(text: string): number {
   const callRe = makeAnyCallingRegex();
   let cm: RegExpExecArray | null;
@@ -1615,6 +1681,12 @@ const MODEL_TOOL_PROTOCOL_DIALECTS: readonly ModelToolProtocolDialect<FakeTool>[
     parse: parseReactActionToolCalls,
     findStart: findNextReactActionStart,
     strip: stripReactActionBlocks,
+  },
+  {
+    name: 'markdown-tool-link',
+    parse: parseMarkdownToolLinkCalls,
+    findStart: findMarkdownToolLinkProtocolStart,
+    strip: stripMarkdownToolLinkBlocks,
   },
   {
     name: 'calling',
