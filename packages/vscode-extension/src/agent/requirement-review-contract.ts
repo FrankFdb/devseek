@@ -51,6 +51,9 @@ interface RawReviewResult {
   overall_correctness?: unknown;
   overall_explanation?: unknown;
   overall_confidence_score?: unknown;
+  requirements_coverage?: unknown;
+  conclusion?: unknown;
+  test_evidence?: { exit_code?: unknown; compiler_warnings?: unknown };
 }
 
 interface NormalizedRequirementCheck {
@@ -113,6 +116,11 @@ export function parseIndependentReviewResponse(
       { hostClearable: containsProviderAuthoredToolTranscript(response.text) },
     );
   }
+  const requirements = extractRequirementClauses(userPrompt);
+  if (requirements.length === 0) {
+    return indeterminateDecision('原始需求无法形成可追溯的审查清单。');
+  }
+  raw = normalizeReportStyleReviewResult(raw, requirements);
   if (raw.overall_correctness !== 'patch is correct'
     && raw.overall_correctness !== 'patch is incorrect') {
     return localSemanticFallbackDecision('隔离审查缺少有效的 overall_correctness。', snapshots, userPrompt);
@@ -124,10 +132,6 @@ export function parseIndependentReviewResponse(
     return localSemanticFallbackDecision('隔离审查缺少可信的总体解释或置信度。', snapshots, userPrompt);
   }
 
-  const requirements = extractRequirementClauses(userPrompt);
-  if (requirements.length === 0) {
-    return indeterminateDecision('原始需求无法形成可追溯的审查清单。');
-  }
   const checks = normalizeRequirementChecks(raw.requirement_checks, requirements);
   if (!checks) {
     const fallbackFindings = normalizeFindingsAgainstRequirements(raw.findings, snapshots, requirements);
@@ -241,6 +245,7 @@ function findLocalSemanticContradictions(
     }
     if (requiresPartialFillStateConsistency(check.requirement.quote)) {
       addFinding(findPartialFillStateConsistencyContract(check, snapshots));
+      addFinding(findSelfReferentialRemainingInitializationContract(check, snapshots));
     }
     if (requiresPricePriorityDirection(check.requirement.quote)) {
       addFinding(findPricePriorityDirectionContract(check, snapshots));
@@ -251,6 +256,102 @@ function findLocalSemanticContradictions(
     }
   }
   return findings;
+}
+
+function normalizeReportStyleReviewResult(
+  raw: RawReviewResult,
+  requirements: readonly RequirementClause[],
+): RawReviewResult {
+  if (raw.requirement_checks !== undefined || !Array.isArray(raw.requirements_coverage)) {
+    return raw;
+  }
+  const coverage = raw.requirements_coverage as unknown[];
+  if (coverage.length === 0) return raw;
+  const normalizedChecks = mapReportCoverageToInventory(coverage, requirements);
+  if (!normalizedChecks) return raw;
+  const allCovered = coverage.every(item => reportCoverageStatus(item) === 'satisfied');
+  const explanation = typeof raw.conclusion === 'string' && raw.conclusion.trim()
+    ? raw.conclusion.trim()
+    : 'Report-style independent review mapped every covered item to the requirement inventory.';
+  return {
+    ...raw,
+    requirement_checks: normalizedChecks,
+    findings: Array.isArray(raw.findings) ? raw.findings : [],
+    overall_correctness: allCovered ? 'patch is correct' : 'patch is incorrect',
+    overall_explanation: explanation,
+    overall_confidence_score: isConfidence(raw.overall_confidence_score)
+      ? raw.overall_confidence_score
+      : reportCoverageConfidence(raw, allCovered),
+  };
+}
+
+function mapReportCoverageToInventory(
+  coverage: readonly unknown[],
+  requirements: readonly RequirementClause[],
+): RawRequirementCheck[] | undefined {
+  if (requirements.length === 1) {
+    return [{
+      requirement_id: requirements[0].id,
+      requirement_quote: requirements[0].quote,
+      status: coverage.every(item => reportCoverageStatus(item) === 'satisfied') ? 'satisfied' : 'violated',
+      evidence: coverage.map(reportCoverageEvidence).filter(Boolean).join('\n'),
+    }];
+  }
+  if (coverage.length !== requirements.length) return undefined;
+  const checks: RawRequirementCheck[] = [];
+  for (let index = 0; index < requirements.length; index += 1) {
+    const item = coverage[index] as { requirement_id?: unknown; requirement_text?: unknown };
+    const requirement = requirements[index];
+    if (!item
+      || item.requirement_id !== requirement.id
+      || normalizeRequirementText(item.requirement_text) !== normalizeRequirementText(requirement.quote)) {
+      return undefined;
+    }
+    checks.push({
+      requirement_id: requirement.id,
+      requirement_quote: requirement.quote,
+      status: reportCoverageStatus(item),
+      evidence: reportCoverageEvidence(item),
+    });
+  }
+  return checks;
+}
+
+function reportCoverageStatus(item: unknown): 'satisfied' | 'violated' {
+  const status = normalizeRequirementText((item as { status?: unknown })?.status).toLowerCase();
+  return /^(covered|satisfied|pass|passed|ok|true)$/i.test(status) || /已覆盖|通过|满足/u.test(status)
+    ? 'satisfied'
+    : 'violated';
+}
+
+function reportCoverageEvidence(item: unknown): string {
+  const entry = item as {
+    evidence?: unknown;
+    requirement_text?: unknown;
+    requirement_id?: unknown;
+  };
+  const evidence = entry?.evidence;
+  const parts = [
+    typeof entry?.requirement_id === 'string' ? entry.requirement_id : '',
+    typeof entry?.requirement_text === 'string' ? entry.requirement_text : '',
+  ];
+  if (typeof evidence === 'string') {
+    parts.push(evidence);
+  } else if (evidence && typeof evidence === 'object') {
+    const record = evidence as Record<string, unknown>;
+    for (const key of ['file', 'line_range', 'behavior', 'rationale', 'code_snippet']) {
+      const value = record[key];
+      if (typeof value === 'string') parts.push(value);
+    }
+  }
+  return parts.map(value => value.trim()).filter(Boolean).join(' ');
+}
+
+function reportCoverageConfidence(raw: RawReviewResult, allCovered: boolean): number {
+  const exitCode = raw.test_evidence?.exit_code;
+  const warnings = raw.test_evidence?.compiler_warnings;
+  if (allCovered && exitCode === 0 && (warnings === 0 || warnings === '0')) return 0.9;
+  return allCovered ? 0.82 : 0.85;
 }
 
 function localSemanticFallbackDecision(
@@ -357,6 +458,30 @@ function findPartialFillStateConsistencyContract(
       confidence: 0.93,
       path: snapshot.path,
       line: staleLine,
+    };
+  }
+  return undefined;
+}
+
+function findSelfReferentialRemainingInitializationContract(
+  check: NormalizedRequirementCheck,
+  snapshots: readonly RequirementReviewSourceSnapshot[],
+): RequirementReviewFinding | undefined {
+  for (const snapshot of snapshots) {
+    if (!/\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)$/i.test(snapshot.path)) continue;
+    const line = findSelfReferentialRemainingInitializationLine(snapshot);
+    if (!line) continue;
+    return {
+      requirementId: check.requirement.id,
+      requirement: check.requirement.quote,
+      title: 'Initialize remaining quantity from the incoming order',
+      observedBehavior: 'A local order node aggregate initializer reads the same node variable while that variable is still being initialized.',
+      expectedBehavior: 'The active remaining quantity must be initialized from the validated incoming order quantity before the move, or from the constructed stored order after initialization.',
+      counterexample: 'Submit a valid unmatched buy with quantity 5. If remaining_qty is initialized from node.order.quantity while node is uninitialized, the order can enter matching/book state with an indeterminate or zero remaining quantity instead of 5.',
+      priority: 1,
+      confidence: 0.92,
+      path: snapshot.path,
+      line,
     };
   }
   return undefined;
@@ -652,6 +777,17 @@ function findPartialFillAdvanceWithoutIndexSyncLine(
       && /\btrade/i.test(context)) {
       return index + 1;
     }
+  }
+  return undefined;
+}
+
+function findSelfReferentialRemainingInitializationLine(
+  snapshot: RequirementReviewSourceSnapshot,
+): number | undefined {
+  const lines = stripCppComments(snapshot.content).split(/\r?\n/);
+  const selfInitPattern = /\b(?:OrderNode|OrderEntry|OrderRecord|OrderState|Entry|Node)\s+([A-Za-z_]\w*)\s*(?:=)?\s*\{[^;{}]*\b\1\s*\.\s*(?:order\s*\.\s*)?(?:quantity|qty|remaining_qty|remaining)\b[^;{}]*\}\s*;/i;
+  for (let index = 0; index < lines.length; index += 1) {
+    if (selfInitPattern.test(lines[index])) return index + 1;
   }
   return undefined;
 }

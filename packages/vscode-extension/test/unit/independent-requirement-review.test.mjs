@@ -539,6 +539,100 @@ test('strict review parser falls back to local source checks for non-json review
   assert.match(decision.findings[0].title, /Expose invalid submit rejection/);
 });
 
+test('strict review parser normalizes fenced report-style coverage JSON', () => {
+  const source = snapshot('src/cache.cpp', 'int value = 1;\n');
+  const prompt = 'Keep value initialized.';
+  const body = {
+    reviewer: 'devseek-independent-review',
+    requirements_coverage: [{
+      requirement_id: 'R1',
+      requirement_text: prompt,
+      status: 'covered',
+      evidence: {
+        file: 'src/cache.cpp',
+        line_range: '1-1',
+        behavior: 'value is initialized before use',
+      },
+    }],
+    test_evidence: { exit_code: 0, compiler_warnings: 0 },
+    conclusion: 'All requirements are covered by the implementation.',
+  };
+
+  const decision = parseIndependentReviewResponse({
+    text: `\`\`\`json\n${JSON.stringify(body, null, 2)}\n\`\`\``,
+    toolCount: 0,
+  }, [source], prompt);
+
+  assert.equal(decision.status, 'passed');
+});
+
+test('strict review parser rejects report-style coverage when final source self-initializes remaining quantity', () => {
+  const header = snapshot('include/order_book.hpp', [
+    '#include <cstdint>',
+    '#include <string>',
+    '#include <unordered_map>',
+    '#include <vector>',
+    'namespace devseek_case {',
+    'enum class Side { Buy, Sell };',
+    'struct Order { std::string id; Side side; double price; std::int64_t quantity; };',
+    'struct Trade { std::string incomingId; std::string restingId; double price; std::int64_t quantity; };',
+    'class OrderBook {',
+    '  struct OrderNode { Order order; std::int64_t remaining_qty = 0; };',
+    '  std::unordered_map<std::string, OrderNode> orders_;',
+    '};',
+    '}',
+  ].join('\n'));
+  const source = snapshot('src/order_book.cpp', [
+    '#include "order_book.hpp"',
+    'namespace devseek_case {',
+    'std::vector<Trade> OrderBook::submit(Order order) {',
+    '  OrderNode node{std::move(order), node.order.quantity};',
+    '  orders_[node.order.id] = std::move(node);',
+    '  return {};',
+    '}',
+    '}',
+  ].join('\n'));
+  const prompt = '支持部分成交；未成交余量进入订单簿；remaining 对未知或已完成/取消订单返回 0。';
+  const body = {
+    reviewer: 'devseek-independent-review',
+    requirements_coverage: [
+      {
+        requirement_id: 'R1',
+        requirement_text: '支持部分成交',
+        status: 'covered',
+        evidence: {
+          file: 'src/order_book.cpp',
+          line_range: '3-6',
+          behavior: 'partial fill state is tracked with remaining_qty',
+        },
+      },
+      {
+        requirement_id: 'R2',
+        requirement_text: '未成交余量进入订单簿',
+        status: 'covered',
+        evidence: {
+          file: 'src/order_book.cpp',
+          line_range: '4-5',
+          behavior: 'unmatched remaining quantity enters the book',
+        },
+      },
+    ],
+    test_evidence: { exit_code: 0, compiler_warnings: 0 },
+    conclusion: 'All requirements are covered.',
+  };
+
+  const decision = parseIndependentReviewResponse({
+    text: `\`\`\`\n${JSON.stringify(body, null, 2)}\n\`\`\``,
+    toolCount: 0,
+  }, [header, source], prompt);
+
+  assert.equal(decision.status, 'failed');
+  assert.match(decision.explanation, /源码执行路径不一致/);
+  assert.match(decision.findings[0].title, /Initialize remaining quantity/);
+  assert.equal(decision.findings[0].path, 'src/order_book.cpp');
+  assert.equal(decision.findings[0].line, 4);
+});
+
 test('strict review parser requires concrete traces for ordering requirements marked satisfied', () => {
   const source = snapshot('src/order_book.cpp', 'std::map<double, Order> bids;\nmatch(best_bid);\n');
   const prompt = 'Follow price priority and same-price FIFO order.';
