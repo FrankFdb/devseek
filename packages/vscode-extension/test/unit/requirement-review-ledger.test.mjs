@@ -218,6 +218,60 @@ test('indeterminate independent review retries through final-source evidence ins
   assert.match(ledger.completionBlocker(), /独立需求审查证据不足：隔离审查输出不是严格 JSON/);
 });
 
+test('new failing source cohort pauses stale requirement review until validation passes again', () => {
+  const ledger = new RequirementReviewLedger();
+  const firstWrite = sourceWrite('src/order_book.cpp');
+  ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: passedGate,
+    writtenFiles: [firstWrite],
+    roundReadFiles: [],
+  });
+  ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: undefined,
+    writtenFiles: [firstWrite],
+    roundReadFiles: ['src/order_book.cpp'],
+  });
+  ledger.takeIndependentReviewCandidate();
+  ledger.settleIndependentReview({
+    status: 'indeterminate',
+    explanation: '隔离审查输出不是严格 JSON。',
+    findings: [],
+  });
+
+  const badFragmentWrite = sourceWrite('src/order_book.cpp');
+  const pause = ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: { status: 'fail', summary: 'QualityGate 未通过：自动验证失败（exitCode=2）。' },
+    writtenFiles: [firstWrite, badFragmentWrite],
+    roundReadFiles: ['src/order_book.cpp'],
+  });
+  assert.match(pause, /暂停独立需求审查/);
+  assert.match(pause, /尚未通过自动验证/);
+  assert.match(pause, /不要继续只读需求审查或反复 read_file 同一坏源码/);
+  assert.match(pause, /expected unqualified-id/);
+  assert.equal(ledger.takeIndependentReviewCandidate(), undefined);
+  assert.equal(ledger.beforeNoToolCompletion(), undefined);
+
+  const readOnlyRetry = ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: undefined,
+    writtenFiles: [firstWrite, badFragmentWrite],
+    roundReadFiles: ['src/order_book.cpp'],
+  });
+  assert.match(readOnlyRetry, /尚未取得通过的自动验证证据/);
+  assert.doesNotMatch(readOnlyRetry, /【系统反馈：重新触发独立需求审查】/);
+
+  const repairedWrite = sourceWrite('src/order_book.cpp');
+  assert.match(ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: passedGate,
+    writtenFiles: [firstWrite, badFragmentWrite, repairedWrite],
+    roundReadFiles: [],
+  }), /完成前需求覆盖复核/);
+});
+
 test('pending review escalates repeated no-tool completion attempts and then stops', () => {
   const ledger = new RequirementReviewLedger();
   ledger.request({
@@ -243,14 +297,14 @@ test('pending review escalates repeated no-tool completion attempts and then sto
   });
 });
 
-test('requirement review ignores unverified, non-source, and non-code work', () => {
+test('requirement review pauses unverified source work and ignores non-source/non-code work', () => {
   const ledger = new RequirementReviewLedger();
-  assert.equal(ledger.request({
+  assert.match(ledger.request({
     sourceChangeRequested: true,
     qualityGate: { status: 'fail', summary: 'tests failed' },
     writtenFiles: [sourceWrite('src/cache.cpp')],
     roundReadFiles: [],
-  }), undefined);
+  }), /暂停独立需求审查/);
   assert.equal(ledger.request({
     sourceChangeRequested: false,
     qualityGate: passedGate,

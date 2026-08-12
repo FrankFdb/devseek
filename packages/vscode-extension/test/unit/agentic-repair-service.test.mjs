@@ -84,6 +84,43 @@ test('AgenticRepairService: repair prompt is evidence-first and forbids OK-only 
   assert.match(prompt, /生命周期\/移动后使用/);
 });
 
+test('AgenticRepairService: structural C++ compile failures demand complete-source recovery', () => {
+  const service = new AgenticRepairService(applyResult({
+    changedPaths: ['code/order_book/src/order_book.cpp'],
+    validation: validation({
+      output: 'src/order_book.cpp:1:1: error: expected unqualified-id before \'if\'',
+    }),
+    review: {
+      files: {
+        total: 1,
+        creates: 0,
+        overwrites: 1,
+        patches: 0,
+        changedPaths: ['code/order_book/src/order_book.cpp'],
+      },
+      validation: {
+        failureFiles: ['code/order_book/src/order_book.cpp'],
+      },
+      unfinishedItems: [],
+    },
+  }));
+  const prompt = service.buildRepairPrompt({
+    originalPrompt: '修复订单簿实现',
+    changedPaths: ['code/order_book/src/order_book.cpp'],
+    validation: validation({
+      output: 'src/order_book.cpp:1:1: error: expected unqualified-id before \'if\'',
+    }),
+    round: 1,
+    failureFiles: ['code/order_book/src/order_book.cpp'],
+  });
+
+  assert.match(prompt, /结构性编译失败恢复要求/);
+  assert.match(prompt, /完整翻译单元被函数体片段覆盖/);
+  assert.match(prompt, /不要进入独立需求审查/);
+  assert.match(prompt, /replace_in_file 精确替换函数内部逻辑/);
+  assert.match(prompt, /小 case/);
+});
+
 test('AgenticRepairService: repeated unchanged failures escalate once then stop', () => {
   const service = new AgenticRepairService(applyResult());
   const first = service.evaluateAppliedRepair(applyResult(), true);

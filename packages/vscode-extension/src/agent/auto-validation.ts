@@ -48,6 +48,7 @@ import {
 import { validationResultToTerminalEvidence } from './validation-terminal-evidence';
 import { workspaceRelativeVerificationPaths } from './verification-scope';
 import { CanonicalValidationCommandRunner } from './canonical-validation-command-runner';
+import { buildStructuralCompileFailureRecoveryProtocol } from '../app/structural-compile-failure';
 
 export interface AgentAutoValidationCallbacks {
   onAgentStatus: (status: AgentStatusEvent) => void | Promise<void>;
@@ -158,8 +159,15 @@ async function emitAutoValidationQualityGateStatus(
   });
 }
 
-function formatAutoValidationFeedback(result: AutoValidationResult): string {
+function formatAutoValidationFeedback(
+  result: AutoValidationResult,
+  changedPaths: readonly string[] = [],
+): string {
   const verification = normalizeVerificationResult(result);
+  const structuralRecovery = result.ok ? '' : buildStructuralCompileFailureRecoveryProtocol({
+    output: result.output,
+    changedPaths,
+  });
   return [
     `[verification_result: ${verification.status}]`,
     `[auto_validation: ${result.command}]`,
@@ -170,6 +178,7 @@ function formatAutoValidationFeedback(result: AutoValidationResult): string {
     result.risks?.length ? `risks:\n${result.risks.map((risk) => `- ${risk}`).join('\n')}` : '',
     result.alternativeChecks?.length ? `alternativeChecks:\n${result.alternativeChecks.map((check) => `- ${check}`).join('\n')}` : '',
     result.ok ? '' : '自动验证命令未通过，不能把编译/运行/测试标记为完成。',
+    structuralRecovery,
     result.ok ? '' : failedValidationRepairProtocol(),
   ].filter(Boolean).join('\n');
 }
@@ -652,7 +661,7 @@ export async function runAgentAutoValidationForWrites(
       return settleAgentAutoValidation(settled, execution);
     }
     callbacks.onToolActivity?.('terminal', `自动验证: ${result.command}`);
-    const feedbackForAI = formatAutoValidationFeedback(result);
+    const feedbackForAI = formatAutoValidationFeedback(result, changedPaths);
     const repairBlockedReason = !result.ok && isExplicitContentWriteRequest(userPrompt)
       ? buildExactContentRepairBlockedReason(result)
       : undefined;

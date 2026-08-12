@@ -7,6 +7,7 @@ import {
   type DiagnosticPort,
   type RepairDecisionPort,
 } from '@devseek-netai/shared';
+import { buildStructuralCompileFailureRecoveryProtocol } from './structural-compile-failure';
 
 export type RepairValidationEvidence = NonNullable<ApplyWorkflowResult['validation']>;
 
@@ -169,6 +170,11 @@ export function buildRepairPrompt(input: BuildRepairPromptInput): string {
   const uniqueFailureFiles = [...new Set(input.failureFiles ?? [])];
   const failurePathText = uniqueFailureFiles.length > 0 ? uniqueFailureFiles.join('\n') : '（未从验证输出提取到明确文件）';
   const output = (input.validation.output || '').trim().slice(0, 6000);
+  const structuralRecovery = buildStructuralCompileFailureRecoveryProtocol({
+    output: input.validation.output,
+    changedPaths: input.changedPaths,
+    failureFiles: uniqueFailureFiles,
+  });
   return [
     '你是一个严格执行修复闭环的高级编程助手。',
     `这是第 ${input.round} 轮自动修复。上一次自动验证失败，请直接修复。`,
@@ -193,6 +199,7 @@ export function buildRepairPrompt(input: BuildRepairPromptInput): string {
     output || '（无输出）',
     '```',
     '',
+    ...(structuralRecovery ? [structuralRecovery, ''] : []),
     '修复闭环要求：',
     '1. 先重新读取当前失败涉及源码和测试入口；不要只依据上一轮回复、旧日志或猜测继续改。',
     '2. 从首个失败断言/错误行构造最小失败路径：输入状态、期望结果、当前源码执行分支、会被改变的状态容器或字段。',

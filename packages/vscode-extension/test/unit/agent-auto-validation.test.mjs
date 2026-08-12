@@ -249,6 +249,42 @@ test('Agent auto validation preserves a real failing process and blocks completi
   }
 });
 
+test('Agent auto validation gives structural C++ compile failures a recovery protocol', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-cpp-structural-'));
+  try {
+    seed(root, 'src/order_book.cpp', [
+      'if (order.id.empty()) {',
+      '  return trades;',
+      '}',
+    ].join('\n'));
+    const context = verificationContext(root, ['src/order_book.cpp'], [], [], async invocation => ({
+      ran: true,
+      ok: false,
+      command: invocation.command,
+      exitCode: 2,
+      stdout: '',
+      stderr: 'src/order_book.cpp:1:1: error: expected unqualified-id before \'if\'',
+      output: 'src/order_book.cpp:1:1: error: expected unqualified-id before \'if\'',
+      cwd: invocation.cwd,
+    }));
+
+    const result = await runAgentAutoValidationForWrites(
+      [written(root, 'src/order_book.cpp')],
+      root,
+      '修复订单簿实现',
+      context.callbacks,
+    );
+
+    assert.equal(result.qualityGate.status, 'fail');
+    assert.match(result.feedbackForAI, /结构性编译失败恢复要求/);
+    assert.match(result.feedbackForAI, /不要进入独立需求审查/);
+    assert.match(result.feedbackForAI, /replace_in_file/);
+    assert.match(result.feedbackForAI, /小 case/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('Agent auto validation leaves unknown binary targets unverified', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-unavailable-'));
   try {

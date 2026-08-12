@@ -54,11 +54,14 @@ export class RequirementReviewLedger {
     if (!input.sourceChangeRequested) return undefined;
     const sourceWrites = input.writtenFiles.filter(file => isCodeArtifactPath(file.path));
     if (sourceWrites.length > this.scheduledSourceWriteCount) {
-      if (input.qualityGate?.status !== 'pass') return undefined;
       const changedSourcePaths = Array.from(new Set(sourceWrites
         .slice(this.scheduledSourceWriteCount)
         .map(file => file.path)));
       const reviewSourcePaths = Array.from(new Set(sourceWrites.map(file => file.path)));
+      if (input.qualityGate?.status !== 'pass') {
+        this.pending = undefined;
+        return renderValidationPendingReviewPause(changedSourcePaths, reviewSourcePaths, input.qualityGate);
+      }
       this.scheduledSourceWriteCount = sourceWrites.length;
       this.pending = {
         changedSourcePaths,
@@ -229,6 +232,24 @@ function renderBlockingDecision(decision: RequirementReviewDecision): string {
     '修复时围绕该缺陷类别审查相邻状态流、边界值和同类入口；不要只改当前一行，也不要用公开测试通过替代反例验证。',
     '针对性验证通过后，再运行项目既有验证作为大 case 回归。',
     '必须根据上述独立结论修复生产源码并重新运行项目验证；不要修改受保护测试，也不要仅用解释否定审查结果。',
+  ].filter(Boolean).join('\n');
+}
+
+function renderValidationPendingReviewPause(
+  changedSourcePaths: readonly string[],
+  reviewSourcePaths: readonly string[],
+  qualityGate: AgenticHistoryQualityGate | undefined,
+): string {
+  const paths = changedSourcePaths.length > 0 ? changedSourcePaths : reviewSourcePaths;
+  return [
+    '【系统反馈：暂停独立需求审查】',
+    qualityGate
+      ? `最新源码变更尚未通过自动验证：${qualityGate.summary}`
+      : '最新源码变更尚未取得通过的自动验证证据。',
+    paths.length ? `涉及源码：${paths.join('、')}。` : '',
+    '当前优先级是恢复可编译/可运行状态，不要继续只读需求审查或反复 read_file 同一坏源码。',
+    '下一轮先针对首个编译/测试错误做最小修复验证；若 C/C++ 在第 1 行出现 expected unqualified-id、does not name a type、expected declaration 等结构错误，按片段覆盖处理：恢复完整翻译单元，或用 replace_in_file 精确修复函数内部片段。',
+    '通过项目验证后，DevSeek 会重新触发独立需求审查。',
   ].filter(Boolean).join('\n');
 }
 
