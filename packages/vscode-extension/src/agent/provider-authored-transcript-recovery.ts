@@ -1,6 +1,7 @@
 const DEVSEEK_EXECUTED_TOOL_SUMMARY_RE = /\[DevSeek 已执行工具请求摘要\]/u;
 const DEVSEEK_TOOL_RESULT_ROUND_RE = /\[工具结果 Round\s+\d+\]/u;
-const PROVIDER_AUTHORED_TOOL_RESULT_RE = /(?:工具返回|工具执行结果|run_terminal:|read_file:|list_dir:|grep_search:)/u;
+const PROVIDER_AUTHORED_TOOL_RESULT_RE =
+  /(?:工具返回|工具执行结果|run_terminal:|read_file:|list_dir:|grep_search:|\[(?:读文件|读取文件|read_file|write_file|replace_in_file|run_terminal|list_dir|grep_search)\s*[:：])/u;
 
 interface RequirementReviewRecoverySource {
   recoverNoToolCompletion(consecutiveRound: number):

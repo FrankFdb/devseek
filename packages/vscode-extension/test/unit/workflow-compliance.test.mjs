@@ -2677,6 +2677,11 @@ test('Architecture: validated source changes require fresh source review before 
   );
   assertContains(
     providerTranscriptRecovery,
+    '读文件',
+    'provider-authored transcript recovery must recognize localized DeepSeek file-read transcript echoes',
+  );
+  assertContains(
+    providerTranscriptRecovery,
     '真实工具调用',
     'provider-authored transcript recovery must force recovery through real tool calls',
   );
