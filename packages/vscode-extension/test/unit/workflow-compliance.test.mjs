@@ -2756,6 +2756,17 @@ test('Architecture: validated source changes require fresh source review before 
     'highest bid',
     'order-book semantic fallback must preserve price-priority direction evidence',
   );
+  const structuralCompileFailure = src('src/app/structural-compile-failure.ts');
+  assertContains(
+    structuralCompileFailure,
+    'CPP_STD_SYMBOL_HEADERS',
+    'C++ compile recovery must own standard-library missing-header hints',
+  );
+  assertContains(
+    structuralCompileFailure,
+    'C++ 标准库头文件缺失恢复要求',
+    'standard-library missing-header failures must get a targeted repair protocol',
+  );
 });
 
 test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempotency guards', () => {

@@ -4,7 +4,7 @@ Date: 2026-08-12
 
 ## Conclusion
 
-DevSeek cannot yet be declared to have reached the top-tier coding agent target. The live VS Code -> DevSeek -> free DeepSeek Web simulation improved from the attempt-28 malformed tool-protocol failure to attempt-29, then attempt-30 confirmed that the targeted review-repair window works. The remaining failure class narrowed again: DeepSeek Web can fall back to bare shorthand such as `read_file path=...`, and DevSeek must recover that safely instead of counting it as another no-tool loop.
+DevSeek cannot yet be declared to have reached the top-tier coding agent target. The live VS Code -> DevSeek -> free DeepSeek Web simulation improved from the attempt-28 malformed tool-protocol failure to attempt-29, attempt-30 confirmed that the targeted review-repair window works, and attempt-31 confirmed that bare `read_file path=...` recovery no longer causes the earlier three-round no-tool stop. The remaining failure class narrowed again: a tiny C++ compile diagnostic, `std::invalid_argument` without `<stdexcept>`, was not turned into a fast local repair before the 900-second harness timeout.
 
 ## User-Simulation Evidence
 
@@ -18,10 +18,12 @@ Scenario: `11-order-book`, price-time limit order book.
 | attempt-28 | FAIL | FAIL | FAIL | No code artifacts were written. Provider emitted malformed `<tool_call name="create_file">...` blocks with unescaped C++ include quotes; DevSeek did not classify them as damaged tool protocol, so the loop continued without real mutation. |
 | attempt-29 | PASS | FAIL | FAIL | Tool recovery worked and code was written, but final source review kept stale invalid-submit feedback and did not surface the later price-priority/used-id findings before the normal round budget ended. |
 | attempt-30 | PASS | FAIL | FAIL | Targeted repair window worked, but DeepSeek Web answered the repair prompt with bare `read_file path=... startLine=... endLine=...` lines; DevSeek treated them as prose and stopped after no-tool review recovery. |
+| attempt-31 | FAIL | FAIL | FAIL | Bare read-only shorthand recovery worked and the run advanced further, but the final repair loop timed out after a simple compile error: `std::invalid_argument` was used without `#include <stdexcept>`. |
 
 attempt-28 report: `code/devseek-tests/cpp-user-matrix/runs/11-order-book/attempt-28/report.md`
 attempt-29 report: `code/devseek-tests/cpp-user-matrix/runs/11-order-book/attempt-29/report.md`
 attempt-30 report: `code/devseek-tests/cpp-user-matrix/runs/11-order-book/attempt-30/report.md`
+attempt-31 report: `code/devseek-tests/cpp-user-matrix/runs/11-order-book/attempt-31/report.md`
 
 ## Fixes Made
 
@@ -54,6 +56,11 @@ attempt-30 report: `code/devseek-tests/cpp-user-matrix/runs/11-order-book/attemp
    - Only read-only bare commands are executable; bare `replace_in_file`, `write_file`, `run_terminal`, and other mutating/high-risk shorthand is classified as incomplete provider protocol and must be re-emitted through canonical tooling.
    - The order-book local semantic fallback now recognizes `entries_` as an active id index, so used-id permanence violations are not hidden by the attempt-30 PIMPL naming shape.
 
+7. Targeted C++ compile-diagnostic recovery:
+   - `structural-compile-failure.ts` now also detects common `std::X is not a member of std` diagnostics for known C++ standard-library symbols.
+   - For attempt-31's failure shape, DevSeek now tells the model that `std::invalid_argument` requires `#include <stdexcept>`, and instructs a minimal include-only repair before rerunning the project verifier.
+   - This keeps tiny compiler diagnostics inside the validation/recovery boundary instead of sending a long, generic repair prompt back to DeepSeek Web.
+
 ## Targeted Simulation Cases
 
 Small cases added before rerunning the large benchmark:
@@ -76,6 +83,8 @@ Small cases added before rerunning the large benchmark:
   `replace_in_file path=/tmp/project/src/order_book.cpp old_str=return new_str=throw` is not executed; it is treated as incomplete protocol recovery.
 - attempt-30 active-id naming:
   a PIMPL implementation using `entries_.find(order.id)` plus `entries_.erase(id)` is flagged as a used-id permanence defect unless a persistent used-id store exists.
+- attempt-31 missing standard header:
+  `src/order_book.cpp: error: 'invalid_argument' is not a member of 'std'` produces a targeted protocol requiring `#include <stdexcept>` and a minimal include repair, without misclassifying it as full translation-unit corruption.
 
 ## Verification
 
@@ -108,10 +117,11 @@ Current targeted-regression tests:
 node --test \
   packages/vscode-extension/test/unit/fake-tool-parser.test.mjs \
   packages/vscode-extension/test/unit/independent-requirement-review.test.mjs \
+  packages/vscode-extension/test/unit/agent-auto-validation.test.mjs \
   packages/vscode-extension/test/unit/workflow-compliance.test.mjs
 ```
 
-Result: PASS, 294 tests.
+Result: PASS, 305 tests.
 
 Full local verification:
 
@@ -131,7 +141,7 @@ Results:
 - shared tests: PASS, 321 tests
 - VS Code extension tests: PASS, 174 suites
 
-Release packaging and local VSIX install are performed after committing so the packaged build identifies the final source state. attempt-29 was run against build `1.0.0-debug.20260812.t161517.gffb63a5`; attempt-30 was run against build `1.0.0-debug.20260812.t163614.ga4c2d04`; the next live run must use the post-fix VSIX from this report.
+Release packaging and local VSIX install are performed after committing so the packaged build identifies the final source state. attempt-29 was run against build `1.0.0-debug.20260812.t161517.gffb63a5`; attempt-30 was run against build `1.0.0-debug.20260812.t163614.ga4c2d04`; attempt-31 was run against build `1.0.0-debug.20260812.t165015.g4f1b968`; the next live run must use the post-fix VSIX from this report.
 
 ## Claude Code / Codex Comparison
 
@@ -141,7 +151,7 @@ The implementation direction is to move DevSeek toward host-owned deterministic 
 - Codex repository rules and review workflows emphasize deterministic project instructions and review gates. DevSeek's workflow-compliance guards play the same role: they prevent recovery, review, and tool parsing behavior from drifting.
 - Claude Code permissions and hooks show a useful pattern: tool calls are evaluated by host/runtime gates before execution, and hooks can deny or force prompts without trusting the model's prose. DevSeek should continue treating DeepSeek Web output as untrusted serialization until the host parser converts it into an executable tool request.
 - Source-level Claude Code architecture analysis also supports this direction: the agent loop is simple; quality comes from deterministic surrounding systems such as permissions, context management, tool routing, recovery, and persistent state.
-- This iteration also used source-level and run-level evidence beyond public docs: DevSeek retained logs showed the model-authored tool-result transcript pollution, attempt-29 exposed false `std::map` ordering reasoning against the final source, and attempt-30 exposed bare DeepSeek Web tool shorthand that public documentation alone would not predict.
+- This iteration also used source-level and run-level evidence beyond public docs: DevSeek retained logs showed the model-authored tool-result transcript pollution, attempt-29 exposed false `std::map` ordering reasoning against the final source, attempt-30 exposed bare DeepSeek Web tool shorthand, and attempt-31 exposed a timeout after a minimal missing-include diagnostic that public documentation alone would not predict.
 
 Permission policy note:
 

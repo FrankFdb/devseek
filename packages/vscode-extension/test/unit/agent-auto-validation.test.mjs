@@ -285,6 +285,50 @@ test('Agent auto validation gives structural C++ compile failures a recovery pro
   }
 });
 
+test('Agent auto validation gives missing C++ standard headers a targeted recovery protocol', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-cpp-header-'));
+  try {
+    seed(root, 'src/order_book.cpp', [
+      '#include "order_book.hpp"',
+      '',
+      'std::vector<Trade> OrderBook::submit(Order order) {',
+      '  if (order.id.empty()) throw std::invalid_argument("id");',
+      '  return {};',
+      '}',
+    ].join('\n'));
+    const output = [
+      'src/order_book.cpp: In member function std::vector<Trade> OrderBook::submit(Order):',
+      'src/order_book.cpp:4:35: error: ‘invalid_argument’ is not a member of ‘std’',
+    ].join('\n');
+    const context = verificationContext(root, ['src/order_book.cpp'], [], [], async invocation => ({
+      ran: true,
+      ok: false,
+      command: invocation.command,
+      exitCode: 2,
+      stdout: '',
+      stderr: output,
+      output,
+      cwd: invocation.cwd,
+    }));
+
+    const result = await runAgentAutoValidationForWrites(
+      [written(root, 'src/order_book.cpp')],
+      root,
+      '修复订单簿实现',
+      context.callbacks,
+    );
+
+    assert.equal(result.qualityGate.status, 'fail');
+    assert.match(result.feedbackForAI, /C\+\+ 标准库头文件缺失恢复要求/);
+    assert.match(result.feedbackForAI, /std::invalid_argument/);
+    assert.match(result.feedbackForAI, /#include <stdexcept>/);
+    assert.match(result.feedbackForAI, /只做最小 include 修复/);
+    assert.doesNotMatch(result.feedbackForAI, /完整翻译单元被函数体片段覆盖/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('Agent auto validation leaves unknown binary targets unverified', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-unavailable-'));
   try {
