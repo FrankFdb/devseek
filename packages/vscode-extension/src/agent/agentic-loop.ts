@@ -126,6 +126,7 @@ import { buildAgenticSystemPrompt } from './agentic-system-prompt';
 import { createSemanticExecutionWriteAuthority } from './semantic-execution-context';
 import { createAgenticInitialPromptContext, type AgenticLoopExecutionContext } from './agentic-execution-context';
 import { classifyAgenticManualReviewEvidence } from './terminal-evidence-settlement';
+import { updateRequirementReviewRepairWindow } from './requirement-review-repair-window';
 const AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS = 3;
 
 // ----------------------------------------------------------------
@@ -404,10 +405,11 @@ export async function runAgenticLoop(
   }
 
   const maxAgenticRounds = callbacks.autopilot ? AGENTIC_ROUNDS_AUTOPILOT : AGENTIC_ROUNDS_NORMAL;
+  let requirementReviewRepairGraceRounds = 0;
   // Track terminal command signatures across rounds to detect and break stuck loops
   const seenTerminalCmdSignatures = new Map<string, { count: number; lastProgressEpoch: number }>();
   const seenContextToolSignatures = new Map<string, { count: number; lastProgressEpoch: number }>();
-  while (roundCount < maxAgenticRounds) {
+  while (roundCount < maxAgenticRounds + requirementReviewRepairGraceRounds) {
     if (callbacks.signal?.aborted) break;
     roundCount++;
 
@@ -990,6 +992,12 @@ export async function runAgenticLoop(
         hostFinalSourceEvidenceReady: normalizedAutoValidation.qualityGate?.status === 'pass',
       });
       if (reviewFeedback) {
+        noToolRounds = 0;
+        const repairWindow = updateRequirementReviewRepairWindow(requirementReviewRepairGraceRounds, reviewFeedback);
+        requirementReviewRepairGraceRounds = repairWindow.graceRounds;
+        if (repairWindow.failureStatus) {
+          await emitAgenticCorrectionStatus(...repairWindow.failureStatus);
+        }
         loopWarnings.push(reviewFeedback);
       } else {
         if (loopRes.completeSummary !== undefined) completeSummary = loopRes.completeSummary ?? '';

@@ -134,12 +134,12 @@ export function parseIndependentReviewResponse(
     }
     return localSemanticFallbackDecision('隔离审查未逐条覆盖需求清单，或需求引用不是原文。', snapshots, userPrompt);
   }
-  const localContradiction = findLocalSemanticContradiction(checks, snapshots);
-  if (localContradiction) {
+  const localContradictions = findLocalSemanticContradictions(checks, snapshots);
+  if (localContradictions.length > 0) {
     return {
       status: 'failed',
       explanation: '本地最终源码合约发现隔离审查结论与源码执行路径不一致。',
-      findings: [localContradiction],
+      findings: localContradictions,
     };
   }
 
@@ -212,30 +212,35 @@ function normalizeFindings(
   return findings;
 }
 
-function findLocalSemanticContradiction(
+function findLocalSemanticContradictions(
   checks: ReadonlyMap<string, NormalizedRequirementCheck>,
   snapshots: readonly RequirementReviewSourceSnapshot[],
-): RequirementReviewFinding | undefined {
+): RequirementReviewFinding[] {
+  const findings: RequirementReviewFinding[] = [];
+  const seen = new Set<string>();
+  const addFinding = (finding: RequirementReviewFinding | undefined): void => {
+    if (!finding) return;
+    const key = `${finding.requirementId}\0${finding.title}\0${finding.path}\0${finding.line}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    findings.push(finding);
+  };
   for (const check of checks.values()) {
     if (check.status !== 'satisfied') continue;
     if (requiresFailurePathEvidence(check.requirement.quote)) {
-      const rejectionFinding = findAmbiguousRejectionContract(check, snapshots);
-      if (rejectionFinding) return rejectionFinding;
+      addFinding(findAmbiguousRejectionContract(check, snapshots));
     }
     if (requiresUsedIdentityPermanence(check.requirement.quote)) {
-      const usedIdFinding = findUsedIdentityPermanenceContract(check, snapshots);
-      if (usedIdFinding) return usedIdFinding;
+      addFinding(findUsedIdentityPermanenceContract(check, snapshots));
     }
     if (requiresPartialFillStateConsistency(check.requirement.quote)) {
-      const partialFillFinding = findPartialFillStateConsistencyContract(check, snapshots);
-      if (partialFillFinding) return partialFillFinding;
+      addFinding(findPartialFillStateConsistencyContract(check, snapshots));
     }
     if (requiresPricePriorityDirection(check.requirement.quote)) {
-      const pricePriorityFinding = findPricePriorityDirectionContract(check, snapshots);
-      if (pricePriorityFinding) return pricePriorityFinding;
+      addFinding(findPricePriorityDirectionContract(check, snapshots));
     }
   }
-  return undefined;
+  return findings;
 }
 
 function localSemanticFallbackDecision(
@@ -245,15 +250,15 @@ function localSemanticFallbackDecision(
 ): RequirementReviewDecision {
   const requirements = extractRequirementClauses(userPrompt);
   if (requirements.length === 0) return indeterminateDecision(explanation);
-  const localContradiction = findLocalSemanticContradiction(
+  const localContradictions = findLocalSemanticContradictions(
     satisfiedRequirementChecksFromInventory(requirements),
     snapshots,
   );
-  if (!localContradiction) return indeterminateDecision(explanation);
+  if (localContradictions.length === 0) return indeterminateDecision(explanation);
   return {
     status: 'failed',
     explanation: `${explanation}；本地最终源码合约仍发现可执行反例。`,
-    findings: [localContradiction],
+    findings: localContradictions,
   };
 }
 
@@ -266,7 +271,10 @@ function findAmbiguousRejectionContract(
     const source = stripCppComments(snapshot.content);
     const submitBody = findCppVectorSubmitBody(source);
     if (!submitBody) continue;
-    if (hasDistinctCppRejectionChannel(submitBody)) continue;
+    if (hasDistinctCppRejectionChannel(submitBody)
+      || submitCallsDistinctRejectionHelper(submitBody, source)) {
+      continue;
+    }
     const ambiguousLine = findFirstLine(snapshot, /return\s+(?:trades|\{\})\s*;/);
     if (!ambiguousLine) continue;
     if (!/(?:empty|duplicate|already[- ]used|non[- ]finite|nan|isfinite|isnan|isinf|quantity|id|price|valid|hasOrder|find|<=\s*0|空|重复|已使用|非有限|数量|价格|无效|非法)/iu
@@ -369,6 +377,21 @@ function hasDistinctCppRejectionChannel(source: string): boolean {
   return /\bthrow\b|\b(?:std::|tl::)?expected\s*</.test(stripCppComments(source));
 }
 
+function submitCallsDistinctRejectionHelper(submitBody: string, source: string): boolean {
+  const helperCalls = [...stripCppComments(submitBody).matchAll(/\b([A-Za-z_]\w*)\s*\([^;{}]*\)\s*;/g)];
+  for (const match of helperCalls) {
+    const helperName = match[1];
+    if (!/(?:valid|validate|check|ensure|require|guard|reject)/i.test(helperName)) continue;
+    const helperBody = findCppNamedFunctionBody(source, helperName);
+    if (!helperBody || !hasDistinctCppRejectionChannel(helperBody)) continue;
+    if (/(?:empty|duplicate|already[-_ ]?used|finite|price|quantity|qty|id|order|valid|空|重复|已使用|非有限|价格|数量)/iu
+      .test(helperBody)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function requiresUsedIdentityPermanence(quote: string): boolean {
   return /(?:already[- ]used|used id|ever[- ]used|previously used|已使用|用过|曾用|历史.*id)/iu
     .test(normalizeRequirementText(quote));
@@ -387,7 +410,7 @@ function requiresPricePriorityDirection(quote: string): boolean {
 }
 
 function hasAscendingBidPriceLevels(source: string): boolean {
-  const hasTypedefBidMap = /using\s+PriceLevels\s*=\s*std\s*::\s*map\s*<\s*double\s*,\s*[^,;>]+>\s*;[\s\S]{0,1000}\bPriceLevels\s+bids_/i
+  const hasTypedefBidMap = /using\s+([A-Za-z_]\w*)\s*=\s*std\s*::\s*map\s*<\s*double\s*,(?![^;]*std\s*::\s*greater)[^;]+>\s*;[\s\S]{0,1000}\b\1\s+bids_/i
     .test(source);
   const hasDirectBidMap = /\bstd\s*::\s*map\s*<\s*double\s*,[^;]+>\s+bids_/i.test(source);
   return (hasTypedefBidMap || hasDirectBidMap)
@@ -400,6 +423,14 @@ function findAscendingBidBeginSelectionLine(
   const lines = stripCppComments(snapshot.content).split(/\r?\n/);
   for (let index = 0; index < lines.length; index += 1) {
     const windowText = lines.slice(index, Math.min(lines.length, index + 12)).join('\n');
+    const routedOpposingSide = /\b(?:auto|const\s+auto|LevelMap)\s*(?:[*&]\s*)?([A-Za-z_]\w*)\s*=\s*\(\s*\w+\s*(?:->|\.)\s*side\s*==\s*Side\s*::\s*Buy\s*\)\s*\?\s*&?\s*asks_\s*:\s*&?\s*bids_\s*;/i
+      .exec(windowText);
+    if (routedOpposingSide) {
+      const iteratorPattern = new RegExp(`\\b${routedOpposingSide[1]}\\s*(?:\\.|->)\\s*begin\\s*\\(`, 'i');
+      if (iteratorPattern.test(windowText)) {
+        return index + 1 + lineOffset(windowText, iteratorPattern);
+      }
+    }
     if (/\bopponent_levels\s*=\s*\(\s*incoming\s*->\s*side\s*==\s*Side\s*::\s*Buy\s*\)\s*\?\s*asks_\s*:\s*bids_\s*;/i.test(windowText)
       && /\b(?:const\s+)?auto\s*&?\s+it\s*=\s*opponent_levels\s*\.\s*begin\s*\(\s*\)\s*;/i.test(windowText)) {
       return index + 1 + lineOffset(windowText, /opponent_levels\s*\.\s*begin\s*\(/i);
@@ -442,7 +473,24 @@ function hasActiveOrderIdentityLookup(source: string): boolean {
   return activeIdentityIndexNames().some(name => (
     new RegExp(`\\b${name}\\s*\\.\\s*find\\s*\\([^)]*\\bid`, 'i').test(source)
     || new RegExp(`\\b${name}\\s*\\.\\s*contains\\s*\\([^)]*\\bid`, 'i').test(source)
-  )) || /\bhasOrder\s*\([^)]*\bid\b/i.test(source);
+  )) || helperLooksUpActiveIdentityIndex(source)
+    || /\bhasOrder\s*\([^)]*\bid\b/i.test(source);
+}
+
+function helperLooksUpActiveIdentityIndex(source: string): boolean {
+  const code = stripCppComments(source);
+  for (const indexName of activeIdentityIndexNames()) {
+    const helperCalls = [...code.matchAll(new RegExp(`\\b([A-Za-z_]\\w*)\\s*\\([^;{}]*\\b${indexName}\\b[^;{}]*\\)\\s*;`, 'gi'))];
+    for (const call of helperCalls) {
+      if (!/(?:valid|validate|check|ensure|require|guard|reject|has)/i.test(call[1])) continue;
+      const helperBody = findCppNamedFunctionBody(code, call[1]);
+      if (helperBody
+        && /\b[A-Za-z_]\w*\s*\.\s*(?:find|contains)\s*\([^)]*\bid/i.test(helperBody)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 function hasActiveQuantityCopyIndex(source: string): boolean {
@@ -493,7 +541,7 @@ function hasLifecycleIdentityErase(source: string): boolean {
 }
 
 function identityEraseLinePattern(): RegExp {
-  return /\b(?:order_map_|orders_|active_orders_|activeOrders|index_|locations_|orderIndex_|order_index_)\s*\.\s*erase\s*\(/i;
+  return /\b(?:order_map_|orders_|active_orders_|activeOrders|index_|locations_|order_location_|orderLocations_|orderIndex_|order_index_)\s*\.\s*erase\s*\(/i;
 }
 
 function activeIdentityIndexNames(): string[] {
@@ -502,6 +550,8 @@ function activeIdentityIndexNames(): string[] {
     'orders_',
     'active_orders_',
     'activeOrders',
+    'order_location_',
+    'orderLocations_',
     'idToEntry_',
     'id_to_entry_',
     'entriesById_',

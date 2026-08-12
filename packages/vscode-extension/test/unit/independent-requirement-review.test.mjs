@@ -375,6 +375,87 @@ test('strict review parser does not flag descending bid maps for price priority'
   assert.equal(decision.status, 'passed');
 });
 
+test('strict review parser trusts throwing validators and reports later local order-book findings', () => {
+  const header = snapshot('include/order_book.hpp', [
+    '#include <deque>',
+    '#include <map>',
+    '#include <unordered_map>',
+    'namespace devseek_case {',
+    'enum class Side { Buy, Sell };',
+    'struct OrderEntry { std::string id; std::int64_t quantity; };',
+    'using LevelMap = std::map<double, std::deque<OrderEntry>>;',
+    'class OrderBook {',
+    '  LevelMap bids_;',
+    '  LevelMap asks_;',
+    '  std::unordered_map<std::string, std::pair<Side, double>> order_location_;',
+    '};',
+    '}',
+  ].join('\n'));
+  const source = snapshot('src/order_book.cpp', [
+    '#include "order_book.hpp"',
+    '#include <stdexcept>',
+    'namespace devseek_case {',
+    'static void validate_order(const Order& order,',
+    '                           const std::unordered_map<std::string, std::pair<Side, double>>& location) {',
+    '  if (order.id.empty()) throw std::invalid_argument("id");',
+    '  if (location.find(order.id) != location.end()) throw std::invalid_argument("duplicate");',
+    '  if (!std::isfinite(order.price) || order.price <= 0.0) throw std::invalid_argument("price");',
+    '  if (order.quantity <= 0) throw std::invalid_argument("quantity");',
+    '}',
+    'std::vector<Trade> OrderBook::submit(Order order) {',
+    '  validate_order(order, order_location_);',
+    '  std::vector<Trade> trades;',
+    '  LevelMap* opposing_side = (order.side == Side::Buy) ? &asks_ : &bids_;',
+    '  auto it = opposing_side->begin();',
+    '  while (it != opposing_side->end()) {',
+    '    trades.push_back({order.id, it->second.front().id, it->first, 1});',
+    '    break;',
+    '  }',
+    '  return trades;',
+    '}',
+    'bool OrderBook::cancel(const std::string& id) {',
+    '  order_location_.erase(id);',
+    '  return true;',
+    '}',
+    '}',
+  ].join('\n'));
+  const rejection = 'submit 拒绝空 id、重复 id、非有限正价格、数量 <= 0。';
+  const usedIds = 'submit 拒绝重复或已使用 id。';
+  const price = '买单与最低卖价撮合，卖单与最高买价撮合；只在买价 >= 卖价时成交。';
+  const decision = parseIndependentReviewResponse(response({
+    requirement_checks: [
+      {
+        requirement_id: 'R1',
+        requirement_quote: rejection,
+        status: 'satisfied',
+        evidence: 'Scenario invalid input: empty id and NaN price both throw std::invalid_argument through validate_order, distinct from a valid empty trade result.',
+      },
+      {
+        requirement_id: 'R2',
+        requirement_quote: usedIds,
+        status: 'satisfied',
+        evidence: 'Scenario already-used id: submit A, cancel A, then submit A again throws std::invalid_argument through a caller-observable failure channel.',
+      },
+      {
+        requirement_id: 'R3',
+        requirement_quote: price,
+        status: 'satisfied',
+        evidence: 'Trace two price levels: submit b1@10 then b2@11; incoming sell first matches b2. Same-price orders preserve FIFO.',
+      },
+    ],
+    findings: [],
+    overall_correctness: 'patch is correct',
+    overall_explanation: 'The order book is correct.',
+    overall_confidence_score: 0.95,
+  }), [header, source], [rejection, usedIds, price].join('\n'));
+
+  assert.equal(decision.status, 'failed');
+  const titles = decision.findings.map(item => item.title);
+  assert.doesNotMatch(titles.join('\n'), /Expose invalid submit rejection/);
+  assert.match(titles.join('\n'), /Preserve used order identifiers/);
+  assert.match(titles.join('\n'), /Match incoming sells against the highest bid first/);
+});
+
 test('strict review parser falls back to local source checks for non-json reviewer output', () => {
   const source = snapshot('src/order_book.cpp', [
     '#include "order_book.hpp"',

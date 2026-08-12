@@ -2590,6 +2590,7 @@ test('Architecture: validated source changes require fresh source review before 
   const providerReview = src('src/agent/provider-requirement-review.ts');
   const independentReview = src('src/agent/independent-requirement-review.ts');
   const providerTranscriptRecovery = src('src/agent/provider-authored-transcript-recovery.ts');
+  const reviewRepairWindow = src('src/agent/requirement-review-repair-window.ts');
 
   assertContains(
     providerTranscriptRecovery,
@@ -2625,6 +2626,21 @@ test('Architecture: validated source changes require fresh source review before 
     agenticLoop,
     'if (loopRes.taskComplete && !reviewFeedback)',
     'task_complete in a tool round must not bypass pending review feedback',
+  );
+  assertContains(
+    reviewRepairWindow,
+    'AGENTIC_REQUIREMENT_REVIEW_REPAIR_GRACE_ROUNDS',
+    'failed requirement-review findings must have a bounded repair window separate from ordinary exploration rounds',
+  );
+  assertContains(
+    agenticLoop,
+    'updateRequirementReviewRepairWindow(requirementReviewRepairGraceRounds, reviewFeedback)',
+    'agent loop must delegate requirement-review repair budgeting to the review repair window owner',
+  );
+  assertContains(
+    agenticLoop,
+    'noToolRounds = 0;',
+    'new requirement-review feedback must reset stale no-tool recovery state before targeted repair',
   );
   assertContains(
     agenticLoop,
@@ -2720,6 +2736,16 @@ test('Architecture: validated source changes require fresh source review before 
     reviewContract,
     'findPricePriorityDirectionContract',
     'requirement review parser must locally detect bid/ask traversal direction regressions',
+  );
+  assertContains(
+    reviewContract,
+    'findLocalSemanticContradictions',
+    'requirement review parser must preserve multiple host-side semantic findings instead of stopping at the first one',
+  );
+  assertContains(
+    reviewContract,
+    'submitCallsDistinctRejectionHelper',
+    'requirement review parser must follow throwing validation helpers before flagging ambiguous submit returns',
   );
   assertContains(
     reviewContract,

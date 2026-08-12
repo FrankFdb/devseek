@@ -4,7 +4,7 @@ Date: 2026-08-12
 
 ## Conclusion
 
-DevSeek cannot yet be declared to have reached the top-tier coding agent target. The live VS Code -> DevSeek -> free DeepSeek Web simulation still failed in attempt-28. The important progress is that the failure class has moved from hidden behavior defects and independent-review loops to a lower-level provider tool-protocol recovery defect. This iteration fixes that class with small, targeted simulations before the next full case run.
+DevSeek cannot yet be declared to have reached the top-tier coding agent target. The live VS Code -> DevSeek -> free DeepSeek Web simulation improved from the attempt-28 malformed tool-protocol failure to attempt-29, where real code was written and public tests passed, but the hidden oracle still failed. The current failure class is now narrower: host-side final-source review must preserve all local semantic findings, avoid stale review feedback, and reserve a bounded targeted-repair window after a new review failure.
 
 ## User-Simulation Evidence
 
@@ -16,8 +16,10 @@ Scenario: `11-order-book`, price-time limit order book.
 | attempt-26 | PASS | PASS | FAIL | Code was behaviorally correct, but final independent source review stalled on missing final `read_file` evidence. |
 | attempt-27 | PASS | PASS | FAIL | Code remained behaviorally correct, but reviewer/protocol drift caused repeated completion blocking. |
 | attempt-28 | FAIL | FAIL | FAIL | No code artifacts were written. Provider emitted malformed `<tool_call name="create_file">...` blocks with unescaped C++ include quotes; DevSeek did not classify them as damaged tool protocol, so the loop continued without real mutation. |
+| attempt-29 | PASS | FAIL | FAIL | Tool recovery worked and code was written, but final source review kept stale invalid-submit feedback and did not surface the later price-priority/used-id findings before the normal round budget ended. |
 
 attempt-28 report: `code/devseek-tests/cpp-user-matrix/runs/11-order-book/attempt-28/report.md`
+attempt-29 report: `code/devseek-tests/cpp-user-matrix/runs/11-order-book/attempt-29/report.md`
 
 ## Fixes Made
 
@@ -35,6 +37,16 @@ attempt-28 report: `code/devseek-tests/cpp-user-matrix/runs/11-order-book/attemp
    - Quote-damaged named write calls are treated as incomplete provider tool protocol, not ordinary no-tool prose.
    - The agent loop now routes such no-parsed-tool damaged protocol through the same bounded provider-response recovery path as stream truncation.
 
+4. Multi-finding host semantic review:
+   - The local final-source contract now returns all high-confidence semantic contradictions instead of stopping at the first one.
+   - Throwing validation helpers such as `validate_order(...)` are followed before flagging `submit` as an ambiguous empty-vector rejection.
+   - Active identity lookups passed through validation helpers are recognized, so "already-used id" regressions are not hidden behind helper boundaries.
+   - `LevelMap` aliases and pointer-style `opposing_side->begin()` traversal are recognized for price-priority direction checks; comments and reviewer prose are not trusted as ordering evidence.
+
+5. Targeted repair window:
+   - A new review-repair owner grants a bounded six-round local repair window after failed final-source review.
+   - New review feedback resets stale no-tool recovery state, preventing old provider explanations from consuming the repair opportunity for a new finding.
+
 ## Targeted Simulation Cases
 
 Small cases added before rerunning the large benchmark:
@@ -47,6 +59,10 @@ Small cases added before rerunning the large benchmark:
   malformed reviewer output and tool-request reviewer output trigger local semantic fallback for price-priority contracts.
 - Host reviewer unavailability:
   repeated indeterminate review with validated host final-source evidence stops in the ledger instead of restarting the provider loop.
+- attempt-29 final-source shape:
+  a throwing `validate_order(...)` helper plus an ascending `LevelMap bids_` and `opposing_side->begin()` now produces used-id and highest-bid findings without repeating the stale invalid-submit finding.
+- Review repair budgeting:
+  failed requirement-review feedback is handled by `requirement-review-repair-window.ts`, not by ad hoc prompt text inside the main loop.
 
 ## Verification
 
@@ -71,7 +87,7 @@ node --test \
   packages/vscode-extension/test/unit/workflow-compliance.test.mjs
 ```
 
-Result: PASS, 210 tests.
+Result: PASS, 211 tests.
 
 Full local verification:
 
@@ -91,7 +107,7 @@ Results:
 - shared tests: PASS, 321 tests
 - VS Code extension tests: PASS, 174 suites
 
-Release packaging and local VSIX install are performed after committing so the packaged build identifies the final source state.
+Release packaging and local VSIX install are performed after committing so the packaged build identifies the final source state. attempt-29 was run against build `1.0.0-debug.20260812.t161517.gffb63a5`; the next live run must use the post-fix VSIX.
 
 ## Claude Code / Codex Comparison
 
@@ -101,6 +117,7 @@ The implementation direction is to move DevSeek toward host-owned deterministic 
 - Codex repository rules and review workflows emphasize deterministic project instructions and review gates. DevSeek's workflow-compliance guards play the same role: they prevent recovery, review, and tool parsing behavior from drifting.
 - Claude Code permissions and hooks show a useful pattern: tool calls are evaluated by host/runtime gates before execution, and hooks can deny or force prompts without trusting the model's prose. DevSeek should continue treating DeepSeek Web output as untrusted serialization until the host parser converts it into an executable tool request.
 - Source-level Claude Code architecture analysis also supports this direction: the agent loop is simple; quality comes from deterministic surrounding systems such as permissions, context management, tool routing, recovery, and persistent state.
+- This iteration also used non-public-product evidence from DevSeek's own retained run logs and source-level behavior: attempt-29 showed the reviewer accepted a false `std::map` ordering explanation, while the hidden oracle and final source snapshot exposed the actual ascending-bid traversal.
 
 Sources referenced:
 
