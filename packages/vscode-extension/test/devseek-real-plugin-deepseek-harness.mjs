@@ -333,14 +333,20 @@ function isProductRunTerminalEvent(terminal) {
   const data = terminal && terminal.data ? terminal.data : {};
   return Boolean(terminal)
     && (terminal.event === 'agent-run-completed' || terminal.event === 'agent-run-failed')
-    && data.mutationKind !== 'pending-edit-resolution'
-    && data.mutationKind !== 'pending-edit-undo';
+    && !isAuxiliaryMutationTerminalEvent(terminal);
+}
+
+function isAuxiliaryMutationTerminalEvent(terminal) {
+  const data = terminal && terminal.data ? terminal.data : {};
+  return data.mutationKind === 'pending-edit-resolution'
+    || data.mutationKind === 'pending-edit-undo';
 }
 
 function productRunLogScore(log) {
   if (!log) return 0;
-  if (isProductRunTerminalEvent(log.terminal)) return 4;
-  if (log.terminal) return 3;
+  if (isProductRunTerminalEvent(log.terminal)) return 5;
+  if (isAuxiliaryMutationTerminalEvent(log.terminal)) return 0;
+  if (log.hasAgentRunStarted && (log.committedMutationCount || log.providerEventCount || log.toolExecutionCount)) return 4;
   if (log.hasAgentRunStarted) return 2;
   if (log.hasAgentStatus || log.providerEventCount || log.toolExecutionCount) return 1;
   if (/^bridge-status-/i.test(String(log.lastEvent || ''))) return 0;
@@ -361,6 +367,7 @@ function selectProductRunLog(logs) {
 function productRunLogSelectionSource() {
   return [
     isProductRunTerminalEvent.toString(),
+    isAuxiliaryMutationTerminalEvent.toString(),
     productRunLogScore.toString(),
     selectProductRunLog.toString(),
   ].join('\n\n');
@@ -2006,6 +2013,25 @@ function collectCommittedMutationPaths(events) {
   return uniqueWorkspacePaths(paths);
 }
 
+function collectChatRequestState(events) {
+  let started = 0;
+  let terminal = 0;
+  for (const event of events) {
+    if (event.event === 'chat-request-start') started += 1;
+    if (event.event === 'chat-request-complete'
+      || event.event === 'chat-request-failed'
+      || event.event === 'chat-request-login-required'
+      || event.event === 'chat-request-cancelled-before-dispatch') {
+      terminal += 1;
+    }
+  }
+  return {
+    started,
+    terminal,
+    inFlight: Math.max(0, started - terminal),
+  };
+}
+
 ${productRunLogSelectionSource()}
 
 function collectRunLogs(startedAtMs) {
@@ -2031,6 +2057,7 @@ function collectRunLogs(startedAtMs) {
     const toolExecutionCount = events.filter((event) => event.phase === 'tool-loop'
       && (event.event === 'execute-start' || event.event === 'execute-complete')).length;
     const mutationPaths = collectCommittedMutationPaths(events);
+    const chatRequestState = collectChatRequestState(events);
     logs.push({
       path: rel(workspaceDir, full),
       absolutePath: full,
@@ -2043,6 +2070,9 @@ function collectRunLogs(startedAtMs) {
       hasAgentStatus: events.some((event) => event.event === 'agent-status'),
       providerEventCount,
       toolExecutionCount,
+      providerRequestStarts: chatRequestState.started,
+      providerRequestTerminals: chatRequestState.terminal,
+      inFlightProviderRequests: chatRequestState.inFlight,
       committedMutationCount: mutationPaths.length,
       mutationPaths,
       terminal: terminal ? { event: terminal.event, data: terminal.data || {} } : null,

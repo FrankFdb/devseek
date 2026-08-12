@@ -72,7 +72,9 @@ test('real plugin VSIX harness selects product run terminal instead of pending-e
   assert.match(source, /const selected = selectProductRunLog\(logs\)\?\.absolutePath/, 'real plugin harness replay must reuse the product-run selection helper');
   assert.doesNotMatch(source, /selectProductRunLogForReplay/, 'real plugin harness must not fork replay-only terminal selection');
   assert.match(source, /function productRunLogScore\(log\)/, 'real plugin harness must score product-like logs before replay fallback');
-  assert.match(source, /mutationKind\s*!==\s*'pending-edit-resolution'/, 'pending-edit resolution runs must not replace the real plugin terminal run');
+  assert.match(source, /function isAuxiliaryMutationTerminalEvent/, 'real plugin harness must classify auxiliary mutation run terminals');
+  assert.match(source, /mutationKind === 'pending-edit-resolution'/, 'pending-edit resolution runs must not replace the real plugin terminal run');
+  assert.match(source, /mutationKind === 'pending-edit-undo'/, 'pending-edit undo runs must not replace the real plugin terminal run');
   assert.doesNotMatch(source, /logs\.find\(\(log\) => log\.terminal\)\?\.absolutePath/, 'replay selection must not blindly use the first terminal log');
 });
 
@@ -160,6 +162,58 @@ test('real plugin VSIX harness chooses the agent run log over bridge status prob
   assert.equal(selected?.path, '.devseek/runs/20260723-054636511-0b4ed653468767da.log');
 });
 
+test('real plugin VSIX harness keeps in-flight agent repair above pending-edit side runs', () => {
+  const source = readFileSync(realPluginHarnessPath, 'utf8');
+  const { selectProductRunLog, productRunLogScore } = evaluateHarnessFunctions(
+    source,
+    'function isProductRunTerminalEvent',
+    'function productRunLogSelectionSource',
+    ['isProductRunTerminalEvent', 'isAuxiliaryMutationTerminalEvent', 'productRunLogScore', 'selectProductRunLog'],
+  );
+
+  const pendingResolution = {
+    path: '.devseek/runs/20260812-052721604-fd716ff2b2dd14ee.log',
+    absolutePath: '/workspace/.devseek/runs/20260812-052721604-fd716ff2b2dd14ee.log',
+    runStartedAtMs: Date.UTC(2026, 7, 12, 5, 27, 21, 604),
+    mtimeMs: Date.UTC(2026, 7, 12, 5, 27, 21, 696),
+    size: 2094,
+    events: 4,
+    lastEvent: 'agent-run-completed',
+    terminal: {
+      event: 'agent-run-completed',
+      data: {
+        mutationKind: 'pending-edit-resolution',
+        status: 'failed',
+      },
+    },
+    hasAgentRunStarted: true,
+    hasAgentStatus: false,
+    providerEventCount: 0,
+    toolExecutionCount: 0,
+    committedMutationCount: 0,
+  };
+  const activeRepair = {
+    path: '.devseek/runs/20260812-052449799-bda1bc22da19d8fe.log',
+    absolutePath: '/workspace/.devseek/runs/20260812-052449799-bda1bc22da19d8fe.log',
+    runStartedAtMs: Date.UTC(2026, 7, 12, 5, 24, 49, 799),
+    mtimeMs: Date.UTC(2026, 7, 12, 5, 27, 10, 503),
+    size: 360466,
+    events: 244,
+    lastEvent: 'message-sent',
+    terminal: null,
+    hasAgentRunStarted: true,
+    hasAgentStatus: true,
+    providerEventCount: 36,
+    toolExecutionCount: 14,
+    committedMutationCount: 2,
+    inFlightProviderRequests: 2,
+  };
+
+  assert.equal(productRunLogScore(pendingResolution), 0);
+  assert.ok(productRunLogScore(activeRepair) > productRunLogScore(pendingResolution));
+  assert.equal(selectProductRunLog([pendingResolution, activeRepair])?.path, activeRepair.path);
+});
+
 test('C++ matrix runner chooses the active agent run over later bridge status probes', () => {
   const source = readFileSync(cppMatrixRunCasePath, 'utf8');
   const { selectAgentRun } = evaluateHarnessFunctions(
@@ -199,6 +253,57 @@ test('C++ matrix runner chooses the active agent run over later bridge status pr
   });
 
   assert.equal(selected?.path, '.devseek/runs/20260812-024403226-0bfac0441f7762ef.log');
+});
+
+test('C++ matrix runner ignores pending-edit terminal when active run is still repairing', () => {
+  const source = readFileSync(cppMatrixRunCasePath, 'utf8');
+  const { selectAgentRun, agentRunScore } = evaluateHarnessFunctions(
+    source,
+    'function selectAgentRun',
+    'function markdownReport',
+    ['selectAgentRun', 'agentRunScore', 'isAuxiliaryMutationTerminal', 'uniqueWorkspacePaths', 'sameTerminalOutcome'],
+  );
+
+  const pendingTerminal = {
+    path: '.devseek/runs/20260812-052721604-fd716ff2b2dd14ee.log',
+    runStartedAtMs: Date.UTC(2026, 7, 12, 5, 27, 21, 604),
+    mtimeMs: Date.UTC(2026, 7, 12, 5, 27, 21, 696),
+    size: 2094,
+    lastEvent: 'agent-run-completed',
+    terminal: {
+      event: 'agent-run-completed',
+      data: {
+        mutationKind: 'pending-edit-resolution',
+        status: 'failed',
+      },
+    },
+    hasAgentRunStarted: true,
+    hasAgentStatus: false,
+    providerEventCount: 0,
+    toolExecutionCount: 0,
+    committedMutationCount: 0,
+  };
+  const activeRepair = {
+    path: '.devseek/runs/20260812-052449799-bda1bc22da19d8fe.log',
+    runStartedAtMs: Date.UTC(2026, 7, 12, 5, 24, 49, 799),
+    mtimeMs: Date.UTC(2026, 7, 12, 5, 27, 10, 503),
+    size: 360466,
+    lastEvent: 'message-sent',
+    terminal: null,
+    hasAgentRunStarted: true,
+    hasAgentStatus: true,
+    providerEventCount: 36,
+    toolExecutionCount: 14,
+    committedMutationCount: 2,
+  };
+
+  assert.equal(agentRunScore(pendingTerminal), 0);
+  assert.equal(selectAgentRun({
+    runLogs: {
+      terminal: pendingTerminal.terminal,
+      logs: [pendingTerminal, activeRepair],
+    },
+  })?.path, activeRepair.path);
 });
 
 test('real plugin VSIX harness timeout reports are report-time snapshots, not bridge status verdicts', () => {

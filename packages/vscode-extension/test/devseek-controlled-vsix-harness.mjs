@@ -2423,7 +2423,8 @@ function progress(stage, extra = {}) {
 function parseJsonLine(line) { try { return JSON.parse(line); } catch { return null; } }
 function isProductRunTerminalEvent(terminal) {
   const data = terminal && typeof terminal === 'object' ? terminal.data || {} : {};
-  return data.mutationKind !== 'pending-edit-resolution';
+  return data.mutationKind !== 'pending-edit-resolution'
+    && data.mutationKind !== 'pending-edit-undo';
 }
 function selectProductRunTerminalLog(logs) {
   const terminalLogs = logs.filter(log => log.terminal);
@@ -2997,7 +2998,8 @@ function inspectControlledRunLogEvidenceForSelection(driverReport, scenarios) {
 
 function isProductRunTerminalEvent(terminal) {
   const data = terminal && typeof terminal === 'object' ? terminal.data || {} : {};
-  return data.mutationKind !== 'pending-edit-resolution';
+  return data.mutationKind !== 'pending-edit-resolution'
+    && data.mutationKind !== 'pending-edit-undo';
 }
 
 function inspectControlledRunLogEvidence(driverReport, scenario) {

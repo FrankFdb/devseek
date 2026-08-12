@@ -229,6 +229,7 @@ function renderBlockingDecision(decision: RequirementReviewDecision): string {
     decision.explanation,
     ...findings,
     '下一轮不要从头重做完整任务；先选第一个 P0/P1/P2 finding，把 counterexample 转成最小本地 probe、精确源码检查或等价的针对性验证。',
+    '若 finding 涉及固定公开 API 下的“拒绝/无效”，先从现有签名可表达的失败通道建 probe；例如 C++ submit 返回 vector 且正常可为空时，拒绝应使用 std::invalid_argument 等异常通道，不能继续返回空 vector。',
     '修复时围绕该缺陷类别审查相邻状态流、边界值和同类入口；不要只改当前一行，也不要用公开测试通过替代反例验证。',
     '针对性验证通过后，再运行项目既有验证作为大 case 回归。',
     '必须根据上述独立结论修复生产源码并重新运行项目验证；不要修改受保护测试，也不要仅用解释否定审查结果。',

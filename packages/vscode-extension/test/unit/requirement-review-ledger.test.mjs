@@ -151,6 +151,8 @@ test('failed independent review blocks completion until repaired source is reval
   assert.match(failed, /需求 R2：Reject duplicate or already-used ids/);
   assert.match(failed, /可复现反例/);
   assert.match(failed, /counterexample 转成最小本地 probe/);
+  assert.match(failed, /std::invalid_argument/);
+  assert.match(failed, /不能继续返回空 vector/);
   assert.match(failed, /针对性验证通过后，再运行项目既有验证作为大 case 回归/);
   assert.match(ledger.beforeNoToolCompletion(), /必须根据上述独立结论修复生产源码/);
   assert.match(ledger.completionBlocker(), /独立需求审查未通过：A used identity can be submitted again/);
