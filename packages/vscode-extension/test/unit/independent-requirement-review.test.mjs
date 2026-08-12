@@ -681,6 +681,45 @@ test('strict review parser cross-checks PIMPL active-index used-id permanence', 
   assert.match(decision.findings[0].counterexample, /active-order index erases A/);
 });
 
+test('strict review parser cross-checks entries_ active-index used-id permanence', () => {
+  const source = snapshot('src/order_book.cpp', [
+    '#include "order_book.hpp"',
+    '#include <unordered_map>',
+    'namespace devseek_case {',
+    'class OrderBook::Impl {',
+    'public:',
+    '  std::unordered_map<std::string, OrderLocation> entries_;',
+    '};',
+    'std::vector<Trade> OrderBook::submit(Order order) {',
+    '  if (pimpl_->entries_.find(order.id) != pimpl_->entries_.end()) {',
+    '    throw std::invalid_argument("duplicate");',
+    '  }',
+    '  return {};',
+    '}',
+    'void OrderBook::complete(const std::string& id) {',
+    '  pimpl_->entries_.erase(id);',
+    '}',
+    '}',
+  ].join('\n'));
+  const prompt = 'Reject duplicate or already-used ids.';
+  const decision = parseIndependentReviewResponse(response({
+    requirement_checks: [{
+      requirement_id: 'R1',
+      requirement_quote: prompt,
+      status: 'satisfied',
+      evidence: 'Scenario already-used id: submit A, complete A, then submit A again throws invalid_argument through a caller-observable failure channel.',
+    }],
+    findings: [],
+    overall_correctness: 'patch is correct',
+    overall_explanation: 'The id rejection invariant is satisfied.',
+    overall_confidence_score: 0.95,
+  }), [source], prompt);
+
+  assert.equal(decision.status, 'failed');
+  assert.match(decision.findings[0].title, /Preserve used order identifiers/);
+  assert.equal(decision.findings[0].line, 15);
+});
+
 test('strict review parser cross-checks stale remaining after partial fill', () => {
   const source = snapshot('src/order_book.cpp', [
     '#include "order_book.hpp"',

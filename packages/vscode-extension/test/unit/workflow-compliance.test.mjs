@@ -149,7 +149,11 @@ test('§1 Agent loop: QualityGate loop detection requires a no-progress state', 
 
 test('§2/§3 Tool system: parseFakeToolCalls exists', () => {
   const code = src('src/agent/fake-tool-parser.ts');
+  const bareDialect = src('src/agent/bare-tool-command-dialect.ts');
   assertContains(code, 'parseFakeToolCalls', '§3 fake tool call parser');
+  assertContains(code, 'createBareToolCommandDialect', 'DeepSeek Web bare tool shorthand must be delegated to a dialect boundary');
+  assertContains(bareDialect, "new Set(['read_file', 'list_dir'])", 'bare command recovery may execute only low-risk read-only tools');
+  assertContains(bareDialect, 'PROTOCOL_ONLY_BARE_TOOL_NAMES', 'bare mutating shorthand must trigger protocol recovery instead of direct execution');
 });
 
 test('§3 Tools: manage_todo_list handler present', () => {

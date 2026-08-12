@@ -275,6 +275,35 @@ test('FakeToolParser: parses DeepSeek Tool/Arguments transcript format', () => {
   assert.equal(stripToolCallBlocks(text), '让我先查看当前代码结构和已有实现。');
 });
 
+test('FakeToolParser: parses DeepSeek bare read-only command lines', () => {
+  const text = [
+    '收到，我读取最终源码。',
+    'read_file path=/home/ff/work/devseek_netai/code/devseek-tests/cpp-user-matrix/runs/11-order-book/attempt-30/workspace-snapshot/src/order_book.cpp startLine=30 endLine=70',
+  ].join('\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'read_file');
+  assert.equal(
+    tools[0].input.path,
+    '/home/ff/work/devseek_netai/code/devseek-tests/cpp-user-matrix/runs/11-order-book/attempt-30/workspace-snapshot/src/order_book.cpp',
+  );
+  assert.equal(tools[0].input.startLine, 30);
+  assert.equal(tools[0].input.endLine, 70);
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.equal(hasIncompleteFakeToolCallProtocol(text), false);
+  assert.equal(stripToolCallBlocks(text), '收到，我读取最终源码。');
+});
+
+test('FakeToolParser: rejects DeepSeek bare mutating command lines as incomplete protocol', () => {
+  const text = 'replace_in_file path=/tmp/project/src/order_book.cpp old_str=return new_str=throw';
+
+  assert.deepEqual(parseFakeToolCalls(text), []);
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.equal(hasIncompleteFakeToolCallProtocol(text), true);
+  assert.equal(stripToolCallBlocks(text), '');
+});
+
 test('FakeToolParser: parses and strips DeepSeek DSML tool transcript format', () => {
   const text = [
     '好的，我先查看当前代码。',

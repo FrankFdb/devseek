@@ -4,7 +4,7 @@ Date: 2026-08-12
 
 ## Conclusion
 
-DevSeek cannot yet be declared to have reached the top-tier coding agent target. The live VS Code -> DevSeek -> free DeepSeek Web simulation improved from the attempt-28 malformed tool-protocol failure to attempt-29, where real code was written and public tests passed, but the hidden oracle still failed. The current failure class is now narrower: host-side final-source review must preserve all local semantic findings, avoid stale review feedback, and reserve a bounded targeted-repair window after a new review failure.
+DevSeek cannot yet be declared to have reached the top-tier coding agent target. The live VS Code -> DevSeek -> free DeepSeek Web simulation improved from the attempt-28 malformed tool-protocol failure to attempt-29, then attempt-30 confirmed that the targeted review-repair window works. The remaining failure class narrowed again: DeepSeek Web can fall back to bare shorthand such as `read_file path=...`, and DevSeek must recover that safely instead of counting it as another no-tool loop.
 
 ## User-Simulation Evidence
 
@@ -17,9 +17,11 @@ Scenario: `11-order-book`, price-time limit order book.
 | attempt-27 | PASS | PASS | FAIL | Code remained behaviorally correct, but reviewer/protocol drift caused repeated completion blocking. |
 | attempt-28 | FAIL | FAIL | FAIL | No code artifacts were written. Provider emitted malformed `<tool_call name="create_file">...` blocks with unescaped C++ include quotes; DevSeek did not classify them as damaged tool protocol, so the loop continued without real mutation. |
 | attempt-29 | PASS | FAIL | FAIL | Tool recovery worked and code was written, but final source review kept stale invalid-submit feedback and did not surface the later price-priority/used-id findings before the normal round budget ended. |
+| attempt-30 | PASS | FAIL | FAIL | Targeted repair window worked, but DeepSeek Web answered the repair prompt with bare `read_file path=... startLine=... endLine=...` lines; DevSeek treated them as prose and stopped after no-tool review recovery. |
 
 attempt-28 report: `code/devseek-tests/cpp-user-matrix/runs/11-order-book/attempt-28/report.md`
 attempt-29 report: `code/devseek-tests/cpp-user-matrix/runs/11-order-book/attempt-29/report.md`
+attempt-30 report: `code/devseek-tests/cpp-user-matrix/runs/11-order-book/attempt-30/report.md`
 
 ## Fixes Made
 
@@ -47,6 +49,11 @@ attempt-29 report: `code/devseek-tests/cpp-user-matrix/runs/11-order-book/attemp
    - A new review-repair owner grants a bounded six-round local repair window after failed final-source review.
    - New review feedback resets stale no-tool recovery state, preventing old provider explanations from consuming the repair opportunity for a new finding.
 
+6. Bare DeepSeek Web tool shorthand recovery:
+   - A new `bare-tool-command-dialect.ts` owns `read_file path=...` and `list_dir path=...` compatibility.
+   - Only read-only bare commands are executable; bare `replace_in_file`, `write_file`, `run_terminal`, and other mutating/high-risk shorthand is classified as incomplete provider protocol and must be re-emitted through canonical tooling.
+   - The order-book local semantic fallback now recognizes `entries_` as an active id index, so used-id permanence violations are not hidden by the attempt-30 PIMPL naming shape.
+
 ## Targeted Simulation Cases
 
 Small cases added before rerunning the large benchmark:
@@ -63,6 +70,12 @@ Small cases added before rerunning the large benchmark:
   a throwing `validate_order(...)` helper plus an ascending `LevelMap bids_` and `opposing_side->begin()` now produces used-id and highest-bid findings without repeating the stale invalid-submit finding.
 - Review repair budgeting:
   failed requirement-review feedback is handled by `requirement-review-repair-window.ts`, not by ad hoc prompt text inside the main loop.
+- attempt-30 bare read-only command:
+  `read_file path=/.../src/order_book.cpp startLine=30 endLine=70` parses to a real read-only tool request and strips out of assistant prose.
+- attempt-30 bare mutating command:
+  `replace_in_file path=/tmp/project/src/order_book.cpp old_str=return new_str=throw` is not executed; it is treated as incomplete protocol recovery.
+- attempt-30 active-id naming:
+  a PIMPL implementation using `entries_.find(order.id)` plus `entries_.erase(id)` is flagged as a used-id permanence defect unless a persistent used-id store exists.
 
 ## Verification
 
@@ -89,6 +102,17 @@ node --test \
 
 Result: PASS, 211 tests.
 
+Current targeted-regression tests:
+
+```bash
+node --test \
+  packages/vscode-extension/test/unit/fake-tool-parser.test.mjs \
+  packages/vscode-extension/test/unit/independent-requirement-review.test.mjs \
+  packages/vscode-extension/test/unit/workflow-compliance.test.mjs
+```
+
+Result: PASS, 294 tests.
+
 Full local verification:
 
 ```bash
@@ -107,7 +131,7 @@ Results:
 - shared tests: PASS, 321 tests
 - VS Code extension tests: PASS, 174 suites
 
-Release packaging and local VSIX install are performed after committing so the packaged build identifies the final source state. attempt-29 was run against build `1.0.0-debug.20260812.t161517.gffb63a5`; the next live run must use the post-fix VSIX.
+Release packaging and local VSIX install are performed after committing so the packaged build identifies the final source state. attempt-29 was run against build `1.0.0-debug.20260812.t161517.gffb63a5`; attempt-30 was run against build `1.0.0-debug.20260812.t163614.ga4c2d04`; the next live run must use the post-fix VSIX from this report.
 
 ## Claude Code / Codex Comparison
 
@@ -117,7 +141,11 @@ The implementation direction is to move DevSeek toward host-owned deterministic 
 - Codex repository rules and review workflows emphasize deterministic project instructions and review gates. DevSeek's workflow-compliance guards play the same role: they prevent recovery, review, and tool parsing behavior from drifting.
 - Claude Code permissions and hooks show a useful pattern: tool calls are evaluated by host/runtime gates before execution, and hooks can deny or force prompts without trusting the model's prose. DevSeek should continue treating DeepSeek Web output as untrusted serialization until the host parser converts it into an executable tool request.
 - Source-level Claude Code architecture analysis also supports this direction: the agent loop is simple; quality comes from deterministic surrounding systems such as permissions, context management, tool routing, recovery, and persistent state.
-- This iteration also used non-public-product evidence from DevSeek's own retained run logs and source-level behavior: attempt-29 showed the reviewer accepted a false `std::map` ordering explanation, while the hidden oracle and final source snapshot exposed the actual ascending-bid traversal.
+- This iteration also used source-level and run-level evidence beyond public docs: DevSeek retained logs showed the model-authored tool-result transcript pollution, attempt-29 exposed false `std::map` ordering reasoning against the final source, and attempt-30 exposed bare DeepSeek Web tool shorthand that public documentation alone would not predict.
+
+Permission policy note:
+
+- Do not broadly relax every failure into full trust. For coding-agent ergonomics, workspace-scoped creation of normal task artifacts can be lower friction, but terminal execution, deletes, writes outside the active workspace, hidden config paths, executable scripts, and protected files still need policy gates. This matches the Claude Code/Codex pattern: make the common safe path smooth, keep risky capability boundaries explicit.
 
 Sources referenced:
 

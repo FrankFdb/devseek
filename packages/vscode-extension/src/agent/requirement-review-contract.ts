@@ -541,7 +541,7 @@ function hasLifecycleIdentityErase(source: string): boolean {
 }
 
 function identityEraseLinePattern(): RegExp {
-  return /\b(?:order_map_|orders_|active_orders_|activeOrders|index_|locations_|order_location_|orderLocations_|orderIndex_|order_index_)\s*\.\s*erase\s*\(/i;
+  return /\b(?:order_map_|orders_|active_orders_|activeOrders|index_|locations_|order_location_|orderLocations_|entries_|orderIndex_|order_index_)\s*\.\s*erase\s*\(/i;
 }
 
 function activeIdentityIndexNames(): string[] {
@@ -552,6 +552,7 @@ function activeIdentityIndexNames(): string[] {
     'activeOrders',
     'order_location_',
     'orderLocations_',
+    'entries_',
     'idToEntry_',
     'id_to_entry_',
     'entriesById_',

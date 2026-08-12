@@ -11,6 +11,7 @@ import {
 } from './model-tool-protocol-adapter';
 import { createStructuredToolEnvelopeDialects } from './structured-tool-envelope-dialects';
 import { createLegacyToolCallXmlDialect } from './legacy-tool-call-xml-dialect';
+import { createBareToolCommandDialect } from './bare-tool-command-dialect';
 import { parseLosslessXmlMutationInput } from './lossless-xml-tool-input';
 import { normalizeFakeTool, normalizeToolInput } from './fake-tool-input-normalizer';
 import { createFakeToolJsonUtils, decodeLooseJsonString, findJsonArrayEnd, findJsonObjectEnd, type FakeTool } from './fake-tool-json-utils';
@@ -1664,6 +1665,12 @@ const MODEL_TOOL_PROTOCOL_DIALECTS: readonly ModelToolProtocolDialect<FakeTool>[
     strip: (text: string) => text,
   },
   createLegacyToolCallXmlDialect<FakeTool>({
+    isRegisteredName: isRegisteredFakeToolName,
+    normalizeName: normalizeAgentToolName,
+    normalizeInput: normalizeToolInput,
+    createTool: (name, input) => ({ name, input }),
+  }),
+  createBareToolCommandDialect<FakeTool>({
     isRegisteredName: isRegisteredFakeToolName,
     normalizeName: normalizeAgentToolName,
     normalizeInput: normalizeToolInput,
