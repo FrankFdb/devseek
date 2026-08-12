@@ -153,6 +153,31 @@ test('failed independent review blocks completion until repaired source is reval
   }), /完成前需求覆盖复核/);
 });
 
+test('pending review escalates repeated no-tool completion attempts and then stops', () => {
+  const ledger = new RequirementReviewLedger();
+  ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: passedGate,
+    writtenFiles: [sourceWrite('src/order_book.cpp')],
+    roundReadFiles: [],
+  });
+
+  const first = ledger.recoverNoToolCompletion(1);
+  assert.equal(first.kind, 'retry');
+  assert.match(first.feedback, /不能跳过需求覆盖复核/);
+  assert.doesNotMatch(first.feedback, /只输出真实工具调用/);
+
+  const second = ledger.recoverNoToolCompletion(2);
+  assert.equal(second.kind, 'retry');
+  assert.match(second.feedback, /不能把行动承诺当作执行结果/);
+  assert.match(second.feedback, /只输出真实工具调用/);
+
+  assert.deepEqual(ledger.recoverNoToolCompletion(3), {
+    kind: 'stop',
+    reason: '独立需求审查连续 3 轮要求修复，但模型没有执行任何工具调用。',
+  });
+});
+
 test('requirement review ignores unverified, non-source, and non-code work', () => {
   const ledger = new RequirementReviewLedger();
   assert.equal(ledger.request({

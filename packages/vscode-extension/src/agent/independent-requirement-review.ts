@@ -8,6 +8,7 @@ import type {
 
 const MAX_SOURCE_BYTES = 96 * 1024;
 const MAX_REVIEW_SOURCE_CHARS = 180_000;
+const MIN_FINDING_CONFIDENCE = 0.8;
 
 export interface RequirementReviewInvocationResult {
   text: string;
@@ -62,12 +63,13 @@ export class IndependentRequirementReviewer {
       return indeterminateDecision(`无法形成完整的最终源码快照：${errorText(error)}`);
     }
 
-    const messages = buildIndependentReviewMessages(input, snapshots);
+    let messages = buildIndependentReviewMessages(input, snapshots);
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         const response = await this.invoke(messages);
-        const decision = parseIndependentReviewResponse(response, snapshots);
+        const decision = parseIndependentReviewResponse(response, snapshots, input.userPrompt);
         if (decision.status !== 'indeterminate' || attempt === 2) return decision;
+        messages = buildReviewCorrectionMessages(messages, response.text, decision.explanation);
       } catch (error) {
         if (attempt === 2) return indeterminateDecision(`隔离审查调用失败：${errorText(error)}`);
       }
@@ -111,10 +113,12 @@ export function buildIndependentReviewMessages(
         'Privately enumerate every sentence and bullet in the original requirements, then trace each one through the final source before deciding. Do not stop after finding one defect.',
         'Visible tests are incomplete evidence. Simulate concrete uncovered boundary and state-transition paths directly from the code.',
         'For every reject/error/invalid-input requirement, identify the exact caller-observable failure branch. An early return of a value that legitimate success can also produce is not rejection.',
+        'Check required rejection channels before all other findings; do not let style or hypothetical iterator concerns consume their finding slots.',
         'A duplicate/already-used identity constraint continues after completion or cancellation unless the user explicitly permits reuse.',
         'Check each proposed finding against the original requirement direction. Never report behavior required by the user as a defect.',
         'Use declarations, types, comparators, and ownership shown in every supplied source file. Never infer a default or missing declaration when another snapshot defines it.',
         'Report only defects reached by a concrete execution path in the supplied source. Omit speculative bypasses, irrelevant language-lawyer hypotheticals, and confidence below 0.80.',
+        'Never put a non-defect in findings. If the body concludes correct, safe, valid, no defect, unlikely, or no concrete reachable path, omit that item entirely.',
         'Honor user-requested data structures and complexity. Flag dead state, wrong ownership, and scans that defeat the requested design.',
         'Return at most five findings. priority must be an integer from 0 through 3 only: 0 blocks all use, 1 is high, 2 is normal, and 3 is low.',
         'Return one exact JSON object matching the schema. Do not wrap it in Markdown or add prose.',
@@ -142,6 +146,7 @@ export function buildIndependentReviewMessages(
 export function parseIndependentReviewResponse(
   response: RequirementReviewInvocationResult,
   snapshots: readonly SourceSnapshot[],
+  userPrompt = '',
 ): RequirementReviewDecision {
   if (response.toolCount > 0) {
     return indeterminateDecision('隔离审查者违反只读协议并请求了工具。');
@@ -167,6 +172,11 @@ export function parseIndependentReviewResponse(
   const findings: RequirementReviewFinding[] = [];
   let invalidFindingCount = 0;
   for (const item of raw.findings as RawReviewFinding[]) {
+    if (isLowConfidenceFinding(item) || isExplicitNonFinding(item)) continue;
+    if (findingReversesExplicitRequirement(item, userPrompt)) {
+      invalidFindingCount++;
+      continue;
+    }
     const finding = normalizeFinding(item, snapshots);
     if (!finding) {
       invalidFindingCount++;
@@ -188,6 +198,48 @@ export function parseIndependentReviewResponse(
     explanation: raw.overall_explanation.trim(),
     findings,
   };
+}
+
+function buildReviewCorrectionMessages(
+  messages: readonly ChatMessage[],
+  rejectedResponse: string,
+  reason: string,
+): ChatMessage[] {
+  return [
+    ...messages,
+    { role: 'assistant', content: rejectedResponse.slice(0, 24_000) },
+    {
+      role: 'user',
+      content: [
+        `Your previous review was rejected by the response contract: ${reason}`,
+        'Re-evaluate the original requirements and every supplied source file from scratch.',
+        'Return the complete JSON object again. Omit non-defects, low-confidence or unreachable concerns, and never reverse an explicit requirement.',
+      ].join('\n'),
+    },
+  ];
+}
+
+function isLowConfidenceFinding(raw: RawReviewFinding): boolean {
+  return isConfidence(raw?.confidence_score) && raw.confidence_score < MIN_FINDING_CONFIDENCE;
+}
+
+function isExplicitNonFinding(raw: RawReviewFinding): boolean {
+  if (typeof raw?.body !== 'string') return false;
+  const body = raw.body.trim();
+  const tail = body.slice(-240);
+  if (/(?:no (?:actionable )?defect(?: here)?(?:;\s*skip)?|无(?:可执行|实际)?缺陷|不是缺陷)[.!。！]?$/iu.test(tail)) return true;
+  if (/(?:this|that|it|the (?:implementation|code|behavior)) (?:is|remains) (?:correct|valid|safe)[.!]?$/iu.test(tail)) return true;
+  return /\bwhich should never happen\b/iu.test(body) && /\bno (?:concrete |reachable )?path\b/iu.test(body);
+}
+
+function findingReversesExplicitRequirement(raw: RawReviewFinding, userPrompt: string): boolean {
+  const prompt = String(userPrompt || '').replace(/\s+/g, ' ');
+  const permanentlyRejectsUsedIdentity = /(?:拒绝|禁止|不接受).{0,60}(?:重复|已使用).{0,24}(?:id|标识)/iu.test(prompt)
+    || /(?:reject|deny|forbid).{0,60}(?:duplicate|already[- ]used).{0,24}(?:id|identifier)/iu.test(prompt);
+  if (!permanentlyRejectsUsedIdentity) return false;
+  const finding = `${String(raw?.title || '')} ${String(raw?.body || '')}`;
+  return /(?:may|should|can|must)\s+(?:be\s+)?reus(?:e|ed|able)/iu.test(finding)
+    || /(?:可以|应该|应当|允许).{0,24}(?:重用|复用|再次使用)/u.test(finding);
 }
 
 async function captureSourceSnapshots(
@@ -250,6 +302,7 @@ function normalizeFinding(
     || Number(priority) < 0
     || Number(priority) > 3
     || !isConfidence(confidence)
+    || confidence < MIN_FINDING_CONFIDENCE
     || !raw.title.trim()
     || !raw.body.trim()) {
     return undefined;

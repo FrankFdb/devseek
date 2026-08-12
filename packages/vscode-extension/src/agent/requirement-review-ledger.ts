@@ -1,5 +1,6 @@
 import type { AgenticHistoryQualityGate } from './agentic-history';
 import { isCodeArtifactPath, type WrittenFileEvidence } from './completion-evidence';
+import { buildDanglingAgentActionFeedback } from './no-tool-intent';
 
 export interface RequirementReviewInput {
   sourceChangeRequested: boolean;
@@ -26,6 +27,10 @@ export interface RequirementReviewDecision {
 export interface RequirementReviewCandidate {
   sourcePaths: readonly string[];
 }
+
+export type RequirementReviewNoToolRecovery =
+  | { kind: 'retry'; feedback: string }
+  | { kind: 'stop'; reason: string };
 
 interface PendingRequirementReview {
   changedSourcePaths: string[];
@@ -130,6 +135,23 @@ export class RequirementReviewLedger {
     }
     this.pending = undefined;
     return undefined;
+  }
+
+  recoverNoToolCompletion(consecutiveRound: number): RequirementReviewNoToolRecovery | undefined {
+    const feedback = this.beforeNoToolCompletion();
+    if (!feedback) return undefined;
+    if (consecutiveRound >= 3) {
+      return {
+        kind: 'stop',
+        reason: `独立需求审查连续 ${consecutiveRound} 轮要求修复，但模型没有执行任何工具调用。`,
+      };
+    }
+    return {
+      kind: 'retry',
+      feedback: consecutiveRound === 2
+        ? `${feedback}\n\n${buildDanglingAgentActionFeedback()}\n下一回复只输出真实工具调用，不要再次解释准备做什么。`
+        : feedback,
+    };
   }
 }
 

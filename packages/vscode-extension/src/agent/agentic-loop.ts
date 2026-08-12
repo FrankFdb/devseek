@@ -236,6 +236,10 @@ export async function runAgenticLoop(
   const messages = initialPromptContext.messages;
   let roundCount = 0;
   let totalChars = initialPromptContext.totalChars;
+  const appendUserFeedback = (content: string): void => {
+    messages.push({ role: 'user', content });
+    totalChars += content.length;
+  };
   let hadTaskComplete = false;
   let completeSummary = '';
   let failedReason = '';
@@ -625,24 +629,23 @@ export async function runAgenticLoop(
           await callbacks.onTodoUpdate(fallbackTodos);
         }
         const continueMessage = '【系统反馈】任务清单已收到，请立即开始执行第一个任务，不要只停留在规划。';
-        messages.push({
-          role: 'user',
-          content: continueMessage,
-        });
-        totalChars += continueMessage.length;
+        appendUserFeedback(continueMessage);
         continue;
       }
       const stripped = stripToolCallBlocks(text).trim();
-      const requirementReviewFeedback = requirementReview.beforeNoToolCompletion();
-      if (!callbacks.signal?.aborted && requirementReviewFeedback) {
+      const reviewRecovery = requirementReview.recoverNoToolCompletion(noToolRounds + 1);
+      if (!callbacks.signal?.aborted && reviewRecovery) {
         noToolRounds++;
+        if (reviewRecovery.kind === 'stop') {
+          failedReason = reviewRecovery.reason;
+          break;
+        }
         await emitAgenticCorrectionStatus(
           '正在复核最终源码与用户需求',
           '公开测试已经通过，但最终源码尚未经过独立需求覆盖复核。DevSeek 正在要求模型重新读取变更后的实现，再逐条核对用户行为要求。',
           '要求重新读取最终源码',
         );
-        messages.push({ role: 'user', content: requirementReviewFeedback });
-        totalChars += requirementReviewFeedback.length;
+        appendUserFeedback(reviewRecovery.feedback);
         continue;
       }
       const danglingActionWithoutTools = promptRequiresTools && hasDanglingAgentActionIntent(stripped);
@@ -655,8 +658,7 @@ export async function runAgenticLoop(
           'provider-short-intent',
         );
         const retryMessage = buildDanglingAgentActionFeedback();
-        messages.push({ role: 'user', content: retryMessage });
-        totalChars += retryMessage.length;
+        appendUserFeedback(retryMessage);
         continue;
       }
       if (!callbacks.signal?.aborted && promptRequiresTools && !sawWorkTool && noToolRounds < 2) {
@@ -678,8 +680,7 @@ export async function runAgenticLoop(
           '要求模型调用真实工具',
         );
         const retryMessage = '【系统反馈】本轮没有检测到任何工具调用，不能把需要创建/修改/运行的任务标记为完成。请继续执行：先更新 manage_todo_list，然后调用 read_file/list_dir/create_file/run_terminal 等实际工具；完成前必须提供可验证的文件或命令结果。';
-        messages.push({ role: 'user', content: retryMessage });
-        totalChars += retryMessage.length;
+        appendUserFeedback(retryMessage);
         continue;
       }
       const missingWithoutTools = promptRequiresTools
@@ -693,8 +694,7 @@ export async function runAgenticLoop(
           '交付证据不足，继续执行',
         );
         const retryMessage = `【系统反馈】不能停在检查目录或说明阶段。当前缺少${missingWithoutTools.join('、')}。${buildMissingEvidenceRecoveryInstruction(missingWithoutTools)}不要把 memory_write/项目记忆列为用户 todo。`;
-        messages.push({ role: 'user', content: retryMessage });
-        totalChars += retryMessage.length;
+        appendUserFeedback(retryMessage);
         continue;
       }
       if (promptRequiresTools && !sawWorkTool) {
@@ -1020,8 +1020,7 @@ export async function runAgenticLoop(
         : summaryFactFailuresAfterTools.length > 0
           ? `【系统反馈】不能结束任务。完成摘要声称创建或修改了这些文件，但工作区没有对应写入/存在证据：${summaryFactFailuresAfterTools.join('、')}。请先用 list_dir/read_file 核对，再用 create_file/write_file 补齐或修正摘要；summary 必须只基于真实工具结果。${autoValidationFeedback ? `\n\n${autoValidationFeedback}` : ''}`
         : `【系统反馈】不能结束任务。当前仍缺少可验证的${missingAfterTools.join('、')}。请继续调用实际工具完成缺失项：需要读取时用 read_file/list_dir/只读 run_terminal；需要代码时用 create_file/write_file 写入源码；需要验证时用合适的验证命令，文档/配置只需文件存在和内容证据，代码才需要编译/运行/测试。完成后再调用 task_complete，summary 必须只基于真实工具结果。${autoValidationFeedback ? `\n\n${autoValidationFeedback}` : ''}`;
-      messages.push({ role: 'user', content: retryMessage });
-      totalChars += retryMessage.length;
+      appendUserFeedback(retryMessage);
       continue;
     }
 
@@ -1029,8 +1028,7 @@ export async function runAgenticLoop(
       if (promptRequiresTools && !sawWorkTool && noToolRounds < 2 && !callbacks.signal?.aborted) {
         noToolRounds++;
         const retryMessage = '【系统反馈】你调用了 task_complete，但还没有执行任何实际工具。请继续完成任务：更新 todo 状态，并调用必要的文件/终端工具后再完成。';
-        messages.push({ role: 'user', content: retryMessage });
-        totalChars += retryMessage.length;
+        appendUserFeedback(retryMessage);
         continue;
       }
       if (promptRequiresTools && !sawWorkTool) {
@@ -1054,8 +1052,7 @@ export async function runAgenticLoop(
     if (loopRes.allTodosCompleted && promptRequiresTools && !sawWorkTool && noToolRounds < 2 && !callbacks.signal?.aborted) {
       noToolRounds++;
       const retryMessage = '【系统反馈】todo 被标记为完成，但还没有任何实际文件/命令工具执行记录。请继续执行真实工作，不要只更新 todo。';
-      messages.push({ role: 'user', content: retryMessage });
-      totalChars += retryMessage.length;
+      appendUserFeedback(retryMessage);
       continue;
     }
 
@@ -1075,8 +1072,7 @@ export async function runAgenticLoop(
       if (blockingFailureNow && noToolRounds < 2 && !callbacks.signal?.aborted) {
         noToolRounds++;
         const retryMessage = buildTerminalFailureRepairFeedback(blockingFailureNow, missingNow);
-        messages.push({ role: 'user', content: retryMessage });
-        totalChars += retryMessage.length;
+        appendUserFeedback(retryMessage);
         continue;
       }
       break;
@@ -1085,8 +1081,7 @@ export async function runAgenticLoop(
     // Inject tool results into next round
     const combinedFeedback = [loopRes.feedbackForAI, autoValidationFeedback, ...loopWarnings].filter(Boolean).join('\n\n');
     const feedback = `[工具结果 Round ${roundCount}]\n${combinedFeedback}`;
-    messages.push({ role: 'user', content: feedback });
-    totalChars += feedback.length;
+    appendUserFeedback(feedback);
   }
 
   const finalMissingEvidence = promptRequiresTools

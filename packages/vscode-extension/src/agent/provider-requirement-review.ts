@@ -8,6 +8,7 @@ import {
 import {
   RequirementReviewLedger,
   type RequirementReviewInput,
+  type RequirementReviewNoToolRecovery,
 } from './requirement-review-ledger';
 
 export interface ProviderRequirementReviewInput {
@@ -20,7 +21,7 @@ export interface ProviderRequirementReviewInput {
 
 export interface ProviderRequirementReviewService {
   request(input: RequirementReviewInput): Promise<string | undefined>;
-  beforeNoToolCompletion(): string | undefined;
+  recoverNoToolCompletion(consecutiveRound: number): RequirementReviewNoToolRecovery | undefined;
 }
 
 /** Composes requirement-review state with a fresh, read-only provider session. */
@@ -66,6 +67,6 @@ export function createProviderRequirementReviewService(
       });
       return ledger.settleIndependentReview(decision);
     },
-    beforeNoToolCompletion: () => ledger.beforeNoToolCompletion(),
+    recoverNoToolCompletion: consecutiveRound => ledger.recoverNoToolCompletion(consecutiveRound),
   };
 }

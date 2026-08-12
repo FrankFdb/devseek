@@ -2591,8 +2591,13 @@ test('Architecture: validated source changes require fresh source review before 
 
   assertContains(
     agenticLoop,
-    'requirementReview.beforeNoToolCompletion()',
+    'requirementReview.recoverNoToolCompletion(noToolRounds + 1)',
     'no-tool completion must pass through the requirement review owner',
+  );
+  assert.match(
+    src('src/agent/requirement-review-ledger.ts'),
+    /recoverNoToolCompletion[\s\S]*?consecutiveRound >= 3[\s\S]*?没有执行任何工具调用/,
+    'pending requirement review must stop repeated no-tool promises instead of exhausting the provider budget',
   );
   assertContains(
     agenticLoop,
