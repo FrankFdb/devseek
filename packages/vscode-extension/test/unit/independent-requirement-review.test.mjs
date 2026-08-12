@@ -853,6 +853,44 @@ test('strict review parser cross-checks stale remaining after partial fill', () 
   assert.match(decision.findings[0].counterexample, /remaining\("b1"\)/);
 });
 
+test('strict review parser marks provider-transcript-polluted review as host-clearable when local source has no contradiction', () => {
+  const header = snapshot('include/order_book.hpp', [
+    '#include <cstdint>',
+    '#include <optional>',
+    '#include <string>',
+    '#include <vector>',
+    'namespace devseek_case {',
+    'enum class Side { Buy, Sell };',
+    'struct Order { std::string id; Side side; double price; std::int64_t quantity; };',
+    'struct Trade { std::string incomingId; std::string restingId; double price; std::int64_t quantity; };',
+    'class OrderBook {',
+    ' public:',
+    '  std::vector<Trade> submit(Order order);',
+    '  std::optional<double> bestBid() const;',
+    '};',
+    '}',
+  ].join('\n'));
+  const source = snapshot('src/order_book.cpp', [
+    '#include "order_book.hpp"',
+    '#include <stdexcept>',
+    'namespace devseek_case {',
+    'std::vector<Trade> OrderBook::submit(Order order) {',
+    '  if (order.id.empty()) throw std::invalid_argument("id");',
+    '  return {Trade{order.id, "resting", 11.0, 1}};',
+    '}',
+    'std::optional<double> OrderBook::bestBid() const { return 11.0; }',
+    '}',
+  ].join('\n'));
+  const prompt = 'submit 拒绝空 id；返回的 Trade 按实际撮合顺序，quantity 为本次成交量。';
+  const decision = parseIndependentReviewResponse({
+    text: '[DevSeek 已执行工具请求摘要]\n[工具结果 Round 7]\nread_file output...\n[task_complete: summary="done"]',
+    toolCount: 0,
+  }, [header, source], prompt);
+
+  assert.equal(decision.status, 'indeterminate');
+  assert.equal(decision.hostClearable, true);
+});
+
 test('strict review parser rejects self-negating and unreachable pseudo-findings', () => {
   const source = snapshot('src/order_book.cpp', 'int value = 0;');
   const prompt = 'Keep iterators valid.';

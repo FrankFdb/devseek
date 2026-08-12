@@ -2,6 +2,7 @@ import type {
   RequirementReviewDecision,
   RequirementReviewFinding,
 } from './requirement-review-ledger';
+import { containsProviderAuthoredToolTranscript } from './provider-authored-transcript-recovery';
 
 const MIN_FINDING_CONFIDENCE = 0.8;
 
@@ -105,7 +106,12 @@ export function parseIndependentReviewResponse(
   try {
     raw = JSON.parse(stripSingleJsonFence(response.text)) as RawReviewResult;
   } catch {
-    return localSemanticFallbackDecision('隔离审查输出不是严格 JSON。', snapshots, userPrompt);
+    return localSemanticFallbackDecision(
+      '隔离审查输出不是严格 JSON。',
+      snapshots,
+      userPrompt,
+      { hostClearable: containsProviderAuthoredToolTranscript(response.text) },
+    );
   }
   if (raw.overall_correctness !== 'patch is correct'
     && raw.overall_correctness !== 'patch is incorrect') {
@@ -251,6 +257,7 @@ function localSemanticFallbackDecision(
   explanation: string,
   snapshots: readonly RequirementReviewSourceSnapshot[],
   userPrompt: string,
+  options: { hostClearable?: boolean } = {},
 ): RequirementReviewDecision {
   const requirements = extractRequirementClauses(userPrompt);
   if (requirements.length === 0) return indeterminateDecision(explanation);
@@ -258,7 +265,11 @@ function localSemanticFallbackDecision(
     satisfiedRequirementChecksFromInventory(requirements),
     snapshots,
   );
-  if (localContradictions.length === 0) return indeterminateDecision(explanation);
+  if (localContradictions.length === 0) {
+    return indeterminateDecision(explanation, {
+      hostClearable: options.hostClearable === true,
+    });
+  }
   return {
     status: 'failed',
     explanation: `${explanation}；本地最终源码合约仍发现可执行反例。`,
@@ -957,8 +968,16 @@ function stripSingleJsonFence(text: string): string {
   return (match?.[1] ?? trimmed).trim();
 }
 
-function indeterminateDecision(explanation: string): RequirementReviewDecision {
-  return { status: 'indeterminate', explanation, findings: [] };
+function indeterminateDecision(
+  explanation: string,
+  options: { hostClearable?: boolean } = {},
+): RequirementReviewDecision {
+  return {
+    status: 'indeterminate',
+    explanation,
+    findings: [],
+    ...(options.hostClearable === true ? { hostClearable: true } : {}),
+  };
 }
 
 function isConfidence(value: unknown): value is number {

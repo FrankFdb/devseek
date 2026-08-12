@@ -4,7 +4,7 @@ Date: 2026-08-12
 
 ## Conclusion
 
-DevSeek cannot yet be declared to have reached the top-tier coding agent target. The live VS Code -> DevSeek -> free DeepSeek Web simulation improved from the attempt-28 malformed tool-protocol failure to attempt-29, attempt-30 confirmed that the targeted review-repair window works, attempt-31 confirmed that bare `read_file path=...` recovery no longer causes the earlier three-round no-tool stop, and attempt-32 confirmed that the missing-header failure no longer blocks compilation. The remaining failure class narrowed again: public tests passed, but hidden source behavior exposed a final-review blind spot around `Trade.incomingId/restingId` field orientation and `bestBid()` traversal over a descending bid map.
+DevSeek cannot yet be declared to have reached the top-tier coding agent target. The live VS Code -> DevSeek -> free DeepSeek Web simulation improved from the attempt-28 malformed tool-protocol failure to attempt-29, attempt-30 confirmed that the targeted review-repair window works, attempt-31 confirmed that bare `read_file path=...` recovery no longer causes the earlier three-round no-tool stop, attempt-32 confirmed that the missing-header failure no longer blocks compilation, and attempt-33 produced source that passes both public and hidden behavior oracles. The remaining failure class narrowed to DevSeek's own completion evidence chain: DeepSeek Web polluted the final independent-review response with DevSeek tool-result transcript text, so the product gate failed despite behaviorally correct code.
 
 ## User-Simulation Evidence
 
@@ -20,12 +20,14 @@ Scenario: `11-order-book`, price-time limit order book.
 | attempt-30 | PASS | FAIL | FAIL | Targeted repair window worked, but DeepSeek Web answered the repair prompt with bare `read_file path=... startLine=... endLine=...` lines; DevSeek treated them as prose and stopped after no-tool review recovery. |
 | attempt-31 | FAIL | FAIL | FAIL | Bare read-only shorthand recovery worked and the run advanced further, but the final repair loop timed out after a simple compile error: `std::invalid_argument` was used without `#include <stdexcept>`. |
 | attempt-32 | PASS | FAIL | PASS | Compile/header recovery held and DevSeek completed, but the hidden oracle caught source semantics that public tests missed: sell-side trades reversed `incomingId/restingId`, and `bestBid()` used `rbegin()` on a descending bid map. |
+| attempt-33 | PASS | PASS | FAIL | Code behavior reached the benchmark oracle, but the product gate failed: final reviewer output was polluted by `[DevSeek 已执行工具请求摘要]` / `[工具结果 Round]` transcript text and produced `coding-conformance-projection:unsettled-mutation:failed`. |
 
 attempt-28 report: `code/devseek-tests/cpp-user-matrix/runs/11-order-book/attempt-28/report.md`
 attempt-29 report: `code/devseek-tests/cpp-user-matrix/runs/11-order-book/attempt-29/report.md`
 attempt-30 report: `code/devseek-tests/cpp-user-matrix/runs/11-order-book/attempt-30/report.md`
 attempt-31 report: `code/devseek-tests/cpp-user-matrix/runs/11-order-book/attempt-31/report.md`
 attempt-32 report: `code/devseek-tests/cpp-user-matrix/runs/11-order-book/attempt-32/report.md`
+attempt-33 report: `code/devseek-tests/cpp-user-matrix/runs/11-order-book/attempt-33/report.md`
 
 ## Fixes Made
 
@@ -68,6 +70,11 @@ attempt-32 report: `code/devseek-tests/cpp-user-matrix/runs/11-order-book/attemp
    - It detects `Trade{buyId, order.id, ...}` on sell-side matches as a reversed `incomingId/restingId` projection when the public API declares `struct Trade { incomingId; restingId; ... }`.
    - It also flags `bestBid()` implementations that call `rbegin()` on `std::map<..., std::greater<double>>`, because `begin()` is already the highest bid in that representation.
 
+9. Host-cleared provider-transcript-polluted review:
+   - `parseIndependentReviewResponse` now marks provider-transcript-polluted non-JSON reviewer output as `hostClearable` only when the local final-source semantic fallback finds no executable contradiction.
+   - `RequirementReviewLedger` owns the final decision: it accepts that `hostClearable` indeterminate only when host final-source evidence is already ready. Ordinary malformed or insufficient reviewer output still retries or blocks.
+   - This targets attempt-33's final failure without weakening Runtime Replay: provider-authored tool-result text remains evidence of provider pollution, but no longer leaves a validated, locally clean source mutation permanently unsettled.
+
 ## Targeted Simulation Cases
 
 Small cases added before rerunning the large benchmark:
@@ -94,6 +101,8 @@ Small cases added before rerunning the large benchmark:
   `src/order_book.cpp: error: 'invalid_argument' is not a member of 'std'` produces a targeted protocol requiring `#include <stdexcept>` and a minimal include repair, without misclassifying it as full translation-unit corruption.
 - attempt-32 hidden semantic source shape:
   a state-owned descending `state.bids` plus `Trade{buyId, order.id, ...}` and `bestBid()` using `state.bids.rbegin()` now produces local final-source findings for reversed Trade identity fields and best-bid direction.
+- attempt-33 provider transcript pollution:
+  an independent-review response containing `[DevSeek 已执行工具请求摘要]`, `[工具结果 Round]`, and `task_complete` prose is host-clearable only when final source is already host-read and local semantic fallback has no findings.
 
 ## Verification
 
@@ -126,11 +135,13 @@ Current targeted-regression tests:
 node --test \
   packages/vscode-extension/test/unit/fake-tool-parser.test.mjs \
   packages/vscode-extension/test/unit/independent-requirement-review.test.mjs \
+  packages/vscode-extension/test/unit/requirement-review-ledger.test.mjs \
+  packages/vscode-extension/test/unit/provider-authored-transcript-recovery.test.mjs \
   packages/vscode-extension/test/unit/agent-auto-validation.test.mjs \
   packages/vscode-extension/test/unit/workflow-compliance.test.mjs
 ```
 
-Result: PASS, 306 tests.
+Result: PASS, 323 tests.
 
 Full local verification:
 
@@ -150,7 +161,7 @@ Results:
 - shared tests: PASS, 321 tests
 - VS Code extension tests: PASS, 174 suites
 
-Release packaging and local VSIX install are performed after committing so the packaged build identifies the final source state. attempt-29 was run against build `1.0.0-debug.20260812.t161517.gffb63a5`; attempt-30 was run against build `1.0.0-debug.20260812.t163614.ga4c2d04`; attempt-31 was run against build `1.0.0-debug.20260812.t165015.g4f1b968`; attempt-32 was run against build `1.0.0-debug.20260812.t171241.g274bb21`; the next live run must use the post-fix VSIX from this report.
+Release packaging and local VSIX install are performed after committing so the packaged build identifies the final source state. attempt-29 was run against build `1.0.0-debug.20260812.t161517.gffb63a5`; attempt-30 was run against build `1.0.0-debug.20260812.t163614.ga4c2d04`; attempt-31 was run against build `1.0.0-debug.20260812.t165015.g4f1b968`; attempt-32 was run against build `1.0.0-debug.20260812.t171241.g274bb21`; attempt-33 was run against build `1.0.0-debug.20260812.t172848.gdd71562`; the next live run must use the post-fix VSIX from this report.
 
 ## Claude Code / Codex Comparison
 
@@ -160,7 +171,7 @@ The implementation direction is to move DevSeek toward host-owned deterministic 
 - Codex repository rules and review workflows emphasize deterministic project instructions and review gates. DevSeek's workflow-compliance guards play the same role: they prevent recovery, review, and tool parsing behavior from drifting.
 - Claude Code permissions and hooks show a useful pattern: tool calls are evaluated by host/runtime gates before execution, and hooks can deny or force prompts without trusting the model's prose. DevSeek should continue treating DeepSeek Web output as untrusted serialization until the host parser converts it into an executable tool request.
 - Source-level Claude Code architecture analysis also supports this direction: the agent loop is simple; quality comes from deterministic surrounding systems such as permissions, context management, tool routing, recovery, and persistent state.
-- This iteration also used source-level and run-level evidence beyond public docs: DevSeek retained logs showed the model-authored tool-result transcript pollution, attempt-29 exposed false `std::map` ordering reasoning against the final source, attempt-30 exposed bare DeepSeek Web tool shorthand, attempt-31 exposed a timeout after a minimal missing-include diagnostic, and attempt-32 exposed a hidden final-source semantic miss around Trade field projection and bid-book traversal that public documentation alone would not predict.
+- This iteration also used source-level and run-level evidence beyond public docs: DevSeek retained logs showed the model-authored tool-result transcript pollution, attempt-29 exposed false `std::map` ordering reasoning against the final source, attempt-30 exposed bare DeepSeek Web tool shorthand, attempt-31 exposed a timeout after a minimal missing-include diagnostic, attempt-32 exposed a hidden final-source semantic miss around Trade field projection and bid-book traversal, and attempt-33 exposed a behaviorally correct but product-failed run caused by provider transcript pollution in the final review path.
 
 Permission policy note:
 

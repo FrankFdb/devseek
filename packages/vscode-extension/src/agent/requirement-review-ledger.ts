@@ -27,6 +27,7 @@ export interface RequirementReviewDecision {
   status: 'passed' | 'failed' | 'indeterminate';
   explanation: string;
   findings: readonly RequirementReviewFinding[];
+  hostClearable?: boolean;
 }
 
 export interface RequirementReviewCandidate {
@@ -166,7 +167,8 @@ export class RequirementReviewLedger {
     }
     if (decision.status === 'indeterminate') {
       this.pending.indeterminateDecisionCount += 1;
-      if (this.pending.hostFinalSourceEvidenceReady && this.pending.indeterminateDecisionCount >= 2) {
+      if (this.pending.hostFinalSourceEvidenceReady
+        && (decision.hostClearable === true || this.pending.indeterminateDecisionCount >= 2)) {
         this.pending = undefined;
         return undefined;
       }

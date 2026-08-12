@@ -195,6 +195,32 @@ test('host final-source evidence downgrades repeated reviewer unavailability aft
   assert.equal(ledger.beforeNoToolCompletion(), undefined);
 });
 
+test('host final-source evidence clears provider-transcript-polluted review after local source fallback', () => {
+  const ledger = new RequirementReviewLedger();
+  const writes = [sourceWrite('include/order_book.hpp'), sourceWrite('src/order_book.cpp')];
+  ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: passedGate,
+    writtenFiles: writes,
+    roundReadFiles: [],
+    hostFinalSourceEvidenceReady: true,
+  });
+  assert.deepEqual(ledger.takeIndependentReviewCandidate(), {
+    sourcePaths: ['include/order_book.hpp', 'src/order_book.cpp'],
+  });
+
+  const accepted = ledger.settleIndependentReview({
+    status: 'indeterminate',
+    explanation: '隔离审查输出不是严格 JSON。',
+    findings: [],
+    hostClearable: true,
+  });
+
+  assert.equal(accepted, undefined);
+  assert.equal(ledger.completionBlocker(), undefined);
+  assert.equal(ledger.beforeNoToolCompletion(), undefined);
+});
+
 test('failed independent review blocks completion until repaired source is revalidated', () => {
   const ledger = new RequirementReviewLedger();
   const firstWrite = sourceWrite('src/order_book.cpp');

@@ -2766,6 +2766,16 @@ test('Architecture: validated source changes require fresh source review before 
     'Report bestBid from the highest bid level',
     'order-book semantic fallback must preserve bestBid direction semantics',
   );
+  assertContains(
+    reviewContract,
+    'hostClearable',
+    'provider-transcript-polluted review fallback must mark host-clearable indeterminate decisions in the review contract',
+  );
+  assertContains(
+    src('src/agent/requirement-review-ledger.ts'),
+    'decision.hostClearable',
+    'requirement review ledger must own host-clearing of provider-transcript-polluted review output',
+  );
   const structuralCompileFailure = src('src/app/structural-compile-failure.ts');
   assertContains(
     structuralCompileFailure,
