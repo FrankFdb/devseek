@@ -10,8 +10,12 @@ export interface RequirementReviewInput {
 }
 
 export interface RequirementReviewFinding {
+  requirementId: string;
+  requirement: string;
   title: string;
-  body: string;
+  observedBehavior: string;
+  expectedBehavior: string;
+  counterexample: string;
   priority: 0 | 1 | 2 | 3;
   confidence: number;
   path: string;
@@ -159,9 +163,13 @@ function renderBlockingDecision(decision: RequirementReviewDecision): string {
   const heading = decision.status === 'failed'
     ? '【独立需求审查：未通过】'
     : '【独立需求审查：证据不足】';
-  const findings = decision.findings.map((finding, index) => (
-    `${index + 1}. [P${finding.priority}] ${finding.title} (${finding.path}:${finding.line})\n${finding.body}`
-  ));
+  const findings = decision.findings.map((finding, index) => [
+    `${index + 1}. [P${finding.priority}] ${finding.title} (${finding.path}:${finding.line})`,
+    `需求 ${finding.requirementId}：${finding.requirement}`,
+    `实际行为：${finding.observedBehavior}`,
+    `期望行为：${finding.expectedBehavior}`,
+    `可复现反例：${finding.counterexample}`,
+  ].join('\n'));
   return [
     heading,
     decision.explanation,

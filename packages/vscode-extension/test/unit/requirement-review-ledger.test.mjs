@@ -133,8 +133,12 @@ test('failed independent review blocks completion until repaired source is reval
     status: 'failed',
     explanation: 'A used identity can be submitted again.',
     findings: [{
+      requirementId: 'R2',
+      requirement: 'Reject duplicate or already-used ids.',
       title: 'Preserve used order identifiers',
-      body: 'Completed identifiers are erased and become reusable.',
+      observedBehavior: 'Completed identifiers are erased and accepted again.',
+      expectedBehavior: 'Already-used identifiers must remain rejected.',
+      counterexample: 'Complete id A and submit A again; the second submission is accepted.',
       priority: 1,
       confidence: 0.99,
       path: 'src/order_book.cpp',
@@ -142,6 +146,8 @@ test('failed independent review blocks completion until repaired source is reval
     }],
   });
   assert.match(failed, /Preserve used order identifiers/);
+  assert.match(failed, /需求 R2：Reject duplicate or already-used ids/);
+  assert.match(failed, /可复现反例/);
   assert.match(ledger.beforeNoToolCompletion(), /必须根据上述独立结论修复生产源码/);
 
   const repairedWrite = sourceWrite('src/order_book.cpp');
