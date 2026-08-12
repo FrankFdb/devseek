@@ -115,6 +115,86 @@ test('pending requirement review survives read-only rounds without a new quality
   assert.equal(ledger.beforeNoToolCompletion(), undefined);
 });
 
+test('host final-source evidence can trigger isolated review without provider read_file loops', () => {
+  const ledger = new RequirementReviewLedger();
+  const writes = [sourceWrite('src/order_book.cpp'), sourceWrite('include/order_book.hpp')];
+  const feedback = ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: passedGate,
+    writtenFiles: writes,
+    roundReadFiles: [],
+    hostFinalSourceEvidenceReady: true,
+  });
+
+  assert.match(feedback, /宿主侧写入读回和验证流程绑定最终源码证据/);
+  assert.deepEqual(ledger.takeIndependentReviewCandidate(), {
+    sourcePaths: ['src/order_book.cpp', 'include/order_book.hpp'],
+  });
+  assert.match(ledger.beforeNoToolCompletion(), /不能跳过独立需求审查/);
+  assert.match(ledger.settleIndependentReview({
+    status: 'passed',
+    explanation: 'Host-captured final source satisfies the user requirements.',
+    findings: [],
+  }), /独立需求审查：通过/);
+  assert.equal(ledger.completionBlocker(), undefined);
+});
+
+test('host final-source evidence never bypasses failed validation', () => {
+  const ledger = new RequirementReviewLedger();
+  const feedback = ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: { status: 'fail', summary: 'compile failed' },
+    writtenFiles: [sourceWrite('src/order_book.cpp')],
+    roundReadFiles: [],
+    hostFinalSourceEvidenceReady: true,
+  });
+
+  assert.match(feedback, /暂停独立需求审查/);
+  assert.match(feedback, /compile failed/);
+  assert.equal(ledger.takeIndependentReviewCandidate(), undefined);
+});
+
+test('host final-source evidence downgrades repeated reviewer unavailability after bounded retry', () => {
+  const ledger = new RequirementReviewLedger();
+  const writes = [sourceWrite('src/order_book.cpp')];
+  ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: passedGate,
+    writtenFiles: writes,
+    roundReadFiles: [],
+    hostFinalSourceEvidenceReady: true,
+  });
+  ledger.takeIndependentReviewCandidate();
+
+  const firstIndeterminate = ledger.settleIndependentReview({
+    status: 'indeterminate',
+    explanation: '隔离审查未逐条覆盖需求清单，或需求引用不是原文。',
+    findings: [],
+  });
+  assert.match(firstIndeterminate, /只允许用 read_file 重新读取最终源码以重试审查/);
+
+  const retry = ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: passedGate,
+    writtenFiles: writes,
+    roundReadFiles: [],
+    hostFinalSourceEvidenceReady: true,
+  });
+  assert.match(retry, /自动重试独立需求审查/);
+  assert.deepEqual(ledger.takeIndependentReviewCandidate(), {
+    sourcePaths: ['src/order_book.cpp'],
+  });
+
+  const accepted = ledger.settleIndependentReview({
+    status: 'indeterminate',
+    explanation: '隔离审查输出不是严格 JSON。',
+    findings: [],
+  });
+  assert.equal(accepted, undefined);
+  assert.equal(ledger.completionBlocker(), undefined);
+  assert.equal(ledger.beforeNoToolCompletion(), undefined);
+});
+
 test('failed independent review blocks completion until repaired source is revalidated', () => {
   const ledger = new RequirementReviewLedger();
   const firstWrite = sourceWrite('src/order_book.cpp');

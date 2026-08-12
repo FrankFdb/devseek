@@ -2586,6 +2586,7 @@ test('Architecture: Bridge does not use Playwright fill for oversized prompts', 
 test('Architecture: validated source changes require fresh source review before completion', () => {
   const agenticLoop = src('src/agent/agentic-loop.ts');
   const reviewLedger = src('src/agent/requirement-review-ledger.ts');
+  const reviewContract = src('src/agent/requirement-review-contract.ts');
   const providerReview = src('src/agent/provider-requirement-review.ts');
   const independentReview = src('src/agent/independent-requirement-review.ts');
   const providerTranscriptRecovery = src('src/agent/provider-authored-transcript-recovery.ts');
@@ -2685,6 +2686,46 @@ test('Architecture: validated source changes require fresh source review before 
     '真实工具调用',
     'provider-authored transcript recovery must force recovery through real tool calls',
   );
+  assertContains(
+    agenticLoop,
+    'hostFinalSourceEvidenceReady: normalizedAutoValidation.qualityGate?.status === \'pass\'',
+    'validated final source must be eligible for host-captured isolated review instead of provider read_file loops',
+  );
+  assertContains(
+    reviewLedger,
+    'hostFinalSourceEvidenceReady',
+    'requirement review ledger must own the host final-source evidence fallback',
+  );
+  assertContains(
+    reviewLedger,
+    '宿主侧写入读回和验证流程绑定最终源码证据',
+    'host final-source fallback must explain that it uses DevSeek-owned readback and validation evidence',
+  );
+  assertContains(
+    reviewLedger,
+    'this.pending = undefined;\n        return undefined;',
+    'bounded reviewer unavailability must stop in the host instead of sending another provider feedback loop',
+  );
+  assertContains(
+    reviewLedger,
+    '自动重试独立需求审查',
+    'host-owned final source evidence must retry isolated review without asking the provider to read files again',
+  );
+  assertContains(
+    reviewContract,
+    'localSemanticFallbackDecision',
+    'requirement review parser must fall back to host-side semantic contracts when reviewer protocol drifts',
+  );
+  assertContains(
+    reviewContract,
+    'findPricePriorityDirectionContract',
+    'requirement review parser must locally detect bid/ask traversal direction regressions',
+  );
+  assertContains(
+    reviewContract,
+    'highest bid',
+    'order-book semantic fallback must preserve price-priority direction evidence',
+  );
 });
 
 test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempotency guards', () => {
@@ -2695,6 +2736,7 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   const recoveryCheckpoint = src('src/app/provider-recovery-checkpoint.ts');
   const routeDecision = src('src/app/coding-kernel-route-decision.ts');
   const agentProviderRecovery = src('src/agent/provider-response-recovery.ts');
+  const agenticProviderRecoveryBoundary = src('src/agent/agentic-provider-recovery-boundary.ts');
   const agentHistoryCompaction = src('src/agent/agent-history-compaction.ts');
   const agenticContextCompaction = src('src/agent/agentic-context-compaction.ts');
   const runDisplay = src('src/agent/agent-run-display.ts');
@@ -2736,9 +2778,10 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   assertContains(agentProviderRecovery, '不要引用、续写或执行上一轮损坏文本', 'provider recovery must never trust corrupted response text');
   assertContains(agentProviderRecovery, 'shouldResetProviderSessionForRecovery', 'provider recovery must decide when a web session is wedged');
   assertContains(agenticLoop, 'parseAgentProviderFailure(error)', 'agentic loop must catch provider corruption before extension-level failure');
-  assertContains(agenticLoop, 'buildAgentProviderRecoveryPrompt', 'agentic loop must recover inside the current task from safe facts');
+  assertContains(agenticProviderRecoveryBoundary, 'buildAgentProviderRecoveryPrompt', 'agentic provider recovery boundary must recover inside the current task from safe facts');
   assertContains(agenticLoop, 'forceProviderNewSessionNextTurn', 'agentic loop must rebuild a wedged Provider session from task history');
-  assertContains(agenticLoop, 'applyProviderRecoveryHistory', 'provider recovery must rebuild a minimal ledger context instead of replaying raw history');
+  assertContains(agenticProviderRecoveryBoundary, 'applyProviderRecoveryHistory', 'provider recovery must rebuild a minimal ledger context instead of replaying raw history');
+  assertContains(agenticProviderRecoveryBoundary, 'forceFreshProviderSession', 'provider recovery boundary must report when the loop needs a fresh Provider session');
   assertContains(agenticLoop, 'resetProviderRecoveryAttemptsAfterProgress', 'provider recovery budget must reset after real tool progress');
   assertContains(agenticContextCompaction, 'replaceAllAssistantToolHistory', 'context compaction adapter must summarize all executed assistant tool calls before provider sends');
   assertContains(agenticLoop, 'replaceLatestAssistantToolHistory', 'agentic loop must summarize executed tool calls before the next provider round');
@@ -2928,13 +2971,17 @@ test('Architecture: Bridge chat owns browser reset boundaries and trace-scoped p
 
 test('Agentic loop: visible correction and context convergence are owned by Agent Core', () => {
   const agenticLoop = src('src/agent/agentic-loop.ts');
+  const agenticProviderRecoveryBoundary = src('src/agent/agentic-provider-recovery-boundary.ts');
   const noToolIntent = src('src/agent/no-tool-intent.ts');
   const autoValidation = src('src/agent/auto-validation.ts');
 
   assertContains(agenticLoop, 'emitAgenticCorrectionStatus', 'agentic loop must surface internal recovery as user-visible status');
   assertContains(agenticLoop, '已拦接口头承诺，要求真实工具执行', 'dangling model promises must be visible to the user');
   assertContains(agenticLoop, "'provider-short-intent'", 'dangling model promise recovery must have a stable evidence reason');
-  assertContains(agenticLoop, "'provider-response-corruption'", 'provider response recovery must have a stable evidence reason');
+  assertContains(agenticProviderRecoveryBoundary, "'provider-response-corruption'", 'provider response recovery must have a stable evidence reason');
+  assertContains(agenticLoop, 'hasIncompleteFakeToolCallProtocol(text)', 'damaged tool protocol without parsed tools must not fall through as ordinary no-tool prose');
+  assertContains(agenticLoop, 'recoverProviderFailureInsideCurrentTask({', 'agentic loop must reuse the provider recovery boundary for malformed tool blocks');
+  assertContains(agenticLoop, "status: 'incomplete-tool-block'", 'malformed provider tool blocks must get a stable recoverable failure status');
   assertContains(agenticLoop, 'AGENTIC_CONTEXT_GATHERING_ROUND_LIMIT_BEFORE_WRITE', 'context-gathering convergence must be bounded');
   assertContains(agenticLoop, 'contextGatheringOnlyRoundsWithoutWrite', 'agentic loop must track read/search-only rounds');
   assertContains(agenticLoop, '项目证据已收集，正在切换到交付落盘', 'formal project work must visibly transition from investigation to delivery');

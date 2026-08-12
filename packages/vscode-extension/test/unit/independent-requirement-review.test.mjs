@@ -215,6 +215,189 @@ test('strict review parser passes only an exact no-finding verdict', () => {
   }, 1), [source], prompt).status, 'indeterminate');
 });
 
+test('strict review parser falls back to local price-priority checks when reviewer requests tools', () => {
+  const header = snapshot('include/order_book.hpp', [
+    '#include "order_book.hpp"',
+    '#include <map>',
+    'namespace devseek_case {',
+    'struct PriceLevel {};',
+    'using PriceLevels = std::map<double, PriceLevel>;',
+    'class OrderBook {',
+    '  PriceLevels bids_;',
+    '  PriceLevels asks_;',
+    '};',
+    '}',
+  ].join('\n'));
+  const source = snapshot('src/order_book.cpp', [
+    '#include "order_book.hpp"',
+    'namespace devseek_case {',
+    'std::vector<Trade> OrderBook::match(Order* incoming) {',
+    '  auto& opponent_levels = (incoming->side == Side::Buy) ? asks_ : bids_;',
+    '  while (!opponent_levels.empty()) {',
+    '    auto it = opponent_levels.begin();',
+    '    return makeTrade(*it);',
+    '  }',
+    '  return {};',
+    '}',
+    '}',
+  ].join('\n'));
+  const prompt = '成交价使用 resting order 价格，遵循价格优先、同价时间优先；卖单必须先撮合最高买价。';
+  const decision = parseIndependentReviewResponse({
+    text: JSON.stringify({
+      requirement_checks: [requirementCheck('R1', prompt)],
+      findings: [],
+      overall_correctness: 'patch is correct',
+      overall_explanation: 'The order book is correct.',
+      overall_confidence_score: 0.95,
+    }),
+    toolCount: 1,
+  }, [header, source], prompt);
+
+  assert.equal(decision.status, 'failed');
+  assert.equal(decision.findings[0].path, 'src/order_book.cpp');
+  assert.match(decision.explanation, /本地最终源码合约/);
+  assert.match(decision.findings[0].title, /highest bid/);
+  assert.match(decision.findings[0].counterexample, /b2@11/);
+});
+
+test('strict review parser cross-checks price priority when reviewer misses it', () => {
+  const source = snapshot('src/order_book.cpp', [
+    '#include "order_book.hpp"',
+    '#include <map>',
+    'namespace devseek_case {',
+    'struct PriceLevel {};',
+    'class OrderBook {',
+    '  std::map<double, PriceLevel> bids_;',
+    '  std::map<double, PriceLevel> asks_;',
+    '  std::vector<Trade> match(Order* incoming) {',
+    '    auto& opponent_levels = (incoming->side == Side::Buy) ? asks_ : bids_;',
+    '    while (!opponent_levels.empty()) {',
+    '      auto it = opponent_levels.begin();',
+    '      return makeTrade(*it);',
+    '    }',
+    '    return {};',
+    '  }',
+    '};',
+    '}',
+  ].join('\n'));
+  const prompt = '成交价使用 resting order 价格，遵循价格优先、同价时间优先；卖单必须先撮合最高买价。';
+  const decision = parseIndependentReviewResponse(response({
+    requirement_checks: [{
+      requirement_id: 'R1',
+      requirement_quote: prompt,
+      status: 'satisfied',
+      evidence: 'Trace two price levels: submit b1@10 then b2@11, incoming sell first matches b2; same-price orders preserve FIFO.',
+    }],
+    findings: [],
+    overall_correctness: 'patch is correct',
+    overall_explanation: 'The order book is correct.',
+    overall_confidence_score: 0.95,
+  }), [source], prompt);
+
+  assert.equal(decision.status, 'failed');
+  assert.match(decision.explanation, /源码执行路径不一致/);
+  assert.match(decision.findings[0].observedBehavior, /lowest eligible bid/);
+});
+
+test('strict review parser runs local price-priority checks when review inventory is malformed', () => {
+  const source = snapshot('src/order_book.cpp', [
+    '#include "order_book.hpp"',
+    '#include <map>',
+    'namespace devseek_case {',
+    'struct PriceLevel {};',
+    'class OrderBook {',
+    '  std::map<double, PriceLevel> bids_;',
+    '  std::map<double, PriceLevel> asks_;',
+    '  std::vector<Trade> match(Order* incoming) {',
+    '    auto& opponent_levels = (incoming->side == Side::Buy) ? asks_ : bids_;',
+    '    while (!opponent_levels.empty()) {',
+    '      auto it = opponent_levels.begin();',
+    '      return makeTrade(*it);',
+    '    }',
+    '    return {};',
+    '  }',
+    '};',
+    '}',
+  ].join('\n'));
+  const prompt = '成交价使用 resting order 价格，遵循价格优先、同价时间优先；卖单必须先撮合最高买价。';
+  const decision = parseIndependentReviewResponse(response({
+    requirement_checks: [{
+      requirement_id: 'WRONG',
+      requirement_quote: 'not the original requirement',
+      status: 'satisfied',
+      evidence: 'looks fine',
+    }],
+    findings: [],
+    overall_correctness: 'patch is correct',
+    overall_explanation: 'The order book is correct.',
+    overall_confidence_score: 0.95,
+  }), [source], prompt);
+
+  assert.equal(decision.status, 'failed');
+  assert.match(decision.explanation, /本地最终源码合约/);
+  assert.match(decision.findings[0].title, /highest bid/);
+});
+
+test('strict review parser does not flag descending bid maps for price priority', () => {
+  const source = snapshot('src/order_book.cpp', [
+    '#include "order_book.hpp"',
+    '#include <map>',
+    'namespace devseek_case {',
+    'struct PriceLevel {};',
+    'class OrderBook {',
+    '  std::map<double, PriceLevel, std::greater<double>> bids_;',
+    '  std::map<double, PriceLevel> asks_;',
+    '  std::vector<Trade> match(Order* incoming) {',
+    '    auto& opponent_levels = (incoming->side == Side::Buy) ? asks_ : bids_;',
+    '    while (!opponent_levels.empty()) {',
+    '      auto it = opponent_levels.begin();',
+    '      return makeTrade(*it);',
+    '    }',
+    '    return {};',
+    '  }',
+    '};',
+    '}',
+  ].join('\n'));
+  const prompt = '成交价使用 resting order 价格，遵循价格优先、同价时间优先；卖单必须先撮合最高买价。';
+  const decision = parseIndependentReviewResponse(response({
+    requirement_checks: [{
+      requirement_id: 'R1',
+      requirement_quote: prompt,
+      status: 'satisfied',
+      evidence: 'Trace two price levels: bids use std::greater<double>, so begin() is the highest bid; same-price orders preserve FIFO.',
+    }],
+    findings: [],
+    overall_correctness: 'patch is correct',
+    overall_explanation: 'Every stated invariant is represented in the final source.',
+    overall_confidence_score: 0.95,
+  }), [source], prompt);
+
+  assert.equal(decision.status, 'passed');
+});
+
+test('strict review parser falls back to local source checks for non-json reviewer output', () => {
+  const source = snapshot('src/order_book.cpp', [
+    '#include "order_book.hpp"',
+    'namespace devseek_case {',
+    'std::vector<Trade> OrderBook::submit(Order order) {',
+    '  std::vector<Trade> trades;',
+    '  if (!valid(order)) return {};',
+    '  if (orders_.find(order.id) != orders_.end()) return trades;',
+    '  return trades;',
+    '}',
+    '}',
+  ].join('\n'));
+  const prompt = 'submit rejects empty id, duplicate or already-used id, non-finite price, and quantity <= 0.';
+  const decision = parseIndependentReviewResponse({
+    text: 'I need to inspect the source before I can answer.',
+    toolCount: 0,
+  }, [source], prompt);
+
+  assert.equal(decision.status, 'failed');
+  assert.match(decision.explanation, /严格 JSON/);
+  assert.match(decision.findings[0].title, /Expose invalid submit rejection/);
+});
+
 test('strict review parser requires concrete traces for ordering requirements marked satisfied', () => {
   const source = snapshot('src/order_book.cpp', 'std::map<double, Order> bids;\nmatch(best_bid);\n');
   const prompt = 'Follow price priority and same-price FIFO order.';

@@ -297,6 +297,15 @@ test('provider output integrity: classifies named JSON tool_call envelopes befor
   assert.equal(result.toolCallCount, 1);
 });
 
+test('provider output integrity: rejects quote-damaged named tool_call writes as truncated', () => {
+  const result = classifyProviderOutputIntegrity(String.raw`我将重写实现。
+<tool_call name="create_file">{"path":"/tmp/project/src/order_book.cpp","content":"#include "order_book.hpp"\n#include <map>\n"}</tool_call>`);
+
+  assert.equal(result.kind, 'truncated');
+  assert.equal(result.okForSettlement, false);
+  assert.equal(result.toolCallCount, 0);
+});
+
 test('provider output integrity: rejects incomplete generic TOOL envelopes as truncated', () => {
   const result = classifyProviderOutputIntegrity(
     '现在读取实现。<TOOL>read_file {"path":"/tmp/app/main.cpp"',

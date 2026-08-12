@@ -7,6 +7,7 @@ export interface RequirementReviewInput {
   qualityGate?: AgenticHistoryQualityGate;
   writtenFiles: readonly WrittenFileEvidence[];
   roundReadFiles: readonly string[];
+  hostFinalSourceEvidenceReady?: boolean;
 }
 
 export interface RequirementReviewFinding {
@@ -40,6 +41,7 @@ interface PendingRequirementReview {
   changedSourcePaths: string[];
   reviewSourcePaths: string[];
   freshSourceEvidenceReady: boolean;
+  hostFinalSourceEvidenceReady: boolean;
   reviewerRequested: boolean;
   indeterminateDecisionCount: number;
   decision?: RequirementReviewDecision;
@@ -62,14 +64,24 @@ export class RequirementReviewLedger {
         this.pending = undefined;
         return renderValidationPendingReviewPause(changedSourcePaths, reviewSourcePaths, input.qualityGate);
       }
+      const hostFinalSourceEvidenceReady = input.hostFinalSourceEvidenceReady === true;
       this.scheduledSourceWriteCount = sourceWrites.length;
       this.pending = {
         changedSourcePaths,
         reviewSourcePaths,
-        freshSourceEvidenceReady: false,
+        freshSourceEvidenceReady: hostFinalSourceEvidenceReady,
+        hostFinalSourceEvidenceReady,
         reviewerRequested: false,
         indeterminateDecisionCount: 0,
       };
+      if (hostFinalSourceEvidenceReady) {
+        return [
+          '【系统反馈：完成前需求覆盖复核】',
+          `项目现有验证已通过，最新源码变更为：${changedSourcePaths.join('、')}。通过可见测试只证明已覆盖行为，不能替代用户需求。`,
+          `DevSeek 已通过宿主侧写入读回和验证流程绑定最终源码证据：${reviewSourcePaths.join('、')}。`,
+          '系统将直接捕获最终源码快照并交给全新隔离上下文中的只读审查者；实现会话不要再请求工具或自行宣告通过。',
+        ].join('\n');
+      }
       return [
         '【系统反馈：完成前需求覆盖复核】',
         `项目现有验证已通过，最新源码变更为：${changedSourcePaths.join('、')}。通过可见测试只证明已覆盖行为，不能替代用户需求。`,
@@ -91,7 +103,21 @@ export class RequirementReviewLedger {
     }
     if (this.pending.decision?.status === 'indeterminate') {
       if (this.pending.indeterminateDecisionCount >= 2) {
+        if (this.pending.hostFinalSourceEvidenceReady) {
+          this.pending = undefined;
+          return undefined;
+        }
         return renderIndeterminateDecision(this.pending.decision, this.pending, false);
+      }
+      if (this.pending.hostFinalSourceEvidenceReady) {
+        this.pending.decision = undefined;
+        this.pending.reviewerRequested = false;
+        this.pending.freshSourceEvidenceReady = true;
+        return [
+          '【系统反馈：自动重试独立需求审查】',
+          '上一轮隔离审查输出不可用，但宿主侧最终源码证据仍有效。',
+          '系统将直接用已绑定的最终源码快照重试隔离审查；实现会话不要请求 read_file、不要修改源码、不要解释性绕过。',
+        ].join('\n');
       }
       const missingRetryPaths = this.pending.reviewSourcePaths.filter(sourcePath => (
         !input.roundReadFiles.some(readPath => sameWorkspacePath(readPath, sourcePath))
@@ -134,12 +160,16 @@ export class RequirementReviewLedger {
     return { sourcePaths: [...this.pending.reviewSourcePaths] };
   }
 
-  settleIndependentReview(decision: RequirementReviewDecision): string {
+  settleIndependentReview(decision: RequirementReviewDecision): string | undefined {
     if (!this.pending?.reviewerRequested) {
       throw new Error('requirement-review-ledger:review-without-candidate');
     }
     if (decision.status === 'indeterminate') {
       this.pending.indeterminateDecisionCount += 1;
+      if (this.pending.hostFinalSourceEvidenceReady && this.pending.indeterminateDecisionCount >= 2) {
+        this.pending = undefined;
+        return undefined;
+      }
     }
     this.pending.decision = decision;
     return decision.status === 'passed'

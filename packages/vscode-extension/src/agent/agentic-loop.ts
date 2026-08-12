@@ -44,6 +44,7 @@ import {
 import {
   containsFakeToolCallProtocol,
   findFirstToolCallStart,
+  hasIncompleteFakeToolCallProtocol,
   parseFakeToolCalls,
   stripToolCallBlocks,
 } from './fake-tool-parser';
@@ -106,18 +107,14 @@ import { settleProviderFailureFromCompletedEvidence } from './agentic-provider-s
 import { stableStringify } from './stable-stringify';
 import { describeProviderOutputIntegrity } from './provider-output-integrity';
 import {
-  buildAgentProviderRecoveryPrompt,
-  canRecoverAgentProviderFailure,
-  describeAgentProviderRecoveryForUser,
   parseAgentProviderFailure,
-  shouldResetProviderSessionForRecovery,
 } from './provider-response-recovery';
+import { recoverAgenticProviderFailure } from './agentic-provider-recovery-boundary';
 import {
   buildTaskOutputScopeRecoveryPrompt,
   detectTaskOutputScopeDrift,
 } from './task-output-scope';
 import {
-  applyProviderRecoveryHistory,
   replaceLatestAssistantToolHistory,
 } from './agent-history-compaction';
 import { compactAgenticMessageHistory } from './agentic-context-compaction';
@@ -335,6 +332,36 @@ export async function runAgenticLoop(
       detail,
     });
   };
+  const recoverProviderFailureInsideCurrentTask = async (
+    providerFailure: ReturnType<typeof parseAgentProviderFailure>,
+    partialResponseLength = 0,
+  ): Promise<boolean> => {
+    const recovery = await recoverAgenticProviderFailure({
+      failure: providerFailure,
+      recoveryAttempts: providerRecoveryAttempts,
+      maxRecoveryAttempts: AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS,
+      partialResponseLength,
+      userPrompt: writeAuthority.currentPrompt,
+      promptRequiresTools,
+      currentTodos,
+      readEvidencePaths: [...allReadEvidencePaths],
+      writtenFiles: allWrittenFiles,
+      terminalEvidence: allTerminalEvidence,
+      messages,
+      totalChars,
+      contextCompaction: executionContext.contextCompaction,
+      workspaceRoot,
+      round: roundCount,
+      evidenceRefs: allEvidenceRefs,
+      taskFile: initialDisplayTarget,
+      taskAction: initialDisplayAction,
+      callbacks,
+    });
+    providerRecoveryAttempts = recovery.recoveryAttempts;
+    totalChars = recovery.totalChars;
+    if (recovery.forceFreshProviderSession) forceProviderNewSessionNextTurn = true;
+    return recovery.recovered;
+  };
   await callbacks.onAgentStatus({
     type: 'agentStatus',
     phase: 'execute',
@@ -494,56 +521,7 @@ export async function runAgenticLoop(
         break;
       }
       const providerFailure = parseAgentProviderFailure(error);
-      if (!callbacks.signal?.aborted
-        && canRecoverAgentProviderFailure(
-          providerFailure,
-          providerRecoveryAttempts,
-          AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS,
-        )) {
-        providerRecoveryAttempts++;
-        const resetProviderSession = shouldResetProviderSessionForRecovery(providerFailure);
-        if (resetProviderSession) forceProviderNewSessionNextTurn = true;
-        const display = describeAgentProviderRecoveryForUser(
-          providerFailure,
-          providerRecoveryAttempts,
-          AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS,
-        );
-        callbacks.onToolActivity?.('label', display.activityLabel);
-        await callbacks.onAgentStatus({
-          type: 'agentStatus',
-          phase: 'repair',
-          taskId: 'agentic',
-          taskFile: initialDisplayTarget,
-          taskAction: initialDisplayAction,
-          taskIndex: 1,
-          taskTotal: 1,
-          state: 'started',
-          title: display.title,
-          detail: display.detail,
-          recoveryReason: 'provider-response-corruption',
-        });
-        const recoveryMessage = buildAgentProviderRecoveryPrompt({
-          userPrompt: writeAuthority.currentPrompt,
-          failure: providerFailure,
-          recoveryAttempt: providerRecoveryAttempts,
-          maxRecoveryAttempts: AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS,
-          promptRequiresTools,
-          currentTodos,
-          readEvidencePaths: [...allReadEvidencePaths],
-          writtenFiles: allWrittenFiles,
-          terminalEvidence: allTerminalEvidence,
-          partialResponseLength: sAccum.trim().length,
-        });
-        applyProviderRecoveryHistory(messages, recoveryMessage);
-        totalChars = compactAgenticMessageHistory({
-          messages,
-          session: executionContext.contextCompaction,
-          currentTodos,
-          workspaceRoot,
-          round: roundCount,
-          evidenceRefs: allEvidenceRefs,
-          trigger: 'provider-recovery',
-        });
+      if (await recoverProviderFailureInsideCurrentTask(providerFailure, sAccum.trim().length)) {
         continue;
       }
       throw error;
@@ -619,6 +597,18 @@ export async function runAgenticLoop(
     }
 
     if (!tools.length) {
+      if (!literalToolProtocolPrompt && !callbacks.signal?.aborted && hasIncompleteFakeToolCallProtocol(text)) {
+        noToolRounds++;
+        const recovered = await recoverProviderFailureInsideCurrentTask({
+          status: 'incomplete-tool-block',
+          reason: '工具协议痕迹存在，但没有形成可安全执行的工具参数。',
+          rawMessage: text,
+          recoverable: true,
+        }, text.trim().length);
+        if (recovered) continue;
+        failedReason = 'Provider 连续输出损坏工具协议，未形成可执行工具调用。';
+        break;
+      }
       const rawFallbackTodos = normalizeVisibleTodos(extractPlanningTodoItems(text));
       const fallbackTodos = rawFallbackTodos.length > 0
         ? preserveInitialTodosWhenModelPlanIsTooCoarse(rawFallbackTodos)
@@ -997,6 +987,7 @@ export async function runAgenticLoop(
         qualityGate: normalizedAutoValidation.qualityGate,
         writtenFiles: allWrittenFiles,
         roundReadFiles: loopRes.readFiles ?? [],
+        hostFinalSourceEvidenceReady: normalizedAutoValidation.qualityGate?.status === 'pass',
       });
       if (reviewFeedback) {
         loopWarnings.push(reviewFeedback);

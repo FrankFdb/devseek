@@ -99,23 +99,23 @@ export function parseIndependentReviewResponse(
   userPrompt = '',
 ): RequirementReviewDecision {
   if (response.toolCount > 0) {
-    return indeterminateDecision('隔离审查者违反只读协议并请求了工具。');
+    return localSemanticFallbackDecision('隔离审查者违反只读协议并请求了工具。', snapshots, userPrompt);
   }
   let raw: RawReviewResult;
   try {
     raw = JSON.parse(stripSingleJsonFence(response.text)) as RawReviewResult;
   } catch {
-    return indeterminateDecision('隔离审查输出不是严格 JSON。');
+    return localSemanticFallbackDecision('隔离审查输出不是严格 JSON。', snapshots, userPrompt);
   }
   if (raw.overall_correctness !== 'patch is correct'
     && raw.overall_correctness !== 'patch is incorrect') {
-    return indeterminateDecision('隔离审查缺少有效的 overall_correctness。');
+    return localSemanticFallbackDecision('隔离审查缺少有效的 overall_correctness。', snapshots, userPrompt);
   }
   if (!Array.isArray(raw.findings) || typeof raw.overall_explanation !== 'string') {
-    return indeterminateDecision('隔离审查缺少 findings 或 overall_explanation。');
+    return localSemanticFallbackDecision('隔离审查缺少 findings 或 overall_explanation。', snapshots, userPrompt);
   }
   if (!isConfidence(raw.overall_confidence_score) || !raw.overall_explanation.trim()) {
-    return indeterminateDecision('隔离审查缺少可信的总体解释或置信度。');
+    return localSemanticFallbackDecision('隔离审查缺少可信的总体解释或置信度。', snapshots, userPrompt);
   }
 
   const requirements = extractRequirementClauses(userPrompt);
@@ -132,7 +132,7 @@ export function parseIndependentReviewResponse(
         findings: fallbackFindings,
       };
     }
-    return indeterminateDecision('隔离审查未逐条覆盖需求清单，或需求引用不是原文。');
+    return localSemanticFallbackDecision('隔离审查未逐条覆盖需求清单，或需求引用不是原文。', snapshots, userPrompt);
   }
   const localContradiction = findLocalSemanticContradiction(checks, snapshots);
   if (localContradiction) {
@@ -146,7 +146,7 @@ export function parseIndependentReviewResponse(
   const findings: RequirementReviewFinding[] = [];
   const normalizedFindings = normalizeFindings(raw.findings, snapshots, checks);
   if (!normalizedFindings) {
-    return indeterminateDecision('隔离审查 finding 缺少可追溯证据、包含推测，或反转了需求方向。');
+    return localSemanticFallbackDecision('隔离审查 finding 缺少可追溯证据、包含推测，或反转了需求方向。', snapshots, userPrompt);
   }
   findings.push(...normalizedFindings);
   const violatedIds = [...checks.values()]
@@ -160,7 +160,7 @@ export function parseIndependentReviewResponse(
         findings,
       };
     }
-    return indeterminateDecision('隔离审查的 violated 清单与可执行 findings 不一致。');
+    return localSemanticFallbackDecision('隔离审查的 violated 清单与可执行 findings 不一致。', snapshots, userPrompt);
   }
   if (findings.length > 0) {
     return {
@@ -171,7 +171,7 @@ export function parseIndependentReviewResponse(
   }
   const shouldPass = violatedIds.length === 0;
   if ((raw.overall_correctness === 'patch is correct') !== shouldPass) {
-    return indeterminateDecision('隔离审查总体结论与逐条需求检查不一致。');
+    return localSemanticFallbackDecision('隔离审查总体结论与逐条需求检查不一致。', snapshots, userPrompt);
   }
   return {
     status: shouldPass ? 'passed' : 'failed',
@@ -230,8 +230,31 @@ function findLocalSemanticContradiction(
       const partialFillFinding = findPartialFillStateConsistencyContract(check, snapshots);
       if (partialFillFinding) return partialFillFinding;
     }
+    if (requiresPricePriorityDirection(check.requirement.quote)) {
+      const pricePriorityFinding = findPricePriorityDirectionContract(check, snapshots);
+      if (pricePriorityFinding) return pricePriorityFinding;
+    }
   }
   return undefined;
+}
+
+function localSemanticFallbackDecision(
+  explanation: string,
+  snapshots: readonly RequirementReviewSourceSnapshot[],
+  userPrompt: string,
+): RequirementReviewDecision {
+  const requirements = extractRequirementClauses(userPrompt);
+  if (requirements.length === 0) return indeterminateDecision(explanation);
+  const localContradiction = findLocalSemanticContradiction(
+    satisfiedRequirementChecksFromInventory(requirements),
+    snapshots,
+  );
+  if (!localContradiction) return indeterminateDecision(explanation);
+  return {
+    status: 'failed',
+    explanation: `${explanation}；本地最终源码合约仍发现可执行反例。`,
+    findings: [localContradiction],
+  };
 }
 
 function findAmbiguousRejectionContract(
@@ -316,6 +339,32 @@ function findPartialFillStateConsistencyContract(
   return undefined;
 }
 
+function findPricePriorityDirectionContract(
+  check: NormalizedRequirementCheck,
+  snapshots: readonly RequirementReviewSourceSnapshot[],
+): RequirementReviewFinding | undefined {
+  const combinedSource = stripCppComments(snapshots.map(snapshot => snapshot.content).join('\n'));
+  if (!hasAscendingBidPriceLevels(combinedSource)) return undefined;
+  for (const snapshot of snapshots) {
+    if (!/\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)$/i.test(snapshot.path)) continue;
+    const line = findAscendingBidBeginSelectionLine(snapshot);
+    if (!line) continue;
+    return {
+      requirementId: check.requirement.id,
+      requirement: check.requirement.quote,
+      title: 'Match incoming sells against the highest bid first',
+      observedBehavior: 'The matching loop selects begin() from an ascending bid price map, so an incoming sell can trade with the lowest eligible bid before better prices.',
+      expectedBehavior: 'Price priority requires incoming sell orders to match the highest bid price first; use a descending bid comparator or select rbegin()/prev(end()) for bid levels.',
+      counterexample: 'With resting buys b1@10, b2@11, and b3@12, a sell at 10 should trade b3 before b2 before b1; begin() on an ascending bid map starts at b1@10.',
+      priority: 1,
+      confidence: 0.93,
+      path: snapshot.path,
+      line,
+    };
+  }
+  return undefined;
+}
+
 function hasDistinctCppRejectionChannel(source: string): boolean {
   return /\bthrow\b|\b(?:std::|tl::)?expected\s*</.test(stripCppComments(source));
 }
@@ -328,6 +377,40 @@ function requiresUsedIdentityPermanence(quote: string): boolean {
 function requiresPartialFillStateConsistency(quote: string): boolean {
   return /(?:partial(?:ly)?|remaining|remain(?:s|ing)? quantity|quantity|部分成交|余量|剩余|数量|成交量)/iu
     .test(normalizeRequirementText(quote));
+}
+
+function requiresPricePriorityDirection(quote: string): boolean {
+  const text = normalizeRequirementText(quote);
+  return /(?:price priority|highest bid|lowest ask|best bid|best ask|价格优先|最高买|最低卖|最高.*买|最低.*卖|最佳买|最佳卖|撮合)/iu
+    .test(text)
+    && /(?:bid|ask|buy|sell|买|卖|买单|卖单|订单簿|order book|撮合)/iu.test(text);
+}
+
+function hasAscendingBidPriceLevels(source: string): boolean {
+  const hasTypedefBidMap = /using\s+PriceLevels\s*=\s*std\s*::\s*map\s*<\s*double\s*,\s*[^,;>]+>\s*;[\s\S]{0,1000}\bPriceLevels\s+bids_/i
+    .test(source);
+  const hasDirectBidMap = /\bstd\s*::\s*map\s*<\s*double\s*,[^;]+>\s+bids_/i.test(source);
+  return (hasTypedefBidMap || hasDirectBidMap)
+    && !/using\s+PriceLevels\s*=\s*std\s*::\s*map\s*<\s*double\s*,[^;]+,\s*std\s*::\s*greater|std\s*::\s*map\s*<\s*double\s*,[^;]+,\s*std\s*::\s*greater\s*<\s*double\s*>[^;]*>\s+bids_/i.test(source);
+}
+
+function findAscendingBidBeginSelectionLine(
+  snapshot: RequirementReviewSourceSnapshot,
+): number | undefined {
+  const lines = stripCppComments(snapshot.content).split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const windowText = lines.slice(index, Math.min(lines.length, index + 12)).join('\n');
+    if (/\bopponent_levels\s*=\s*\(\s*incoming\s*->\s*side\s*==\s*Side\s*::\s*Buy\s*\)\s*\?\s*asks_\s*:\s*bids_\s*;/i.test(windowText)
+      && /\b(?:const\s+)?auto\s*&?\s+it\s*=\s*opponent_levels\s*\.\s*begin\s*\(\s*\)\s*;/i.test(windowText)) {
+      return index + 1 + lineOffset(windowText, /opponent_levels\s*\.\s*begin\s*\(/i);
+    }
+    if (/\b(?:matchSell|submit|match)\b/.test(windowText)
+      && /\bbids_\s*\.\s*begin\s*\(\s*\)/i.test(windowText)
+      && !/\bbids_\s*\.\s*rbegin\s*\(\s*\)|std\s*::\s*prev\s*\(\s*bids_\s*\.\s*end\s*\(\s*\)\s*\)/i.test(windowText)) {
+      return index + 1 + lineOffset(windowText, /bids_\s*\.\s*begin\s*\(/i);
+    }
+  }
+  return undefined;
 }
 
 function hasPersistentUsedIdentityStore(source: string): boolean {
@@ -462,6 +545,12 @@ function findFirstLine(snapshot: RequirementReviewSourceSnapshot, pattern: RegEx
   return undefined;
 }
 
+function lineOffset(value: string, pattern: RegExp): number {
+  const match = pattern.exec(value);
+  if (!match) return 0;
+  return value.slice(0, match.index).split(/\r?\n/).length - 1;
+}
+
 function extractRequirementClauses(userPrompt: string): RequirementClause[] {
   const clauses: RequirementClause[] = [];
   let insideCodeFence = false;
@@ -524,6 +613,20 @@ function requirementChecksFromInventory(
       requirement,
       status: 'violated',
       evidence: 'fallback-finding-only',
+    });
+  }
+  return checks;
+}
+
+function satisfiedRequirementChecksFromInventory(
+  requirements: readonly RequirementClause[],
+): Map<string, NormalizedRequirementCheck> {
+  const checks = new Map<string, NormalizedRequirementCheck>();
+  for (const requirement of requirements) {
+    checks.set(requirement.id, {
+      requirement,
+      status: 'satisfied',
+      evidence: 'local-semantic-fallback',
     });
   }
   return checks;

@@ -10,6 +10,7 @@ import {
   type ModelToolProtocolDialect,
 } from './model-tool-protocol-adapter';
 import { createStructuredToolEnvelopeDialects } from './structured-tool-envelope-dialects';
+import { createLegacyToolCallXmlDialect } from './legacy-tool-call-xml-dialect';
 import { parseLosslessXmlMutationInput } from './lossless-xml-tool-input';
 import { normalizeFakeTool, normalizeToolInput } from './fake-tool-input-normalizer';
 import { createFakeToolJsonUtils, decodeLooseJsonString, findJsonArrayEnd, findJsonObjectEnd, type FakeTool } from './fake-tool-json-utils';
@@ -1277,46 +1278,6 @@ function parseLegacyJsonArrayBlockToolCalls(text: string): FakeTool[] {
   return tools;
 }
 
-function parseLegacyToolCallXmlCalls(text: string): FakeTool[] {
-  const tools: FakeTool[] = [];
-  const xmlRe = /<tool_call>([\s\S]*?)<\/tool_call>/gi;
-  let xm: RegExpExecArray | null;
-  while ((xm = xmlRe.exec(text)) !== null) {
-    const inner = xm[1].trim();
-    if (inner.startsWith('{')) {
-      try {
-        const obj = JSON.parse(inner) as Record<string, unknown>;
-        const tName = typeof obj.name === 'string' ? obj.name : null;
-        if (tName) {
-          const inp = (obj.arguments ?? obj.parameters ?? obj.args ?? {}) as Record<string, unknown>;
-          tools.push({ name: tName, input: inp });
-          continue;
-        }
-      } catch { /* fall through to legacy newline format */ }
-    }
-    const nl = inner.indexOf('\n');
-    if (nl < 0) continue;
-    const tName = inner.slice(0, nl).trim();
-    const jsonPart = inner.slice(nl + 1).trim();
-    if (!tName || !jsonPart.startsWith('{')) continue;
-    try {
-      tools.push({ name: tName, input: JSON.parse(jsonPart) });
-    } catch { /* ignore malformed */ }
-  }
-  return tools;
-}
-
-function findLegacyToolCallXmlStart(text: string): number {
-  const starts = [text.search(/<tool_call>/i), text.search(/<tool_calls>/i)].filter(index => index >= 0);
-  return starts.length ? Math.min(...starts) : -1;
-}
-
-function stripLegacyToolCallXmlBlocks(text: string): string {
-  return text
-    .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
-    .replace(/<tool_calls>[\s\S]*?<\/tool_calls>/gi, '');
-}
-
 function parseLegacyInvokeXmlCalls(text: string): FakeTool[] {
   const tools: FakeTool[] = [];
   const invokeRe = /<invoke\s+name="([^"]+)">([\s\S]*?)<\/invoke>/gi;
@@ -1702,12 +1663,12 @@ const MODEL_TOOL_PROTOCOL_DIALECTS: readonly ModelToolProtocolDialect<FakeTool>[
     findStart: findJsonToolPayloadStart,
     strip: (text: string) => text,
   },
-  {
-    name: 'legacy-tool-call-xml',
-    parse: parseLegacyToolCallXmlCalls,
-    findStart: findLegacyToolCallXmlStart,
-    strip: stripLegacyToolCallXmlBlocks,
-  },
+  createLegacyToolCallXmlDialect<FakeTool>({
+    isRegisteredName: isRegisteredFakeToolName,
+    normalizeName: normalizeAgentToolName,
+    normalizeInput: normalizeToolInput,
+    createTool: (name, input) => ({ name, input }),
+  }),
   {
     name: 'legacy-invoke-xml',
     parse: parseLegacyInvokeXmlCalls,

@@ -1362,6 +1362,32 @@ test('FakeToolParser: parses DeepSeek XML tool tags with JSON bodies', () => {
   assert.equal(stripToolCallBlocks(text), '我理解质量门禁的要求。现在我来补充读取关键证据。');
 });
 
+test('FakeToolParser: parses legacy named tool_call XML envelopes with strict JSON bodies', () => {
+  const text = [
+    '先读取实现。',
+    '<tool_call name="read_file">{"path":"/tmp/project/src/order_book.cpp"}</tool_call>',
+  ].join('\n');
+
+  assert.deepEqual(parseFakeToolCalls(text), [{
+    name: 'read_file',
+    input: { path: '/tmp/project/src/order_book.cpp' },
+  }]);
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.equal(hasIncompleteFakeToolCallProtocol(text), false);
+  assert.equal(stripToolCallBlocks(text), '先读取实现。');
+});
+
+test('FakeToolParser: marks quote-damaged named tool_call writes as incomplete protocol', () => {
+  const text = String.raw`我将重写实现。
+<tool_call name="create_file">{"path":"/tmp/project/src/order_book.cpp","content":"#include "order_book.hpp"\n#include <map>\n"}</tool_call>`;
+
+  assert.equal(parseFakeToolCalls(text).length, 0);
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.equal(findFirstToolCallStart(text) >= 0, true);
+  assert.equal(hasIncompleteFakeToolCallProtocol(text), true);
+  assert.equal(stripToolCallBlocks(text), '我将重写实现。');
+});
+
 test('FakeToolParser: recovers quote-damaged C++ writes from bounded TOOL_USE envelopes', () => {
   const response = String.raw`I will rewrite the implementation.
 <TOOL_USE>{"name":"create_file","arguments":{"path":"/tmp/project/src/order_book.cpp","content":"#include "order_book.hpp"\n#include <map>\n\nnamespace devseek_case {\n}\n"}}</TOOL_USE>`;
