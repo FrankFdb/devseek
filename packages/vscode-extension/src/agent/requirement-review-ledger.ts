@@ -249,6 +249,7 @@ export class RequirementReviewLedger {
 }
 
 function renderBlockingDecision(decision: RequirementReviewDecision): string {
+  const primaryFinding = selectPrimaryFinding(decision.findings);
   const findings = decision.findings.map((finding, index) => [
     `${index + 1}. [P${finding.priority}] ${finding.title} (${finding.path}:${finding.line})`,
     `需求 ${finding.requirementId}：${finding.requirement}`,
@@ -261,11 +262,39 @@ function renderBlockingDecision(decision: RequirementReviewDecision): string {
     decision.explanation,
     ...findings,
     '下一轮不要从头重做完整任务；先选第一个 P0/P1/P2 finding，把 counterexample 转成最小本地 probe、精确源码检查或等价的针对性验证。',
+    renderFindingSpecificRepairProtocol(primaryFinding),
     '若 finding 涉及固定公开 API 下的“拒绝/无效”，先从现有签名可表达的失败通道建 probe；例如 C++ submit 返回 vector 且正常可为空时，拒绝应使用 std::invalid_argument 等异常通道，不能继续返回空 vector。',
     '修复时围绕该缺陷类别审查相邻状态流、边界值和同类入口；不要只改当前一行，也不要用公开测试通过替代反例验证。',
     '针对性验证通过后，再运行项目既有验证作为大 case 回归。',
     '必须根据上述独立结论修复生产源码并重新运行项目验证；不要修改受保护测试，也不要仅用解释否定审查结果。',
   ].filter(Boolean).join('\n');
+}
+
+function selectPrimaryFinding(findings: readonly RequirementReviewFinding[]): RequirementReviewFinding | undefined {
+  return findings.find(finding => finding.priority <= 2) ?? findings[0];
+}
+
+function renderFindingSpecificRepairProtocol(finding: RequirementReviewFinding | undefined): string | undefined {
+  if (!finding) return undefined;
+  if (/Expose invalid submit rejection distinctly|Preserve used order identifiers/i.test(finding.title)) {
+    return [
+      '【定点修复协议：可区分的无效 submit 拒绝】',
+      '不要重写整个订单簿；只修复 submit 的拒绝通道和必要 helper。',
+      '先把反例转成最小 probe：提交一个有效订单 id A 后再次提交 A 必须抛 std::invalid_argument；提交 NaN/非正价格或 quantity <= 0 也必须抛 std::invalid_argument；一个有效但不成交的订单仍可返回空 trades。',
+      '源码修复检查点：submit 入口不能继续用 `return {}` 或空 trades 表示 invalid/duplicate；若已有 is_valid_order(bool) helper，要么改成 validate_or_throw helper 并在 submit 最前调用，要么让 submit 对每个 false 原因直接 throw std::invalid_argument。',
+      '修复后先运行上述最小 probe 或等价只读源码检查，再运行项目既有验证。',
+    ].join('\n');
+  }
+  if (/Initialize remaining quantity from the incoming order/i.test(finding.title)) {
+    return [
+      '【定点修复协议：remaining 初始化来源】',
+      '不要重写匹配引擎；只修复活动订单入簿时 remaining quantity 的单一可信来源。',
+      '先把反例转成最小 probe：提交一个合法且不成交的数量 5 订单后，订单进入 book 时 remaining quantity 必须是 5，不能是 0、未定义值或从被 move 后的对象读取。',
+      '源码修复检查点：禁止 `OrderNode node{..., node.order.quantity}` 这类初始化期间自读；先从已校验的 incoming order quantity 保存局部值，或完成 stored order 构造后再从有效对象初始化 remaining。',
+      '修复后先运行上述最小 probe 或等价只读源码检查，再运行项目既有验证。',
+    ].join('\n');
+  }
+  return undefined;
 }
 
 function renderValidationPendingReviewPause(

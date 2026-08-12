@@ -257,6 +257,10 @@ test('failed independent review blocks completion until repaired source is reval
   assert.match(failed, /需求 R2：Reject duplicate or already-used ids/);
   assert.match(failed, /可复现反例/);
   assert.match(failed, /counterexample 转成最小本地 probe/);
+  assert.match(failed, /定点修复协议：可区分的无效 submit 拒绝/);
+  assert.match(failed, /有效订单 id A 后再次提交 A 必须抛 std::invalid_argument/);
+  assert.match(failed, /有效但不成交的订单仍可返回空 trades/);
+  assert.match(failed, /submit 入口不能继续用 `return \{\}` 或空 trades 表示 invalid\/duplicate/);
   assert.match(failed, /std::invalid_argument/);
   assert.match(failed, /不能继续返回空 vector/);
   assert.match(failed, /针对性验证通过后，再运行项目既有验证作为大 case 回归/);
@@ -270,6 +274,47 @@ test('failed independent review blocks completion until repaired source is reval
     writtenFiles: [firstWrite, repairedWrite],
     roundReadFiles: [],
   }), /完成前需求覆盖复核/);
+});
+
+test('failed independent review emits a targeted remaining-quantity repair protocol', () => {
+  const ledger = new RequirementReviewLedger();
+  const firstWrite = sourceWrite('src/order_book.cpp');
+  ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: passedGate,
+    writtenFiles: [firstWrite],
+    roundReadFiles: [],
+  });
+  ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: undefined,
+    writtenFiles: [firstWrite],
+    roundReadFiles: ['src/order_book.cpp'],
+  });
+  ledger.takeIndependentReviewCandidate();
+
+  const failed = ledger.settleIndependentReview({
+    status: 'failed',
+    explanation: 'remaining quantity is initialized from an invalid source.',
+    findings: [{
+      requirementId: 'R4',
+      requirement: 'Unmatched active orders preserve remaining quantity.',
+      title: 'Initialize remaining quantity from the incoming order',
+      observedBehavior: 'The node reads node.order.quantity while node is being initialized.',
+      expectedBehavior: 'The book stores the incoming order quantity as remaining quantity.',
+      counterexample: 'Submit an unmatched buy with quantity 5; active remaining is not 5.',
+      priority: 1,
+      confidence: 0.98,
+      path: 'src/order_book.cpp',
+      line: 29,
+    }],
+  });
+
+  assert.match(failed, /定点修复协议：remaining 初始化来源/);
+  assert.match(failed, /提交一个合法且不成交的数量 5 订单/);
+  assert.match(failed, /禁止 `OrderNode node\{\.\.\., node\.order\.quantity\}` 这类初始化期间自读/);
+  assert.match(failed, /已校验的 incoming order quantity 保存局部值/);
+  assert.match(failed, /针对性验证通过后，再运行项目既有验证作为大 case 回归/);
 });
 
 test('indeterminate independent review retries through final-source evidence instead of blind source edits', () => {
