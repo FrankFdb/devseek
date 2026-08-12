@@ -277,6 +277,39 @@ test('completion evidence: focused repair completion is not expanded by generate
   }
 });
 
+test('completion evidence: focused C++ implementation is not expanded by generated formal-doc todos', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-focused-cpp-'));
+  const header = path.join(root, 'include/order_book.hpp');
+  const source = path.join(root, 'src/order_book.cpp');
+  mkdirSync(path.dirname(header), { recursive: true });
+  mkdirSync(path.dirname(source), { recursive: true });
+  writeFileSync(header, '#pragma once\nnamespace devseek_case { class OrderBook {}; }\n');
+  writeFileSync(source, '#include "order_book.hpp"\n');
+
+  try {
+    const prompt = [
+      '请实现一个 C++17 单品种限价订单簿，保持公开 API 不变。',
+      '只允许修改 include/ 和 src/，不得修改 tests/、CMakeLists.txt 或 test.sh。',
+      '请用适合价格时间优先的数据结构表达订单簿，不要在单一向量上反复打补丁。运行 ./test.sh。',
+    ].join('\n');
+    const missing = getMissingCompletionEvidence(
+      prompt,
+      [{ title: '补充正式项目 Markdown 设计/接口文档' }],
+      [
+        { path: header, basename: 'order_book.hpp', linesAdded: 8, linesRemoved: 1, action: 'modify' },
+        { path: source, basename: 'order_book.cpp', linesAdded: 120, linesRemoved: 1, action: 'modify' },
+      ],
+      [{ command: 'bash test.sh', kind: 'test', ok: true, exitCode: 0 }],
+      [],
+      root,
+    );
+
+    assert.deepEqual(missing, []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('completion evidence: tool-intent prose is not a delivered read-only answer', () => {
   const interrupted = [
     '我来分析新旧需求差异，并给出实现对策建议。首先让我查看相关文件。',

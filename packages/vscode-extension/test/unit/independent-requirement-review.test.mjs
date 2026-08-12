@@ -38,11 +38,14 @@ function response(body, toolCount = 0) {
 }
 
 function requirementCheck(requirementId, requirementQuote, status = 'satisfied') {
+  const rejectionEvidence = 'Scenario invalid/duplicate input: second submit of id A or negative capacity reaches line 1 and throws std::invalid_argument as a caller-observable failure, distinct from valid no-op success.';
   return {
     requirement_id: requirementId,
     requirement_quote: requirementQuote,
     status,
-    evidence: 'src/order_book.cpp:1 follows the traced execution path.',
+    evidence: /reject|invalid|duplicate|already-used|negative|拒绝|非法|重复|已使用/i.test(requirementQuote)
+      ? rejectionEvidence
+      : 'src/order_book.cpp:1 follows the traced execution path.',
   };
 }
 
@@ -119,6 +122,74 @@ test('strict review parser rejects a mixed trustworthy and malformed verdict', (
   assert.equal(mixed.status, 'indeterminate');
 });
 
+test('strict review parser preserves actionable findings when check statuses are inconsistent', () => {
+  const source = snapshot('src/order_book.cpp', 'used_ids.erase(id);\nreturn accepted;\n');
+  const prompt = 'Keep the public API unchanged.\nReject duplicate or already-used ids.';
+  const decision = parseIndependentReviewResponse(response({
+    requirement_checks: [
+      requirementCheck('R1', 'Keep the public API unchanged.'),
+      requirementCheck('R2', 'Reject duplicate or already-used ids.'),
+    ],
+    findings: [finding(source, 'Reject duplicate or already-used ids.', {
+      requirement_id: 'R2',
+      title: 'Preserve used identifiers after completion',
+      observed_behavior: 'The implementation erases completed ids and accepts them again.',
+      expected_behavior: 'Already-used identifiers must remain rejected after completion or cancellation.',
+      counterexample: 'Submit id A, complete A, then submit A again; the second submit is accepted instead of rejected.',
+      code_location: {
+        absolute_file_path: source.absolutePath,
+        line_range: { start: 1, end: 1 },
+      },
+    })],
+    overall_correctness: 'patch is incorrect',
+    overall_explanation: 'The review table forgot to mark R2 violated, but the finding has a concrete counterexample.',
+    overall_confidence_score: 0.98,
+  }), [source], prompt);
+
+  assert.equal(decision.status, 'failed');
+  assert.match(decision.explanation, /findings 不完全一致/);
+  assert.equal(decision.findings[0].requirementId, 'R2');
+  assert.match(decision.findings[0].counterexample, /submit A again/);
+});
+
+test('strict review parser preserves actionable findings when the check table is malformed', () => {
+  const source = snapshot('src/order_book.cpp', 'idToEntry_.erase(id);\nreturn accepted;\n');
+  const prompt = 'Keep the public API unchanged.\nReject duplicate or already-used ids.';
+  const decision = parseIndependentReviewResponse(response({
+    requirement_checks: [
+      requirementCheck('R1', 'Keep the public API unchanged.'),
+    ],
+    findings: [
+      finding(source, 'Reject duplicate or already-used ids.', {
+        requirement_id: 'R2',
+        title: 'Preserve used identifiers after completion',
+        observed_behavior: 'Completed identifiers are erased from the active index and accepted again.',
+        expected_behavior: 'Already-used identifiers must remain rejected after completion or cancellation.',
+        counterexample: 'Submit id A, complete A, then submit A again; the second submit is accepted instead of rejected.',
+        code_location: {
+          absolute_file_path: source.absolutePath,
+          line_range: { start: 1, end: 1 },
+        },
+      }),
+      finding(source, 'Reject duplicate or already-used ids.', {
+        requirement_id: 'R2',
+        title: 'Speculative sibling',
+        observed_behavior: 'The implementation might be wrong under some path.',
+        expected_behavior: 'Maybe a different behavior is needed.',
+        counterexample: 'Possibly this could fail.',
+      }),
+    ],
+    overall_correctness: 'patch is incorrect',
+    overall_explanation: 'The check table is incomplete, but the finding is grounded.',
+    overall_confidence_score: 0.98,
+  }), [source], prompt);
+
+  assert.equal(decision.status, 'failed');
+  assert.match(decision.explanation, /未逐条覆盖需求清单/);
+  assert.equal(decision.findings[0].requirementId, 'R2');
+  assert.match(decision.findings[0].observedBehavior, /active index/);
+});
+
 test('strict review parser passes only an exact no-finding verdict', () => {
   const source = snapshot('src/cache.cpp', 'int cache = 0;');
   const prompt = 'Keep the cache initialized.';
@@ -142,6 +213,281 @@ test('strict review parser passes only an exact no-finding verdict', () => {
     overall_explanation: 'No issue.',
     overall_confidence_score: 0.8,
   }, 1), [source], prompt).status, 'indeterminate');
+});
+
+test('strict review parser requires concrete traces for ordering requirements marked satisfied', () => {
+  const source = snapshot('src/order_book.cpp', 'std::map<double, Order> bids;\nmatch(best_bid);\n');
+  const prompt = 'Follow price priority and same-price FIFO order.';
+  const verdict = evidence => parseIndependentReviewResponse(response({
+    requirement_checks: [{
+      requirement_id: 'R1',
+      requirement_quote: prompt,
+      status: 'satisfied',
+      evidence,
+    }],
+    findings: [],
+    overall_correctness: 'patch is correct',
+    overall_explanation: 'The ordering requirement is satisfied.',
+    overall_confidence_score: 0.95,
+  }), [source], prompt);
+
+  assert.equal(verdict('src/order_book.cpp implements the ordering requirement.').status, 'indeterminate');
+  assert.equal(verdict('Trace two price levels: submit b1@10 then b2@11, incoming sell first matches b2; same-price b3 then b4 preserves FIFO at lines 1-2.').status, 'passed');
+});
+
+test('strict review parser requires caller-observable failure evidence for rejection requirements marked satisfied', () => {
+  const source = snapshot('src/order_book.cpp', 'if (!valid(order)) return {};\nthrow std::invalid_argument("bad order");\n');
+  const prompt = 'submit rejects empty id, duplicate or already-used id, non-finite price, and quantity <= 0.';
+  const verdict = evidence => parseIndependentReviewResponse(response({
+    requirement_checks: [{
+      requirement_id: 'R1',
+      requirement_quote: prompt,
+      status: 'satisfied',
+      evidence,
+    }],
+    findings: [],
+    overall_correctness: 'patch is correct',
+    overall_explanation: 'The rejection requirement is satisfied.',
+    overall_confidence_score: 0.95,
+  }), [source], prompt);
+
+  assert.equal(verdict('src/order_book.cpp validates duplicate ids and invalid prices before insertion.').status, 'indeterminate');
+  assert.equal(verdict('Scenario duplicate id: submit id A, then submit id A again; line 2 throws std::invalid_argument, a caller-observable failure distinct from an empty valid no-trade result. NaN price follows the same exception path.').status, 'passed');
+  assert.equal(verdict('Scenario duplicate id: submit id A, then submit id A again; line 1 returns an empty trades vector.').status, 'indeterminate');
+  assert.equal(verdict('Scenario duplicate id: submit id A, then submit id A again; line 1 returns an empty trades vector and leaves the book unchanged, so rejection is caller-observable.').status, 'indeterminate');
+});
+
+test('strict review parser cross-checks rejection claims against final C++ source', () => {
+  const source = snapshot('src/order_book.cpp', [
+    '#include "order_book.hpp"',
+    'namespace devseek_case {',
+    'static bool isValidOrder(const Order& order) {',
+    '  if (order.id.empty()) return false;',
+    '  if (order.quantity <= 0) return false;',
+    '  if (!std::isfinite(order.price) || order.price <= 0.0) return false;',
+    '  return true;',
+    '}',
+    'std::vector<Trade> OrderBook::submit(Order order) {',
+    '  std::vector<Trade> trades;',
+    '  if (!isValidOrder(order)) { return trades; }',
+    '  if (order_map_.find(order.id) != order_map_.end()) { return trades; }',
+    '  return trades;',
+    '}',
+    'bool OrderBook::cancel(const std::string& id) {',
+    '  auto it = order_map_.find(id);',
+    '  if (it == order_map_.end()) return false;',
+    '  order_map_.erase(it);',
+    '  return true;',
+    '}',
+    '}',
+  ].join('\n'));
+  const prompt = 'submit 拒绝空 id、重复或已使用 id、非有限正价格、数量 <= 0。';
+  const decision = parseIndependentReviewResponse(response({
+    requirement_checks: [{
+      requirement_id: 'R1',
+      requirement_quote: prompt,
+      status: 'satisfied',
+      evidence: 'Scenario duplicate id: submit id A twice and NaN price both throw std::invalid_argument through a caller-observable rejection branch distinct from valid success.',
+    }],
+    findings: [],
+    overall_correctness: 'patch is correct',
+    overall_explanation: 'All rejection paths are satisfied.',
+    overall_confidence_score: 0.95,
+  }), [source], prompt);
+
+  assert.equal(decision.status, 'failed');
+  assert.equal(decision.findings[0].requirementId, 'R1');
+  assert.match(decision.findings[0].observedBehavior, /empty trade vector/);
+  assert.match(decision.findings[0].expectedBehavior, /std::invalid_argument/);
+});
+
+test('strict review parser cross-checks PIMPL active-index rejection claims', () => {
+  const source = snapshot('src/order_book.cpp', [
+    '#include "order_book.hpp"',
+    '#include <unordered_map>',
+    'namespace devseek_case {',
+    'class OrderBook::Impl {',
+    'public:',
+    '  std::unordered_map<std::string, OrderLocation> index_;',
+    '  bool hasOrder(const std::string& id) const { return index_.find(id) != index_.end(); }',
+    '};',
+    'std::vector<Trade> OrderBook::submit(Order order) {',
+    '  std::vector<Trade> trades;',
+    '  if (order.id.empty()) return trades;',
+    '  if (pimpl_->hasOrder(order.id)) return trades;',
+    '  if (!std::isfinite(order.price) || order.price <= 0.0) return trades;',
+    '  if (order.quantity <= 0) return trades;',
+    '  return trades;',
+    '}',
+    '}',
+  ].join('\n'));
+  const prompt = 'submit 拒绝空 id、重复或已使用 id、非有限正价格、数量 <= 0。';
+  const decision = parseIndependentReviewResponse(response({
+    requirement_checks: [{
+      requirement_id: 'R1',
+      requirement_quote: prompt,
+      status: 'satisfied',
+      evidence: 'Scenario duplicate id: submit id A twice and NaN price both throw std::invalid_argument through a caller-observable rejection branch distinct from valid success.',
+    }],
+    findings: [],
+    overall_correctness: 'patch is correct',
+    overall_explanation: 'All rejection paths are satisfied.',
+    overall_confidence_score: 0.95,
+  }), [source], prompt);
+
+  assert.equal(decision.status, 'failed');
+  assert.match(decision.findings[0].title, /Expose invalid submit rejection/);
+  assert.match(decision.findings[0].observedBehavior, /empty trade vector/);
+});
+
+test('strict review parser cross-checks already-used id permanence against final source', () => {
+  const source = snapshot('src/order_book.cpp', [
+    '#include "order_book.hpp"',
+    'namespace devseek_case {',
+    'std::vector<Trade> OrderBook::submit(Order order) {',
+    '  if (order_map_.find(order.id) != order_map_.end()) throw std::invalid_argument("duplicate");',
+    '  return {};',
+    '}',
+    'void OrderBook::consume(const std::string& id) {',
+    '  order_map_.erase(id);',
+    '}',
+    '}',
+  ].join('\n'));
+  const prompt = 'Reject duplicate or already-used ids.';
+  const decision = parseIndependentReviewResponse(response({
+    requirement_checks: [{
+      requirement_id: 'R1',
+      requirement_quote: prompt,
+      status: 'satisfied',
+      evidence: 'Scenario already-used id: submit A, complete A, then submit A again throws invalid_argument through a caller-observable failure channel.',
+    }],
+    findings: [],
+    overall_correctness: 'patch is correct',
+    overall_explanation: 'The id rejection invariant is satisfied.',
+    overall_confidence_score: 0.95,
+  }), [source], prompt);
+
+  assert.equal(decision.status, 'failed');
+  assert.match(decision.findings[0].title, /Preserve used order identifiers/);
+  assert.match(decision.findings[0].counterexample, /submit A again/);
+});
+
+test('strict review parser cross-checks PIMPL active-index used-id permanence', () => {
+  const source = snapshot('src/order_book.cpp', [
+    '#include "order_book.hpp"',
+    '#include <unordered_map>',
+    'namespace devseek_case {',
+    'class OrderBook::Impl {',
+    'public:',
+    '  std::unordered_map<std::string, OrderLocation> index_;',
+    '  bool hasOrder(const std::string& id) const { return index_.find(id) != index_.end(); }',
+    '  void removeOrder(const std::string& id) {',
+    '    auto it = index_.find(id);',
+    '    if (it == index_.end()) return;',
+    '    index_.erase(it);',
+    '  }',
+    '};',
+    'std::vector<Trade> OrderBook::submit(Order order) {',
+    '  if (pimpl_->hasOrder(order.id)) throw std::invalid_argument("duplicate");',
+    '  return {};',
+    '}',
+    'bool OrderBook::cancel(const std::string& id) {',
+    '  if (!pimpl_->hasOrder(id)) return false;',
+    '  pimpl_->removeOrder(id);',
+    '  return true;',
+    '}',
+    '}',
+  ].join('\n'));
+  const prompt = 'Reject duplicate or already-used ids.';
+  const decision = parseIndependentReviewResponse(response({
+    requirement_checks: [{
+      requirement_id: 'R1',
+      requirement_quote: prompt,
+      status: 'satisfied',
+      evidence: 'Scenario already-used id: submit A, complete A, then submit A again throws invalid_argument through a caller-observable failure channel.',
+    }],
+    findings: [],
+    overall_correctness: 'patch is correct',
+    overall_explanation: 'The id rejection invariant is satisfied.',
+    overall_confidence_score: 0.95,
+  }), [source], prompt);
+
+  assert.equal(decision.status, 'failed');
+  assert.match(decision.findings[0].title, /Preserve used order identifiers/);
+  assert.match(decision.findings[0].counterexample, /active-order index erases A/);
+});
+
+test('strict review parser cross-checks stale remaining after partial fill', () => {
+  const source = snapshot('src/order_book.cpp', [
+    '#include "order_book.hpp"',
+    '#include <list>',
+    '#include <map>',
+    '#include <unordered_map>',
+    'namespace devseek_case {',
+    'struct OrderEntry { std::string id; double price; int quantity; };',
+    'class OrderBook {',
+    '  std::map<double, std::list<OrderEntry>> bids_;',
+    '  std::unordered_map<std::string, OrderEntry> orders_;',
+    'public:',
+    '  int remaining(const std::string& id) const {',
+    '    auto it = orders_.find(id);',
+    '    return it == orders_.end() ? 0 : it->second.quantity;',
+    '  }',
+    '  std::vector<Trade> matchSell(Order& order) {',
+    '    std::vector<Trade> trades;',
+    '    auto levelIt = bids_.begin();',
+    '    auto& level = levelIt->second;',
+    '    auto entryIt = level.begin();',
+    '    int fill = std::min(order.quantity, entryIt->quantity);',
+    '    entryIt->quantity -= fill;',
+    '    order.quantity -= fill;',
+    '    trades.push_back({entryIt->id, order.id, fill, entryIt->price});',
+    '    if (entryIt->quantity == 0) {',
+    '      orders_.erase(entryIt->id);',
+    '      entryIt = level.erase(entryIt);',
+    '    } else {',
+    '      ++entryIt;',
+    '    }',
+    '    return trades;',
+    '  }',
+    '};',
+    '}',
+  ].join('\n'));
+  const prompt = [
+    '成交价使用更早进入簿中的 resting order 价格，遵循价格优先、同价时间优先；支持部分成交。',
+    '未成交余量进入订单簿；cancel 仅能取消仍有余量的活动订单一次。',
+    'bestBid/bestAsk 无订单时 nullopt；remaining 对未知或已完成/取消订单返回 0。',
+  ].join('\n');
+  const decision = parseIndependentReviewResponse(response({
+    requirement_checks: [
+      {
+        requirement_id: 'R1',
+        requirement_quote: '成交价使用更早进入簿中的 resting order 价格，遵循价格优先、同价时间优先；支持部分成交。',
+        status: 'satisfied',
+        evidence: 'Trace two price levels and a partial fill: submit b1@9 quantity 2, then sell s1@9 quantity 1; first match uses the resting price and leaves b1 partially filled.',
+      },
+      {
+        requirement_id: 'R2',
+        requirement_quote: '未成交余量进入订单簿；cancel 仅能取消仍有余量的活动订单一次。',
+        status: 'satisfied',
+        evidence: 'Scenario b1@9 quantity 2 then sell s1@9 quantity 1 leaves one unmatched unit active before cancel.',
+      },
+      {
+        requirement_id: 'R3',
+        requirement_quote: 'bestBid/bestAsk 无订单时 nullopt；remaining 对未知或已完成/取消订单返回 0。',
+        status: 'satisfied',
+        evidence: 'Trace empty book then submit b1@9 and partially match one unit; bestBid and remaining are read after each state transition.',
+      },
+    ],
+    findings: [],
+    overall_correctness: 'patch is correct',
+    overall_explanation: 'The partial-fill and remaining invariants are satisfied.',
+    overall_confidence_score: 0.95,
+  }), [source], prompt);
+
+  assert.equal(decision.status, 'failed');
+  assert.match(decision.findings[0].title, /Synchronize remaining quantity/);
+  assert.match(decision.findings[0].counterexample, /remaining\("b1"\)/);
 });
 
 test('strict review parser rejects self-negating and unreachable pseudo-findings', () => {
@@ -268,6 +614,9 @@ test('independent reviewer receives original requirements and final line-numbere
   assert.match(invocations[0][0].content, /fresh|independent|read-only/i);
   assert.match(invocations[0][0].content, /continues after completion or cancellation/);
   assert.match(invocations[0][0].content, /legitimate success can also produce is not rejection/);
+  assert.match(invocations[0][0].content, /normal success result can be empty\/no-op/);
+  assert.match(invocations[0][0].content, /container traversal direction/);
+  assert.match(invocations[0][0].content, /comparator semantics/);
   assert.match(invocations[0][0].content, /exactly one requirement_check for every inventory ID/);
   assert.match(invocations[0][0].content, /every supplied source file/);
   assert.match(invocations[0][0].content, /integer from 0 through 3 only/);

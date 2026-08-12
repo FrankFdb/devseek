@@ -100,6 +100,35 @@ test('VS Code MCP startup reports bounded categorical failures through its Surfa
   ]);
 });
 
+test('VS Code MCP startup stays quiet when the optional workspace config is absent', async () => {
+  const warnings = [];
+  const loads = [];
+  const report = await initializeWorkspaceMcp({
+    load: async (configPath, workspaceRoot) => {
+      loads.push({ configPath, workspaceRoot });
+      return {
+        configStatus: 'absent',
+        configuredServers: 0,
+        connectedServers: [],
+        deniedServers: [],
+        registeredTools: 0,
+        failures: [],
+      };
+    },
+  }, {
+    workspaceRoot: () => '/workspace',
+    confirmLaunch: async () => false,
+    warn: message => warnings.push(message),
+  });
+
+  assert.equal(report.configStatus, 'absent');
+  assert.deepEqual(loads, [{
+    configPath: path.join('/workspace', '.devseek', 'mcp.json'),
+    workspaceRoot: '/workspace',
+  }]);
+  assert.deepEqual(warnings, []);
+});
+
 test('VS Code MCP startup contains unexpected runtime rejection at the Surface boundary', async () => {
   const warnings = [];
   const report = await initializeWorkspaceMcp({

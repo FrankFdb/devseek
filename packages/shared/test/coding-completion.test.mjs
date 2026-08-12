@@ -209,6 +209,50 @@ test('CanonicalCompletionDecisionService settles a denied verification route onl
   assert.equal(uncorrelated.reasonCodes.includes('denied-effect'), true);
 });
 
+test('CanonicalCompletionDecisionService settles denied process-only readback through later canonical verification', () => {
+  const deniedReadback = {
+    ...failedVerificationTool('terminal-cat-denied', 1),
+    purpose: 'tool-shell',
+    effects: ['process'],
+    status: 'denied',
+    permission: {
+      decision: 'require-confirmation',
+      status: 'denied',
+      reason: 'terminal-command-requires-confirmation',
+      evidenceRefs: ['permission:terminal-cat-denied'],
+    },
+    evidenceRefs: ['permission:terminal-cat-denied'],
+  };
+  const verifiedTool = completedVerificationTool('auto-validation-2', 2);
+  const verified = {
+    ...verification('passed'),
+    sequence: verifiedTool.sequence,
+    actionId: verifiedTool.actionId,
+    idempotencyKey: `completion-run-1:${verifiedTool.actionId}`,
+    evidenceRefs: ['auto-validation:exit-0'],
+    acceptance: [{
+      criterionId: 'builds',
+      status: 'passed',
+      evidenceRefs: ['auto-validation:exit-0'],
+    }],
+  };
+  const recovered = new CanonicalCompletionDecisionService().decide(input({
+    toolExecutions: [deniedReadback, verifiedTool],
+    verifications: [verified],
+  }));
+  const unrecovered = new CanonicalCompletionDecisionService().decide(input({
+    decisionId: 'completion-unrecovered-process-denial',
+    idempotencyKey: 'completion-run-1:completion-unrecovered-process-denial',
+    toolExecutions: [deniedReadback],
+    verifications: [verification('passed')],
+  }));
+
+  assert.equal(recovered.status, 'completed');
+  assert.equal(recovered.reasonCodes.includes('denied-effect'), false);
+  assert.equal(unrecovered.status, 'blocked');
+  assert.equal(unrecovered.reasonCodes.includes('denied-effect'), true);
+});
+
 test('CanonicalCompletionDecisionService keeps rejected control attempts completion-neutral', () => {
   const deniedControl = {
     version: CODING_TOOL_RECEIPT_VERSION,

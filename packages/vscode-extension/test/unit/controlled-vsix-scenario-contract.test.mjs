@@ -10,6 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const extensionRoot = path.resolve(__dirname, '../..');
 const harnessPath = path.join(extensionRoot, 'test/devseek-controlled-vsix-harness.mjs');
 const realPluginHarnessPath = path.join(extensionRoot, 'test/devseek-real-plugin-deepseek-harness.mjs');
+const cppMatrixRunCasePath = path.resolve(extensionRoot, '../../code/devseek-tests/cpp-user-matrix/run-case.mjs');
 
 function evaluateHarnessFunctions(source, startMarker, endMarker, names, globals = {}) {
   const start = source.indexOf(startMarker);
@@ -159,6 +160,47 @@ test('real plugin VSIX harness chooses the agent run log over bridge status prob
   assert.equal(selected?.path, '.devseek/runs/20260723-054636511-0b4ed653468767da.log');
 });
 
+test('C++ matrix runner chooses the active agent run over later bridge status probes', () => {
+  const source = readFileSync(cppMatrixRunCasePath, 'utf8');
+  const { selectAgentRun } = evaluateHarnessFunctions(
+    source,
+    'function selectAgentRun',
+    'function markdownReport',
+    ['selectAgentRun', 'agentRunScore', 'uniqueWorkspacePaths', 'sameTerminalOutcome'],
+  );
+
+  const selected = selectAgentRun({
+    runLogs: {
+      logs: [
+        {
+          path: '.devseek/runs/20260812-105641.log',
+          runStartedAtMs: Date.UTC(2026, 7, 12, 10, 56, 41),
+          mtimeMs: Date.UTC(2026, 7, 12, 10, 56, 41),
+          size: 2539,
+          lastEvent: 'bridge-status-ready',
+          hasAgentRunStarted: false,
+          hasAgentStatus: false,
+          providerEventCount: 0,
+          toolExecutionCount: 0,
+        },
+        {
+          path: '.devseek/runs/20260812-024403226-0bfac0441f7762ef.log',
+          runStartedAtMs: Date.UTC(2026, 7, 12, 2, 44, 3, 226),
+          mtimeMs: Date.UTC(2026, 7, 12, 2, 59, 4),
+          size: 1031758,
+          lastEvent: 'message-sent',
+          hasAgentRunStarted: true,
+          hasAgentStatus: true,
+          providerEventCount: 80,
+          toolExecutionCount: 32,
+        },
+      ],
+    },
+  });
+
+  assert.equal(selected?.path, '.devseek/runs/20260812-024403226-0bfac0441f7762ef.log');
+});
+
 test('real plugin VSIX harness timeout reports are report-time snapshots, not bridge status verdicts', () => {
   const source = readFileSync(realPluginHarnessPath, 'utf8');
 
@@ -176,6 +218,21 @@ test('real plugin VSIX harness timeout reports are report-time snapshots, not br
     source,
     /报告轮询达到 timeout-ms；此 report\.json 只代表报告写入时刻的快照/,
     'timeout reports must warn that later Provider, run log, changedPaths or generated files require re-checking',
+  );
+  assert.match(
+    source,
+    /function collectCommittedMutationPaths\(events\)/,
+    'timeout reports must summarize committed workspace mutations from in-flight agent logs',
+  );
+  assert.match(
+    source,
+    /event\.event !== 'workspace-mutation-lifecycle'/,
+    'committed mutation path collection must be grounded in workspace mutation lifecycle events',
+  );
+  assert.match(
+    source,
+    /committedMutationCount:\s*mutationPaths\.length/,
+    'run-log summaries must expose observed committed mutation counts',
   );
   assert.doesNotMatch(
     source,

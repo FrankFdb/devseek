@@ -41,6 +41,7 @@ interface PendingRequirementReview {
   reviewSourcePaths: string[];
   freshSourceEvidenceReady: boolean;
   reviewerRequested: boolean;
+  indeterminateDecisionCount: number;
   decision?: RequirementReviewDecision;
 }
 
@@ -64,6 +65,7 @@ export class RequirementReviewLedger {
         reviewSourcePaths,
         freshSourceEvidenceReady: false,
         reviewerRequested: false,
+        indeterminateDecisionCount: 0,
       };
       return [
         '【系统反馈：完成前需求覆盖复核】',
@@ -75,13 +77,33 @@ export class RequirementReviewLedger {
         '“拒绝/报错/无效”必须有调用方可观察且不与正常成功重叠的失败通道；仅提前返回一个合法成功也可能返回的值，不算拒绝。',
         '“重复/已使用”身份约束会推演完成或取消后的再次使用，审查结论不得反转原始需求的方向。',
         '用户指定的数据结构和复杂度同样属于验收条款；审查会识别无效状态量、错误所有权和违背约束的线性扫描。',
-        '本轮只重新读取最终源码，不要自行创建临时 probe、修改受保护测试或直接结束任务。',
+        '本轮只用 read_file 重新读取最终源码；run_terminal/cat 输出、写入工具读回和公开测试日志都不能替代 read_file 复核。',
+        '隔离审查返回反例后，可以用临时 probe 或项目验证命令辅助修复，但不得修改受保护测试或直接结束任务。',
       ].join('\n');
     }
 
     if (!this.pending) return undefined;
-    if (this.pending.decision && this.pending.decision.status !== 'passed') {
+    if (this.pending.decision?.status === 'failed') {
       return renderBlockingDecision(this.pending.decision);
+    }
+    if (this.pending.decision?.status === 'indeterminate') {
+      if (this.pending.indeterminateDecisionCount >= 2) {
+        return renderIndeterminateDecision(this.pending.decision, this.pending, false);
+      }
+      const missingRetryPaths = this.pending.reviewSourcePaths.filter(sourcePath => (
+        !input.roundReadFiles.some(readPath => sameWorkspacePath(readPath, sourcePath))
+      ));
+      if (missingRetryPaths.length > 0) {
+        return renderIndeterminateDecision(this.pending.decision, this.pending, true);
+      }
+      this.pending.decision = undefined;
+      this.pending.reviewerRequested = false;
+      this.pending.freshSourceEvidenceReady = true;
+      return [
+        '【系统反馈：重新触发独立需求审查】',
+        '上一轮隔离审查未形成可用结构化结论，最终源码已重新读取。',
+        '系统将重试隔离审查；实现会话不要修改源码、不要编造审查结论。',
+      ].join('\n');
     }
     if (this.pending.freshSourceEvidenceReady) return undefined;
     const missingPaths = this.pending.changedSourcePaths.filter(sourcePath => (
@@ -91,6 +113,7 @@ export class RequirementReviewLedger {
       return [
         '【系统反馈：需求覆盖复核仍缺少最终源码证据】',
         `请用 read_file 重新读取：${missingPaths.join('、')}。`,
+        'run_terminal/cat 输出不计入完成前源码复核证据。',
         '必须基于写入后的实际内容复核，不能用先前上下文、写入参数或公开测试通过代替。',
       ].join('\n');
     }
@@ -112,6 +135,9 @@ export class RequirementReviewLedger {
     if (!this.pending?.reviewerRequested) {
       throw new Error('requirement-review-ledger:review-without-candidate');
     }
+    if (decision.status === 'indeterminate') {
+      this.pending.indeterminateDecisionCount += 1;
+    }
     this.pending.decision = decision;
     return decision.status === 'passed'
       ? [
@@ -119,7 +145,13 @@ export class RequirementReviewLedger {
           decision.explanation,
           '审查者使用了与实现会话隔离的只读上下文。下一轮请基于既有验证事实简洁完成交付，不要再次修改源码。',
         ].join('\n')
-      : renderBlockingDecision(decision);
+      : decision.status === 'indeterminate'
+        ? renderIndeterminateDecision(
+            decision,
+            this.pending,
+            this.pending.indeterminateDecisionCount < 2,
+          )
+        : renderBlockingDecision(decision);
   }
 
   beforeNoToolCompletion(): string | undefined {
@@ -134,11 +166,33 @@ export class RequirementReviewLedger {
     if (!this.pending.decision) {
       return '【系统反馈：不能跳过独立需求审查】\n最终源码已读取，但隔离审查者尚未形成结论。';
     }
+    if (this.pending.decision.status === 'indeterminate') {
+      return renderIndeterminateDecision(
+        this.pending.decision,
+        this.pending,
+        this.pending.indeterminateDecisionCount < 2,
+      );
+    }
     if (this.pending.decision.status !== 'passed') {
       return renderBlockingDecision(this.pending.decision);
     }
     this.pending = undefined;
     return undefined;
+  }
+
+  completionBlocker(): string | undefined {
+    if (!this.pending) return undefined;
+    if (!this.pending.freshSourceEvidenceReady) {
+      return `独立需求审查未完成：缺少最终源码 read_file 复核（${this.pending.changedSourcePaths.join('、')}）。`;
+    }
+    if (!this.pending.decision) {
+      return '独立需求审查未完成：最终源码已读取，但隔离审查者尚未形成结论。';
+    }
+    if (this.pending.decision.status === 'passed') return undefined;
+    if (this.pending.decision.status === 'failed') {
+      return `独立需求审查未通过：${this.pending.decision.explanation}`;
+    }
+    return `独立需求审查证据不足：${this.pending.decision.explanation}`;
   }
 
   recoverNoToolCompletion(consecutiveRound: number): RequirementReviewNoToolRecovery | undefined {
@@ -147,7 +201,7 @@ export class RequirementReviewLedger {
     if (consecutiveRound >= 3) {
       return {
         kind: 'stop',
-        reason: `独立需求审查连续 ${consecutiveRound} 轮要求修复，但模型没有执行任何工具调用。`,
+        reason: `独立需求审查连续 ${consecutiveRound} 轮未推进，但模型没有执行任何工具调用。`,
       };
     }
     return {
@@ -160,9 +214,6 @@ export class RequirementReviewLedger {
 }
 
 function renderBlockingDecision(decision: RequirementReviewDecision): string {
-  const heading = decision.status === 'failed'
-    ? '【独立需求审查：未通过】'
-    : '【独立需求审查：证据不足】';
   const findings = decision.findings.map((finding, index) => [
     `${index + 1}. [P${finding.priority}] ${finding.title} (${finding.path}:${finding.line})`,
     `需求 ${finding.requirementId}：${finding.requirement}`,
@@ -171,11 +222,35 @@ function renderBlockingDecision(decision: RequirementReviewDecision): string {
     `可复现反例：${finding.counterexample}`,
   ].join('\n'));
   return [
-    heading,
+    '【独立需求审查：未通过】',
     decision.explanation,
     ...findings,
+    '下一轮不要从头重做完整任务；先选第一个 P0/P1/P2 finding，把 counterexample 转成最小本地 probe、精确源码检查或等价的针对性验证。',
+    '修复时围绕该缺陷类别审查相邻状态流、边界值和同类入口；不要只改当前一行，也不要用公开测试通过替代反例验证。',
+    '针对性验证通过后，再运行项目既有验证作为大 case 回归。',
     '必须根据上述独立结论修复生产源码并重新运行项目验证；不要修改受保护测试，也不要仅用解释否定审查结果。',
   ].filter(Boolean).join('\n');
+}
+
+function renderIndeterminateDecision(
+  decision: RequirementReviewDecision,
+  pending: PendingRequirementReview,
+  canRetry: boolean,
+): string {
+  return [
+    '【独立需求审查：证据不足】',
+    decision.explanation,
+    canRetry
+      ? [
+          '这是审查器输出或证据链未形成可用结论，不是可执行源码缺陷。',
+          `下一轮只允许用 read_file 重新读取最终源码以重试审查：${pending.reviewSourcePaths.join('、')}。`,
+          '不要为了通过审查盲目修改生产源码，也不要仅用解释否定审查结果。',
+        ].join('\n')
+      : [
+          '隔离审查连续未形成可用结构化结论，当前状态应作为审查器阻塞处理。',
+          '不要继续盲目修改生产源码；请保留已通过的项目验证证据并报告阻塞原因。',
+        ].join('\n'),
+  ].join('\n');
 }
 
 function sameWorkspacePath(left: string, right: string): boolean {

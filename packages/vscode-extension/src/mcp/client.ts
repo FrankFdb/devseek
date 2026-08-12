@@ -481,7 +481,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 function isMissingFileError(error: unknown): boolean {
-  return isPlainObject(error) && error.code === 'ENOENT';
+  return !!error
+    && typeof error === 'object'
+    && 'code' in error
+    && (error as { code?: unknown }).code === 'ENOENT';
 }
 
 function mcpErrorCode(error: unknown): string {

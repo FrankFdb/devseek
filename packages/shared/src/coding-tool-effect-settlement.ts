@@ -21,6 +21,9 @@ export function codingAdverseToolExecutionBlocksCompletion(
   if (adverse.status !== 'failed' && adverse.status !== 'denied') return false;
   if (isSideEffectFreeObservation(adverse)) return false;
   if (isAdvisoryToolExecution(adverse)) return false;
+  if (adverse.status === 'denied' && codingDeniedProcessToolWasRecovered(adverse, toolExecutions, verifications)) {
+    return false;
+  }
   if (adverse.status === 'failed' && adverse.effectStarted === false) return false;
   return !codingAdverseToolExecutionWasRecovered(
     adverse,
@@ -64,6 +67,10 @@ export function codingAdverseToolExecutionWasRecovered(
     && codingDeniedVerificationToolWasRecovered(adverse, toolExecutions, verifications)) {
     return true;
   }
+  if (adverse.status === 'denied'
+    && codingDeniedProcessToolWasRecovered(adverse, toolExecutions, verifications)) {
+    return true;
+  }
   if (!adverse.effects.includes('workspace-mutation')) return false;
   return hasVerifiedWorkspaceAlternative({
     runId: adverse.runId,
@@ -72,6 +79,35 @@ export function codingAdverseToolExecutionWasRecovered(
     mutations,
     verifications,
   });
+}
+
+function codingDeniedProcessToolWasRecovered(
+  denied: CodingToolExecutionReceipt<unknown>,
+  toolExecutions: readonly CodingToolExecutionReceipt<unknown>[],
+  verifications: readonly CodingVerificationReceipt[],
+): boolean {
+  if (denied.status !== 'denied'
+    || denied.tool !== 'run_terminal'
+    || denied.effects.length !== 1
+    || denied.effects[0] !== 'process') {
+    return false;
+  }
+  return toolExecutions.some(candidate => (
+    candidate.runId === denied.runId
+      && candidate.sequence > denied.sequence
+      && candidate.tool === 'run_terminal'
+      && candidate.effects.length === 1
+      && candidate.effects[0] === 'process'
+      && candidate.status === 'completed'
+      && verifications.some(verification => (
+        verification.runId === denied.runId
+          && verification.sequence === candidate.sequence
+          && verification.actionId === candidate.actionId
+          && verification.status === 'passed'
+          && verification.acceptance.length > 0
+          && verification.acceptance.every(result => result.status === 'passed')
+      ))
+  ));
 }
 
 /** Settles an unsuccessful mutation transaction through a later verified replacement. */

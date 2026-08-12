@@ -240,6 +240,10 @@ test('Agent auto validation preserves a real failing process and blocks completi
     assert.match(result.evidence.command, /^node --check src\/app\.js$/);
     assert.equal(result.evidence.exitCode, 2);
     assert.match(result.feedbackForAI, /SyntaxError/);
+    assert.match(result.feedbackForAI, /修复闭环要求/);
+    assert.match(result.feedbackForAI, /read_file/);
+    assert.match(result.feedbackForAI, /最小失败路径/);
+    assert.match(result.feedbackForAI, /相同断言再次失败/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

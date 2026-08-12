@@ -49,8 +49,25 @@ test('TaskShape: existing formal project implementation requires integration anc
   assert.match(guidance, /response JSON 示例/);
   assert.match(guidance, /```json/);
   assert.match(guidance, /原有代码修改清单/);
+  assert.match(guidance, /不得额外创建 DESIGN、report、Markdown 或其他旁路文件/);
   assert.match(guidance, /静态审计通过/);
   assert.match(guidance, /不要创建脱离主流程的孤岛模块/);
+});
+
+test('TaskShape: source-only existing-project edit keeps design notes in final summary', () => {
+  const prompt = [
+    '请实现 C++17 订单簿。',
+    '只允许修改 include/ 和 src/，不得修改 tests/、CMakeLists.txt 或 test.sh。',
+    '运行 ./test.sh。',
+  ].join('\n');
+
+  const result = classifyAgentTaskShape(prompt);
+  assert.equal(result.shape, 'existing-project');
+
+  const guidance = buildTaskShapeGuidancePrompt(prompt);
+  assert.match(guidance, /只允许修改源码目录\/指定文件/);
+  assert.match(guidance, /设计说明、修改清单和验证说明只能放入最终摘要/);
+  assert.match(guidance, /不得额外创建 DESIGN、report、Markdown 或其他旁路文件/);
 });
 
 test('TaskShape: scoped no-change plus isolated docs/src delivery remains existing-project implementation', () => {

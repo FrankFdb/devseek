@@ -5,7 +5,9 @@ export interface SourceSanityIssue {
     | 'structured-data-source-mismatch'
     | 'markdown-emphasis-dunder-corruption'
     | 'collapsed-preprocessor-directive'
-    | 'collapsed-line-comment-code';
+    | 'collapsed-line-comment-code'
+    | 'top-level-source-statement-fragment'
+    | 'truncating-source-fragment-overwrite';
   line: number;
   detail: string;
 }
@@ -32,10 +34,20 @@ export function findGeneratedSourceSanityIssue(filePath: string, content: string
     || findPythonMarkdownDunderCorruption(filePath, content || '')
     || (CPP_SOURCE_EXT_RE.test(filePath || '')
       ? findCppStructuredDataMismatch(content || '')
+        || findCppTopLevelStatementFragment(content || '')
         || findCppCollapsedPreprocessorDirective(content || '')
         || findCppCollapsedLineCommentCode(content || '')
         || findCppUnterminatedStringLiteral(content || '')
       : undefined);
+}
+
+export function findSourceOverwriteSanityIssue(
+  filePath: string,
+  oldContent: string,
+  newContent: string,
+): SourceSanityIssue | undefined {
+  if (!CPP_SOURCE_EXT_RE.test(filePath || '')) return undefined;
+  return findCppTruncatingFragmentOverwrite(oldContent || '', newContent || '');
 }
 
 function findCppStructuredDataMismatch(content: string): SourceSanityIssue | undefined {
@@ -52,6 +64,65 @@ function findCppStructuredDataMismatch(content: string): SourceSanityIssue | und
   } catch {
     return undefined;
   }
+}
+
+function findCppTopLevelStatementFragment(content: string): SourceSanityIssue | undefined {
+  const stripped = stripCppComments(content).trim();
+  if (!stripped || hasCppFileStructureAnchor(stripped)) return undefined;
+  if (!looksLikeCppControlStatementFragment(stripped)) return undefined;
+  return {
+    kind: 'top-level-source-statement-fragment',
+    line: 1,
+    detail: 'C/C++ 源文件内容像是函数体内部片段，而不是完整源码文件：缺少 include、namespace、class、struct 或函数定义等结构锚点。请先 read_file 获取完整文件，再用 replace_in_file 精确替换函数内部片段，或发送完整源码文件。',
+  };
+}
+
+function findCppTruncatingFragmentOverwrite(oldContent: string, newContent: string): SourceSanityIssue | undefined {
+  const oldLines = countNonBlankLines(oldContent);
+  const newLines = countNonBlankLines(newContent);
+  if (oldLines < 20 || newLines === 0) return undefined;
+
+  const oldLength = oldContent.trim().length;
+  const newLength = newContent.trim().length;
+  const lineLimit = Math.max(4, Math.floor(oldLines * 0.15));
+  const clearlyTruncated = newLines <= lineLimit || newLength <= oldLength * 0.2;
+  if (!clearlyTruncated || !looksLikeCppStatementFragment(newContent)) return undefined;
+
+  return {
+    kind: 'truncating-source-fragment-overwrite',
+    line: 1,
+    detail: '疑似把 C/C++ 源码片段当作完整 write_file 内容覆盖已有文件。请先 read_file 获取当前文件，再用 replace_in_file 精确替换片段，或发送包含 include/namespace/class/function 等完整结构的整文件内容。',
+  };
+}
+
+function countNonBlankLines(content: string): number {
+  return content.split(/\r?\n/).filter(line => line.trim().length > 0).length;
+}
+
+function looksLikeCppStatementFragment(content: string): boolean {
+  const stripped = stripCppComments(content).trim();
+  if (!stripped) return false;
+  if (hasCppFileStructureAnchor(stripped)) return false;
+  return looksLikeCppControlStatementFragment(stripped)
+    || /(?:=|->|\.)/.test(stripped);
+}
+
+function looksLikeCppControlStatementFragment(content: string): boolean {
+  return /(?:^|[;\s{}])(?:return|if|for|while|switch|case|break|continue|throw)\b/.test(content);
+}
+
+function hasCppFileStructureAnchor(content: string): boolean {
+  return /^\s*#\s*(?:include|pragma|ifn?def|define|endif)\b/m.test(content)
+    || /\b(?:namespace|class|struct|enum|template|using|typedef)\b/.test(content)
+    || /\b(?:int|void|bool|double|float|char|auto|std::[A-Za-z_]\w*|[A-Za-z_]\w*(?:::[A-Za-z_]\w*)?)\s*(?:[&*]\s*)+[A-Za-z_~]\w*\s*\([^;{}]*\)\s*(?:const\s*)?(?:noexcept\s*)?(?:override\s*)?(?:\{|;)/.test(content)
+    || /\b(?:int|void|bool|double|float|char|auto|std::[A-Za-z_]\w*|[A-Za-z_]\w*(?:::[A-Za-z_]\w*)?)\s+[A-Za-z_~]\w*\s*\([^;{}]*\)\s*(?:const\s*)?(?:noexcept\s*)?(?:override\s*)?(?:\{|;)/.test(content)
+    || /(?:^|\n)\s*[A-Za-z_]\w*(?:::[A-Za-z_~]\w*)+\s*\([^;\n{}]*\)\s*(?:const\s*)?(?:noexcept\s*)?(?:\{|;)/.test(content);
+}
+
+function stripCppComments(content: string): string {
+  return content
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '');
 }
 
 export function repairGeneratedSourceTransportEscapes(filePath: string, content: string): SourceTransportRepairResult {

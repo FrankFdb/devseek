@@ -824,9 +824,7 @@ export function assessMissingCompletionEvidence(input: CompletionEvidenceAssessm
     missing.push('成功的编译/测试/语法验证命令结果');
   }
 
-  const formalProjectPrompt = scopedOriginalUserPromptOnly
-    ? userPrompt
-    : `${userPrompt}\n${todos.map(t => t.title).join('\n')}`;
+  const formalProjectPrompt = userPrompt;
   const missingDeliverables = existingWrittenFiles.length > 0
     ? semanticContract
       ? getMissingSemanticContractDeliverables(semanticContract, existingWrittenFiles, workspaceRoot)

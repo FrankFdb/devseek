@@ -50,6 +50,29 @@ function approval(request) {
   };
 }
 
+test('missing MCP config is an absent optional capability, not a startup failure', async () => {
+  const workspaceRoot = path.join(tempRoot, 'missing-config');
+  const configPath = path.join(workspaceRoot, '.devseek', 'mcp.json');
+  mkdirSync(workspaceRoot, { recursive: true });
+  let launches = 0;
+  const manager = new McpManager({
+    authorizeServerLaunch: async request => {
+      launches += 1;
+      return approval(request);
+    },
+    createClient: () => {
+      throw new Error('must-not-connect-without-config');
+    },
+  });
+
+  const report = await manager.load(configPath, workspaceRoot);
+  assert.equal(report.configStatus, 'absent');
+  assert.equal(report.configuredServers, 0);
+  assert.equal(report.failures.length, 0);
+  assert.equal(report.registeredTools, 0);
+  assert.equal(launches, 0);
+});
+
 test('I23-AUT-01 user journey: denied MCP discovery cannot spawn a client', async () => {
   const { workspaceRoot, configPath } = writeConfig('denied', {
     mcpServers: {

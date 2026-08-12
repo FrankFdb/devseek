@@ -33,7 +33,8 @@ test('requirement review is scheduled once for each newly validated source mutat
   assert.match(first, /完成或取消后的再次使用/);
   assert.match(first, /数据结构和复杂度/);
   assert.match(first, /全新隔离上下文中的只读审查者/);
-  assert.match(first, /不要自行创建临时 probe/);
+  assert.match(first, /run_terminal\/cat 输出、写入工具读回和公开测试日志都不能替代 read_file/);
+  assert.match(first, /临时 probe 或项目验证命令辅助修复/);
   assert.match(first, /read_file/);
   assert.match(ledger.beforeNoToolCompletion(), /不能跳过需求覆盖复核/);
 
@@ -42,7 +43,7 @@ test('requirement review is scheduled once for each newly validated source mutat
     qualityGate: undefined,
     writtenFiles: firstWrites,
     roundReadFiles: ['include/cache.hpp'],
-  }), /src\/cache\.cpp/);
+  }), /run_terminal\/cat 输出不计入/);
 
   assert.match(ledger.request({
     sourceChangeRequested: true,
@@ -110,6 +111,7 @@ test('pending requirement review survives read-only rounds without a new quality
     explanation: 'The implementation satisfies the contract.',
     findings: [],
   }), /独立需求审查：通过/);
+  assert.equal(ledger.completionBlocker(), undefined);
   assert.equal(ledger.beforeNoToolCompletion(), undefined);
 });
 
@@ -148,7 +150,10 @@ test('failed independent review blocks completion until repaired source is reval
   assert.match(failed, /Preserve used order identifiers/);
   assert.match(failed, /需求 R2：Reject duplicate or already-used ids/);
   assert.match(failed, /可复现反例/);
+  assert.match(failed, /counterexample 转成最小本地 probe/);
+  assert.match(failed, /针对性验证通过后，再运行项目既有验证作为大 case 回归/);
   assert.match(ledger.beforeNoToolCompletion(), /必须根据上述独立结论修复生产源码/);
+  assert.match(ledger.completionBlocker(), /独立需求审查未通过：A used identity can be submitted again/);
 
   const repairedWrite = sourceWrite('src/order_book.cpp');
   assert.match(ledger.request({
@@ -157,6 +162,60 @@ test('failed independent review blocks completion until repaired source is reval
     writtenFiles: [firstWrite, repairedWrite],
     roundReadFiles: [],
   }), /完成前需求覆盖复核/);
+});
+
+test('indeterminate independent review retries through final-source evidence instead of blind source edits', () => {
+  const ledger = new RequirementReviewLedger();
+  const firstWrite = sourceWrite('src/order_book.cpp');
+  ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: passedGate,
+    writtenFiles: [firstWrite],
+    roundReadFiles: [],
+  });
+  ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: undefined,
+    writtenFiles: [firstWrite],
+    roundReadFiles: ['src/order_book.cpp'],
+  });
+  ledger.takeIndependentReviewCandidate();
+
+  const firstIndeterminate = ledger.settleIndependentReview({
+    status: 'indeterminate',
+    explanation: '隔离审查未逐条覆盖需求清单，或需求引用不是原文。',
+    findings: [],
+  });
+  assert.match(firstIndeterminate, /不是可执行源码缺陷/);
+  assert.match(firstIndeterminate, /只允许用 read_file 重新读取最终源码以重试审查/);
+  assert.doesNotMatch(firstIndeterminate, /修复生产源码/);
+  assert.doesNotMatch(ledger.beforeNoToolCompletion(), /修复生产源码/);
+
+  assert.match(ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: undefined,
+    writtenFiles: [firstWrite],
+    roundReadFiles: [],
+  }), /重新读取最终源码以重试审查/);
+  assert.match(ledger.request({
+    sourceChangeRequested: true,
+    qualityGate: undefined,
+    writtenFiles: [firstWrite],
+    roundReadFiles: ['src/order_book.cpp'],
+  }), /重新触发独立需求审查/);
+  assert.deepEqual(ledger.takeIndependentReviewCandidate(), {
+    sourcePaths: ['src/order_book.cpp'],
+  });
+
+  const secondIndeterminate = ledger.settleIndependentReview({
+    status: 'indeterminate',
+    explanation: '隔离审查输出不是严格 JSON。',
+    findings: [],
+  });
+  assert.match(secondIndeterminate, /审查器阻塞/);
+  assert.match(secondIndeterminate, /不要继续盲目修改生产源码/);
+  assert.doesNotMatch(secondIndeterminate, /必须根据上述独立结论修复生产源码/);
+  assert.match(ledger.completionBlocker(), /独立需求审查证据不足：隔离审查输出不是严格 JSON/);
 });
 
 test('pending review escalates repeated no-tool completion attempts and then stops', () => {
@@ -180,7 +239,7 @@ test('pending review escalates repeated no-tool completion attempts and then sto
 
   assert.deepEqual(ledger.recoverNoToolCompletion(3), {
     kind: 'stop',
-    reason: '独立需求审查连续 3 轮要求修复，但模型没有执行任何工具调用。',
+    reason: '独立需求审查连续 3 轮未推进，但模型没有执行任何工具调用。',
   });
 });
 

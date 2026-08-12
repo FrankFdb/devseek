@@ -348,6 +348,114 @@ test('WorkspaceEditService: rejects structured control data before it can replac
   }
 });
 
+test('WorkspaceEditService: blocks fragment overwrite of an existing C++ source file', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-'));
+  try {
+    const target = path.join(dir, 'order_book.cpp');
+    const original = [
+      '#include "order_book.hpp"',
+      '#include <algorithm>',
+      '#include <cmath>',
+      '#include <stdexcept>',
+      '',
+      'namespace devseek_case {',
+      '',
+      'void validateOrder(const Order& order) {',
+      '  if (order.id.empty()) {',
+      '    throw std::invalid_argument("id must not be empty");',
+      '  }',
+      '  if (!std::isfinite(order.price) || order.price <= 0.0) {',
+      '    throw std::invalid_argument("price must be finite and positive");',
+      '  }',
+      '  if (order.quantity <= 0) {',
+      '    throw std::invalid_argument("quantity must be positive");',
+      '  }',
+      '}',
+      '',
+      'std::vector<Trade> OrderBook::submit(const Order& order) {',
+      '  validateOrder(order);',
+      '  return {};',
+      '}',
+      '',
+      '}',
+    ].join('\n');
+    writeFileSync(target, original);
+
+    const service = new WorkspaceEditService();
+    assert.throws(
+      () => commitText(
+        service,
+        target,
+        dir,
+        'auto& back_ref = price_level.back();  // unused local fragment\n',
+        { validateSourceSanity: true },
+      ),
+      /源码片段.*完整 write_file/,
+    );
+    assert.equal(readFileSync(target, 'utf8'), original);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('WorkspaceEditService: blocks top-level C++ statement fragments even for short files', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-'));
+  try {
+    const target = path.join(dir, 'order_book.cpp');
+    writeFileSync(target, [
+      '#include "order_book.hpp"',
+      'namespace devseek_case {',
+      '}',
+      '',
+    ].join('\n'));
+
+    const service = new WorkspaceEditService();
+    const fragment = [
+      'if (order.id.empty() ||',
+      '    order.quantity <= 0 ||',
+      '    !std::isfinite(order.price) ||',
+      '    order.price <= 0.0) {',
+      '    return trades;',
+      '}',
+      '',
+      'if (used_ids_.find(order.id) != used_ids_.end()) {',
+      '    return trades;',
+      '}',
+      'used_ids_.insert(order.id);',
+    ].join('\n');
+
+    assert.throws(
+      () => commitText(service, target, dir, fragment, { validateSourceSanity: true }),
+      /函数体内部片段.*完整源码文件/,
+    );
+    assert.match(readFileSync(target, 'utf8'), /namespace devseek_case/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('WorkspaceEditService: allows compact complete C++ rewrites with file structure anchors', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-'));
+  try {
+    const target = path.join(dir, 'main.cpp');
+    writeFileSync(target, Array.from({ length: 24 }, (_, index) => `int old_${index}() { return ${index}; }`).join('\n'));
+
+    const service = new WorkspaceEditService();
+    const replacement = [
+      '#include <iostream>',
+      'int main() {',
+      '  std::cout << "ok\\n";',
+      '  return 0;',
+      '}',
+      '',
+    ].join('\n');
+    commitText(service, target, dir, replacement, { validateSourceSanity: true });
+    assert.equal(readFileSync(target, 'utf8'), replacement);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('WorkspaceEditService: blocks C++ preprocessor directives collapsed onto one line', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-'));
   try {

@@ -170,7 +170,18 @@ function formatAutoValidationFeedback(result: AutoValidationResult): string {
     result.risks?.length ? `risks:\n${result.risks.map((risk) => `- ${risk}`).join('\n')}` : '',
     result.alternativeChecks?.length ? `alternativeChecks:\n${result.alternativeChecks.map((check) => `- ${check}`).join('\n')}` : '',
     result.ok ? '' : '自动验证命令未通过，不能把编译/运行/测试标记为完成。',
+    result.ok ? '' : failedValidationRepairProtocol(),
   ].filter(Boolean).join('\n');
+}
+
+function failedValidationRepairProtocol(): string {
+  return [
+    '修复闭环要求：',
+    '- 下一轮先用 read_file 重新读取当前落盘源码和相关测试入口；不要只依据上一轮回复、write 工具回显、旧日志或猜测继续改。',
+    '- 从首个失败断言/错误行构造最小失败路径：输入状态、期望结果、当前源码执行分支、会被改变的状态容器或字段。',
+    '- 如果相同断言再次失败，必须改变定位策略；优先检查状态索引同步、排序/遍历方向、边界条件、生命周期/移动后使用、错误/拒绝分支是否与正常成功可区分。',
+    '- 可用只读查询或项目验证命令辅助定位，但不得修改受保护测试/构建文件；只有下一轮自动验证通过后才可以 task_complete。',
+  ].join('\n');
 }
 
 function formatBlockedAutoValidationFeedback(result: AutoValidationResult): string {

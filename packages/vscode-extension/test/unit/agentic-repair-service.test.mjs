@@ -79,6 +79,9 @@ test('AgenticRepairService: repair prompt is evidence-first and forbids OK-only 
   assert.match(prompt, /禁止只输出 STATUS: OK/);
   assert.match(prompt, /必须改变定位策略/);
   assert.match(prompt, /只由 DevSeek 下一轮本地命令决定/);
+  assert.match(prompt, /修复闭环要求/);
+  assert.match(prompt, /最小失败路径/);
+  assert.match(prompt, /生命周期\/移动后使用/);
 });
 
 test('AgenticRepairService: repeated unchanged failures escalate once then stop', () => {

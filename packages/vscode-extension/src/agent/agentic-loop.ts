@@ -1103,6 +1103,7 @@ export async function runAgenticLoop(
   const validationFailedReason = latestAutoQualityGate && latestAutoQualityGate.status !== 'pass'
     ? latestAutoQualityGate.summary
     : undefined;
+  const finalRequirementReviewBlocker = requirementReview.completionBlocker();
   const policyRefusalEvidenceSatisfied = hasUnsafeSecretHarvestingRefusalEvidence(
     writeAuthority.currentPrompt, `${completeSummary}\n${lastProviderText}`, { workToolUsed: sawWorkTool, changedFileCount: allWrittenFiles.length },
   );
@@ -1140,7 +1141,9 @@ export async function runAgenticLoop(
     failedReason = finalRuntimeSettlement.failedReason
       || `任务已有执行证据，但缺少完成信号、通过验证或可交付总结：${describeProviderOutputIntegrity(finalRuntimeSettlement.providerOutput.kind)}`;
   }
-  if (!failedReason && finalBlockingFailure) {
+  if (!failedReason && finalRequirementReviewBlocker) {
+    failedReason = finalRequirementReviewBlocker;
+  } else if (!failedReason && finalBlockingFailure) {
     failedReason = describeBlockingTerminalFailure(finalBlockingFailure);
     if (callbacks.onTodoUpdate && currentTodos.length > 0) {
       currentTodos = settleValidationFailureTodos(currentTodos);

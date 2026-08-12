@@ -21,6 +21,7 @@ export interface ProviderRequirementReviewInput {
 
 export interface ProviderRequirementReviewService {
   request(input: RequirementReviewInput): Promise<string | undefined>;
+  completionBlocker(): string | undefined;
   recoverNoToolCompletion(consecutiveRound: number): RequirementReviewNoToolRecovery | undefined;
 }
 
@@ -67,6 +68,7 @@ export function createProviderRequirementReviewService(
       });
       return ledger.settleIndependentReview(decision);
     },
+    completionBlocker: () => ledger.completionBlocker(),
     recoverNoToolCompletion: consecutiveRound => ledger.recoverNoToolCompletion(consecutiveRound),
   };
 }

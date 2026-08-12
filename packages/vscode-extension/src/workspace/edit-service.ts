@@ -1,6 +1,10 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
-import { findGeneratedSourceSanityIssue, repairGeneratedSourceTransportEscapes } from './source-sanity';
+import {
+  findGeneratedSourceSanityIssue,
+  findSourceOverwriteSanityIssue,
+  repairGeneratedSourceTransportEscapes,
+} from './source-sanity';
 import {
   captureCanonicalPathRouteIdentity,
   isCanonicalPathInsideRoot,
@@ -463,6 +467,9 @@ export class WorkspaceEditService {
 
     const prepared = this.prepareTextFileProposal(proposal, options);
     const appliedProposal = prepared.proposal;
+    if (options.validateSourceSanity) {
+      this.validateTextFileOverwriteProposal(appliedProposal, baseline);
+    }
 
     const current = this.captureTextFileBaseline(baseline.absPath, baseline.workspaceRoot);
     if (!sameTextFileBaseline(baseline, current)) {
@@ -595,6 +602,20 @@ export class WorkspaceEditService {
 
   validateTextFileProposal(proposal: WorkspaceEditProposal): void {
     const issue = findGeneratedSourceSanityIssue(proposal.absPath, proposal.content);
+    if (!issue) return;
+    throw new WorkspaceEditValidationError(proposal.absPath, issue.detail);
+  }
+
+  validateTextFileOverwriteProposal(
+    proposal: WorkspaceEditProposal,
+    baseline: WorkspaceTextFileBaseline,
+  ): void {
+    if (!baseline.snapshot.existed) return;
+    const issue = findSourceOverwriteSanityIssue(
+      proposal.absPath,
+      baseline.snapshot.content,
+      proposal.content,
+    );
     if (!issue) return;
     throw new WorkspaceEditValidationError(proposal.absPath, issue.detail);
   }

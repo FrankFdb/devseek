@@ -1988,6 +1988,24 @@ function parseRunLogStartedAtMs(name) {
     : new Date(...parts).getTime();
 }
 
+function uniqueWorkspacePaths(paths) {
+  return [...new Set(paths
+    .map(normalizeChangedPathForWorkspace)
+    .filter(Boolean))];
+}
+
+function collectCommittedMutationPaths(events) {
+  const paths = [];
+  for (const event of events) {
+    if (event.event !== 'workspace-mutation-lifecycle') continue;
+    const data = event.data || {};
+    if (data.state !== 'committed') continue;
+    if (Array.isArray(data.paths)) paths.push(...data.paths);
+    if (typeof data.path === 'string') paths.push(data.path);
+  }
+  return uniqueWorkspacePaths(paths);
+}
+
 ${productRunLogSelectionSource()}
 
 function collectRunLogs(startedAtMs) {
@@ -2012,6 +2030,7 @@ function collectRunLogs(startedAtMs) {
     const providerEventCount = events.filter((event) => event.tag === 'provider' || event.phase === 'payload').length;
     const toolExecutionCount = events.filter((event) => event.phase === 'tool-loop'
       && (event.event === 'execute-start' || event.event === 'execute-complete')).length;
+    const mutationPaths = collectCommittedMutationPaths(events);
     logs.push({
       path: rel(workspaceDir, full),
       absolutePath: full,
@@ -2024,6 +2043,8 @@ function collectRunLogs(startedAtMs) {
       hasAgentStatus: events.some((event) => event.event === 'agent-status'),
       providerEventCount,
       toolExecutionCount,
+      committedMutationCount: mutationPaths.length,
+      mutationPaths,
       terminal: terminal ? { event: terminal.event, data: terminal.data || {} } : null,
       providerFailures: events
         .filter((event) => /failed|corrupt|truncated|LOGIN_REQUIRED|HTTP/i.test(String(event.event) + ' ' + JSON.stringify(event.data || {})))
@@ -2053,11 +2074,15 @@ async function updateConfig(key, value) {
 function evaluate(before, startedAtMs, expectedCodeBefore = new Map(), expectedCodeDirBefore = new Map()) {
   const artifacts = changedMarkdownArtifacts(before);
   const runLogs = collectRunLogs(startedAtMs);
-  const terminalData = runLogs.terminal && runLogs.terminal.data ? runLogs.terminal.data : {};
+  const productRunLog = selectProductRunLog(runLogs.logs);
+  const terminalData = productRunLog?.terminal?.data || {};
   const tasksFailed = Number(terminalData.tasksFailed || 0);
-  const tasksApplied = Number(terminalData.tasksApplied || 0);
-  const changedPaths = Array.isArray(terminalData.changedPaths) ? terminalData.changedPaths : [];
-  const normalizedChangedPaths = changedPaths.map(normalizeChangedPathForWorkspace);
+  const tasksApplied = Number(terminalData.tasksApplied || productRunLog?.committedMutationCount || 0);
+  const changedPaths = [
+    ...(Array.isArray(terminalData.changedPaths) ? terminalData.changedPaths : []),
+    ...(Array.isArray(productRunLog?.mutationPaths) ? productRunLog.mutationPaths : []),
+  ];
+  const normalizedChangedPaths = uniqueWorkspacePaths(changedPaths);
   const changedMarkdownByLog = normalizedChangedPaths.some((item) => /\.(?:md|markdown)$/i.test(item));
   const hasUsefulMarkdown = artifacts.some((artifact) => artifact.size >= qualityProfile.minimumMarkdownBytes
     && artifact.requiredContentOk
