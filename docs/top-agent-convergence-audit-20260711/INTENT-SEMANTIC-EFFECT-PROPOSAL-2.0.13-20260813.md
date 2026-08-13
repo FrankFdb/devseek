@@ -122,12 +122,32 @@ node scripts/devseek-top-agent-user-simulation-runner.mjs --dry-run --force --ma
 
 ## Release Evidence
 
-待回填：
+- Code commit: `210b58021fc5ff7289b7208e2fc9eed8a4d183bc`
+- Tag: `2.0.13`
+- Exact VSIX: `devseek-netai-2.0.13-debug.20260813.t232522.g210b580.vsix`
+- VSIX SHA-256: `370fa8f7b5ca350d75a554fe53d30f28d927a235d64425b0b887f315fdcfd3d0`
+- Source compatibility: exact-head, dirty runtime fingerprint none
+- Local install: `code --install-extension /home/ff/work/devseek_netai/devseek-netai-latest.vsix --force` PASS
 
-- 2.0.13 code commit
-- tag `2.0.13`
-- exact VSIX filename and SHA-256
-- full local acceptance report
+Full local acceptance:
+
+```bash
+node scripts/devseek-top-agent-user-simulation-runner.mjs --run-id 20260813-intent-2.0.13-local-acceptance-g210b580 --markdown docs/testing/devseek-20260813-intent-2.0.13-local-acceptance-g210b580.md --force
+```
+
+结果：
+
+- Result: PASS
+- Markdown report: `docs/testing/devseek-20260813-intent-2.0.13-local-acceptance-g210b580.md`
+- Evidence root: `code/devseek-tests/top-agent-convergence/runs/20260813-intent-2.0.13-local-acceptance-g210b580`
+- Total steps: 10 / 10 passed
+- Targeted semantic cases: 6
+- Controlled suites: 9
+- Required acceptance cases: 37
+- Covered dimensions: 23
+- Missing dimensions: none
+- Missing execution evidence: none
+- Release claim permitted: false
 
 ## 结论
 
