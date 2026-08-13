@@ -73,6 +73,44 @@ node scripts/devseek-top-agent-user-simulation-runner.mjs --dry-run --force --ma
 - Controlled VSIX scenario contract passed: 52 tests, 0 failed.
 - Dry-run acceptance matrix included `prior-task-continuation-product` and reported no missing dimensions.
 
+## Final Tagged Evidence
+
+Code commit and tag:
+
+- Commit: `4906b6b9f8b38c523437cea9ea26b85bf711bfd2`
+- Tag: `2.0.9`
+
+Exact VSIX:
+
+- Artifact: `devseek-netai-2.0.9-debug.20260813.t220802.g4906b6b.vsix`
+- SHA-256: `d222e36c70f3bf41aaa147989716d67dceeb7ae3f3bf9bf0fc407a60077d17d3`
+- Source compatibility: `exact-head`
+- Dirty runtime fingerprint: none
+- Installed locally with `code --install-extension /home/ff/work/devseek_netai/devseek-netai-latest.vsix --force`
+
+Focused exact-VSIX product check:
+
+```bash
+node packages/vscode-extension/test/devseek-controlled-vsix-harness.mjs --suite prior-task-continuation-product --report /tmp/devseek-prior-task-continuation-2.0.9-g4906b6b.report.json --timeout-ms 240000
+```
+
+- Result: PASS
+- Cases passed: `prior-plan-source-change`, `prior-plan-go-ahead`
+- Report: `/tmp/devseek-prior-task-continuation-2.0.9-g4906b6b.report.json`
+
+Full local top-agent user simulation:
+
+```bash
+node scripts/devseek-top-agent-user-simulation-runner.mjs --run-id 20260813-intent-2.0.9-local-acceptance-g4906b6b --markdown docs/testing/devseek-20260813-intent-2.0.9-local-acceptance-g4906b6b.md --force
+```
+
+- Result: PASS
+- Evidence root: `code/devseek-tests/top-agent-convergence/runs/20260813-intent-2.0.9-local-acceptance-g4906b6b`
+- Markdown report: `docs/testing/devseek-20260813-intent-2.0.9-local-acceptance-g4906b6b.md`
+- Required acceptance suites: all present
+- Required acceptance cases: 27, all executed
+- Missing dimensions: none
+
 ## Remaining Qualification Boundary
 
 This is a local capability iteration toward Codex/Claude Code class behavior. It still does not close the C14/top-agent release qualification gap, which requires live Provider, release-candidate, sealed holdout, and external authority evidence.
