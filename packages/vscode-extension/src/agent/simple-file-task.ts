@@ -114,7 +114,7 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
         effects: ['workspace-mutation'],
         input: toolInput,
         risk: 'medium',
-        protectedPath: resolved.absPath,
+        protectedPath: false,
         targetPaths: [resolved.absPath],
         surfaceConstraint: fileWriteConstraint,
       });

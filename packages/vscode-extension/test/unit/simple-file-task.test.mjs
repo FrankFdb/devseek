@@ -12,8 +12,11 @@ import {
   CanonicalDiagnosticService,
   CanonicalEngineeringOrientationService,
   CanonicalRegressionSelectionService,
+  CanonicalToolAuthorityService,
+  CanonicalToolExecutionService,
   CanonicalVerificationService,
   CanonicalVerifierSelectionService,
+  CanonicalWorkspaceMutationTransaction,
   buildCodingKernelTaskContract,
 } from '../../../shared/dist/index.js';
 
@@ -62,7 +65,7 @@ const ALLOW_FILE_WRITE = Object.freeze({
 });
 let runCounter = 0;
 
-function makeCallbacks(events, commandRunner) {
+function makeCallbacks(events, commandRunner, options = {}) {
   runCounter += 1;
   const root = fakeVscode.workspace.workspaceFolders[0]?.uri.fsPath ?? '/workspace';
   const runId = `simple-file-test-${runCounter}`;
@@ -89,7 +92,7 @@ function makeCallbacks(events, commandRunner) {
     workspaceRoot: root,
     files: [],
   });
-  return {
+  const callbacks = {
     onDelta: delta => events.deltas.push(delta),
     onWorkflowStatus: status => events.workflowStatuses.push(status),
     onAgentStatus: status => events.statuses.push(status),
@@ -115,6 +118,17 @@ function makeCallbacks(events, commandRunner) {
     canonicalVerification: new CanonicalVerificationService().bind({ runId, acceptance }),
     canonicalVerificationAcceptance: acceptance,
   };
+  if (options.canonicalTools) {
+    callbacks.canonicalToolAuthority = new CanonicalToolAuthorityService().bind({
+      runId,
+      surface: 'vscode',
+      workspaceRoot: root,
+      taskContract,
+    });
+    callbacks.canonicalToolExecution = new CanonicalToolExecutionService().bind({ runId });
+    callbacks.canonicalWorkspaceMutations = new CanonicalWorkspaceMutationTransaction();
+  }
+  return callbacks;
 }
 
 async function executeCommand({ command, cwd, timeoutMs }) {
@@ -172,6 +186,33 @@ test('Simple file task writes Markdown and completes from canonical readback evi
     assert.equal(result.verificationReceipts[0].status, 'passed');
     assert.match(result.verificationReceipts[0].evidenceRefs.join('\n'), /file:docs\/result\.md:sha256:/);
     assert.equal(events.statuses.at(-1).state, 'completed');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Simple file task records canonical tool and mutation receipts for deterministic writes', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-simple-canonical-'));
+  fakeVscode.workspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+  const events = makeEvents();
+  try {
+    const result = await tryRunSimpleFileTask({
+      userPrompt: '创建 journey-result.txt，内容为：FINAL_REQUIREMENT_OK',
+      workspaceRoot: root,
+      callbacks: makeCallbacks(events, undefined, { canonicalTools: true }),
+    });
+
+    assert.equal(readFileSync(path.join(root, 'journey-result.txt'), 'utf8'), 'FINAL_REQUIREMENT_OK');
+    assert.equal(result.tasksApplied, 1);
+    assert.equal(result.tasksFailed, 0);
+    assert.equal(result.toolExecutionReceipts.length, 1);
+    assert.equal(result.toolExecutionReceipts[0].tool, 'create_file');
+    assert.equal(result.toolExecutionReceipts[0].status, 'completed');
+    assert.equal(result.toolExecutionReceipts[0].permission.status, 'authorized');
+    assert.equal(result.toolExecutionReceipts[0].permission.decision, 'allow');
+    assert.equal(result.changeReceipts.length, 1);
+    assert.equal(result.changeReceipts[0].status, 'committed');
+    assert.equal(result.changeReceipts[0].actionId, result.toolExecutionReceipts[0].actionId);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
