@@ -118,13 +118,33 @@ node scripts/devseek-top-agent-user-simulation-runner.mjs --dry-run --force --ma
 
 ## Release Evidence
 
-待回填：
+Code and release identity:
 
-- 2.0.12 code commit
-- tag `2.0.12`
-- exact VSIX filename and SHA-256
-- full local acceptance report
-- evidence commit
+- Commit: `609d2391c582c9f5186cd5da621c59c05f3054c0`
+- Tag: `2.0.12`
+- Packaged VSIX: `devseek-netai-2.0.12-debug.20260813.t231127.g609d239.vsix`
+- VSIX SHA-256: `a62d903c68bc2cd4e6a33c26975b4676a5e1fdc6be6dbaec7d5adb53f66525f7`
+- Source compatibility: `exact-head`
+- Dirty runtime fingerprint: none
+- Local install command passed: `code --install-extension /home/ff/work/devseek_netai/devseek-netai-latest.vsix --force`
+
+Full local top-agent acceptance:
+
+```bash
+node scripts/devseek-top-agent-user-simulation-runner.mjs --run-id 20260813-intent-2.0.12-local-acceptance-g609d239 --markdown docs/testing/devseek-20260813-intent-2.0.12-local-acceptance-g609d239.md --force
+```
+
+- Result: PASS.
+- Markdown report: `docs/testing/devseek-20260813-intent-2.0.12-local-acceptance-g609d239.md`
+- Evidence root: `code/devseek-tests/top-agent-convergence/runs/20260813-intent-2.0.12-local-acceptance-g609d239`
+- Targeted semantic cases: 4.
+- Controlled suites: 9.
+- Total runner steps: 10.
+- Required acceptance case count: 35.
+- Covered dimensions: 23.
+- Missing dimensions: none.
+- Missing execution evidence: none.
+- Release claim permitted: false, because this remains local T3 evidence below the C14 release qualification boundary.
 
 ## 结论
 
