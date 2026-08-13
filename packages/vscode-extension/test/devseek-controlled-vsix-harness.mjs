@@ -134,8 +134,10 @@ try {
     keepWindow,
   });
   const deterministicFastPath = driverReport?.ok === true && fakeBridge.state.chatRequests.length === 0;
-  const providerExpected = selectedScenarios.some(candidate => candidate.providerPlan !== 'write-read-complete')
-    || !deterministicFastPath;
+  const allScenariosAllowFastPath = selectedScenarios.every(candidate =>
+    candidate.providerPlan === 'write-read-complete' || candidate.allowDeterministicFastPath === true
+  );
+  const providerExpected = !deterministicFastPath || !allScenariosAllowFastPath;
   const bridgeReport = summarizeControlledBridge(fakeBridge.state, { providerExpected });
   const evidence = inspectControlledRunLogEvidenceForSelection(driverReport, selectedScenarios);
   const runEvidence = inspectControlledRunEvidenceLedgerForSelection(workspaceDir, driverReport, selectedScenarios);
@@ -494,6 +496,7 @@ function controlledScenarioCatalog() {
         '完成写入和读回验证后结束任务，不要创建旧要求文件。',
       ].join(''),
       providerPlan: 'latest-requirement-complete',
+      allowDeterministicFastPath: true,
       expected: 'completed-workflow',
       expectedFiles: {
         'journey-result.txt': latestRequirementContent,
@@ -2681,13 +2684,24 @@ function collectRunLogs(excludePaths = []) {
         .map(event => String(event.data?.content || ''))
         .join('\n')
         .slice(-5000);
+      const statusText = events
+        .filter(event => event.event === 'agent-status')
+        .map(event => [
+          event.data?.title,
+          event.data?.detail,
+          ...(Array.isArray(event.data?.editedFiles)
+            ? event.data.editedFiles.map(file => file?.path || file?.basename || '')
+            : []),
+        ].filter(Boolean).map(String).join('\n'))
+        .join('\n')
+        .slice(-5000);
       const eventSummaryText = events.map(event => JSON.stringify({
           event: event.event || '',
           data: event.data || {},
         }))
         .join('\n')
         .slice(-5000);
-      const responseText = [payloadText, eventSummaryText].filter(Boolean).join('\n');
+      const responseText = [payloadText, statusText, eventSummaryText].filter(Boolean).join('\n');
       return {
         path: path.relative(workspaceDir, absolutePath).replace(/\\/g, '/'),
         events: events.length,
@@ -3021,7 +3035,6 @@ async function activate() {
       report.runLogs = caseReport.runLogs;
       if (!caseReport.ok) {
         report.errors.push(...caseReport.errors.map(error => '[' + caseReport.scenario + '] ' + error));
-        break;
       }
       await delay(500);
     }

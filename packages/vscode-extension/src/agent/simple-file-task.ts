@@ -1,5 +1,11 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
+import {
+  buildCodingToolAction,
+  type CodingToolExecutionReceipt,
+  type CodingToolHostResult,
+  type CodingWorkspaceMutationReceipt,
+} from '@devseek-netai/shared';
 import { resolveWorkspaceWritePath } from '../workspace/path-resolver';
 import { WorkspaceEditService } from '../workspace/edit-service';
 import { VsCodeWorkspaceMutationAdapter } from '../workspace/coding-workspace-mutation-adapter';
@@ -88,34 +94,98 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
   }
 
   input.callbacks.onToolActivity?.('write', resolved.relPath);
-  const mutationSession = resolveProductWorkspaceMutationSession({
-    workspaceRoot: input.workspaceRoot,
-    canonicalTransaction: input.callbacks.canonicalWorkspaceMutations,
-    canonicalRunId: input.callbacks.traceRunId,
-    owner: 'simple-file-task',
-    operationIdentity: {
-      path: resolved.relPath,
-      content: request.content,
-      userPrompt: input.userPrompt,
-    },
-  });
-  let mutationOutcome;
+  let mutationOutcome: Awaited<ReturnType<typeof workspaceMutation.executeTextFileWrite>> | undefined;
+  let toolExecutionReceipt: CodingToolExecutionReceipt<unknown> | undefined;
   try {
-    mutationOutcome = await workspaceMutation.executeTextFileWrite({
-      transaction: mutationSession.transaction,
-      runId: mutationSession.runId,
-      actionId: `simple-file-write:${resolved.relPath}`,
-      sequence: 1,
-      absPath: resolved.absPath,
-      workspaceRoot: input.workspaceRoot,
-      content: request.content,
-      baseline,
-      applyOptions: {
-        validateSourceSanity: true,
-        repairSourceTransportEscapes: true,
-      },
-      evidenceRefs: [`file-write-authority:${resolved.relPath}`],
-    });
+    const toolInput = { path: resolved.relPath, content: request.content };
+    const canonicalToolAuthority = input.callbacks.canonicalToolAuthority;
+    const canonicalToolExecution = input.callbacks.canonicalToolExecution;
+    if (canonicalToolAuthority && canonicalToolExecution) {
+      const context = canonicalToolExecution.nextAction({
+        tool: 'create_file',
+        purpose: 'workspace-mutation',
+        effects: ['workspace-mutation'],
+        input: toolInput,
+      });
+      const authorization = canonicalToolAuthority.authorize({
+        actionId: context.actionId,
+        tool: 'create_file',
+        purpose: 'workspace-mutation',
+        effects: ['workspace-mutation'],
+        input: toolInput,
+        risk: 'medium',
+        protectedPath: resolved.absPath,
+        targetPaths: [resolved.absPath],
+        surfaceConstraint: fileWriteConstraint,
+      });
+      const action = buildCodingToolAction({
+        ...context,
+        tool: 'create_file',
+        purpose: 'workspace-mutation',
+        effects: ['workspace-mutation'],
+        input: toolInput,
+        authority: authorization.receipt,
+      });
+      const execution = await canonicalToolExecution.execute(action, {
+        execute: async () => {
+          const mutationSession = resolveProductWorkspaceMutationSession({
+            workspaceRoot: input.workspaceRoot,
+            canonicalTransaction: input.callbacks.canonicalWorkspaceMutations,
+            canonicalRunId: context.runId,
+            owner: 'simple-file-task',
+            operationIdentity: {
+              path: resolved.relPath,
+              content: request.content,
+              userPrompt: input.userPrompt,
+            },
+          });
+          mutationOutcome = await workspaceMutation.executeTextFileWrite({
+            transaction: mutationSession.transaction,
+            runId: mutationSession.runId,
+            actionId: context.actionId,
+            sequence: context.sequence,
+            absPath: resolved.absPath,
+            workspaceRoot: input.workspaceRoot,
+            content: request.content,
+            baseline,
+            applyOptions: {
+              validateSourceSanity: true,
+              repairSourceTransportEscapes: true,
+            },
+            evidenceRefs: authorization.receipt.evidenceRefs,
+          });
+          return projectSimpleFileMutationToolResult(mutationOutcome.receipt, resolved.relPath);
+        },
+      }, canonicalToolAuthority);
+      toolExecutionReceipt = execution.receipt;
+    } else {
+      const mutationSession = resolveProductWorkspaceMutationSession({
+        workspaceRoot: input.workspaceRoot,
+        canonicalTransaction: input.callbacks.canonicalWorkspaceMutations,
+        canonicalRunId: input.callbacks.traceRunId,
+        owner: 'simple-file-task',
+        operationIdentity: {
+          path: resolved.relPath,
+          content: request.content,
+          userPrompt: input.userPrompt,
+        },
+      });
+      mutationOutcome = await workspaceMutation.executeTextFileWrite({
+        transaction: mutationSession.transaction,
+        runId: mutationSession.runId,
+        actionId: `simple-file-write:${resolved.relPath}`,
+        sequence: 1,
+        absPath: resolved.absPath,
+        workspaceRoot: input.workspaceRoot,
+        content: request.content,
+        baseline,
+        applyOptions: {
+          validateSourceSanity: true,
+          repairSourceTransportEscapes: true,
+        },
+        evidenceRefs: [`file-write-authority:${resolved.relPath}`],
+      });
+    }
   } catch (error) {
     return finishSimpleFileTask({
       ...input,
@@ -123,6 +193,17 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
       writtenFiles: [],
       terminalEvidence: [],
       failedReason: `源码语法护栏阻止写入：${error instanceof Error ? error.message : String(error)}`,
+      toolExecutionReceipt,
+    });
+  }
+  if (!mutationOutcome) {
+    return finishSimpleFileTask({
+      ...input,
+      todos: failLinearAgentTodo(todos, 0),
+      writtenFiles: [],
+      terminalEvidence: [],
+      failedReason: `工作区写入事务未形成结果：${toolExecutionReceipt?.errorCode ?? toolExecutionReceipt?.status ?? 'missing-mutation-outcome'}`,
+      toolExecutionReceipt,
     });
   }
   const committedEdit = mutationOutcome.receipt.result;
@@ -141,6 +222,7 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
       terminalEvidence: [],
       failedReason: `${failureLabel}：${failure}`,
       changeReceipt: mutationOutcome.receipt,
+      toolExecutionReceipt,
     });
   }
   const writeResult = committedEdit.result;
@@ -170,6 +252,7 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
       terminalEvidence: [],
       failedReason: contentCheck.reason,
       changeReceipt: mutationOutcome.receipt,
+      toolExecutionReceipt,
     });
   }
 
@@ -202,6 +285,7 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
       qualityGate: validation.qualityGate,
       verificationReceipt: validation.verificationReceipt,
       changeReceipt: mutationOutcome.receipt,
+      toolExecutionReceipt,
     });
   }
 
@@ -214,8 +298,38 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
     qualityGate: validation.qualityGate,
     verificationReceipt: validation.verificationReceipt,
     changeReceipt: mutationOutcome.receipt,
+    toolExecutionReceipt,
     summary: buildSimpleFileCompletionSummary(resolved.relPath, validation.evidence),
   });
+}
+
+function projectSimpleFileMutationToolResult(
+  receipt: CodingWorkspaceMutationReceipt<unknown>,
+  relPath: string,
+): CodingToolHostResult<unknown> {
+  if (receipt.status === 'committed') {
+    return {
+      status: 'completed',
+      result: {
+        actionId: receipt.actionId,
+        path: relPath,
+        paths: receipt.paths,
+      },
+      evidenceRefs: receipt.evidenceRefs,
+    };
+  }
+  if (receipt.status === 'indeterminate') {
+    return {
+      status: 'indeterminate',
+      errorCode: receipt.errorCode ?? 'workspace-mutation-indeterminate',
+      evidenceRefs: receipt.evidenceRefs,
+    };
+  }
+  return {
+    status: 'failed',
+    errorCode: receipt.errorCode ?? `workspace-mutation-${receipt.status}`,
+    evidenceRefs: receipt.evidenceRefs,
+  };
 }
 
 function buildSimpleFileTodos(relPath: string): TodoItem[] {
@@ -282,6 +396,7 @@ async function finishSimpleFileTask(input: SimpleFileTaskInput & {
   qualityGate?: AgenticHistoryQualityGate;
   verificationReceipt?: NonNullable<Awaited<ReturnType<typeof runAgentAutoValidationForWrites>>['verificationReceipt']>;
   changeReceipt?: NonNullable<AgentLoopResult['changeReceipts']>[number];
+  toolExecutionReceipt?: NonNullable<AgentLoopResult['toolExecutionReceipts']>[number];
 }): Promise<AgentLoopResult> {
   const finalWrittenFiles = coalesceWrittenFileEvidence(input.writtenFiles, input.workspaceRoot);
   await input.callbacks.onTodoUpdate?.(input.todos);
@@ -322,6 +437,7 @@ async function finishSimpleFileTask(input: SimpleFileTaskInput & {
     tasksApplied: finalWrittenFiles.length > 0 ? 1 : 0,
     tasksFailed: input.failedReason ? 1 : 0,
     changedPaths: finalWrittenFiles.map(file => file.path),
+    ...(input.toolExecutionReceipt ? { toolExecutionReceipts: [input.toolExecutionReceipt] } : {}),
     ...(input.verificationReceipt ? { verificationReceipts: [input.verificationReceipt] } : {}),
     ...(input.changeReceipt ? { changeReceipts: [input.changeReceipt] } : {}),
     historyText,
