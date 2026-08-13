@@ -124,6 +124,7 @@ function buildReviewCorrectionMessages(
       content: [
         `Your previous review was rejected by the response contract: ${reason}`,
         'Re-evaluate the original requirements and every supplied source file from scratch.',
+        'Fix the specific rejected JSON field instead of repeating the same wording. If evidence was rejected, name the concrete input/state scenario plus the caller-observable source or validation fact that proves it.',
         'Return every requirement_check and the complete JSON object again. Omit non-defects, low-confidence or unreachable concerns, and never reverse an explicit requirement.',
       ].join('\n'),
     },

@@ -96,6 +96,71 @@ export const TOOL_PROTOCOL_SAMPLES = [
     expectedToolNames: ['list_dir', 'list_dir', 'read_file'],
   },
   {
+    id: 'openai-compatible-tool-calls-wrapper',
+    text: [
+      'I will inspect and verify.',
+      '```json',
+      JSON.stringify({
+        tool_calls: [
+          {
+            id: 'call_read',
+            type: 'function',
+            function: {
+              name: 'read_file',
+              arguments: JSON.stringify({ path: '/tmp/project/src/app.ts' }),
+            },
+          },
+          {
+            id: 'call_test',
+            type: 'function',
+            function: {
+              name: 'run_terminal',
+              arguments: JSON.stringify({ command: 'npm test' }),
+            },
+          },
+        ],
+      }, null, 2),
+      '```',
+    ].join('\n'),
+    expectedVisible: 'I will inspect and verify.',
+    expectedToolNames: ['read_file', 'run_terminal'],
+  },
+  {
+    id: 'legacy-function-call-wrapper',
+    text: [
+      '```json',
+      JSON.stringify({
+        function_call: {
+          name: 'read_file',
+          arguments: JSON.stringify({ path: '/tmp/project/src/app.ts' }),
+        },
+      }, null, 2),
+      '```',
+    ].join('\n'),
+    expectedVisible: '',
+    expectedToolNames: ['read_file'],
+  },
+  {
+    id: 'mixed-content-tool-use-input-wrapper',
+    text: [
+      '```json',
+      JSON.stringify({
+        content: [
+          { type: 'text', text: 'I will read the focused file.' },
+          {
+            type: 'tool_use',
+            id: 'toolu_read',
+            name: 'read_file',
+            input: { path: '/tmp/project/src/app.ts' },
+          },
+        ],
+      }, null, 2),
+      '```',
+    ].join('\n'),
+    expectedVisible: '',
+    expectedToolNames: ['read_file'],
+  },
+  {
     id: 'deepseek-quote-damaged-tool-use-create',
     text: String.raw`I will rewrite the implementation.
 <TOOL_USE>{"name":"create_file","arguments":{"path":"/tmp/project/src/order_book.cpp","content":"#include "order_book.hpp"\n#include <map>\n\nnamespace devseek_case {\n}\n"}}</TOOL_USE>`,

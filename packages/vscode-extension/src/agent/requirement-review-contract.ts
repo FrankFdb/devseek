@@ -61,6 +61,11 @@ interface NormalizedRequirementCheck {
   evidence: string;
 }
 
+interface RequirementCheckNormalizationResult {
+  checks?: Map<string, NormalizedRequirementCheck>;
+  rejectionReason?: string;
+}
+
 export const REQUIREMENT_REVIEW_SCHEMA = [
   '{',
   '  "requirement_checks": [{',
@@ -104,19 +109,19 @@ export function parseIndependentReviewResponse(
   if (response.toolCount > 0) {
     return localSemanticFallbackDecision('隔离审查者违反只读协议并请求了工具。', snapshots, userPrompt);
   }
+  const requirements = extractRequirementClauses(userPrompt);
+  if (requirements.length === 0) {
+    return indeterminateDecision('原始需求无法形成可追溯的审查清单。');
+  }
   let raw: RawReviewResult;
   try {
-    raw = JSON.parse(stripSingleJsonFence(response.text)) as RawReviewResult;
+    raw = parseReviewJsonFromResponseText(response.text, requirements);
   } catch {
     return localSemanticFallbackDecision(
       '隔离审查输出不是严格 JSON。',
       snapshots,
       userPrompt,
     );
-  }
-  const requirements = extractRequirementClauses(userPrompt);
-  if (requirements.length === 0) {
-    return indeterminateDecision('原始需求无法形成可追溯的审查清单。');
   }
   raw = normalizeReportStyleReviewResult(raw, requirements);
   if (raw.overall_correctness !== 'patch is correct'
@@ -130,7 +135,8 @@ export function parseIndependentReviewResponse(
     return localSemanticFallbackDecision('隔离审查缺少可信的总体解释或置信度。', snapshots, userPrompt);
   }
 
-  const checks = normalizeRequirementChecks(raw.requirement_checks, requirements);
+  const checkResult = normalizeRequirementChecksWithReason(raw.requirement_checks, requirements);
+  const checks = checkResult.checks;
   if (!checks) {
     const fallbackFindings = normalizeFindingsAgainstRequirements(raw.findings, snapshots, requirements);
     if (raw.overall_correctness === 'patch is incorrect' && fallbackFindings && fallbackFindings.length > 0) {
@@ -140,7 +146,11 @@ export function parseIndependentReviewResponse(
         findings: fallbackFindings,
       };
     }
-    return localSemanticFallbackDecision('隔离审查未逐条覆盖需求清单，或需求引用不是原文。', snapshots, userPrompt);
+    return localSemanticFallbackDecision(
+      checkResult.rejectionReason ?? '隔离审查未逐条覆盖需求清单，或需求引用不是原文。',
+      snapshots,
+      userPrompt,
+    );
   }
   const localContradictions = findLocalSemanticContradictions(checks, snapshots);
   if (localContradictions.length > 0) {
@@ -350,6 +360,104 @@ function reportCoverageConfidence(raw: RawReviewResult, allCovered: boolean): nu
   const warnings = raw.test_evidence?.compiler_warnings;
   if (allCovered && exitCode === 0 && (warnings === 0 || warnings === '0')) return 0.9;
   return allCovered ? 0.82 : 0.85;
+}
+
+function parseReviewJsonFromResponseText(
+  text: string,
+  requirements: readonly RequirementClause[],
+): RawReviewResult {
+  const direct = tryParseRawReviewResult(stripSingleJsonFence(text));
+  if (direct && scoreReviewJsonCandidate(direct, requirements) > 0) {
+    return direct;
+  }
+  let selected: { raw: RawReviewResult; score: number; index: number } | undefined;
+  for (const candidate of extractJsonObjectCandidates(text)) {
+    const score = scoreReviewJsonCandidate(candidate.raw, requirements);
+    if (score <= 0) continue;
+    if (!selected || score > selected.score || (score === selected.score && candidate.index > selected.index)) {
+      selected = { ...candidate, score };
+    }
+  }
+  if (!selected) throw new Error('no-review-json-candidate');
+  return selected.raw;
+}
+
+function scoreReviewJsonCandidate(
+  raw: RawReviewResult,
+  requirements: readonly RequirementClause[],
+): number {
+  const normalized = normalizeReportStyleReviewResult(raw, requirements);
+  let score = 0;
+  const checkResult = normalizeRequirementChecksWithReason(normalized.requirement_checks, requirements);
+  if (checkResult.checks) score += 120;
+  else if (Array.isArray(normalized.requirement_checks)) score += 30;
+  if (Array.isArray(normalized.findings)) score += 15;
+  if (normalized.overall_correctness === 'patch is correct'
+    || normalized.overall_correctness === 'patch is incorrect') {
+    score += 20;
+  }
+  if (typeof normalized.overall_explanation === 'string') score += 10;
+  if (isConfidence(normalized.overall_confidence_score)) score += 10;
+  if (Array.isArray(normalized.requirements_coverage)) score += 20;
+  return score;
+}
+
+function extractJsonObjectCandidates(text: string): Array<{ raw: RawReviewResult; index: number }> {
+  const candidates: Array<{ raw: RawReviewResult; index: number }> = [];
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] !== '{') continue;
+    const end = findBalancedJsonObjectEnd(text, index);
+    if (end === undefined) continue;
+    const raw = tryParseRawReviewResult(text.slice(index, end + 1));
+    if (raw) {
+      candidates.push({ raw, index });
+      index = end;
+    }
+  }
+  return candidates;
+}
+
+function findBalancedJsonObjectEnd(text: string, start: number): number | undefined {
+  let depth = 0;
+  let insideString = false;
+  let escaped = false;
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index];
+    if (insideString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === '"') {
+        insideString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      insideString = true;
+      continue;
+    }
+    if (char === '{') {
+      depth += 1;
+      continue;
+    }
+    if (char !== '}') continue;
+    depth -= 1;
+    if (depth === 0) return index;
+    if (depth < 0) return undefined;
+  }
+  return undefined;
+}
+
+function tryParseRawReviewResult(text: string): RawReviewResult | undefined {
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as RawReviewResult
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function localSemanticFallbackDecision(
@@ -883,7 +991,16 @@ function normalizeRequirementChecks(
   rawChecks: unknown,
   requirements: readonly RequirementClause[],
 ): Map<string, NormalizedRequirementCheck> | undefined {
-  if (!Array.isArray(rawChecks) || rawChecks.length !== requirements.length) return undefined;
+  return normalizeRequirementChecksWithReason(rawChecks, requirements).checks;
+}
+
+function normalizeRequirementChecksWithReason(
+  rawChecks: unknown,
+  requirements: readonly RequirementClause[],
+): RequirementCheckNormalizationResult {
+  if (!Array.isArray(rawChecks) || rawChecks.length !== requirements.length) {
+    return { rejectionReason: '隔离审查未逐条覆盖需求清单，或需求引用不是原文。' };
+  }
   const checks = new Map<string, NormalizedRequirementCheck>();
   for (let index = 0; index < requirements.length; index++) {
     const raw = rawChecks[index] as RawRequirementCheck;
@@ -891,11 +1008,19 @@ function normalizeRequirementChecks(
     if (!raw
       || raw.requirement_id !== requirement.id
       || normalizeRequirementText(raw.requirement_quote) !== normalizeRequirementText(requirement.quote)
-      || (raw.status !== 'satisfied' && raw.status !== 'violated')
-      || typeof raw.evidence !== 'string'
-      || !raw.evidence.trim()
-      || !requirementEvidenceMatchesContract(requirement.quote, raw.status, raw.evidence)) {
-      return undefined;
+      || (raw.status !== 'satisfied' && raw.status !== 'violated')) {
+      return { rejectionReason: '隔离审查未逐条覆盖需求清单，或需求引用不是原文。' };
+    }
+    if (typeof raw.evidence !== 'string' || !raw.evidence.trim()) {
+      return { rejectionReason: `隔离审查 evidence 缺少可追溯事实：${requirement.id} 必须点名最终源码路径/行号、验证事实或可执行场景。` };
+    }
+    const evidenceRejectionReason = requirementEvidenceRejectionReason(
+      requirement,
+      raw.status,
+      raw.evidence,
+    );
+    if (evidenceRejectionReason) {
+      return { rejectionReason: evidenceRejectionReason };
     }
     checks.set(requirement.id, {
       requirement,
@@ -903,7 +1028,7 @@ function normalizeRequirementChecks(
       evidence: raw.evidence.trim(),
     });
   }
-  return checks;
+  return { checks };
 }
 
 function requirementChecksFromInventory(
@@ -934,15 +1059,19 @@ function satisfiedRequirementChecksFromInventory(
   return checks;
 }
 
-function requirementEvidenceMatchesContract(
-  quote: string,
+function requirementEvidenceRejectionReason(
+  requirement: RequirementClause,
   status: 'satisfied' | 'violated',
   evidence: string,
-): boolean {
-  if (status !== 'satisfied') return true;
-  if (requiresOrderedTrace(quote) && !hasOrderedTraceEvidence(evidence)) return false;
-  if (requiresFailurePathEvidence(quote) && !hasFailurePathEvidence(evidence)) return false;
-  return true;
+): string | undefined {
+  if (status !== 'satisfied') return undefined;
+  if (requiresOrderedTrace(requirement.quote) && !hasOrderedTraceEvidence(evidence)) {
+    return `隔离审查 evidence 未覆盖顺序/优先级轨迹：${requirement.id} 必须在 evidence 中点名多元素场景、比较/遍历方向或先后结果。`;
+  }
+  if (requiresFailurePathEvidence(requirement.quote) && !hasFailurePathEvidence(evidence)) {
+    return `隔离审查 evidence 未覆盖失败路径：${requirement.id} 必须在 evidence 中同时点名被拒绝/非法输入场景和 caller-observable 抛错/错误通道。`;
+  }
+  return undefined;
 }
 
 function requiresOrderedTrace(quote: string): boolean {

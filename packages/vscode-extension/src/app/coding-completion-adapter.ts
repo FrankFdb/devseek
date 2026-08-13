@@ -47,8 +47,9 @@ export class VsCodeCompletionEvidenceAdapter {
     const neutralPolicyDeniedRefs = uniqueNonEmpty(toolExecutions
       .filter(codingDeniedToolExecutionIsPolicyNoEffect)
       .flatMap(receipt => receipt.evidenceRefs));
-    const tasksFailed = shouldClearRecoveredPolicyDeniedFailure({
+    const tasksFailed = shouldClearRecoveredTaskFailure({
       tasksFailed: input.result.tasksFailed,
+      failedReason: input.result.failedReason,
       deniedEffectRefs,
       neutralPolicyDeniedRefs,
       failedArtifactRefs,
@@ -95,8 +96,9 @@ export class VsCodeCompletionEvidenceAdapter {
   }
 }
 
-function shouldClearRecoveredPolicyDeniedFailure(input: {
+function shouldClearRecoveredTaskFailure(input: {
   readonly tasksFailed: number;
+  readonly failedReason?: string;
   readonly deniedEffectRefs: readonly string[];
   readonly neutralPolicyDeniedRefs: readonly string[];
   readonly failedArtifactRefs: readonly string[];
@@ -106,22 +108,33 @@ function shouldClearRecoveredPolicyDeniedFailure(input: {
   readonly verifications: readonly CodingVerificationReceipt[];
 }): boolean {
   if (input.tasksFailed <= 0) return false;
-  if (input.deniedEffectRefs.length > 0 || input.neutralPolicyDeniedRefs.length === 0) return false;
+  if (input.deniedEffectRefs.length > 0) return false;
   if (input.failedArtifactRefs.length > 0 || input.uncoveredChangedPaths.length > 0) return false;
   if (input.changedPaths.length === 0) return false;
-  return hasCommittedReadbackMutation(input.mutations)
+  const policyDeniedFailureWasRecovered = input.neutralPolicyDeniedRefs.length > 0;
+  const legacyEvidenceFailureWasRecovered = isRecoverableLegacyEvidenceFailure(input.failedReason);
+  if (!policyDeniedFailureWasRecovered && !legacyEvidenceFailureWasRecovered) return false;
+  return allChangedPathsHaveCommittedReadback(input.changedPaths, input.mutations)
     && hasPassedVerification(input.verifications);
 }
 
-function hasCommittedReadbackMutation(
+function allChangedPathsHaveCommittedReadback(
+  changedPaths: readonly string[],
   mutations: readonly CodingWorkspaceMutationReceipt<unknown>[],
 ): boolean {
-  return mutations.some(receipt => (
-    receipt.status === 'committed'
-      && receipt.paths.length > 0
-      && Boolean(receipt.baselineRef)
-      && Boolean(receipt.readbackRef)
-  ));
+  const committedReadbackPaths = mutations
+    .filter(receipt => (
+      receipt.status === 'committed'
+        && receipt.paths.length > 0
+        && Boolean(receipt.baselineRef)
+        && Boolean(receipt.readbackRef)
+    ))
+    .flatMap(receipt => receipt.paths)
+    .map(normalizePath);
+  if (committedReadbackPaths.length === 0) return false;
+  return uniqueNonEmpty(changedPaths.map(normalizePath)).every(
+    changedPath => committedReadbackPaths.some(committedPath => sameMutationPath(changedPath, committedPath)),
+  );
 }
 
 function hasPassedVerification(
@@ -132,6 +145,10 @@ function hasPassedVerification(
       && receipt.acceptance.length > 0
       && receipt.acceptance.every(result => result.status === 'passed')
   ));
+}
+
+function isRecoverableLegacyEvidenceFailure(reason: string | undefined): boolean {
+  return /实际执行证据不足/u.test(String(reason || ''));
 }
 
 function buildDirectAcceptanceEvidence(input: {

@@ -1068,6 +1068,93 @@ test('strict review parser keeps provider-transcript-polluted review indetermina
   assert.equal('hostClearable' in decision, false);
 });
 
+test('strict review parser selects review JSON from mixed tool wrapper text', () => {
+  const source = snapshot('src/repeat-label.js', [
+    'function repeatLabel(label, count) {',
+    '  const repeatCount = Number(count);',
+    '  if (!Number.isInteger(repeatCount) || repeatCount < 0) {',
+    "    throw new TypeError('count must be a non-negative integer');",
+    '  }',
+    '  return Array.from({ length: repeatCount }, () => String(label)).join("-");',
+    '}',
+    'module.exports = { repeatLabel };',
+    '',
+  ].join('\n'));
+  const tests = snapshot('test/repeat-label.test.js', [
+    "const assert = require('assert');",
+    "const { repeatLabel } = require('../src/repeat-label');",
+    "assert.equal(repeatLabel('devseek', 3), 'devseek-devseek-devseek');",
+    'assert.throws(() => repeatLabel("x", -1), /non-negative integer/);',
+    "console.log('OPENAI_WRAPPER_TESTS_PASSED');",
+    '',
+  ].join('\n'));
+  const prompt = '请实现 src/repeat-label.js，并新增 test/repeat-label.test.js。repeatLabel("devseek", 3) 应返回 devseek-devseek-devseek。对非法负数 count 抛出错误，改完运行 node test/repeat-label.test.js。';
+  const review = {
+    requirement_checks: [{
+      requirement_id: 'R1',
+      requirement_quote: prompt,
+      status: 'satisfied',
+      evidence: 'Scenario negative count: test/repeat-label.test.js:4 calls repeatLabel("x", -1); src/repeat-label.js:3-4 throws TypeError, and node test/repeat-label.test.js printed OPENAI_WRAPPER_TESTS_PASSED.',
+    }],
+    findings: [],
+    overall_correctness: 'patch is correct',
+    overall_explanation: 'The final source and focused validation satisfy the requirement inventory.',
+    overall_confidence_score: 0.98,
+  };
+  const raw = [
+    '我会用兼容 OpenAI tool_calls 的格式返回工具调用。',
+    '```json',
+    JSON.stringify({
+      tool_calls: [{
+        id: 'call_1',
+        type: 'function',
+        function: {
+          name: 'run_terminal',
+          arguments: JSON.stringify({ command: 'node test/repeat-label.test.js' }),
+        },
+      }],
+    }, null, 2),
+    '```',
+    '{"irrelevant":true}',
+    '最终只读审查如下：',
+    '```json',
+    JSON.stringify(review, null, 2),
+    '```',
+  ].join('\n');
+
+  const decision = parseIndependentReviewResponse({ text: raw, toolCount: 0 }, [source, tests], prompt);
+
+  assert.equal(decision.status, 'passed');
+  assert.match(decision.explanation, /focused validation/);
+});
+
+test('strict review parser gives targeted feedback for generic failure-path evidence', () => {
+  const source = snapshot('src/repeat-label.js', [
+    'function repeatLabel(label, count) {',
+    '  if (count < 0) throw new TypeError("count");',
+    '  return String(label);',
+    '}',
+    '',
+  ].join('\n'));
+  const prompt = '对非法负数 count 抛出错误。';
+  const decision = parseIndependentReviewResponse(response({
+    requirement_checks: [{
+      requirement_id: 'R1',
+      requirement_quote: prompt,
+      status: 'satisfied',
+      evidence: 'R1: src/repeat-label.js:1 final source snapshot and the validation fact cover the requested execution path.',
+    }],
+    findings: [],
+    overall_correctness: 'patch is correct',
+    overall_explanation: 'No contradiction found.',
+    overall_confidence_score: 0.98,
+  }), [source], prompt);
+
+  assert.equal(decision.status, 'indeterminate');
+  assert.match(decision.explanation, /evidence 未覆盖失败路径/);
+  assert.match(decision.explanation, /非法输入场景/);
+});
+
 test('strict review parser rejects self-negating and unreachable pseudo-findings', () => {
   const source = snapshot('src/order_book.cpp', 'int value = 0;');
   const prompt = 'Keep iterators valid.';

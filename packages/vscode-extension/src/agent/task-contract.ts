@@ -62,7 +62,7 @@ const CHANGE_RE = /(?:修复|修正|修改|实现|新增|添加|重构|集成|�
 const CODE_GENERATION_RE = /(?:(?:编写|写一个|写个|创建|新建|生成|实现|新增|添加|制作)[^，,。；;\n]{0,36}(?:C\+\+|C#|C\s*语言|JavaScript|TypeScript|Python|Java|Go|Rust|程序|脚本|源码|代码|函数|类|模块)|\b(?:create|write|generate|implement|add|build)\b[^,.;\n]{0,36}\b(?:C\+\+|C#|JavaScript|TypeScript|Python|Java|Go|Rust|program|script|code|function|class|module)\b)/i;
 const CODE_GENERATION_REPORT_RE = /(?:原有代码修改清单|代码修改清单|修改点清单|代码审计|代码分析|代码说明|代码文档|code\s+(?:review|analysis|audit|report|document|documentation|change\s+list))/i;
 const ADVISORY_CHANGE_REQUEST_RE = /(?:(?:给出|提供|输出|列出|制定|梳理).{0,60}(?:建议|对策|方案|计划|步骤|清单)|(?:建议|对策).{0,40}(?:修复|修正|修改|重构|方案|计划)|(?:suggest|recommend|propose|list|outline|draft).{0,80}(?:ways?|options?|recommendations?|plan|steps?|approach|how\s+to|fix|repair|refactor)|(?:how\s+to|ways?\s+to).{0,48}(?:fix|repair|refactor|improve|change|update))/i;
-const EXPLICIT_SOURCE_IMPLEMENTATION_DELIVERY_RE = /(?:(?:代码实现|实现代码|落地实现)|(?:创建|新建|生成|编写|写入|输出|保存|新增|添加|修改|改动|重构|修复|替换|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入)[^，,。；;\n]{0,40}(?:源代码文件|源码文件|代码文件|源文件|\bsrc\b|source\s+files?|code\s+files?|\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx|ts|tsx|js|jsx|py|java|go|rs)\b))/i;
+const EXPLICIT_SOURCE_IMPLEMENTATION_DELIVERY_RE = /(?:(?:代码实现|实现代码|落地实现)|(?:创建|新建|生成|编写|实现|构建|落地|集成|写入|输出|保存|新增|添加|修改|改动|重构|修复|替换|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入)[^，,。；;\n]{0,40}(?:源代码文件|源码文件|代码文件|源文件|\bsrc\b|source\s+files?|code\s+files?|\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx|ts|tsx|js|jsx|py|java|go|rs)\b))/i;
 const STANDALONE_RE = /(?:独立(?:项目|工具|程序|脚本)|standalone|从零|new\s+(?:project|tool))/i;
 const EXISTING_PROJECT_SCOPE_RE = /(?:既有|现有|原来|原项目|大项目|正式项目|生产项目|代码库|工程|\/src\/|src\/|CMakeLists\.txt|Makefile|参考.{0,80}模块)/i;
 const BROAD_PROJECT_CODE_SCOPE_RE = /(?:整个|全部|全局|项目|仓库|系统|架构|多入口|跨平台|跨模块|模块化|runtime|workflow|provider|权限|状态机)[^，,。；;\n]{0,40}(?:代码|模块|逻辑|runtime|workflow|provider|权限|状态机|code|logic)|(?:代码|模块|逻辑|code|logic)[^，,。；;\n]{0,40}(?:整个|全部|全局|项目|仓库|系统|架构|多入口|跨平台|跨模块|模块化|runtime|workflow|provider|权限|状态机)/i;
@@ -74,7 +74,7 @@ const CONDITIONAL_REPAIR_RE = /(?:(?:运行|执行|测试|验证|编译|构建|r
 const BUG_FIX_IMPLEMENTATION_RE = /(?:(?:修复|修正|解决|处理|fix|repair|resolve)[^，,。；;\n]{0,64}(?:bug|issue|问题|错误|失败|报错|异常|不工作|不生效|failing|broken)|(?:bug|issue|问题|错误|失败|报错|异常|不工作|不生效|failing|broken)[^，,。；;\n]{0,64}(?:修复|修正|解决|处理|fix|repair|resolve))/i;
 const NO_SOURCE_CHANGE_RE = /(?:不要|禁止|无需|不允许|不得).{0,24}(?:修改|改动|修复|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入).{0,12}(?:源码|代码|文件)|(?:do not|don't|must not).{0,24}(?:modify|change|fix|repair|rename|move|copy|append|insert).{0,12}(?:source|code|files?)/i;
 const OUTPUT_STYLE_GUIDANCE_RE = /(?:报告正文请|正文请)[^。\n；;]{0,120}|(?:(?:技术标识符|协议名|文件路径|验收锚点|术语|专有名词)[、,，和及与\s]*){1,8}[^。\n；;]{0,80}(?:保持原文|保留原文|保持原样|不翻译|verbatim|exact)/gi;
-const ARTIFACT_WRITE_ACTION_PATTERN = '(?:(?:通过|以|用|使用)[^，,。；;\\n]{0,12}(?:md|markdown|\\.md)(?:文档|文件|报告)?[^，,。；;\\n]{0,16}(?:提供|输出|给出|返回|保存|生成|产出)|创建|新建|生成|编写|制作|做成|形成|整理成|记录|汇总(?:成|为|到|至|入)|翻译(?=[^，,。；;\\n]{0,24}(?:成|为|到|至|入|保存|输出|写入|文档|文件|报告|markdown|md))|(?:总结|摘要|概括|提取)(?=[^，,。；;\\n]{0,24}(?:成|为|到|至|入|保存|输出|写入|文档|文件|报告|markdown|md))|写入|写出|写到|保存|产出|落盘|修复|修正|解决|处理|更新|修改|改写|改动|编辑|覆盖|删除|删|移除|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|写(?!法)|改(?!进)|输出(?=[^，,。；;\\n]{0,16}(?:到|至|为|成|入|markdown|文档|报告))|(?:提供|给出|交付)(?=[^，,。；;\\n]{0,16}(?:markdown|文档|报告))|\\b(?:create|write|compose|draft|render|record|save|generate|produce|fix|repair|resolve|update|modify|revise|replace|overwrite|edit|change|delete|remove|touch|rename|move|copy|append|insert|translate)\\b|\\bmake\\s+(?:a\\s+)?changes?\\b|\\boutput(?=[^,.;\\n]{0,20}\\b(?:to|into|as|markdown|report|document)\\b)|\\b(?:provide|deliver)(?=[^,.;\\n]{0,20}\\b(?:markdown|report|document)\\b|[^,.;\\n]{0,36}\\b(?:through|via|as)\\s+(?:an?\\s+)?(?:markdown\\s+)?(?:document|report)\\b)|\\bsummari[sz]e(?:\\s+(?:it|them|the\\s+(?:facts?|results?)))?\\s+(?:into|to|as)\\b)';
+const ARTIFACT_WRITE_ACTION_PATTERN = '(?:(?:通过|以|用|使用)[^，,。；;\\n]{0,12}(?:md|markdown|\\.md)(?:文档|文件|报告)?[^，,。；;\\n]{0,16}(?:提供|输出|给出|返回|保存|生成|产出)|创建|新建|生成|编写|制作|做成|形成|整理成|记录|汇总(?:成|为|到|至|入)|翻译(?=[^，,。；;\\n]{0,24}(?:成|为|到|至|入|保存|输出|写入|文档|文件|报告|markdown|md))|(?:总结|摘要|概括|提取)(?=[^，,。；;\\n]{0,24}(?:成|为|到|至|入|保存|输出|写入|文档|文件|报告|markdown|md))|写入|写出|写到|保存|产出|落盘|实现|新增|添加|构建|落地|集成|修复|修正|解决|处理|更新|修改|改写|改动|编辑|覆盖|删除|删|移除|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|写(?!法)|改(?!进)|输出(?=[^，,。；;\\n]{0,16}(?:到|至|为|成|入|markdown|文档|报告))|(?:提供|给出|交付)(?=[^，,。；;\\n]{0,16}(?:markdown|文档|报告))|\\b(?:create|write|compose|draft|render|record|save|generate|produce|implement|add|build|fix|repair|resolve|update|modify|revise|replace|overwrite|edit|change|delete|remove|touch|rename|move|copy|append|insert|translate)\\b|\\bmake\\s+(?:a\\s+)?changes?\\b|\\boutput(?=[^,.;\\n]{0,20}\\b(?:to|into|as|markdown|report|document)\\b)|\\b(?:provide|deliver)(?=[^,.;\\n]{0,20}\\b(?:markdown|report|document)\\b|[^,.;\\n]{0,36}\\b(?:through|via|as)\\s+(?:an?\\s+)?(?:markdown\\s+)?(?:document|report)\\b)|\\bsummari[sz]e(?:\\s+(?:it|them|the\\s+(?:facts?|results?)))?\\s+(?:into|to|as)\\b)';
 const FILE_READ_ACTION_PATTERN = '(?:只读|读取|读出|查看|检查|审计|分析|解释|核对|参考|总结|摘要|概括|提取|翻译|\\b(?:read|inspect|view|check|audit|analy[sz]e|explain|extract|reference|translate)\\b|\\bsummari[sz]e\\b)';
 const ARTIFACT_TARGET_HINT_RE = /(?:\.md\b|markdown|文档|报告|文件|\bartifacts?\b|\bdocuments?\b|\breports?\b|\bfiles?\b)/i;
 const MARKDOWN_ARTIFACT_TARGET_HINT_RE = /(?:\.(?:md|markdown)\b|markdown|md\s*(?:文档|文件|报告)|文档|报告|文件|\bdocuments?\b|\breports?\b|\bfiles?\b)/i;
@@ -891,8 +891,8 @@ function lastAllFileWriteProhibitionIndex(
   const englishObject = targetKind === 'directory'
     ? '(?:directories|directory|folders?|paths?)'
     : '(?:files?|documents?|reports?)';
-  const chineseAction = '(?:创建|新建|生成|编写|写入|写出|写到|写|保存|输出|修复|修正|解决|处理|更新|修改|改写|改动|改|变更|编辑|覆盖|删除|删|移除|触碰|动)';
-  const englishAction = '(?:create|write|save|generate|fix|repair|resolve|update|modify|change|edit|overwrite|delete|remove|touch)';
+  const chineseAction = '(?:创建|新建|生成|编写|实现|新增|添加|构建|落地|集成|写入|写出|写到|写|保存|输出|修复|修正|解决|处理|更新|修改|改写|改动|改|变更|编辑|覆盖|删除|删|移除|触碰|动)';
+  const englishAction = '(?:create|write|save|generate|implement|add|build|fix|repair|resolve|update|modify|change|edit|overwrite|delete|remove|touch)';
   const patterns = [
     /(?:^|[\n。；;！？!?])\s*(?:停止(?:写入|修改|改动|编辑|执行)?|取消(?:本次)?任务|不要继续(?:执行|写入|修改|改动|编辑)?|算了|不用了)(?=\s*(?:$|[\n。；;！？!?]))/gi,
     /(?:^|[\n.;!?])\s*(?:stop(?:\s+(?:writing|editing|modifying|the\s+task))?|cancel(?:\s+(?:this|the))?\s+task|do\s+not\s+continue|never\s+mind)(?=\s*(?:$|[\n.;!?]))/gi,
@@ -922,9 +922,9 @@ interface FileScopeRestriction {
 
 function getLatestFileScopeRestriction(prompt: string, workspaceRoot?: string): FileScopeRestriction | undefined {
   const patterns = [
-    /(?:只|仅)(?:允许)?[^，,。；;\n]{0,24}(?:创建|新建|生成|编写|写入|保存|输出|修复|修正|解决|处理|更新|修改|改写|改动|编辑|删除|重命名|移动|复制|追加|插入)|(?:创建|新建|生成|编写|写入|保存|输出|修复|修正|解决|处理|更新|修改|改写|改动|编辑|删除|重命名|移动|复制|追加|插入)[^，,。；;\n]{0,12}(?:只|仅)/gi,
+    /(?:只|仅)(?:允许)?[^，,。；;\n]{0,24}(?:创建|新建|生成|编写|实现|新增|添加|构建|落地|集成|写入|保存|输出|修复|修正|解决|处理|更新|修改|改写|改动|编辑|删除|重命名|移动|复制|追加|插入)|(?:创建|新建|生成|编写|实现|新增|添加|构建|落地|集成|写入|保存|输出|修复|修正|解决|处理|更新|修改|改写|改动|编辑|删除|重命名|移动|复制|追加|插入)[^，,。；;\n]{0,12}(?:只|仅)/gi,
     /(?:不要|不得|禁止|严禁|不允许|不可|勿|别)[^，,。；;\n]{0,36}(?:其他|其它|其余|额外)(?:的)?(?:文件|改动|修改|变更)|(?:不做|不要有|不得有)\s*(?:任何)?(?:其他|其它|其余|额外)(?:改动|修改|变更)/gi,
-    /\b(?:only|solely)\b[^,.;\n]{0,36}\b(?:create|write|save|generate|fix|repair|resolve|update|modify|change|edit|delete|rename|move|copy|append|insert)|\b(?:create|write|save|generate|fix|repair|resolve|update|modify|change|edit|delete|rename|move|copy|append|insert)\b[^,.;\n]{0,16}\bonly\b/gi,
+    /\b(?:only|solely)\b[^,.;\n]{0,36}\b(?:create|write|save|generate|implement|add|build|fix|repair|resolve|update|modify|change|edit|delete|rename|move|copy|append|insert)|\b(?:create|write|save|generate|implement|add|build|fix|repair|resolve|update|modify|change|edit|delete|rename|move|copy|append|insert)\b[^,.;\n]{0,16}\bonly\b/gi,
     /\b(?:do\s+not|don't|must\s+not|should\s+not|never)\b[^,.;\n]{0,48}\b(?:anything\s+else|(?:any\s+)?(?:other|additional)\s+(?:files?|changes?|modifications?))\b/gi,
     /\b(?:make|allow)\s+no\s+other\s+(?:changes?|modifications?)\b|\bleave\s+(?:all\s+)?other\s+files?\s+unchanged\b/gi,
   ];
@@ -1037,8 +1037,8 @@ function lastTargetTypeWriteProhibitionIndex(prompt: string, targetPath: string)
   let latest: number | undefined;
   for (const kind of kinds.filter(item => item.matches)) {
     const patterns = [
-      new RegExp(`(?:不(?:要|得|允许|可)?|禁止|严禁|不可|勿|别)[^，,。；;\\n]{0,32}(?:修复|修正|解决|处理|修改|改动|编辑|写入|覆盖|删除|创建|重命名|移动|复制|追加|插入)[^，,。；;\\n]{0,24}${kind.chinese}`, 'gi'),
-      new RegExp(`\\b(?:do\\s+not|don't|must\\s+not|should\\s+not|never)\\b[^,.;\\n]{0,40}\\b(?:fix|repair|resolve|modify|change|edit|write|overwrite|delete|create|rename|move|copy|append|insert)\\b[^,.;\\n]{0,28}\\b${kind.english}\\b`, 'gi'),
+      new RegExp(`(?:不(?:要|得|允许|可)?|禁止|严禁|不可|勿|别)[^，,。；;\\n]{0,32}(?:实现|新增|添加|构建|落地|集成|修复|修正|解决|处理|修改|改动|编辑|写入|覆盖|删除|创建|重命名|移动|复制|追加|插入)[^，,。；;\\n]{0,24}${kind.chinese}`, 'gi'),
+      new RegExp(`\\b(?:do\\s+not|don't|must\\s+not|should\\s+not|never)\\b[^,.;\\n]{0,40}\\b(?:implement|add|build|fix|repair|resolve|modify|change|edit|write|overwrite|delete|create|rename|move|copy|append|insert)\\b[^,.;\\n]{0,28}\\b${kind.english}\\b`, 'gi'),
     ];
     for (const pattern of patterns) {
       for (const match of prompt.matchAll(pattern)) {
@@ -1054,7 +1054,7 @@ function getSourceFileWriteProhibition(
   prompt: string,
 ): { scope: 'all' | 'scoped'; index: number } | undefined {
   let latest: { scope: 'all' | 'scoped'; index: number } | undefined;
-  const chinese = /(?:不要|不得|禁止|严禁|不允许|不可|勿|别)[^，,。；;\n]{0,16}(?:修复|修正|解决|处理|修改|改动|编辑|写入|覆盖|删除|移除|更新|创建|重命名|移动|复制|追加|插入)[^，,。；;\n]{0,24}(?:任何|所有|全部)?(?:正式|生产|原有|原|现有|已有|既有|主项目|原项目)?(?:关联)?(?:源码|源代码|代码)(?:目录|文件)?/gi;
+  const chinese = /(?:不要|不得|禁止|严禁|不允许|不可|勿|别)[^，,。；;\n]{0,16}(?:实现|新增|添加|构建|落地|集成|修复|修正|解决|处理|修改|改动|编辑|写入|覆盖|删除|移除|更新|创建|重命名|移动|复制|追加|插入)[^，,。；;\n]{0,24}(?:任何|所有|全部)?(?:正式|生产|原有|原|现有|已有|既有|主项目|原项目)?(?:关联)?(?:源码|源代码|代码)(?:目录|文件)?/gi;
   for (const match of prompt.matchAll(chinese)) {
     const next = {
       scope: /(?:正式|生产|原有|原代码|现有|已有|既有|主项目|原项目)/.test(match[0])
@@ -1064,7 +1064,7 @@ function getSourceFileWriteProhibition(
     };
     if (!latest || next.index >= latest.index) latest = next;
   }
-  const english = /\b(?:do\s+not|don't|must\s+not|should\s+not|may\s+not|shall\s+not|never)\b[^,.;\n]{0,28}\b(?:fix|repair|resolve|modify|change|edit|write|overwrite|delete|remove|update|create|rename|move|copy|append|insert)\b[^,.;\n]{0,24}\b(?:(?:any|all|formal|production|existing|current|main-project)\s+)*(?:source(?:\s+code|\s+files?)?|code\s+files?)\b/gi;
+  const english = /\b(?:do\s+not|don't|must\s+not|should\s+not|may\s+not|shall\s+not|never)\b[^,.;\n]{0,28}\b(?:implement|add|build|fix|repair|resolve|modify|change|edit|write|overwrite|delete|remove|update|create|rename|move|copy|append|insert)\b[^,.;\n]{0,24}\b(?:(?:any|all|formal|production|existing|current|main-project)\s+)*(?:source(?:\s+code|\s+files?)?|code\s+files?)\b/gi;
   for (const match of prompt.matchAll(english)) {
     const next = {
       scope: /\b(?:formal|production|existing|current|main-project)\b/i.test(match[0])

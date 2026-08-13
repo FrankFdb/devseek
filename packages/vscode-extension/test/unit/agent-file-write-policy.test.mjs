@@ -690,6 +690,28 @@ test('AgentFileWritePolicy: ordinary prompts keep normal workspace write behavio
   assert.equal(decision.reason, 'workspace-write-allowed');
 });
 
+test('AgentFileWritePolicy: implementation prompts allow explicitly named source and test files', () => {
+  const requestPrompt = '请实现 src/repeat-label.js，并新增 test/repeat-label.test.js。repeatLabel("devseek", 3) 应返回 devseek-devseek-devseek。对非法负数 count 抛出错误，改完运行 node test/repeat-label.test.js。';
+  const decide = relPath => decideAgentFileWrite({
+    absPath: path.join('/workspace', relPath),
+    workspaceRoot: '/workspace',
+    autopilotMode: true,
+    context: {
+      purpose: 'tool-write',
+      userRequested: false,
+      taskAction: 'create_file',
+      displayName: relPath,
+      requestPrompt,
+    },
+  });
+
+  assert.equal(decide('src/repeat-label.js').action, 'allow');
+  assert.equal(decide('test/repeat-label.test.js').action, 'allow');
+  const unrelated = decide('src/other.js');
+  assert.equal(unrelated.action, 'deny');
+  assert.equal(unrelated.reason, 'target-file-write-prohibited');
+});
+
 test('AgentFileWritePolicy: repair prompts allow the named source file and block sibling writes', () => {
   const requestPrompt = '请修复 src/math.js 中 add(a, b) 的明显错误。要求 add(2, 3) 返回 5，修改后用 node 命令验证并结束任务。不要修改其他文件。';
   const allowed = decideAgentFileWrite({

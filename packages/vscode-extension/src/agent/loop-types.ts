@@ -255,6 +255,8 @@ export interface AgentLoopResult {
   tasksApplied: number;
   tasksFailed: number;
   changedPaths: string[];
+  /** Terminal loop failure reason before canonical completion reconciliation. */
+  failedReason?: string;
   /** True when work is applied and executable, but final judgment needs human observation (GUI/interactive output). */
   manualReviewRequired?: boolean;
   manualReviewReason?: string;

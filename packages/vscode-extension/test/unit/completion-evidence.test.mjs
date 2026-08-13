@@ -33,6 +33,7 @@ execSync(
 
 const req = createRequire(import.meta.url);
 const {
+  assessMissingCompletionEvidence,
   classifyTerminalEvidenceCommand,
   coalesceWrittenFileEvidence,
   describeBlockingTerminalFailure,
@@ -916,6 +917,40 @@ test('completion evidence: code edit requires successful validation evidence', (
   }
 });
 
+test('completion evidence: canonical verification receipt satisfies code validation evidence', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-receipt-'));
+  try {
+    const file = path.join(root, 'src', 'repeat-label.js');
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, 'export function repeatLabel(value, count) { return Array(count).fill(value).join("-"); }\n');
+    const written = [{ path: file, basename: 'repeat-label.js', linesAdded: 1, linesRemoved: 0, action: 'create' }];
+
+    assert.deepEqual(
+      assessMissingCompletionEvidence({
+        userPrompt: '请实现 src/repeat-label.js，并运行 node test/repeat-label.test.js',
+        todos: [],
+        writtenFiles: written,
+        terminalEvidence: [],
+        workspaceRoot: root,
+      }),
+      ['成功的测试/运行结果'],
+    );
+    assert.deepEqual(
+      assessMissingCompletionEvidence({
+        userPrompt: '请实现 src/repeat-label.js，并运行 node test/repeat-label.test.js',
+        todos: [],
+        writtenFiles: written,
+        terminalEvidence: [],
+        workspaceRoot: root,
+        verificationReceipts: [passedVerificationReceipt()],
+      }),
+      [],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('completion evidence: standalone C++ stdout task requires runtime evidence after writing', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-cpp-stdout-'));
   try {
@@ -1152,5 +1187,17 @@ test('completion evidence: manual visual review evidence does not become a block
     undefined,
   );
 });
+
+function passedVerificationReceipt() {
+  return {
+    status: 'passed',
+    acceptance: [{
+      criterionId: 'completed',
+      status: 'passed',
+      evidenceRefs: ['verification:passed'],
+    }],
+    evidenceRefs: ['verification:passed'],
+  };
+}
 
 console.log('\nCompletion evidence tests passed.\n');

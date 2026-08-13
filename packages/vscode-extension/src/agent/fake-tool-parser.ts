@@ -206,8 +206,8 @@ const {
   findToolInputObjectEnd,
   hasUnclosedToolCallEnvelopePrefixBeforeJson,
   jsonArrayToFakeTools,
-  jsonObjectToImplicitArrayFakeTool,
   jsonValueContainsToolPayload,
+  jsonValueToFakeTools,
   parseLooseToolInput,
 } = fakeToolJsonUtils;
 
@@ -235,7 +235,20 @@ function isShellCommandLine(line: string): boolean {
 function looksLikeShellCommandBlock(text: string): boolean {
   const payload = shellJsonCommandPayload(text);
   if (payload) return looksLikeShellCommandBlock(payload.command);
+  if (looksLikeStructuredJsonBlock(text)) return false;
   return text.split(/\r?\n/).some(line => isShellCommandLine(line));
+}
+
+function looksLikeStructuredJsonBlock(text: string): boolean {
+  const trimmed = text.trim();
+  if (!/^[{\[]/.test(trimmed)) return false;
+  try {
+    JSON.parse(trimmed);
+    return true;
+  } catch {
+    return /^\{\s*"(?:tool_calls|toolCalls|tools|function_call|functionCall|tool_call|toolCall)"\s*:/s.test(trimmed)
+      || /^\[\s*\{\s*"(?:tool|name|type|function)"\s*:/s.test(trimmed);
+  }
 }
 
 function findNextJsonStart(text: string, startAt: number): number {
@@ -916,6 +929,11 @@ function hasShellTranscriptMarker(text: string): boolean {
 }
 
 export function jsonObjectToFakeTool(obj: Record<string, unknown>): FakeTool | null {
+  const functionCall = obj.function_call ?? obj.functionCall;
+  if (functionCall && typeof functionCall === 'object' && !Array.isArray(functionCall)) {
+    const tool = jsonFunctionEnvelopeToFakeTool({ function: functionCall });
+    if (tool) return tool;
+  }
   const functionTool = jsonFunctionEnvelopeToFakeTool(obj);
   if (functionTool) return functionTool;
   const rawName = typeof obj.tool === 'string'
@@ -928,7 +946,7 @@ export function jsonObjectToFakeTool(obj: Record<string, unknown>): FakeTool | n
   const name = rawName.trim();
   if (!name || !isRegisteredFakeToolName(name)) return null;
   const canonicalName = normalizeAgentToolName(name);
-  const maybeArgs = obj.arguments ?? obj.parameters ?? obj.params ?? obj.args;
+  const maybeArgs = obj.arguments ?? obj.parameters ?? obj.params ?? obj.args ?? obj.input;
   let input: Record<string, unknown>;
   const parsedArgs = parseToolArgumentsRecord(canonicalName, maybeArgs);
   if (parsedArgs) {
@@ -936,7 +954,7 @@ export function jsonObjectToFakeTool(obj: Record<string, unknown>): FakeTool | n
   } else {
     input = {};
     for (const [k, v] of Object.entries(obj)) {
-      if (!['tool', 'name', 'type', 'arguments', 'parameters', 'params', 'args'].includes(k)) input[k] = v;
+      if (!['tool', 'name', 'type', 'arguments', 'parameters', 'params', 'args', 'input'].includes(k)) input[k] = v;
     }
   }
   return { name: canonicalName, input: normalizeToolInput(canonicalName, input) };
@@ -1300,8 +1318,8 @@ function parseJsonObjectToolCalls(text: string): FakeTool[] {
   if (end < 0) return [];
   try {
     const obj = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
-    const toolObj = jsonObjectToFakeTool(obj) ?? jsonObjectToImplicitArrayFakeTool(obj);
-    if (toolObj) return [toolObj];
+    const tools = jsonValueToFakeTools(obj);
+    if (tools.length > 0) return tools;
     if (Array.isArray(obj.todoList)) return [{ name: 'manage_todo_list', input: { todoList: obj.todoList } }];
     if (typeof obj.summary === 'string' && /(?:完成|结束|complete|done)/i.test(text) && !hasShellTranscriptMarker(text)) {
       return [{ name: 'task_complete', input: { summary: obj.summary } }];

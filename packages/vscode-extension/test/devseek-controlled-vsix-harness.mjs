@@ -286,6 +286,7 @@ function resolveControlledScenarioSuite(id) {
       'agent-fit-review-only',
       'agent-fit-multifile-with-test',
       'agent-fit-markdown-report-anchors',
+      'agent-fit-openai-tool-calls-wrapper',
     ],
     'coding-conformance-product': [
       'conformance-create-and-verify',
@@ -455,6 +456,28 @@ function controlledScenarioCatalog() {
     '## Verification',
     '',
     'ANCHOR_VERIFICATION: add a focused parser test and rerun npm test.',
+    '',
+  ].join('\n');
+  const openAiWrapperSourceContent = [
+    'function repeatLabel(label, count) {',
+    '  const repeatCount = Number(count);',
+    '  if (!Number.isInteger(repeatCount) || repeatCount < 0) {',
+    "    throw new TypeError('count must be a non-negative integer');",
+    '  }',
+    '',
+    '  return Array.from({ length: repeatCount }, () => String(label)).join("-");',
+    '}',
+    '',
+    'module.exports = { repeatLabel };',
+    '',
+  ].join('\n');
+  const openAiWrapperTestContent = [
+    "const assert = require('assert');",
+    "const { repeatLabel } = require('../src/repeat-label');",
+    '',
+    "assert.equal(repeatLabel('devseek', 3), 'devseek-devseek-devseek');",
+    'assert.throws(() => repeatLabel("x", -1), /non-negative integer/);',
+    "console.log('OPENAI_WRAPPER_TESTS_PASSED');",
     '',
   ].join('\n');
   const streamTruncatedProbeContent = [
@@ -771,6 +794,40 @@ function controlledScenarioCatalog() {
         'ANCHOR_ROOT_CAUSE',
         'ANCHOR_FIX_PLAN',
         'ANCHOR_VERIFICATION',
+      ],
+    },
+    'agent-fit-openai-tool-calls-wrapper': {
+      id: 'agent-fit-openai-tool-calls-wrapper',
+      kind: 'agent-fit-openai-compatible-tool-calls-wrapper',
+      targetRelativePath: 'src/repeat-label.js',
+      targetContent: openAiWrapperSourceContent,
+      seedFiles: {
+        'src/.keep': '',
+        'test/.keep': '',
+      },
+      prompt: [
+        '请实现 src/repeat-label.js，并新增 test/repeat-label.test.js。',
+        'repeatLabel("devseek", 3) 应返回 devseek-devseek-devseek。',
+        '对非法负数 count 抛出错误，改完运行 node test/repeat-label.test.js。',
+      ].join(''),
+      providerPlan: 'openai-tool-calls-wrapper-complete',
+      expected: 'completed-workflow',
+      expectedFiles: {
+        'src/repeat-label.js': openAiWrapperSourceContent,
+        'test/repeat-label.test.js': openAiWrapperTestContent,
+      },
+      expectedChangedPaths: [
+        'src/repeat-label.js',
+        'test/repeat-label.test.js',
+      ],
+      expectedMutatedUserFiles: [
+        'src/repeat-label.js',
+        'test/repeat-label.test.js',
+      ],
+      requiredRunLogSubstrings: [
+        'OPENAI_WRAPPER_TESTS_PASSED',
+        'src/repeat-label.js',
+        'test/repeat-label.test.js',
       ],
     },
     'conformance-create-and-verify': {
@@ -2411,6 +2468,7 @@ function controlledPlannerResponse({ scenario }) {
     'review-only-no-mutation': 'analyze',
     'multi-file-slugify-test-complete': 'create',
     'markdown-report-anchors-complete': 'create',
+    'openai-tool-calls-wrapper-complete': 'create',
     'provider-error': 'create',
     'stream-corrupting-python-cli-complete': 'create',
   };
@@ -2427,6 +2485,7 @@ function controlledPlannerResponse({ scenario }) {
     'review-only-no-mutation': '执行只读 code review 并保留工作区不变',
     'multi-file-slugify-test-complete': '实现多文件小功能并运行聚焦测试',
     'markdown-report-anchors-complete': '生成带精确验收锚点的 Markdown 报告并验证',
+    'openai-tool-calls-wrapper-complete': '兼容 OpenAI 风格 tool_calls 包装并完成多文件验证',
     'provider-error': '创建指定文件并处理 Provider 失败路径',
     'stream-corrupting-python-cli-complete': '创建 Python CLI 并由 stream 协议故障测试 fail-closed',
   };
@@ -2450,21 +2509,51 @@ function controlledIndependentReviewResponse({ promptText, scenario }) {
   const requirements = inventory.length > 0
     ? inventory
     : [{ id: 'R1', quote: scenario.prompt }];
-  const validationEvidence = scenario.providerPlan === 'cpp-program-compile-run-complete'
-    ? `${scenario.targetRelativePath}:1-6 defines main(), prints 下午好 on the requested execution path, and the validation fact says g++ -std=c++17 -fsyntax-only ${scenario.targetRelativePath} exit-0.`
-    : `${scenario.targetRelativePath}:1 final source snapshot and the validation fact cover the requested execution path.`;
   return JSON.stringify({
     requirement_checks: requirements.map(item => ({
       requirement_id: item.id,
       requirement_quote: item.quote,
       status: 'satisfied',
-      evidence: `${item.id}: ${validationEvidence}`,
+      evidence: `${item.id}: ${controlledReviewEvidence(item.quote, scenario)}`,
     })),
     findings: [],
     overall_correctness: 'patch is correct',
     overall_explanation: 'Controlled read-only review found no contradiction between the final source snapshot, validation fact, and requirement inventory.',
     overall_confidence_score: 0.98,
   });
+}
+
+function controlledReviewEvidence(requirementQuote, scenario) {
+  const quote = String(requirementQuote || '');
+  if (scenario.providerPlan === 'cpp-program-compile-run-complete') {
+    return `${scenario.targetRelativePath}:1-6 defines main(), prints 下午好 on the requested execution path, and the validation fact says g++ -std=c++17 -fsyntax-only ${scenario.targetRelativePath} exit-0.`;
+  }
+  if (scenario.providerPlan === 'openai-tool-calls-wrapper-complete'
+    || /(?:reject|invalid|negative|throws?|error|非法|无效|拒绝|负数|抛出|异常|错误)/iu.test(quote)) {
+    return [
+      'Scenario negative count: test/repeat-label.test.js:5 calls repeatLabel("x", -1).',
+      'src/repeat-label.js:3-4 throws TypeError for that rejected input, and node test/repeat-label.test.js printed OPENAI_WRAPPER_TESTS_PASSED.',
+    ].join(' ');
+  }
+  return `${scenario.targetRelativePath}:1 final source snapshot and the validation fact cover the requested execution path.`;
+}
+
+function controlledOpenAiToolCallsResponse(intro, calls) {
+  return [
+    intro,
+    '```json',
+    JSON.stringify({
+      tool_calls: calls.map((call, index) => ({
+        id: `call_${index + 1}`,
+        type: 'function',
+        function: {
+          name: call.name,
+          arguments: JSON.stringify(call.input),
+        },
+      })),
+    }, null, 2),
+    '```',
+  ].join('\n');
 }
 
 function controlledProviderResponse({ ordinal, workspaceDir, scenario, requestKind = 'agent-execution' }) {
@@ -2717,6 +2806,40 @@ function controlledProviderResponse({ ordinal, workspaceDir, scenario, requestKi
         summary: '已生成 docs/incident-debug-report.md，并用 grep 验证 ANCHOR_ROOT_CAUSE、ANCHOR_FIX_PLAN、ANCHOR_VERIFICATION 都存在。',
       })}]`,
     ].join('\n');
+  }
+
+  if (scenario.providerPlan === 'openai-tool-calls-wrapper-complete') {
+    const activeTodos = {
+      todoList: [
+        { id: 1, title: '实现 repeatLabel 工具函数', status: 'in-progress' },
+        { id: 2, title: '新增聚焦测试并运行', status: 'not-started' },
+      ],
+    };
+    const completedTodos = {
+      todoList: [
+        { id: 1, title: '实现 repeatLabel 工具函数', status: 'completed' },
+        { id: 2, title: '新增聚焦测试并运行', status: 'completed' },
+      ],
+    };
+    const expectedFiles = scenario.expectedFiles || {};
+    return controlledOpenAiToolCallsResponse(
+      '我会用兼容 OpenAI tool_calls 的格式返回工具调用，并完成写入和验证。',
+      [
+        { name: 'manage_todo_list', input: activeTodos },
+        { name: 'create_file', input: { path: 'src/repeat-label.js', content: expectedFiles['src/repeat-label.js'] || scenario.targetContent } },
+        { name: 'create_file', input: { path: 'test/repeat-label.test.js', content: expectedFiles['test/repeat-label.test.js'] || '' } },
+        { name: 'run_terminal', input: { command: 'node test/repeat-label.test.js' } },
+        { name: 'read_file', input: { path: 'src/repeat-label.js' } },
+        { name: 'read_file', input: { path: 'test/repeat-label.test.js' } },
+        { name: 'manage_todo_list', input: completedTodos },
+        {
+          name: 'task_complete',
+          input: {
+            summary: '已通过 OpenAI 风格 tool_calls wrapper 创建 src/repeat-label.js 和 test/repeat-label.test.js，并运行 node test/repeat-label.test.js 看到 OPENAI_WRAPPER_TESTS_PASSED。',
+          },
+        },
+      ],
+    );
   }
 
   if (scenario.providerPlan === 'conformance-parser-repair') {

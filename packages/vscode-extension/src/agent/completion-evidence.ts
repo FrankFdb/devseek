@@ -5,6 +5,7 @@ import {
   isAdvisoryPlanningRequest,
   isDeferredImplementationRequest,
   isDirectImplementationRequest,
+  isExplicitDeliverablePathWriteRequest,
   isScopedNoChangeWithDeliverableWriteRequest,
 } from '../intent/advisory-patterns';
 import { classifyShellCommandEvidence } from '../tools/shell-command-analysis';
@@ -21,6 +22,7 @@ import {
   shouldRequireRuntimeValidationForRoute,
   type TaskIntentRoute,
 } from '../task-intent-router';
+import type { CodingVerificationReceipt } from '@devseek-netai/shared';
 import type { VerificationResult } from './evidence-grounding';
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import { hasTaskSemanticDoneCondition } from '../intent/task-semantic-obligations';
@@ -83,6 +85,9 @@ const CODE_TARGET_PATTERNS = [
 const CODE_TARGET_RE = new RegExp(`(?:${CODE_TARGET_PATTERNS})`, 'i');
 const FILE_PATH_TARGET_RE = /(?:^|[^\w/.-])(?:\.{0,2}\/)?[\w.-]+(?:\/[\w.-]+)*\.[A-Za-z0-9]{1,12}\b/;
 const READ_ONLY_RE = /(?:(?:不要|不用|无需|不需要|禁止|别).{0,8}(?:修改|改动|改|变更|写|写入|创建|新建|生成|更新|删除).{0,4}(?:代码|文件|内容)?|(?:只|仅).{0,6}(?:分析|评估|说明|解释|计划|审计|查看|确认|检查|读取|显示)|do not .{0,20}(?:modify|edit|change|write|create|update|delete))/i;
+const ADVISORY_ANALYSIS_ONLY_RE = /(?:请分析|帮我.{0,20}分析|结合.{0,30}分析|给出.{0,40}(?:建议|对策|task|任务)|(?:建议|对策).{0,20}(?:分析|方案|计划|任务|task))/i;
+const POSITIVE_ADVISORY_WRITE_ACTION_RE = /(?:新增|创建|新建|生成|编写|写入|输出|保存|落盘|放入|放到|写到|存到|修改|改动|改造|重构|删除|直接.{0,8}实现|开始.{0,8}实现|(?:并(?:且)?|然后|同时|随后).{0,3}实现|请.{0,8}实现\s*(?:[\w./-]+\.[A-Za-z0-9]+|代码|功能)|create|write|save|output|modify|edit|delete)/i;
+const NEGATED_ADVISORY_WRITE_ACTION_RE = /(?:不要|不用|无需|不需要|禁止|避免|不得|请勿|别|不准备|不打算|暂不|先不|do\s+not|don't|without|avoid).{0,20}(?:新增|创建|新建|生成|编写|写入|输出|保存|落盘|放入|放到|写到|存到|修改|改动|改造|重构|删除|实现|create|write|save|output|modify|edit|delete)/i;
 const READ_EVIDENCE_RE = /(?:检查|查看|读取|显示|确认|是否存在|内容|read|show|display|check|inspect|exists?)/i;
 const FILE_CONTENT_EVIDENCE_RE = /(?:(?:显示|查看|读取|输出|打印).{0,8}(?:文件)?内容|(?:read|show|display|print).{0,16}(?:file\s*)?content)/i;
 const READ_ONLY_TERMINAL_EVIDENCE_RE = /\b(?:cat|ls|test|grep|head|tail|sed|wc|stat|file|find)\b/i;
@@ -329,6 +334,16 @@ function buildUserIntentEvidenceText(userPrompt: string): string {
   return buildEvidenceText(userPrompt, []);
 }
 
+function hasPassedCompletionVerification(
+  receipts: readonly CodingVerificationReceipt[],
+): boolean {
+  return receipts.some(receipt => (
+    receipt.status === 'passed'
+      && receipt.acceptance.length > 0
+      && receipt.acceptance.every(result => result.status === 'passed')
+  ));
+}
+
 type CompletionEvidenceSemanticView = {
   route: TaskIntentRoute;
   readOnly: boolean;
@@ -444,8 +459,13 @@ function stripGenericEvidenceTodoLines(text: string): string {
 function isExplicitlyReadOnlyRequestFromRoute(route: TaskIntentRoute, intentText: string): boolean {
   if (route.family === 'safety-refusal') return true;
   const semanticContract = route.semanticContract;
+  if (isAdvisoryAnalysisOnlyRequest(intentText)) return true;
   const advisoryOnly = isAdvisoryPlanningRequest(intentText)
     && (!isDirectImplementationRequest(intentText) || isDeferredImplementationRequest(intentText));
+  const artifactIntent = classifyArtifactWriteIntent(intentText);
+  const explicitDeliverableWrite = artifactIntent.requested
+    || isExplicitDeliverablePathWriteRequest(intentText);
+  if (advisoryOnly && !explicitDeliverableWrite) return true;
   if (semanticContract.mutation.requested
     && !semanticContract.mutation.prohibited
     && !advisoryOnly
@@ -456,12 +476,19 @@ function isExplicitlyReadOnlyRequestFromRoute(route: TaskIntentRoute, intentText
     return false;
   }
   if (isScopedNoChangeWithDeliverableWriteRequest(intentText)) return false;
-  const artifactIntent = classifyArtifactWriteIntent(intentText);
   if (artifactIntent.requested) return false;
   if (artifactIntent.prohibited && !artifactIntent.requested) return true;
   if (route.family === 'read-only-advisory' || route.family === 'review') return true;
   return READ_ONLY_RE.test(intentText)
     || advisoryOnly;
+}
+
+function isAdvisoryAnalysisOnlyRequest(text: string): boolean {
+  if (!ADVISORY_ANALYSIS_ONLY_RE.test(text)) return false;
+  return !String(text || '').split(/[\n。！？；;]/).some(clause => (
+    POSITIVE_ADVISORY_WRITE_ACTION_RE.test(clause)
+      && !NEGATED_ADVISORY_WRITE_ACTION_RE.test(clause)
+  ));
 }
 
 function stripInlineFileContent(text: string): string {
@@ -707,6 +734,7 @@ export function getMissingCompletionEvidence(
   readEvidencePaths: string[] = [],
   workspaceRoot?: string,
   verificationResults: VerificationResult[] = [],
+  verificationReceipts: CodingVerificationReceipt[] = [],
 ): string[] {
   return assessMissingCompletionEvidence({
     userPrompt,
@@ -716,6 +744,7 @@ export function getMissingCompletionEvidence(
     readEvidencePaths,
     workspaceRoot,
     verificationResults,
+    verificationReceipts,
   });
 }
 
@@ -727,6 +756,7 @@ export interface CompletionEvidenceAssessmentInput {
   readEvidencePaths?: string[];
   workspaceRoot?: string;
   verificationResults?: VerificationResult[];
+  verificationReceipts?: CodingVerificationReceipt[];
   semanticContract?: TaskSemanticContract;
 }
 
@@ -739,6 +769,7 @@ export function assessMissingCompletionEvidence(input: CompletionEvidenceAssessm
     readEvidencePaths = [],
     workspaceRoot,
     verificationResults = [],
+    verificationReceipts = [],
     semanticContract,
   } = input;
   const effectiveSemanticContract = semanticContract ?? routeTaskIntent(userPrompt).semanticContract;
@@ -755,6 +786,8 @@ export function assessMissingCompletionEvidence(input: CompletionEvidenceAssessm
     .filter(f => writtenEvidenceExists(f, workspaceRoot));
   const existingCodeWrites = existingWrittenFiles.filter(f => isCodeArtifactPath(f.path));
   const successfulEvidence = terminalEvidence.filter(e => e.ok);
+  const hasPassedVerificationReceipt = hasPassedCompletionVerification(verificationReceipts);
+  const hasSuccessfulValidationEvidence = successfulEvidence.length > 0 || hasPassedVerificationReceipt;
   const missing: string[] = [];
   const contract = effectiveSemanticContract.taskContract;
   const needsFileChange = requiresFileChangeEvidence(evidenceIntentText, effectiveSemanticContract);
@@ -808,19 +841,21 @@ export function assessMissingCompletionEvidence(input: CompletionEvidenceAssessm
 
   const commandEvidenceNeeded = !needsReadEvidence && requiresCommandEvidence(userIntentText, effectiveSemanticContract);
   if (requiresTestEvidence(userIntentText, effectiveSemanticContract)) {
-    const hasTestEvidence = successfulEvidence.some(e => e.kind === 'test' || e.kind === 'run' || e.kind === 'compile-run');
+    const hasTestEvidence = hasPassedVerificationReceipt
+      || successfulEvidence.some(e => e.kind === 'test' || e.kind === 'run' || e.kind === 'compile-run');
     if (!hasTestEvidence) missing.push('成功的测试/运行结果');
   } else if (requiresRunEvidence(userIntentText, effectiveSemanticContract)) {
-    const hasRunEvidence = successfulEvidence.some(e => e.kind === 'run' || e.kind === 'test' || e.kind === 'compile-run');
+    const hasRunEvidence = hasPassedVerificationReceipt
+      || successfulEvidence.some(e => e.kind === 'run' || e.kind === 'test' || e.kind === 'compile-run');
     if (!hasRunEvidence) missing.push('成功的程序运行结果');
   } else if (needsFileCheckEvidence) {
     const hasFileCheckEvidence = successfulEvidence.some(e =>
       e.kind === 'other' && isReadOnlyTerminalEvidenceCommand(e.command),
     );
     if (!hasFileCheckEvidence) missing.push('文件读取/检查结果');
-  } else if (commandEvidenceNeeded && successfulEvidence.length === 0) {
+  } else if (commandEvidenceNeeded && !hasSuccessfulValidationEvidence) {
     missing.push('成功的编译/运行/测试命令结果');
-  } else if (needsCodeArtifact && existingCodeWrites.length > 0 && successfulEvidence.length === 0) {
+  } else if (needsCodeArtifact && existingCodeWrites.length > 0 && !hasSuccessfulValidationEvidence) {
     missing.push('成功的编译/测试/语法验证命令结果');
   }
 

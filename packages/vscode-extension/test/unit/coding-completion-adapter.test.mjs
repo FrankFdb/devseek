@@ -243,6 +243,34 @@ test('VS Code evidence projection clears a task failure caused only by an out-of
   );
 });
 
+test('VS Code evidence projection clears stale missing-evidence failures after canonical verification passes', () => {
+  const recovered = project({
+    tasksFailed: 1,
+    failedReason: '实际执行证据不足：缺少成功的测试/运行结果。',
+    changedPaths: ['src/main.ts'],
+    changeReceipts: [mutation()],
+    verificationReceipts: [verification()],
+  });
+  const summaryFactFailure = project({
+    tasksFailed: 1,
+    failedReason: '完成摘要缺少文件事实证据：ghost.js。',
+    changedPaths: ['src/main.ts'],
+    changeReceipts: [mutation()],
+    verificationReceipts: [verification()],
+  });
+
+  assert.deepEqual(recovered.acceptanceEvidence, []);
+  assert.equal(
+    recovered.evidenceRefs.includes('vscode-agent-result:vscode-completion-run:tasks-failed'),
+    false,
+  );
+  assert.equal(summaryFactFailure.acceptanceEvidence[0].status, 'failed');
+  assert.equal(
+    summaryFactFailure.evidenceRefs.includes('vscode-agent-result:vscode-completion-run:tasks-failed'),
+    true,
+  );
+});
+
 test('manual review and read-only response evidence remain explicit', () => {
   const manualReview = project({
     changedPaths: ['src/main.ts'],

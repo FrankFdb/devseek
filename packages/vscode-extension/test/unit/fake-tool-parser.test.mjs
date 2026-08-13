@@ -77,6 +77,147 @@ test('FakeToolParser: unwraps fenced structured text containing DeepSeek TOOL_US
   assert.equal(stripToolCallBlocks(text), 'I will inspect the source.');
 });
 
+test('FakeToolParser: parses and strips OpenAI-compatible tool_calls wrappers', () => {
+  const text = [
+    'I will inspect and verify.',
+    '```json',
+    JSON.stringify({
+      tool_calls: [
+        {
+          id: 'call_read',
+          type: 'function',
+          function: {
+            name: 'read_file',
+            arguments: JSON.stringify({ path: '/tmp/project/src/app.ts' }),
+          },
+        },
+        {
+          id: 'call_test',
+          type: 'function',
+          function: {
+            name: 'run_terminal',
+            arguments: JSON.stringify({ command: 'npm test' }),
+          },
+        },
+      ],
+    }, null, 2),
+    '```',
+  ].join('\n');
+
+  assert.deepEqual(parseFakeToolCalls(text), [
+    { name: 'read_file', input: { path: '/tmp/project/src/app.ts' } },
+    { name: 'run_terminal', input: { command: 'npm test' } },
+  ]);
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.equal(hasIncompleteFakeToolCallProtocol(text), false);
+  assert.equal(stripToolCallBlocks(text), 'I will inspect and verify.');
+});
+
+test('FakeToolParser: prioritizes OpenAI tool_calls over Chinese calling prose shell heuristics', () => {
+  const text = [
+    '我会用兼容 OpenAI tool_calls 的格式返回工具调用，并完成写入和验证。',
+    '```json',
+    JSON.stringify({
+      tool_calls: [
+        {
+          id: 'call_create',
+          type: 'function',
+          function: {
+            name: 'create_file',
+            arguments: JSON.stringify({
+              path: 'src/repeat-label.js',
+              content: [
+                'function repeatLabel(label, count) {',
+                '  const repeatCount = Number(count);',
+                '  return Array.from({ length: repeatCount }, () => String(label)).join("-");',
+                '}',
+                '',
+                'module.exports = { repeatLabel };',
+                '',
+              ].join('\n'),
+            }),
+          },
+        },
+        {
+          id: 'call_test',
+          type: 'function',
+          function: {
+            name: 'run_terminal',
+            arguments: JSON.stringify({ command: 'node test/repeat-label.test.js' }),
+          },
+        },
+        {
+          id: 'call_done',
+          type: 'function',
+          function: {
+            name: 'task_complete',
+            arguments: JSON.stringify({ summary: 'OPENAI_WRAPPER_TESTS_PASSED' }),
+          },
+        },
+      ],
+    }, null, 2),
+    '```',
+  ].join('\n');
+
+  assert.deepEqual(parseFakeToolCalls(text), [
+    {
+      name: 'create_file',
+      input: {
+        path: 'src/repeat-label.js',
+        content: [
+          'function repeatLabel(label, count) {',
+          '  const repeatCount = Number(count);',
+          '  return Array.from({ length: repeatCount }, () => String(label)).join("-");',
+          '}',
+          '',
+          'module.exports = { repeatLabel };',
+          '',
+        ].join('\n'),
+      },
+    },
+    { name: 'run_terminal', input: { command: 'node test/repeat-label.test.js' } },
+    { name: 'task_complete', input: { summary: 'OPENAI_WRAPPER_TESTS_PASSED' } },
+  ]);
+  assert.equal(stripToolCallBlocks(text), '我会用兼容 OpenAI tool_calls 的格式返回工具调用，并完成写入和验证。');
+});
+
+test('FakeToolParser: parses legacy function_call wrappers as executable tool requests', () => {
+  const text = JSON.stringify({
+    function_call: {
+      name: 'read_file',
+      arguments: JSON.stringify({ path: '/tmp/project/src/app.ts' }),
+    },
+  }, null, 2);
+
+  assert.deepEqual(parseFakeToolCalls(text), [{
+    name: 'read_file',
+    input: { path: '/tmp/project/src/app.ts' },
+  }]);
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.equal(stripToolCallBlocks(text), '');
+});
+
+test('FakeToolParser: unwraps mixed content arrays with tool_use input objects', () => {
+  const text = JSON.stringify({
+    content: [
+      { type: 'text', text: 'I will read the focused file.' },
+      {
+        type: 'tool_use',
+        id: 'toolu_read',
+        name: 'read_file',
+        input: { path: '/tmp/project/src/app.ts' },
+      },
+    ],
+  }, null, 2);
+
+  assert.deepEqual(parseFakeToolCalls(text), [{
+    name: 'read_file',
+    input: { path: '/tmp/project/src/app.ts' },
+  }]);
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.equal(stripToolCallBlocks(text), '');
+});
+
 test('FakeToolParser: keeps ordinary structured text JSON inert', () => {
   const text = '```json\n[{"type":"text","text":"ordinary report content"}]\n```';
 

@@ -302,6 +302,7 @@ export async function runAgenticLoop(
     readEvidencePaths: [...allReadEvidencePaths],
     workspaceRoot,
     semanticContract: writeAuthority.semanticContract,
+    verificationReceipts: allVerificationReceipts,
   });
 
   // Announce Working box to webview — neutral action (not 'analyze') so the
@@ -1238,6 +1239,9 @@ export async function runAgenticLoop(
     tasksApplied: finalWrittenFiles.length > 0 ? 1 : 0,
     tasksFailed: cleanAbort || failedReason ? 1 : 0,
     changedPaths: [...new Set(finalWrittenFiles.map(f => f.path))],
+    ...(cleanAbort || failedReason ? {
+      failedReason: cleanAbort ? '用户中断。' : failedReason,
+    } : {}),
     verificationReceipts: allVerificationReceipts,
     toolExecutionReceipts: allToolExecutionReceipts,
     changeReceipts: allChangeReceipts,

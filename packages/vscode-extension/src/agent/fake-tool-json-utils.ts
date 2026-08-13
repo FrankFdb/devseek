@@ -34,6 +34,8 @@ const IMPLICIT_TERMINAL_KEYS = new Set([
   'command', 'cmd',
   ...LOOSE_TERMINAL_TRAILING_KEYS,
 ]);
+const TOOL_ARRAY_WRAPPER_KEYS = ['tool_calls', 'toolCalls', 'tools'];
+const TOOL_SINGLE_WRAPPER_KEYS = ['function_call', 'functionCall', 'tool_call', 'toolCall'];
 
 export function findJsonObjectEnd(text: string, start: number): number {
   let depth = 0;
@@ -407,26 +409,80 @@ export function createFakeToolJsonUtils(context: FakeToolJsonUtilsContext) {
     return { name, input: { path: pathValue } };
   }
 
+  function jsonObjectToDirectFakeTool(obj: Record<string, unknown>): FakeTool | null {
+    return context.jsonObjectToFakeTool(obj) ?? jsonObjectToImplicitArrayFakeTool(obj);
+  }
+
   function jsonArrayToFakeTools(value: unknown): FakeTool[] {
     if (!Array.isArray(value) || value.length === 0) return [];
     const tools: FakeTool[] = [];
     for (const item of value) {
       if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
-      const tool = context.jsonObjectToFakeTool(item as Record<string, unknown>)
-        ?? jsonObjectToImplicitArrayFakeTool(item as Record<string, unknown>);
+      const tool = jsonObjectToDirectFakeTool(item as Record<string, unknown>);
       if (!tool) return [];
       tools.push(tool);
     }
     return tools.map(context.normalizeFakeTool);
   }
 
-  function jsonValueContainsToolPayload(value: unknown): boolean {
+  function jsonValueToFakeTools(value: unknown, depth = 0, allowMixedArray = false): FakeTool[] {
+    if (depth > 4) return [];
     if (Array.isArray(value)) {
-      return jsonArrayToFakeTools(value).length > 0;
+      const direct = jsonArrayToFakeTools(value);
+      if (direct.length > 0) return direct;
+      if (!allowMixedArray) return [];
+
+      const collected: FakeTool[] = [];
+      for (const item of value) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+        const nested = jsonValueToFakeTools(item, depth + 1);
+        if (nested.length > 0) collected.push(...nested);
+      }
+      return collected.map(context.normalizeFakeTool);
     }
-    return Boolean(value && typeof value === 'object' && !Array.isArray(value)
-      && (context.jsonObjectToFakeTool(value as Record<string, unknown>)
-        ?? jsonObjectToImplicitArrayFakeTool(value as Record<string, unknown>)));
+
+    if (!value || typeof value !== 'object') return [];
+    const obj = value as Record<string, unknown>;
+    const direct = jsonObjectToDirectFakeTool(obj);
+    if (direct) return [context.normalizeFakeTool(direct)];
+
+    for (const key of TOOL_ARRAY_WRAPPER_KEYS) {
+      const wrapped = obj[key];
+      if (!Array.isArray(wrapped)) continue;
+      const tools = jsonArrayToFakeTools(wrapped);
+      if (tools.length > 0) return tools;
+    }
+
+    for (const key of TOOL_SINGLE_WRAPPER_KEYS) {
+      const wrapped = obj[key];
+      if (!wrapped || typeof wrapped !== 'object' || Array.isArray(wrapped)) continue;
+      const tools = jsonValueToFakeTools(wrapped, depth + 1);
+      if (tools.length > 0) return tools;
+    }
+
+    for (const choice of Array.isArray(obj.choices) ? obj.choices : []) {
+      if (!choice || typeof choice !== 'object' || Array.isArray(choice)) continue;
+      const choiceObj = choice as Record<string, unknown>;
+      for (const key of ['message', 'delta']) {
+        const nested = choiceObj[key];
+        if (!nested || typeof nested !== 'object' || Array.isArray(nested)) continue;
+        const tools = jsonValueToFakeTools(nested, depth + 1);
+        if (tools.length > 0) return tools;
+      }
+    }
+
+    for (const key of ['content', 'output']) {
+      const wrapped = obj[key];
+      if (!Array.isArray(wrapped)) continue;
+      const tools = jsonValueToFakeTools(wrapped, depth + 1, true);
+      if (tools.length > 0) return tools;
+    }
+
+    return [];
+  }
+
+  function jsonValueContainsToolPayload(value: unknown): boolean {
+    return jsonValueToFakeTools(value).length > 0;
   }
 
   function hasUnclosedToolCallEnvelopePrefixBeforeJson(text: string, jsonStart: number): boolean {
@@ -450,6 +506,7 @@ export function createFakeToolJsonUtils(context: FakeToolJsonUtilsContext) {
     jsonArrayToFakeTools,
     jsonObjectToImplicitArrayFakeTool,
     jsonValueContainsToolPayload,
+    jsonValueToFakeTools,
     parseLooseToolInput,
   };
 }

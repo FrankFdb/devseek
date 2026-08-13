@@ -566,6 +566,18 @@ test('file-write authorization covers neutral, prohibited, exclusive, and correc
   assert.equal(decide('不要创建 report.md；更正：请创建 report.md。', `${root}/report.md`).allowed, true);
   assert.equal(decide('请创建 report.md；更正：不要创建 report.md。', `${root}/report.md`).allowed, false);
 
+  const implementSourceAndTest = '请实现 src/repeat-label.js，并新增 test/repeat-label.test.js。repeatLabel("devseek", 3) 应返回 devseek-devseek-devseek。对非法负数 count 抛出错误，改完运行 node test/repeat-label.test.js。';
+  assert.deepEqual(
+    resolveTaskMutationTargets(implementSourceAndTest),
+    ['src/repeat-label.js', 'test/repeat-label.test.js'],
+  );
+  assert.equal(decide(implementSourceAndTest, `${root}/src/repeat-label.js`).allowed, true);
+  assert.equal(decide(implementSourceAndTest, `${root}/test/repeat-label.test.js`).allowed, true);
+  assert.equal(
+    decide(implementSourceAndTest, `${root}/src/other.js`).reason,
+    'target-file-write-prohibited',
+  );
+
   const directoryScope = '只允许修改 `src/` 下的生产代码，不得修改 `tests/`、`package.json`。';
   assert.equal(decide(directoryScope, `${root}/src/domain/policy.js`).allowed, true);
   assert.equal(decide(directoryScope, `${root}/tests/policy.test.js`).allowed, false);
