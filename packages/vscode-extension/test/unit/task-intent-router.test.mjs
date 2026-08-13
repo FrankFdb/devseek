@@ -697,6 +697,54 @@ test('TaskIntentRouter: accepted semantic external-effect proposal routes to con
   assert.ok(route.signals.includes('semantic-proposal:external-effect'));
 });
 
+test('TaskIntentRouter: constrained semantic destructive proposal fails closed to confirmation', () => {
+  const route = routeTaskIntent('Make the generated cache disappear.', {
+    semanticIntent: semanticIntent({
+      mode: 'destructive',
+      taskKind: 'destructive',
+      mutation: 'delete',
+      targetPaths: ['dist/cache'],
+      requiresWorkspace: true,
+      reason: 'model identifies destructive deletion risk',
+    }),
+  });
+
+  assert.equal(route.family, 'destructive');
+  assert.equal(route.chatKind, 'code-change');
+  assert.equal(route.mode, 'destructive');
+  assert.equal(route.requiresConfirmation, true);
+  assert.equal(route.semanticContract.kind, 'destructive');
+  assert.deepEqual(route.mutation.targets, ['dist/cache']);
+  assert.equal(route.mutation.sourceChange, false);
+  assert.equal(route.validation.commandEvidenceRequired, false);
+  assert.ok(route.semanticContract.obligations.sideEffects.some(item => item.kind === 'destructive-operation'));
+  assert.ok(route.semanticContract.completion.doneIff.some(item => item.kind === 'destructive-effect-receipt'));
+  assert.ok(route.signals.includes('semantic-destructive-fail-closed'));
+  assert.ok(route.signals.includes('semantic-proposal:destructive-confirmation'));
+});
+
+test('TaskIntentRouter: explicit no-change still constrains semantic destructive proposal', () => {
+  const route = routeTaskIntent('Should I delete dist/cache? Do not change anything.', {
+    semanticIntent: semanticIntent({
+      mode: 'destructive',
+      taskKind: 'destructive',
+      mutation: 'delete',
+      targetPaths: ['dist/cache'],
+      requiresWorkspace: true,
+      reason: 'model identifies destructive deletion risk',
+    }),
+  });
+
+  assert.equal(route.family, 'read-only-advisory');
+  assert.equal(route.mode, 'inspect');
+  assert.equal(route.requiresConfirmation, false);
+  assert.equal(route.mutation.requested, false);
+  assert.equal(route.mutation.prohibited, true);
+  assert.equal(route.blockers.includes('explicit-no-change'), true);
+  assert.ok(route.signals.includes('semantic-intent-constrained'));
+  assert.equal(route.signals.includes('semantic-destructive-fail-closed'), false);
+});
+
 function semanticIntent(overrides) {
   return {
     version: 'devseek.semantic-intent/v1',

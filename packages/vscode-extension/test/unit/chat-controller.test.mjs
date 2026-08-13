@@ -711,6 +711,40 @@ test('ChatRouteController: semantic-only external-effect proposal still requires
   assert.ok(decision.intent.signals.includes('semantic-proposal:external-effect'));
 });
 
+test('ChatRouteController: semantic destructive proposal fails closed to confirmation', () => {
+  const controller = new ChatRouteController();
+  const prompt = 'Make the generated cache disappear.';
+  const decision = controller.decide({
+    userDisplay: prompt,
+    prompt,
+    files: [],
+    agentEnabled: true,
+    semanticIntent: {
+      version: 'devseek.semantic-intent/v1',
+      source: 'test',
+      mode: 'destructive',
+      taskKind: 'destructive',
+      confidence: 0.92,
+      mutation: 'delete',
+      targetPaths: ['dist/cache'],
+      requiresWorkspace: true,
+      requiresTerminal: false,
+      requiresExternalEffect: false,
+      requiresClarification: false,
+      reason: '模型识别到删除生成缓存的破坏性风险',
+    },
+  });
+
+  assert.equal(decision.intent.mode, 'destructive');
+  assert.equal(decision.intent.requiresConfirmation, true);
+  assert.equal(decision.workflow.kind, 'confirmation-required');
+  assert.equal(decision.workflow.useAgent, false);
+  assert.equal(decision.intent.semanticContract.kind, 'destructive');
+  assert.deepEqual(decision.intent.semanticContract.mutation.targets, ['dist/cache']);
+  assert.ok(decision.intent.semanticContract.completion.doneIff.some(item => item.kind === 'destructive-effect-receipt'));
+  assert.ok(decision.intent.signals.includes('semantic-destructive-fail-closed'));
+});
+
 test('ChatRouteController: contradictory semantic no-mutation edit is governed down to inspect', () => {
   const controller = new ChatRouteController();
   const prompt = '看看 src/main.ts 里有没有明显问题，不要改';

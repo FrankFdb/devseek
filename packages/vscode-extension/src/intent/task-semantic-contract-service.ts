@@ -207,6 +207,18 @@ function applySemanticIntentProposal(
     `semantic-mutation:${candidate.mutation}`,
   ];
   if (isSemanticProposalConstrainedByLocalBoundary(contract, candidate)) {
+    if (shouldFailClosedDestructiveSemanticProposal(contract, candidate)) {
+      const destructive = projectDestructiveSemanticProposal(contract, candidate);
+      return {
+        ...destructive,
+        signals: uniqueStrings([
+          'semantic-intent-constrained',
+          'semantic-destructive-fail-closed',
+          ...proposalSignals,
+          ...destructive.signals,
+        ]),
+      };
+    }
     return {
       ...contract,
       signals: uniqueStrings([
@@ -630,6 +642,60 @@ function canSemanticNoMutationNarrowLocalContract(contract: TaskSemanticContract
     || contract.validation.testRequested
     || contract.taskContract.deliverables.includes('source-change')
     || contract.taskContract.deliverables.includes('verification-result');
+}
+
+function shouldFailClosedDestructiveSemanticProposal(
+  contract: TaskSemanticContract,
+  candidate: SemanticIntentInterpretation,
+): boolean {
+  if (contract.intent.context.empty || contract.intent.context.unsafeSecretHarvesting) return false;
+  if (contract.mutation.prohibited) return false;
+  return candidate.taskKind === 'destructive' || candidate.mutation === 'delete';
+}
+
+function projectDestructiveSemanticProposal(
+  contract: TaskSemanticContract,
+  candidate: SemanticIntentInterpretation,
+): TaskSemanticContract {
+  const targets = uniquePaths([
+    ...contract.mutation.targets,
+    ...contract.taskContract.deliverableTargets,
+    ...candidate.targetPaths,
+  ]);
+  const baseTaskContract = clearMutationTaskContract(contract.taskContract, {
+    keepVerificationResult: false,
+  });
+  return {
+    ...contract,
+    kind: 'destructive',
+    scope: targets.length > 0 || candidate.requiresWorkspace ? 'unknown' : 'none',
+    mutation: {
+      requested: true,
+      prohibited: false,
+      sourceChange: false,
+      fileArtifact: false,
+      targets,
+    },
+    read: {
+      ...contract.read,
+      requested: contract.read.requested || targets.length > 0 || candidate.requiresWorkspace,
+      targets: uniquePaths([...contract.read.targets, ...targets]),
+    },
+    validation: clearRuntimeValidation(contract.validation),
+    quality: {
+      formalProjectRequired: false,
+    },
+    taskContract: {
+      ...baseTaskContract,
+      inputs: uniquePaths([...baseTaskContract.inputs, ...targets]),
+      deliverableTargets: [],
+    },
+    signals: uniqueStrings([
+      'semantic-proposal:destructive',
+      'semantic-proposal:destructive-confirmation',
+      ...clearNarrowedNoMutationSignals(contract.signals),
+    ]),
+  };
 }
 
 function clearWorkspaceMutation(

@@ -705,6 +705,21 @@ export const EXTERNAL_INTENT_CORPUS = [
     expect: { mode: 'destructive', workflow: 'confirmation-required', useAgent: false, toolPolicy: 'destructive' },
   },
   {
+    id: 'EXT-DESTRUCTIVE-005',
+    taskKind: 'destructive',
+    sourceRefs: ['claude_code_workflows', 'visual_studio_agent_mode'],
+    prompt: 'Make the generated cache disappear.',
+    files: [],
+    semanticIntent: semantic({
+      mode: 'destructive',
+      taskKind: 'destructive',
+      mutation: 'delete',
+      targetPaths: [path('dist/cache')],
+      requiresWorkspace: true,
+    }),
+    expect: { mode: 'destructive', workflow: 'confirmation-required', useAgent: false, toolPolicy: 'destructive' },
+  },
+  {
     id: 'EXT-AMBIG-001',
     taskKind: 'ambiguous',
     sourceRefs: ['claude_code_workflows'],

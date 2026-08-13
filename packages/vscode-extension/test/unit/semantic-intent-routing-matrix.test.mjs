@@ -123,6 +123,15 @@ test('Semantic intent routing matrix: external effects and destructive actions r
     assert.equal(decision.workflow.kind, 'confirmation-required', item.id);
     assert.equal(decision.workflow.useAgent, false, item.id);
     assert.equal(decision.intent.requiresConfirmation, true, item.id);
+    if (item.taskKind === 'destructive') {
+      assert.equal(decision.intent.semanticContract.kind, 'destructive', item.id);
+      assert.ok(decision.intent.semanticContract.obligations.sideEffects.some(effect =>
+        effect.kind === 'destructive-operation'
+      ), item.id);
+      assert.ok(decision.intent.semanticContract.completion.doneIff.some(condition =>
+        condition.kind === 'destructive-effect-receipt'
+      ), item.id);
+    }
   }
 });
 
