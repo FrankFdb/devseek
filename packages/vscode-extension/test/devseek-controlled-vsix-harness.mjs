@@ -1761,6 +1761,20 @@ function bindControlledProviderPrompt({ promptText, runId, scenarios, priorReque
   return bindControlledScenarioPrompt({ promptText, runId, scenarios, priorRequests });
 }
 
+function controlledDeepSeekWebConnectorAdvertisement(activeRequestCount = 0) {
+  const {
+    DEEPSEEK_WEB_CONNECTOR_PROTOCOL_VERSION,
+    DEEPSEEK_WEB_CONNECTOR_CAPABILITIES,
+  } = require(sharedPath);
+  return {
+    protocolVersion: DEEPSEEK_WEB_CONNECTOR_PROTOCOL_VERSION,
+    provider: 'deepseek-web',
+    capabilities: DEEPSEEK_WEB_CONNECTOR_CAPABILITIES,
+    maxAttempts: 2,
+    activeRequestCount,
+  };
+}
+
 async function startControlledBridge({ token, workspaceDir, runtimeIdentity, scenarios, promptContractSelfTest }) {
   const { attachBridgeRunEvidence } = require(bridgeEvidencePath);
   const state = {
@@ -1786,10 +1800,14 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
           idle: true,
           queueLength: 0,
           browserReady: true,
+          loggedInLikely: true,
+          reason: 'controlled-bridge-ready',
+          pageKind: 'controlled-fixture',
           appVersion: runtimeIdentity.version,
           buildChannel: runtimeIdentity.devseekBuild.channel,
           buildId: runtimeIdentity.devseekBuild.buildId,
           gitCommit: runtimeIdentity.devseekBuild.gitCommit,
+          connector: controlledDeepSeekWebConnectorAdvertisement(0),
         });
       }
       if (url.pathname === '/chat' && request.method === 'POST') {

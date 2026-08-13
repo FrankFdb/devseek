@@ -59,6 +59,16 @@ test('controlled VSIX harness selects product run terminal instead of pending-ed
   assert.doesNotMatch(source, /terminalLogs\.at\(-1\)/, 'terminal selection must not blindly use the last terminal log');
 });
 
+test('controlled VSIX fake bridge advertises the connector status contract', () => {
+  const source = readFileSync(harnessPath, 'utf8');
+
+  assert.match(source, /function controlledDeepSeekWebConnectorAdvertisement\(/, 'controlled bridge must have one owner for connector advertisement');
+  assert.match(source, /DEEPSEEK_WEB_CONNECTOR_PROTOCOL_VERSION/, 'controlled bridge must reuse the shared connector protocol version');
+  assert.match(source, /DEEPSEEK_WEB_CONNECTOR_CAPABILITIES/, 'controlled bridge must reuse the shared connector capability set');
+  assert.match(source, /loggedInLikely:\s*true/, 'controlled status must satisfy bridge health negotiation');
+  assert.match(source, /connector:\s*controlledDeepSeekWebConnectorAdvertisement\(0\)/, 'controlled status must expose connector advertisement');
+});
+
 test('real plugin VSIX harness selects product run terminal instead of pending-edit resolution noise', () => {
   const source = readFileSync(realPluginHarnessPath, 'utf8');
   const selectHelperMatches = source.match(/function selectProductRunLog\(logs\)/g) || [];

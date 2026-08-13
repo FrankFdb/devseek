@@ -101,6 +101,20 @@ test('task resolution normalizes sentence punctuation and keeps every declared r
   );
 });
 
+test('Chinese standalone authoring request scopes the explicitly named root file', () => {
+  const prompt = [
+    '请在当前工作区编写一个最小 C++ 程序 controlled-hello.cpp，运行后打印下午好。',
+    '必须用 g++ 编译并运行验证输出后结束，不要修改其他文件。',
+  ].join('');
+  const contract = resolveCodingKernelTaskContract({ prompt, surface: 'vscode' });
+
+  assert.deepEqual(extractCodingWorkspacePaths(prompt), ['controlled-hello.cpp']);
+  assert.deepEqual(contract.scope.include, ['controlled-hello.cpp']);
+  assert.equal(contract.deliverables.find(item => item.kind === 'source-change')?.path, 'controlled-hello.cpp');
+  assert.equal(contract.constraints.includes('no-other-files'), true);
+  assert.equal(contract.constraints.includes('verification-before-completion'), true);
+});
+
 test('context files remain evidence and cannot silently become mutation targets', () => {
   const contract = resolveCodingKernelTaskContract({
     prompt: 'Implement the requested behavior and run focused tests.',
