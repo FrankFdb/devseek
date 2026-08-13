@@ -142,11 +142,11 @@ function main() {
   if (options.fromReportPath) {
     const report = loadExistingReport(options.fromReportPath, errors);
     const outputReport = report
-      ? {
+      ? refreshCaseDesignReview({
           ...report,
           report_render_mode: 'from-report',
           markdown_report: options.markdownPath || report.markdown_report || null,
-        }
+        })
       : failedExistingReport(options, errors);
     writeOptionalOutputs(outputReport, options);
     console.log(JSON.stringify(consoleReport(outputReport, options), null, 2));
@@ -325,8 +325,10 @@ function maybeLoadReusableExistingReport(options, errors) {
   const reportPath = path.join(options.evidenceRoot, 'top-agent-user-simulation-runner.report.json');
   if (!fs.existsSync(reportPath)) return null;
   const report = loadExistingReport(reportPath, errors);
-  if (!report || report.ok !== true || report.summary?.ok !== true) return null;
-  return report;
+  if (!report) return null;
+  const reviewed = refreshCaseDesignReview(report);
+  if (reviewed.ok !== true || reviewed.summary?.ok !== true) return null;
+  return reviewed;
 }
 
 function loadExistingReport(reportPath, errors) {
@@ -696,11 +698,7 @@ function finishReport(report) {
   report.ended_at = new Date().toISOString();
   const failedSteps = report.steps.filter(step => !step.ok);
   const controlledSteps = report.steps.filter(step => step.kind === 'controlled-vsix-user-simulation');
-  const controlledCases = controlledSteps.flatMap(step => (
-    Array.isArray(step.controlledReport?.scenario?.cases)
-      ? step.controlledReport.scenario.cases.map(entry => entry.id)
-      : [step.controlledReport?.scenario?.id].filter(Boolean)
-  ));
+  const controlledCases = controlledSteps.flatMap(executedCaseIdsFromControlledStep);
   const baseSummary = {
     total_steps: report.steps.length,
     passed_steps: report.steps.filter(step => step.ok).length,
@@ -731,6 +729,24 @@ function finishReport(report) {
   };
 }
 
+function refreshCaseDesignReview(report) {
+  const next = {
+    ...report,
+    summary: { ...(report.summary || {}) },
+  };
+  const review = evaluateCaseDesign(next);
+  const originalOk = next.ok !== false && next.summary.ok !== false;
+  next.case_design_review = review;
+  next.summary = {
+    ...next.summary,
+    ok: originalOk && (!review.enforced || review.ok),
+    case_design_ok: review.ok,
+    case_design_profile: review.coverage_profile,
+  };
+  next.ok = next.summary.ok;
+  return next;
+}
+
 function evaluateCaseDesign(report) {
   const plan = report.plan || {};
   const plannedSuites = plannedControlledSuites(plan);
@@ -755,8 +771,7 @@ function evaluateCaseDesign(report) {
   const evidenceMissing = report.execution_mode === 'execute'
     ? report.steps
       .filter(step => step.kind === 'controlled-vsix-user-simulation')
-      .filter(step => !step.stdout_log || !step.report_path || step.controlledReport?.ok !== true)
-      .map(step => step.id.replace(/^controlled-/, ''))
+      .flatMap(controlledStepEvidenceFailures)
     : [];
   const enforced = profile === 'top-agent-local-acceptance';
   const planOk = missingAcceptanceSuites.length === 0 && missingDimensions.length === 0;
@@ -787,8 +802,62 @@ function requiredAcceptanceCases() {
   return [...new Set(CASE_DESIGN_DIMENSIONS.flatMap(dimension => dimension.cases))];
 }
 
+function plannedCaseIdsFromControlledStep(step) {
+  return uniqueStrings(
+    Array.isArray(step.controlledReport?.scenario?.cases)
+      ? step.controlledReport.scenario.cases.map(entry => entry.id)
+      : [step.controlledReport?.scenario?.id].filter(Boolean)
+  );
+}
+
+function driverCaseReportsFromControlledStep(step) {
+  return Array.isArray(step.controlledReport?.driver?.cases)
+    ? step.controlledReport.driver.cases
+    : [];
+}
+
+function executedCaseIdsFromControlledStep(step) {
+  const driverCaseIds = uniqueStrings(driverCaseReportsFromControlledStep(step)
+    .map(entry => entry.scenario || entry.id)
+    .filter(Boolean));
+  if (driverCaseIds.length > 0) return driverCaseIds;
+  return plannedCaseIdsFromControlledStep(step);
+}
+
+function controlledStepEvidenceFailures(step) {
+  const suite = step.id.replace(/^controlled-/, '');
+  const failures = [];
+  if (!step.stdout_log) failures.push(`${suite}:stdout-log-missing`);
+  if (!step.report_path) failures.push(`${suite}:report-path-missing`);
+  const controlledReport = step.controlledReport;
+  if (!controlledReport) {
+    failures.push(`${suite}:controlled-report-missing`);
+    return failures;
+  }
+  if (controlledReport.ok !== true) failures.push(`${suite}:controlled-report-not-ok`);
+  if (controlledReport.driver?.ok !== true) failures.push(`${suite}:driver-report-not-ok`);
+  const plannedCases = plannedCaseIdsFromControlledStep(step);
+  const driverCases = driverCaseReportsFromControlledStep(step);
+  const driverCaseIds = uniqueStrings(driverCases.map(entry => entry.scenario || entry.id).filter(Boolean));
+  if (plannedCases.length > 0 && driverCases.length === 0) {
+    failures.push(`${suite}:driver-cases-missing`);
+  }
+  for (const caseId of plannedCases) {
+    if (!driverCaseIds.includes(caseId)) failures.push(`${suite}:driver-case-missing:${caseId}`);
+  }
+  for (const caseReport of driverCases) {
+    const caseId = caseReport.scenario || caseReport.id || 'unknown-case';
+    if (caseReport.ok !== true) failures.push(`${suite}:driver-case-not-ok:${caseId}`);
+  }
+  return uniqueStrings(failures);
+}
+
 function casesForSuites(suites, suiteCatalog = loadControlledSuiteCatalog()) {
   return suites.flatMap(suite => suiteCatalog[suite] || []);
+}
+
+function uniqueStrings(values) {
+  return [...new Set(values.map(value => String(value || '').trim()).filter(Boolean))];
 }
 
 function loadControlledSuiteCatalog() {
@@ -926,6 +995,9 @@ function renderMarkdownReport(report) {
   const missingDimensionLines = caseDesignReview.missing_dimensions.length > 0
     ? caseDesignReview.missing_dimensions.map(item => `- \`${item}\``).join('\n')
     : '- None.';
+  const missingEvidenceLines = caseDesignReview.execution_evidence_missing.length > 0
+    ? caseDesignReview.execution_evidence_missing.map(item => `- \`${item}\``).join('\n')
+    : '- None.';
   const findingLines = report.steps.length > 0
     ? [
         '- Product behavior: no failing DevSeek runtime step was found in the covered T3 controlled user simulations.',
@@ -991,6 +1063,9 @@ function renderMarkdownReport(report) {
     '',
     'Missing dimensions:',
     missingDimensionLines,
+    '',
+    'Execution evidence missing:',
+    missingEvidenceLines,
     '',
     '## Execution',
     '',

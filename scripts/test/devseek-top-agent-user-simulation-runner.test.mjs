@@ -288,11 +288,124 @@ test('top-agent user simulation runner renders markdown from existing evidence w
     assert.match(markdown, /focused-regression-only-not-release-acceptance/);
     assert.match(markdown, /Selected case count: `2`/);
     assert.match(markdown, /Required acceptance case count: `20`/);
+    assert.match(markdown, /Execution evidence missing:/);
+    assert.match(markdown, /realistic-product:driver-cases-missing/);
+    assert.match(markdown, /realistic-product:driver-case-missing:realistic-python-log-json-followup/);
     assert.match(markdown, /Report render mode: `from-report`/);
     assert.match(markdown, /## Findings And Fixes/);
     assert.match(markdown, /does not overwrite the original execution evidence/);
     assert.match(markdown, /realistic-python-log-json-followup/);
     assert.equal(fs.existsSync(path.join(repoRoot, 'code/devseek-tests/top-agent-convergence/runs', summary.run_id)), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('top-agent user simulation runner rejects acceptance reports without per-case driver evidence', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'devseek-top-agent-stale-acceptance-test-'));
+  try {
+    const reportPath = path.join(root, 'stale-acceptance.report.json');
+    const suites = {
+      'r2-07e-stream-protocol': ['stream-truncated-no-mutation', 'stream-request-mismatch-no-mutation'],
+      'journey-core': ['boundary', 'cpp-program', 'existing-js-fix', 'latest-requirement'],
+      'realistic-product': ['realistic-python-log-tool', 'realistic-python-log-json-followup', 'realistic-safety-boundary'],
+      'agent-fit-product': [
+        'agent-fit-ambiguous-clarify',
+        'agent-fit-review-only',
+        'agent-fit-multifile-with-test',
+        'agent-fit-markdown-report-anchors',
+        'agent-fit-openai-tool-calls-wrapper',
+      ],
+      'coding-conformance-product': [
+        'conformance-create-and-verify',
+        'conformance-modify-and-verify',
+        'conformance-verify-repair-reverify',
+        'conformance-permission-denied-no-effect',
+        'conformance-policy-refusal-no-mutation',
+      ],
+      'r2-07f-connector-security': ['connector-evidence-redaction-replay'],
+    };
+    const steps = Object.entries(suites).map(([suite, cases]) => ({
+      id: `controlled-${suite}`,
+      kind: 'controlled-vsix-user-simulation',
+      ok: true,
+      stdout_log: `evidence/${suite}.stdout.log`,
+      report_path: `evidence/${suite}.report.json`,
+      controlledReport: {
+        ok: true,
+        driver: { ok: true, cases: [] },
+        scenario: { cases: cases.map(id => ({ id })) },
+        bridge: { providerInvocationCount: cases.length },
+      },
+    }));
+    fs.writeFileSync(reportPath, `${JSON.stringify({
+      ok: true,
+      schema_version: 'devseek.top-agent-user-simulation-runner/v1',
+      run_id: 'stale-acceptance',
+      started_at: '2026-08-13T00:00:00.000Z',
+      ended_at: '2026-08-13T00:00:01.000Z',
+      repo: { head: 'abc1234', dirty_tracked_paths: [], dirty_cached_paths: [], untracked_paths: [] },
+      execution_mode: 'execute',
+      evidence_root: 'code/devseek-tests/top-agent-convergence/runs/stale-acceptance',
+      markdown_report: null,
+      strategy: {
+        name: 'targeted-before-broad-user-simulation',
+        reason: 'Run small replay/contract checks first, then controlled VSIX user journeys.',
+        qualification_effect: 'NONE',
+        claims_permitted: false,
+        gate0_status_effect: 'NONE',
+      },
+      process_monitoring: {
+        snapshot_stages: ['start', 'end'],
+        high_usage_observations: [],
+        controlled_residuals_terminated: [],
+        residual_errors: [],
+      },
+      plan: {
+        coverage_profile: 'top-agent-local-acceptance',
+        source_plan: 'docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md',
+        steps: Object.keys(suites).map(suite => ({
+          id: `controlled-${suite}`,
+          kind: 'controlled-vsix-user-simulation',
+          command: [process.execPath, 'packages/vscode-extension/test/devseek-controlled-vsix-harness.mjs', '--suite', suite],
+        })),
+      },
+      steps,
+      summary: {
+        ok: true,
+        total_steps: steps.length,
+        passed_steps: steps.length,
+        failed_steps: [],
+        controlled_suites: Object.keys(suites),
+        controlled_cases: Object.values(suites).flat(),
+        snapshots: 2,
+        high_usage_observations: 0,
+        controlled_residuals_terminated: 0,
+        qualification_effect: 'NONE',
+        claims_permitted: false,
+      },
+      errors: [],
+    }, null, 2)}\n`, 'utf8');
+
+    await assert.rejects(
+      execFile(
+        process.execPath,
+        ['scripts/devseek-top-agent-user-simulation-runner.mjs', '--from-report', reportPath],
+        { cwd: repoRoot, maxBuffer: 4 * 1024 * 1024 },
+      ),
+      error => {
+        const summary = JSON.parse(error.stdout);
+        assert.equal(summary.ok, false);
+        assert.equal(summary.case_design_review.enforced, true);
+        assert.equal(summary.case_design_review.acceptance_plan_eligible, true);
+        assert.equal(summary.case_design_review.acceptance_execution_eligible, false);
+        assert.ok(summary.case_design_review.execution_evidence_missing.some(item =>
+          item === 'agent-fit-product:driver-cases-missing'
+        ));
+        assert.equal(summary.case_design_review.release_claim_permitted, false);
+        return true;
+      },
+    );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
