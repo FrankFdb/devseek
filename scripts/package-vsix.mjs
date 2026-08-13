@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { computeVsixDirtyRuntimeFingerprint } from './lib/devseek-vsix-source-identity.mjs';
 
 const root = path.resolve(new URL('..', import.meta.url).pathname);
 const extensionRoot = path.join(root, 'packages', 'vscode-extension');
@@ -69,6 +70,7 @@ function resolveBuildInfo() {
     buildId: `${stamp.date}-${stamp.time}`,
     packagedAt: stamp.iso,
     gitCommit,
+    sourceFingerprint: computeVsixDirtyRuntimeFingerprint({ repoRoot: root }),
   };
 }
 
@@ -81,6 +83,7 @@ function buildPackagedPackageJson() {
     buildId: buildInfo.buildId,
     gitCommit: buildInfo.gitCommit,
     packagedAt: buildInfo.packagedAt,
+    sourceFingerprint: buildInfo.sourceFingerprint,
   };
   const traceConfig = packaged.contributes?.configuration?.properties?.['devseek.traceLevel'];
   if (traceConfig) {

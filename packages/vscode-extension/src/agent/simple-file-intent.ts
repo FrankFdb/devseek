@@ -10,6 +10,9 @@ const SIMPLE_FILE_WRITE_PATH_RE = new RegExp(
   'i',
 );
 const SIMPLE_FILE_EXACT_LINE_CONTENT_RE = /(?:文件)?内容(?:必须|需要|需|应当|应该)?\s*(?:精确|准确|完全)?\s*(?:只)?(?:包含|为|是)\s*(一行|1\s*行)?\s*[:：]?\s*([^\r\n。；;]+)/i;
+const GENERATED_DOCUMENT_REQUEST_RE = /(?:报告|文档|总结|审计|排查|复盘|方案|计划|说明|README|Markdown|md\s*文档|report|document|summary|audit|postmortem|runbook|incident)/i;
+const GENERATED_DOCUMENT_REQUIREMENT_RE = /(?:必须包含|需要包含|应包含|包含这些|锚点|章节|小节|标题|正文|写完后|写好后|用\s*grep|运行\s*grep|verify|verification|root\s*cause|fix\s*plan|ANCHOR_[A-Z0-9_]+)/i;
+const ONE_LINE_LITERAL_CONTENT_RE = /(?:文件)?内容(?:必须|需要|需|应当|应该)?\s*(?:精确|准确|完全)?\s*(?:只)?(?:包含|为|是)\s*(?:一行|1\s*行)/i;
 
 export function parseSimpleFileWriteRequest(userPrompt: string): SimpleFileWriteRequest | undefined {
   const text = String(userPrompt || '').trim();
@@ -22,6 +25,7 @@ export function parseSimpleFileWriteRequest(userPrompt: string): SimpleFileWrite
 
   const content = parseSimpleFileContent(text, pathMatch.index);
   if (!content || content.length > 20000) return undefined;
+  if (looksLikeGeneratedDocumentTask(text, content)) return undefined;
 
   return { path: rawPath, content };
 }
@@ -52,6 +56,14 @@ function normalizeSimpleContent(value: string): string {
   const unwrapped = unwrapSimpleContent(text);
   if (unwrapped !== text.trim()) return unwrapped;
   return unwrapped.replace(/。$/, '').trimEnd();
+}
+
+function looksLikeGeneratedDocumentTask(text: string, content: string): boolean {
+  const raw = String(text || '');
+  const payload = String(content || '');
+  if (!GENERATED_DOCUMENT_REQUEST_RE.test(raw) && !GENERATED_DOCUMENT_REQUEST_RE.test(payload)) return false;
+  if (!GENERATED_DOCUMENT_REQUIREMENT_RE.test(raw) && !GENERATED_DOCUMENT_REQUIREMENT_RE.test(payload)) return false;
+  return !ONE_LINE_LITERAL_CONTENT_RE.test(raw);
 }
 
 function unwrapSimpleContent(value: string): string {

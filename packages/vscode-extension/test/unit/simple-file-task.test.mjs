@@ -169,6 +169,15 @@ test('Simple file task parses explicit file content without retaining verificati
   );
 });
 
+test('Simple file task parser leaves generated Markdown reports to the agent workflow', () => {
+  assert.equal(
+    parseSimpleFileWriteRequest(
+      '创建 docs/incident-debug-report.md，内容是：一份简短事故排查报告。必须包含这些精确锚点：ANCHOR_ROOT_CAUSE、ANCHOR_FIX_PLAN、ANCHOR_VERIFICATION。写完后用 grep 确认。',
+    ),
+    undefined,
+  );
+});
+
 test('Simple file task writes Markdown and completes from canonical readback evidence', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-simple-md-'));
   fakeVscode.workspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];

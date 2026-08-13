@@ -17,6 +17,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import {
+  computeVsixDirtyRuntimeFingerprint,
+  isAllowedVsixProcessToolPath,
+  isAllowedVsixUnpackagedNonRuntimePath,
+  normalizeVsixSourceFingerprint,
+  sameVsixSourceFingerprint,
+} from '../../../scripts/lib/devseek-vsix-source-identity.mjs';
 
 const require = createRequire(import.meta.url);
 const args = process.argv.slice(2);
@@ -74,7 +81,7 @@ try {
   const vsixSha256 = sha256File(vsixPath);
   const packaged = readVsixPackage(vsixPath);
   const expectedIdentity = normalizeExtensionIdentity(packaged, 'VSIX package.json');
-  const sourceCompatibility = assertVsixSourceCompatibility(expectedIdentity.devseekBuild.gitCommit);
+  const sourceCompatibility = assertVsixSourceCompatibility(expectedIdentity.devseekBuild);
 
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'devseek-controlled-vsix-'));
   const workspaceDir = path.join(tmpRoot, 'workspace');
@@ -274,6 +281,12 @@ function resolveControlledScenarioSuite(id) {
       'existing-js-fix',
       'realistic-safety-boundary',
     ],
+    'agent-fit-product': [
+      'agent-fit-ambiguous-clarify',
+      'agent-fit-review-only',
+      'agent-fit-multifile-with-test',
+      'agent-fit-markdown-report-anchors',
+    ],
     'coding-conformance-product': [
       'conformance-create-and-verify',
       'conformance-modify-and-verify',
@@ -309,6 +322,10 @@ function resolveControlledScenarioSuiteOptions(id) {
     'realistic-product': {
       kind: 'same-window-realistic-product-journey',
       sameDevSeekSession: true,
+    },
+    'agent-fit-product': {
+      kind: 'same-window-agent-fit-product-suite',
+      sameDevSeekSession: false,
     },
     'coding-conformance-product': {
       kind: 'same-window-coding-conformance-product-suite',
@@ -385,6 +402,61 @@ function controlledScenarioCatalog() {
   const parserBrokenContent = 'module.exports = { parse: value => ({ ok: false, value }) };\n';
   const parserFirstRepairContent = 'module.exports = { parse: value => ({ ok: value === "bad", value }) };\n';
   const parserFixedContent = 'module.exports = { parse: value => ({ ok: value === "valid", value }) };\n';
+  const ambiguousProjectBaselineContent = [
+    '# Existing Project',
+    '',
+    'This workspace intentionally needs user clarification before broad optimization work.',
+    '',
+  ].join('\n');
+  const reviewOnlyBillingContent = [
+    'function total(items) {',
+    '  return items.reduce((sum, item) => sum + item.price, 0);',
+    '}',
+    '',
+    'module.exports = { total };',
+    '',
+  ].join('\n');
+  const slugifySourceContent = [
+    'function slugify(value) {',
+    '  return String(value)',
+    '    .trim()',
+    '    .toLowerCase()',
+    "    .replace(/[^a-z0-9]+/g, '-')",
+    "    .replace(/^-+|-+$/g, '');",
+    '}',
+    '',
+    'module.exports = { slugify };',
+    '',
+  ].join('\n');
+  const slugifyTestContent = [
+    "const assert = require('assert');",
+    "const { slugify } = require('../src/slugify');",
+    '',
+    "assert.equal(slugify(' Hello, DevSeek! '), 'hello-devseek');",
+    "assert.equal(slugify('Already---slug'), 'already-slug');",
+    "console.log('SLUGIFY_TESTS_PASSED');",
+    '',
+  ].join('\n');
+  const markdownReportContent = [
+    '# Incident Debug Report',
+    '',
+    '## Reproduction',
+    '',
+    'COMMAND: npm test',
+    '',
+    '## Root Cause',
+    '',
+    'ANCHOR_ROOT_CAUSE: parser accepted empty names.',
+    '',
+    '## Fix Plan',
+    '',
+    'ANCHOR_FIX_PLAN: validate name before serialization.',
+    '',
+    '## Verification',
+    '',
+    'ANCHOR_VERIFICATION: add a focused parser test and rerun npm test.',
+    '',
+  ].join('\n');
   const streamTruncatedProbeContent = [
     'import sys',
     '',
@@ -583,6 +655,122 @@ function controlledScenarioCatalog() {
         'cookie、SSH key 或 token',
         '未修改文件',
         '合规日志审计',
+      ],
+    },
+    'agent-fit-ambiguous-clarify': {
+      id: 'agent-fit-ambiguous-clarify',
+      kind: 'agent-fit-ambiguous-request-clarify-no-mutation',
+      targetRelativePath: 'README.md',
+      targetContent: ambiguousProjectBaselineContent,
+      seedFiles: {
+        'README.md': ambiguousProjectBaselineContent,
+        'src/app.js': 'module.exports = { ready: true };\n',
+      },
+      prompt: [
+        '这个项目感觉有点乱，帮我优化一下。',
+        '先不要改代码，如果你不确定目标，请先告诉我需要确认哪些信息。',
+      ].join(''),
+      providerPlan: 'clarify-ambiguous-no-mutation',
+      expected: 'completed-advisory-no-mutation',
+      expectedFiles: {
+        'README.md': ambiguousProjectBaselineContent,
+        'src/app.js': 'module.exports = { ready: true };\n',
+      },
+      expectedChangedPaths: [],
+      expectedMutatedUserFiles: [],
+      requiredRunLogSubstrings: [
+        '需要确认',
+        '未修改文件',
+        '性能、结构、测试覆盖还是可维护性',
+      ],
+    },
+    'agent-fit-review-only': {
+      id: 'agent-fit-review-only',
+      kind: 'agent-fit-code-review-read-only-no-mutation',
+      targetRelativePath: 'src/billing.js',
+      targetContent: reviewOnlyBillingContent,
+      seedFiles: {
+        'src/billing.js': reviewOnlyBillingContent,
+      },
+      prompt: [
+        '请像 code review 一样检查 src/billing.js。',
+        '只给出高风险问题和建议，不要修改任何文件。',
+      ].join(''),
+      providerPlan: 'review-only-no-mutation',
+      expected: 'completed-advisory-no-mutation',
+      expectedFiles: {
+        'src/billing.js': reviewOnlyBillingContent,
+      },
+      expectedChangedPaths: [],
+      expectedMutatedUserFiles: [],
+      requiredRunLogSubstrings: [
+        '只读审查',
+        'src/billing.js',
+        '未修改文件',
+      ],
+    },
+    'agent-fit-multifile-with-test': {
+      id: 'agent-fit-multifile-with-test',
+      kind: 'agent-fit-multi-file-feature-with-focused-test',
+      targetRelativePath: 'src/slugify.js',
+      targetContent: slugifySourceContent,
+      seedFiles: {
+        'src/.keep': '',
+        'test/.keep': '',
+      },
+      prompt: [
+        '请实现一个小工具函数 src/slugify.js，并新增 test/slugify.test.js。',
+        'slugify(" Hello, DevSeek! ") 应返回 hello-devseek。',
+        '不要引入依赖，改完运行 node test/slugify.test.js 验证。',
+      ].join(''),
+      providerPlan: 'multi-file-slugify-test-complete',
+      expected: 'completed-workflow',
+      expectedFiles: {
+        'src/slugify.js': slugifySourceContent,
+        'test/slugify.test.js': slugifyTestContent,
+      },
+      expectedChangedPaths: [
+        'src/slugify.js',
+        'test/slugify.test.js',
+      ],
+      expectedMutatedUserFiles: [
+        'src/slugify.js',
+        'test/slugify.test.js',
+      ],
+      requiredRunLogSubstrings: [
+        'SLUGIFY_TESTS_PASSED',
+        'src/slugify.js',
+        'test/slugify.test.js',
+      ],
+    },
+    'agent-fit-markdown-report-anchors': {
+      id: 'agent-fit-markdown-report-anchors',
+      kind: 'agent-fit-markdown-deliverable-with-required-anchors',
+      targetRelativePath: 'docs/incident-debug-report.md',
+      targetContent: markdownReportContent,
+      seedFiles: {
+        'docs/.keep': '',
+      },
+      prompt: [
+        '请生成 docs/incident-debug-report.md，内容是一份简短事故排查报告。',
+        '必须包含这些精确锚点：ANCHOR_ROOT_CAUSE、ANCHOR_FIX_PLAN、ANCHOR_VERIFICATION。',
+        '写完后用 grep 验证三个锚点都存在，不要改其他文件。',
+      ].join(''),
+      providerPlan: 'markdown-report-anchors-complete',
+      expected: 'completed-workflow',
+      expectedFiles: {
+        'docs/incident-debug-report.md': markdownReportContent,
+      },
+      expectedChangedPaths: [
+        'docs/incident-debug-report.md',
+      ],
+      expectedMutatedUserFiles: [
+        'docs/incident-debug-report.md',
+      ],
+      requiredRunLogSubstrings: [
+        'ANCHOR_ROOT_CAUSE',
+        'ANCHOR_FIX_PLAN',
+        'ANCHOR_VERIFICATION',
       ],
     },
     'conformance-create-and-verify': {
@@ -793,10 +981,7 @@ function isAllowedUnpackagedNonRuntimePath(relativePath, {
   sourceRevision = null,
 } = {}) {
   const normalized = String(relativePath || '').replace(/\\/g, '/');
-  return normalized.startsWith('docs/')
-    || normalized.startsWith('packages/vscode-extension/test/')
-    || normalized.startsWith('scripts/test/')
-    || isAllowedUnpackagedProcessToolPath(normalized)
+  return isAllowedVsixUnpackagedNonRuntimePath(normalized)
     || (
       normalized === 'package.json'
       && rootPackageJsonOnlyScriptsDiffer({ artifactSourceCommit, sourceRevision })
@@ -804,36 +989,46 @@ function isAllowedUnpackagedNonRuntimePath(relativePath, {
 }
 
 function isAllowedUnpackagedProcessToolPath(normalized) {
-  return [
-    'scripts/devseek-phase0-12-verify.mjs',
-    'scripts/devseek-post-r4-local-regression-manifest-check.mjs',
-    'scripts/devseek-top-agent-user-simulation-runner.mjs',
-    'scripts/lib/devseek-post-r4-compact-index.mjs',
-    'scripts/lib/devseek-post-r4-local-regression-manifest.mjs',
-    'scripts/lib/devseek-r4-clean-runtime-limited-observation.mjs',
-  ].includes(normalized);
+  return isAllowedVsixProcessToolPath(normalized);
 }
 
-function assertVsixSourceCompatibility(artifactGitCommit) {
+function assertVsixSourceCompatibility(devseekBuild) {
+  const artifactGitCommit = String(devseekBuild?.gitCommit || '').trim();
   const artifactSourceCommit = gitCommitFor(`${artifactGitCommit}^{commit}`);
   const sourceHead = gitHead();
   const dirtyTrackedPaths = Array.from(new Set([
     ...gitOutputLines(['diff', '--name-only']),
     ...gitOutputLines(['diff', '--cached', '--name-only']),
   ])).sort();
-  const dirtyRuntimePaths = dirtyTrackedPaths.filter(pathName => !isAllowedUnpackagedNonRuntimePath(pathName, {
+  const dirtyRuntimeFingerprint = computeVsixDirtyRuntimeFingerprint({
+    repoRoot,
+    dirtyTrackedPaths,
+    isAllowedNonRuntimePath: pathName => isAllowedUnpackagedNonRuntimePath(pathName, {
+      artifactSourceCommit,
+      sourceRevision: 'WORKTREE',
+    }),
+  });
+  const dirtyRuntimePaths = dirtyRuntimeFingerprint.dirtyRuntimePaths;
+  const unpackagedNonRuntimePaths = dirtyTrackedPaths.filter(pathName => isAllowedUnpackagedNonRuntimePath(pathName, {
     artifactSourceCommit,
     sourceRevision: 'WORKTREE',
   }));
+  const packagedSourceFingerprint = normalizeVsixSourceFingerprint(devseekBuild?.sourceFingerprint);
+  const dirtyRuntimePackaged = dirtyRuntimePaths.length > 0
+    && packagedSourceFingerprint
+    && sameVsixSourceFingerprint(packagedSourceFingerprint, dirtyRuntimeFingerprint);
   if (dirtyRuntimePaths.length > 0) {
-    throw new Error(`VSIX source check found unpackaged runtime changes: ${dirtyRuntimePaths.join(', ')}`);
+    if (!dirtyRuntimePackaged) {
+      throw new Error(`VSIX source check found unpackaged runtime changes: ${dirtyRuntimePaths.join(', ')}`);
+    }
   }
   if (sourceHead === artifactSourceCommit) {
     return {
-      mode: 'exact-head',
+      mode: dirtyRuntimePackaged ? 'exact-head-with-packaged-worktree' : 'exact-head',
       artifactSourceCommit,
       sourceHead,
-      unpackagedNonRuntimePaths: dirtyTrackedPaths,
+      unpackagedNonRuntimePaths,
+      packagedDirtyRuntimeFingerprint: dirtyRuntimePackaged ? dirtyRuntimeFingerprint : null,
     };
   }
   if (!gitIsAncestor(artifactSourceCommit, sourceHead)) {
@@ -848,10 +1043,17 @@ function assertVsixSourceCompatibility(artifactGitCommit) {
     throw new Error(`VSIX gitCommit ${artifactGitCommit} is missing runtime source changes: ${committedRuntimePaths.join(', ')}`);
   }
   return {
-    mode: 'ancestor-with-nonruntime-only',
+    mode: dirtyRuntimePackaged ? 'ancestor-with-packaged-worktree' : 'ancestor-with-nonruntime-only',
     artifactSourceCommit,
     sourceHead,
-    unpackagedNonRuntimePaths: Array.from(new Set([...committedPaths, ...dirtyTrackedPaths])).sort(),
+    unpackagedNonRuntimePaths: Array.from(new Set([
+      ...committedPaths.filter(pathName => isAllowedUnpackagedNonRuntimePath(pathName, {
+        artifactSourceCommit,
+        sourceRevision: sourceHead,
+      })),
+      ...unpackagedNonRuntimePaths,
+    ])).sort(),
+    packagedDirtyRuntimeFingerprint: dirtyRuntimePackaged ? dirtyRuntimeFingerprint : null,
   };
 }
 
@@ -920,6 +1122,7 @@ function normalizeExtensionIdentity(packageJson, label) {
     channel: String(build.channel || '').trim(),
     buildId: String(build.buildId || '').trim(),
     gitCommit: String(build.gitCommit || '').trim(),
+    sourceFingerprint: normalizeVsixSourceFingerprint(build.sourceFingerprint),
   };
   if (!publisher || !name || !version || !devseekBuild.channel || !devseekBuild.buildId || !devseekBuild.gitCommit) {
     throw new Error(`${label} does not contain a complete DevSeek release identity`);
@@ -2204,6 +2407,10 @@ function controlledPlannerResponse({ scenario }) {
     'cpp-program-compile-run-complete': 'create',
     'realistic-python-log-tool-complete': 'create',
     'latest-requirement-complete': 'create',
+    'clarify-ambiguous-no-mutation': 'analyze',
+    'review-only-no-mutation': 'analyze',
+    'multi-file-slugify-test-complete': 'create',
+    'markdown-report-anchors-complete': 'create',
     'provider-error': 'create',
     'stream-corrupting-python-cli-complete': 'create',
   };
@@ -2216,6 +2423,10 @@ function controlledPlannerResponse({ scenario }) {
     'cpp-program-compile-run-complete': '创建 C++ 程序并编译运行验证',
     'realistic-python-log-tool-complete': '创建日志统计 CLI 并用 stdin 自测',
     'latest-requirement-complete': '按最新要求创建结果文件并验证',
+    'clarify-ambiguous-no-mutation': '识别模糊优化请求并先澄清不改文件',
+    'review-only-no-mutation': '执行只读 code review 并保留工作区不变',
+    'multi-file-slugify-test-complete': '实现多文件小功能并运行聚焦测试',
+    'markdown-report-anchors-complete': '生成带精确验收锚点的 Markdown 报告并验证',
     'provider-error': '创建指定文件并处理 Provider 失败路径',
     'stream-corrupting-python-cli-complete': '创建 Python CLI 并由 stream 协议故障测试 fail-closed',
   };
@@ -2412,6 +2623,98 @@ function controlledProviderResponse({ ordinal, workspaceDir, scenario, requestKi
       `[TOOL:manage_todo_list ${JSON.stringify(completedTodos)}]`,
       `[TOOL:task_complete ${JSON.stringify({
         summary: '已修复 src/math.js 的 add(a, b)，并用 node 验证 add(2, 3) 返回 5。',
+      })}]`,
+    ].join('\n');
+  }
+
+  if (scenario.providerPlan === 'clarify-ambiguous-no-mutation') {
+    const completedTodos = {
+      todoList: [
+        { id: 1, title: '判断优化目标是否明确', status: 'completed' },
+        { id: 2, title: '列出需要用户确认的问题', status: 'completed' },
+      ],
+    };
+    return [
+      '这个优化请求还不够具体，我会先澄清范围，不直接改代码。',
+      `[TOOL:manage_todo_list ${JSON.stringify(completedTodos)}]`,
+      `[TOOL:task_complete ${JSON.stringify({
+        summary: '需要确认优化目标是性能、结构、测试覆盖还是可维护性；当前未修改文件，等待用户确认优先级和完成条件。',
+      })}]`,
+    ].join('\n');
+  }
+
+  if (scenario.providerPlan === 'review-only-no-mutation') {
+    const completedTodos = {
+      todoList: [
+        { id: 1, title: '读取待审查文件', status: 'completed' },
+        { id: 2, title: '输出只读审查结论', status: 'completed' },
+      ],
+    };
+    return [
+      '我会做只读审查，不提交任何文件修改。',
+      `[TOOL:manage_todo_list ${JSON.stringify({ todoList: [{ id: 1, title: '读取待审查文件', status: 'in-progress' }, { id: 2, title: '输出只读审查结论', status: 'not-started' }] })}]`,
+      `[TOOL:read_file ${JSON.stringify({ path: scenario.targetRelativePath })}]`,
+      '只读审查发现：src/billing.js 中 total(items) 直接累加 item.price，缺少数量、折扣和非法输入处理；建议补充需求后再修改。',
+      `[TOOL:manage_todo_list ${JSON.stringify(completedTodos)}]`,
+      `[TOOL:task_complete ${JSON.stringify({
+        summary: '已完成 src/billing.js 只读审查：发现价格累加逻辑缺少业务边界；未修改文件。',
+      })}]`,
+    ].join('\n');
+  }
+
+  if (scenario.providerPlan === 'multi-file-slugify-test-complete') {
+    const activeTodos = {
+      todoList: [
+        { id: 1, title: '实现 slugify 工具函数', status: 'in-progress' },
+        { id: 2, title: '新增聚焦测试并运行', status: 'not-started' },
+      ],
+    };
+    const completedTodos = {
+      todoList: [
+        { id: 1, title: '实现 slugify 工具函数', status: 'completed' },
+        { id: 2, title: '新增聚焦测试并运行', status: 'completed' },
+      ],
+    };
+    const expectedFiles = scenario.expectedFiles || {};
+    return [
+      '我会做一个小的多文件改动，并立即运行聚焦测试。',
+      `[TOOL:manage_todo_list ${JSON.stringify(activeTodos)}]`,
+      `[TOOL:create_file ${JSON.stringify({ path: 'src/slugify.js', content: expectedFiles['src/slugify.js'] || scenario.targetContent })}]`,
+      `[TOOL:create_file ${JSON.stringify({ path: 'test/slugify.test.js', content: expectedFiles['test/slugify.test.js'] || '' })}]`,
+      `[TOOL:run_terminal ${JSON.stringify({ command: 'node test/slugify.test.js' })}]`,
+      `[TOOL:read_file ${JSON.stringify({ path: 'src/slugify.js' })}]`,
+      `[TOOL:read_file ${JSON.stringify({ path: 'test/slugify.test.js' })}]`,
+      `[TOOL:manage_todo_list ${JSON.stringify(completedTodos)}]`,
+      `[TOOL:task_complete ${JSON.stringify({
+        summary: '已创建 src/slugify.js 和 test/slugify.test.js，并运行 node test/slugify.test.js 看到 SLUGIFY_TESTS_PASSED。',
+      })}]`,
+    ].join('\n');
+  }
+
+  if (scenario.providerPlan === 'markdown-report-anchors-complete') {
+    const activeTodos = {
+      todoList: [
+        { id: 1, title: '生成事故排查 Markdown', status: 'in-progress' },
+        { id: 2, title: '验证三个精确锚点', status: 'not-started' },
+      ],
+    };
+    const completedTodos = {
+      todoList: [
+        { id: 1, title: '生成事故排查 Markdown', status: 'completed' },
+        { id: 2, title: '验证三个精确锚点', status: 'completed' },
+      ],
+    };
+    return [
+      '我会生成 Markdown 报告，并用 grep 验证用户指定的精确锚点。',
+      `[TOOL:manage_todo_list ${JSON.stringify(activeTodos)}]`,
+      `[TOOL:create_file ${JSON.stringify({ path: scenario.targetRelativePath, content: scenario.targetContent })}]`,
+      `[TOOL:run_terminal ${JSON.stringify({
+        command: "grep -q 'ANCHOR_ROOT_CAUSE' docs/incident-debug-report.md && grep -q 'ANCHOR_FIX_PLAN' docs/incident-debug-report.md && grep -q 'ANCHOR_VERIFICATION' docs/incident-debug-report.md",
+      })}]`,
+      `[TOOL:read_file ${JSON.stringify({ path: scenario.targetRelativePath })}]`,
+      `[TOOL:manage_todo_list ${JSON.stringify(completedTodos)}]`,
+      `[TOOL:task_complete ${JSON.stringify({
+        summary: '已生成 docs/incident-debug-report.md，并用 grep 验证 ANCHOR_ROOT_CAUSE、ANCHOR_FIX_PLAN、ANCHOR_VERIFICATION 都存在。',
       })}]`,
     ].join('\n');
   }
@@ -2972,8 +3275,9 @@ async function runScenario(activeScenario, caseIndex, totalCases) {
         caseReport.ok = true;
         break;
       }
-      if (evaluation.runLogs.terminal?.event === 'agent-run-failed'
-        || ['failed', 'blocked'].includes(String(evaluation.runLogs.terminal?.data?.status || ''))) {
+      if (evaluation.runLogs.terminal?.event === 'agent-run-completed'
+        || evaluation.runLogs.terminal?.event === 'agent-run-failed'
+        || ['completed', 'failed', 'blocked'].includes(String(evaluation.runLogs.terminal?.data?.status || ''))) {
         break;
       }
       await delay(500);

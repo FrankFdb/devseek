@@ -21,6 +21,7 @@ const DEFAULT_CONTROLLED_SUITES = Object.freeze([
   'r2-07e-stream-protocol',
   'journey-core',
   'realistic-product',
+  'agent-fit-product',
   'coding-conformance-product',
   'r2-07f-connector-security',
 ]);
@@ -107,7 +108,11 @@ function main() {
         : [],
       high_usage_observations: [],
       controlled_residuals_terminated: [],
+      controlled_windows_retained: [],
       residual_errors: [],
+      window_policy: options.keepLastWindow
+        ? 'close previous controlled VSIX windows before execution and retain the last controlled window for inspection'
+        : 'close controlled VSIX windows after each controlled step',
     },
     plan,
     steps: [],
@@ -124,6 +129,9 @@ function main() {
   }
 
   fs.mkdirSync(options.evidenceRoot, { recursive: true });
+  if (options.keepLastWindow) {
+    cleanupExistingControlledWindows(baseReport, 'before-start-keep-last-window');
+  }
   captureAndStoreSnapshot(baseReport, 'start');
 
   for (const step of plan.steps) {
@@ -131,7 +139,11 @@ function main() {
     const result = runStep(step, options);
     baseReport.steps.push(result);
     if (result.controlledReport) {
-      cleanupResidualControlledProcesses(baseReport, result.controlledReport);
+      if (options.keepLastWindow && isLastControlledStep(plan.steps, step)) {
+        recordRetainedControlledWindow(baseReport, result.controlledReport);
+      } else {
+        cleanupResidualControlledProcesses(baseReport, result.controlledReport);
+      }
     }
     captureAndStoreSnapshot(baseReport, `after-${step.id}`);
     if (!result.ok) break;
@@ -157,6 +169,7 @@ function parseOptions(argv) {
     '--skip-targeted',
     '--print-full',
     '--force',
+    '--keep-last-window',
   ]);
   const errors = [];
   for (let index = 0; index < argv.length; index += 1) {
@@ -207,6 +220,7 @@ function parseOptions(argv) {
     controlledSuites,
     skipTargeted: argv.includes('--skip-targeted'),
     skipControlled: argv.includes('--skip-controlled'),
+    keepLastWindow: argv.includes('--keep-last-window'),
     errors,
   };
 }
@@ -257,7 +271,9 @@ function failedExistingReport(options, errors) {
       snapshot_stages: [],
       high_usage_observations: [],
       controlled_residuals_terminated: [],
+      controlled_windows_retained: [],
       residual_errors: [],
+      window_policy: 'report rendering only',
     },
     plan: {
       strategy: 'fixpoint-before-broad-regression',
@@ -274,6 +290,7 @@ function failedExistingReport(options, errors) {
       snapshots: 0,
       high_usage_observations: 0,
       controlled_residuals_terminated: 0,
+      controlled_windows_retained: 0,
       qualification_effect: 'NONE',
       claims_permitted: false,
     },
@@ -299,27 +316,32 @@ function buildPlan(options) {
     });
   }
   if (!options.skipControlled) {
-    for (const suite of options.controlledSuites) {
+    for (let index = 0; index < options.controlledSuites.length; index += 1) {
+      const suite = options.controlledSuites[index];
+      const keepWindowForStep = options.keepLastWindow && index === options.controlledSuites.length - 1;
+      const command = [
+        process.execPath,
+        'packages/vscode-extension/test/devseek-controlled-vsix-harness.mjs',
+        '--suite',
+        suite,
+        '--timeout-ms',
+        String(controlledSuiteTimeoutMs(suite)),
+        '--report',
+        path.join(options.evidenceRoot, `${suite}.report.json`),
+      ];
+      if (keepWindowForStep) command.push('--keep-window', '--keep');
       steps.push({
         id: `controlled-${suite}`,
         kind: 'controlled-vsix-user-simulation',
         purpose: controlledSuitePurpose(suite),
-        command: [
-          process.execPath,
-          'packages/vscode-extension/test/devseek-controlled-vsix-harness.mjs',
-          '--suite',
-          suite,
-          '--timeout-ms',
-          String(controlledSuiteTimeoutMs(suite)),
-          '--report',
-          path.join(options.evidenceRoot, `${suite}.report.json`),
-        ],
+        command,
         stdout_log: path.join(options.evidenceRoot, `${suite}.stdout.log`),
         stderr_log: path.join(options.evidenceRoot, `${suite}.stderr.log`),
         report_path: path.join(options.evidenceRoot, `${suite}.report.json`),
         timeout_ms: controlledSuiteTimeoutMs(suite) + 90_000,
         qualification_effect: 'NONE',
         live_provider: false,
+        keep_window: keepWindowForStep,
       });
     }
   }
@@ -336,6 +358,7 @@ function controlledSuitePurpose(suite) {
   const purposes = {
     'r2-07e-stream-protocol': 'DeepSeek Web malformed/truncated stream replay: fail closed, bounded recovery, no mutation.',
     'realistic-product': 'Same-window realistic coding journey: create a Python log tool, handle an incremental JSON follow-up, modify existing JS, refuse unsafe work.',
+    'agent-fit-product': 'Codex-aligned agent fit: clarify ambiguous asks, keep reviews read-only, handle multi-file tested edits, and verify Markdown anchors.',
     'coding-conformance-product': 'Core programming lifecycle: create/modify/verify-repair plus permission denial and policy refusal.',
     'r2-07f-connector-security': 'Connector evidence replay: redacted read-only evidence must not mutate workspace.',
     'journey-core': 'General user journey smoke: normal, exception, boundary, C++ create, JS fix, latest requirement wins.',
@@ -347,6 +370,7 @@ function controlledSuiteTimeoutMs(suite) {
   if (suite === 'coding-conformance-product') return 300_000;
   if (suite === 'journey-core') return 300_000;
   if (suite === 'realistic-product') return 270_000;
+  if (suite === 'agent-fit-product') return 270_000;
   return 210_000;
 }
 
@@ -504,6 +528,54 @@ function cleanupResidualControlledProcesses(report, controlledReport) {
   }
 }
 
+function cleanupExistingControlledWindows(report, stage) {
+  const snapshot = captureProcessSnapshot(stage);
+  const candidates = snapshot.rows.filter(row => (
+    row.command.includes('devseek-controlled-vsix-')
+    && CONTROLLED_PROCESS_PATTERN.test(row.command)
+    && row.pid !== process.pid
+  ));
+  for (const row of candidates) {
+    try {
+      process.kill(row.pid, 'SIGTERM');
+      report.process_monitoring.controlled_residuals_terminated.push({
+        pid: row.pid,
+        signal: 'SIGTERM',
+        tmp_root: extractControlledTmpRoot(row.command) || '(unknown-controlled-vsix-root)',
+        previous_kept_window: true,
+        command: trimCommand(row.command),
+      });
+    } catch (error) {
+      report.process_monitoring.residual_errors.push({
+        pid: row.pid,
+        tmp_root: extractControlledTmpRoot(row.command) || '(unknown-controlled-vsix-root)',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+}
+
+function recordRetainedControlledWindow(report, controlledReport) {
+  const tmpRoot = controlledReport?.harness?.tmpRoot;
+  if (!tmpRoot || !String(tmpRoot).includes('devseek-controlled-vsix-')) return;
+  report.process_monitoring.controlled_windows_retained.push({
+    tmp_root: tmpRoot,
+    workspace_dir: controlledReport?.harness?.workspaceDir || null,
+    progress_path: controlledReport?.harness?.progressPath || null,
+    vscode_log_path: controlledReport?.harness?.vscodeLogPath || null,
+  });
+}
+
+function isLastControlledStep(steps, step) {
+  const controlled = steps.filter(candidate => candidate.kind === 'controlled-vsix-user-simulation');
+  return controlled.length > 0 && controlled[controlled.length - 1] === step;
+}
+
+function extractControlledTmpRoot(command) {
+  const match = String(command || '').match(/\/tmp\/devseek-controlled-vsix-[^\s"']+/);
+  return match ? match[0] : '';
+}
+
 function finishReport(report) {
   report.ended_at = new Date().toISOString();
   const failedSteps = report.steps.filter(step => !step.ok);
@@ -525,6 +597,7 @@ function finishReport(report) {
     snapshots: report.process_monitoring.snapshot_stages.length,
     high_usage_observations: report.process_monitoring.high_usage_observations.length,
     controlled_residuals_terminated: report.process_monitoring.controlled_residuals_terminated.length,
+    controlled_windows_retained: report.process_monitoring.controlled_windows_retained.length,
     qualification_effect: 'NONE',
     claims_permitted: false,
   };
@@ -573,7 +646,9 @@ function consoleReport(report, options) {
       snapshots: report.process_monitoring.snapshot_stages.length,
       high_usage_observations: report.process_monitoring.high_usage_observations.length,
       controlled_residuals_terminated: report.process_monitoring.controlled_residuals_terminated.length,
+      controlled_windows_retained: (report.process_monitoring.controlled_windows_retained || []).length,
       residual_errors: report.process_monitoring.residual_errors.length,
+      window_policy: report.process_monitoring.window_policy,
     },
     steps: report.steps.map(step => ({
       id: step.id,
@@ -621,6 +696,12 @@ function renderMarkdownReport(report) {
       `- Sent ${item.signal} to pid=${item.pid} for \`${item.tmp_root}\`.`
     )).join('\n')
     : '- None recorded.';
+  const retainedWindows = report.process_monitoring.controlled_windows_retained || [];
+  const retainedWindowLines = retainedWindows.length > 0
+    ? retainedWindows.map(item => (
+      `- Retained \`${item.tmp_root}\` for inspection; workspace \`${item.workspace_dir}\`.`
+    )).join('\n')
+    : '- None retained.';
   const findingLines = report.steps.length > 0
     ? [
         '- Product behavior: no failing DevSeek runtime step was found in the covered T3 controlled user simulations.',
@@ -659,6 +740,7 @@ function renderMarkdownReport(report) {
     '- DeepSeek Web malformed/truncated reply compatibility: `r2-07e-stream-protocol`.',
     '- Read-only boundary, standalone program, existing-code fix, and latest requirement handling: `journey-core`.',
     '- Same-session realistic coding change and safety refusal: `realistic-product`.',
+    '- Codex-aligned input diversity: `agent-fit-product`.',
     '- Core coding lifecycle, permission denial, and policy refusal: `coding-conformance-product`.',
     '- Redacted connector evidence replay: `r2-07f-connector-security`.',
     '',
@@ -679,12 +761,16 @@ function renderMarkdownReport(report) {
     `- Snapshots captured: \`${report.summary?.snapshots ?? 0}\``,
     `- High-usage observations: \`${warnings.length}\``,
     `- Controlled residuals terminated: \`${report.process_monitoring.controlled_residuals_terminated.length}\``,
+    `- Controlled windows retained: \`${retainedWindows.length}\``,
     '',
     'High-usage observations:',
     warningLines,
     '',
     'Residual controlled VSIX cleanup:',
     residualLines,
+    '',
+    'Retained controlled VSIX windows:',
+    retainedWindowLines,
     '',
     '## Next Iteration',
     '',

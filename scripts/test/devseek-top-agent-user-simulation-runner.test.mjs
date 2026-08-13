@@ -36,6 +36,7 @@ test('top-agent user simulation runner plans targeted checks before broad contro
     'r2-07e-stream-protocol',
     'journey-core',
     'realistic-product',
+    'agent-fit-product',
     'coding-conformance-product',
     'r2-07f-connector-security',
   ]);
@@ -66,6 +67,31 @@ test('top-agent user simulation runner can narrow to one focused controlled suit
   assert.equal(report.plan.steps[0].id, 'controlled-realistic-product');
   assert.equal(report.plan.steps[0].command.includes('--report'), true);
   assert.equal(report.plan.steps[0].live_provider, false);
+});
+
+test('top-agent user simulation runner can retain only the last controlled VSIX window', async () => {
+  const { stdout } = await execFile(
+    process.execPath,
+    [
+      'scripts/devseek-top-agent-user-simulation-runner.mjs',
+      '--dry-run',
+      '--skip-targeted',
+      '--controlled-suites',
+      'journey-core,agent-fit-product',
+      '--keep-last-window',
+    ],
+    { cwd: repoRoot, maxBuffer: 4 * 1024 * 1024 },
+  );
+  const report = JSON.parse(stdout);
+
+  assert.equal(report.ok, true, JSON.stringify(report.errors, null, 2));
+  assert.match(report.process_monitoring.window_policy, /retain the last controlled window/);
+  assert.equal(report.plan.steps.length, 2);
+  assert.equal(report.plan.steps[0].keep_window, false);
+  assert.equal(report.plan.steps[0].command.includes('--keep-window'), false);
+  assert.equal(report.plan.steps[1].keep_window, true);
+  assert.equal(report.plan.steps[1].command.includes('--keep-window'), true);
+  assert.equal(report.plan.steps[1].command.includes('--keep'), true);
 });
 
 test('top-agent user simulation runner rejects unsupported arguments', async () => {

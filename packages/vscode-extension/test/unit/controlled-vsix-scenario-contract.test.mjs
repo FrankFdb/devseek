@@ -32,6 +32,10 @@ const REQUIRED_SCENARIOS = [
   'realistic-python-log-tool',
   'realistic-python-log-json-followup',
   'realistic-safety-boundary',
+  'agent-fit-ambiguous-clarify',
+  'agent-fit-review-only',
+  'agent-fit-multifile-with-test',
+  'agent-fit-markdown-report-anchors',
   'conformance-create-and-verify',
   'conformance-modify-and-verify',
   'conformance-verify-repair-reverify',
@@ -46,6 +50,7 @@ const REQUIRED_SUITES = [
   { id: 'basic-surface', scenarioCount: 3, sameDevSeekSession: false },
   { id: 'journey-core', scenarioCount: 6, sameDevSeekSession: false },
   { id: 'realistic-product', scenarioCount: 4, sameDevSeekSession: true },
+  { id: 'agent-fit-product', scenarioCount: 4, sameDevSeekSession: false },
   { id: 'coding-conformance-product', scenarioCount: 5, sameDevSeekSession: false },
   { id: 'r2-07e-stream-protocol', scenarioCount: 2, sameDevSeekSession: false },
   { id: 'r2-07f-connector-security', scenarioCount: 1, sameDevSeekSession: false },
@@ -57,6 +62,31 @@ test('controlled VSIX harness selects product run terminal instead of pending-ed
   assert.match(source, /function isProductRunTerminalEvent\(/, 'controlled VSIX harness must classify product run terminal events');
   assert.match(source, /mutationKind\s*!==\s*'pending-edit-resolution'/, 'pending-edit resolution runs must not replace the case terminal run');
   assert.doesNotMatch(source, /terminalLogs\.at\(-1\)/, 'terminal selection must not blindly use the last terminal log');
+});
+
+test('controlled VSIX harness fails completed mismatches without waiting for timeout', () => {
+  const source = readFileSync(harnessPath, 'utf8');
+
+  assert.match(
+    source,
+    /evaluation\.runLogs\.terminal\?\.event === 'agent-run-completed'/,
+    'completed-but-mismatched controlled cases must stop immediately for focused diagnosis',
+  );
+  assert.match(
+    source,
+    /\['completed', 'failed', 'blocked'\]\.includes/,
+    'terminal completed/failed/blocked statuses must all end the case polling loop',
+  );
+});
+
+test('controlled VSIX harness accepts packaged dirty-runtime source fingerprints', () => {
+  const source = readFileSync(harnessPath, 'utf8');
+  const packageVsix = readFileSync(path.resolve(extensionRoot, '../../scripts/package-vsix.mjs'), 'utf8');
+
+  assert.match(packageVsix, /sourceFingerprint:\s*computeVsixDirtyRuntimeFingerprint/, 'VSIX package identity must include dirty runtime source fingerprint');
+  assert.match(source, /computeVsixDirtyRuntimeFingerprint/, 'controlled harness must recompute the local runtime fingerprint');
+  assert.match(source, /sameVsixSourceFingerprint/, 'controlled harness must compare the packaged fingerprint before accepting dirty runtime paths');
+  assert.match(source, /exact-head-with-packaged-worktree/, 'controlled harness must report the pre-commit packaged-worktree mode');
 });
 
 test('controlled VSIX fake bridge advertises the connector status contract', () => {
