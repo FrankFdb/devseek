@@ -25,6 +25,86 @@ const DEFAULT_CONTROLLED_SUITES = Object.freeze([
   'coding-conformance-product',
   'r2-07f-connector-security',
 ]);
+const ACCEPTANCE_CONTROLLED_SUITES = Object.freeze([
+  'r2-07e-stream-protocol',
+  'journey-core',
+  'realistic-product',
+  'agent-fit-product',
+  'coding-conformance-product',
+  'r2-07f-connector-security',
+]);
+const CASE_DESIGN_DIMENSIONS = Object.freeze([
+  {
+    id: 'provider_reply_corruption',
+    user_need: 'DeepSeek Web may return malformed or truncated tool replies.',
+    suites: ['r2-07e-stream-protocol'],
+  },
+  {
+    id: 'read_only_boundary',
+    user_need: 'Users ask for analysis or review without allowing file edits.',
+    suites: ['journey-core', 'agent-fit-product'],
+  },
+  {
+    id: 'create_program_and_verify',
+    user_need: 'Users ask DevSeek to create runnable code and prove it works.',
+    suites: ['journey-core', 'realistic-product', 'coding-conformance-product'],
+  },
+  {
+    id: 'modify_existing_project',
+    user_need: 'Users ask DevSeek to fix existing code without broad rewrites.',
+    suites: ['journey-core', 'realistic-product', 'coding-conformance-product'],
+  },
+  {
+    id: 'test_failure_repair_loop',
+    user_need: 'Users expect DevSeek to run tests, repair failures, and rerun.',
+    suites: ['coding-conformance-product'],
+  },
+  {
+    id: 'incremental_followup_context',
+    user_need: 'Users refine previous work in the same session.',
+    suites: ['realistic-product'],
+  },
+  {
+    id: 'latest_requirement_wins',
+    user_need: 'Users change their mind and expect the newest instruction to win.',
+    suites: ['journey-core'],
+  },
+  {
+    id: 'permission_denial_no_effect',
+    user_need: 'Users deny risky effects and expect no hidden mutation.',
+    suites: ['coding-conformance-product'],
+  },
+  {
+    id: 'policy_refusal_no_mutation',
+    user_need: 'Users may request unsafe work; DevSeek must refuse without edits.',
+    suites: ['realistic-product', 'coding-conformance-product'],
+  },
+  {
+    id: 'ambiguous_request_clarification',
+    user_need: 'Users give vague instructions; DevSeek should clarify or stay minimal.',
+    suites: ['agent-fit-product'],
+  },
+  {
+    id: 'multi_file_tested_edit',
+    user_need: 'Users ask for changes that span multiple files and tests.',
+    suites: ['agent-fit-product'],
+  },
+  {
+    id: 'documentation_deliverable_anchors',
+    user_need: 'Users ask for Markdown/report deliverables grounded in source facts.',
+    suites: ['agent-fit-product'],
+  },
+  {
+    id: 'wrapped_tool_reply_compatibility',
+    user_need: 'DeepSeek Web may echo OpenAI-style or wrapped tool-call payloads.',
+    suites: ['agent-fit-product'],
+  },
+  {
+    id: 'connector_evidence_redaction',
+    user_need: 'Users attach connector evidence; DevSeek must redact and stay read-only.',
+    suites: ['r2-07f-connector-security'],
+  },
+]);
 const PROCESS_PATTERNS = Object.freeze([
   'code',
   'codex',
@@ -199,6 +279,7 @@ function parseOptions(argv) {
     : '';
   const targetedTests = listOption(argv, '--targeted-tests', DEFAULT_TARGETED_TESTS);
   const controlledSuites = listOption(argv, '--controlled-suites', DEFAULT_CONTROLLED_SUITES);
+  const controlledSuitesExplicit = Boolean(optionValue(argv, '--controlled-suites'));
   if (targetedTests.length === 0 && !argv.includes('--skip-targeted')) {
     errors.push('targeted-tests:empty');
   }
@@ -218,6 +299,7 @@ function parseOptions(argv) {
     markdownPath,
     targetedTests,
     controlledSuites,
+    controlledSuitesExplicit,
     skipTargeted: argv.includes('--skip-targeted'),
     skipControlled: argv.includes('--skip-controlled'),
     keepLastWindow: argv.includes('--keep-last-window'),
@@ -300,6 +382,7 @@ function failedExistingReport(options, errors) {
 
 function buildPlan(options) {
   const steps = [];
+  const coverageProfile = coverageProfileForOptions(options);
   if (!options.skipTargeted) {
     steps.push({
       id: 'targeted-local-contracts',
@@ -350,8 +433,27 @@ function buildPlan(options) {
     source_plan: 'docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md',
     source_principles: 'docs/top-agent-convergence-audit-20260711/archive/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md',
     user_simulation_boundary: 'T3 exact VSIX controlled Surface conformance; not T4 natural UI, not T5 live DeepSeek Web, not qualification evidence.',
+    coverage_profile: coverageProfile,
+    acceptance_controlled_suites: [...ACCEPTANCE_CONTROLLED_SUITES],
+    case_design_dimensions: CASE_DESIGN_DIMENSIONS.map(dimension => ({
+      id: dimension.id,
+      user_need: dimension.user_need,
+      suites: [...dimension.suites],
+    })),
     steps,
   };
+}
+
+function coverageProfileForOptions(options) {
+  if (
+    !options.skipTargeted
+    && !options.skipControlled
+    && !options.controlledSuitesExplicit
+    && includesEvery(options.controlledSuites, ACCEPTANCE_CONTROLLED_SUITES)
+  ) {
+    return 'top-agent-local-acceptance';
+  }
+  return 'focused-regression';
 }
 
 function controlledSuitePurpose(suite) {
@@ -585,10 +687,7 @@ function finishReport(report) {
       ? step.controlledReport.scenario.cases.map(entry => entry.id)
       : [step.controlledReport?.scenario?.id].filter(Boolean)
   ));
-  report.summary = {
-    ok: report.errors.length === 0
-      && failedSteps.length === 0
-      && report.process_monitoring.residual_errors.length === 0,
+  const baseSummary = {
     total_steps: report.steps.length,
     passed_steps: report.steps.filter(step => step.ok).length,
     failed_steps: failedSteps.map(step => step.id),
@@ -601,10 +700,75 @@ function finishReport(report) {
     qualification_effect: 'NONE',
     claims_permitted: false,
   };
+  report.summary = baseSummary;
+  report.case_design_review = evaluateCaseDesign(report);
+  const baseOk = report.errors.length === 0
+    && failedSteps.length === 0
+    && report.process_monitoring.residual_errors.length === 0;
+  report.summary = {
+    ok: baseOk && (!report.case_design_review.enforced || report.case_design_review.ok),
+    ...baseSummary,
+    case_design_ok: report.case_design_review.ok,
+    case_design_profile: report.case_design_review.coverage_profile,
+  };
   return {
     ok: report.summary.ok,
     ...report,
   };
+}
+
+function evaluateCaseDesign(report) {
+  const plan = report.plan || {};
+  const plannedSuites = plannedControlledSuites(plan);
+  const executedSuites = report.summary?.controlled_suites || [];
+  const selectedSuites = report.execution_mode === 'dry-run' ? plannedSuites : executedSuites;
+  const profile = plan.coverage_profile || 'focused-regression';
+  const coveredDimensions = CASE_DESIGN_DIMENSIONS
+    .filter(dimension => dimension.suites.some(suite => selectedSuites.includes(suite)))
+    .map(dimension => dimension.id);
+  const missingDimensions = CASE_DESIGN_DIMENSIONS
+    .filter(dimension => !coveredDimensions.includes(dimension.id))
+    .map(dimension => dimension.id);
+  const missingAcceptanceSuites = ACCEPTANCE_CONTROLLED_SUITES
+    .filter(suite => !plannedSuites.includes(suite));
+  const missingExecutedAcceptanceSuites = report.execution_mode === 'execute'
+    ? ACCEPTANCE_CONTROLLED_SUITES.filter(suite => !executedSuites.includes(suite))
+    : [];
+  const evidenceMissing = report.execution_mode === 'execute'
+    ? report.steps
+      .filter(step => step.kind === 'controlled-vsix-user-simulation')
+      .filter(step => !step.stdout_log || !step.report_path || step.controlledReport?.ok !== true)
+      .map(step => step.id.replace(/^controlled-/, ''))
+    : [];
+  const enforced = profile === 'top-agent-local-acceptance';
+  const planOk = missingAcceptanceSuites.length === 0 && missingDimensions.length === 0;
+  const evidenceOk = report.execution_mode !== 'execute'
+    || (missingExecutedAcceptanceSuites.length === 0 && evidenceMissing.length === 0);
+  return {
+    ok: enforced ? planOk && evidenceOk : true,
+    enforced,
+    coverage_profile: profile,
+    verdict: caseDesignVerdict({ enforced, planOk, evidenceOk, executionMode: report.execution_mode }),
+    selected_suites: selectedSuites,
+    required_acceptance_suites: [...ACCEPTANCE_CONTROLLED_SUITES],
+    missing_acceptance_suites: missingAcceptanceSuites,
+    missing_executed_acceptance_suites: missingExecutedAcceptanceSuites,
+    covered_dimensions: coveredDimensions,
+    missing_dimensions: missingDimensions,
+    execution_evidence_missing: evidenceMissing,
+    acceptance_plan_eligible: planOk,
+    acceptance_execution_eligible: enforced && report.execution_mode === 'execute' && planOk && evidenceOk,
+    release_claim_permitted: false,
+    release_claim_reason: 'Local T3 user simulation can validate product behavior, but C14 release qualification still requires live Provider, RC, sealed holdout, and external authority evidence.',
+  };
+}
+
+function caseDesignVerdict({ enforced, planOk, evidenceOk, executionMode }) {
+  if (!enforced) return 'focused-regression-only-not-release-acceptance';
+  if (!planOk) return 'invalid-local-acceptance-matrix';
+  if (executionMode !== 'execute') return 'reasonable-local-acceptance-plan-needs-execution';
+  if (!evidenceOk) return 'local-acceptance-execution-evidence-incomplete';
+  return 'reasonable-local-acceptance-evidence';
 }
 
 function writeOptionalOutputs(report, options) {
@@ -624,6 +788,7 @@ function writeOptionalOutputs(report, options) {
 }
 
 function consoleReport(report, options) {
+  const caseDesignReview = report.case_design_review || evaluateCaseDesign(report);
   if (options.printFull || report.execution_mode === 'dry-run') return report;
   return {
     ok: report.ok,
@@ -665,11 +830,13 @@ function consoleReport(report, options) {
       errors: step.errors,
     })),
     summary: report.summary,
+    case_design_review: caseDesignReview,
     errors: report.errors,
   };
 }
 
 function renderMarkdownReport(report) {
+  const caseDesignReview = report.case_design_review || evaluateCaseDesign(report);
   const stepRows = report.steps.length > 0
     ? report.steps.map(step => (
       `| \`${step.id}\` | ${step.ok ? 'PASS' : 'FAIL'} | \`${step.kind}\` | \`${step.stdout_log}\` |`
@@ -702,6 +869,12 @@ function renderMarkdownReport(report) {
       `- Retained \`${item.tmp_root}\` for inspection; workspace \`${item.workspace_dir}\`.`
     )).join('\n')
     : '- None retained.';
+  const coveredDimensionLines = caseDesignReview.covered_dimensions.length > 0
+    ? caseDesignReview.covered_dimensions.map(item => `- \`${item}\``).join('\n')
+    : '- None.';
+  const missingDimensionLines = caseDesignReview.missing_dimensions.length > 0
+    ? caseDesignReview.missing_dimensions.map(item => `- \`${item}\``).join('\n')
+    : '- None.';
   const findingLines = report.steps.length > 0
     ? [
         '- Product behavior: no failing DevSeek runtime step was found in the covered T3 controlled user simulations.',
@@ -749,6 +922,22 @@ function renderMarkdownReport(report) {
     '| Suite | User Simulation Focus | Executed Cases | Bridge Requests | Report |',
     '| --- | --- | --- | ---: | --- |',
     caseRows || '| `(dry-run)` | Plan only | `(not executed)` | `0` | `(not written)` |',
+    '',
+    '## Case Design Review',
+    '',
+    `- Profile: \`${caseDesignReview.coverage_profile}\``,
+    `- Verdict: \`${caseDesignReview.verdict}\``,
+    `- Enforced: \`${caseDesignReview.enforced}\``,
+    `- Acceptance plan eligible: \`${caseDesignReview.acceptance_plan_eligible}\``,
+    `- Acceptance execution eligible: \`${caseDesignReview.acceptance_execution_eligible}\``,
+    `- Release claim permitted: \`${caseDesignReview.release_claim_permitted}\``,
+    `- Release claim reason: ${caseDesignReview.release_claim_reason}`,
+    '',
+    'Covered dimensions:',
+    coveredDimensionLines,
+    '',
+    'Missing dimensions:',
+    missingDimensionLines,
     '',
     '## Execution',
     '',
@@ -813,6 +1002,20 @@ function listOption(argv, key, fallback) {
   const raw = optionValue(argv, key);
   if (!raw) return [...fallback];
   return raw.split(',').map(value => value.trim()).filter(Boolean);
+}
+
+function includesEvery(values, requiredValues) {
+  return requiredValues.every(value => values.includes(value));
+}
+
+function plannedControlledSuites(plan) {
+  return (plan.steps || [])
+    .filter(step => step.kind === 'controlled-vsix-user-simulation')
+    .map(step => {
+      const suiteIndex = Array.isArray(step.command) ? step.command.indexOf('--suite') : -1;
+      return suiteIndex >= 0 ? step.command[suiteIndex + 1] : step.id?.replace(/^controlled-/, '');
+    })
+    .filter(Boolean);
 }
 
 function defaultRunId(now = new Date()) {

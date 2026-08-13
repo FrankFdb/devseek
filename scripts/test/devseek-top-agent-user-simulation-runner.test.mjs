@@ -26,6 +26,13 @@ test('top-agent user simulation runner plans targeted checks before broad contro
   assert.equal(report.strategy.claims_permitted, false);
   assert.equal(report.plan.strategy, 'fixpoint-before-broad-regression');
   assert.equal(report.plan.user_simulation_boundary.includes('not T5 live DeepSeek Web'), true);
+  assert.equal(report.plan.coverage_profile, 'top-agent-local-acceptance');
+  assert.equal(report.case_design_review.ok, true, JSON.stringify(report.case_design_review, null, 2));
+  assert.equal(report.case_design_review.enforced, true);
+  assert.equal(report.case_design_review.acceptance_plan_eligible, true);
+  assert.equal(report.case_design_review.acceptance_execution_eligible, false);
+  assert.equal(report.case_design_review.release_claim_permitted, false);
+  assert.deepEqual(report.case_design_review.missing_dimensions, []);
   assert.equal(report.plan.steps[0].id, 'targeted-local-contracts');
   assert.equal(report.plan.steps[0].kind, 'targeted-local-contract');
 
@@ -67,6 +74,12 @@ test('top-agent user simulation runner can narrow to one focused controlled suit
   assert.equal(report.plan.steps[0].id, 'controlled-realistic-product');
   assert.equal(report.plan.steps[0].command.includes('--report'), true);
   assert.equal(report.plan.steps[0].live_provider, false);
+  assert.equal(report.plan.coverage_profile, 'focused-regression');
+  assert.equal(report.case_design_review.ok, true);
+  assert.equal(report.case_design_review.enforced, false);
+  assert.equal(report.case_design_review.acceptance_plan_eligible, false);
+  assert.equal(report.case_design_review.acceptance_execution_eligible, false);
+  assert.ok(report.case_design_review.missing_dimensions.includes('provider_reply_corruption'));
 });
 
 test('top-agent user simulation runner can retain only the last controlled VSIX window', async () => {
@@ -228,6 +241,8 @@ test('top-agent user simulation runner renders markdown from existing evidence w
     assert.equal(summary.report_render_mode, 'from-report');
     assert.equal(summary.steps.length, 1);
     assert.match(markdown, /## Actual User Cases/);
+    assert.match(markdown, /## Case Design Review/);
+    assert.match(markdown, /focused-regression-only-not-release-acceptance/);
     assert.match(markdown, /Report render mode: `from-report`/);
     assert.match(markdown, /## Findings And Fixes/);
     assert.match(markdown, /does not overwrite the original execution evidence/);
