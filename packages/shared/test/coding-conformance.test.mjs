@@ -172,6 +172,7 @@ test('projection comparison treats Surface-local identities as evidence refs, no
 test('projection comparison ignores auxiliary host validation but still rejects extra visible work', () => {
   const fixture = findFixture('verify-repair-reverify');
   const withHostValidation = structuredClone(fixture.expected);
+  withHostValidation.toolExecutions.find(receipt => receipt.status === 'failed').effectStarted = false;
   withHostValidation.toolExecutions.splice(3, 0, {
     sequence: 4,
     actionId: 'vscode-auto-validation',

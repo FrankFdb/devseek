@@ -306,7 +306,6 @@ function semanticToolExecutions(
     actionRole: `effect-${index + 1}`,
     effects: [...receipt.effects].sort(),
     status: receipt.status,
-    effectStarted: receipt.effectStarted ?? null,
     settledEvidence: receipt.evidenceRefs.length > 0,
   }));
 }
