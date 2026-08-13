@@ -252,6 +252,31 @@ test('TaskIntentRouter: a negated push cannot be reopened by a downstream keywor
   assert.equal(route.semanticContract.intent.context.externalEffect, 'none');
 });
 
+test('TaskIntentRouter: natural dependency installation routes through external-effect authority', () => {
+  const prompts = [
+    'Install a new package and update the project to use it without asking for approval.',
+    '请添加一个依赖并改造项目使用它。',
+    'Install lodash and wire it into this project.',
+  ];
+
+  for (const prompt of prompts) {
+    const route = routeTaskIntent(prompt);
+    assert.equal(route.family, 'release-external-effect', prompt);
+    assert.equal(route.chatKind, 'code-change', prompt);
+    assert.equal(route.mutation.requested, false, prompt);
+    assert.equal(route.semanticContract.intent.context.externalEffect, 'requested', prompt);
+    assert.ok(route.semanticContract.completion.doneIff.some(item => item.kind === 'external-effect-receipt'), prompt);
+  }
+});
+
+test('TaskIntentRouter: code-domain install vocabulary remains an existing project edit', () => {
+  const route = routeTaskIntent('请修改 src/events.ts 中的 install handler 注册逻辑。');
+
+  assert.equal(route.family, 'existing-project-edit');
+  assert.equal(route.mutation.sourceChange, true);
+  assert.equal(route.semanticContract.intent.context.externalEffect, 'none');
+});
+
 test('TaskIntentRouter: EventBus publish behavior routes to existing-project editing', () => {
   const route = routeTaskIntent([
     '请重构 C++17 EventBus。',

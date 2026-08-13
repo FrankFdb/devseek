@@ -33,7 +33,10 @@ export interface ChatRouteDecision {
 export class ChatRouteController {
   decide(input: ChatRouteInput): ChatRouteDecision {
     const intentRoutingText = getIntentRoutingText(input.userDisplay, input.prompt);
-    let intent = decideChatIntent(intentRoutingText, input.semanticContext);
+    const semanticContext = input.semanticIntent
+      ? { ...(input.semanticContext ?? {}), semanticIntent: input.semanticIntent }
+      : input.semanticContext;
+    let intent = decideChatIntent(intentRoutingText, semanticContext);
     intent = governSemanticIntent(intent, input.semanticIntent);
 
     const learnedKind = input.lookupLearnedIntent?.(intentRoutingText) ?? null;

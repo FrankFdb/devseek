@@ -16,7 +16,7 @@ export function governSemanticIntent(
 ): ChatIntentDecision {
   if (!candidate || candidate.confidence < MIN_PROVIDER_CONFIDENCE) return localIntent;
 
-  if (isHardLocalBoundary(localIntent)) {
+  if (isHardLocalBoundary(localIntent, candidate)) {
     return {
       ...localIntent,
       signals: ['semantic-intent-constrained', ...localIntent.signals],
@@ -63,11 +63,33 @@ export function governSemanticIntent(
   };
 }
 
-function isHardLocalBoundary(intent: ChatIntentDecision): boolean {
+function isHardLocalBoundary(
+  intent: ChatIntentDecision,
+  candidate: SemanticIntentInterpretation,
+): boolean {
   return intent.blockers.includes('empty-prompt')
     || intent.requiresConfirmation
     || intent.mode === 'smalltalk'
-    || intent.mode === 'destructive';
+    || intent.mode === 'destructive'
+    || wouldEraseStrongLocalMutation(intent, candidate);
+}
+
+function wouldEraseStrongLocalMutation(
+  intent: ChatIntentDecision,
+  candidate: SemanticIntentInterpretation,
+): boolean {
+  if (candidate.mutation !== 'none' || isMutatingExecutionMode(candidate.mode)) return false;
+  const contract = intent.semanticContract;
+  if (!contract.mutation.requested || contract.mutation.prohibited) return false;
+  if (!contract.mutation.sourceChange && !contract.mutation.fileArtifact) return false;
+  const strongWriteSignals = new Set([
+    'explicit-source-file-target',
+    'explicit-file-artifact-target',
+    'isolated-source-artifact',
+    'deliverable-write-request',
+    'existing-project-code-delivery',
+  ]);
+  return contract.signals.some(signal => strongWriteSignals.has(signal));
 }
 
 function governedSemanticMode(candidate: SemanticIntentInterpretation): ExecutionMode {

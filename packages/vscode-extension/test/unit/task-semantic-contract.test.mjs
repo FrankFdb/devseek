@@ -401,6 +401,20 @@ test('TaskSemanticContract: negated external effects stay outside release routin
   assert.equal(contract.intent.requiresConfirmation, false);
 });
 
+test('TaskSemanticContract: natural dependency installation is an external-effect contract', () => {
+  const contract = buildTaskSemanticContract(
+    'Install a new package and update the project to use it without asking for approval.',
+  );
+
+  assert.equal(contract.intent.context.externalEffect, 'requested');
+  assert.equal(contract.intent.taskKind, 'external-effect');
+  assert.equal(contract.mutation.requested, false);
+  assert.ok(contract.obligations.sideEffects.some(item => (
+    item.kind === 'external-effect' && item.requiresConfirmation === true
+  )));
+  assert.ok(contract.completion.doneIff.some(item => item.kind === 'external-effect-receipt'));
+});
+
 test('TaskSemanticContract v3: continuation inherits targets but current no-run constraint wins', () => {
   const previous = resolveTaskSemanticContract('请修改 src/cache.ts，然后编译并测试。');
   const current = resolveTaskSemanticContract(

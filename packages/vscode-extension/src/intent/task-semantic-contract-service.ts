@@ -8,6 +8,7 @@ import {
   type TaskSemanticScope,
 } from '../task-semantic-contract';
 import { buildLocalIntentContract } from './local-intent-contract';
+import type { SemanticIntentInterpretation } from './semantic-intent';
 import { buildTaskSemanticObligationContracts } from './task-semantic-obligations';
 
 export interface TaskSemanticProjectInstructionInput {
@@ -38,16 +39,22 @@ export interface TaskSemanticRevisionInput {
 export interface TaskSemanticResolutionContext {
   current?: TaskSemanticContract;
   previous?: TaskSemanticContract;
+  semanticIntent?: SemanticIntentInterpretation;
   projectInstructions?: TaskSemanticProjectInstructionInput;
   revision?: TaskSemanticRevisionInput;
 }
+
+const MIN_SEMANTIC_PROPOSAL_CONFIDENCE = 0.62;
 
 /** Resolves lexical intent, cross-turn inheritance, and project rules once. */
 export function resolveTaskSemanticContract(
   promptText: string,
   context: TaskSemanticResolutionContext = {},
 ): TaskSemanticContract {
-  const current = normalizeSemanticContract(context.current ?? buildTaskSemanticContract(promptText));
+  const current = applySemanticIntentProposal(
+    normalizeSemanticContract(context.current ?? buildTaskSemanticContract(promptText)),
+    context.semanticIntent,
+  );
   const previous = context.previous ? normalizeSemanticContract(context.previous) : undefined;
   const revision = context.revision ?? { strategy: previous ? 'merge' : 'initial' };
   const effective = previous
@@ -74,6 +81,425 @@ function normalizeSemanticContract(contract: TaskSemanticContract): TaskSemantic
     return contract;
   }
   return buildTaskSemanticContract(String(contract.prompt || ''));
+}
+
+function applySemanticIntentProposal(
+  contract: TaskSemanticContract,
+  candidate: SemanticIntentInterpretation | undefined,
+): TaskSemanticContract {
+  if (!candidate || candidate.confidence < MIN_SEMANTIC_PROPOSAL_CONFIDENCE) return contract;
+  const proposalSignals = [
+    'semantic-intent-proposal',
+    `semantic-task:${candidate.taskKind}`,
+    `semantic-mutation:${candidate.mutation}`,
+  ];
+  if (isSemanticProposalConstrainedByLocalBoundary(contract, candidate)) {
+    return {
+      ...contract,
+      signals: uniqueStrings([
+        'semantic-intent-constrained',
+        ...proposalSignals,
+        ...contract.signals,
+      ]),
+    };
+  }
+
+  const accepted = projectAcceptedSemanticProposal(contract, candidate);
+  if (accepted === contract) {
+    return {
+      ...contract,
+      signals: uniqueStrings([
+        ...proposalSignals,
+        ...contract.signals,
+      ]),
+    };
+  }
+  return {
+    ...accepted,
+    signals: uniqueStrings([
+      'semantic-proposal-accepted',
+      ...proposalSignals,
+      ...accepted.signals,
+    ]),
+  };
+}
+
+function isSemanticProposalConstrainedByLocalBoundary(
+  contract: TaskSemanticContract,
+  candidate: SemanticIntentInterpretation,
+): boolean {
+  if (contract.intent.context.empty || contract.intent.context.unsafeSecretHarvesting) return true;
+  if (contract.kind === 'destructive' || candidate.taskKind === 'destructive' || candidate.mutation === 'delete') {
+    return true;
+  }
+  return contract.mutation.prohibited && semanticProposalRequestsWorkspaceMutation(candidate);
+}
+
+function semanticProposalRequestsWorkspaceMutation(candidate: SemanticIntentInterpretation): boolean {
+  return candidate.mutation === 'create-file'
+    || candidate.mutation === 'modify-source'
+    || candidate.mutation === 'delete'
+    || candidate.mutation === 'external-effect';
+}
+
+function projectAcceptedSemanticProposal(
+  contract: TaskSemanticContract,
+  candidate: SemanticIntentInterpretation,
+): TaskSemanticContract {
+  if (candidate.taskKind === 'smalltalk' || candidate.taskKind === 'question-answer') {
+    return projectConversationSemanticProposal(contract, candidate);
+  }
+  if (candidate.requiresClarification || candidate.taskKind === 'ambiguous') {
+    return projectClarificationSemanticProposal(contract, candidate);
+  }
+  if (candidate.taskKind === 'existing-project-edit' || candidate.taskKind === 'standalone-program') {
+    return projectSourceMutationSemanticProposal(contract, candidate);
+  }
+  if (candidate.taskKind === 'file-artifact' || candidate.mutation === 'create-file') {
+    return projectFileArtifactSemanticProposal(contract, candidate);
+  }
+  if (candidate.mutation === 'modify-source') {
+    return projectSourceMutationSemanticProposal(contract, candidate);
+  }
+  if (candidate.mutation === 'run-only' || candidate.taskKind === 'terminal-validation') {
+    return projectRunOnlySemanticProposal(contract, candidate);
+  }
+  if (candidate.mutation === 'none'
+    && ['read-only-analysis', 'planning', 'code-review'].includes(candidate.taskKind)) {
+    return projectReadOnlySemanticProposal(contract, candidate);
+  }
+  return contract;
+}
+
+function projectConversationSemanticProposal(
+  contract: TaskSemanticContract,
+  candidate: SemanticIntentInterpretation,
+): TaskSemanticContract {
+  if (!canSemanticNoMutationNarrowLocalContract(contract)) return contract;
+  return {
+    ...contract,
+    kind: 'general',
+    scope: 'none',
+    mutation: clearWorkspaceMutation(contract, false),
+    read: {
+      requested: false,
+      contentRequested: false,
+      targets: [],
+    },
+    validation: clearRuntimeValidation(contract.validation),
+    quality: {
+      formalProjectRequired: false,
+    },
+    taskContract: clearMutationTaskContract(contract.taskContract, {
+      keepVerificationResult: false,
+    }),
+    signals: uniqueStrings([
+      `semantic-proposal:${candidate.taskKind}`,
+      'semantic-proposal:no-workspace-action',
+      ...contract.signals,
+    ]),
+  };
+}
+
+function projectClarificationSemanticProposal(
+  contract: TaskSemanticContract,
+  candidate: SemanticIntentInterpretation,
+): TaskSemanticContract {
+  if (!canSemanticNoMutationNarrowLocalContract(contract)) return contract;
+  return {
+    ...contract,
+    kind: 'general',
+    scope: 'none',
+    mutation: clearWorkspaceMutation(contract, false),
+    validation: clearRuntimeValidation(contract.validation),
+    quality: {
+      formalProjectRequired: false,
+    },
+    taskContract: clearMutationTaskContract(contract.taskContract, {
+      keepVerificationResult: false,
+    }),
+    signals: uniqueStrings([
+      'semantic-proposal:clarification',
+      `semantic-proposal:${candidate.taskKind}`,
+      ...contract.signals,
+    ]),
+  };
+}
+
+function projectFileArtifactSemanticProposal(
+  contract: TaskSemanticContract,
+  candidate: SemanticIntentInterpretation,
+): TaskSemanticContract {
+  const targets = uniquePaths([
+    ...contract.mutation.targets,
+    ...contract.taskContract.deliverableTargets,
+    ...candidate.targetPaths,
+  ]);
+  const preserveSourceChange = candidate.taskKind !== 'file-artifact'
+    && contract.mutation.sourceChange
+    && (contract.taskContract.deliverables.includes('source-change')
+      || contract.mutation.targets.some(isSourceContextPath));
+  const mutation = {
+    requested: true,
+    prohibited: false,
+    sourceChange: preserveSourceChange,
+    fileArtifact: true,
+    targets,
+  };
+  return {
+    ...contract,
+    kind: preserveSourceChange ? contract.kind : 'file-artifact',
+    scope: preserveSourceChange ? contract.scope : resolveArtifactScope(contract.scope, targets),
+    mutation,
+    validation: {
+      ...contract.validation,
+      requested: contract.validation.requested || candidate.requiresTerminal,
+      runRequested: contract.validation.runProhibited ? false : contract.validation.runRequested,
+      testRequested: contract.validation.runProhibited ? false : contract.validation.testRequested,
+      stdoutRequested: contract.validation.runProhibited ? false : contract.validation.stdoutRequested,
+      fileCheckRequested: true,
+    },
+    taskContract: {
+      ...contract.taskContract,
+      taskShapes: uniqueStrings([
+        ...contract.taskContract.taskShapes,
+        'documentation',
+      ]) as TaskContract['taskShapes'],
+      deliverableTargets: targets,
+      deliverables: uniqueStrings([
+        ...contract.taskContract.deliverables.filter(kind => kind !== 'source-change' || preserveSourceChange),
+        'report',
+      ]) as TaskContract['deliverables'],
+      verificationContract: {
+        ...contract.taskContract.verificationContract,
+        requireArtifactReadback: true,
+      },
+    },
+    signals: uniqueStrings([
+      'semantic-proposal:file-artifact',
+      ...contract.signals,
+    ]),
+  };
+}
+
+function projectSourceMutationSemanticProposal(
+  contract: TaskSemanticContract,
+  candidate: SemanticIntentInterpretation,
+): TaskSemanticContract {
+  const targets = uniquePaths([
+    ...contract.mutation.targets,
+    ...contract.taskContract.deliverableTargets.filter(isSourceContextPath),
+    ...candidate.targetPaths,
+  ]);
+  const standalone = candidate.taskKind === 'standalone-program';
+  const mutation = {
+    requested: true,
+    prohibited: false,
+    sourceChange: true,
+    fileArtifact: contract.mutation.fileArtifact,
+    targets,
+  };
+  return {
+    ...contract,
+    kind: standalone ? 'standalone-code' : 'existing-project-code',
+    scope: standalone ? 'standalone' : 'existing-project',
+    mutation,
+    validation: {
+      ...contract.validation,
+      requested: contract.validation.requested || candidate.requiresTerminal,
+      runRequested: contract.validation.runProhibited
+        ? false
+        : contract.validation.runRequested || candidate.requiresTerminal,
+    },
+    taskContract: {
+      ...contract.taskContract,
+      taskShapes: uniqueStrings([
+        ...contract.taskContract.taskShapes,
+        standalone ? 'standalone' : 'existing-project',
+      ]) as TaskContract['taskShapes'],
+      deliverableTargets: targets.length > 0 ? targets : contract.taskContract.deliverableTargets,
+      deliverables: uniqueStrings([
+        ...contract.taskContract.deliverables,
+        'source-change',
+        ...(candidate.requiresTerminal ? ['verification-result'] : []),
+      ]) as TaskContract['deliverables'],
+    },
+    signals: uniqueStrings([
+      standalone ? 'semantic-proposal:standalone-code' : 'semantic-proposal:existing-project-code',
+      ...contract.signals,
+    ]),
+  };
+}
+
+function projectRunOnlySemanticProposal(
+  contract: TaskSemanticContract,
+  candidate: SemanticIntentInterpretation,
+): TaskSemanticContract {
+  const targets = uniquePaths([
+    ...contract.read.targets,
+    ...contract.taskContract.inputs,
+    ...candidate.targetPaths,
+  ]);
+  const narrowed = canSemanticNoMutationNarrowLocalContract(contract);
+  const baseTaskContract = narrowed
+    ? clearMutationTaskContract(contract.taskContract, { keepVerificationResult: true })
+    : contract.taskContract;
+  return {
+    ...contract,
+    kind: narrowed || !contract.mutation.requested ? 'validation' : contract.kind,
+    scope: narrowed ? 'unknown' : contract.scope,
+    mutation: narrowed
+      ? clearWorkspaceMutation(contract, contract.mutation.prohibited)
+      : contract.mutation,
+    read: {
+      ...contract.read,
+      requested: contract.read.requested || targets.length > 0,
+      targets,
+    },
+    validation: {
+      ...contract.validation,
+      requested: true,
+      runRequested: !contract.validation.runProhibited,
+    },
+    taskContract: {
+      ...baseTaskContract,
+      taskShapes: uniqueStrings([
+        ...baseTaskContract.taskShapes,
+        'verification',
+      ]) as TaskContract['taskShapes'],
+      inputs: uniquePaths([...baseTaskContract.inputs, ...targets]),
+      deliverables: uniqueStrings([
+        ...baseTaskContract.deliverables,
+        'verification-result',
+      ]) as TaskContract['deliverables'],
+    },
+    signals: uniqueStrings([
+      'semantic-proposal:terminal-validation',
+      ...(narrowed ? ['semantic-proposal:narrowed-no-mutation'] : []),
+      ...contract.signals,
+    ]),
+  };
+}
+
+function projectReadOnlySemanticProposal(
+  contract: TaskSemanticContract,
+  candidate: SemanticIntentInterpretation,
+): TaskSemanticContract {
+  const targets = uniquePaths([...contract.read.targets, ...candidate.targetPaths]);
+  const narrowed = canSemanticNoMutationNarrowLocalContract(contract);
+  if ((contract.mutation.requested || contract.taskContract.deliverableTargets.length > 0) && !narrowed) {
+    return contract;
+  }
+  const nextMutation = narrowed
+    ? clearWorkspaceMutation(contract, contract.mutation.prohibited)
+    : contract.mutation;
+  const baseTaskContract = narrowed
+    ? clearMutationTaskContract(contract.taskContract, { keepVerificationResult: false })
+    : contract.taskContract;
+  return {
+    ...contract,
+    kind: candidate.taskKind === 'planning' ? 'general' : 'read-only',
+    scope: nextMutation.requested ? contract.scope : 'none',
+    mutation: nextMutation,
+    read: {
+      ...contract.read,
+      requested: contract.read.requested || targets.length > 0 || candidate.requiresWorkspace,
+      targets,
+    },
+    validation: narrowed ? clearRuntimeValidation(contract.validation) : contract.validation,
+    quality: narrowed
+      ? { formalProjectRequired: false }
+      : contract.quality,
+    taskContract: {
+      ...baseTaskContract,
+      taskShapes: uniqueStrings([
+        ...baseTaskContract.taskShapes,
+        candidate.taskKind === 'planning' ? 'inspection' : 'inspection',
+      ]) as TaskContract['taskShapes'],
+      inputs: uniquePaths([...baseTaskContract.inputs, ...targets]),
+    },
+    signals: uniqueStrings([
+      `semantic-proposal:${candidate.taskKind}`,
+      ...(narrowed ? ['semantic-proposal:narrowed-no-mutation'] : []),
+      ...contract.signals,
+    ]),
+  };
+}
+
+function canSemanticNoMutationNarrowLocalContract(contract: TaskSemanticContract): boolean {
+  if (contract.kind === 'destructive') return false;
+  if (contract.mutation.fileArtifact || contract.taskContract.deliverableTargets.length > 0) return false;
+  const strongWriteSignals = new Set([
+    'explicit-source-file-target',
+    'explicit-file-artifact-target',
+    'isolated-source-artifact',
+    'deliverable-write-request',
+    'existing-project-code-delivery',
+  ]);
+  if (contract.signals.some(signal => strongWriteSignals.has(signal))) return false;
+  return contract.mutation.requested
+    || contract.mutation.prohibited
+    || contract.validation.requested
+    || contract.validation.compileRequested
+    || contract.validation.runRequested
+    || contract.validation.testRequested
+    || contract.taskContract.deliverables.includes('source-change')
+    || contract.taskContract.deliverables.includes('verification-result');
+}
+
+function clearWorkspaceMutation(
+  _contract: TaskSemanticContract,
+  preserveProhibition: boolean,
+): TaskSemanticContract['mutation'] {
+  return {
+    requested: false,
+    prohibited: preserveProhibition,
+    sourceChange: false,
+    fileArtifact: false,
+    targets: [],
+  };
+}
+
+function clearRuntimeValidation(
+  validation: TaskSemanticContract['validation'],
+): TaskSemanticContract['validation'] {
+  return {
+    ...validation,
+    requested: false,
+    compileRequested: false,
+    runRequested: false,
+    testRequested: false,
+    stdoutRequested: false,
+    fileCheckRequested: false,
+  };
+}
+
+function clearMutationTaskContract(
+  taskContract: TaskContract,
+  options: { keepVerificationResult: boolean },
+): TaskContract {
+  return {
+    ...taskContract,
+    deliverableTargets: [],
+    deliverables: taskContract.deliverables.filter(deliverable =>
+      deliverable !== 'source-change'
+      && (options.keepVerificationResult || deliverable !== 'verification-result')
+    ) as TaskContract['deliverables'],
+    verificationContract: {
+      ...taskContract.verificationContract,
+      requiredSourcePaths: [],
+      requireArtifactReadback: false,
+      maxWrittenFiles: undefined,
+    },
+  };
+}
+
+function resolveArtifactScope(
+  current: TaskSemanticScope,
+  targets: readonly string[],
+): TaskSemanticScope {
+  if (current === 'existing-project' || current === 'standalone') return current;
+  return targets.length > 0 ? 'unknown' : current;
 }
 
 function mergeTaskSemanticContracts(

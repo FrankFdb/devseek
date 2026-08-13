@@ -85,6 +85,8 @@ for (const item of EXTERNAL_INTENT_CORPUS) {
       assert.equal(request?.kind, item.expect.interaction);
       assert.equal(decision.intent.blockers.includes('semantic-clarification-needed'), true);
     }
+
+    assertSemanticContractProjection(decision, item);
   });
 }
 
@@ -141,6 +143,9 @@ test('Semantic intent routing matrix: no-write run-only cases are executable but
     assert.equal(decision.workflow.kind, 'run-agent', item.id);
     assert.equal(decision.toolPolicy.mode, 'run', item.id);
     assert.equal(decision.intent.blockers.includes('explicit-no-change'), false, item.id);
+    assert.equal(decision.intent.semanticContract.mutation.requested, false, item.id);
+    assert.equal(decision.intent.semanticContract.mutation.sourceChange, false, item.id);
+    assert.equal(decision.intent.semanticContract.validation.runRequested, true, item.id);
   }
 });
 
@@ -164,7 +169,93 @@ test('Semantic intent routing matrix: ambiguous corpus asks instead of executing
     });
     assert.equal(request?.kind, 'clarify', item.id);
     assert.equal(decision.intent.blockers.includes('semantic-clarification-needed'), true, item.id);
+    assert.equal(decision.intent.semanticContract.mutation.requested, false, item.id);
+    assert.equal(decision.intent.semanticContract.mutation.sourceChange, false, item.id);
+    assert.equal(decision.intent.semanticContract.validation.requested, false, item.id);
   }
 });
+
+function assertSemanticContractProjection(decision, item) {
+  const contract = decision.intent.semanticContract;
+  assert.ok(contract.signals.includes('semantic-intent-proposal'), item.id);
+
+  if (item.taskKind === 'smalltalk' || item.taskKind === 'question-answer') {
+    assert.equal(contract.mutation.requested, false, item.id);
+    assert.equal(contract.mutation.sourceChange, false, item.id);
+    assert.equal(contract.mutation.fileArtifact, false, item.id);
+    assert.equal(contract.validation.requested, false, item.id);
+    assert.equal(contract.taskContract.deliverables.includes('source-change'), false, item.id);
+    return;
+  }
+
+  if (['read-only-analysis', 'planning', 'code-review'].includes(item.taskKind)) {
+    assert.equal(contract.mutation.requested, false, item.id);
+    assert.equal(contract.mutation.sourceChange, false, item.id);
+    assert.equal(contract.mutation.fileArtifact, false, item.id);
+    assert.equal(contract.taskContract.deliverables.includes('source-change'), false, item.id);
+    assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false, item.id);
+    if (item.semanticIntent.requiresWorkspace || item.semanticIntent.targetPaths.length > 0) {
+      assert.equal(contract.read.requested, true, item.id);
+    }
+    assertTargetsIncluded(contract.read.targets, item.semanticIntent.targetPaths, item.id);
+    return;
+  }
+
+  if (item.taskKind === 'standalone-program') {
+    assert.equal(contract.kind, 'standalone-code', item.id);
+    assert.equal(contract.scope, 'standalone', item.id);
+    assert.equal(contract.mutation.requested, true, item.id);
+    assert.equal(contract.mutation.sourceChange, true, item.id);
+    assert.equal(contract.mutation.fileArtifact, false, item.id);
+    assert.ok(contract.taskContract.deliverables.includes('source-change'), item.id);
+    if (item.semanticIntent.requiresTerminal) {
+      assert.equal(contract.validation.runRequested, true, item.id);
+    }
+    return;
+  }
+
+  if (item.taskKind === 'file-artifact') {
+    assert.equal(contract.kind, 'file-artifact', item.id);
+    assert.equal(contract.mutation.requested, true, item.id);
+    assert.equal(contract.mutation.fileArtifact, true, item.id);
+    assert.equal(contract.mutation.sourceChange, false, item.id);
+    assert.equal(contract.validation.fileCheckRequested, true, item.id);
+    assert.equal(contract.taskContract.verificationContract.requireArtifactReadback, true, item.id);
+    assert.ok(contract.taskContract.deliverables.includes('report'), item.id);
+    assertTargetsIncluded(contract.mutation.targets, item.semanticIntent.targetPaths, item.id);
+    assertTargetsIncluded(contract.taskContract.deliverableTargets, item.semanticIntent.targetPaths, item.id);
+    return;
+  }
+
+  if (item.taskKind === 'existing-project-edit') {
+    assert.equal(contract.kind, 'existing-project-code', item.id);
+    assert.equal(contract.scope, 'existing-project', item.id);
+    assert.equal(contract.mutation.requested, true, item.id);
+    assert.equal(contract.mutation.sourceChange, true, item.id);
+    assert.equal(contract.mutation.fileArtifact, false, item.id);
+    assert.ok(contract.taskContract.deliverables.includes('source-change'), item.id);
+    assertTargetsIncluded(contract.mutation.targets, item.semanticIntent.targetPaths, item.id);
+    if (item.semanticIntent.requiresTerminal) {
+      assert.equal(contract.validation.runRequested || contract.validation.testRequested, true, item.id);
+    }
+    return;
+  }
+
+  if (item.taskKind === 'terminal-validation') {
+    assert.equal(contract.kind, 'validation', item.id);
+    assert.equal(contract.mutation.requested, false, item.id);
+    assert.equal(contract.mutation.sourceChange, false, item.id);
+    assert.equal(contract.mutation.fileArtifact, false, item.id);
+    assert.equal(contract.validation.requested, true, item.id);
+    assert.equal(contract.validation.runRequested, true, item.id);
+    assert.ok(contract.taskContract.deliverables.includes('verification-result'), item.id);
+  }
+}
+
+function assertTargetsIncluded(actual, expected, id) {
+  for (const target of expected) {
+    assert.ok(actual.includes(target), `${id} missing target ${target}`);
+  }
+}
 
 console.log('\nSemantic intent routing matrix tests passed.\n');

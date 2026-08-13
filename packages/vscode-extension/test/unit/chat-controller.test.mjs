@@ -360,8 +360,46 @@ test('ChatRouteController: provider semantic intent can upgrade ambiguous local 
   assert.equal(decision.intent.mode, 'edit');
   assert.equal(decision.workflow.kind, 'edit-agent');
   assert.ok(decision.intent.signals.includes('semantic-intent-provider'));
-  assert.ok(decision.intent.signals.includes('semantic-intent-overrode-local'));
+  assert.ok(decision.intent.signals.includes('semantic-proposal-accepted'));
+  assert.equal(decision.intent.semanticContract.kind, 'standalone-code');
+  assert.equal(decision.intent.semanticContract.mutation.sourceChange, true);
   assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
+});
+
+test('ChatRouteController: provider semantic file-artifact proposal enters the local task contract', () => {
+  const controller = new ChatRouteController();
+  const prompt = 'Can you prepare the audit?';
+  const decision = controller.decide({
+    userDisplay: prompt,
+    prompt,
+    files: [],
+    agentEnabled: true,
+    semanticIntent: {
+      version: 'devseek.semantic-intent/v1',
+      source: 'test',
+      mode: 'edit',
+      taskKind: 'file-artifact',
+      confidence: 0.93,
+      mutation: 'create-file',
+      targetPaths: ['docs/audit.md'],
+      requiresWorkspace: true,
+      requiresTerminal: false,
+      requiresExternalEffect: false,
+      requiresClarification: false,
+      reason: '用户要求生成审计产物',
+    },
+  });
+
+  assert.equal(decision.intent.mode, 'edit');
+  assert.equal(decision.workflow.kind, 'edit-agent');
+  assert.equal(decision.intent.semanticContract.kind, 'file-artifact');
+  assert.equal(decision.intent.semanticContract.mutation.fileArtifact, true);
+  assert.equal(decision.intent.semanticContract.mutation.sourceChange, false);
+  assert.deepEqual(decision.intent.semanticContract.mutation.targets, ['docs/audit.md']);
+  assert.deepEqual(decision.intent.semanticContract.taskContract.deliverableTargets, ['docs/audit.md']);
+  assert.ok(decision.intent.semanticContract.taskContract.deliverables.includes('report'));
+  assert.equal(decision.intent.semanticContract.taskContract.verificationContract.requireArtifactReadback, true);
+  assert.ok(decision.intent.signals.includes('semantic-proposal-accepted'));
 });
 
 test('ChatRouteController: explicit no-change boundary cannot be escalated by semantic edit intent', () => {
@@ -392,6 +430,44 @@ test('ChatRouteController: explicit no-change boundary cannot be escalated by se
   assert.equal(decision.intent.blockers.includes('explicit-no-change'), true);
   assert.equal(decision.workflow.kind, 'inspect-agent');
   assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
+  assert.ok(decision.intent.signals.includes('semantic-intent-constrained'));
+  assert.equal(decision.intent.semanticContract.mutation.requested, false);
+  assert.equal(decision.intent.semanticContract.mutation.prohibited, true);
+  assert.equal(decision.intent.semanticContract.mutation.sourceChange, false);
+});
+
+test('ChatRouteController: explicit source edit cannot be erased by semantic read-only intent', () => {
+  const controller = new ChatRouteController();
+  const prompt = '请修改 src/main.ts，把标题改成英文';
+  const decision = controller.decide({
+    userDisplay: prompt,
+    prompt,
+    files: ['/workspace/src/main.ts'],
+    agentEnabled: true,
+    semanticIntent: {
+      version: 'devseek.semantic-intent/v1',
+      source: 'test',
+      mode: 'inspect',
+      taskKind: 'read-only-analysis',
+      confidence: 0.95,
+      mutation: 'none',
+      targetPaths: ['/workspace/src/main.ts'],
+      requiresWorkspace: true,
+      requiresTerminal: false,
+      requiresExternalEffect: false,
+      requiresClarification: false,
+      reason: '模型误判成只读分析',
+    },
+  });
+
+  assert.equal(decision.intent.mode, 'edit');
+  assert.equal(decision.workflow.kind, 'edit-agent');
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
+  assert.ok(decision.intent.signals.includes('semantic-intent-constrained'));
+  assert.equal(decision.intent.semanticContract.kind, 'existing-project-code');
+  assert.equal(decision.intent.semanticContract.mutation.requested, true);
+  assert.equal(decision.intent.semanticContract.mutation.sourceChange, true);
+  assert.deepEqual(decision.intent.semanticContract.mutation.targets, ['src/main.ts']);
 });
 
 test('ChatRouteController: semantic external-effect intent requires confirmation', () => {

@@ -16,6 +16,8 @@ export interface VsCodeCodingKernelTaskContractInput {
   readonly taskContract: TaskContract;
 }
 
+const DEPENDENCY_EXTERNAL_EFFECT_RE = /(?:安装[^，,。；;\n]{0,32}(?:依赖|npm\s*包|软件包|包|库|模块)|(?:新增|添加|引入)[^，,。；;\n]{0,24}(?:依赖|npm\s*包|软件包|包|库|模块)|\binstall\b[^,.;\n]{0,48}\b(?:packages?|dependenc(?:y|ies)|librar(?:y|ies)|modules?)\b|\b(?:add|introduce)\b[^,.;\n]{0,48}\b(?:new\s+)?dependenc(?:y|ies)\b|npm\s+(?:install|i|add|ci)|pnpm\s+(?:install|i|add)|yarn\s+(?:install|add)|pip\s+install)/iu;
+
 export function projectVsCodeCodingKernelTaskContract(
   input: VsCodeCodingKernelTaskContractInput,
 ): CodingKernelTaskContract {
@@ -31,6 +33,12 @@ export function projectVsCodeCodingKernelTaskContract(
   const workspaceMutationConfirmed = sourceChangeRequested || reportFileRequested;
   const explicitlyRequiresVerification = input.taskContract.qualityObligations.includes('validation')
     || (!reportFileRequested && input.taskContract.deliverables.includes('verification-result'));
+  const verificationRequired = resolveVsCodeVerificationRequirement({
+    userPrompt: input.userPrompt,
+    sourceChangeRequested,
+    reportFileRequested,
+    explicitlyRequiresVerification,
+  });
   return resolveCodingKernelTaskContract({
     prompt: input.userPrompt,
     surface: 'vscode',
@@ -39,8 +47,20 @@ export function projectVsCodeCodingKernelTaskContract(
     targetPaths: deliverableTargets,
     deliverableKinds,
     confirmedWorkspaceMutation: workspaceMutationConfirmed,
-    verificationRequired: sourceChangeRequested || explicitlyRequiresVerification,
+    verificationRequired,
   });
+}
+
+function resolveVsCodeVerificationRequirement(input: {
+  readonly userPrompt: string;
+  readonly sourceChangeRequested: boolean;
+  readonly reportFileRequested: boolean;
+  readonly explicitlyRequiresVerification: boolean;
+}): boolean | undefined {
+  if (input.sourceChangeRequested || input.explicitlyRequiresVerification) return true;
+  if (input.reportFileRequested) return false;
+  if (DEPENDENCY_EXTERNAL_EFFECT_RE.test(input.userPrompt)) return undefined;
+  return false;
 }
 
 function projectTaskMode(mode: ExecutionMode): CodingTaskMode {

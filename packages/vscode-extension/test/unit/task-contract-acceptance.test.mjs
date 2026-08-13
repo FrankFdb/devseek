@@ -105,7 +105,7 @@ test('VS Code preserves the shared verification default for a denied dependency 
     workflowMode: 'edit',
     contextFiles: [],
     workspaceRoot: '/workspace',
-    taskContract: makeTaskContract([]),
+    taskContract: makeEmptyTaskContract(),
   });
 
   assert.deepEqual(contract.deliverables.map(deliverable => deliverable.id), [
@@ -155,6 +155,27 @@ function makeTaskContract(qualityObligations) {
     deliverables: ['source-change'],
     constraints: [],
     qualityObligations,
+    evidenceRequirements: [],
+    verificationContract: {
+      requireSourceClaimGrounding: false,
+      requireTitle: false,
+      requiredSourcePaths: [],
+      exactCodeBlocks: [],
+      exactArtifactRequested: false,
+      requireArtifactReadback: false,
+    },
+  };
+}
+
+function makeEmptyTaskContract() {
+  return {
+    taskShapes: [],
+    objectives: [],
+    inputs: [],
+    deliverableTargets: [],
+    deliverables: [],
+    constraints: [],
+    qualityObligations: [],
     evidenceRequirements: [],
     verificationContract: {
       requireSourceClaimGrounding: false,
