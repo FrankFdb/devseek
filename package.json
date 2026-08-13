@@ -74,6 +74,8 @@
     "verify:post-r4-compact-index": "node --test scripts/test/devseek-post-r4-compact-index.test.mjs && node scripts/devseek-post-r4-compact-index-check.mjs",
     "generate:post-r4-local-regression-manifest": "node scripts/devseek-post-r4-local-regression-manifest-check.mjs --write",
     "verify:post-r4-local-regression-manifest": "node --test scripts/test/devseek-post-r4-local-regression-manifest.test.mjs && node scripts/devseek-post-r4-local-regression-manifest-check.mjs",
+    "run:top-agent-user-simulation": "node scripts/devseek-top-agent-user-simulation-runner.mjs",
+    "verify:top-agent-user-simulation-runner": "node --test scripts/test/devseek-top-agent-user-simulation-runner.test.mjs && node scripts/devseek-top-agent-user-simulation-runner.mjs --dry-run",
     "generate:c0-ledger-wiring": "node scripts/devseek-c0-ledger-wiring-check.mjs --write",
     "verify:c0-ledger-wiring": "node --test scripts/test/devseek-c0-ledger-wiring.test.mjs && node scripts/devseek-c0-ledger-wiring-check.mjs",
     "generate:c0-preregistration-wiring": "node scripts/devseek-c0-preregistration-wiring-check.mjs --write",

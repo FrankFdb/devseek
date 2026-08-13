@@ -807,6 +807,7 @@ function isAllowedUnpackagedProcessToolPath(normalized) {
   return [
     'scripts/devseek-phase0-12-verify.mjs',
     'scripts/devseek-post-r4-local-regression-manifest-check.mjs',
+    'scripts/devseek-top-agent-user-simulation-runner.mjs',
     'scripts/lib/devseek-post-r4-compact-index.mjs',
     'scripts/lib/devseek-post-r4-local-regression-manifest.mjs',
     'scripts/lib/devseek-r4-clean-runtime-limited-observation.mjs',
