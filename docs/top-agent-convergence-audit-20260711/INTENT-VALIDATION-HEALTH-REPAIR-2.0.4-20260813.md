@@ -78,8 +78,11 @@ Observed local result:
 - Controlled exact-VSIX `coding-conformance-product` passed: 7 cases, including
   `conformance-ci-green-repair` and `conformance-cn-tests-pass-repair`.
 - Top-agent user simulation runner contract passed: 11 cases.
+- Tagged-HEAD local acceptance passed after installing
+  `devseek-netai-2.0.4-debug.20260813.t203406.g09169e7.vsix`:
+  `20260813-intent-2.0.4-local-acceptance-g09169e7`.
 
-Full extension verification, packaging, local install, git tag, push, and top-agent user simulation are part of the 2.0.4 release loop.
+Full extension verification, packaging, local install, git tag, push, and top-agent user simulation completed for the 2.0.4 release loop.
 
 ## Remaining Qualification Boundary
 
