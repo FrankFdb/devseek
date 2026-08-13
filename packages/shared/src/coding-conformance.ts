@@ -274,7 +274,7 @@ function projectSemanticDimension(
     }
     case 'verifications': {
       const actionRoles = semanticActionRoles(projection.toolExecutions ?? []);
-      return (projection.verifications ?? []).map((verification, index) => ({
+      return coreVerifications(projection.verifications ?? []).map((verification, index) => ({
         sequence: index + 1,
         actionRole: actionRoles.get(verification.actionId) ?? 'unowned-action',
         status: verification.status,
@@ -301,7 +301,7 @@ function projectSemanticDimension(
 function semanticToolExecutions(
   receipts: readonly CodingToolExecutionProjection[],
 ): unknown[] {
-  return effectfulToolExecutions(receipts).map((receipt, index) => ({
+  return coreToolExecutions(receipts).map((receipt, index) => ({
     sequence: index + 1,
     actionRole: `effect-${index + 1}`,
     effects: [...receipt.effects].sort(),
@@ -314,16 +314,40 @@ function semanticToolExecutions(
 function semanticActionRoles(
   receipts: readonly CodingToolExecutionProjection[],
 ): Map<string, string> {
-  return new Map(effectfulToolExecutions(receipts).map((receipt, index) => [
+  return new Map(coreToolExecutions(receipts).map((receipt, index) => [
     receipt.actionId,
     `effect-${index + 1}`,
   ]));
+}
+
+function coreToolExecutions(
+  receipts: readonly CodingToolExecutionProjection[],
+): CodingToolExecutionProjection[] {
+  return effectfulToolExecutions(receipts).filter(receipt => !isAuxiliaryHostValidationTool(receipt));
+}
+
+function coreVerifications(
+  verifications: readonly CodingVerificationProjection[],
+): CodingVerificationProjection[] {
+  return verifications.filter(verification => !isAuxiliaryHostValidationVerification(verification));
 }
 
 function effectfulToolExecutions(
   receipts: readonly CodingToolExecutionProjection[],
 ): CodingToolExecutionProjection[] {
   return receipts.filter(receipt => receipt.effects.some(effect => effect !== 'read'));
+}
+
+function isAuxiliaryHostValidationTool(receipt: CodingToolExecutionProjection): boolean {
+  return receipt.tool === 'run_terminal'
+    && receipt.evidenceRefs.some(ref => ref.startsWith('vscode-host-validation:'));
+}
+
+function isAuxiliaryHostValidationVerification(verification: CodingVerificationProjection): boolean {
+  return verification.evidenceRefs.some(ref => (
+    ref.startsWith('build-orchestration:auto-validation-')
+    || ref.startsWith('vscode-host-validation:')
+  ));
 }
 
 export function evaluateCodingConformanceFixture(

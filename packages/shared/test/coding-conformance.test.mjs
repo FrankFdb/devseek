@@ -169,6 +169,63 @@ test('projection comparison treats Surface-local identities as evidence refs, no
   assert.deepEqual(violations, []);
 });
 
+test('projection comparison ignores auxiliary host validation but still rejects extra visible work', () => {
+  const fixture = findFixture('verify-repair-reverify');
+  const withHostValidation = structuredClone(fixture.expected);
+  withHostValidation.toolExecutions.splice(3, 0, {
+    sequence: 4,
+    actionId: 'vscode-auto-validation',
+    tool: 'run_terminal',
+    effects: ['process'],
+    status: 'completed',
+    evidenceRefs: [
+      'authority-policy:run:vscode-auto-validation:allow',
+      'vscode-host-validation:vscode-auto-validation:allow',
+      'vscode-host-validation:vscode-auto-validation:exit-0',
+    ],
+  });
+  withHostValidation.toolExecutions.forEach((receipt, index) => { receipt.sequence = index + 1; });
+  withHostValidation.verifications.splice(1, 0, {
+    sequence: 2,
+    actionId: 'vscode-auto-validation',
+    verifier: 'canonical-build-orchestration',
+    status: 'passed',
+    acceptanceIds: ['verified'],
+    evidenceRefs: [
+      'verification-operation:auto-validation-1-src/parser.js',
+      'build-orchestration:auto-validation-1-src/parser.js:passed',
+    ],
+  });
+  withHostValidation.verifications.forEach((verification, index) => { verification.sequence = index + 1; });
+
+  assert.deepEqual(compareCodingConformanceProjection(fixture.expected, withHostValidation, 'vscode'), []);
+
+  const withExtraVisibleWork = structuredClone(fixture.expected);
+  withExtraVisibleWork.toolExecutions.push({
+    sequence: 6,
+    actionId: 'third-visible-verify',
+    tool: 'run_terminal',
+    effects: ['process'],
+    status: 'completed',
+    evidenceRefs: [
+      'vscode-tool-policy:third-visible-verify:allow',
+      'terminal-operation:third-visible-verify:committed',
+    ],
+  });
+  withExtraVisibleWork.verifications.push({
+    sequence: 3,
+    actionId: 'third-visible-verify',
+    verifier: 'focused-parser-test',
+    status: 'passed',
+    acceptanceIds: ['verified'],
+    evidenceRefs: ['verification:third-visible-verify'],
+  });
+
+  const visibleViolations = compareCodingConformanceProjection(fixture.expected, withExtraVisibleWork, 'vscode');
+  assert.ok(visibleViolations.some(violation => violation.dimension === 'toolExecutions'));
+  assert.ok(visibleViolations.some(violation => violation.dimension === 'verifications'));
+});
+
 test('projection validation rejects ambiguous actions and mutation receipts without a valid owner', () => {
   const fixture = findFixture('modify-and-verify');
   const duplicateAction = structuredClone(fixture.expected);
