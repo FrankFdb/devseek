@@ -74,6 +74,7 @@ export interface TaskSemanticObligationInput {
     compileRequested: boolean;
     runRequested: boolean;
     testRequested: boolean;
+    runProhibited: boolean;
     fileCheckRequested: boolean;
   };
   quality: {
@@ -112,7 +113,7 @@ function buildArtifactObligations(input: TaskSemanticObligationInput): TaskSeman
   const artifactKinds = new Set(input.taskContract.deliverables);
   if (input.mutation.sourceChange) artifactKinds.add('source-change');
   if (input.mutation.fileArtifact) artifactKinds.add('report');
-  if (input.validation.requested) artifactKinds.add('verification-result');
+  if (shouldRequireValidationResult(input.validation)) artifactKinds.add('verification-result');
   for (const kind of artifactKinds) {
     if (kind === 'verification-result') {
       obligations.push({ kind, required: true });
@@ -165,7 +166,7 @@ function buildDoneConditions(
       if (input.mutation.fileArtifact) conditions.push(condition('write:file:*', 'file-written'));
     }
   }
-  if (input.mutation.sourceChange) {
+  if (shouldRequireCodeValidationCondition(input)) {
     conditions.push(condition('code-validation', 'code-validation-passed', undefined, 'derived'));
   }
   if (input.validation.fileCheckRequested) conditions.push(condition('file-check', 'file-check-passed'));
@@ -211,6 +212,37 @@ function buildAmbiguityContract(input: TaskSemanticObligationInput): TaskSemanti
       : reasons.length > 0 ? 'discoverable' : 'clear',
     reasons,
   };
+}
+
+export function shouldRequireValidationResult(validation: {
+  requested: boolean;
+  compileRequested: boolean;
+  runRequested: boolean;
+  testRequested: boolean;
+  runProhibited: boolean;
+  fileCheckRequested: boolean;
+}): boolean {
+  return validation.requested && (
+    !validation.runProhibited || hasConcreteValidationEvidence(validation)
+  );
+}
+
+function shouldRequireCodeValidationCondition(input: TaskSemanticObligationInput): boolean {
+  return input.mutation.sourceChange && (
+    !input.validation.runProhibited || hasConcreteValidationEvidence(input.validation)
+  );
+}
+
+function hasConcreteValidationEvidence(validation: {
+  compileRequested: boolean;
+  runRequested: boolean;
+  testRequested: boolean;
+  fileCheckRequested: boolean;
+}): boolean {
+  return validation.compileRequested
+    || validation.runRequested
+    || validation.testRequested
+    || validation.fileCheckRequested;
 }
 
 function condition(

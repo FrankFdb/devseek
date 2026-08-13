@@ -10,7 +10,10 @@ import {
 import { buildLocalIntentContract } from './local-intent-contract';
 import { isProceedWithPriorTaskRequest } from './continuation-intent';
 import type { SemanticIntentInterpretation } from './semantic-intent';
-import { buildTaskSemanticObligationContracts } from './task-semantic-obligations';
+import {
+  buildTaskSemanticObligationContracts,
+  shouldRequireValidationResult,
+} from './task-semantic-obligations';
 
 export interface TaskSemanticProjectInstructionInput {
   content: string;
@@ -449,18 +452,19 @@ function projectSourceMutationSemanticProposal(
     fileArtifact: contract.mutation.fileArtifact,
     targets,
   };
+  const validation = {
+    ...contract.validation,
+    requested: contract.validation.requested || candidate.requiresTerminal,
+    runRequested: contract.validation.runProhibited
+      ? false
+      : contract.validation.runRequested || candidate.requiresTerminal,
+  };
   return {
     ...contract,
     kind: standalone ? 'standalone-code' : 'existing-project-code',
     scope: standalone ? 'standalone' : 'existing-project',
     mutation,
-    validation: {
-      ...contract.validation,
-      requested: contract.validation.requested || candidate.requiresTerminal,
-      runRequested: contract.validation.runProhibited
-        ? false
-        : contract.validation.runRequested || candidate.requiresTerminal,
-    },
+    validation,
     taskContract: {
       ...contract.taskContract,
       taskShapes: uniqueStrings([
@@ -471,7 +475,7 @@ function projectSourceMutationSemanticProposal(
       deliverables: uniqueStrings([
         ...contract.taskContract.deliverables,
         'source-change',
-        ...(candidate.requiresTerminal ? ['verification-result'] : []),
+        ...(shouldRequireValidationResult(validation) ? ['verification-result'] : []),
       ]) as TaskContract['deliverables'],
     },
     signals: uniqueStrings([
@@ -1060,7 +1064,7 @@ function mergeTaskContracts(
       : uniqueStrings([...previousMutationDeliverables, ...currentMutationDeliverables]);
   const deliverables = uniqueStrings([
     ...mutationDeliverables,
-    ...(context.validation.requested ? ['verification-result'] : []),
+    ...(shouldRequireValidationResult(context.validation) ? ['verification-result'] : []),
   ]) as TaskContract['deliverables'];
   if (context.mutation.sourceChange && !deliverables.includes('source-change')) deliverables.push('source-change');
   if (context.mutation.fileArtifact && !deliverables.includes('report')) deliverables.push('report');

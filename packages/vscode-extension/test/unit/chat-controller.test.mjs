@@ -745,6 +745,48 @@ test('ChatRouteController: semantic destructive proposal fails closed to confirm
   assert.ok(decision.intent.signals.includes('semantic-destructive-fail-closed'));
 });
 
+test('ChatRouteController: semantic edit proposal respects explicit no-run validation boundary', () => {
+  const controller = new ChatRouteController();
+  const prompt = 'Fix src/login.ts but do not run tests.';
+  const decision = controller.decide({
+    userDisplay: prompt,
+    prompt,
+    files: [],
+    agentEnabled: true,
+    semanticIntent: {
+      version: 'devseek.semantic-intent/v1',
+      source: 'test',
+      mode: 'edit',
+      taskKind: 'existing-project-edit',
+      confidence: 0.91,
+      mutation: 'modify-source',
+      targetPaths: ['src/login.ts'],
+      requiresWorkspace: true,
+      requiresTerminal: true,
+      requiresExternalEffect: false,
+      requiresClarification: false,
+      reason: 'model expects a code change, while the user forbids command execution',
+    },
+  });
+
+  assert.equal(decision.intent.mode, 'edit');
+  assert.equal(decision.workflow.kind, 'edit-agent');
+  assert.equal(decision.intent.semanticContract.validation.runProhibited, true);
+  assert.equal(decision.intent.semanticContract.validation.runRequested, false);
+  assert.equal(decision.intent.semanticContract.validation.testRequested, false);
+  assert.deepEqual(decision.intent.semanticContract.mutation.targets, ['src/login.ts']);
+  assert.equal(decision.intent.semanticContract.taskContract.deliverables.includes('verification-result'), false);
+  assert.equal(
+    decision.intent.semanticContract.obligations.artifacts.some(item => item.kind === 'verification-result'),
+    false,
+  );
+  assert.equal(
+    decision.intent.semanticContract.completion.doneIff.some(item => item.kind === 'code-validation-passed'),
+    false,
+  );
+  assert.ok(decision.intent.semanticContract.completion.doneIff.some(item => item.kind === 'code-written'));
+});
+
 test('ChatRouteController: contradictory semantic no-mutation edit is governed down to inspect', () => {
   const controller = new ChatRouteController();
   const prompt = '看看 src/main.ts 里有没有明显问题，不要改';

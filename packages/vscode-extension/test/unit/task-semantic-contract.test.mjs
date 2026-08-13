@@ -235,7 +235,9 @@ test('TaskSemanticContract v3: isolated code artifacts remain standalone under s
   assert.deepEqual(contract.read.targets, []);
   assert.ok(contract.signals.includes('isolated-source-artifact'));
   assert.ok(contract.signals.includes('scoped-version-control-prohibition'));
-  assert.ok(contract.completion.doneIff.some(item => item.kind === 'code-validation-passed'));
+  assert.ok(!contract.taskContract.deliverables.includes('verification-result'));
+  assert.ok(!contract.obligations.artifacts.some(item => item.kind === 'verification-result'));
+  assert.ok(!contract.completion.doneIff.some(item => item.kind === 'code-validation-passed'));
   assert.ok(!contract.completion.doneIff.some(item => item.kind === 'run-passed'));
 });
 

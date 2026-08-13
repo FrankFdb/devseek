@@ -26,6 +26,7 @@ import {
 } from './intent/conditional-repair-intent';
 import {
   buildTaskSemanticObligationContracts,
+  shouldRequireValidationResult,
   type TaskSemanticAmbiguityContract,
   type TaskSemanticCompletionContract,
   type TaskSemanticObligations,
@@ -465,7 +466,7 @@ function normalizeTaskContractForSemanticContract(
   const deliverables = taskContract.deliverables.filter(deliverable => {
     if (deliverable === 'source-change') return input.mutation.sourceChange || input.preserveDeferredSourceChange;
     if (deliverable === 'report') return input.mutation.fileArtifact;
-    if (deliverable === 'verification-result') return input.validation.requested;
+    if (deliverable === 'verification-result') return shouldRequireValidationResult(input.validation);
     return true;
   }) as TaskContract['deliverables'];
   if ((input.mutation.sourceChange || input.preserveDeferredSourceChange) && !deliverables.includes('source-change')) {
@@ -474,7 +475,7 @@ function normalizeTaskContractForSemanticContract(
   if (input.mutation.fileArtifact && !deliverables.includes('report')) {
     deliverables.push('report');
   }
-  if (input.validation.requested && !deliverables.includes('verification-result')) {
+  if (shouldRequireValidationResult(input.validation) && !deliverables.includes('verification-result')) {
     deliverables.push('verification-result');
   }
 

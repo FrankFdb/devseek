@@ -520,6 +520,28 @@ export const EXTERNAL_INTENT_CORPUS = [
     expect: { mode: 'edit', workflow: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
   },
   {
+    id: 'EXT-EDIT-005',
+    taskKind: 'existing-project-edit',
+    sourceRefs: ['visual_studio_agent_mode', 'claude_code_workflows'],
+    prompt: 'Fix src/login.ts but do not run tests.',
+    files: [path('src/login.ts')],
+    semanticIntent: semantic({
+      mode: 'edit',
+      taskKind: 'existing-project-edit',
+      mutation: 'modify-source',
+      targetPaths: [path('src/login.ts')],
+      requiresWorkspace: true,
+      requiresTerminal: true,
+    }),
+    expect: {
+      mode: 'edit',
+      workflow: 'edit-agent',
+      useAgent: true,
+      toolPolicy: 'edit',
+      validation: 'no-command',
+    },
+  },
+  {
     id: 'EXT-RUN-001',
     taskKind: 'terminal-validation',
     sourceRefs: ['visual_studio_agent_mode'],

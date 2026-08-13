@@ -255,7 +255,22 @@ function assertSemanticContractProjection(decision, item) {
     assert.equal(contract.mutation.fileArtifact, false, item.id);
     assert.ok(contract.taskContract.deliverables.includes('source-change'), item.id);
     assertTargetsIncluded(contract.mutation.targets, item.semanticIntent.targetPaths, item.id);
-    if (item.semanticIntent.requiresTerminal) {
+    if (item.expect.validation === 'no-command') {
+      assert.equal(contract.validation.runProhibited, true, item.id);
+      assert.equal(contract.validation.runRequested, false, item.id);
+      assert.equal(contract.validation.testRequested, false, item.id);
+      assert.equal(contract.taskContract.deliverables.includes('verification-result'), false, item.id);
+      assert.equal(
+        contract.obligations.artifacts.some(item => item.kind === 'verification-result'),
+        false,
+        item.id,
+      );
+      assert.equal(
+        contract.completion.doneIff.some(item => item.kind === 'code-validation-passed'),
+        false,
+        item.id,
+      );
+    } else if (item.semanticIntent.requiresTerminal) {
       assert.equal(contract.validation.runRequested || contract.validation.testRequested, true, item.id);
     }
     return;
