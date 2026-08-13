@@ -460,7 +460,7 @@ function controlledScenarioCatalog() {
         'controlled-hello.cpp': cppProgramContent,
       },
       expectedChangedPaths: ['controlled-hello.cpp'],
-      expectedMutatedUserFiles: ['build/devseek/deepseek_auto_exec', 'controlled-hello', 'controlled-hello.cpp'],
+      expectedMutatedUserFiles: ['controlled-hello', 'controlled-hello.cpp'],
     },
     'existing-js-fix': {
       id: 'existing-js-fix',
@@ -1029,7 +1029,19 @@ function extractMarkedCurrentUserPrompt(promptText) {
   const marker = '【当前用户消息】\n';
   const text = String(promptText || '');
   const markerIndex = text.lastIndexOf(marker);
-  return markerIndex >= 0 ? text.slice(markerIndex + marker.length).trim() : '';
+  if (markerIndex < 0) return '';
+  const body = text.slice(markerIndex + marker.length);
+  const boundaryCandidates = [
+    '\n\n[助手]',
+    '\n\n[DevSeek 已执行工具请求摘要]',
+    '\n\n[工具结果 Round ',
+    '\n\n【系统反馈】',
+    '\n\n【独立需求审查：',
+  ]
+    .map(boundary => body.indexOf(boundary))
+    .filter(index => index >= 0);
+  const endIndex = boundaryCandidates.length > 0 ? Math.min(...boundaryCandidates) : body.length;
+  return body.slice(0, endIndex).trim();
 }
 
 function isControlledArchitectPrompt(promptText) {
@@ -1142,6 +1154,79 @@ function bindControlledArchitectPromptContract({ promptText, expectedPrompt, run
   };
 }
 
+function isControlledIndependentReviewPrompt(promptText) {
+  const text = String(promptText || '');
+  return text.includes('independent, read-only senior code reviewer')
+    && text.includes('[ORIGINAL USER REQUIREMENTS]')
+    && text.includes('[REQUIREMENT INVENTORY]')
+    && text.includes('[FINAL SOURCE SNAPSHOT]')
+    && text.includes('[REQUIRED OUTPUT SCHEMA]');
+}
+
+function extractControlledRequirementInventory(promptText) {
+  const text = String(promptText || '');
+  const marker = '[REQUIREMENT INVENTORY]';
+  const start = text.indexOf(marker);
+  if (start < 0) return [];
+  const end = text.indexOf('[VALIDATION FACT]', start);
+  const section = text.slice(start + marker.length, end >= 0 ? end : text.length);
+  return [...section.matchAll(/^\[(R\d+)\]\s+(.+)$/gmu)]
+    .map(match => ({
+      id: String(match[1] || '').trim(),
+      quote: String(match[2] || '').trim(),
+    }))
+    .filter(item => item.id && item.quote);
+}
+
+function bindControlledIndependentReviewPromptContract({
+  promptText,
+  expectedPrompt,
+  expectedTargetRelativePath = '',
+  runId,
+  priorRequests,
+}) {
+  const text = String(promptText || '');
+  const inventory = extractControlledRequirementInventory(text);
+  const priorRunBound = priorRequests.some(request => (
+    request.runId === runId
+    && request.bound === true
+    && request.promptContract?.bound === true
+  ));
+  const conditions = [
+    ['run correlation is present', Boolean(runId)],
+    ['review prompt uses the independent reviewer contract', isControlledIndependentReviewPrompt(text)],
+    ['review has a bound prior agent request in the same run', priorRunBound],
+    ['original user requirement remains bound', text.includes(expectedPrompt)],
+    ['requirement inventory includes the expected user requirement', inventory.some(item => item.quote === expectedPrompt)],
+    ...(expectedTargetRelativePath
+      ? [['final source snapshot remains scoped to the expected target', text.includes(expectedTargetRelativePath)]]
+      : []),
+  ];
+  const failed = conditions.find(([, passed]) => !passed);
+  return {
+    contractVersion: 'devseek.controlled-prompt-binding/v1',
+    expected: {
+      kind: 'independent-review',
+      userPromptLength: expectedPrompt.length,
+      userPromptSha256: sha256Text(expectedPrompt),
+      repairTargetRelativePath: expectedTargetRelativePath,
+    },
+    observed: {
+      mode: 'independent-review',
+      promptLength: text.length,
+      promptSha256: sha256Text(text),
+      inventoryCount: inventory.length,
+      inventoryIds: inventory.map(item => item.id),
+      expectedUserPromptOccurrences: countExactOccurrences(text, expectedPrompt),
+      runId,
+      priorRequestCount: priorRequests.length,
+      priorBoundRequestCount: priorRequests.filter(request => request.bound === true).length,
+    },
+    bound: !failed,
+    reason: failed ? failed[0] : 'Independent review request is bound to the current run and requirement inventory.',
+  };
+}
+
 function bindControlledPromptContract({
   promptText,
   ordinal,
@@ -1154,6 +1239,7 @@ function bindControlledPromptContract({
   const expectedUserSha256 = sha256Text(expectedPrompt);
   const feedbackRounds = promptFeedbackRounds(text);
   const expectedPromptOccurrences = countExactOccurrences(text, expectedPrompt);
+  const markedCurrentUserPrompt = extractMarkedCurrentUserPrompt(text);
   const observedUserPrompt = extractControlledCurrentUserPrompt(text);
   const currentDemandBound = observedUserPrompt === expectedPrompt;
   const repairTargetRelativePath = extractRepairTargetRelativePath(text);
@@ -1173,7 +1259,6 @@ function bindControlledPromptContract({
   };
 
   if (ordinal === 1) {
-    const markedCurrentUserPrompt = extractMarkedCurrentUserPrompt(text);
     const flattenedInitialPromptBound = !markedCurrentUserPrompt
       && expectedPromptOccurrences === 1
       && text.endsWith(`\n\n${expectedPrompt}`);
@@ -1236,12 +1321,14 @@ function bindControlledPromptContract({
   const hasFeedbackBody = lastMarkerIndex >= 0
     && text.slice(lastMarkerIndex + lastMarker.length).trim().length > 0;
   const fullIntentBoundary = `\n\n${expectedPrompt}\n\n[助手]\n`;
+  const markedFullContinuationIntentBound = markedCurrentUserPrompt === expectedPrompt
+    && text.includes(`【当前用户消息】\n${expectedPrompt}\n\n[助手]\n`);
   const initialIntentBound = mode === 'repair-scoped'
     ? priorRequests[0]?.promptContract?.bound === true
     : mode === 'incremental'
     ? priorRequests[0]?.promptContract?.bound === true
-    : text.includes(fullIntentBoundary)
-      && expectedPromptOccurrences === 1;
+    : (text.includes(fullIntentBoundary) && expectedPromptOccurrences === 1)
+      || markedFullContinuationIntentBound;
   const repairTargetBound = mode === 'repair-scoped'
     && Boolean(expectedTargetRelativePath)
     && repairTargetRelativePath === expectedTargetRelativePath;
@@ -1368,6 +1455,19 @@ function runPromptContractSelfTest(expectedPrompt) {
   }];
   const validRoundTwoText = `${incrementalPromptPrefix}[助手]\n[DevSeek 已执行工具请求摘要]\n\n[工具结果 Round 1]\nself-test tool result`;
   const validFullRoundTwoText = `${validInitialText}\n\n[助手]\n[DevSeek 已执行工具请求摘要]\n\n[工具结果 Round 1]\nself-test tool result`;
+  const validMarkedFullRoundTwoText = [
+    '你是一个拥有完整工具访问权限的编程智能体。',
+    '',
+    '【当前用户消息】',
+    expectedPrompt,
+    '',
+    '[助手]',
+    '[DevSeek 已执行工具请求摘要]',
+    'self-test executed tools',
+    '',
+    '[工具结果 Round 1]',
+    'self-test tool result',
+  ].join('\n');
   const validSystemFeedbackText = `${incrementalPromptPrefix}[助手]\n[DevSeek 已执行工具请求摘要]\n\n【系统反馈】target.txt verification failed; repair and reverify.`;
   const validRepairText = [
     '你是编程智能体。任务：修复目标文件并自测',
@@ -1382,6 +1482,28 @@ function runPromptContractSelfTest(expectedPrompt) {
     '```text',
     '// 完整内容',
     '```',
+  ].join('\n');
+  const validReviewText = [
+    '[指令]',
+    'You are an independent, read-only senior code reviewer evaluating code written by another agent.',
+    '',
+    '[ORIGINAL USER REQUIREMENTS]',
+    expectedPrompt,
+    '',
+    '[REQUIREMENT INVENTORY]',
+    `[R1] ${expectedPrompt}`,
+    '',
+    '[VALIDATION FACT]',
+    'QualityGate 通过：self-test target validation 已通过。',
+    '',
+    '[FINAL SOURCE SNAPSHOT]',
+    'target.txt',
+    '```text',
+    'new content',
+    '```',
+    '',
+    '[REQUIRED OUTPUT SCHEMA]',
+    '{"requirement_checks":[],"findings":[]}',
   ].join('\n');
   const cases = [
     { name: 'exact-initial-intent', expectedBound: true, binding: validInitial },
@@ -1513,6 +1635,17 @@ function runPromptContractSelfTest(expectedPrompt) {
       }),
     },
     {
+      name: 'continuous-marked-full-round-two',
+      expectedBound: true,
+      binding: bindControlledPromptContract({
+        promptText: validMarkedFullRoundTwoText,
+        ordinal: 2,
+        expectedPrompt,
+        runId,
+        priorRequests: validPrior,
+      }),
+    },
+    {
       name: 'system-feedback-round-two',
       expectedBound: true,
       binding: bindControlledPromptContract({
@@ -1554,6 +1687,28 @@ function runPromptContractSelfTest(expectedPrompt) {
       binding: bindControlledPromptContract({
         promptText: validRepairText.replaceAll('target.txt', 'other.txt'),
         ordinal: 2,
+        expectedPrompt,
+        expectedTargetRelativePath: 'target.txt',
+        runId,
+        priorRequests: validPrior,
+      }),
+    },
+    {
+      name: 'independent-review-current-run',
+      expectedBound: true,
+      binding: bindControlledIndependentReviewPromptContract({
+        promptText: validReviewText,
+        expectedPrompt,
+        expectedTargetRelativePath: 'target.txt',
+        runId,
+        priorRequests: validPrior,
+      }),
+    },
+    {
+      name: 'independent-review-replaced-inventory',
+      expectedBound: false,
+      binding: bindControlledIndependentReviewPromptContract({
+        promptText: validReviewText.replaceAll(expectedPrompt, replacedUserIntent),
         expectedPrompt,
         expectedTargetRelativePath: 'target.txt',
         runId,
@@ -1689,10 +1844,45 @@ function bindControlledScenarioPrompt({ promptText, runId, scenarios, priorReque
     : runScenarioCandidates.length > 0
       ? runScenarioCandidates
       : scenarios;
+  if (isControlledIndependentReviewPrompt(promptText)) {
+    const attempts = candidateScenarios.map(candidate => {
+      const scenarioPriorRequests = priorRequests.filter(request => (
+        request.scenarioId === candidate.id
+        && (request.requestKind === 'agent-execution' || request.requestKind === 'agent-repair')
+      ));
+      const promptContract = bindControlledIndependentReviewPromptContract({
+        promptText,
+        expectedPrompt: candidate.prompt,
+        expectedTargetRelativePath: candidate.targetRelativePath,
+        runId,
+        priorRequests: scenarioPriorRequests,
+      });
+      return {
+        scenario: candidate,
+        requestKind: 'independent-review',
+        ordinal: scenarioPriorRequests.length + 1,
+        promptContract,
+      };
+    });
+    const bound = attempts.find(attempt => attempt.promptContract.bound);
+    if (bound) return bound;
+    return attempts[0] || {
+      scenario: undefined,
+      requestKind: 'independent-review',
+      ordinal: priorRequests.length + 1,
+      promptContract: {
+        contractVersion: 'devseek.controlled-prompt-binding/v1',
+        expected: { kind: 'independent-review' },
+        observed: {},
+        bound: false,
+        reason: 'no controlled scenario is configured',
+      },
+    };
+  }
   const attempts = candidateScenarios.map(candidate => {
     const scenarioPriorRequests = priorRequests.filter(request => (
       request.scenarioId === candidate.id
-      && request.requestKind !== 'architect-plan'
+      && (request.requestKind === 'agent-execution' || request.requestKind === 'agent-repair')
     ));
     const ordinal = scenarioPriorRequests.length + 1;
     const promptContract = bindControlledPromptContract({
@@ -1908,12 +2098,14 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
         state.providerInvocationCount += 1;
         const providerText = scenarioBinding.requestKind === 'architect-plan'
           ? controlledPlannerResponse({ scenario: activeScenario })
-          : controlledProviderResponse({
-            ordinal,
-            workspaceDir,
-            scenario: activeScenario,
-            requestKind: scenarioBinding.requestKind,
-          });
+          : scenarioBinding.requestKind === 'independent-review'
+            ? controlledIndependentReviewResponse({ promptText, scenario: activeScenario })
+            : controlledProviderResponse({
+              ordinal,
+              workspaceDir,
+              scenario: activeScenario,
+              requestKind: scenarioBinding.requestKind,
+            });
         const completedEvidencePayload = {
           provider: 'controlled-fixture',
           layer: 'deterministic-fake-provider',
@@ -2036,6 +2228,28 @@ function controlledPlannerResponse({ scenario }) {
       ],
     }),
   ].join('\n');
+}
+
+function controlledIndependentReviewResponse({ promptText, scenario }) {
+  const inventory = extractControlledRequirementInventory(promptText);
+  const requirements = inventory.length > 0
+    ? inventory
+    : [{ id: 'R1', quote: scenario.prompt }];
+  const validationEvidence = scenario.providerPlan === 'cpp-program-compile-run-complete'
+    ? `${scenario.targetRelativePath}:1-6 defines main(), prints 下午好 on the requested execution path, and the validation fact says g++ -std=c++17 -fsyntax-only ${scenario.targetRelativePath} exit-0.`
+    : `${scenario.targetRelativePath}:1 final source snapshot and the validation fact cover the requested execution path.`;
+  return JSON.stringify({
+    requirement_checks: requirements.map(item => ({
+      requirement_id: item.id,
+      requirement_quote: item.quote,
+      status: 'satisfied',
+      evidence: `${item.id}: ${validationEvidence}`,
+    })),
+    findings: [],
+    overall_correctness: 'patch is correct',
+    overall_explanation: 'Controlled read-only review found no contradiction between the final source snapshot, validation fact, and requirement inventory.',
+    overall_confidence_score: 0.98,
+  });
 }
 
 function controlledProviderResponse({ ordinal, workspaceDir, scenario, requestKind = 'agent-execution' }) {

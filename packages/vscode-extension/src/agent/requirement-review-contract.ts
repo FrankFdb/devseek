@@ -951,8 +951,13 @@ function requirementEvidenceMatchesContract(
 }
 
 function requiresOrderedTrace(quote: string): boolean {
-  return /(?:\border(?:ing|ed)?\b|\bpriority\b|\bfifo\b|\blifo\b|\bbest\b|\bminimum\b|\bmaximum\b|\bmin\b|\bmax\b|\bfirst\b|\blast\b|\bsort(?:ed|ing)?\b|顺序|优先|同价|最高|最低|最[大小]|先后|排序|撮合)/iu
-    .test(normalizeRequirementText(quote));
+  const text = normalizeRequirementText(quote);
+  if (/(?:\border(?:ing|ed)?\b|\bpriority\b|\bfifo\b|\blifo\b|\bfirst\b|\blast\b|\bsort(?:ed|ing)?\b|顺序|优先|同价|最高|最低|先后|排序|撮合)/iu.test(text)) {
+    return true;
+  }
+  const hasMinMaxWord = /(?:\bbest\b|\bminimum\b|\bmaximum\b|\bmin\b|\bmax\b|最[大小])/iu.test(text);
+  const hasComparableDomain = /(?:\bvalue\b|\bprice\b|\bquantity\b|\bamount\b|\bcount\b|\belement\b|\bbid\b|\bask\b|\blevel\b|\bchoose\b|\bselect\b|\breturn\b|\bmatch\b|值|价格|价位|数量|金额|个数|元素|报价|档位|选择|返回|匹配|撮合)/iu.test(text);
+  return hasMinMaxWord && hasComparableDomain;
 }
 
 function hasOrderedTraceEvidence(evidence: string): boolean {

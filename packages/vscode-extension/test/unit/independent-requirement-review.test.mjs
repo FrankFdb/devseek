@@ -93,6 +93,33 @@ test('strict review parser accepts an evidenced failing finding', () => {
   assert.equal(decision.findings[0].line, 2);
 });
 
+test('strict review parser treats minimal program wording as creation scope, not ordering trace', () => {
+  const source = snapshot('controlled-hello.cpp', [
+    '#include <iostream>',
+    '',
+    'int main() {',
+    '  std::cout << "下午好" << std::endl;',
+    '  return 0;',
+    '}',
+    '',
+  ].join('\n'));
+  const prompt = '请在当前工作区编写一个最小 C++ 程序 controlled-hello.cpp，运行后打印下午好。必须用 g++ 编译并运行验证输出后结束，不要修改其他文件。';
+  const decision = parseIndependentReviewResponse(response({
+    requirement_checks: [{
+      requirement_id: 'R1',
+      requirement_quote: prompt,
+      status: 'satisfied',
+      evidence: 'controlled-hello.cpp:1-6 defines main(), prints 下午好 on the requested execution path, and the validation fact says g++ -std=c++17 -fsyntax-only controlled-hello.cpp exit-0.',
+    }],
+    findings: [],
+    overall_correctness: 'patch is correct',
+    overall_explanation: 'The final source and validation fact satisfy the requested minimal C++ program.',
+    overall_confidence_score: 0.98,
+  }), [source], prompt);
+
+  assert.equal(decision.status, 'passed');
+});
+
 test('strict review parser rejects a mixed trustworthy and malformed verdict', () => {
   const source = snapshot('src/order_book.cpp', 'return empty_trades;\nthrow invalid_order;');
   const prompt = 'submit rejects invalid input.';
