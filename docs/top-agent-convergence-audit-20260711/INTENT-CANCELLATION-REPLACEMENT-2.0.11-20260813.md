@@ -88,7 +88,40 @@ node scripts/devseek-top-agent-user-simulation-runner.mjs --dry-run --force --ma
 
 ## Tagged Local Acceptance Evidence
 
-Pending final commit, tag, exact-VSIX packaging, and full local acceptance.
+Code and release identity:
+
+- Commit: `4933021f31fe07977d6d8f1f9af579803bf9ef4f`
+- Tag: `2.0.11`
+- Packaged VSIX: `devseek-netai-2.0.11-debug.20260813.t225430.g4933021.vsix`
+- VSIX SHA-256: `df01d3ce3e996d6101bbc8f4b0b8648ba9b148b0e6194e6b09107720cc661d5a`
+- Source compatibility: `exact-head`
+- Dirty runtime fingerprint: none
+- Local install command passed: `code --install-extension /home/ff/work/devseek_netai/devseek-netai-latest.vsix --force`
+
+Focused exact-VSIX cancellation-replacement report:
+
+```bash
+node packages/vscode-extension/test/devseek-controlled-vsix-harness.mjs --suite cancellation-replacement-product --report /tmp/devseek-cancellation-replacement-2.0.11-g4933021.report.json --timeout-ms 240000
+```
+
+- Result: PASS.
+- Report: `/tmp/devseek-cancellation-replacement-2.0.11-g4933021.report.json`
+- Cases: `cancel-plan-source-change`, `cancel-review-instead`
+- Both cases reported no changed paths and no missing run-log substrings.
+
+Full local top-agent acceptance:
+
+```bash
+node scripts/devseek-top-agent-user-simulation-runner.mjs --run-id 20260813-intent-2.0.11-local-acceptance-g4933021 --markdown docs/testing/devseek-20260813-intent-2.0.11-local-acceptance-g4933021.md --force
+```
+
+- Result: PASS.
+- Markdown report: `docs/testing/devseek-20260813-intent-2.0.11-local-acceptance-g4933021.md`
+- Evidence root: `code/devseek-tests/top-agent-convergence/runs/20260813-intent-2.0.11-local-acceptance-g4933021`
+- Required acceptance case count: 31.
+- Missing dimensions: none.
+- Missing execution evidence: none.
+- Release claim permitted: false, because this remains local T3 evidence below the C14 release qualification boundary.
 
 ## Remaining Qualification Boundary
 
