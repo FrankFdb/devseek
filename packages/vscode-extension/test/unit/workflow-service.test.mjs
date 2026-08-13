@@ -53,6 +53,32 @@ test('WorkflowService: edit routes to edit agent when enabled', () => {
   assert.equal(selected.useAgent, true);
 });
 
+test('WorkflowService: run-to-repair routes to edit agent with edit policy', () => {
+  const prompt = 'Run npm test, and if it fails fix the issue.';
+  const intent = decideChatIntent(prompt);
+  const selected = selectWorkflow({ intent, files: [], agentEnabled: true, prompt });
+
+  assert.equal(intent.mode, 'edit');
+  assert.ok(intent.signals.includes('conditional-repair-on-failure'));
+  assert.equal(selected.kind, 'edit-agent');
+  assert.equal(selected.state, 'editing');
+  assert.equal(selected.useAgent, true);
+  assert.equal(selected.toolPolicyMode, 'edit');
+});
+
+test('WorkflowService: negated repair keeps terminal validation in run agent', () => {
+  const prompt = 'Run tests, but do not fix failures.';
+  const intent = decideChatIntent(prompt);
+  const selected = selectWorkflow({ intent, files: [], agentEnabled: true, prompt });
+
+  assert.equal(intent.mode, 'run');
+  assert.equal(intent.signals.includes('conditional-repair-on-failure'), false);
+  assert.equal(selected.kind, 'run-agent');
+  assert.equal(selected.state, 'running');
+  assert.equal(selected.useAgent, true);
+  assert.equal(selected.toolPolicyMode, 'run');
+});
+
 test('WorkflowService: complex refactor enters plan review with plan policy', () => {
   const prompt = '重构整个项目代码，拆分 workflow runtime 和 provider 权限模块';
   const intent = decideChatIntent(prompt);

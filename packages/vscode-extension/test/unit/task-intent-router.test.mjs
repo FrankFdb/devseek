@@ -300,6 +300,23 @@ test('TaskIntentRouter: terminal validation remains run-only and denies mutation
   assert.deepEqual(route.allowedToolKinds, ['read', 'search', 'diagnostics', 'network', 'control', 'plan', 'memory', 'terminal']);
 });
 
+test('TaskIntentRouter: run-to-repair grants edit and terminal authority with validation evidence', () => {
+  const route = routeTaskIntent('Run npm test, and if it fails fix the issue.');
+
+  assert.equal(route.family, 'existing-project-edit');
+  assert.equal(route.chatKind, 'code-change');
+  assert.equal(route.mode, 'edit');
+  assert.equal(route.agentTaskShape, 'validation-repair');
+  assert.equal(route.mutation.requested, true);
+  assert.equal(route.mutation.sourceChange, true);
+  assert.equal(route.validation.runRequested, true);
+  assert.equal(route.validation.testRequested, true);
+  assert.equal(route.validation.commandEvidenceRequired, true);
+  assert.ok(route.signals.includes('conditional-repair-on-failure'));
+  assert.ok(route.signals.includes('validation-repair-request'));
+  assert.deepEqual(route.allowedToolKinds, ['read', 'search', 'diagnostics', 'network', 'control', 'plan', 'memory', 'edit', 'terminal']);
+});
+
 test('TaskIntentRouter: reproduce without repair is terminal validation only', () => {
   const route = routeTaskIntent('复现一下失败，不要修，给我命令输出。');
 

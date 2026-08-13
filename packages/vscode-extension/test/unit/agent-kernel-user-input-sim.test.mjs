@@ -245,8 +245,8 @@ const USER_INPUT_CASES = [
   {
     name: 'conditional-run-repair',
     prompt: '运行 npm test，如果失败请修复',
-    route: { family: 'terminal-validation', chatKind: 'code-change', mode: 'run', shape: 'validation-repair' },
-    workflow: { kind: 'run-agent', useAgent: true, toolPolicy: 'run' },
+    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
+    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
     validation: { runtimeRequired: true, fileCheckRequired: false, formalProjectRequired: false },
     mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
   },

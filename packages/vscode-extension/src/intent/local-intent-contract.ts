@@ -8,6 +8,7 @@ import {
 } from './advisory-patterns';
 import { isUnsafeSecretHarvestingImplementationRequest } from './safety-intent';
 import { classifyExternalEffectIntent } from './operational-language-boundary';
+import { hasRunToRepairIntent } from './conditional-repair-intent';
 import type { SemanticTaskKind } from './semantic-intent';
 import type { ExecutionMode } from './intent-types';
 import type { TaskSemanticKind, TaskSemanticScope } from '../task-semantic-contract';
@@ -71,7 +72,6 @@ const EDIT_RE = /(修复|修正|修改|改一下|改成|改为|改用|换成|换
 const NEGATED_EDIT_CLAUSE_RE = /(?:当前不准备|先不准备|不准备|先不要|暂不|不要|不得|禁止|不允许|无需|无须|不需要|别)[^，,。；;\n]{0,24}(?:修复|修正|修改|改动|动|触碰|创建|新建|生成|编写|写入|保存|输出|新增|添加|实现|重构|替换|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|发布|上线|部署|安装|提交|推送|拉取)|不(?:修复|修正|修改|改动|动|触碰|创建|新建|生成|编写|写入|保存|输出|新增|添加|实现|重构|替换|发布|上线|部署|安装|提交|推送|拉取)|(?:do\s+not|don't|must\s+not|should\s+not|never|without)[^,.;\n]{0,32}(?:fix|repair|modify|change|create|write|generate|save|add|update|implement|refactor|replace|rename|move|copy|append|insert|release|deploy|publish|install|commit|push|pull|fetch|merge|rebase)/gi;
 const RUN_RE = /(运行|执行|编译|构建|测试|跑一下|复现|验证|启动|调试|\b(?:run|execute|compile|build|test|start|reproduce)\b)/i;
 const FOLLOW_UP_RUN_RE = /(?:能(?:否)?(?:执行|运行|编译|构建|测试|验证)|看(?:一下|下|看)?(?:执行|运行|编译|构建|测试|验证)?结果|看到(?:执行|运行|编译|构建|测试|验证)?结果|(?:给(?:我)?|输出|展示|显示|提供|返回).{0,12}(?:执行|运行|编译|构建|测试|验证)?结果|(?:执行|运行|编译|构建|测试|验证|跑)(?:一下|下|一遍|一次)?(?:看看|看结果)|(?:执行|运行|编译|构建|测试|验证|跑).{0,8}结果|(?:show|see|view).{0,20}(?:result|output)|(?:can|could).{0,20}(?:run|execute|compile|build|test|verify))/i;
-const RUN_WITH_CONDITIONAL_REPAIR_RE = /(?:(?:编译|构建|运行|执行|测试|验证|compile|build|run|execute|test|verify).{0,40}(?:如果|若|如有|有|when|if).{0,30}(?:错误|报错|失败|error|fail).{0,30}(?:修复|修正|fix|repair)|(?:如果|若|如有|when|if).{0,30}(?:编译|构建|运行|执行|测试|验证|compile|build|run|execute|test|verify).{0,30}(?:错误|报错|失败|error|fail).{0,30}(?:修复|修正|fix|repair))/i;
 const ARTIFACT_PATH_QUERY_RE = /(?:(?:可执行文件|执行文件|二进制|binary|executable|build\s+artifact|构建产物|生成的文件|创建的文件|写入的文件|输出文件|产物|artifact).{0,18}(?:在哪里|在哪|哪里|路径|位置|path|where)|(?:在哪里|在哪|哪里|路径|位置|path|where).{0,18}(?:可执行文件|执行文件|二进制|binary|executable|build\s+artifact|构建产物|生成的文件|创建的文件|写入的文件|输出文件|产物|artifact))/i;
 const PLAN_RE = /(方案|计划|设计|架构|思路|怎么改|如何改|重构计划|实施步骤|roadmap|plan|design|architecture|approach)/i;
 const EXPLICIT_PLAN_RE = /(方案|计划|架构|思路|怎么改|如何改|重构计划|实施步骤|roadmap|plan|architecture|approach)/i;
@@ -84,7 +84,7 @@ const CAPABILITY_FEATURE_REQUEST_RE = /(?:(?:能|可以|可否|能否|能不能|
 const READ_ONLY_CAPABILITY_QUESTION_RE = /(什么是|为什么|什么原因|怎么理解|区别|介绍|解释|说明|原理|概念|文档|教程|示例|怎么用|如何使用|用法|what\s+is|why|how\s+to|explain|describe|introduction)/i;
 const REVIEW_RE = /(?:审查|评审|review|code\s+review|PR\b|pull\s+request)/i;
 const WORKSPACE_DIFF_CONTEXT_RE = /(?:当前\s*(?:diff|补丁|改动|修改|变更)|current\s+(?:diff|patch|changes?)|git\s+diff)/i;
-const FAILURE_RE = /(?:日志|失败|报错|重试|回归|QualityGate|replay|error|failed)/i;
+const FAILURE_RE = /(?:日志|失败|报错|错误|不通过|挂了|重试|回归|QualityGate|replay|errors?|fails?|failed|failure|broken)/i;
 const BROAD_SCOPE_RE = /(整个|全部|全局|项目|仓库|系统|架构|多入口|跨平台|跨模块|模块化|runtime|workflow|provider|权限|状态机)/i;
 const COMPLEX_ACTION_RE = /(重构|改造|拆分|迁移|重写|优化架构|革命性|架构设计|refactor|re-architect|architecture)/i;
 const PLANNING_TERM_RE = /(方案|计划|设计|怎么改|如何改|重构计划|实施步骤|roadmap|plan|design|approach)/i;
@@ -108,6 +108,9 @@ export function buildLocalIntentContract(
   const hasScopedNoChangeWithDeliverableWrite = isScopedNoChangeWithDeliverableWriteRequest(text);
   const externalEffect = classifyExternalEffectIntent(positiveActionText);
   const isRunRequest = RUN_RE.test(text);
+  const hasConditionalRepairRequest = isRunRequest
+    && hasRunToRepairIntent(text)
+    && !semantic.mutation.prohibited;
   const hasWorkspaceDiffContext = WORKSPACE_DIFF_CONTEXT_RE.test(text);
   const context: LocalIntentContext = {
     empty: !text,
@@ -231,13 +234,19 @@ export function buildLocalIntentContract(
     ));
   }
 
-  if (isRunRequest && RUN_WITH_CONDITIONAL_REPAIR_RE.test(text)) {
-    const signals = ['run-request', 'conditional-repair-on-failure'];
+  if (hasConditionalRepairRequest) {
+    const signals = [
+      'edit-request',
+      'run-request',
+      'conditional-repair-on-failure',
+      'validation-repair-request',
+      ...semantic.semanticSignals,
+    ];
     if (isFollowUpRunRequest) signals.push('follow-up-run-request');
     if (hasPath) signals.push('explicit-file-path');
     return finish(decision(
-      'run', hasPath ? 0.88 : 0.84, hasPath ? 4 : 3, signals,
-      hasPath ? 'run-conditional-repair-with-file-path' : 'run-conditional-repair',
+      'edit', hasPath ? 0.92 : 0.88, hasPath ? 5 : 4, [...new Set(signals)],
+      hasPath ? 'run-to-repair-with-file-path' : 'run-to-repair',
     ));
   }
 

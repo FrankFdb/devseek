@@ -448,6 +448,34 @@ test('TaskSemanticContract: reproduce without repair is run-only validation', ()
   assert.equal(contract.intent.mode, 'run');
 });
 
+test('TaskSemanticContract: conditional test failure repair grants source mutation plus command evidence', () => {
+  const contract = buildTaskSemanticContract('Run npm test, and if it fails fix the issue.');
+
+  assert.equal(contract.kind, 'existing-project-code');
+  assert.equal(contract.scope, 'existing-project');
+  assert.equal(contract.mutation.requested, true);
+  assert.equal(contract.mutation.sourceChange, true);
+  assert.equal(contract.validation.requested, true);
+  assert.equal(contract.validation.runRequested, true);
+  assert.equal(contract.validation.testRequested, true);
+  assert.equal(contract.intent.mode, 'edit');
+  assert.ok(contract.signals.includes('conditional-repair-on-failure'));
+  assert.ok(contract.signals.includes('validation-repair-request'));
+  assert.ok(contract.signals.includes('existing-project-code-delivery'));
+});
+
+test('TaskSemanticContract: negated conditional repair keeps run-only validation', () => {
+  const contract = buildTaskSemanticContract('Run tests, but do not fix failures.');
+
+  assert.equal(contract.kind, 'validation');
+  assert.equal(contract.mutation.requested, false);
+  assert.equal(contract.mutation.sourceChange, false);
+  assert.equal(contract.validation.runRequested, true);
+  assert.equal(contract.validation.testRequested, true);
+  assert.equal(contract.intent.mode, 'run');
+  assert.equal(contract.signals.includes('conditional-repair-on-failure'), false);
+});
+
 test('TaskSemanticContract: bare make-language does not imply compile evidence', () => {
   const contract = buildTaskSemanticContract('Make it better.');
 

@@ -138,6 +138,32 @@ const CASES = [
     validation: { commandEvidenceRequired: true, testRequested: true },
     mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
   },
+  {
+    name: 'run-to-repair-en-test-failure',
+    prompt: 'Run npm test, and if it fails fix the issue.',
+    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
+    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
+    signals: ['conditional-repair-on-failure', 'validation-repair-request'],
+    validation: { commandEvidenceRequired: true, testRequested: true },
+    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
+  },
+  {
+    name: 'run-to-repair-cn-compile-error',
+    prompt: '请编译，执行，如果有编译错误，请修正。',
+    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
+    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
+    signals: ['conditional-repair-on-failure', 'validation-repair-request'],
+    validation: { commandEvidenceRequired: true },
+    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
+  },
+  {
+    name: 'run-only-negated-repair',
+    prompt: 'Run tests, but do not fix failures.',
+    route: { family: 'terminal-validation', chatKind: 'code-change', mode: 'run', shape: 'validation-repair' },
+    workflow: { kind: 'run-agent', useAgent: true, toolPolicy: 'run' },
+    validation: { commandEvidenceRequired: true, testRequested: true },
+    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
+  },
 ];
 
 test('local intent paraphrase matrix: provider-free user input routes semantically', () => {

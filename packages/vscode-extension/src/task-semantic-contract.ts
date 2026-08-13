@@ -17,6 +17,7 @@ import {
   buildLocalIntentContract,
   type LocalIntentContract,
 } from './intent/local-intent-contract';
+import { hasRunToRepairIntent } from './intent/conditional-repair-intent';
 import {
   buildTaskSemanticObligationContracts,
   type TaskSemanticAmbiguityContract,
@@ -192,9 +193,13 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const taskContractSourceChange = taskContract.deliverables.includes('source-change')
     && effectivePositiveWriteAction
     && !hasUnscopedNoWrite;
+  const runToRepairRequested = !artifactPathQuery
+    && !hasUnscopedNoWrite
+    && hasRunToRepairIntent(prompt);
   const existingProjectCodeDelivery = !hasUnscopedNoWrite && (
     (taskContract.taskShapes.includes('existing-project') && CODE_DELIVERY_RE.test(positiveIntentText))
     || (explicitSourceFileWrite && EXISTING_SOURCE_EDIT_RE.test(positiveIntentText))
+    || runToRepairRequested
   );
   const sourceChange = taskContractSourceChange || explicitSourceFileWrite || standaloneCode || existingProjectCodeDelivery;
   const fileArtifact = (taskContract.deliverables.includes('report') && effectivePositiveWriteAction)
@@ -271,6 +276,8 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     hasScopedWriteObjectProhibition ? 'scoped-write-object-prohibition' : '',
     hasScopedPathProhibition ? 'scoped-path-prohibition' : '',
     formalProjectRequired ? 'formal-project-quality-required' : '',
+    runToRepairRequested ? 'conditional-repair-on-failure' : '',
+    runToRepairRequested ? 'validation-repair-request' : '',
     runRequested ? 'run-requested' : '',
     testRequested ? 'test-requested' : '',
     stdoutRequested ? 'stdout-requested' : '',
