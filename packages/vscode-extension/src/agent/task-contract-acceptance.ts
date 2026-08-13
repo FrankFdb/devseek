@@ -11,12 +11,24 @@ export function projectTaskContractAcceptance(
     'objectives' | 'inputs' | 'deliverableTargets' | 'deliverables' | 'qualityObligations'
   >,
 ): CodingCompletionAcceptanceCriterion[] {
+  const deliverableKinds = taskContract.deliverables.filter(kind => (
+    kind === 'source-change' || kind === 'report' || kind === 'verification-result'
+  ));
+  const sourceChangeRequested = deliverableKinds.includes('source-change');
+  const reportArtifactRequested = !sourceChangeRequested
+    && deliverableKinds.includes('report')
+    && taskContract.deliverableTargets.length > 0;
+  const workspaceMutationConfirmed = sourceChangeRequested || reportArtifactRequested;
+  const projectVerificationRequired = sourceChangeRequested
+    || taskContract.qualityObligations.includes('validation')
+    || (!reportArtifactRequested && deliverableKinds.includes('verification-result'));
   return resolveCodingKernelAcceptance({
     prompt: taskContract.objectives.join('\n'),
     contextFiles: taskContract.inputs,
     targetPaths: taskContract.deliverableTargets,
-    modeHint: taskContract.deliverables.some(kind => kind === 'source-change') ? 'change' : undefined,
-    verificationRequired: taskContract.qualityObligations.length > 0
-      || taskContract.deliverables.includes('verification-result'),
+    deliverableKinds,
+    modeHint: workspaceMutationConfirmed ? 'change' : undefined,
+    confirmedWorkspaceMutation: workspaceMutationConfirmed,
+    verificationRequired: projectVerificationRequired,
   });
 }

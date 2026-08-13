@@ -49,6 +49,7 @@ import { validationResultToTerminalEvidence } from './validation-terminal-eviden
 import { workspaceRelativeVerificationPaths } from './verification-scope';
 import { CanonicalValidationCommandRunner } from './canonical-validation-command-runner';
 import { buildStructuralCompileFailureRecoveryProtocol } from '../app/structural-compile-failure';
+import { isCodeArtifactPathValue } from '../artifact-path-kind';
 
 export interface AgentAutoValidationCallbacks {
   onAgentStatus: (status: AgentStatusEvent) => void | Promise<void>;
@@ -105,6 +106,7 @@ const DEFAULT_WORKSPACE_VALIDATION_ACCEPTANCE: readonly CodingVerificationCriter
   id: 'workspace-validation',
   statement: 'Applicable workspace validation and quality checks pass.',
 }]);
+const READBACK_ONLY_ARTIFACT_RE = /\.(?:csv|ini|jsonc?|md|markdown|toml|tsv|txt|xml|ya?ml)$/iu;
 
 function nextAutoValidationOperationId(changedPaths: readonly string[]): string {
   autoValidationOperationSequence += 1;
@@ -444,6 +446,43 @@ function buildAutoValidationQualityGate(
   };
 }
 
+function buildReadbackOnlyQualityGate(
+  changedPaths: readonly string[],
+): NonNullable<AgentAutoValidationResult['qualityGate']> {
+  return {
+    status: 'pass',
+    summary: `QualityGate 通过：${changedPaths.length} 个文档/配置交付物已完成文件读回检查。`,
+    evidenceRefs: changedPaths.map(path => `file-readback:${path}`),
+    risks: [],
+    alternativeChecks: [],
+    requiredActions: [],
+  };
+}
+
+function buildReadbackOnlyEvidence(changedPaths: readonly string[]): TerminalEvidence {
+  return {
+    command: `file-readback ${changedPaths.join(' ')}`,
+    kind: 'other',
+    ok: true,
+    exitCode: 0,
+    detail: `${changedPaths.length} 个文档/配置交付物已由宿主读取并通过 artifact quality gate。`,
+  };
+}
+
+function isReadbackOnlyValidationScope(changedPaths: readonly string[]): boolean {
+  return changedPaths.length > 0 && changedPaths.every(path => (
+    !isCodeArtifactPathValue(path) && READBACK_ONLY_ARTIFACT_RE.test(path)
+  ));
+}
+
+function formatReadbackOnlyFeedback(changedPaths: readonly string[]): string {
+  return [
+    '[artifact_readback: passed]',
+    `files=${changedPaths.join(', ')}`,
+    '文档/配置交付物不需要编译、运行或测试命令；本轮自动验证以文件读回和 artifact quality gate 作为完成证据。',
+  ].join('\n');
+}
+
 function evaluateCanonicalRequirementQuality(
   userPrompt: string,
   workspaceRoot: string,
@@ -495,11 +534,15 @@ export async function runAgentAutoValidationForWrites(
   );
   if (changedPaths.length === 0) return {};
   const evidenceOperationId = nextAutoValidationOperationId(changedPaths);
-  const acceptance = callbacks.canonicalVerificationAcceptance?.length
+  const suppliedVerificationAcceptance = callbacks.canonicalVerificationAcceptance?.length
     ? callbacks.canonicalVerificationAcceptance
     : options.verificationAcceptance?.length
       ? options.verificationAcceptance
-      : DEFAULT_WORKSPACE_VALIDATION_ACCEPTANCE;
+      : [];
+  const readbackOnlyScope = isReadbackOnlyValidationScope(changedPaths);
+  const acceptance = suppliedVerificationAcceptance.length > 0
+    ? suppliedVerificationAcceptance
+    : DEFAULT_WORKSPACE_VALIDATION_ACCEPTANCE;
   const verificationContext = {
     runId: callbacks.traceRunId?.trim() || evidenceOperationId,
     sequence: autoValidationOperationSequence,
@@ -554,6 +597,29 @@ export async function runAgentAutoValidationForWrites(
           ? '需求质量门禁未通过'
           : undefined;
     const policyCheckId = policyQuality ? `${evidenceOperationId}:policy-quality` : undefined;
+    if (suppliedVerificationAcceptance.length === 0 && readbackOnlyScope) {
+      const qualityGate = policyQuality?.qualityGate ?? buildReadbackOnlyQualityGate(changedPaths);
+      const feedbackForAI = [policyQuality?.feedbackForAI, formatReadbackOnlyFeedback(changedPaths)]
+        .filter(Boolean)
+        .join('\n\n');
+      await callbacks.onAgentStatus({
+        type: 'agentStatus',
+        phase: 'validate',
+        state: qualityGateStatusToValidationState(qualityGate.status),
+        evidenceOperationId,
+        verificationScopePaths: changedPaths,
+        title: policyQualityTitle ?? '文件读回验证通过',
+        detail: feedbackForAI.slice(0, 1200),
+      });
+      await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, changedPaths, qualityGate);
+      const settled: AgentAutoValidationResult = {
+        evidenceOperationId,
+        ...(qualityGate.status === 'pass' ? { evidence: buildReadbackOnlyEvidence(changedPaths) } : {}),
+        feedbackForAI,
+        qualityGate,
+      };
+      return settleAgentAutoValidation(settled, execution);
+    }
     const canonicalCommandRunner = callbacks.canonicalToolAuthority && callbacks.canonicalToolExecution
       ? new CanonicalValidationCommandRunner(
           callbacks.onValidationCommand,

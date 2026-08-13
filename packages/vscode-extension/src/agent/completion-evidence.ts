@@ -90,7 +90,7 @@ const POSITIVE_ADVISORY_WRITE_ACTION_RE = /(?:新增|创建|新建|生成|编写
 const NEGATED_ADVISORY_WRITE_ACTION_RE = /(?:不要|不用|无需|不需要|禁止|避免|不得|请勿|别|不准备|不打算|暂不|先不|do\s+not|don't|without|avoid).{0,20}(?:新增|创建|新建|生成|编写|写入|输出|保存|落盘|放入|放到|写到|存到|修改|改动|改造|重构|删除|实现|create|write|save|output|modify|edit|delete)/i;
 const READ_EVIDENCE_RE = /(?:检查|查看|读取|显示|确认|是否存在|内容|read|show|display|check|inspect|exists?)/i;
 const FILE_CONTENT_EVIDENCE_RE = /(?:(?:显示|查看|读取|输出|打印).{0,8}(?:文件)?内容|(?:read|show|display|print).{0,16}(?:file\s*)?content)/i;
-const READ_ONLY_TERMINAL_EVIDENCE_RE = /\b(?:cat|ls|test|grep|head|tail|sed|wc|stat|file|find)\b/i;
+const READ_ONLY_TERMINAL_EVIDENCE_RE = /\b(?:cat|ls|test|grep|head|tail|sed|wc|stat|file|find|file-readback|workspace-readback|artifact-readback)\b/i;
 const FILE_CONTENT_TERMINAL_EVIDENCE_RE = /\b(?:cat|grep|head|tail|sed)\b/i;
 const COMMAND_EVIDENCE_RE = /(?:编译|运行|执行|测试|验证|调试|compile|build|test|run|execute|verify)/i;
 const RUN_EVIDENCE_RE = /(?:运行|执行|run|execute)/i;
@@ -849,9 +849,13 @@ export function assessMissingCompletionEvidence(input: CompletionEvidenceAssessm
       || successfulEvidence.some(e => e.kind === 'run' || e.kind === 'test' || e.kind === 'compile-run');
     if (!hasRunEvidence) missing.push('成功的程序运行结果');
   } else if (needsFileCheckEvidence) {
-    const hasFileCheckEvidence = successfulEvidence.some(e =>
-      e.kind === 'other' && isReadOnlyTerminalEvidenceCommand(e.command),
-    );
+    const hasFileCheckEvidence = hasFileArtifactReadbackEvidence({
+      semanticContract: effectiveSemanticContract,
+      writtenFiles: existingWrittenFiles,
+      terminalEvidence: successfulEvidence,
+      readEvidencePaths,
+      workspaceRoot,
+    });
     if (!hasFileCheckEvidence) missing.push('文件读取/检查结果');
   } else if (commandEvidenceNeeded && !hasSuccessfulValidationEvidence) {
     missing.push('成功的编译/运行/测试命令结果');
@@ -917,6 +921,54 @@ function hasReadConditionEvidence(
       : isReadOnlyTerminalEvidenceCommand(evidence.command);
     return commandMatchesKind && (!target || terminalCommandTargetsPath(evidence.command, target, workspaceRoot));
   });
+}
+
+function hasFileArtifactReadbackEvidence(input: {
+  semanticContract: TaskSemanticContract;
+  writtenFiles: readonly WrittenFileEvidence[];
+  terminalEvidence: readonly TerminalEvidence[];
+  readEvidencePaths: readonly string[];
+  workspaceRoot?: string;
+}): boolean {
+  if (input.terminalEvidence.some(evidence => (
+    evidence.kind === 'other' && isReadOnlyTerminalEvidenceCommand(evidence.command)
+  ))) {
+    return true;
+  }
+
+  const targets = fileArtifactReadbackTargets(
+    input.semanticContract,
+    input.writtenFiles,
+  );
+  if (targets.length === 0) {
+    return input.readEvidencePaths.length > 0;
+  }
+  return targets.every(target => input.readEvidencePaths.some(readPath => (
+    completionEvidencePathsMatch(readPath, target, input.workspaceRoot)
+  )));
+}
+
+function fileArtifactReadbackTargets(
+  semanticContract: TaskSemanticContract,
+  writtenFiles: readonly WrittenFileEvidence[],
+): string[] {
+  const artifactTargets = semanticContract.obligations.artifacts
+    .filter(artifact => artifact.kind === 'report' && artifact.target && !isCodeArtifactPath(artifact.target))
+    .map(artifact => artifact.target ?? '');
+  if (artifactTargets.length > 0) return uniqueNonEmptyStrings(artifactTargets);
+
+  const writeConditionTargets = semanticContract.completion.doneIff
+    .filter(condition => condition.kind === 'file-written' && condition.target && !isCodeArtifactPath(condition.target))
+    .map(condition => condition.target ?? '');
+  if (writeConditionTargets.length > 0) return uniqueNonEmptyStrings(writeConditionTargets);
+
+  return uniqueNonEmptyStrings(writtenFiles
+    .filter(file => !isCodeArtifactPath(file.path))
+    .map(file => file.path));
+}
+
+function uniqueNonEmptyStrings(values: readonly string[]): string[] {
+  return [...new Set(values.map(value => value.trim()).filter(Boolean))];
 }
 
 function completionEvidencePathsMatch(candidate: string, target: string, workspaceRoot?: string): boolean {

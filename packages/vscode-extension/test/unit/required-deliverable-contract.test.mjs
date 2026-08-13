@@ -43,6 +43,25 @@ test('required deliverables: read source then create report binds only the repor
   );
 });
 
+test('required deliverables: reading markdown source then generating markdown report binds only output', () => {
+  const root = '/tmp/workspace';
+  assert.deepEqual(
+    extractRequiredDeliverables(
+      `请阅读 ${root}/docs/r3-iteration/deepseek-login-ready-state-matrix.md，在 ${root}/docs/r3-iteration/r3-live-deepseek-login-ready-state.md 生成 Markdown 审计报告。`,
+    ).map(item => item.path),
+    [`${root}/docs/r3-iteration/r3-live-deepseek-login-ready-state.md`],
+  );
+});
+
+test('required deliverables: English read source then write report binds only output', () => {
+  assert.deepEqual(
+    extractRequiredDeliverables(
+      'Read docs/input.md and write the audit report to docs/output.md.',
+    ).map(item => item.path),
+    ['docs/output.md'],
+  );
+});
+
 test('required deliverables: explicit output file label remains required', () => {
   assert.deepEqual(
     extractRequiredDeliverables('请生成结果。必须创建输出文件：/tmp/result.txt').map(item => item.path),

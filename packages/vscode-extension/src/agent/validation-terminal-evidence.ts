@@ -14,10 +14,11 @@ export function validationResultToTerminalEvidence(
 ): TerminalEvidence | undefined {
   const verification = normalizeVerificationResult(result);
   if (!shouldEmitTerminalEvidenceForVerification(verification)) return undefined;
+  const command = result.command || (result.mode === 'readback' ? 'file-readback' : '');
   const detail = [result.reason, result.output].filter(Boolean).join('\n').slice(0, 1200);
   return {
-    command: result.command,
-    kind: validationModeToTerminalEvidenceKind(result.mode, result.command),
+    command,
+    kind: validationModeToTerminalEvidenceKind(result.mode, command),
     ok: result.ok,
     exitCode: result.exitCode,
     ...(detail ? { detail } : {}),

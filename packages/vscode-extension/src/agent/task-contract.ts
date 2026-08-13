@@ -1373,6 +1373,7 @@ function extractPathOccurrences(prompt: string): PathOccurrence[] {
   const add = (pathValue: string, index: number): void => {
     const value = pathValue.trim().replace(/[.,;!?，。；]+$/u, '');
     if (!value || index < 0) return;
+    if (isEmbeddedAbsolutePathToken(prompt, value, index)) return;
     occurrences.push({ path: value, index });
   };
   for (const match of prompt.matchAll(PATH_RE)) {
@@ -1417,6 +1418,20 @@ function extractPathOccurrences(prompt: string): PathOccurrence[] {
     .filter((item, index, all) => !all.slice(0, index).some(existing => (
       item.index >= existing.index && item.index + item.path.length <= existing.index + existing.path.length
     )));
+}
+
+function isEmbeddedAbsolutePathToken(prompt: string, pathValue: string, index: number): boolean {
+  if (!/^[\\/]/.test(pathValue)) return false;
+  const before = index > 0 ? prompt[index - 1] : '';
+  const after = prompt[index + pathValue.length] || '';
+  const naturalTextChar = /[\p{L}\p{N}_-]/u;
+  const beforeTail = prompt.slice(Math.max(0, index - 24), index);
+  const afterHead = prompt.slice(index + pathValue.length, index + pathValue.length + 16);
+  const pathBindingPrefix = /(?:^|[\s：:，,；;。])(?:基于|依据|根据|参考|使用|读取|查看|检查|审计|分析|保存到|保存至|写入|写到|输出到|输出至|生成到|创建到|创建于|到|至|入|为|从|于|在|to|into|as|from)\s*$/iu;
+  const explicitPathSuffix = /^\s*(?:文件|文档|路径|目录|file|document|path|directory)\b/iu;
+  if (naturalTextChar.test(before) && !pathBindingPrefix.test(beforeTail)) return true;
+  if (naturalTextChar.test(after) && !explicitPathSuffix.test(afterHead)) return true;
+  return false;
 }
 
 function extractEvidenceRequirementSymbols(prompt: string): string[] {

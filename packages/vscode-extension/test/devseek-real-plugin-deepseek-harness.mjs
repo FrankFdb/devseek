@@ -67,6 +67,10 @@ const forbiddenArtifactSnippets = [...new Set([
   ...(scenarioSpec.forbiddenArtifactSnippets || []),
 ])];
 const harnessMode = normalizeHarnessMode(getArgValue('--mode') || process.env.DEVSEEK_REAL_PLUGIN_MODE || 'fast');
+const inputMode = normalizeInputMode(getArgValue('--input-mode') || process.env.DEVSEEK_REAL_PLUGIN_INPUT_MODE || 'command');
+const naturalUiDomProbeMs = normalizeNaturalUiDomProbeMs(
+  getArgValue('--natural-ui-dom-probe-ms') || process.env.DEVSEEK_REAL_PLUGIN_NATURAL_UI_DOM_PROBE_MS,
+);
 const workspaceDirArg = getArgValue('--workspace-dir') || process.env.DEVSEEK_REAL_PLUGIN_WORKSPACE_DIR || '';
 const outputDocArg = getArgValue('--output-doc') || process.env.DEVSEEK_REAL_PLUGIN_OUTPUT_DOC || '';
 const artifactRootArg = getArgValue('--artifact-root') || process.env.DEVSEEK_REAL_PLUGIN_ARTIFACT_ROOT || '';
@@ -178,6 +182,7 @@ const reportPath = path.join(tmpRoot, 'report.json');
 const progressPath = path.join(tmpRoot, 'driver-progress.jsonl');
 const vscodeLogPath = path.join(tmpRoot, 'vscode.log');
 const pluginPort = await findFreePort();
+const vscodeDebugPort = inputMode === 'natural-ui' ? await findFreePort() : 0;
 
 if (usesExistingWorkspace && !fs.existsSync(workspaceDir)) {
   failEarly(`指定的真实工作区不存在：${workspaceDir}`);
@@ -243,6 +248,9 @@ report.harness = {
   requiredArtifactSnippets,
   forbiddenArtifactSnippets,
   harnessMode,
+  inputMode,
+  naturalUi: inputMode === 'natural-ui',
+  vscodeDebugPort,
   expectedArtifact,
   expectedArtifacts,
   expectedCodeArtifacts,
@@ -292,6 +300,10 @@ function getArgValue(flag) {
 
 function normalizeHarnessMode(value) {
   return String(value || '').toLowerCase() === 'r1' ? 'r1' : 'fast';
+}
+
+function normalizeInputMode(value) {
+  return String(value || '').toLowerCase() === 'natural-ui' ? 'natural-ui' : 'command';
 }
 
 function writeHarnessReport(payload) {
@@ -1467,6 +1479,7 @@ const autopilot = __AUTOPILOT__;
 const keepWindow = __KEEP_WINDOW__;
 const scenario = __SCENARIO__;
 const harnessMode = __HARNESS_MODE__;
+const inputMode = __INPUT_MODE__;
 const qualityProfile = __QUALITY_PROFILE__;
 const expectedReportLanguage = __EXPECTED_REPORT_LANGUAGE__;
 const requiredArtifactSnippets = __REQUIRED_ARTIFACT_SNIPPETS__;
@@ -2262,6 +2275,8 @@ async function activate() {
     startedAt: new Date(startedAtMs).toISOString(),
     workspaceDir,
     promptPreview: prompt.slice(0, 600),
+    inputMode,
+    naturalUi: inputMode === 'natural-ui',
     commandInjected: false,
     commandName: '',
     commandCompleted: false,
@@ -2286,33 +2301,51 @@ async function activate() {
     logProgress('focus-sidebar-started');
     await vscode.commands.executeCommand('workbench.view.extension.devseek-sidebar').catch(() => {});
     logProgress('focus-sidebar-completed');
-    logProgress('wait-command-started');
-    const commandName = await waitForCommand('_devseek.harnessSubmitChatMessage', 60000)
-      ? '_devseek.harnessSubmitChatMessage'
-      : (await waitForCommand('_devseek.harnessRunChat', 1000)
-          ? '_devseek.harnessRunChat'
-          : (await waitForCommand('_deepseek.askChat', 1000) ? '_deepseek.askChat' : ''));
-    if (!commandName) throw new Error('DevSeek chat command was not registered within 60s');
-    baseReport.commandName = commandName;
-    logProgress('wait-command-completed', { commandName });
+    let commandName = '';
+    if (inputMode === 'natural-ui') {
+      logProgress('wait-visible-command-started');
+      if (!await waitForCommand('devseek.openChat', 60000)) {
+        throw new Error('DevSeek visible chat command was not registered within 60s');
+      }
+      logProgress('wait-visible-command-completed', { commandName: 'devseek.openChat' });
+    } else {
+      logProgress('wait-command-started');
+      commandName = await waitForCommand('_devseek.harnessSubmitChatMessage', 60000)
+        ? '_devseek.harnessSubmitChatMessage'
+        : (await waitForCommand('_devseek.harnessRunChat', 1000)
+            ? '_devseek.harnessRunChat'
+            : (await waitForCommand('_deepseek.askChat', 1000) ? '_deepseek.askChat' : ''));
+      if (!commandName) throw new Error('DevSeek chat command was not registered within 60s');
+      baseReport.commandName = commandName;
+      logProgress('wait-command-completed', { commandName });
+    }
     logProgress('open-chat-started');
     await vscode.commands.executeCommand('devseek.openChat').catch(() => {});
+    await vscode.commands.executeCommand('devseek.chatViewLauncher.focus').catch(() => {});
     await delay(1500);
     logProgress('open-chat-completed');
     let commandError = '';
     let commandCompletedAt = 0;
-    logProgress('execute-command-started', { commandName, harnessMode });
-    void vscode.commands.executeCommand(commandName, prompt, prompt, true, harnessMode)
-      .then(() => {
-        baseReport.commandCompleted = true;
-        commandCompletedAt = Date.now();
-        logProgress('execute-command-completed', { commandName });
-      })
-      .catch((error) => {
-        commandError = String(error && error.stack || error && error.message || error);
-        logProgress('execute-command-failed', { commandName, error: commandError });
+    if (inputMode === 'natural-ui') {
+      logProgress('natural-ui-ready', {
+        route: 'vscode-webview-textarea-click',
+        inputSelector: '#input',
+        sendSelector: '#send-btn',
       });
-    baseReport.commandInjected = true;
+    } else {
+      logProgress('execute-command-started', { commandName, harnessMode });
+      void vscode.commands.executeCommand(commandName, prompt, prompt, true, harnessMode)
+        .then(() => {
+          baseReport.commandCompleted = true;
+          commandCompletedAt = Date.now();
+          logProgress('execute-command-completed', { commandName });
+        })
+        .catch((error) => {
+          commandError = String(error && error.stack || error && error.message || error);
+          logProgress('execute-command-failed', { commandName, error: commandError });
+        });
+      baseReport.commandInjected = true;
+    }
     logProgress('poll-started');
 
     const deadline = Date.now() + timeoutMs;
@@ -2325,7 +2358,8 @@ async function activate() {
         pollExitReason = 'command-error';
         break;
       }
-      if (commandCompletedAt > 0
+      if (inputMode !== 'natural-ui'
+        && commandCompletedAt > 0
         && Date.now() - commandCompletedAt > 15_000
         && evaluation.runLogs.logs.length === 0
         && evaluation.artifacts.length === 0) {
@@ -2360,6 +2394,7 @@ async function activate() {
       deadlineAt: new Date(deadline).toISOString(),
       reportFinalizedAt: new Date(reportFinalizedAtMs).toISOString(),
       commandCompletedAt: commandCompletedAt ? new Date(commandCompletedAt).toISOString() : null,
+      inputMode,
       reportScope: pollExitReason === 'timeout' ? 'report-time-snapshot' : 'terminal-or-success-snapshot',
     };
     if (!baseReport.ok) {
@@ -2409,6 +2444,7 @@ module.exports = { activate };
     .replace('__KEEP_WINDOW__', JSON.stringify(keepWindow))
     .replace('__SCENARIO__', JSON.stringify(scenario))
     .replace('__HARNESS_MODE__', JSON.stringify(harnessMode))
+    .replace('__INPUT_MODE__', JSON.stringify(inputMode))
     .replace('__QUALITY_PROFILE__', JSON.stringify(qualityProfile))
     .replace('__EXPECTED_REPORT_LANGUAGE__', JSON.stringify(scenarioSpec.expectedReportLanguage || ''))
     .replace('__REQUIRED_ARTIFACT_SNIPPETS__', JSON.stringify(requiredArtifactSnippets))
@@ -2472,17 +2508,25 @@ function safeParseJson(text) {
 
 async function runVsCodeDriver() {
   const logFd = fs.openSync(vscodeLogPath, 'a');
-  const child = cp.spawn(codeBin, [
+  const launchArgs = [
     '--user-data-dir', userDataDir,
     '--extensions-dir', extensionsDir,
     '--extensionDevelopmentPath', driverDir,
     '--disable-workspace-trust',
     '--skip-release-notes',
     '--skip-welcome',
+    ...(inputMode === 'natural-ui' ? [
+      '--disable-chromium-sandbox',
+      '--no-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      `--remote-debugging-port=${vscodeDebugPort}`,
+    ] : []),
     '--new-window',
     '--wait',
     workspaceDir,
-  ], {
+  ];
+  const child = cp.spawn(codeBin, launchArgs, {
     cwd: repoRoot,
     detached: keepWindow,
     env: {
@@ -2503,18 +2547,61 @@ async function runVsCodeDriver() {
     exitCode = code;
   });
 
+  let naturalUiResult = null;
+  const naturalUiSubmission = inputMode === 'natural-ui'
+    ? submitPromptThroughNaturalUi()
+      .then((result) => {
+        naturalUiResult = result;
+        return result;
+      })
+      .catch((error) => {
+        naturalUiResult = {
+          ok: false,
+          route: 'vscode-webview-textarea-click',
+          error: String(error?.stack || error?.message || error),
+        };
+        appendHarnessProgress('natural-ui-submit-failed', naturalUiResult);
+        return naturalUiResult;
+      })
+    : null;
+
   const deadline = Date.now() + timeoutMs + 60000;
   try {
     while (Date.now() < deadline) {
       if (fs.existsSync(reportPath)) {
         if (!keepWindow) await waitForChildExit(child, 10000);
-        return JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+        const payload = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+        if (naturalUiSubmission) {
+          payload.naturalUiSubmission = await Promise.race([
+            naturalUiSubmission,
+            delay(1000).then(() => naturalUiResult || { ok: null, pending: true }),
+          ]);
+          if (payload.naturalUiSubmission?.ok === false) {
+            payload.ok = false;
+            payload.errors = [
+              ...(payload.errors || []),
+              '真实 Webview 用户输入提交失败：' + payload.naturalUiSubmission.error,
+            ];
+          }
+        }
+        return payload;
+      }
+      if (naturalUiResult?.ok === false) {
+        if (child.exitCode === null && !keepWindow) child.kill('SIGTERM');
+        return {
+          ok: false,
+          errors: ['真实 Webview 用户输入提交失败：' + naturalUiResult.error],
+          naturalUiSubmission: naturalUiResult,
+          harness: { tmpRoot, workspaceDir, vscodeLogPath, progressPath, vscodeDebugPort },
+          progress: readProgressTail(),
+        };
       }
       if (exited) {
         return {
           ok: false,
           errors: [`VS Code exited before writing report. exitCode=${exitCode}`],
-          harness: { tmpRoot, workspaceDir, vscodeLogPath, progressPath },
+          naturalUiSubmission: naturalUiResult,
+          harness: { tmpRoot, workspaceDir, vscodeLogPath, progressPath, vscodeDebugPort },
           progress: readProgressTail(),
         };
       }
@@ -2524,13 +2611,206 @@ async function runVsCodeDriver() {
     return {
       ok: false,
       errors: [`VS Code live harness timed out after ${timeoutMs}ms`],
-      harness: { tmpRoot, workspaceDir, vscodeLogPath, progressPath },
+      naturalUiSubmission: naturalUiResult,
+      harness: { tmpRoot, workspaceDir, vscodeLogPath, progressPath, vscodeDebugPort },
       progress: readProgressTail(),
     };
   } finally {
     if (child.exitCode === null && !keepWindow) child.kill('SIGTERM');
     fs.closeSync(logFd);
   }
+}
+
+async function submitPromptThroughNaturalUi() {
+  appendHarnessProgress('natural-ui-submit-wait-ready', {
+    debugPort: vscodeDebugPort,
+    inputSelector: '#input',
+    sendSelector: '#send-btn',
+    domProbeMs: naturalUiDomProbeMs,
+  });
+  await waitForProgressStage('natural-ui-ready', 90000);
+  const version = await waitForDebugEndpoint(vscodeDebugPort, 90000);
+  appendHarnessProgress('natural-ui-debug-ready', {
+    browser: version.Browser,
+    hasWebSocketDebuggerUrl: Boolean(version.webSocketDebuggerUrl),
+  });
+
+  const { chromium } = await import('playwright');
+  let browser;
+  try {
+    browser = await chromium.connectOverCDP(`http://127.0.0.1:${vscodeDebugPort}`);
+    const context = browser.contexts()[0];
+    if (!context) throw new Error('Playwright CDP connection did not expose a VS Code browser context');
+    try {
+      const found = await findDevSeekInputFrame(context, naturalUiDomProbeMs);
+      return await submitPromptThroughDomFrame(found);
+    } catch (error) {
+      const domError = String(error?.message || error);
+      appendHarnessProgress('natural-ui-dom-submit-unavailable', { error: domError });
+      return await submitPromptThroughScreenCoordinates(context, domError);
+    }
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+  }
+}
+
+async function submitPromptThroughDomFrame(found) {
+  const input = found.frame.locator('#input');
+  await input.click({ timeout: 10000 });
+  await input.fill('');
+  let entryMethod = 'pressSequentially';
+  try {
+    await input.pressSequentially(prompt, { delay: 2 });
+  } catch {
+    entryMethod = 'fill-fallback';
+    await input.fill(prompt);
+  }
+  const typedValue = await input.inputValue();
+  if (typedValue !== prompt) {
+    throw new Error(`真实 Webview 输入框内容不匹配：typed=${typedValue.length}, expected=${prompt.length}`);
+  }
+  await found.frame.locator('#send-btn').click({ timeout: 10000 });
+  const promptNeedle = prompt.slice(0, Math.min(80, prompt.length));
+  let userTurnObserved = false;
+  try {
+    await found.frame.waitForFunction((needle) => {
+      const messages = document.getElementById('messages')?.textContent || '';
+      const inputValue = document.getElementById('input')?.value || '';
+      return inputValue.trim() === '' && messages.includes(needle);
+    }, promptNeedle, { timeout: 15000 });
+    userTurnObserved = true;
+  } catch {
+    userTurnObserved = false;
+  }
+  const result = {
+    ok: true,
+    route: 'vscode-webview-textarea-click',
+    naturalUi: true,
+    commandInjected: false,
+    entryMethod,
+    userTurnObserved,
+    inputSelector: '#input',
+    sendSelector: '#send-btn',
+    frameUrl: found.frame.url(),
+    pageTitle: found.title,
+    debugPort: vscodeDebugPort,
+    promptLength: prompt.length,
+    promptSha256: crypto.createHash('sha256').update(prompt).digest('hex'),
+  };
+  appendHarnessProgress('natural-ui-submitted', result);
+  return result;
+}
+
+async function submitPromptThroughScreenCoordinates(context, domFallbackError) {
+  const page = context.pages()[0];
+  if (!page) throw new Error('Playwright CDP connection exposed no VS Code page');
+  const viewport = await page.evaluate(() => ({
+    width: window.innerWidth,
+    height: window.innerHeight,
+    devicePixelRatio: window.devicePixelRatio,
+  }));
+  const inputPoint = {
+    x: Math.max(24, viewport.width - 175),
+    y: Math.max(24, viewport.height - 80),
+  };
+  const sendPoint = {
+    x: Math.max(24, viewport.width - 24),
+    y: inputPoint.y,
+  };
+
+  await page.mouse.click(inputPoint.x, inputPoint.y);
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A').catch(() => {});
+  await page.keyboard.press('Backspace').catch(() => {});
+  await page.keyboard.insertText(prompt);
+  await delay(250);
+  const screenshotBeforeSend = path.join(tmpRoot, 'natural-ui-input-before-send.png');
+  await page.screenshot({ path: screenshotBeforeSend, fullPage: false }).catch(() => {});
+  await page.mouse.click(sendPoint.x, sendPoint.y);
+
+  const result = {
+    ok: true,
+    route: 'vscode-webview-screen-coordinate-keyboard',
+    naturalUi: true,
+    commandInjected: false,
+    entryMethod: 'screen-coordinate-click-keyboard-insertText',
+    userTurnObserved: null,
+    domFallbackError,
+    inputPoint,
+    sendPoint,
+    viewport,
+    screenshotBeforeSend,
+    debugPort: vscodeDebugPort,
+    promptLength: prompt.length,
+    promptSha256: crypto.createHash('sha256').update(prompt).digest('hex'),
+  };
+  appendHarnessProgress('natural-ui-submitted', result);
+  return result;
+}
+
+async function findDevSeekInputFrame(context, waitMs) {
+  const deadline = Date.now() + waitMs;
+  let lastSummary = [];
+  while (Date.now() < deadline) {
+    lastSummary = [];
+    for (const page of context.pages()) {
+      const title = await page.title().catch(() => '');
+      for (const frame of page.frames()) {
+        const frameUrl = frame.url();
+        lastSummary.push({ title, url: frameUrl });
+        const inputCount = await frame.locator('#input').count({ timeout: 200 }).catch(() => 0);
+        const sendCount = await frame.locator('#send-btn').count({ timeout: 200 }).catch(() => 0);
+        if (inputCount > 0 && sendCount > 0) {
+          appendHarnessProgress('natural-ui-input-found', { title, frameUrl });
+          return { page, frame, title };
+        }
+      }
+    }
+    await delay(1000);
+  }
+  throw new Error('未在真实 VS Code Webview 中找到 DevSeek 输入框：' + JSON.stringify(lastSummary.slice(-8)));
+}
+
+function normalizeNaturalUiDomProbeMs(value) {
+  if (value === undefined || value === '') return 2000;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 2000;
+  return Math.max(0, Math.min(30000, parsed));
+}
+
+async function waitForDebugEndpoint(port, waitMs) {
+  const deadline = Date.now() + waitMs;
+  let lastError = '';
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/json/version`);
+      if (response.ok) {
+        const version = await response.json();
+        if (version?.webSocketDebuggerUrl) return version;
+      }
+      lastError = `HTTP ${response.status}`;
+    } catch (error) {
+      lastError = String(error?.message || error);
+    }
+    await delay(500);
+  }
+  throw new Error(`VS Code 调试端口未就绪 port=${port}: ${lastError}`);
+}
+
+async function waitForProgressStage(stage, waitMs) {
+  const deadline = Date.now() + waitMs;
+  while (Date.now() < deadline) {
+    if (readProgressTail().some((entry) => entry?.stage === stage)) return;
+    await delay(500);
+  }
+  throw new Error(`等待 ${stage} 超时`);
+}
+
+function appendHarnessProgress(stage, extra = {}) {
+  fs.appendFileSync(progressPath, JSON.stringify({
+    ts: new Date().toISOString(),
+    stage,
+    ...extra,
+  }) + '\n');
 }
 
 function waitForChildExit(child, waitMs) {

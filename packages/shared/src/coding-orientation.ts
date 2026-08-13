@@ -12,6 +12,7 @@ export type CodingOrientationSource =
 export interface CodingOrientationDecisionInput {
   readonly prompt: string;
   readonly modeHint?: CodingTaskMode;
+  readonly confirmedWorkspaceMutation?: boolean;
 }
 
 export interface CodingOrientationDecision {
@@ -40,7 +41,7 @@ export class CanonicalOrientationDecisionService implements OrientationDecisionP
   decide(input: CodingOrientationDecisionInput): CodingOrientationDecision {
     const prompt = normalizePrompt(input.prompt);
     const hint = validateModeHint(input.modeHint);
-    const resolved = resolveMode(prompt, hint);
+    const resolved = resolveMode(prompt, hint, input.confirmedWorkspaceMutation === true);
     return freezeDecision({
       version: CODING_ORIENTATION_DECISION_VERSION,
       prompt,
@@ -93,6 +94,7 @@ export function assertCodingOrientationPrompt(
 function resolveMode(
   prompt: string,
   hint: CodingTaskMode | undefined,
+  confirmedWorkspaceMutation: boolean,
 ): Pick<CodingOrientationDecision, 'mode' | 'source' | 'reasonCodes'> {
   if (isUnsafeSecretHarvestingImplementationRequest(prompt)) {
     return resolved('explain', 'safety-policy', 'unsafe-secret-harvesting-refusal');
@@ -102,6 +104,9 @@ function resolveMode(
   }
   if (EXTERNAL_EFFECT_ACTION_RE.test(prompt)) {
     return resolved('release', 'prompt', 'explicit-external-effect-action');
+  }
+  if (hint === 'change' && confirmedWorkspaceMutation && CHANGE_REQUEST_RE.test(prompt)) {
+    return resolved('change', 'mode-hint', 'confirmed-workspace-mutation');
   }
   const reviewRequested = REVIEW_REQUEST_RE.test(prompt);
   if (CHANGE_REQUEST_RE.test(prompt) && (!reviewRequested || EXPLICIT_CHANGE_ACTION_RE.test(prompt))) {

@@ -761,6 +761,84 @@ for (const verb of ['提供', '更新', '修改']) {
   });
 }
 
+test('agentic route: report-only Markdown completes with readback instead of terminal verification loop', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-report-only-readback-'));
+  const source = path.join(root, 'docs/r3-iteration/deepseek-login-ready-state-matrix.md');
+  const target = path.join(root, 'docs/r3-iteration/r3-live-deepseek-login-ready-state.md');
+  const content = [
+    '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE',
+    '',
+    `证据来源：${source}`,
+    '',
+    '## 登录/ready 边界结论',
+    'BridgeHealthCheck 和 devseek.deepseek-web-connector-health/v1 记录了 bridge health。',
+    'plugin-opened DeepSeek page 是当前 bridge 会话的用户路径。',
+    'loggedInLikely 必须同时参考 loggedInIndicator 与 chatInput evidence。',
+    'deepseek-dom-send-button-missing 只表示 send button selector drift is not LOGIN_REQUIRED。',
+    'login-state-not-send-button 防止把发送按钮 selector 漂移结算成登录失败。',
+    '',
+    '## 风险与验证建议',
+    'not fixed line-count smoke：验收必须基于锚点、读回和真实 UI 证据，不复用旧报告。',
+    '',
+  ].join('\n');
+  const io = makeCallbacks();
+  const requests = [];
+  mkdirSync(path.dirname(source), { recursive: true });
+  writeFileSync(source, [
+    '# DeepSeek login ready matrix',
+    '',
+    '- BridgeHealthCheck: ok',
+    '- chatInput evidence: present',
+    '- loggedInIndicator: present',
+  ].join('\n'), 'utf8');
+  fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'report-only-readback', index: 0 }];
+  globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__ = async (messages, options) => {
+    requests.push({ messages, options });
+    return {
+      text: '读取源材料、创建报告、读回报告并完成。',
+      tools: [
+        { name: 'read_file', input: { path: source } },
+        { name: 'create_file', input: { path: target, content } },
+        { name: 'read_file', input: { path: target } },
+        { name: 'task_complete', input: { summary: `已创建并读回 ${target}，所有验收锚点已覆盖。` } },
+      ],
+    };
+  };
+
+  try {
+    const prompt = [
+      `请阅读 ${source}，在 ${target} 生成 Markdown 审计报告。`,
+      '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要运行编译或测试命令。',
+      '写入后重新读取该报告，确认内容完整，然后调用 task_complete。',
+      '报告必须逐字包含以下验收锚点：',
+      '- R3-LIVE-DEEPSEEK-LOGIN-READY-STATE',
+      '- BridgeHealthCheck',
+      '- devseek.deepseek-web-connector-health/v1',
+      '- loggedInLikely',
+      '- plugin-opened DeepSeek page',
+      '- chatInput evidence',
+      '- deepseek-dom-send-button-missing',
+      '- login-state-not-send-button',
+      '- send button selector drift is not LOGIN_REQUIRED',
+      '- not fixed line-count smoke',
+    ].join('\n');
+
+    const result = await runAgenticLoop(prompt, [], root, 'fast', io.callbacks, '', 'edit', []);
+
+    assert.equal(requests.length, 1, result.historyText);
+    assert.equal(result.tasksApplied, 1, result.historyText);
+    assert.equal(result.tasksFailed, 0, result.historyText);
+    assert.deepEqual(result.changedPaths, [target]);
+    assert.equal(readFileSync(target, 'utf8'), content);
+    assert.equal(io.activities.some(item => item.kind === 'terminal'), false);
+    assert.equal(io.statuses.some(status => status.title === '文件读回验证通过'), true);
+    assert.doesNotMatch(result.historyText, /No applicable automatic verifier|Canonical verifier selection/);
+  } finally {
+    delete globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('agentic route: a prohibited Markdown mutation never becomes a forced write', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-md-prohibited-write-'));
   const target = path.join(root, 'report.md');

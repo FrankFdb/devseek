@@ -13,8 +13,10 @@ export interface DeliverableWriteEvidence {
 const FILE_TOKEN_RE = /(?:\/[^\s，。；;：:"'`<>|]+|(?:\.{0,2}\/)?[A-Za-z0-9_.@+-]+(?:\/[A-Za-z0-9_.@+-]+)*)\.(?:cpp|cxx|cc|c|hpp|hxx|hh|h|tsx|jsx|mjs|cjs|ts|js|py|java|go|rs|cs|php|rb|swift|kts|kt|scala|html|scss|sass|css|svelte|vue|bash|zsh|sh|json|ya?ml|md|markdown|txt|cmake)\b/gi;
 const WRITE_ACTION_RE = /(?:必须|务必|请|需要|应当|要求|must|required|shall)?\s*(?:创建|新建|生成|编写|写入|输出|保存|交付|修改|更新|重构|create|generate|write|save|deliver|modify|update|refactor)/i;
 const NEGATED_WRITE_RE = /(?:不要|不用|无需|不需要|禁止|不得|不能|别|do\s+not|must\s+not).{0,18}(?:创建|新建|生成|编写|写入|输出|保存|交付|修改|更新|create|generate|write|save|deliver|modify|update)/i;
-const INPUT_ROLE_RE = /(?:基于|根据|依据|参考|读取|读入|检查|审计|分析|查看|来自|\b(?:from|based\s+on|according\s+to|read|inspect|audit|analy[sz]e|check|review)\b)/gi;
+const INPUT_ROLE_RE = /(?:基于|根据|依据|参考|读取|阅读|阅览|读入|检查|审计|分析|查看|来自|\b(?:from|based\s+on|according\s+to|read|inspect|audit|analy[sz]e|check|review)\b)/gi;
 const TARGET_AFTER_INPUT_RE = /(?:目标|输出|报告|文档|文件|创建|新建|生成|编写|写入|写到|保存|保存到|输出到|交付|修改|更新|重构|target|output|report|document|file|create|generate|write|save|deliver|modify|update|refactor)/i;
+const TARGET_LOCATION_AFTER_INPUT_RE = /(?:，|,|；|;|\s|^)(?:并|然后|再)?\s*(?:在|到|至|于|存到|写到|保存到|输出到|放入|放到)\s*$/i;
+const WRITE_ACTION_AFTER_PATH_RE = /^\s*(?:(?:创建|新建|生成|编写|写入|输出|保存|交付|修改|更新|重构)|(?:create|generate|write|save|deliver|modify|update|refactor)\b)/i;
 const TARGET_PREFIX_RE = /(?:目标(?:文件|文档|报告|路径)?\s*(?:是|为|:|：|=)?|输出(?:文件|文档|报告|路径)?\s*(?:是|为|:|：|=)?|(?:保存|写入|写到|输出|输出到|放入|放到|交付)(?:到|至|为)?|(?:创建|新建|生成|编写)(?:输出)?(?:文件|文档|报告)?\s*(?:是|为|:|：|=)?|\b(?:target|output)(?:\s+(?:file|document|report|path))?\s*(?::|=)?|\b(?:save|write|output|deliver)\s+(?:it\s+)?(?:to|as)?|\b(?:create|generate|write)\s+(?:the\s+)?(?:output\s+)?(?:file|document|report)?\s*)$/i;
 
 export function extractRequiredDeliverables(prompt: string): RequiredDeliverable[] {
@@ -102,6 +104,9 @@ function isInputPathMention(
   const sinceInputRole = prefix.slice(inputIndex);
   if (TARGET_AFTER_INPUT_RE.test(sinceInputRole)) return false;
   const suffix = text.slice(end, Math.min(bounds.end, end + 80));
+  if (TARGET_LOCATION_AFTER_INPUT_RE.test(sinceInputRole) && WRITE_ACTION_AFTER_PATH_RE.test(suffix)) {
+    return false;
+  }
   if (/^\s*(?:作为|as)\s+(?:目标|输出|报告|文档|文件|target|output|report|document|file)\b/i.test(suffix)) {
     return false;
   }

@@ -4,7 +4,7 @@ import {
   type CodingKernelSurface,
   type CodingKernelTaskContract,
 } from './coding-kernel';
-import type { CodingTaskMode } from './coding-conformance';
+import type { CodingDeliverableKind, CodingTaskMode } from './coding-conformance';
 import type {
   CodingTaskAcceptanceCriterion,
   CodingTaskExternalBoundary,
@@ -17,6 +17,7 @@ import {
 import { resolveCodingTaskPathIntent } from './coding-task-path-intent';
 
 const VERIFICATION_REQUEST_RE = /(?:\bverif(?:y|ied|ication)\b|\bvalidat(?:e|ed|ion)\b|\btests?\b|\bchecks?\b|\bcompile\b|\brun\b|验证|校验|测试|检查|编译|运行|自测)/iu;
+const VERIFICATION_PROHIBITION_RE = /(?:(?:do\s+not|don't|must\s+not|should\s+not|never|without)\b[^,.;\n]{0,80}\b(?:run|compile|test|verify|validate|check)\b|(?:不要|不得|禁止|不允许|无需|不需要|别)[^,，。；;\n]{0,40}(?:运行|编译|测试|验证|校验|检查)|不(?:运行|编译|测试|验证|校验|检查))/iu;
 const SCOPED_CHANGE_RE = /(?:keep\s+the\s+change\s+scoped|do\s+not\s+(?:modify|change|touch)\s+(?:any\s+)?other\s+files?|(?:only|solely)\s+(?:modify|change|edit|touch)\b[^.\n]{0,80}|only\s+[^.\n]{0,80}\s+changes?|不要(?:修改|改动|新增)(?:任何)?其他文件|(?:只|仅)(?:允许)?(?:修改|改动)[^，。；\n]{0,80})/iu;
 const NO_DEPENDENCY_RE = /(?:do\s+not\s+(?:add|introduce)\s+(?:any\s+)?dependenc|no\s+(?:new\s+)?dependenc|不要(?:新增|引入)(?:任何)?依赖|不(?:新增|引入)依赖)/iu;
 const DEPENDENCY_EFFECT_RE = /(?:\binstall\b[^.\n]{0,80}\b(?:package|dependency)\b|\b(?:npm|pnpm|yarn|bun|pip)\s+(?:install|add)\b|安装[^，。；\n]{0,80}(?:包|依赖))/iu;
@@ -25,6 +26,7 @@ const API_VERSION_BOUNDARY_RE = /(?:(?:latest|current|versioned)\s+[^.\n]{0,60}\
 const LICENSE_BOUNDARY_RE = /(?:(?<![/\\])\blicen[cs]e\b|许可证|授权协议|开源协议)/iu;
 const DEPLOYMENT_BOUNDARY_RE = /(?:\bdeploy(?:ment)?\b|\bproduction\b|\bstaging\b|部署|上线|生产环境|预发布环境)/iu;
 const SUBJECTIVE_ACCEPTANCE_RE = /(?:looks?\s+(?:good|professional|polished|nice)|看起来(?:专业|不错|很好|好看)|足够美观|令人满意|主观满意)/iu;
+const REPORT_DELIVERABLE_RE = /(?:\.(?:md|markdown)\b|markdown|\breports?\b|\bdocuments?\b|报告|文档)/iu;
 
 export interface ResolveCodingKernelTaskContractInput {
   readonly prompt: string;
@@ -33,6 +35,8 @@ export interface ResolveCodingKernelTaskContractInput {
   readonly targetPaths?: readonly string[];
   readonly modeHint?: CodingTaskMode;
   readonly verificationRequired?: boolean;
+  readonly deliverableKinds?: readonly CodingDeliverableKind[];
+  readonly confirmedWorkspaceMutation?: boolean;
 }
 
 /** Resolves the product-level coding contract once for every Surface. */
@@ -40,7 +44,11 @@ export function resolveCodingKernelTaskContract(
   input: ResolveCodingKernelTaskContractInput,
 ): CodingKernelTaskContract {
   const prompt = normalizePrompt(input.prompt);
-  const orientation = resolveCodingOrientationDecision({ prompt, modeHint: input.modeHint });
+  const orientation = resolveCodingOrientationDecision({
+    prompt,
+    modeHint: input.modeHint,
+    confirmedWorkspaceMutation: input.confirmedWorkspaceMutation,
+  });
   if (isUnsafeSecretHarvestingImplementationRequest(prompt)) {
     return buildSecretHarvestingRefusalTaskContract(input.surface, orientation);
   }
@@ -51,6 +59,9 @@ export function resolveCodingKernelTaskContract(
   const mutating = mode === 'change' || mode === 'release';
   const pathIntent = resolveCodingTaskPathIntent({ prompt, targetPaths: input.targetPaths });
   const declaredTargets = [...pathIntent.mutationFileTargets];
+  const deliverableKinds = uniqueDeliverableKinds(input.deliverableKinds ?? []);
+  const reportDeliverableRequested = deliverableKinds.includes('report')
+    || REPORT_DELIVERABLE_RE.test(prompt);
   const mutationScope = uniquePaths([
     ...declaredTargets,
     ...pathIntent.mutationDirectoryTargets.map(path => `${path}/**`),
@@ -68,13 +79,17 @@ export function resolveCodingKernelTaskContract(
           ...(pathIntent.mentionedPaths.length === 0 ? input.contextFiles ?? [] : []),
         ]);
   const scopedChange = mutating && SCOPED_CHANGE_RE.test(prompt);
+  const verificationProhibited = VERIFICATION_PROHIBITION_RE.test(prompt);
   const verificationRequired = mutating
+    && !verificationProhibited
     && (input.verificationRequired !== false || VERIFICATION_REQUEST_RE.test(prompt));
   const deliverables = resolveDeliverables({
     mutating,
     dependencyEffect,
     verificationRequired,
     declaredTargets,
+    reportDeliverableRequested,
+    sourceChangeDeliverableRequested: deliverableKinds.includes('source-change'),
   });
   const externalBoundaries = resolveExternalBoundaries(prompt, dependencyEffect, networkEffect);
   const acceptance = resolveAcceptance({
@@ -124,26 +139,65 @@ function resolveDeliverables(input: {
   readonly dependencyEffect: boolean;
   readonly verificationRequired: boolean;
   readonly declaredTargets: readonly string[];
+  readonly reportDeliverableRequested: boolean;
+  readonly sourceChangeDeliverableRequested: boolean;
 }): Array<{ id: string; kind: 'source-change' | 'report' | 'verification-result'; path?: string }> {
   if (!input.mutating) return [{ id: 'response', kind: 'report' }];
   const targets = input.dependencyEffect
     ? ['package.json']
     : input.declaredTargets.filter(isConcreteWorkspacePath);
-  const sourceDeliverables = targets.length === 0
-    ? [{ id: 'source-change', kind: 'source-change' as const }]
-    : targets.map((path, index) => ({
-        id: index === 0 ? 'source-change' : `source-change:${index + 1}`,
-        kind: 'source-change' as const,
-        path,
-      }));
+  const mutationDeliverables = input.dependencyEffect
+    ? [{ id: 'dependency-change', kind: 'source-change' as const, path: 'package.json' }]
+    : targets.length === 0
+      ? [{
+          id: input.reportDeliverableRequested && !input.sourceChangeDeliverableRequested
+            ? 'report'
+            : 'source-change',
+          kind: input.reportDeliverableRequested && !input.sourceChangeDeliverableRequested
+            ? 'report' as const
+            : 'source-change' as const,
+        }]
+      : buildTargetDeliverables({
+          targets,
+          reportDeliverableRequested: input.reportDeliverableRequested,
+          sourceChangeDeliverableRequested: input.sourceChangeDeliverableRequested,
+        });
   return [
-    ...sourceDeliverables.map(deliverable => input.dependencyEffect
-      ? { ...deliverable, id: 'dependency-change' }
-      : deliverable),
+    ...mutationDeliverables,
     ...(input.verificationRequired
       ? [{ id: 'verification-result', kind: 'verification-result' as const }]
       : []),
   ];
+}
+
+function buildTargetDeliverables(input: {
+  readonly targets: readonly string[];
+  readonly reportDeliverableRequested: boolean;
+  readonly sourceChangeDeliverableRequested: boolean;
+}): Array<{ id: string; kind: 'source-change' | 'report'; path: string }> {
+  let sourceCount = 0;
+  let reportCount = 0;
+  const reportOnlyTargets = input.reportDeliverableRequested
+    && !input.sourceChangeDeliverableRequested
+    && input.targets.every(isReportArtifactPath);
+  return input.targets.map(path => {
+    const report = reportOnlyTargets
+      || (input.reportDeliverableRequested && isReportArtifactPath(path));
+    if (report) {
+      reportCount++;
+      return {
+        id: reportCount === 1 ? 'report' : `report:${reportCount}`,
+        kind: 'report' as const,
+        path,
+      };
+    }
+    sourceCount++;
+    return {
+      id: sourceCount === 1 ? 'source-change' : `source-change:${sourceCount}`,
+      kind: 'source-change' as const,
+      path,
+    };
+  });
 }
 
 function resolveConstraints(input: {
@@ -320,6 +374,17 @@ function isConcreteWorkspacePath(path: string): boolean {
   return !path.includes('*') && !path.includes('?');
 }
 
+function isReportArtifactPath(path: string): boolean {
+  return /\.(?:md|markdown|txt)$/iu.test(path)
+    || /(?:^|\/)(?:docs?|reports?)(?:\/|$)/iu.test(path);
+}
+
 function uniquePaths(values: readonly string[]): string[] {
   return [...new Set(values.map(normalizeWorkspacePath).filter(Boolean))];
+}
+
+function uniqueDeliverableKinds(values: readonly CodingDeliverableKind[]): CodingDeliverableKind[] {
+  return [...new Set(values.filter(value => (
+    value === 'source-change' || value === 'report' || value === 'verification-result'
+  )))];
 }

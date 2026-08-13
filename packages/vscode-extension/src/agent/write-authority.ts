@@ -36,6 +36,8 @@ const WRITE_REVOKED_MUTATION_TOOL_NAMES = new Set([
   'run_vscode_command',
 ]);
 
+const SOURCE_ONLY_WRITE_CONSTRAINT_RE = /(?:源码|源代码|source\s+code|source\s+files?)/iu;
+
 export function isWriteRevokedToolAttempt(tool: { name?: unknown }): boolean {
   const name = typeof tool.name === 'string' ? tool.name : '';
   return WRITE_REVOKED_MUTATION_TOOL_NAMES.has(name) || /^mcp__/.test(name);
@@ -43,6 +45,29 @@ export function isWriteRevokedToolAttempt(tool: { name?: unknown }): boolean {
 
 export function hasWriteRevokedToolAttempt(tools: readonly { name?: unknown }[]): boolean {
   return tools.some(isWriteRevokedToolAttempt);
+}
+
+function isReportOnlyArtifactContract(contract: TaskSemanticContract): boolean {
+  return contract.mutation.fileArtifact
+    && !contract.mutation.sourceChange
+    && !contract.mutation.prohibited
+    && contract.mutation.targets.length > 0;
+}
+
+function userSteerRevokesWritesForContract(
+  text: string,
+  contract: TaskSemanticContract,
+  previousContract?: TaskSemanticContract,
+): boolean {
+  if (!userSteerRevokesWrites(text)) return false;
+  const reportOnlyArtifactTask = isReportOnlyArtifactContract(contract)
+    || (previousContract !== undefined
+      && !contract.mutation.sourceChange
+      && isReportOnlyArtifactContract(previousContract));
+  if (reportOnlyArtifactTask && SOURCE_ONLY_WRITE_CONSTRAINT_RE.test(text)) {
+    return false;
+  }
+  return true;
 }
 
 /** Keeps file-write authorization aligned with user steers received in flight. */
@@ -58,12 +83,16 @@ export function createWriteAuthority(
     projectInstructions: options.projectInstructions,
   });
   let semanticContractRevision = lineage.semanticContractRevision;
-  let writeRevoked = userSteerRevokesWrites(initialPrompt);
+  let writeRevoked = userSteerRevokesWritesForContract(
+    initialPrompt,
+    semanticContractRevision.semanticContract,
+  );
   const pendingMessages: ChatMessage[] = [];
   const drain = (): ChatMessage[] => {
     const texts = consumeUserSteerTexts(callbacks);
     const messages: ChatMessage[] = [];
     for (const text of texts) {
+      const previousSemanticContract = semanticContractRevision.semanticContract;
       lineage = buildIntentRevisionLineage({
         previous: lineage,
         committedEffects: options.committedEffects?.() ?? [],
@@ -71,7 +100,11 @@ export function createWriteAuthority(
         projectInstructions: options.projectInstructions,
       });
       semanticContractRevision = lineage.semanticContractRevision;
-      writeRevoked = writeRevoked || userSteerRevokesWrites(text);
+      writeRevoked = writeRevoked || userSteerRevokesWritesForContract(
+        text,
+        semanticContractRevision.semanticContract,
+        previousSemanticContract,
+      );
       messages.push(buildUserSteerMessage(text, { semanticContractRevision }));
     }
     const updates = messages

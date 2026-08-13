@@ -153,19 +153,50 @@ test('TaskIntentRouter: R3 live login-ready audit style guidance stays Markdown 
     '报告主题是 R3-LIVE-DEEPSEEK-LOGIN-READY-STATE plugin-opened DeepSeek login readiness audit。',
     '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要运行编译或测试命令。',
     '报告正文请使用与本测试 case 相同的中文撰写；技术标识符、协议名、文件路径和验收锚点保持原文。',
-    '报告必须解释 loggedInIndicator 与 chatInput evidence 已存在时 loggedInLikely 必须为 true。',
+    '报告必须解释：',
+    '- 为什么通过插件按钮打开的 DeepSeek 页面就是当前 bridge 会话的用户路径，不能把它误认为另一个浏览器登录。',
+    '- 为什么 loggedInIndicator 与 chatInput evidence 已存在时，loggedInLikely 必须为 true。',
+    '- 为什么 deepseek-dom-send-button-missing 只能说明发送按钮 selector/ready 状态漂移，不能被结算成 LOGIN_REQUIRED。',
+    '- 为什么 chatInput evidence 缺失仍然必须阻断登录，避免把未知页面误报为已登录。',
+    '- 为什么本轮验收不能复用旧 Markdown、固定行数、R3-09B budget artifact 或只看窗口已打开。',
+    '- 生成文件要包含登录/ready 边界结论、风险、验证建议和用户可检查的证据路径。',
+    '',
+    '报告必须逐字包含以下验收锚点：',
+    '- R3-LIVE-DEEPSEEK-LOGIN-READY-STATE',
+    '- BridgeHealthCheck',
+    '- devseek.deepseek-web-connector-health/v1',
+    '- loggedInLikely',
+    '- plugin-opened DeepSeek page',
+    '- chatInput evidence',
+    '- deepseek-dom-send-button-missing',
+    '- login-state-not-send-button',
+    '- send button selector drift is not LOGIN_REQUIRED',
+    '- not fixed line-count smoke',
   ].join('\n'));
+  const reportPath = '/tmp/devseek-real-plugin-deepseek/workspace/docs/r3-iteration/r3-live-deepseek-login-ready-state.md';
 
   assert.equal(route.family, 'file-artifact');
   assert.equal(route.agentTaskShape, 'general');
   assert.equal(route.semanticContract.kind, 'file-artifact');
   assert.equal(route.mutation.fileArtifact, true);
   assert.equal(route.mutation.sourceChange, false);
+  assert.deepEqual(route.semanticContract.taskContract.deliverableTargets, [reportPath]);
+  assert.deepEqual(route.mutation.targets, [reportPath]);
+  assert.ok(!route.semanticContract.taskContract.inputs.includes('/ready'));
+  assert.ok(!route.semanticContract.obligations.artifacts.some(artifact => artifact.target === '/ready'));
   assert.equal(route.quality.formalProjectRequired, false);
   assert.equal(route.validation.runRequested, false);
   assert.equal(route.validation.testRequested, false);
   assert.ok(route.signals.includes('scoped-formal-source-prohibition'));
   assert.ok(!route.signals.includes('formal-project-quality-required'));
+});
+
+test('TaskIntentRouter: explicit extensionless absolute file target remains a mutation target', () => {
+  const route = routeTaskIntent('请创建 /ready 文件，内容写入 OK。');
+
+  assert.equal(route.chatKind, 'code-change');
+  assert.equal(route.mutation.requested, true);
+  assert.deepEqual(route.mutation.targets, ['/ready']);
 });
 
 test('TaskIntentRouter: generated Markdown report with anchors uses agent artifact route', () => {

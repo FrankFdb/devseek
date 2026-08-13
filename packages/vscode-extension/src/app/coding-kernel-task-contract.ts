@@ -1,5 +1,7 @@
+import * as nodePath from 'path';
 import {
   resolveCodingKernelTaskContract,
+  type CodingDeliverableKind,
   type CodingKernelTaskContract,
   type CodingTaskMode,
 } from '@devseek-netai/shared';
@@ -10,22 +12,34 @@ export interface VsCodeCodingKernelTaskContractInput {
   readonly userPrompt: string;
   readonly workflowMode: ExecutionMode;
   readonly contextFiles: readonly string[];
+  readonly workspaceRoot: string;
   readonly taskContract: TaskContract;
 }
 
 export function projectVsCodeCodingKernelTaskContract(
   input: VsCodeCodingKernelTaskContractInput,
 ): CodingKernelTaskContract {
-  const deliverableTargets = uniqueNonEmpty(input.taskContract.deliverableTargets);
-  const explicitlyRequiresVerification = input.taskContract.qualityObligations.length > 0
-    || input.taskContract.deliverables.includes('verification-result');
+  const deliverableTargets = uniqueNonEmpty(input.taskContract.deliverableTargets
+    .map(target => projectWorkspacePath(target, input.workspaceRoot)));
+  const contextFiles = uniqueNonEmpty([
+    ...input.contextFiles,
+    ...input.taskContract.inputs,
+  ].map(file => projectWorkspacePath(file, input.workspaceRoot)));
+  const deliverableKinds = uniqueDeliverableKinds(input.taskContract.deliverables);
+  const sourceChangeRequested = deliverableKinds.includes('source-change');
+  const reportFileRequested = deliverableKinds.includes('report') && deliverableTargets.length > 0;
+  const workspaceMutationConfirmed = sourceChangeRequested || reportFileRequested;
+  const explicitlyRequiresVerification = input.taskContract.qualityObligations.includes('validation')
+    || (!reportFileRequested && input.taskContract.deliverables.includes('verification-result'));
   return resolveCodingKernelTaskContract({
     prompt: input.userPrompt,
     surface: 'vscode',
     modeHint: projectTaskMode(input.workflowMode),
-    contextFiles: uniqueNonEmpty([...input.contextFiles, ...input.taskContract.inputs]),
+    contextFiles,
     targetPaths: deliverableTargets,
-    ...(explicitlyRequiresVerification ? { verificationRequired: true } : {}),
+    deliverableKinds,
+    confirmedWorkspaceMutation: workspaceMutationConfirmed,
+    verificationRequired: sourceChangeRequested || explicitlyRequiresVerification,
   });
 }
 
@@ -37,4 +51,27 @@ function projectTaskMode(mode: ExecutionMode): CodingTaskMode {
 
 function uniqueNonEmpty(values: readonly string[]): string[] {
   return [...new Set(values.map(value => value.trim()).filter(Boolean))];
+}
+
+function uniqueDeliverableKinds(values: readonly TaskContract['deliverables']): CodingDeliverableKind[] {
+  return [...new Set(values.filter(value => (
+    value === 'source-change' || value === 'report' || value === 'verification-result'
+  )))] as CodingDeliverableKind[];
+}
+
+function projectWorkspacePath(value: string, workspaceRoot: string): string {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+  const root = workspaceRoot ? nodePath.resolve(workspaceRoot) : '';
+  if (nodePath.isAbsolute(trimmed)) {
+    if (!root) return '';
+    const relative = nodePath.relative(root, nodePath.resolve(trimmed));
+    if (!relative || relative.startsWith('..') || nodePath.isAbsolute(relative)) return '';
+    return normalizeWorkspacePath(relative);
+  }
+  return normalizeWorkspacePath(trimmed);
+}
+
+function normalizeWorkspacePath(value: string): string {
+  return value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/{2,}/g, '/');
 }

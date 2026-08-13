@@ -64,6 +64,7 @@ export const productCodingKernelExecutor: CodingKernelExecutionPort = {
         userPrompt: request.userPrompt,
         workflowMode: request.workflowMode,
         contextFiles: request.contextFiles,
+        workspaceRoot: request.workspaceRoot,
         taskContract: request.semanticContract.taskContract,
       });
       const output = await kernel.execute({

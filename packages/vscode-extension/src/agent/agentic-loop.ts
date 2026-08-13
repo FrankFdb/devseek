@@ -399,7 +399,7 @@ export async function runAgenticLoop(
       callbacks: writeAuthority.callbacks,
       options: {
         verificationAcceptance: callbacks.canonicalVerificationAcceptance
-          ?? projectTaskContractAcceptance(writeAuthority.semanticContract.taskContract),
+          ?? projectAgenticVerificationAcceptance(writeAuthority.semanticContract.taskContract),
       },
     });
     if (simpleFileResult) return simpleFileResult;
@@ -865,7 +865,7 @@ export async function runAgenticLoop(
         qualityWrittenFiles: allWrittenFiles,
         verificationScopeWrittenFiles: allWrittenFiles,
         verificationAcceptance: callbacks.canonicalVerificationAcceptance
-          ?? projectTaskContractAcceptance(writeAuthority.semanticContract.taskContract),
+          ?? projectAgenticVerificationAcceptance(writeAuthority.semanticContract.taskContract),
       },
     );
     if (autoValidation.verificationReceipt) allVerificationReceipts.push(autoValidation.verificationReceipt);
@@ -1254,4 +1254,11 @@ export async function runAgenticLoop(
     } : {}),
     historyText,
   };
+}
+
+function projectAgenticVerificationAcceptance(
+  taskContract: Parameters<typeof projectTaskContractAcceptance>[0],
+) {
+  return projectTaskContractAcceptance(taskContract)
+    .filter(criterion => criterion.id === 'verified');
 }

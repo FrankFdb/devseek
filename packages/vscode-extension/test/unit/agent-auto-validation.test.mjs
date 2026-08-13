@@ -448,6 +448,68 @@ test('Agent auto validation rejects standalone sample main for a formal integrat
   }
 });
 
+test('Agent auto validation treats report-only Markdown without verifier ports as readback evidence', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-md-readback-'));
+  try {
+    const target = 'docs/r3-iteration/r3-live-deepseek-login-ready-state.md';
+    seed(root, target, [
+      '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE',
+      '',
+      `源码证据：${target}`,
+      '',
+      'BridgeHealthCheck 与 devseek.deepseek-web-connector-health/v1 证明 bridge health 已记录。',
+      'plugin-opened DeepSeek page、chatInput evidence 和 loggedInLikely 是本轮登录/ready 边界证据。',
+      'deepseek-dom-send-button-missing 表示 send button selector drift is not LOGIN_REQUIRED。',
+      'login-state-not-send-button 和 not fixed line-count smoke 已覆盖。',
+    ].join('\n'));
+    const statuses = [];
+    let commandRuns = 0;
+    const prompt = [
+      '请创建 Markdown 审计报告。',
+      '报告必须逐字包含以下验收锚点：',
+      '- R3-LIVE-DEEPSEEK-LOGIN-READY-STATE',
+      '- BridgeHealthCheck',
+      '- devseek.deepseek-web-connector-health/v1',
+      '- loggedInLikely',
+      '- plugin-opened DeepSeek page',
+      '- chatInput evidence',
+      '- deepseek-dom-send-button-missing',
+      '- login-state-not-send-button',
+      '- send button selector drift is not LOGIN_REQUIRED',
+      '- not fixed line-count smoke',
+      '不要运行编译或测试命令。',
+    ].join('\n');
+
+    const result = await runAgentAutoValidationForWrites(
+      [written(root, target, 'create')],
+      root,
+      prompt,
+      {
+        onAgentStatus: status => statuses.push(status),
+        onValidationCommand: async () => {
+          commandRuns += 1;
+          throw new Error('report-only readback must not run terminal validation');
+        },
+      },
+    );
+
+    assert.equal(commandRuns, 0);
+    assert.equal(result.verificationReceipt, undefined);
+    assert.equal(result.evidence?.ok, true);
+    assert.match(result.evidence?.command ?? '', /^file-readback /);
+    assert.equal(result.qualityGate.status, 'pass');
+    assert.doesNotMatch(result.feedbackForAI, /No applicable automatic verifier|Canonical verifier selection/);
+    assert.deepEqual(statuses.map(status => `${status.phase}:${status.state}`), [
+      'validate:started',
+      'validate:completed',
+      'quality:started',
+      'quality:completed',
+    ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('Agent auto validation fails closed when shared verification ports are absent', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-no-ports-'));
   try {
