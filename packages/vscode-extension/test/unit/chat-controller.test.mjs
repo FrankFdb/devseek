@@ -102,6 +102,32 @@ test('ChatRouteController: approval shorthand executes previous plan contract ta
   assert.ok(continued.intent.signals.includes('prior-source-change-continuation'));
 });
 
+test('ChatRouteController: corrective retarget replaces prior source scope', () => {
+  const controller = new ChatRouteController();
+  const previous = controller.decide({
+    userDisplay: 'Modify src/alpha.js to return alpha and run its test.',
+    prompt: 'Modify src/alpha.js to return alpha and run its test.',
+    files: [],
+    agentEnabled: true,
+  });
+  const replacement = controller.decide({
+    userDisplay: 'Actually change src/beta.js instead; do not touch src/alpha.js.',
+    prompt: 'Actually change src/beta.js instead; do not touch src/alpha.js.',
+    files: [],
+    agentEnabled: true,
+    semanticContext: {
+      previous: previous.intent.semanticContract,
+      revision: { strategy: 'merge' },
+    },
+  });
+
+  assert.equal(replacement.intent.mode, 'edit');
+  assert.equal(replacement.workflow.kind, 'edit-agent');
+  assert.deepEqual(replacement.intent.semanticContract.mutation.targets, ['src/beta.js']);
+  assert.ok(!replacement.intent.semanticContract.taskContract.inputs.includes('src/alpha.js'));
+  assert.ok(replacement.intent.semanticContract.signals.includes('semantic-scope-replaced'));
+});
+
 test('ChatRouteController: routes by visible user text, not attached prompt content', () => {
   const controller = new ChatRouteController();
   const decision = controller.decide({

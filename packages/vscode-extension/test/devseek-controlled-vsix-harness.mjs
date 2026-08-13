@@ -310,6 +310,10 @@ function controlledScenarioSuiteCatalog() {
       'prior-plan-source-change',
       'prior-plan-go-ahead',
     ],
+    'scope-replacement-product': [
+      'scope-replace-alpha-plan',
+      'scope-replace-beta-instead',
+    ],
     'agent-fit-product': [
       'agent-fit-ambiguous-clarify',
       'agent-fit-review-only',
@@ -355,6 +359,10 @@ function resolveControlledScenarioSuiteOptions(id) {
     },
     'prior-task-continuation-product': {
       kind: 'same-window-prior-task-approval-journey',
+      sameDevSeekSession: true,
+    },
+    'scope-replacement-product': {
+      kind: 'same-window-corrective-scope-replacement-journey',
       sameDevSeekSession: true,
     },
     'agent-fit-product': {
@@ -404,6 +412,30 @@ function controlledScenarioCatalog() {
     '}',
     '',
     'module.exports = { add };',
+    '',
+  ].join('\n');
+  const alphaRetargetBaselineContent = [
+    'function label() {',
+    "  return 'alpha-original';",
+    '}',
+    '',
+    'module.exports = { label };',
+    '',
+  ].join('\n');
+  const betaRetargetBrokenContent = [
+    'function label() {',
+    "  return 'wrong-target';",
+    '}',
+    '',
+    'module.exports = { label };',
+    '',
+  ].join('\n');
+  const betaRetargetFixedContent = [
+    'function label() {',
+    "  return 'beta';",
+    '}',
+    '',
+    'module.exports = { label };',
     '',
   ].join('\n');
   const latestRequirementContent = 'FINAL_REQUIREMENT_OK\n';
@@ -750,6 +782,53 @@ function controlledScenarioCatalog() {
       requiredRunLogSubstrings: [
         'ADD_OK',
         'src/math.js',
+      ],
+    },
+    'scope-replace-alpha-plan': {
+      id: 'scope-replace-alpha-plan',
+      kind: 'journey-corrective-retarget-plan-no-mutation',
+      targetRelativePath: 'src/alpha.js',
+      targetContent: alphaRetargetBaselineContent,
+      seedFiles: {
+        'src/alpha.js': alphaRetargetBaselineContent,
+        'src/beta.js': betaRetargetBrokenContent,
+      },
+      prompt: 'Plan the implementation for src/alpha.js before touching any files.',
+      providerPlan: 'plan-only-no-mutation',
+      expected: 'completed-advisory-no-mutation',
+      expectedFiles: {
+        'src/alpha.js': alphaRetargetBaselineContent,
+        'src/beta.js': betaRetargetBrokenContent,
+      },
+      expectedChangedPaths: [],
+      expectedMutatedUserFiles: [],
+      requiredRunLogSubstrings: [
+        'src/alpha.js',
+        '未修改文件',
+      ],
+    },
+    'scope-replace-beta-instead': {
+      id: 'scope-replace-beta-instead',
+      kind: 'journey-corrective-retarget-source-change',
+      targetRelativePath: 'src/beta.js',
+      targetContent: betaRetargetFixedContent,
+      prompt: [
+        'Actually change src/beta.js instead; do not touch src/alpha.js.',
+        'Verify with node and finish.',
+      ].join(' '),
+      providerPlan: 'source-retarget-beta-complete',
+      replaceFrom: betaRetargetBrokenContent,
+      expected: 'completed-workflow',
+      expectedFiles: {
+        'src/alpha.js': alphaRetargetBaselineContent,
+        'src/beta.js': betaRetargetFixedContent,
+      },
+      expectedChangedPaths: ['src/beta.js'],
+      expectedMutatedUserFiles: ['src/beta.js'],
+      requiredRunLogSubstrings: [
+        'BETA_OK',
+        'src/beta.js',
+        'src/alpha.js',
       ],
     },
     'agent-fit-ambiguous-clarify': {
@@ -2622,6 +2701,7 @@ function controlledPlannerResponse({ scenario }) {
     'clarify-ambiguous-no-mutation': 'analyze',
     'review-only-no-mutation': 'analyze',
     'plan-only-no-mutation': 'plan',
+    'source-retarget-beta-complete': 'modify',
     'multi-file-slugify-test-complete': 'create',
     'markdown-report-anchors-complete': 'create',
     'openai-tool-calls-wrapper-complete': 'create',
@@ -2641,6 +2721,7 @@ function controlledPlannerResponse({ scenario }) {
     'clarify-ambiguous-no-mutation': '识别模糊优化请求并先澄清不改文件',
     'review-only-no-mutation': '执行只读 code review 并保留工作区不变',
     'plan-only-no-mutation': '制定执行方案并等待用户批准，不修改文件',
+    'source-retarget-beta-complete': '按纠正后的目标只修改 beta 并验证',
     'multi-file-slugify-test-complete': '实现多文件小功能并运行聚焦测试',
     'markdown-report-anchors-complete': '生成带精确验收锚点的 Markdown 报告并验证',
     'openai-tool-calls-wrapper-complete': '兼容 OpenAI 风格 tool_calls 包装并完成多文件验证',
@@ -2889,6 +2970,40 @@ function controlledProviderResponse({ ordinal, workspaceDir, scenario, requestKi
       `[TOOL:manage_todo_list ${JSON.stringify(completedTodos)}]`,
       `[TOOL:task_complete ${JSON.stringify({
         summary: '已修复 src/math.js 的 add(a, b)，并用 node 验证 add(2, 3) 返回 5。',
+      })}]`,
+    ].join('\n');
+  }
+
+  if (scenario.providerPlan === 'source-retarget-beta-complete') {
+    const activeTodos = {
+      todoList: [
+        { id: 1, title: '确认纠正后的 beta 目标', status: 'in-progress' },
+        { id: 2, title: '只修改 beta 并验证', status: 'not-started' },
+      ],
+    };
+    const completedTodos = {
+      todoList: [
+        { id: 1, title: '确认纠正后的 beta 目标', status: 'completed' },
+        { id: 2, title: '只修改 beta 并验证', status: 'completed' },
+      ],
+    };
+    return [
+      '我会以当前纠正后的 src/beta.js 为唯一修改目标，并保持 src/alpha.js 不变。',
+      `[TOOL:manage_todo_list ${JSON.stringify(activeTodos)}]`,
+      `[TOOL:read_file ${JSON.stringify({ path: 'src/beta.js' })}]`,
+      `[TOOL:replace_in_file ${JSON.stringify({
+        path: 'src/beta.js',
+        old_str: scenario.replaceFrom || '',
+        new_str: scenario.targetContent,
+      })}]`,
+      `[TOOL:run_terminal ${JSON.stringify({
+        command: 'node -e "const { label } = require(\'./src/beta.js\'); if (label() !== \'beta\') process.exit(1); console.log(\'BETA_OK\')"',
+      })}]`,
+      `[TOOL:read_file ${JSON.stringify({ path: 'src/alpha.js' })}]`,
+      `[TOOL:read_file ${JSON.stringify({ path: 'src/beta.js' })}]`,
+      `[TOOL:manage_todo_list ${JSON.stringify(completedTodos)}]`,
+      `[TOOL:task_complete ${JSON.stringify({
+        summary: '已按纠正后的目标只修改 src/beta.js，并用 node 验证 BETA_OK；src/alpha.js 仅只读确认未修改。',
       })}]`,
     ].join('\n');
   }

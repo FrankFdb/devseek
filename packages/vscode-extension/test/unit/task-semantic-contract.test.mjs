@@ -791,6 +791,49 @@ test('TaskSemanticContract v3: replace-scope does not leak formal-project qualit
   assert.ok(!replacement.completion.doneIff.some(item => item.kind === 'formal-project-quality-passed'));
 });
 
+test('TaskSemanticContract v3: corrective source retarget replaces prior scope and protects old target', () => {
+  const previous = resolveTaskSemanticContract('Modify src/alpha.js to return alpha and run its test.');
+  for (const prompt of [
+    'Actually change src/beta.js instead; do not touch src/alpha.js.',
+    '改成修改 src/beta.js，不要再碰 src/alpha.js。',
+    'Actually change src/beta.js instead; do not touch other files.',
+  ]) {
+    const replacement = resolveTaskSemanticContract(prompt, { previous });
+
+    assert.equal(replacement.context.revision.strategy, 'replace-scope', prompt);
+    assert.equal(replacement.kind, 'existing-project-code', prompt);
+    assert.equal(replacement.mutation.requested, true, prompt);
+    assert.equal(replacement.mutation.prohibited, false, prompt);
+    assert.equal(replacement.mutation.sourceChange, true, prompt);
+    assert.deepEqual(replacement.mutation.targets, ['src/beta.js'], prompt);
+    assert.ok(!replacement.taskContract.inputs.includes('src/alpha.js'), prompt);
+    assert.ok(replacement.signals.includes('semantic-scope-replaced'), prompt);
+    assert.ok(replacement.signals.includes('scoped-target-write-boundary'), prompt);
+    assert.ok(replacement.completion.doneIff.some(item => (
+      item.kind === 'code-written' && item.target === 'src/beta.js'
+    )), prompt);
+    assert.ok(!replacement.completion.doneIff.some(item => item.target === 'src/alpha.js'), prompt);
+  }
+});
+
+test('TaskSemanticContract v3: additive follow-up still merges while global no-write blocks replacement', () => {
+  const previous = resolveTaskSemanticContract('Modify src/alpha.js to return alpha and run its test.');
+  const additive = resolveTaskSemanticContract('Actually also change src/beta.js.', { previous });
+  const stopped = resolveTaskSemanticContract(
+    'Actually change src/beta.js instead; do not touch any files.',
+    { previous },
+  );
+
+  assert.equal(additive.context.revision.strategy, 'merge');
+  assert.deepEqual(additive.mutation.targets, ['src/alpha.js', 'src/beta.js']);
+
+  assert.equal(stopped.context.revision.strategy, 'merge');
+  assert.equal(stopped.mutation.requested, false);
+  assert.equal(stopped.mutation.prohibited, true);
+  assert.deepEqual(stopped.mutation.targets, []);
+  assert.equal(stopped.signals.includes('semantic-scope-replaced'), false);
+});
+
 test('TaskSemanticContract v3: project instructions are source-bound and fingerprinted', () => {
   const contract = resolveTaskSemanticContract('请修改 src/cache.ts。', {
     projectInstructions: {

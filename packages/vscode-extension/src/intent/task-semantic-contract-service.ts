@@ -73,7 +73,11 @@ export function resolveTaskSemanticContract(
     context.semanticIntent,
   );
   const previous = context.previous ? normalizeSemanticContract(context.previous) : undefined;
-  const revision = context.revision ?? { strategy: previous ? 'merge' : 'initial' };
+  const revision = resolveEffectiveTaskSemanticRevision(
+    context.revision ?? { strategy: previous ? 'merge' : 'initial' },
+    previous,
+    current,
+  );
   const effective = previous
     ? mergeTaskSemanticContracts(previous, current, revision)
     : current;
@@ -98,6 +102,63 @@ function normalizeSemanticContract(contract: TaskSemanticContract): TaskSemantic
     return contract;
   }
   return buildTaskSemanticContract(String(contract.prompt || ''));
+}
+
+function resolveEffectiveTaskSemanticRevision(
+  revision: TaskSemanticRevisionInput,
+  previous: TaskSemanticContract | undefined,
+  current: TaskSemanticContract,
+): TaskSemanticRevisionInput {
+  if (!previous || revision.strategy !== 'merge') return revision;
+  const currentTargets = uniquePaths([
+    ...current.mutation.targets,
+    ...current.taskContract.deliverableTargets,
+  ]);
+  if (currentTargets.length === 0) return revision;
+  if (current.mutation.prohibited && !current.signals.includes('scoped-target-write-boundary')) return revision;
+  const previousTargets = uniquePaths([
+    ...previous.mutation.targets,
+    ...previous.taskContract.deliverableTargets,
+  ]);
+  if (!isCorrectiveScopeReplacementRequest(current, previousTargets)) return revision;
+  const replacedTargets = previousTargets.filter(previousTarget => !currentTargets.some(currentTarget => (
+    samePathToken(previousTarget, currentTarget)
+  )));
+  return {
+    ...revision,
+    strategy: 'replace-scope',
+    prohibitedTargets: uniquePaths([
+      ...(revision.prohibitedTargets ?? []),
+      ...replacedTargets,
+    ]),
+  };
+}
+
+function isCorrectiveScopeReplacementRequest(
+  current: TaskSemanticContract,
+  previousTargets: readonly string[],
+): boolean {
+  const prompt = String(current.prompt || '');
+  const explicitReplacement = /(?:更正|纠正|改为|改成|换成|改去|不是[\s\S]{0,80}而是|而不是|instead(?:\s+of)?|rather\s+than|correction|correct(?:ion)?|I\s+take\s+that\s+back)/i.test(prompt);
+  if (explicitReplacement) return true;
+  const mentionsPreviousTarget = previousTargets.some(target => promptMentionsPath(prompt, target));
+  return mentionsPreviousTarget && (
+    /(?:实际上|其实|事实上|actual(?:ly)?)/i.test(prompt)
+    || current.signals.includes('scoped-target-write-boundary')
+  );
+}
+
+function promptMentionsPath(prompt: string, target: string): boolean {
+  const normalizedPrompt = prompt.toLowerCase().replace(/[`'"“”‘’]/g, '');
+  const normalizedTarget = normalizePathToken(target);
+  return normalizedTarget.length >= 3 && (
+    normalizedPrompt.includes(normalizedTarget)
+    || normalizedPrompt.includes(normalizedTarget.replace(/^\.\//, ''))
+  );
+}
+
+function samePathToken(a: string, b: string): boolean {
+  return normalizePathToken(a) === normalizePathToken(b);
 }
 
 function applySemanticIntentProposal(
@@ -558,6 +619,7 @@ function mergeTaskSemanticContracts(
     mutation,
     validation,
     replaceScope,
+    prohibitedTargets,
     mutationProhibited: current.mutation.prohibited,
   });
   const signals = uniqueStrings([
@@ -783,6 +845,7 @@ function mergeTaskContracts(
     mutation: TaskSemanticContract['mutation'];
     validation: TaskSemanticContract['validation'];
     replaceScope: boolean;
+    prohibitedTargets: Set<string>;
     mutationProhibited: boolean;
   },
 ): TaskContract {
@@ -803,6 +866,7 @@ function mergeTaskContracts(
   const currentVerification = current.verificationContract;
   const previousVerification = previous.verificationContract;
   const useCurrentExactContract = context.replaceScope;
+  const isAllowedPath = (target: string): boolean => !context.prohibitedTargets.has(normalizePathToken(target));
   const requiredSourcePaths = uniquePaths((context.replaceScope
     ? [
       ...currentVerification.requiredSourcePaths,
@@ -815,7 +879,7 @@ function mergeTaskContracts(
       ...previous.inputs,
       ...current.inputs,
       ...context.targets,
-    ]).filter(isSourceContextPath));
+    ]).filter(target => isSourceContextPath(target) && isAllowedPath(target)));
 
   return {
     taskShapes: context.replaceScope && current.taskShapes.length > 0
@@ -823,8 +887,8 @@ function mergeTaskContracts(
       : uniqueStrings([...previous.taskShapes, ...current.taskShapes]),
     objectives: current.objectives.length > 0 ? [...current.objectives] : [...previous.objectives],
     inputs: context.replaceScope
-      ? uniquePaths([...current.inputs, ...context.targets])
-      : uniquePaths([...previous.inputs, ...current.inputs]),
+      ? uniquePaths([...current.inputs, ...context.targets].filter(isAllowedPath))
+      : uniquePaths([...previous.inputs, ...current.inputs].filter(isAllowedPath)),
     deliverableTargets: [...context.targets],
     deliverables,
     constraints: uniqueStrings([...previous.constraints, ...current.constraints]),

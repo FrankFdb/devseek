@@ -118,11 +118,11 @@ export interface TaskSemanticContract {
 const NON_CODE_ARTIFACT_RE = /\.(?:md|markdown|txt|json|jsonc|ya?ml|toml|ini|csv|tsv|log|xml|html|css)$/i;
 const WRITE_ACTION_RE = /(?:创建|新建|生成|编写|写一个|写个|写入|写到|保存|输出|新增|添加|整理|记录|汇总|修改|更新|修复|修正|处理一下|解决|搞定|补全|完善|重构|改造|替换|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|翻译|总结|摘要|概括|删除|移除|删掉|接入|封装|拆分|实现|交付|create|write|compose|draft|generate|save|add|update|modify|fix|repair|resolve|implement|refactor|replace|rename|move|copy|append|insert|translate|summari[sz]e|delete|remove|deliver)/i;
 const CREATE_SOURCE_ACTION_RE = /(?:创建|新建|生成|编写|写一个|写个|新增|添加|制作|create|write|generate|add|build|produce)/i;
-const EXISTING_SOURCE_EDIT_RE = /(?:修改|更新|修复|修正|处理一下|解决|搞定|补全|完善|重构|改造|替换|接入|封装|拆分|删除|移除|删掉|update|modify|fix|repair|resolve|refactor|replace|delete|remove)/i;
+const EXISTING_SOURCE_EDIT_RE = /(?:修改|更新|修复|修正|处理一下|解决|搞定|补全|完善|重构|改造|替换|接入|封装|拆分|删除|移除|删掉|update|modify|change|edit|fix|repair|resolve|refactor|replace|delete|remove)/i;
 const EXISTING_IMPLEMENTATION_CONTEXT_RE = /(?:(?:现有|原有|已有|既有|原来|旧|当前)[^，,。；;\n]{0,10}(?:实现|代码|逻辑|模块|功能|implementation|code|logic)|(?:existing|current|old|previous)[^,.;\n]{0,16}(?:implementation|code|logic))/gi;
 const ADVISORY_ACTION_CONTEXT_RE = /(?:(?:修改|修复|修正|补全|完善|重构|改造|替换|接入|封装|拆分|实现|交付|发布|上线|部署|modify|fix|repair|refactor|implement|deliver|release|deploy|publish)[^，,。；;、\n]{0,80}(?:方案|计划|设计|思路|步骤|对策|建议|检讨|任务|清单|文档|角度|\broadmap\b|\bplan\b|\bdesign\b|\bapproach\b|\badvice\b)|(?:方案|计划|设计|思路|步骤|对策|建议|检讨|任务|清单|文档|角度|\broadmap\b|\bplan\b|\bdesign\b|\bapproach\b|\badvice\b)[^，,。；;、\n]{0,80}(?:修改|修复|修正|补全|完善|重构|改造|替换|接入|封装|拆分|实现|交付|发布|上线|部署|modify|fix|repair|refactor|implement|deliver|release|deploy|publish))/gi;
-const NO_WRITE_RE = /(?:停止(?:创建|写入|修改|改写|编辑)|stop\s+(?:writing|editing|modifying)|(?:当前不准备|先不准备|不准备|先不要|暂不|不要|不得|禁止|不允许|无需|无须|不需要|别)[^，,。；;\n]{0,24}(?:创建|新建|生成|编写|写|写入|写到|保存|输出|新增|添加|修改|改|更新|修复|修正|补全|完善|重构|改造|替换|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|翻译|总结|摘要|概括|提取|接入|封装|拆分|实现|交付|改动|动|触碰|覆盖|删除)|不(?:创建|新建|生成|编写|写|写入|保存|输出|新增|添加|修改|改|更新|修复|改动|动|触碰|覆盖|删除|做(?:修改|变更|修复))|(?:do\s+not|don't|must\s+not|should\s+not|never|without)[^,.;\n]{0,32}(?:create|write|generate|save|add|update|modify|change|edit|fix|repair|implement|refactor|replace|rename|move|copy|append|insert|translate|summari[sz]e|deliver|touch|overwrite|delete)|no\s+(?:edits?|changes?|implementation|code)(?:\s+yet)?)/i;
-const NO_WRITE_CLAUSE_RE = /(?:当前不准备|先不准备|不准备|先不要|暂不|不要|不得|禁止|不允许|无需|无须|不需要|别)[^，,。；;\n]{0,24}(?:创建|新建|生成|编写|写|写入|写到|保存|输出|新增|添加|修改|改|更新|修复|修正|补全|完善|重构|改造|替换|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|翻译|总结|摘要|概括|提取|接入|封装|拆分|实现|交付|改动|动|触碰|覆盖|删除)|不(?:创建|新建|生成|编写|写|写入|保存|输出|新增|添加|修改|改|更新|修复|改动|动|触碰|覆盖|删除|做(?:修改|变更|修复))|(?:do\s+not|don't|must\s+not|should\s+not|never|without)[^,.;\n]{0,32}(?:create|write|generate|save|add|update|modify|change|edit|fix|repair|implement|refactor|replace|rename|move|copy|append|insert|translate|summari[sz]e|deliver|touch|overwrite|delete)|no\s+(?:edits?|changes?|implementation|code)(?:\s+yet)?/gi;
+const NO_WRITE_RE = /(?:停止(?:创建|写入|修改|改写|编辑)|stop\s+(?:writing|editing|modifying)|(?:当前不准备|先不准备|不准备|先不要|暂不|不要|不得|禁止|不允许|无需|无须|不需要|别)[^，,。；;\n]{0,24}(?:创建|新建|生成|编写|写|写入|写到|保存|输出|新增|添加|修改|改|更新|修复|修正|补全|完善|重构|改造|替换|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|翻译|总结|摘要|概括|提取|接入|封装|拆分|实现|交付|改动|动|触碰|碰|覆盖|删除)|不(?:创建|新建|生成|编写|写|写入|保存|输出|新增|添加|修改|改|更新|修复|改动|动|触碰|碰|覆盖|删除|做(?:修改|变更|修复))|(?:do\s+not|don't|must\s+not|should\s+not|never|without)[^,.;\n]{0,32}(?:create|write|generate|save|add|update|modify|change|edit|fix|repair|implement|refactor|replace|rename|move|copy|append|insert|translate|summari[sz]e|deliver|touch|overwrite|delete)|no\s+(?:edits?|changes?|implementation|code)(?:\s+yet)?)/i;
+const NO_WRITE_CLAUSE_RE = /(?:当前不准备|先不准备|不准备|先不要|暂不|不要|不得|禁止|不允许|无需|无须|不需要|别)[^，,。；;\n]{0,24}(?:创建|新建|生成|编写|写|写入|写到|保存|输出|新增|添加|修改|改|更新|修复|修正|补全|完善|重构|改造|替换|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|翻译|总结|摘要|概括|提取|接入|封装|拆分|实现|交付|改动|动|触碰|碰|覆盖|删除)|不(?:创建|新建|生成|编写|写|写入|保存|输出|新增|添加|修改|改|更新|修复|改动|动|触碰|碰|覆盖|删除|做(?:修改|变更|修复))|(?:do\s+not|don't|must\s+not|should\s+not|never|without)[^,.;\n]{0,32}(?:create|write|generate|save|add|update|modify|change|edit|fix|repair|implement|refactor|replace|rename|move|copy|append|insert|translate|summari[sz]e|deliver|touch|overwrite|delete)|no\s+(?:edits?|changes?|implementation|code)(?:\s+yet)?/gi;
 const OTHER_FILE_SCOPE_RE = /(?:其他|其它|其余|用户)(?:的)?(?:文件|文档|源码|代码)|(?:other|unrelated|user)\s+files?/i;
 const FORMAL_SOURCE_SCOPE_RE = /(?:正式|原有|现有|既有|生产|主线|原项目|任何|所有|全部)?[^，,。；;\n]{0,8}(?:源码|源码目录|source\s+code)|(?:正式|原有|现有|既有|生产|主线|原项目)[^，,。；;\n]{0,8}(?:代码|代码目录|code)|(?:formal|production|existing|original|any|all)\s+(?:source\s+code|source|code)|\bsource(?:\s+(?:code|files?))?\b/i;
 const HISTORICAL_REQUIREMENT_SCOPE_RE = /(?:旧要求|旧需求|旧版本|原要求|原需求|先前要求|之前要求|前面(?:曾)?说|历史要求|历史需求|old|previous|prior|earlier)/i;
@@ -169,6 +169,13 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const hasScopedPathProhibition = writeProhibitionClauses.some(clause => (
     taskContract.inputs.some(target => clauseMentionsTaskPath(clause, target))
   ));
+  const hasScopedRequestedTargetProhibition = writeProhibitionClauses.some(clause => (
+    requestedMutationTargets.some(target => clauseMentionsTaskPath(clause, target))
+  ));
+  const hasScopedDifferentTargetProhibition = writeProhibitionClauses.some(clause => (
+    taskContract.inputs.some(target => clauseMentionsTaskPath(clause, target))
+      && !requestedMutationTargets.some(target => clauseMentionsTaskPath(clause, target))
+  ));
   const hasUnscopedNoWrite = writeProhibitionClauses.some(clause => !(
     OTHER_FILE_SCOPE_RE.test(clause)
       || FORMAL_SOURCE_SCOPE_RE.test(clause)
@@ -177,6 +184,14 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
       || NARROW_WRITE_OBJECT_SCOPE_RE.test(clause)
       || taskContract.inputs.some(target => clauseMentionsTaskPath(clause, target))
   ));
+  const hasScopedTargetWriteBoundary = requestedMutationTargets.length > 0
+    && !hasUnscopedNoWrite
+    && !hasScopedRequestedTargetProhibition
+    && (
+      hasScopedOtherFileProhibition
+      || hasScopedHistoricalRequirementProhibition
+      || hasScopedDifferentTargetProhibition
+    );
   const positiveIntentText = prompt
     .replace(NO_WRITE_CLAUSE_RE, ' ')
     .replace(EXISTING_IMPLEMENTATION_CONTEXT_RE, ' ')
@@ -185,7 +200,14 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     WRITE_ACTION_RE.test(positiveIntentText)
     || DERIVED_ARTIFACT_OUTPUT_RE.test(positiveIntentText)
   ) && !repairSelfHelpQuestion;
-  const effectivePositiveWriteAction = positiveWriteAction && !hasUnscopedNoWrite;
+  const scopedPositiveWriteAction = hasScopedTargetWriteBoundary
+    && (
+      WRITE_ACTION_RE.test(positiveIntentText)
+      || EXISTING_SOURCE_EDIT_RE.test(prompt)
+      || CODE_DELIVERY_RE.test(prompt)
+    )
+    && !repairSelfHelpQuestion;
+  const effectivePositiveWriteAction = (positiveWriteAction || scopedPositiveWriteAction) && !hasUnscopedNoWrite;
   const explicitSourceFileWrite = effectivePositiveWriteAction && sourceMutationTargets.length > 0;
   const explicitNonCodeFileWrite = effectivePositiveWriteAction && nonCodeMutationTargets.length > 0;
   const isolatedSourceArtifact = sourceMutationTargets.some(target => DEVSEEK_ISOLATED_ARTIFACT_PATH_RE.test(target));
@@ -303,6 +325,7 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     hasScopedOtherFileProhibition ? 'scoped-other-file-prohibition' : '',
     hasScopedFormalSourceProhibition ? 'scoped-formal-source-prohibition' : '',
     hasScopedHistoricalRequirementProhibition ? 'scoped-historical-requirement-prohibition' : '',
+    hasScopedTargetWriteBoundary ? 'scoped-target-write-boundary' : '',
     hasScopedVersionControlProhibition ? 'scoped-version-control-prohibition' : '',
     hasScopedWriteObjectProhibition ? 'scoped-write-object-prohibition' : '',
     hasScopedPathProhibition ? 'scoped-path-prohibition' : '',

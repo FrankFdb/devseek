@@ -22,6 +22,7 @@ const DEFAULT_CONTROLLED_SUITES = Object.freeze([
   'journey-core',
   'realistic-product',
   'prior-task-continuation-product',
+  'scope-replacement-product',
   'agent-fit-product',
   'coding-conformance-product',
   'r2-07f-connector-security',
@@ -31,6 +32,7 @@ const ACCEPTANCE_CONTROLLED_SUITES = Object.freeze([
   'journey-core',
   'realistic-product',
   'prior-task-continuation-product',
+  'scope-replacement-product',
   'agent-fit-product',
   'coding-conformance-product',
   'r2-07f-connector-security',
@@ -101,6 +103,12 @@ const CASE_DESIGN_DIMENSIONS = Object.freeze([
     user_need: 'Users approve a prior plan or task with shorthand such as go ahead and expect execution to continue.',
     suites: ['prior-task-continuation-product'],
     cases: ['prior-plan-source-change', 'prior-plan-go-ahead'],
+  },
+  {
+    id: 'corrective_scope_replacement',
+    user_need: 'Users correct the previous target and expect the newest bounded target to replace the old one.',
+    suites: ['scope-replacement-product'],
+    cases: ['scope-replace-alpha-plan', 'scope-replace-beta-instead'],
   },
   {
     id: 'latest_requirement_wins',
