@@ -55,8 +55,47 @@ export async function initializeWorkspaceMcp(
   return report;
 }
 
+export function renderMcpStatusText(
+  report: McpLoadReport | undefined,
+  workspaceRoot: string | undefined,
+): string {
+  if (!workspaceRoot) return 'DevSeek MCP: 未打开工作区，未加载 MCP 配置。';
+  if (!report) return `DevSeek MCP: 尚未完成初始化。\n工作区: ${workspaceRoot}`;
+  const lines = [
+    'DevSeek MCP 状态',
+    `工作区: ${workspaceRoot}`,
+    `配置: ${renderConfigStatus(report.configStatus)}`,
+    `服务器: configured=${report.configuredServers}, connected=${report.connectedServers.length}, denied=${report.deniedServers.length}`,
+    `工具: registered=${report.registeredTools}`,
+  ];
+  if (report.connectedServers.length > 0) {
+    lines.push(`已连接: ${report.connectedServers.join(', ')}`);
+  }
+  if (report.deniedServers.length > 0) {
+    lines.push(`已拒绝: ${report.deniedServers.join(', ')}`);
+  }
+  if (report.failures.length > 0) {
+    lines.push('失败摘要:');
+    lines.push(...report.failures.slice(0, 5).map(failure =>
+      `- ${failure.serverName ?? 'config'}:${failure.stage}:${failure.code}`
+    ));
+    if (report.failures.length > 5) {
+      lines.push(`- ... 还有 ${report.failures.length - 5} 项`);
+    }
+  } else {
+    lines.push('失败摘要: none');
+  }
+  return lines.join('\n');
+}
+
 function shouldWarnMcpStartupFailure(report: McpLoadReport): boolean {
   return report.failures.some(failure => failure.stage !== 'config-read');
+}
+
+function renderConfigStatus(status: McpLoadReport['configStatus']): string {
+  if (status === 'absent') return 'absent optional config';
+  if (status === 'loaded') return 'loaded';
+  return 'invalid';
 }
 
 async function authorizeServerLaunch(

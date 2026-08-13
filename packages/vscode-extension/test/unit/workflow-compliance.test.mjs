@@ -3400,3 +3400,17 @@ test('MCP: McpManager class exists', () => {
   const code = src('src/mcp/client.ts');
   assertContains(code, 'McpManager', 'MCP client class');
 });
+
+test('MCP: startup diagnostics are inspectable without repeated warning popups', () => {
+  const pkg = src('package.json');
+  const runtime = src('src/mcp/vscode-mcp-runtime.ts');
+  const extension = src('src/extension.ts');
+  const commandRegistration = src('src/ui/extension-command-registration.ts');
+
+  assertContains(pkg, 'devseek.showMcpStatus', 'MCP status command must be declared');
+  assertContains(runtime, 'renderMcpStatusText', 'MCP runtime owns status text projection');
+  assertContains(runtime, "failure.stage !== 'config-read'", 'config-read startup failures should not repeatedly warn');
+  assertContains(extension, 'lastMcpLoadReport', 'extension must retain the latest MCP load report for diagnostics');
+  assertContains(commandRegistration, 'devseek.showMcpStatus', 'MCP status command must be registered');
+  assertContains(commandRegistration, 'getMcpStatusText', 'UI command must consume status text from runtime dependency');
+});

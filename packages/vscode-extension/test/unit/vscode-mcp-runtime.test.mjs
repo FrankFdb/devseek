@@ -26,7 +26,7 @@ Module._load = function loadWithVscodeMock(request, parent, isMain) {
   if (request === 'vscode') return { workspace: {}, window: {} };
   return originalLoad.call(this, request, parent, isMain);
 };
-const { createVscodeMcpManager, initializeWorkspaceMcp } = createRequire(import.meta.url)(bundlePath);
+const { createVscodeMcpManager, initializeWorkspaceMcp, renderMcpStatusText } = createRequire(import.meta.url)(bundlePath);
 Module._load = originalLoad;
 process.on('exit', () => rmSync(bundleRoot, { recursive: true, force: true }));
 
@@ -151,6 +151,29 @@ test('VS Code MCP startup keeps optional config read failures out of repeated us
   assert.equal(report.configStatus, 'invalid');
   assert.deepEqual(report.failures, [{ stage: 'config-read', code: 'error' }]);
   assert.deepEqual(warnings, []);
+});
+
+test('VS Code MCP status text exposes diagnostics without secrets or popups', () => {
+  const text = renderMcpStatusText({
+    configStatus: 'invalid',
+    configuredServers: 2,
+    connectedServers: ['docs'],
+    deniedServers: ['shell'],
+    registeredTools: 3,
+    failures: [
+      { stage: 'config-read', code: 'error' },
+      { serverName: 'unsafe', stage: 'config-validation', code: 'server-configuration-too-large' },
+    ],
+  }, '/workspace');
+
+  assert.match(text, /DevSeek MCP 状态/);
+  assert.match(text, /configured=2, connected=1, denied=1/);
+  assert.match(text, /registered=3/);
+  assert.match(text, /docs/);
+  assert.match(text, /shell/);
+  assert.match(text, /config:config-read:error/);
+  assert.match(text, /unsafe:config-validation:server-configuration-too-large/);
+  assert.equal(text.includes('secret'), false);
 });
 
 test('VS Code MCP startup contains unexpected runtime rejection at the Surface boundary', async () => {

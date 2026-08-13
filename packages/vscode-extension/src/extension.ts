@@ -35,7 +35,8 @@ import { getAgentTaskDisplayTarget, type AgentTask } from './agent-task-decompos
 import type { AgentLoopResult } from './agent/loop-types';
 import { createAgentHostToolCallbacks } from './agent/agent-host-tools';
 import { getTaskWorkspaceRootFsPath, resolveWorkspaceFileUri } from './workspace-roots';
-import { createVscodeMcpManager, initializeWorkspaceMcp } from './mcp/vscode-mcp-runtime';
+import { createVscodeMcpManager, initializeWorkspaceMcp, renderMcpStatusText } from './mcp/vscode-mcp-runtime';
+import type { McpLoadReport } from './mcp/client';
 import type { AgentFileWriteContext } from './app/agent-file-write-policy';
 import { recoverApplyFailureIfPossible } from './app/apply-failure-recovery-service';
 import { responseClaimsStatusOk, shouldRunClosedLoopRepair } from './app/agentic-repair-service';
@@ -150,6 +151,8 @@ const runChangedPathRecorder = new RunChangedPathRecorder({
   },
 });
 const mcpManager = createVscodeMcpManager();
+let lastMcpLoadReport: McpLoadReport | undefined;
+let mcpInitialization: Promise<McpLoadReport | undefined> | undefined;
 const resolveAgentFileWriteConstraint = createAgentFileWriteConstraintResolver(terminalPermissionCoordinator);
 const createEvidenceAwareMcpToolCall = createEvidenceAwareMcpToolCallFactory({
   terminalPermissions: terminalPermissionCoordinator,
@@ -1659,7 +1662,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   rulesWatcher.onDidDelete(() => invalidateProjectRulesCache());
   context.subscriptions.push(rulesWatcher);
 
-  void initializeWorkspaceMcp(mcpManager);
+  mcpInitialization = initializeWorkspaceMcp(mcpManager)
+    .then(report => {
+      lastMcpLoadReport = report;
+      return report;
+    });
   context.subscriptions.push({ dispose: () => mcpManager.dispose() });
 
   context.subscriptions.push(
@@ -1673,6 +1680,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     terminalPermissionCoordinator,
     pushChatPanel,
     routeChat,
+    getMcpStatusText: async () => {
+      await mcpInitialization;
+      return renderMcpStatusText(
+        lastMcpLoadReport,
+        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+      );
+    },
   });
   registerRealPluginDeepSeekHarnessCommand(context, viewProvider, runChat);
 

@@ -29,6 +29,7 @@ import type { TerminalPermissionCoordinator } from '../app/terminal-permission-c
 interface ExtensionCommandRegistrationDeps {
   viewProvider: DeepSeekViewProvider;
   terminalPermissionCoordinator: TerminalPermissionCoordinator;
+  getMcpStatusText: () => string | Promise<string>;
   pushChatPanel: (userDisplay: string, prompt: string, newSession: boolean) => void | Promise<void>;
   routeChat: (opts: {
     prompt: string;
@@ -125,6 +126,7 @@ function registerVisibleCommands(
     ['devseek.manageMemory', async () => showMemoryManagementSurface('view')],
     ['devseek.disableMemory', async () => showMemoryManagementSurface('disable')],
     ['devseek.deleteMemory', async () => showMemoryManagementSurface('delete')],
+    ['devseek.showMcpStatus', async () => showMcpStatus(deps)],
   ];
 
   for (const [id, command] of commands) {
@@ -136,6 +138,10 @@ function registerVisibleCommands(
       await addResourceToChat(deps.viewProvider, resource);
     }),
   );
+}
+
+async function showMcpStatus(deps: ExtensionCommandRegistrationDeps): Promise<void> {
+  await vscode.window.showInformationMessage(await deps.getMcpStatusText(), { modal: false });
 }
 
 async function runTerminalCommand(commandProjector: AgentCommandSurfaceProjector): Promise<void> {

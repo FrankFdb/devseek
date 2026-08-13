@@ -118,6 +118,11 @@
         "command": "devseek.switchProvider",
         "title": "DevSeek: 切换 LLM Provider",
         "category": "DevSeek"
+      },
+      {
+        "command": "devseek.showMcpStatus",
+        "title": "DevSeek: 查看 MCP 状态",
+        "category": "DevSeek"
       }
     ],
     "menus": {
