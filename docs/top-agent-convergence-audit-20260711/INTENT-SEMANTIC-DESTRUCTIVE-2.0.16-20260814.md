@@ -161,13 +161,33 @@ npm run compile --workspace=packages/vscode-extension && npm run extension:packa
 
 ## Release Evidence
 
-待 2.0.16 code commit / tag 后回填：
+- Code commit: `b715e5f83871f39cc3c9fbcc37c20a6e5e7d701a`
+- Tag: `2.0.16`
+- Exact VSIX: `devseek-netai-2.0.16-debug.20260814.t000211.gb715e5f.vsix`
+- VSIX SHA-256: `8751df325b74bd53b6575a755517cd8b2d8ae28bdf355cf544766daddb3fc1fe`
+- Source compatibility: exact-head, dirty tracked paths none
+- Local install: `code --install-extension /home/ff/work/devseek_netai/devseek-netai-latest.vsix --force` PASS
 
-- Code commit: pending
-- Tag: pending
-- Exact VSIX: pending
-- VSIX SHA-256: pending
-- Full local acceptance: pending
+Full local acceptance:
+
+```bash
+node scripts/devseek-top-agent-user-simulation-runner.mjs --run-id 20260813-intent-2.0.16-local-acceptance-gb715e5f --markdown docs/testing/devseek-20260813-intent-2.0.16-local-acceptance-gb715e5f.md --force
+```
+
+结果：
+
+- Result: PASS
+- Markdown report: `docs/testing/devseek-20260813-intent-2.0.16-local-acceptance-gb715e5f.md`
+- Evidence root: `code/devseek-tests/top-agent-convergence/runs/20260813-intent-2.0.16-local-acceptance-gb715e5f`
+- Total steps: 10 / 10 passed
+- Targeted semantic cases: 10
+- Controlled suites: 9
+- Required acceptance cases: 41
+- Covered dimensions: 23
+- Missing dimensions: none
+- Missing execution evidence: none
+- Acceptance execution eligible: true
+- Release claim permitted: false
 
 ## 结论
 
