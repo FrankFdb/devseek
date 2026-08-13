@@ -317,6 +317,23 @@ test('TaskIntentRouter: run-to-repair grants edit and terminal authority with va
   assert.deepEqual(route.allowedToolKinds, ['read', 'search', 'diagnostics', 'network', 'control', 'plan', 'memory', 'edit', 'terminal']);
 });
 
+test('TaskIntentRouter: green CI repair grants edit and terminal authority with test evidence', () => {
+  const route = routeTaskIntent('CI is red, get it green.');
+
+  assert.equal(route.family, 'existing-project-edit');
+  assert.equal(route.chatKind, 'code-change');
+  assert.equal(route.mode, 'edit');
+  assert.equal(route.agentTaskShape, 'validation-repair');
+  assert.equal(route.mutation.requested, true);
+  assert.equal(route.mutation.sourceChange, true);
+  assert.equal(route.validation.runRequested, true);
+  assert.equal(route.validation.testRequested, true);
+  assert.equal(route.validation.commandEvidenceRequired, true);
+  assert.ok(route.signals.includes('conditional-repair-on-failure'));
+  assert.ok(route.signals.includes('validation-health-repair-request'));
+  assert.deepEqual(route.allowedToolKinds, ['read', 'search', 'diagnostics', 'network', 'control', 'plan', 'memory', 'edit', 'terminal']);
+});
+
 test('TaskIntentRouter: reproduce without repair is terminal validation only', () => {
   const route = routeTaskIntent('复现一下失败，不要修，给我命令输出。');
 

@@ -4,9 +4,11 @@ import {
   codingDeniedToolExecutionIsPolicyNoEffect,
   codingTaskContractRequiresVerification,
   isSecretHarvestingRefusalTaskContract,
+  settledCodingVerificationReceipts,
   type CodingCompletionAcceptanceDecision,
   type CodingKernelCompletionEvidence,
   type CodingKernelTaskContract,
+  type CodingToolExecutionReceipt,
   type CodingVerificationReceipt,
   type CodingWorkspaceMutationReceipt,
 } from '@devseek-netai/shared';
@@ -55,6 +57,7 @@ export class VsCodeCompletionEvidenceAdapter {
       failedArtifactRefs,
       uncoveredChangedPaths,
       changedPaths: input.result.changedPaths,
+      toolExecutions,
       mutations,
       verifications,
     })
@@ -104,6 +107,7 @@ function shouldClearRecoveredTaskFailure(input: {
   readonly failedArtifactRefs: readonly string[];
   readonly uncoveredChangedPaths: readonly string[];
   readonly changedPaths: readonly string[];
+  readonly toolExecutions: readonly CodingToolExecutionReceipt<unknown>[];
   readonly mutations: readonly CodingWorkspaceMutationReceipt<unknown>[];
   readonly verifications: readonly CodingVerificationReceipt[];
 }): boolean {
@@ -113,9 +117,23 @@ function shouldClearRecoveredTaskFailure(input: {
   if (input.changedPaths.length === 0) return false;
   const policyDeniedFailureWasRecovered = input.neutralPolicyDeniedRefs.length > 0;
   const legacyEvidenceFailureWasRecovered = isRecoverableLegacyEvidenceFailure(input.failedReason);
-  if (!policyDeniedFailureWasRecovered && !legacyEvidenceFailureWasRecovered) return false;
+  const verificationFailureWasRecovered = hasRecoveredVerificationFailure(input.verifications, input.toolExecutions);
+  if (!policyDeniedFailureWasRecovered
+    && !legacyEvidenceFailureWasRecovered
+    && !verificationFailureWasRecovered) {
+    return false;
+  }
   return allChangedPathsHaveCommittedReadback(input.changedPaths, input.mutations)
     && hasPassedVerification(input.verifications);
+}
+
+function hasRecoveredVerificationFailure(
+  verifications: readonly CodingVerificationReceipt[],
+  toolExecutions: readonly CodingToolExecutionReceipt<unknown>[],
+): boolean {
+  if (!verifications.some(receipt => receipt.status === 'failed')) return false;
+  const settled = settledCodingVerificationReceipts(verifications, toolExecutions);
+  return settled.length > 0 && settled.every(receipt => receipt.status === 'passed');
 }
 
 function allChangedPathsHaveCommittedReadback(

@@ -251,6 +251,22 @@ const USER_INPUT_CASES = [
     mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
   },
   {
+    name: 'implicit-ci-health-repair',
+    prompt: 'CI is red, get it green.',
+    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
+    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
+    validation: { runtimeRequired: true, fileCheckRequired: false, formalProjectRequired: false },
+    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
+  },
+  {
+    name: 'implicit-test-health-repair-cn',
+    prompt: '测试挂了，帮我过掉。',
+    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
+    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
+    validation: { runtimeRequired: true, fileCheckRequired: false, formalProjectRequired: false },
+    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
+  },
+  {
     name: 'release-external-effect',
     prompt: '发布当前扩展到生产环境',
     route: { family: 'release-external-effect', chatKind: 'code-change', mode: 'edit', shape: 'general' },

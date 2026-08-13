@@ -271,6 +271,50 @@ test('VS Code evidence projection clears stale missing-evidence failures after c
   );
 });
 
+test('VS Code evidence projection clears recovered validation failures after repair verification passes', () => {
+  const failedVerificationTool = terminalTool({
+    sequence: 2,
+    actionId: 'focused-check-1',
+    status: 'failed',
+  });
+  const passedVerificationTool = terminalTool({
+    sequence: 4,
+    actionId: 'focused-check-2',
+    status: 'completed',
+  });
+  const evidence = project({
+    tasksFailed: 1,
+    failedReason: 'Focused validation failed before the repair.',
+    changedPaths: ['src/main.ts'],
+    changeReceipts: [mutation({
+      sequence: 3,
+      actionId: 'repair-mutation',
+      idempotencyKey: 'vscode-completion-run:repair-mutation',
+    })],
+    toolExecutionReceipts: [failedVerificationTool, passedVerificationTool],
+    verificationReceipts: [
+      verification({
+        sequence: 2,
+        actionId: 'focused-check-1',
+        idempotencyKey: 'vscode-completion-run:focused-check-1',
+        status: 'failed',
+      }),
+      verification({
+        sequence: 4,
+        actionId: 'focused-check-2',
+        idempotencyKey: 'vscode-completion-run:focused-check-2',
+        status: 'passed',
+      }),
+    ],
+  });
+
+  assert.deepEqual(evidence.acceptanceEvidence, []);
+  assert.equal(
+    evidence.evidenceRefs.includes('vscode-agent-result:vscode-completion-run:tasks-failed'),
+    false,
+  );
+});
+
 test('manual review and read-only response evidence remain explicit', () => {
   const manualReview = project({
     changedPaths: ['src/main.ts'],
@@ -407,5 +451,27 @@ function deniedTool() {
       evidenceRefs: ['permission:install-denied'],
     },
     evidenceRefs: ['permission:install-denied'],
+  };
+}
+
+function terminalTool(overrides = {}) {
+  const status = overrides.status ?? 'completed';
+  return {
+    version: CODING_TOOL_RECEIPT_VERSION,
+    runId: 'vscode-completion-run',
+    sequence: 1,
+    actionId: 'verify-1',
+    tool: 'run_terminal',
+    purpose: 'verify',
+    effects: ['process'],
+    status,
+    permission: {
+      decision: 'allow',
+      status: 'authorized',
+      reason: 'workspace-command',
+      evidenceRefs: ['permission:terminal-allowed'],
+    },
+    evidenceRefs: [status === 'completed' ? 'terminal:exit-0' : 'terminal:exit-1'],
+    ...overrides,
   };
 }

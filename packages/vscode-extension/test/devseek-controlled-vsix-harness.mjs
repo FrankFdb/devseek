@@ -317,6 +317,8 @@ function controlledScenarioSuiteCatalog() {
       'conformance-create-and-verify',
       'conformance-modify-and-verify',
       'conformance-verify-repair-reverify',
+      'conformance-ci-green-repair',
+      'conformance-cn-tests-pass-repair',
       'conformance-permission-denied-no-effect',
       'conformance-policy-refusal-no-mutation',
     ],
@@ -893,6 +895,36 @@ function controlledScenarioCatalog() {
       expectedChangedPaths: ['src/parser.js'],
       expectedMutatedUserFiles: ['src/parser.js'],
     },
+    'conformance-ci-green-repair': {
+      id: 'conformance-ci-green-repair',
+      conformanceFixtureId: 'implicit-ci-health-repair',
+      kind: 'coding-conformance-implicit-ci-health-repair',
+      targetRelativePath: 'src/parser.js',
+      targetContent: parserFixedContent,
+      firstRepairContent: parserFirstRepairContent,
+      seedFiles: { 'src/parser.js': parserBrokenContent },
+      prompt: 'CI is red, get it green.',
+      providerPlan: 'conformance-parser-repair',
+      expected: 'completed-workflow',
+      expectedFiles: { 'src/parser.js': parserFixedContent },
+      expectedChangedPaths: ['src/parser.js'],
+      expectedMutatedUserFiles: ['src/parser.js'],
+    },
+    'conformance-cn-tests-pass-repair': {
+      id: 'conformance-cn-tests-pass-repair',
+      conformanceFixtureId: 'implicit-cn-test-health-repair',
+      kind: 'coding-conformance-implicit-cn-test-health-repair',
+      targetRelativePath: 'src/parser.js',
+      targetContent: parserFixedContent,
+      firstRepairContent: parserFirstRepairContent,
+      seedFiles: { 'src/parser.js': parserBrokenContent },
+      prompt: '测试挂了，帮我过掉。',
+      providerPlan: 'conformance-parser-repair',
+      expected: 'completed-workflow',
+      expectedFiles: { 'src/parser.js': parserFixedContent },
+      expectedChangedPaths: ['src/parser.js'],
+      expectedMutatedUserFiles: ['src/parser.js'],
+    },
     'conformance-permission-denied-no-effect': {
       id: 'conformance-permission-denied-no-effect',
       conformanceFixtureId: 'permission-denied-no-effect',
@@ -1277,11 +1309,19 @@ function writeWorkspaceFixture({ workspaceDir, bridgeToken, port, scenarios, sui
       seedFiles[relativePath] = content;
     }
   }
-  for (const [relativePath, content] of Object.entries(seedFiles)) {
+  writeSeedFiles(workspaceDir, seedFiles);
+}
+
+function writeSeedFiles(workspaceDir, seedFiles) {
+  for (const [relativePath, content] of Object.entries(seedFiles || {})) {
     const absolutePath = path.join(workspaceDir, relativePath);
     fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
     fs.writeFileSync(absolutePath, content, 'utf8');
   }
+}
+
+function writeScenarioSeedFiles(workspaceDir, scenario) {
+  writeSeedFiles(workspaceDir, scenario.seedFiles || {});
 }
 
 function sha256Text(value) {
@@ -2491,6 +2531,7 @@ function controlledPlannerResponse({ scenario }) {
     'openai-tool-calls-wrapper-complete': 'create',
     'provider-error': 'create',
     'stream-corrupting-python-cli-complete': 'create',
+    'conformance-parser-repair': 'modify',
   };
   const descByPlan = {
     'read-only-complete': '只读检查指定文件并汇总结论',
@@ -2508,6 +2549,7 @@ function controlledPlannerResponse({ scenario }) {
     'openai-tool-calls-wrapper-complete': '兼容 OpenAI 风格 tool_calls 包装并完成多文件验证',
     'provider-error': '创建指定文件并处理 Provider 失败路径',
     'stream-corrupting-python-cli-complete': '创建 Python CLI 并由 stream 协议故障测试 fail-closed',
+    'conformance-parser-repair': '根据验证失败修复 parser 并重新验证',
   };
   return [
     '我会按当前用户需求生成一个最小、可执行的任务计划。',
@@ -3176,6 +3218,16 @@ async function waitForCommand(command, waitMs) {
 async function updateConfig(key, value) {
   await vscode.workspace.getConfiguration('devseek').update(key, value, vscode.ConfigurationTarget.Workspace);
 }
+function writeSeedFiles(rootDir, seedFiles = {}) {
+  for (const [relativePath, content] of Object.entries(seedFiles || {})) {
+    const absolutePath = path.join(rootDir, relativePath);
+    fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+    fs.writeFileSync(absolutePath, content, 'utf8');
+  }
+}
+function writeScenarioSeedFiles(rootDir, scenario) {
+  writeSeedFiles(rootDir, scenario.seedFiles || {});
+}
 function runtimeIdentity() {
   const extension = vscode.extensions.getExtension(expectedIdentity.id);
   if (!extension) throw new Error('Installed DevSeek extension is absent from the Extension Host');
@@ -3392,6 +3444,9 @@ async function runScenario(activeScenario, caseIndex, totalCases) {
   let initialUserFiles = {};
   try {
     progress('case-started', { scenario: activeScenario.id, caseIndex, totalCases });
+    if (!sameDevSeekSession || caseIndex === 1) {
+      writeScenarioSeedFiles(workspaceDir, activeScenario);
+    }
     baselineRunLogPaths = collectRunLogs().logs.map(log => log.path);
     initialUserFiles = collectUserFiles();
     let commandError = '';

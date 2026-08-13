@@ -173,6 +173,18 @@ test('decideChatIntent: compile/run with conditional repair becomes validation r
   assert.equal(shouldUseAgentMode(result, []), true);
 });
 
+test('decideChatIntent: CI health repair becomes validation repair edit intent', () => {
+  const result = decideChatIntent('CI is red, get it green.');
+  assert.equal(result.kind, 'code-change');
+  assert.equal(result.mode, 'edit');
+  assert.equal(result.autoApplyEligible, true);
+  assert.ok(result.signals.includes('conditional-repair-on-failure'));
+  assert.ok(result.signals.includes('validation-repair-request'));
+  assert.ok(result.signals.includes('validation-health-repair-request'));
+  assert.deepEqual(result.allowedToolKinds, EDIT_TOOLS);
+  assert.equal(shouldUseAgentMode(result, []), true);
+});
+
 test('decideChatIntent: negated conditional repair remains run-only', () => {
   const result = decideChatIntent('Run tests, but do not fix failures.');
   assert.equal(result.kind, 'code-change');

@@ -8,7 +8,7 @@ import {
 } from './advisory-patterns';
 import { isUnsafeSecretHarvestingImplementationRequest } from './safety-intent';
 import { classifyExternalEffectIntent } from './operational-language-boundary';
-import { hasRunToRepairIntent } from './conditional-repair-intent';
+import { hasValidationHealthRepairIntent } from './conditional-repair-intent';
 import type { SemanticTaskKind } from './semantic-intent';
 import type { ExecutionMode } from './intent-types';
 import type { TaskSemanticKind, TaskSemanticScope } from '../task-semantic-contract';
@@ -108,8 +108,7 @@ export function buildLocalIntentContract(
   const hasScopedNoChangeWithDeliverableWrite = isScopedNoChangeWithDeliverableWriteRequest(text);
   const externalEffect = classifyExternalEffectIntent(positiveActionText);
   const isRunRequest = RUN_RE.test(text);
-  const hasConditionalRepairRequest = isRunRequest
-    && hasRunToRepairIntent(text)
+  const hasConditionalRepairRequest = hasValidationHealthRepairIntent(text)
     && !semantic.mutation.prohibited;
   const hasWorkspaceDiffContext = WORKSPACE_DIFF_CONTEXT_RE.test(text);
   const context: LocalIntentContext = {
@@ -117,7 +116,7 @@ export function buildLocalIntentContract(
     greetingOnly: GREETING_ONLY_RE.test(text),
     hasExplicitWorkspacePath: hasPath,
     reviewRequested: REVIEW_RE.test(text),
-    failureContext: FAILURE_RE.test(text),
+    failureContext: FAILURE_RE.test(text) || hasConditionalRepairRequest,
     externalEffect,
     broadScope: BROAD_SCOPE_RE.test(text),
     complexAction: COMPLEX_ACTION_RE.test(text),
@@ -240,6 +239,7 @@ export function buildLocalIntentContract(
       'run-request',
       'conditional-repair-on-failure',
       'validation-repair-request',
+      'validation-health-repair-request',
       ...semantic.semanticSignals,
     ];
     if (isFollowUpRunRequest) signals.push('follow-up-run-request');

@@ -65,6 +65,12 @@ const CASE_DESIGN_DIMENSIONS = Object.freeze([
     cases: ['conformance-verify-repair-reverify'],
   },
   {
+    id: 'implicit_validation_health_repair',
+    user_need: 'Users describe red CI or failing tests as a health goal and expect repair plus verification.',
+    suites: ['coding-conformance-product'],
+    cases: ['conformance-ci-green-repair', 'conformance-cn-tests-pass-repair'],
+  },
+  {
     id: 'incremental_followup_context',
     user_need: 'Users refine previous work in the same session.',
     suites: ['realistic-product'],

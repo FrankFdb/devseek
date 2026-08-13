@@ -17,7 +17,7 @@ import {
   buildLocalIntentContract,
   type LocalIntentContract,
 } from './intent/local-intent-contract';
-import { hasRunToRepairIntent } from './intent/conditional-repair-intent';
+import { hasValidationHealthRepairIntent } from './intent/conditional-repair-intent';
 import {
   buildTaskSemanticObligationContracts,
   type TaskSemanticAmbiguityContract,
@@ -193,13 +193,13 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const taskContractSourceChange = taskContract.deliverables.includes('source-change')
     && effectivePositiveWriteAction
     && !hasUnscopedNoWrite;
-  const runToRepairRequested = !artifactPathQuery
+  const validationHealthRepairRequested = !artifactPathQuery
     && !hasUnscopedNoWrite
-    && hasRunToRepairIntent(prompt);
+    && hasValidationHealthRepairIntent(prompt);
   const existingProjectCodeDelivery = !hasUnscopedNoWrite && (
     (taskContract.taskShapes.includes('existing-project') && CODE_DELIVERY_RE.test(positiveIntentText))
     || (explicitSourceFileWrite && EXISTING_SOURCE_EDIT_RE.test(positiveIntentText))
-    || runToRepairRequested
+    || validationHealthRepairRequested
   );
   const sourceChange = taskContractSourceChange || explicitSourceFileWrite || standaloneCode || existingProjectCodeDelivery;
   const fileArtifact = (taskContract.deliverables.includes('report') && effectivePositiveWriteAction)
@@ -215,16 +215,20 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     .replace(TEST_AS_IMPLEMENTATION_CONSTRAINT_RE, ' ')
     .replace(TEST_DISCUSSION_RE, ' ');
   const validationText = maskTaskTargetPaths(validationPrompt, taskContract.inputs);
+  const healthRepairCompileRequested = validationHealthRepairRequested
+    && /(?:build|compile|构建|编译)/i.test(prompt);
+  const healthRepairTestRequested = validationHealthRepairRequested
+    && !healthRepairCompileRequested;
   const validationRequested = !artifactPathQuery
     && !destructiveIntent
-    && VALIDATION_RE.test(validationText);
+    && (VALIDATION_RE.test(validationText) || validationHealthRepairRequested);
   const positiveValidationText = maskTaskTargetPaths(validationPrompt.replace(NO_RUN_CLAUSE_RE, ' '), taskContract.inputs);
-  const compileRequested = !artifactPathQuery && COMPILE_RE.test(positiveValidationText);
+  const compileRequested = !artifactPathQuery && (COMPILE_RE.test(positiveValidationText) || healthRepairCompileRequested);
   const stdoutRequested = !artifactPathQuery && STDOUT_RE.test(validationText) && !OUTPUT_ARTIFACT_RE.test(validationText);
   const runProhibited = !artifactPathQuery && hasOperationalRunProhibition(validationText);
   const testRequested = !runProhibited
     && !artifactPathQuery
-    && (TEST_RE.test(positiveValidationText) || EXPLICIT_TEST_COMMAND_RE.test(validationPrompt));
+    && (TEST_RE.test(positiveValidationText) || EXPLICIT_TEST_COMMAND_RE.test(validationPrompt) || healthRepairTestRequested);
   const runRequested = !runProhibited && !artifactPathQuery && (RUN_RE.test(positiveValidationText) || stdoutRequested || testRequested);
   const fileCheckRequested = fileArtifact
     && (validationRequested
@@ -276,8 +280,9 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     hasScopedWriteObjectProhibition ? 'scoped-write-object-prohibition' : '',
     hasScopedPathProhibition ? 'scoped-path-prohibition' : '',
     formalProjectRequired ? 'formal-project-quality-required' : '',
-    runToRepairRequested ? 'conditional-repair-on-failure' : '',
-    runToRepairRequested ? 'validation-repair-request' : '',
+    validationHealthRepairRequested ? 'conditional-repair-on-failure' : '',
+    validationHealthRepairRequested ? 'validation-repair-request' : '',
+    validationHealthRepairRequested ? 'validation-health-repair-request' : '',
     runRequested ? 'run-requested' : '',
     testRequested ? 'test-requested' : '',
     stdoutRequested ? 'stdout-requested' : '',

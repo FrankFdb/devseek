@@ -464,6 +464,47 @@ test('TaskSemanticContract: conditional test failure repair grants source mutati
   assert.ok(contract.signals.includes('existing-project-code-delivery'));
 });
 
+test('TaskSemanticContract: CI health repair grants source mutation plus test evidence', () => {
+  const contract = buildTaskSemanticContract('CI is red, get it green.');
+
+  assert.equal(contract.kind, 'existing-project-code');
+  assert.equal(contract.scope, 'existing-project');
+  assert.equal(contract.mutation.requested, true);
+  assert.equal(contract.mutation.sourceChange, true);
+  assert.equal(contract.validation.requested, true);
+  assert.equal(contract.validation.runRequested, true);
+  assert.equal(contract.validation.testRequested, true);
+  assert.equal(contract.intent.mode, 'edit');
+  assert.ok(contract.signals.includes('conditional-repair-on-failure'));
+  assert.ok(contract.signals.includes('validation-repair-request'));
+  assert.ok(contract.signals.includes('validation-health-repair-request'));
+});
+
+test('TaskSemanticContract: broken build health repair requires compile evidence', () => {
+  const contract = buildTaskSemanticContract('Build is broken, please make it pass.');
+
+  assert.equal(contract.kind, 'existing-project-code');
+  assert.equal(contract.scope, 'existing-project');
+  assert.equal(contract.mutation.requested, true);
+  assert.equal(contract.mutation.sourceChange, true);
+  assert.equal(contract.validation.requested, true);
+  assert.equal(contract.validation.compileRequested, true);
+  assert.equal(contract.validation.testRequested, false);
+  assert.equal(contract.intent.mode, 'edit');
+  assert.ok(contract.signals.includes('validation-health-repair-request'));
+});
+
+test('TaskSemanticContract: read-only CI failure analysis does not grant health repair mutation', () => {
+  const contract = buildTaskSemanticContract('CI is red, tell me why, but do not change files.');
+
+  assert.equal(contract.kind, 'read-only');
+  assert.equal(contract.mutation.requested, false);
+  assert.equal(contract.mutation.sourceChange, false);
+  assert.equal(contract.validation.requested, false);
+  assert.equal(contract.intent.mode, 'inspect');
+  assert.equal(contract.signals.includes('validation-health-repair-request'), false);
+});
+
 test('TaskSemanticContract: negated conditional repair keeps run-only validation', () => {
   const contract = buildTaskSemanticContract('Run tests, but do not fix failures.');
 

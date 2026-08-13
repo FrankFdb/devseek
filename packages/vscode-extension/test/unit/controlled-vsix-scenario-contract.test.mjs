@@ -40,6 +40,8 @@ const REQUIRED_SCENARIOS = [
   'conformance-create-and-verify',
   'conformance-modify-and-verify',
   'conformance-verify-repair-reverify',
+  'conformance-ci-green-repair',
+  'conformance-cn-tests-pass-repair',
   'conformance-permission-denied-no-effect',
   'conformance-policy-refusal-no-mutation',
   'stream-truncated-no-mutation',
@@ -52,7 +54,7 @@ const REQUIRED_SUITES = [
   { id: 'journey-core', scenarioCount: 6, sameDevSeekSession: false },
   { id: 'realistic-product', scenarioCount: 4, sameDevSeekSession: true },
   { id: 'agent-fit-product', scenarioCount: 5, sameDevSeekSession: false },
-  { id: 'coding-conformance-product', scenarioCount: 5, sameDevSeekSession: false },
+  { id: 'coding-conformance-product', scenarioCount: 7, sameDevSeekSession: false },
   { id: 'r2-07e-stream-protocol', scenarioCount: 2, sameDevSeekSession: false },
   { id: 'r2-07f-connector-security', scenarioCount: 1, sameDevSeekSession: false },
 ];
@@ -88,6 +90,14 @@ test('controlled VSIX harness accepts packaged dirty-runtime source fingerprints
   assert.match(source, /computeVsixDirtyRuntimeFingerprint/, 'controlled harness must recompute the local runtime fingerprint');
   assert.match(source, /sameVsixSourceFingerprint/, 'controlled harness must compare the packaged fingerprint before accepting dirty runtime paths');
   assert.match(source, /exact-head-with-packaged-worktree/, 'controlled harness must report the pre-commit packaged-worktree mode');
+});
+
+test('controlled VSIX harness resets independent scenario seed files before each case', () => {
+  const source = readFileSync(harnessPath, 'utf8');
+
+  assert.match(source, /function writeScenarioSeedFiles\(workspaceDir, scenario\)/, 'scenario seed reset must have one explicit helper');
+  assert.match(source, /if \(!sameDevSeekSession \|\| caseIndex === 1\)/, 'independent suites must refresh seed files per case');
+  assert.match(source, /writeScenarioSeedFiles\(workspaceDir, activeScenario\)/, 'runScenario must reset the active case before collecting its baseline');
 });
 
 test('controlled VSIX fake bridge advertises the connector status contract', () => {
