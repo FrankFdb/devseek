@@ -77,6 +77,12 @@ const CASE_DESIGN_DIMENSIONS = Object.freeze([
     cases: ['conformance-project-health-repair'],
   },
   {
+    id: 'implicit_runtime_error_repair',
+    user_need: 'Users paste stack traces, console errors, or production bug symptoms and delegate repair plus verification.',
+    suites: ['coding-conformance-product'],
+    cases: ['conformance-runtime-error-repair'],
+  },
+  {
     id: 'incremental_followup_context',
     user_need: 'Users refine previous work in the same session.',
     suites: ['realistic-product'],

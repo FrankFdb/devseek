@@ -9,6 +9,7 @@ import type { TaskContract } from '../agent/task-contract';
 import type { ExecutionMode } from '../intent/intent-types';
 import {
   hasProjectHealthRepairIntent,
+  hasRuntimeErrorRepairIntent,
   hasValidationHealthRepairIntent,
 } from '../intent/conditional-repair-intent';
 
@@ -43,6 +44,7 @@ export function projectVsCodeCodingKernelTaskContract(
     reportFileRequested,
     explicitlyRequiresVerification,
     projectHealthRepairRequested: hasProjectHealthRepairIntent(input.userPrompt),
+    runtimeErrorRepairRequested: hasRuntimeErrorRepairIntent(input.userPrompt),
     validationHealthRepairRequested: hasValidationHealthRepairIntent(input.userPrompt),
   });
   return resolveCodingKernelTaskContract({
@@ -63,11 +65,13 @@ function resolveVsCodeVerificationRequirement(input: {
   readonly reportFileRequested: boolean;
   readonly explicitlyRequiresVerification: boolean;
   readonly projectHealthRepairRequested: boolean;
+  readonly runtimeErrorRepairRequested: boolean;
   readonly validationHealthRepairRequested: boolean;
 }): boolean | undefined {
   if (input.sourceChangeRequested
     || input.explicitlyRequiresVerification
     || input.projectHealthRepairRequested
+    || input.runtimeErrorRepairRequested
     || input.validationHealthRepairRequested) {
     return true;
   }

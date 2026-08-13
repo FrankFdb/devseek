@@ -19,6 +19,7 @@ import {
 } from './intent/local-intent-contract';
 import {
   hasProjectHealthRepairIntent,
+  hasRuntimeErrorRepairIntent,
   hasValidationHealthRepairIntent,
 } from './intent/conditional-repair-intent';
 import {
@@ -202,7 +203,12 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const projectHealthRepairRequested = !artifactPathQuery
     && !hasUnscopedNoWrite
     && hasProjectHealthRepairIntent(prompt);
-  const healthRepairRequested = validationHealthRepairRequested || projectHealthRepairRequested;
+  const runtimeErrorRepairRequested = !artifactPathQuery
+    && !hasUnscopedNoWrite
+    && hasRuntimeErrorRepairIntent(prompt);
+  const healthRepairRequested = validationHealthRepairRequested
+    || projectHealthRepairRequested
+    || runtimeErrorRepairRequested;
   const existingProjectCodeDelivery = !hasUnscopedNoWrite && (
     (taskContract.taskShapes.includes('existing-project') && CODE_DELIVERY_RE.test(positiveIntentText))
     || (explicitSourceFileWrite && EXISTING_SOURCE_EDIT_RE.test(positiveIntentText))
@@ -238,7 +244,11 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     && (TEST_RE.test(positiveValidationText) || EXPLICIT_TEST_COMMAND_RE.test(validationPrompt) || healthRepairTestRequested);
   const runRequested = !runProhibited
     && !artifactPathQuery
-    && (RUN_RE.test(positiveValidationText) || stdoutRequested || testRequested || projectHealthRepairRequested);
+    && (RUN_RE.test(positiveValidationText)
+      || stdoutRequested
+      || testRequested
+      || projectHealthRepairRequested
+      || runtimeErrorRepairRequested);
   const fileCheckRequested = fileArtifact
     && (validationRequested
       || taskContract.verificationContract.requireArtifactReadback
@@ -294,6 +304,8 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     validationHealthRepairRequested ? 'validation-health-repair-request' : '',
     projectHealthRepairRequested ? 'conditional-repair-on-failure' : '',
     projectHealthRepairRequested ? 'project-health-repair-request' : '',
+    runtimeErrorRepairRequested ? 'conditional-repair-on-failure' : '',
+    runtimeErrorRepairRequested ? 'runtime-error-repair-request' : '',
     runRequested ? 'run-requested' : '',
     testRequested ? 'test-requested' : '',
     stdoutRequested ? 'stdout-requested' : '',

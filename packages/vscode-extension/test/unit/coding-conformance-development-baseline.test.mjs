@@ -54,6 +54,7 @@ test('VS Code canonical Kernel probe exposes semantically conformant settled pro
     { fixtureId: 'implicit-ci-health-repair', recovery: true },
     { fixtureId: 'implicit-cn-test-health-repair', recovery: true },
     { fixtureId: 'implicit-project-health-repair', recovery: true },
+    { fixtureId: 'implicit-runtime-error-repair', recovery: true },
     { fixtureId: 'permission-denied-no-effect', recovery: false },
     { fixtureId: 'policy-refusal-no-mutation', recovery: false },
   ];

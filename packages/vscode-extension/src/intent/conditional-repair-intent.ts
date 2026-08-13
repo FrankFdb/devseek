@@ -13,6 +13,9 @@ const PROJECT_HEALTH_GOAL = '(?:可用|能用|正常|恢复|恢复可用|跑起�
 const PROJECT_DIRECT_REPAIR_ACTION = '(?:处理一下|处理|解决|搞定|修好|修复|修正|恢复|弄好|clean\\s+it\\s+up|clean\\s+up|fix(?:es|ed)?|repair|resolve|restore|recover|stabili[sz]e|unbreak)';
 const PROJECT_REPAIR_ACTION = `(?:${PROJECT_DIRECT_REPAIR_ACTION}|帮(?:我|忙)?|请|麻烦|make|get|bring)`;
 const PROJECT_DIAGNOSTIC_FAILURE = '(?:red\\s+squiggles?|squiggles?|diagnostics?|type\\s+errors?|lint\\s+errors?|编译红线|红线|诊断|类型错误|lint\\s*错误)';
+const RUNTIME_ERROR_CONTEXT = '(?:stack\\s+trace|traceback|call\\s+stack|console|logs?|error\\s+below|exception|crash\\s+report|TypeError|ReferenceError|SyntaxError|NullPointerException|undefined|null\\s+pointer|NaN|blank\\s+screen|white\\s+screen|bug|prod(?:uction)?\\s+bug|报错|异常|错误|栈|堆栈|日志|崩溃|闪退|白屏|黑屏|故障|线上问题|线上故障|用户反馈)';
+const RUNTIME_ERROR_FAILURE = '(?:happens?|shows?|throws?|thrown|failing|breaks?|crashes?|undefined|NaN|wrong|incorrect|goes\\s+blank|blank\\s+screen|white\\s+screen|报错|异常|错误|崩溃|闪退|白屏|黑屏|不对|不正常|有问题)';
+const RUNTIME_ERROR_REPAIR_ACTION = '(?:take\\s+care\\s+of\\s+it|take\\s+it\\s+from\\s+here|handle\\s+it|make\\s+it\\s+go\\s+away|get\\s+rid\\s+of\\s+it|make\\s+(?:it|this)\\s+stop|stop\\s+(?:it|this)\\s+happening|please\\s+handle|处理一下|处理|看一下并处理|排查并处理|帮(?:我|忙)?处理|修掉|消掉|解决|搞定|修复|修好)';
 
 const RUN_THEN_REPAIR_RE = new RegExp(
   `${RUN_ACTION}[\\s\\S]{0,80}${FAILURE_CONDITION}[\\s\\S]{0,60}${REPAIR_ACTION}`,
@@ -53,6 +56,12 @@ const PROJECT_DIAGNOSTIC_REPAIR_RE = new RegExp(
   `${PROJECT_DIAGNOSTIC_FAILURE}[\\s\\S]{0,80}${PROJECT_REPAIR_ACTION}`,
   'i',
 );
+const RUNTIME_ERROR_REPAIR_RE = new RegExp(
+  `(?:${RUNTIME_ERROR_CONTEXT}[\\s\\S]{0,160}${RUNTIME_ERROR_REPAIR_ACTION}`
+    + `|${RUNTIME_ERROR_REPAIR_ACTION}[\\s\\S]{0,160}${RUNTIME_ERROR_CONTEXT}`
+    + `|${RUNTIME_ERROR_CONTEXT}[\\s\\S]{0,120}${RUNTIME_ERROR_FAILURE}[\\s\\S]{0,100}${RUNTIME_ERROR_REPAIR_ACTION})`,
+  'i',
+);
 
 export function stripNegatedRepairClauses(text: string): string {
   return String(text || '').replace(NEGATED_REPAIR_CLAUSE_RE, ' ');
@@ -80,4 +89,10 @@ export function hasProjectHealthRepairIntent(text: string): boolean {
   return PROJECT_FAILURE_REPAIR_RE.test(positive)
     || PROJECT_FAILURE_HEALTH_GOAL_RE.test(positive)
     || PROJECT_DIAGNOSTIC_REPAIR_RE.test(positive);
+}
+
+export function hasRuntimeErrorRepairIntent(text: string): boolean {
+  const positive = stripNegatedRepairClauses(text).trim();
+  if (!positive) return false;
+  return RUNTIME_ERROR_REPAIR_RE.test(positive);
 }

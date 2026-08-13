@@ -212,6 +212,33 @@ test('decideChatIntent: project health explanation remains QA', () => {
   assert.deepEqual(result.allowedToolKinds, []);
 });
 
+test('decideChatIntent: runtime error repair becomes edit intent with run evidence', () => {
+  for (const prompt of [
+    'Here is the stack trace from login: TypeError: Cannot read properties of undefined. Can you take care of it?',
+    'The console shows TypeError in src/profile.ts when opening profile. Please make it go away.',
+    '用户反馈登录后白屏，麻烦看一下并处理。',
+  ]) {
+    const result = decideChatIntent(prompt);
+    assert.equal(result.kind, 'code-change', prompt);
+    assert.equal(result.mode, 'edit', prompt);
+    assert.equal(result.autoApplyEligible, true, prompt);
+    assert.ok(result.signals.includes('conditional-repair-on-failure'), prompt);
+    assert.ok(result.signals.includes('runtime-error-repair-request'), prompt);
+    assert.deepEqual(result.allowedToolKinds, EDIT_TOOLS, prompt);
+    assert.equal(shouldUseAgentMode(result, []), true, prompt);
+  }
+});
+
+test('decideChatIntent: runtime error explanation remains non-mutating', () => {
+  const result = decideChatIntent('What does TypeError: config is undefined mean?');
+
+  assert.equal(result.kind, 'chat');
+  assert.equal(result.mode, 'qa');
+  assert.equal(result.autoApplyEligible, false);
+  assert.equal(result.signals.includes('runtime-error-repair-request'), false);
+  assert.deepEqual(result.allowedToolKinds, []);
+});
+
 test('decideChatIntent: negated conditional repair remains run-only', () => {
   const result = decideChatIntent('Run tests, but do not fix failures.');
   assert.equal(result.kind, 'code-change');

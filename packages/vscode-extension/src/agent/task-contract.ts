@@ -3,6 +3,7 @@ import type { ExactGroundedArtifactContract } from './evidence-grounding';
 import { hasDestructiveIntent } from '../intent/destructive-intent';
 import {
   hasProjectHealthRepairIntent,
+  hasRuntimeErrorRepairIntent,
   hasValidationHealthRepairIntent,
 } from '../intent/conditional-repair-intent';
 
@@ -880,11 +881,14 @@ export function authorizeAgentFileWriteContract(input: {
     && isLikelySourceWriteTarget(target, promptText);
   const projectHealthRepairSourceAuthority = hasProjectHealthRepairIntent(promptText)
     && isLikelySourceWriteTarget(target, promptText);
+  const runtimeErrorRepairSourceAuthority = hasRuntimeErrorRepairIntent(promptText)
+    && isLikelySourceWriteTarget(target, promptText);
   const hasBroadMutationAuthority = targetMutation.requested
     || classifyArtifactWriteIntent(promptText).requested
     || sourceChangeAuthority
     || validationHealthRepairSourceAuthority
     || projectHealthRepairSourceAuthority
+    || runtimeErrorRepairSourceAuthority
     || contract.taskShapes.includes('destructive')
     || input.allowScopedSourceArtifact === true;
   if (promptText.trim()

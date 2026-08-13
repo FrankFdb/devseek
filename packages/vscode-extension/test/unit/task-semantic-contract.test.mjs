@@ -545,6 +545,45 @@ test('TaskSemanticContract: project health questions do not grant repair mutatio
   }
 });
 
+test('TaskSemanticContract: runtime error repair grants source mutation plus run evidence', () => {
+  for (const prompt of [
+    'Here is the stack trace from login: TypeError: Cannot read properties of undefined. Can you take care of it?',
+    'The console shows TypeError in src/profile.ts when opening profile. Please make it go away.',
+    'Prod bug: checkout shows NaN total. Please take it from here.',
+    'The error below happens on startup. Please handle it. TypeError: config is undefined.',
+    '用户反馈登录后白屏，麻烦看一下并处理。',
+  ]) {
+    const contract = buildTaskSemanticContract(prompt);
+
+    assert.equal(contract.kind, 'existing-project-code', prompt);
+    assert.equal(contract.scope, 'existing-project', prompt);
+    assert.equal(contract.mutation.requested, true, prompt);
+    assert.equal(contract.mutation.sourceChange, true, prompt);
+    assert.equal(contract.validation.requested, true, prompt);
+    assert.equal(contract.validation.runRequested, true, prompt);
+    assert.equal(contract.validation.testRequested, false, prompt);
+    assert.equal(contract.intent.mode, 'edit', prompt);
+    assert.ok(contract.signals.includes('conditional-repair-on-failure'), prompt);
+    assert.ok(contract.signals.includes('runtime-error-repair-request'), prompt);
+  }
+});
+
+test('TaskSemanticContract: runtime error explanation stays non-mutating', () => {
+  for (const prompt of [
+    'What does TypeError: config is undefined mean?',
+    'I have this error, can you explain it?',
+    'Here is the stack trace. Explain the likely cause only, do not change files.',
+  ]) {
+    const contract = buildTaskSemanticContract(prompt);
+
+    assert.equal(contract.mutation.requested, false, prompt);
+    assert.equal(contract.mutation.sourceChange, false, prompt);
+    assert.equal(contract.validation.runRequested, false, prompt);
+    assert.equal(contract.signals.includes('runtime-error-repair-request'), false, prompt);
+    assert.notEqual(contract.intent.mode, 'edit', prompt);
+  }
+});
+
 test('TaskSemanticContract: negated conditional repair keeps run-only validation', () => {
   const contract = buildTaskSemanticContract('Run tests, but do not fix failures.');
 

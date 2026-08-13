@@ -364,6 +364,38 @@ test('TaskIntentRouter: project health explanation remains non-mutating QA', () 
   assert.equal(route.signals.includes('project-health-repair-request'), false);
 });
 
+test('TaskIntentRouter: runtime error repair grants edit and terminal authority with run evidence', () => {
+  const route = routeTaskIntent(
+    'Here is the stack trace from login: TypeError: Cannot read properties of undefined. Can you take care of it?',
+  );
+
+  assert.equal(route.family, 'existing-project-edit');
+  assert.equal(route.chatKind, 'code-change');
+  assert.equal(route.mode, 'edit');
+  assert.equal(route.agentTaskShape, 'validation-repair');
+  assert.equal(route.mutation.requested, true);
+  assert.equal(route.mutation.sourceChange, true);
+  assert.equal(route.validation.runRequested, true);
+  assert.equal(route.validation.testRequested, false);
+  assert.equal(route.validation.commandEvidenceRequired, true);
+  assert.ok(route.signals.includes('conditional-repair-on-failure'));
+  assert.ok(route.signals.includes('runtime-error-repair-request'));
+  assert.deepEqual(route.allowedToolKinds, ['read', 'search', 'diagnostics', 'network', 'control', 'plan', 'memory', 'edit', 'terminal']);
+});
+
+test('TaskIntentRouter: runtime error explanation remains non-mutating QA', () => {
+  const route = routeTaskIntent('What does TypeError: config is undefined mean?');
+
+  assert.equal(route.family, 'qa');
+  assert.equal(route.chatKind, 'chat');
+  assert.equal(route.mode, 'qa');
+  assert.equal(route.agentTaskShape, 'general');
+  assert.equal(route.mutation.requested, false);
+  assert.equal(route.mutation.sourceChange, false);
+  assert.equal(route.validation.commandEvidenceRequired, false);
+  assert.equal(route.signals.includes('runtime-error-repair-request'), false);
+});
+
 test('TaskIntentRouter: reproduce without repair is terminal validation only', () => {
   const route = routeTaskIntent('复现一下失败，不要修，给我命令输出。');
 

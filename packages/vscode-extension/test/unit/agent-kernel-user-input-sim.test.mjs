@@ -170,7 +170,7 @@ const USER_INPUT_CASES = [
     prompt: '解释这个报错并修复 packages/vscode-extension/src/task-intent-router.ts',
     route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
     workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-    validation: { runtimeRequired: false, fileCheckRequired: false, formalProjectRequired: false },
+    validation: { runtimeRequired: true, fileCheckRequired: false, formalProjectRequired: false },
     mutation: {
       requested: true,
       sourceChange: true,
@@ -269,6 +269,14 @@ const USER_INPUT_CASES = [
   {
     name: 'implicit-project-health-repair',
     prompt: 'The app is broken, make it work again.',
+    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
+    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
+    validation: { runtimeRequired: true, fileCheckRequired: false, formalProjectRequired: false },
+    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
+  },
+  {
+    name: 'implicit-runtime-error-repair',
+    prompt: 'Here is the stack trace from login: TypeError: Cannot read properties of undefined. Can you take care of it?',
     route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
     workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
     validation: { runtimeRequired: true, fileCheckRequired: false, formalProjectRequired: false },

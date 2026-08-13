@@ -92,6 +92,19 @@ test('WorkflowService: project health repair routes to edit agent with edit poli
   assert.equal(selected.toolPolicyMode, 'edit');
 });
 
+test('WorkflowService: runtime error repair routes to edit agent with edit policy', () => {
+  const prompt = 'Here is the stack trace from login: TypeError: Cannot read properties of undefined. Can you take care of it?';
+  const intent = decideChatIntent(prompt);
+  const selected = selectWorkflow({ intent, files: [], agentEnabled: true, prompt });
+
+  assert.equal(intent.mode, 'edit');
+  assert.ok(intent.signals.includes('runtime-error-repair-request'));
+  assert.equal(selected.kind, 'edit-agent');
+  assert.equal(selected.state, 'editing');
+  assert.equal(selected.useAgent, true);
+  assert.equal(selected.toolPolicyMode, 'edit');
+});
+
 test('WorkflowService: negated repair keeps terminal validation in run agent', () => {
   const prompt = 'Run tests, but do not fix failures.';
   const intent = decideChatIntent(prompt);

@@ -10,6 +10,7 @@ import { isUnsafeSecretHarvestingImplementationRequest } from './safety-intent';
 import { classifyExternalEffectIntent } from './operational-language-boundary';
 import {
   hasProjectHealthRepairIntent,
+  hasRuntimeErrorRepairIntent,
   hasValidationHealthRepairIntent,
 } from './conditional-repair-intent';
 import type { SemanticTaskKind } from './semantic-intent';
@@ -115,7 +116,11 @@ export function buildLocalIntentContract(
     && !semantic.mutation.prohibited;
   const hasProjectHealthRepairRequest = hasProjectHealthRepairIntent(text)
     && !semantic.mutation.prohibited;
-  const hasConditionalRepairRequest = hasValidationHealthRepairRequest || hasProjectHealthRepairRequest;
+  const hasRuntimeErrorRepairRequest = hasRuntimeErrorRepairIntent(text)
+    && !semantic.mutation.prohibited;
+  const hasConditionalRepairRequest = hasValidationHealthRepairRequest
+    || hasProjectHealthRepairRequest
+    || hasRuntimeErrorRepairRequest;
   const hasWorkspaceDiffContext = WORKSPACE_DIFF_CONTEXT_RE.test(text);
   const context: LocalIntentContext = {
     empty: !text,
@@ -249,6 +254,7 @@ export function buildLocalIntentContract(
         'validation-health-repair-request',
       ] : []),
       ...(hasProjectHealthRepairRequest ? ['project-health-repair-request'] : []),
+      ...(hasRuntimeErrorRepairRequest ? ['runtime-error-repair-request'] : []),
       ...semantic.semanticSignals,
     ];
     if (isFollowUpRunRequest) signals.push('follow-up-run-request');
