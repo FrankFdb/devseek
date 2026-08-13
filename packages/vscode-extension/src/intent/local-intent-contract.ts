@@ -64,19 +64,19 @@ interface LocalIntentDecision {
   requiresConfirmation: boolean;
 }
 
-const EXPLICIT_NO_CHANGE_RE = /(不要修改|无需修改|不修改|不要改|别改|不要修复|无需修复|不修复|别修复|不要改动|不改动|不要写入|不要写文件|不要写任何文件|不写文件|不写任何文件|不要创建|不创建|不要生成|不生成|不做(?:修改|变更|修复)|只讨论|仅讨论|只分析|仅分析|只指出|仅指出|直接回复|直接回答|不要落地|先不要改|不需要代码|不要apply|不做变更|just\s+(?:chat|talk|discuss|explain)|only\s+(?:explain|discuss|answer))/i;
-const GREETING_ONLY_RE = /^(?:hi|hello|ello|hey|你好|您好|嗨|哈喽|早上好|上午好|下午好|晚上好|在吗|在不在|辛苦了)[\s!.。！？?]*$/i;
+const EXPLICIT_NO_CHANGE_RE = /(不要修改|无需修改|不修改|不要改|别改|不要修复|无需修复|不修复|别修复|不要改动|不改动|不要写入|不要写文件|不要写任何文件|不写文件|不写任何文件|不要创建|不创建|不要生成|不生成|不做(?:修改|变更|修复)|只讨论|仅讨论|只分析|仅分析|只指出|仅指出|直接回复|直接回答|不要落地|先不要改|不需要代码|不要apply|不做变更|just\s+(?:chat|talk|discuss|explain)|only\s+(?:explain|discuss|answer)|(?:do\s+not|don't|must\s+not|should\s+not|never|without)\s+[^,.;\n]{0,32}(?:change|modify|edit|touch|write|implement)|no\s+(?:edits?|changes?|implementation|code)(?:\s+yet)?|only\s+need\s+(?:a\s+)?plan)/i;
+const GREETING_ONLY_RE = /^(?:hi|hello|ello|hey|thanks?|thank\s+you|thx|appreciate\s+it|that\s+helps|thanks[,，\s]+that\s+helps|谢谢|多谢|感谢|你好|您好|嗨|哈喽|早上好|上午好|下午好|晚上好|在吗|在不在|辛苦了)[\s!.。！？?]*$/i;
 const GREETING_PREFIX_RE = /^(?:hi|hello|hey|你好|您好|嗨|哈喽)[,，\s]+/i;
 const EDIT_RE = /(修复|修正|修改|改一下|改成|改为|改用|换成|换为|调整为|实现|编写|写一个|写个|创建|新建|生成|新增|添加|补全|完善|重构|改造|替换|替换为|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|删除|移除|删掉|优化|升级|接入|封装|拆分|发布|上线|部署|安装插件|安装扩展|fix|repair|modify|change|implement|create|write|add|update|refactor|generate|replace|rename|move|copy|append|insert|delete|remove|release|deploy|publish|install\s+extension)/i;
 const NEGATED_EDIT_CLAUSE_RE = /(?:当前不准备|先不准备|不准备|先不要|暂不|不要|不得|禁止|不允许|无需|无须|不需要|别)[^，,。；;\n]{0,24}(?:修复|修正|修改|改动|创建|新建|生成|编写|写入|保存|输出|新增|添加|实现|重构|替换|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|发布|上线|部署|安装|提交|推送|拉取)|不(?:修复|修正|修改|改动|创建|新建|生成|编写|写入|保存|输出|新增|添加|实现|重构|替换|发布|上线|部署|安装|提交|推送|拉取)|(?:do\s+not|don't|must\s+not|should\s+not|never|without)[^,.;\n]{0,32}(?:fix|repair|modify|change|create|write|generate|save|add|update|implement|refactor|replace|rename|move|copy|append|insert|release|deploy|publish|install|commit|push|pull|fetch|merge|rebase)/gi;
-const RUN_RE = /(运行|执行|编译|构建|测试|跑一下|验证|启动|调试|\b(?:run|execute|compile|build|test|start)\b)/i;
+const RUN_RE = /(运行|执行|编译|构建|测试|跑一下|复现|验证|启动|调试|\b(?:run|execute|compile|build|test|start|reproduce)\b)/i;
 const FOLLOW_UP_RUN_RE = /(?:能(?:否)?(?:执行|运行|编译|构建|测试|验证)|看(?:一下|下|看)?(?:执行|运行|编译|构建|测试|验证)?结果|看到(?:执行|运行|编译|构建|测试|验证)?结果|(?:给(?:我)?|输出|展示|显示|提供|返回).{0,12}(?:执行|运行|编译|构建|测试|验证)?结果|(?:执行|运行|编译|构建|测试|验证|跑)(?:一下|下|一遍|一次)?(?:看看|看结果)|(?:执行|运行|编译|构建|测试|验证|跑).{0,8}结果|(?:show|see|view).{0,20}(?:result|output)|(?:can|could).{0,20}(?:run|execute|compile|build|test|verify))/i;
 const RUN_WITH_CONDITIONAL_REPAIR_RE = /(?:(?:编译|构建|运行|执行|测试|验证|compile|build|run|execute|test|verify).{0,40}(?:如果|若|如有|有|when|if).{0,30}(?:错误|报错|失败|error|fail).{0,30}(?:修复|修正|fix|repair)|(?:如果|若|如有|when|if).{0,30}(?:编译|构建|运行|执行|测试|验证|compile|build|run|execute|test|verify).{0,30}(?:错误|报错|失败|error|fail).{0,30}(?:修复|修正|fix|repair))/i;
 const ARTIFACT_PATH_QUERY_RE = /(?:(?:可执行文件|执行文件|二进制|binary|executable|build\s+artifact|构建产物|生成的文件|创建的文件|写入的文件|输出文件|产物|artifact).{0,18}(?:在哪里|在哪|哪里|路径|位置|path|where)|(?:在哪里|在哪|哪里|路径|位置|path|where).{0,18}(?:可执行文件|执行文件|二进制|binary|executable|build\s+artifact|构建产物|生成的文件|创建的文件|写入的文件|输出文件|产物|artifact))/i;
 const PLAN_RE = /(方案|计划|设计|架构|怎么改|如何改|重构计划|实施步骤|roadmap|plan|design|architecture|approach)/i;
 const EXPLICIT_PLAN_RE = /(方案|计划|架构|怎么改|如何改|重构计划|实施步骤|roadmap|plan|architecture|approach)/i;
 const PLAN_WITH_IMPLEMENTATION_RE = /(?:并|然后|同时|再|最后|通过|落地|完成).{0,24}(?:代码实现|实现|修改|编写|创建|新增|添加|编译|构建|运行|执行|验证|测试|implement|modify|write|create|add|compile|build|run|execute|verify|test)/i;
-const INSPECT_RE = /(分析|解释|说明|查看|检查|排查|定位|查找|寻找|搜索|阅读|梳理|总结|review|inspect|find|locate|search|analy[sz]e|explain|check|diagnose|read|summari[sz]e)/i;
+const INSPECT_RE = /(分析|解释|说明|查看|检查|排查|定位|查找|寻找|搜索|阅读|梳理|总结|review|inspect|find|locate|search|analy[sz]e|explain|check|diagnose|read|summari[sz]e|take\s+a\s+look|look\s+at)/i;
 const QA_RE = /(什么是|为什么|怎么理解|区别|原理|概念|介绍一下|能介绍|请介绍|如何使用|怎么用|what\s+is|why|how\s+to|difference|explain\s+the\s+concept)/i;
 const CODE_CONTEXT_RE = /(代码|文件|项目|函数|类|模块|报错|错误|日志|异常|栈|依赖|配置|接口|组件|脚本|code|file|project|function|class|module|error|log|exception|stack|config|component|script)/i;
 const INTERACTIVE_FEATURE_CONTEXT_RE = /(程序|应用|功能|界面|页面|窗口|按钮|控件|图形|形状|渲染|动画|鼠标|键盘|旋转|缩放|平移|选择|切换|显示|opengl|glut|webgl|three\.?js|canvas|viewer|renderer|ui|gui|feature|interaction|interactive|mouse|keyboard|rotate|rotation|zoom|pan|select|toggle|display|render|shape|geometry|control)/i;

@@ -346,6 +346,50 @@ test('TaskSemanticContract v3: an unscoped no-write clause remains globally read
   assert.equal(contract.read.requested, true);
 });
 
+test('TaskSemanticContract v3: natural inspect wording with no-change is read-only', () => {
+  const contract = buildTaskSemanticContract(
+    "Can you take a look at src/auth.ts and tell me what looks risky? Don't change anything.",
+  );
+
+  assert.equal(contract.kind, 'read-only');
+  assert.equal(contract.mutation.requested, false);
+  assert.equal(contract.mutation.prohibited, true);
+  assert.equal(contract.mutation.sourceChange, false);
+  assert.deepEqual(contract.read.targets, ['src/auth.ts']);
+  assert.equal(contract.intent.mode, 'inspect');
+});
+
+test('TaskSemanticContract v3: plan-only repair wording cannot request source mutation', () => {
+  const contract = buildTaskSemanticContract(
+    'I only need a plan for fixing src/cache.ts, no implementation yet.',
+  );
+
+  assert.equal(contract.kind, 'read-only');
+  assert.equal(contract.mutation.requested, false);
+  assert.equal(contract.mutation.prohibited, true);
+  assert.equal(contract.mutation.sourceChange, false);
+  assert.equal(contract.intent.mode, 'plan');
+  assert.ok(contract.intent.context.planningOnly);
+  assert.ok(!contract.completion.doneIff.some(item => item.kind === 'code-written'));
+});
+
+test('TaskSemanticContract v3: source-scoped no-change still permits a docs artifact', () => {
+  const contract = buildTaskSemanticContract(
+    'Create a CHANGELOG entry in docs/changelog.md summarizing this release, but do not modify source.',
+  );
+
+  assert.equal(contract.kind, 'file-artifact');
+  assert.equal(contract.mutation.requested, true);
+  assert.equal(contract.mutation.prohibited, false);
+  assert.equal(contract.mutation.fileArtifact, true);
+  assert.equal(contract.mutation.sourceChange, false);
+  assert.deepEqual(contract.mutation.targets, ['docs/changelog.md']);
+  assert.ok(contract.signals.includes('scoped-formal-source-prohibition'));
+  assert.ok(contract.completion.doneIff.some(item => (
+    item.kind === 'file-written' && item.target === 'docs/changelog.md'
+  )));
+});
+
 test('TaskSemanticContract v3: a scoped restriction cannot hide a later global no-write clause', () => {
   const contract = buildTaskSemanticContract(
     '请创建 report.md。不要创建目录。不要修改任何文件。',
@@ -389,6 +433,25 @@ test('TaskSemanticContract: read-only path tokens do not become runtime validati
   assert.equal(contract.kind, 'read-only');
   assert.equal(contract.mutation.requested, false);
   assert.equal(contract.validation.requested, false);
+  assert.equal(contract.validation.runRequested, false);
+  assert.equal(shouldRunCppValidationForContract(contract), false);
+});
+
+test('TaskSemanticContract: reproduce without repair is run-only validation', () => {
+  const contract = buildTaskSemanticContract('复现一下失败，不要修，给我命令输出。');
+
+  assert.equal(contract.kind, 'validation');
+  assert.equal(contract.mutation.requested, false);
+  assert.equal(contract.mutation.sourceChange, false);
+  assert.equal(contract.validation.requested, true);
+  assert.equal(contract.validation.runRequested, true);
+  assert.equal(contract.intent.mode, 'run');
+});
+
+test('TaskSemanticContract: bare make-language does not imply compile evidence', () => {
+  const contract = buildTaskSemanticContract('Make it better.');
+
+  assert.equal(contract.validation.compileRequested, false);
   assert.equal(contract.validation.runRequested, false);
   assert.equal(shouldRunCppValidationForContract(contract), false);
 });
