@@ -747,6 +747,7 @@ function finishReport(report) {
   };
   report.summary = baseSummary;
   report.case_design_review = evaluateCaseDesign(report);
+  report.fixpoint_replay = buildFixpointReplay(report);
   const baseOk = report.errors.length === 0
     && failedSteps.length === 0
     && report.process_monitoring.residual_errors.length === 0;
@@ -770,6 +771,7 @@ function refreshCaseDesignReview(report) {
   const review = evaluateCaseDesign(next);
   const originalOk = next.ok !== false && next.summary.ok !== false;
   next.case_design_review = review;
+  next.fixpoint_replay = buildFixpointReplay(next);
   next.summary = {
     ...next.summary,
     ok: originalOk && (!review.enforced || review.ok),
@@ -924,6 +926,109 @@ function caseDesignVerdict({ enforced, planOk, evidenceOk, executionMode }) {
   return 'reasonable-local-acceptance-evidence';
 }
 
+function buildFixpointReplay(report) {
+  const failedSteps = (report.steps || []).filter(step => step.ok !== true);
+  const evidenceMissingSuites = uniqueStrings((report.case_design_review?.execution_evidence_missing || [])
+    .map(item => String(item).split(':')[0]));
+  const failedControlledSuites = uniqueStrings([
+    ...failedSteps
+      .filter(step => step.kind === 'controlled-vsix-user-simulation')
+      .map(step => step.id.replace(/^controlled-/, '')),
+    ...evidenceMissingSuites,
+  ]);
+  const failedControlledCases = uniqueStrings(failedSteps
+    .filter(step => step.kind === 'controlled-vsix-user-simulation')
+    .flatMap(failedCaseIdsFromControlledStep)
+    .concat(controlledCaseIdsFromEvidenceMissing(report.case_design_review?.execution_evidence_missing || [])));
+  const failedTargetedSteps = failedSteps.filter(step => step.kind === 'targeted-local-contract');
+  const targetedTests = uniqueStrings(failedTargetedSteps.flatMap(targetedTestsFromStep));
+  const hasActionableFailure = failedControlledSuites.length > 0 || failedTargetedSteps.length > 0;
+  const baseRunId = sanitizeRunId(report.run_id || defaultRunId());
+  const focusedRunId = `${baseRunId}-focused-rerun`;
+  const acceptanceRunId = `${baseRunId}-acceptance-recheck`;
+  const focusedArgs = ['scripts/devseek-top-agent-user-simulation-runner.mjs', '--force'];
+  if (failedTargetedSteps.length === 0) focusedArgs.push('--skip-targeted');
+  if (targetedTests.length > 0) focusedArgs.push('--targeted-tests', targetedTests.join(','));
+  if (failedControlledSuites.length === 0) {
+    focusedArgs.push('--skip-controlled');
+  } else {
+    focusedArgs.push('--controlled-suites', failedControlledSuites.join(','), '--keep-last-window');
+  }
+  focusedArgs.push(
+    '--run-id',
+    focusedRunId,
+    '--markdown',
+    `docs/testing/devseek-${focusedRunId}.md`,
+  );
+  const acceptanceArgs = [
+    'scripts/devseek-top-agent-user-simulation-runner.mjs',
+    '--force',
+    '--keep-last-window',
+    '--run-id',
+    acceptanceRunId,
+    '--markdown',
+    `docs/testing/devseek-${acceptanceRunId}.md`,
+  ];
+  return {
+    needed: hasActionableFailure,
+    strategy: hasActionableFailure
+      ? 'failed-step-fixpoint-before-broad-regression'
+      : 'no-failed-step-replay-needed',
+    failed_steps: failedSteps.map(step => step.id),
+    failed_controlled_suites: failedControlledSuites,
+    failed_controlled_cases: failedControlledCases,
+    failed_targeted_steps: failedTargetedSteps.map(step => step.id),
+    targeted_tests: targetedTests,
+    focused_command: hasActionableFailure ? ['node', ...focusedArgs] : [],
+    focused_shell_command: hasActionableFailure ? shellCommand(['node', ...focusedArgs]) : '',
+    acceptance_command_after_fix: hasActionableFailure ? ['node', ...acceptanceArgs] : [],
+    acceptance_shell_command_after_fix: hasActionableFailure ? shellCommand(['node', ...acceptanceArgs]) : '',
+    reason: hasActionableFailure
+      ? 'Run only the failed controlled suite or targeted contract first; after it passes, rerun full local acceptance once.'
+      : 'No failed step or missing execution evidence was detected.',
+  };
+}
+
+function failedCaseIdsFromControlledStep(step) {
+  const failedDriverCases = driverCaseReportsFromControlledStep(step)
+    .filter(entry => entry.ok !== true)
+    .map(entry => entry.scenario || entry.id)
+    .filter(Boolean);
+  if (failedDriverCases.length > 0) return failedDriverCases;
+  return plannedCaseIdsFromControlledStep(step);
+}
+
+function controlledCaseIdsFromEvidenceMissing(items) {
+  return items
+    .map(item => String(item).match(/:driver-case-(?:missing|not-ok):([^:]+)$/)?.[1])
+    .filter(Boolean);
+}
+
+function targetedTestsFromStep(step) {
+  if (!Array.isArray(step.command)) return [];
+  const testFlag = step.command.indexOf('--test');
+  if (testFlag < 0) return [];
+  return step.command.slice(testFlag + 1)
+    .filter(item => !String(item).startsWith('--'));
+}
+
+function sanitizeRunId(value) {
+  return String(value || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    || defaultRunId();
+}
+
+function shellCommand(argv) {
+  return argv.map(arg => {
+    const value = String(arg);
+    return /^[A-Za-z0-9_./:=,@+-]+$/.test(value)
+      ? value
+      : `'${value.replace(/'/g, `'\\''`)}'`;
+  }).join(' ');
+}
+
 function writeOptionalOutputs(report, options) {
   const reportOnly = options.fromReportPath || report.report_render_mode === 'reuse-existing';
   if (options.evidenceRoot && !options.dryRun && !reportOnly) {
@@ -984,12 +1089,68 @@ function consoleReport(report, options) {
     })),
     summary: report.summary,
     case_design_review: caseDesignReview,
+    fixpoint_replay: report.fixpoint_replay || buildFixpointReplay(report),
     errors: report.errors,
   };
 }
 
+function renderFindingLines(report, fixpointReplay) {
+  if (report.steps.length === 0) return '- Dry run only; no user case execution evidence was produced.';
+  const failedSteps = uniqueStrings([
+    ...(report.summary?.failed_steps || []),
+    ...(fixpointReplay.failed_steps || []),
+  ].filter(Boolean));
+  if (failedSteps.length > 0 || fixpointReplay.needed) {
+    const failedLine = failedSteps.length > 0
+      ? `- Product behavior: failing step(s) detected: \`${failedSteps.join('`, `')}\`.`
+      : '- Product behavior: execution evidence is incomplete and needs focused replay.';
+    return [
+      failedLine,
+      '- Test workflow: do not restart from zero; use the focused replay command below, then run one full local acceptance recheck after the fix passes.',
+      '- Log audit: inspect the failed step report and stdout/stderr before changing code; promote a minimal replay fixture when the failure class is protocol/provider-shaped.',
+    ].join('\n');
+  }
+  return [
+    '- Product behavior: no failing DevSeek runtime step was found in the covered T3 controlled user simulations.',
+    '- Test workflow: existing PASS evidence is reused by default; report-only rendering is recorded separately as `report_render_mode` and does not overwrite the original execution evidence.',
+    '- Log audit: stderr logs were empty for the recorded run, and expected failure/permission terms appear only inside fail-closed or refusal cases.',
+  ].join('\n');
+}
+
+function renderFixpointReplayMarkdown(fixpointReplay) {
+  if (!fixpointReplay?.needed) {
+    return [
+      '- Needed: `false`',
+      `- Reason: ${fixpointReplay?.reason || 'No failed step or missing execution evidence was detected.'}`,
+    ].join('\n');
+  }
+  const caseLine = fixpointReplay.failed_controlled_cases.length > 0
+    ? `- Failed controlled cases: \`${fixpointReplay.failed_controlled_cases.join('`, `')}\``
+    : '- Failed controlled cases: None resolved from report.';
+  return [
+    '- Needed: `true`',
+    `- Strategy: \`${fixpointReplay.strategy}\``,
+    `- Failed steps: \`${fixpointReplay.failed_steps.join('`, `') || 'none'}\``,
+    `- Failed controlled suites: \`${fixpointReplay.failed_controlled_suites.join('`, `') || 'none'}\``,
+    caseLine,
+    '',
+    'Focused command:',
+    '',
+    '```bash',
+    fixpointReplay.focused_shell_command,
+    '```',
+    '',
+    'After focused PASS, run:',
+    '',
+    '```bash',
+    fixpointReplay.acceptance_shell_command_after_fix,
+    '```',
+  ].join('\n');
+}
+
 function renderMarkdownReport(report) {
   const caseDesignReview = caseDesignReviewFor(report);
+  const fixpointReplay = report.fixpoint_replay || buildFixpointReplay(report);
   const stepRows = report.steps.length > 0
     ? report.steps.map(step => (
       `| \`${step.id}\` | ${step.ok ? 'PASS' : 'FAIL'} | \`${step.kind}\` | \`${step.stdout_log}\` |`
@@ -1031,13 +1192,8 @@ function renderMarkdownReport(report) {
   const missingEvidenceLines = caseDesignReview.execution_evidence_missing.length > 0
     ? caseDesignReview.execution_evidence_missing.map(item => `- \`${item}\``).join('\n')
     : '- None.';
-  const findingLines = report.steps.length > 0
-    ? [
-        '- Product behavior: no failing DevSeek runtime step was found in the covered T3 controlled user simulations.',
-        '- Test workflow: existing PASS evidence is reused by default; report-only rendering is recorded separately as `report_render_mode` and does not overwrite the original execution evidence.',
-        '- Log audit: stderr logs were empty for the recorded run, and expected failure/permission terms appear only inside fail-closed or refusal cases.',
-      ].join('\n')
-    : '- Dry run only; no user case execution evidence was produced.';
+  const findingLines = renderFindingLines(report, fixpointReplay);
+  const fixpointReplayLines = renderFixpointReplayMarkdown(fixpointReplay);
 
   return [
     '# DevSeek Top-Agent Convergence User Simulation',
@@ -1063,6 +1219,10 @@ function renderMarkdownReport(report) {
     '## Findings And Fixes',
     '',
     findingLines,
+    '',
+    '## Fixpoint Replay',
+    '',
+    fixpointReplayLines,
     '',
     '## User Simulation Coverage',
     '',

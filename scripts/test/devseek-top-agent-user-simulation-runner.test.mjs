@@ -298,8 +298,16 @@ test('top-agent user simulation runner renders markdown from existing evidence w
     assert.equal(summary.execution_mode, 'execute');
     assert.equal(summary.report_render_mode, 'from-report');
     assert.equal(summary.steps.length, 1);
+    assert.equal(summary.fixpoint_replay.needed, true);
+    assert.deepEqual(summary.fixpoint_replay.failed_controlled_suites, ['realistic-product']);
+    assert.deepEqual(summary.fixpoint_replay.failed_controlled_cases, [
+      'realistic-python-log-tool',
+      'realistic-python-log-json-followup',
+    ]);
     assert.match(markdown, /## Actual User Cases/);
     assert.match(markdown, /## Case Design Review/);
+    assert.match(markdown, /## Fixpoint Replay/);
+    assert.match(markdown, /--controlled-suites realistic-product/);
     assert.match(markdown, /focused-regression-only-not-release-acceptance/);
     assert.match(markdown, /Selected case count: `2`/);
     assert.match(markdown, /Required acceptance case count: `20`/);
@@ -308,9 +316,133 @@ test('top-agent user simulation runner renders markdown from existing evidence w
     assert.match(markdown, /realistic-product:driver-case-missing:realistic-python-log-json-followup/);
     assert.match(markdown, /Report render mode: `from-report`/);
     assert.match(markdown, /## Findings And Fixes/);
-    assert.match(markdown, /does not overwrite the original execution evidence/);
+    assert.match(markdown, /execution evidence is incomplete and needs focused replay/);
     assert.match(markdown, /realistic-python-log-json-followup/);
     assert.equal(fs.existsSync(path.join(repoRoot, 'code/devseek-tests/top-agent-convergence/runs', summary.run_id)), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('top-agent user simulation runner turns failed evidence into focused replay commands', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'devseek-top-agent-failed-replay-test-'));
+  try {
+    const reportPath = path.join(root, 'failed.report.json');
+    const markdownPath = path.join(root, 'failed.md');
+    fs.writeFileSync(reportPath, `${JSON.stringify({
+      ok: false,
+      schema_version: 'devseek.top-agent-user-simulation-runner/v1',
+      run_id: 'failed-acceptance',
+      started_at: '2026-08-13T00:00:00.000Z',
+      ended_at: '2026-08-13T00:00:10.000Z',
+      repo: { head: 'abc1234', dirty_tracked_paths: [], dirty_cached_paths: [], untracked_paths: [] },
+      execution_mode: 'execute',
+      evidence_root: 'code/devseek-tests/top-agent-convergence/runs/failed-acceptance',
+      markdown_report: null,
+      strategy: {
+        name: 'targeted-before-broad-user-simulation',
+        reason: 'Run small replay/contract checks first, then controlled VSIX user journeys.',
+        qualification_effect: 'NONE',
+        claims_permitted: false,
+        gate0_status_effect: 'NONE',
+      },
+      process_monitoring: {
+        snapshot_stages: ['start', 'before', 'after', 'end'],
+        high_usage_observations: [],
+        controlled_residuals_terminated: [],
+        controlled_windows_retained: [],
+        residual_errors: [],
+        window_policy: 'close previous controlled VSIX windows before execution and retain the last controlled window for inspection',
+      },
+      plan: {
+        coverage_profile: 'top-agent-local-acceptance',
+        source_plan: 'docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md',
+        steps: [
+          { id: 'targeted-local-contracts', kind: 'targeted-local-contract', command: [process.execPath, '--test', 'unit-a.test.mjs'] },
+          { id: 'controlled-realistic-product', kind: 'controlled-vsix-user-simulation', command: [process.execPath, 'packages/vscode-extension/test/devseek-controlled-vsix-harness.mjs', '--suite', 'realistic-product'] },
+        ],
+      },
+      steps: [
+        {
+          id: 'targeted-local-contracts',
+          kind: 'targeted-local-contract',
+          ok: true,
+          stdout_log: 'evidence/targeted.stdout.log',
+          stderr_log: 'evidence/targeted.stderr.log',
+          errors: [],
+        },
+        {
+          id: 'controlled-realistic-product',
+          kind: 'controlled-vsix-user-simulation',
+          ok: false,
+          stdout_log: 'evidence/realistic-product.stdout.log',
+          stderr_log: 'evidence/realistic-product.stderr.log',
+          report_path: 'evidence/realistic-product.report.json',
+          errors: ['realistic-python-log-json-followup failed'],
+          controlledReport: {
+            ok: false,
+            driver: {
+              ok: false,
+              cases: [
+                { scenario: 'realistic-python-log-tool', ok: true },
+                { scenario: 'realistic-python-log-json-followup', ok: false },
+              ],
+            },
+            scenario: {
+              cases: [
+                { id: 'realistic-python-log-tool' },
+                { id: 'realistic-python-log-json-followup' },
+              ],
+            },
+            bridge: { providerInvocationCount: 2 },
+          },
+        },
+      ],
+      summary: {
+        ok: false,
+        total_steps: 2,
+        passed_steps: 1,
+        failed_steps: ['controlled-realistic-product'],
+        controlled_suites: ['realistic-product'],
+        controlled_cases: ['realistic-python-log-tool', 'realistic-python-log-json-followup'],
+        snapshots: 4,
+        high_usage_observations: 0,
+        controlled_residuals_terminated: 0,
+        qualification_effect: 'NONE',
+        claims_permitted: false,
+      },
+      errors: [],
+    }, null, 2)}\n`, 'utf8');
+
+    await assert.rejects(
+      execFile(
+        process.execPath,
+        [
+          'scripts/devseek-top-agent-user-simulation-runner.mjs',
+          '--from-report',
+          reportPath,
+          '--markdown',
+          markdownPath,
+        ],
+        { cwd: repoRoot, maxBuffer: 4 * 1024 * 1024 },
+      ),
+      error => {
+        const summary = JSON.parse(error.stdout);
+        const markdown = fs.readFileSync(markdownPath, 'utf8');
+        assert.equal(summary.ok, false);
+        assert.equal(summary.fixpoint_replay.needed, true);
+        assert.deepEqual(summary.fixpoint_replay.failed_controlled_suites, ['realistic-product']);
+        assert.deepEqual(summary.fixpoint_replay.failed_controlled_cases, ['realistic-python-log-json-followup']);
+        assert.ok(summary.fixpoint_replay.focused_command.includes('--skip-targeted'));
+        assert.ok(summary.fixpoint_replay.focused_command.includes('--controlled-suites'));
+        assert.ok(summary.fixpoint_replay.focused_command.includes('realistic-product'));
+        assert.match(markdown, /## Fixpoint Replay/);
+        assert.match(markdown, /failed-step-fixpoint-before-broad-regression/);
+        assert.match(markdown, /--skip-targeted --controlled-suites realistic-product/);
+        assert.doesNotMatch(markdown, /no failing DevSeek runtime step was found/);
+        return true;
+      },
+    );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
