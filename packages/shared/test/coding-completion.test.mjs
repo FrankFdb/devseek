@@ -441,6 +441,39 @@ test('CanonicalCompletionDecisionService settles failed edit routes through a re
   assert.equal(missingReadback.reasonCodes.includes('denied-effect'), true);
 });
 
+test('CanonicalCompletionDecisionService keeps out-of-contract write denials audit-only after verified delivery', () => {
+  const sourceWrite = workspaceTool('write-source', 1);
+  const deniedTestWrite = {
+    ...workspaceTool('write-test-sh-denied', 3, 'denied'),
+    tool: 'write_file',
+    effects: ['workspace-mutation'],
+    permission: {
+      decision: 'deny',
+      status: 'denied',
+      reason: 'target-file-write-prohibited',
+      evidenceRefs: ['vscode-file-write-policy:target-file-write-prohibited'],
+    },
+    evidenceRefs: ['vscode-file-write-policy:target-file-write-prohibited'],
+  };
+  const verifiedTool = completedVerificationTool('auto-validation-4', 4);
+  const verified = {
+    ...verification('passed'),
+    sequence: verifiedTool.sequence,
+    actionId: verifiedTool.actionId,
+    idempotencyKey: `completion-run-1:${verifiedTool.actionId}`,
+    scopePaths: ['src/value.ts'],
+  };
+  const decision = new CanonicalCompletionDecisionService().decide(input({
+    toolExecutions: [sourceWrite, deniedTestWrite, verifiedTool],
+    mutations: [mutation(sourceWrite.actionId, sourceWrite.sequence)],
+    verifications: [verified],
+  }));
+
+  assert.equal(decision.status, 'completed');
+  assert.equal(decision.reasonCodes.includes('denied-effect'), false);
+  assert.equal(decision.evidenceRefs.includes('vscode-file-write-policy:target-file-write-prohibited'), true);
+});
+
 test('CanonicalCompletionDecisionService ignores only explicitly pre-effect mutation failures', () => {
   const failedBeforeEffect = {
     ...workspaceTool('replace-no-op', 1, 'failed'),

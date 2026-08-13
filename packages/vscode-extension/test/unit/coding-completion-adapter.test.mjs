@@ -211,6 +211,38 @@ test('VS Code evidence projection clears a denied shell write after a verified w
   assert.deepEqual(evidence.residualRisks, []);
 });
 
+test('VS Code evidence projection clears a task failure caused only by an out-of-contract file denial', () => {
+  const deniedTestWrite = {
+    ...deniedTool(),
+    sequence: 2,
+    actionId: 'write-test-sh-denied',
+    tool: 'write_file',
+    purpose: 'tool-write',
+    effects: ['workspace-mutation'],
+    permission: {
+      decision: 'deny',
+      status: 'denied',
+      reason: 'target-file-write-prohibited',
+      evidenceRefs: ['vscode-file-write-policy:target-file-write-prohibited'],
+    },
+    evidenceRefs: ['vscode-file-write-policy:target-file-write-prohibited'],
+  };
+  const evidence = project({
+    tasksFailed: 1,
+    changedPaths: ['src/main.ts'],
+    changeReceipts: [mutation()],
+    verificationReceipts: [verification()],
+    toolExecutionReceipts: [deniedTestWrite],
+  });
+
+  assert.deepEqual(evidence.acceptanceEvidence, []);
+  assert.deepEqual(evidence.residualRisks, []);
+  assert.equal(
+    evidence.evidenceRefs.includes('vscode-agent-result:vscode-completion-run:tasks-failed'),
+    false,
+  );
+});
+
 test('manual review and read-only response evidence remain explicit', () => {
   const manualReview = project({
     changedPaths: ['src/main.ts'],

@@ -183,7 +183,23 @@ test('provider output integrity: rejects provider-authored tool-result transcrip
   assert.equal(result.okForSettlement, false);
   assert.equal(result.toolCallCount, 0);
   assert.equal(result.hasAnswerEvidence, false);
-  assert.match(result.reason, /provider-authored tool-result transcript/);
+  assert.match(result.reason, /(?:provider-authored tool-result|DevSeek internal tool) transcript/);
+});
+
+test('provider output integrity: treats DevSeek transcript echoes with read_file result markers as incomplete, not truncated', () => {
+  const result = classifyProviderOutputIntegrity([
+    '[DevSeek 已执行工具请求摘要]意图：现在进行独立需求审查，逐条验证需求清单。',
+    '工具调用：2 个；真实执行结果、文件写入和验证证据见后续 [工具结果 Round]。',
+    '- read_file path=/tmp/project/include/rate_limiter.hpp',
+    '- read_file path=/tmp/project/src/rate_limiter.cpp',
+    '[read_file: /tmp/project/include/rate_limiter.hpp] class TokenBucketLimiter {',
+    '[verification_result: passed][auto_validation: bash test.sh] 公开测试通过。',
+  ].join('\n'));
+
+  assert.equal(result.kind, 'incomplete_answer');
+  assert.equal(result.okForSettlement, false);
+  assert.equal(result.toolCallCount, 0);
+  assert.match(result.reason, /DevSeek internal tool transcript/);
 });
 
 test('provider output integrity: counts every DeepSeek TOOL_USE request', () => {

@@ -21,6 +21,7 @@ export function codingAdverseToolExecutionBlocksCompletion(
   if (adverse.status !== 'failed' && adverse.status !== 'denied') return false;
   if (isSideEffectFreeObservation(adverse)) return false;
   if (isAdvisoryToolExecution(adverse)) return false;
+  if (codingDeniedToolExecutionIsPolicyNoEffect(adverse)) return false;
   if (adverse.status === 'denied' && codingDeniedProcessToolWasRecovered(adverse, toolExecutions, verifications)) {
     return false;
   }
@@ -46,6 +47,23 @@ function isSideEffectFreeObservation(
     && descriptor.effects.every(effect => effect === 'read')
     && receipt.effects.length > 0
     && receipt.effects.every(effect => effect === 'read');
+}
+
+/**
+ * A host policy denial for an out-of-contract write is an important audit fact,
+ * but it proves the unsafe mutation did not happen. Once the requested in-scope
+ * delivery is independently evidenced, this denial must not veto completion.
+ */
+export function codingDeniedToolExecutionIsPolicyNoEffect(
+  receipt: CodingToolExecutionReceipt<unknown>,
+): boolean {
+  if (receipt.status !== 'denied') return false;
+  const policyFacts = [
+    receipt.permission.reason,
+    ...receipt.permission.evidenceRefs,
+    ...receipt.evidenceRefs,
+  ];
+  return policyFacts.some(fact => /(?:^|:)target-file-write-prohibited$/u.test(fact));
 }
 
 /**

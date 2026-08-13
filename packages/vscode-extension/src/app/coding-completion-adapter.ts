@@ -1,11 +1,13 @@
 import { createHash } from 'crypto';
 import {
   codingAdverseToolExecutionBlocksCompletion,
+  codingDeniedToolExecutionIsPolicyNoEffect,
   codingTaskContractRequiresVerification,
   isSecretHarvestingRefusalTaskContract,
   type CodingCompletionAcceptanceDecision,
   type CodingKernelCompletionEvidence,
   type CodingKernelTaskContract,
+  type CodingVerificationReceipt,
   type CodingWorkspaceMutationReceipt,
 } from '@devseek-netai/shared';
 import type { EvidenceRef } from '../agent/evidence-grounding';
@@ -42,10 +44,25 @@ export class VsCodeCompletionEvidenceAdapter {
           )
       ))
       .flatMap(receipt => receipt.evidenceRefs));
+    const neutralPolicyDeniedRefs = uniqueNonEmpty(toolExecutions
+      .filter(codingDeniedToolExecutionIsPolicyNoEffect)
+      .flatMap(receipt => receipt.evidenceRefs));
+    const tasksFailed = shouldClearRecoveredPolicyDeniedFailure({
+      tasksFailed: input.result.tasksFailed,
+      deniedEffectRefs,
+      neutralPolicyDeniedRefs,
+      failedArtifactRefs,
+      uncoveredChangedPaths,
+      changedPaths: input.result.changedPaths,
+      mutations,
+      verifications,
+    })
+      ? 0
+      : input.result.tasksFailed;
     const acceptanceEvidence = buildDirectAcceptanceEvidence({
       acceptance: input.taskContract.acceptance,
       verificationRequired,
-      tasksFailed: input.result.tasksFailed,
+      tasksFailed,
       resultEvidenceRefs,
       failedArtifactRefs,
       failureRef,
@@ -72,10 +89,49 @@ export class VsCodeCompletionEvidenceAdapter {
       evidenceRefs: [
         ...input.taskContract.provenanceRefs,
         ...resultEvidenceRefs,
-        ...(input.result.tasksFailed > 0 ? [failureRef] : []),
+        ...(tasksFailed > 0 ? [failureRef] : []),
       ],
     };
   }
+}
+
+function shouldClearRecoveredPolicyDeniedFailure(input: {
+  readonly tasksFailed: number;
+  readonly deniedEffectRefs: readonly string[];
+  readonly neutralPolicyDeniedRefs: readonly string[];
+  readonly failedArtifactRefs: readonly string[];
+  readonly uncoveredChangedPaths: readonly string[];
+  readonly changedPaths: readonly string[];
+  readonly mutations: readonly CodingWorkspaceMutationReceipt<unknown>[];
+  readonly verifications: readonly CodingVerificationReceipt[];
+}): boolean {
+  if (input.tasksFailed <= 0) return false;
+  if (input.deniedEffectRefs.length > 0 || input.neutralPolicyDeniedRefs.length === 0) return false;
+  if (input.failedArtifactRefs.length > 0 || input.uncoveredChangedPaths.length > 0) return false;
+  if (input.changedPaths.length === 0) return false;
+  return hasCommittedReadbackMutation(input.mutations)
+    && hasPassedVerification(input.verifications);
+}
+
+function hasCommittedReadbackMutation(
+  mutations: readonly CodingWorkspaceMutationReceipt<unknown>[],
+): boolean {
+  return mutations.some(receipt => (
+    receipt.status === 'committed'
+      && receipt.paths.length > 0
+      && Boolean(receipt.baselineRef)
+      && Boolean(receipt.readbackRef)
+  ));
+}
+
+function hasPassedVerification(
+  verifications: readonly CodingVerificationReceipt[],
+): boolean {
+  return verifications.some(receipt => (
+    receipt.status === 'passed'
+      && receipt.acceptance.length > 0
+      && receipt.acceptance.every(result => result.status === 'passed')
+  ));
 }
 
 function buildDirectAcceptanceEvidence(input: {

@@ -25,9 +25,13 @@ export type RequirementReviewNoToolRecoveryDecision =
     };
 
 export function containsProviderAuthoredToolTranscript(text: string): boolean {
-  return DEVSEEK_EXECUTED_TOOL_SUMMARY_RE.test(text)
-    || DEVSEEK_TOOL_RESULT_ROUND_RE.test(text)
+  return containsDevSeekInternalToolTranscript(text)
     || PROVIDER_AUTHORED_TOOL_RESULT_RE.test(text);
+}
+
+export function containsDevSeekInternalToolTranscript(text: string): boolean {
+  return DEVSEEK_EXECUTED_TOOL_SUMMARY_RE.test(text)
+    || DEVSEEK_TOOL_RESULT_ROUND_RE.test(text);
 }
 
 export function buildProviderAuthoredToolTranscriptRecovery(
