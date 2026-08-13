@@ -203,6 +203,35 @@ export function buildLocalIntentContract(
     ));
   }
 
+  const semanticNoMutationProposal = hasAcceptedSemanticNoMutationProposal(semantic);
+  if (semanticNoMutationProposal) {
+    const mode = semantic.semanticSignals.includes('semantic-proposal:planning')
+      ? 'plan'
+      : semantic.kind === 'read-only'
+        || semantic.semanticSignals.includes('semantic-proposal:read-only-analysis')
+        || semantic.semanticSignals.includes('semantic-proposal:code-review')
+        ? 'inspect'
+        : 'qa';
+    const signals = [
+      mode === 'plan' ? 'planning-request' : mode === 'inspect' ? 'inspection-request' : 'question-answer',
+      'semantic-no-mutation-proposal',
+      ...semantic.semanticSignals,
+    ];
+    if (hasPath) signals.push('explicit-file-path');
+    return finish(decision(
+      mode,
+      mode === 'qa' ? 0.82 : 0.88,
+      mode === 'qa' ? -1 : 3,
+      [...new Set(signals)],
+      semantic.semanticSignals.includes('semantic-proposal:clarification')
+        ? 'semantic-clarification-needed'
+        : 'semantic-no-mutation-proposal',
+      semantic.semanticSignals.includes('semantic-proposal:clarification')
+        ? ['semantic-clarification-needed']
+        : [],
+    ));
+  }
+
   if (context.reviewRequested
     && (hasCodeContext || hasWorkspaceDiffContext)
     && !semantic.mutation.requested
@@ -227,23 +256,6 @@ export function buildLocalIntentContract(
       hasPath || semantic.mutation.targets.length > 0 ? 5 : 4,
       [...new Set(signals)],
       semantic.kind === 'standalone-code' ? 'task-contract-standalone-code' : 'task-contract-file-artifact',
-    ));
-  }
-
-  const priorTaskContinuation = semantic.semanticSignals.includes('prior-task-continuation-request');
-  if (priorTaskContinuation
-    && semantic.mutation.requested
-    && semantic.kind === 'existing-project-code') {
-    const signals = ['edit-request', ...semantic.semanticSignals];
-    if (hasPath) signals.push('explicit-file-path');
-    return finish(decision(
-      'edit',
-      hasPath || semantic.mutation.targets.length > 0 ? 0.9 : 0.84,
-      hasPath || semantic.mutation.targets.length > 0 ? 5 : 4,
-      [...new Set(signals)],
-      hasPath || semantic.mutation.targets.length > 0
-        ? 'task-contract-existing-project-code-with-target'
-        : 'task-contract-existing-project-code',
     ));
   }
 
@@ -334,6 +346,21 @@ export function buildLocalIntentContract(
     ));
   }
 
+  if (semantic.mutation.requested
+    && semantic.kind === 'existing-project-code') {
+    const signals = ['edit-request', ...semantic.semanticSignals];
+    if (hasPath) signals.push('explicit-file-path');
+    return finish(decision(
+      'edit',
+      hasPath || semantic.mutation.targets.length > 0 ? 0.9 : 0.84,
+      hasPath || semantic.mutation.targets.length > 0 ? 5 : 4,
+      [...new Set(signals)],
+      hasPath || semantic.mutation.targets.length > 0
+        ? 'task-contract-existing-project-code-with-target'
+        : 'task-contract-existing-project-code',
+    ));
+  }
+
   if (isRunRequest) {
     const signals = ['run-request'];
     if (isFollowUpRunRequest) signals.push('follow-up-run-request');
@@ -394,6 +421,19 @@ function resolveTaskKind(
   if (semantic.kind === 'standalone-code' || semantic.scope === 'standalone') return 'standalone-program';
   if (semantic.kind === 'file-artifact' || semantic.mutation.fileArtifact) return 'file-artifact';
   return 'existing-project-edit';
+}
+
+function hasAcceptedSemanticNoMutationProposal(semantic: LocalIntentSemanticInput): boolean {
+  return !semantic.mutation.requested
+    && !semantic.validation.runRequested
+    && semantic.semanticSignals.some(signal => (
+      signal === 'semantic-proposal:narrowed-no-mutation'
+      || signal === 'semantic-proposal:no-workspace-action'
+      || signal === 'semantic-proposal:clarification'
+      || signal === 'semantic-proposal:read-only-analysis'
+      || signal === 'semantic-proposal:planning'
+      || signal === 'semantic-proposal:code-review'
+    ));
 }
 
 function isPlanningOnlyRequest(text: string): boolean {

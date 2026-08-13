@@ -505,4 +505,86 @@ test('TaskIntentRouter: publishing an extension remains a release external effec
   assert.equal(route.semanticContract.intent.context.externalEffect, 'requested');
 });
 
+test('TaskIntentRouter: accepted semantic source proposal keeps route and contract consistent', () => {
+  const route = routeTaskIntent('Make the login flow better.', {
+    semanticIntent: semanticIntent({
+      mode: 'edit',
+      taskKind: 'existing-project-edit',
+      mutation: 'modify-source',
+      targetPaths: ['src/login.ts'],
+      requiresWorkspace: true,
+      requiresTerminal: true,
+      reason: 'model understands this as source work',
+    }),
+  });
+
+  assert.equal(route.family, 'existing-project-edit');
+  assert.equal(route.chatKind, 'code-change');
+  assert.equal(route.mode, 'edit');
+  assert.equal(route.semanticContract.kind, 'existing-project-code');
+  assert.equal(route.mutation.sourceChange, true);
+  assert.deepEqual(route.mutation.targets, ['src/login.ts']);
+  assert.equal(route.validation.commandEvidenceRequired, true);
+  assert.ok(route.signals.includes('semantic-proposal-accepted'));
+});
+
+test('TaskIntentRouter: accepted semantic read-only proposal narrows fix wording', () => {
+  const route = routeTaskIntent('How should we fix the login flow?', {
+    semanticIntent: semanticIntent({
+      mode: 'inspect',
+      taskKind: 'read-only-analysis',
+      mutation: 'none',
+      targetPaths: ['src/login.ts'],
+      requiresWorkspace: true,
+      reason: 'model identifies a read-only advice request',
+    }),
+  });
+
+  assert.equal(route.family, 'read-only-advisory');
+  assert.equal(route.chatKind, 'chat');
+  assert.equal(route.mode, 'inspect');
+  assert.equal(route.semanticContract.kind, 'read-only');
+  assert.equal(route.mutation.requested, false);
+  assert.deepEqual(route.semanticContract.read.targets, ['src/login.ts']);
+  assert.ok(route.signals.includes('semantic-no-mutation-proposal'));
+  assert.ok(route.signals.includes('semantic-proposal:narrowed-no-mutation'));
+});
+
+test('TaskIntentRouter: accepted semantic clarification proposal cannot leave edit route active', () => {
+  const route = routeTaskIntent('Fix it.', {
+    semanticIntent: semanticIntent({
+      mode: 'qa',
+      taskKind: 'ambiguous',
+      mutation: 'none',
+      requiresClarification: true,
+      reason: 'missing target and expected behavior',
+    }),
+  });
+
+  assert.equal(route.family, 'qa');
+  assert.equal(route.chatKind, 'chat');
+  assert.equal(route.mode, 'qa');
+  assert.equal(route.mutation.requested, false);
+  assert.equal(route.blockers.includes('semantic-clarification-needed'), true);
+  assert.ok(route.signals.includes('semantic-proposal:clarification'));
+});
+
+function semanticIntent(overrides) {
+  return {
+    version: 'devseek.semantic-intent/v1',
+    source: 'test',
+    mode: 'qa',
+    taskKind: 'ambiguous',
+    confidence: 0.92,
+    mutation: 'none',
+    targetPaths: [],
+    requiresWorkspace: false,
+    requiresTerminal: false,
+    requiresExternalEffect: false,
+    requiresClarification: false,
+    reason: 'test semantic intent',
+    ...overrides,
+  };
+}
+
 console.log('\nTask-intent-router tests passed.\n');

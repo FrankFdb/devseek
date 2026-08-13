@@ -106,8 +106,20 @@ test('top-agent user simulation runner plans targeted checks before broad contro
   assert.ok(report.case_design_review.required_acceptance_cases.includes('scope-replace-beta-instead'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('cancel-plan-source-change'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('cancel-review-instead'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('semantic-source-proposal-route-consistency'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('semantic-readonly-proposal-route-consistency'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('semantic-clarification-proposal-route-consistency'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('external-semantic-intent-routing-matrix'));
+  assert.ok(report.case_design_review.selected_cases.includes('semantic-source-proposal-route-consistency'));
+  assert.ok(report.case_design_review.selected_cases.includes('external-semantic-intent-routing-matrix'));
   assert.equal(report.plan.steps[0].id, 'targeted-local-contracts');
   assert.equal(report.plan.steps[0].kind, 'targeted-local-contract');
+  assert.deepEqual(report.plan.steps[0].case_ids, [
+    'semantic-source-proposal-route-consistency',
+    'semantic-readonly-proposal-route-consistency',
+    'semantic-clarification-proposal-route-consistency',
+    'external-semantic-intent-routing-matrix',
+  ]);
 
   const controlledSuites = report.plan.steps
     .filter(step => step.kind === 'controlled-vsix-user-simulation')
@@ -360,7 +372,7 @@ test('top-agent user simulation runner renders markdown from existing evidence w
     assert.match(markdown, /--controlled-suites realistic-product/);
     assert.match(markdown, /focused-regression-only-not-release-acceptance/);
     assert.match(markdown, /Selected case count: `2`/);
-    assert.match(markdown, /Required acceptance case count: `31`/);
+    assert.match(markdown, /Required acceptance case count: `35`/);
     assert.match(markdown, /Execution evidence missing:/);
     assert.match(markdown, /realistic-product:driver-cases-missing/);
     assert.match(markdown, /realistic-product:driver-case-missing:realistic-python-log-json-followup/);
@@ -530,7 +542,21 @@ test('top-agent user simulation runner rejects acceptance reports without per-ca
       ],
       'r2-07f-connector-security': ['connector-evidence-redaction-replay'],
     };
-    const steps = Object.entries(suites).map(([suite, cases]) => ({
+    const targetedCases = [
+      'semantic-source-proposal-route-consistency',
+      'semantic-readonly-proposal-route-consistency',
+      'semantic-clarification-proposal-route-consistency',
+      'external-semantic-intent-routing-matrix',
+    ];
+    const targetedStep = {
+      id: 'targeted-local-contracts',
+      kind: 'targeted-local-contract',
+      ok: true,
+      stdout_log: 'evidence/targeted-local-contracts.stdout.log',
+      stderr_log: 'evidence/targeted-local-contracts.stderr.log',
+      case_ids: targetedCases,
+    };
+    const controlledSteps = Object.entries(suites).map(([suite, cases]) => ({
       id: `controlled-${suite}`,
       kind: 'controlled-vsix-user-simulation',
       ok: true,
@@ -543,6 +569,7 @@ test('top-agent user simulation runner rejects acceptance reports without per-ca
         bridge: { providerInvocationCount: cases.length },
       },
     }));
+    const steps = [targetedStep, ...controlledSteps];
     fs.writeFileSync(reportPath, `${JSON.stringify({
       ok: true,
       schema_version: 'devseek.top-agent-user-simulation-runner/v1',
@@ -569,11 +596,19 @@ test('top-agent user simulation runner rejects acceptance reports without per-ca
       plan: {
         coverage_profile: 'top-agent-local-acceptance',
         source_plan: 'docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md',
-        steps: Object.keys(suites).map(suite => ({
-          id: `controlled-${suite}`,
-          kind: 'controlled-vsix-user-simulation',
-          command: [process.execPath, 'packages/vscode-extension/test/devseek-controlled-vsix-harness.mjs', '--suite', suite],
-        })),
+        steps: [
+          {
+            id: 'targeted-local-contracts',
+            kind: 'targeted-local-contract',
+            command: [process.execPath, '--test', 'packages/vscode-extension/test/unit/task-intent-router.test.mjs'],
+            case_ids: targetedCases,
+          },
+          ...Object.keys(suites).map(suite => ({
+            id: `controlled-${suite}`,
+            kind: 'controlled-vsix-user-simulation',
+            command: [process.execPath, 'packages/vscode-extension/test/devseek-controlled-vsix-harness.mjs', '--suite', suite],
+          })),
+        ],
       },
       steps,
       summary: {
@@ -581,6 +616,7 @@ test('top-agent user simulation runner rejects acceptance reports without per-ca
         total_steps: steps.length,
         passed_steps: steps.length,
         failed_steps: [],
+        targeted_cases: targetedCases,
         controlled_suites: Object.keys(suites),
         controlled_cases: Object.values(suites).flat(),
         snapshots: 2,

@@ -15,8 +15,20 @@ const DEFAULT_TARGETED_TESTS = Object.freeze([
   'packages/vscode-extension/test/unit/agent-tool-loop-terminal-guard.test.mjs',
   'packages/vscode-extension/test/unit/independent-requirement-review.test.mjs',
   'packages/vscode-extension/test/unit/requirement-review-ledger.test.mjs',
+  'packages/vscode-extension/test/unit/task-intent-router.test.mjs',
+  'packages/vscode-extension/test/unit/semantic-intent-routing-matrix.test.mjs',
   'packages/vscode-extension/test/unit/controlled-vsix-scenario-contract.test.mjs',
 ]);
+const TARGETED_TEST_CASE_COVERAGE = Object.freeze({
+  'packages/vscode-extension/test/unit/task-intent-router.test.mjs': Object.freeze([
+    'semantic-source-proposal-route-consistency',
+    'semantic-readonly-proposal-route-consistency',
+    'semantic-clarification-proposal-route-consistency',
+  ]),
+  'packages/vscode-extension/test/unit/semantic-intent-routing-matrix.test.mjs': Object.freeze([
+    'external-semantic-intent-routing-matrix',
+  ]),
+});
 const DEFAULT_CONTROLLED_SUITES = Object.freeze([
   'r2-07e-stream-protocol',
   'journey-core',
@@ -117,6 +129,22 @@ const CASE_DESIGN_DIMENSIONS = Object.freeze([
     user_need: 'Users cancel a prior coding task and expect the newest read-only instruction to revoke inherited edits.',
     suites: ['cancellation-replacement-product'],
     cases: ['cancel-plan-source-change', 'cancel-review-instead'],
+  },
+  {
+    id: 'semantic_proposal_arbitration',
+    user_need: 'Model semantic proposals must be reconciled with the local task contract so route, workflow, mutation, and evidence agree.',
+    suites: ['targeted-local-contracts'],
+    cases: [
+      'semantic-source-proposal-route-consistency',
+      'semantic-readonly-proposal-route-consistency',
+      'semantic-clarification-proposal-route-consistency',
+    ],
+  },
+  {
+    id: 'external_semantic_agent_workflows',
+    user_need: 'Users phrase common coding-agent workflows in many ways; semantic routing must cover ask, inspect, plan, review, edit, run, effects, and ambiguity.',
+    suites: ['targeted-local-contracts'],
+    cases: ['external-semantic-intent-routing-matrix'],
   },
   {
     id: 'latest_requirement_wins',
@@ -481,15 +509,17 @@ function buildPlan(options) {
   const steps = [];
   const coverageProfile = coverageProfileForOptions(options);
   if (!options.skipTargeted) {
+    const targetedCases = targetedCasesForTests(options.targetedTests);
     steps.push({
       id: 'targeted-local-contracts',
       kind: 'targeted-local-contract',
-      purpose: 'Validate the exact fixpoint risks before launching VS Code: DeepSeek reply compatibility, terminal hard-stop, independent review, and controlled scenario contract.',
+      purpose: 'Validate the exact fixpoint risks before launching VS Code: DeepSeek reply compatibility, terminal hard-stop, independent review, semantic proposal arbitration, and controlled scenario contract.',
       command: [
         process.execPath,
         '--test',
         ...options.targetedTests,
       ],
+      case_ids: targetedCases,
       timeout_ms: 180_000,
       qualification_effect: 'NONE',
       live_provider: false,
@@ -608,6 +638,7 @@ function runStep(step, options) {
     stdout_log: relativeToRepo(stdoutPath),
     stderr_log: relativeToRepo(stderrPath),
     report_path: step.report_path ? relativeToRepo(step.report_path) : null,
+    case_ids: Array.isArray(step.case_ids) ? [...step.case_ids] : [],
     qualification_effect: step.qualification_effect,
     live_provider: step.live_provider,
     ok: result.status === 0,
@@ -780,12 +811,15 @@ function extractControlledTmpRoot(command) {
 function finishReport(report) {
   report.ended_at = new Date().toISOString();
   const failedSteps = report.steps.filter(step => !step.ok);
+  const targetedSteps = report.steps.filter(step => step.kind === 'targeted-local-contract');
   const controlledSteps = report.steps.filter(step => step.kind === 'controlled-vsix-user-simulation');
+  const targetedCases = targetedSteps.flatMap(executedCaseIdsFromTargetedStep);
   const controlledCases = controlledSteps.flatMap(executedCaseIdsFromControlledStep);
   const baseSummary = {
     total_steps: report.steps.length,
     passed_steps: report.steps.filter(step => step.ok).length,
     failed_steps: failedSteps.map(step => step.id),
+    targeted_cases: targetedCases,
     controlled_suites: controlledSteps.map(step => step.id.replace(/^controlled-/, '')),
     controlled_cases: controlledCases,
     snapshots: report.process_monitoring.snapshot_stages.length,
@@ -835,12 +869,21 @@ function refreshCaseDesignReview(report) {
 function evaluateCaseDesign(report) {
   const plan = report.plan || {};
   const plannedSuites = plannedControlledSuites(plan);
+  const plannedTargetedCases = plannedTargetedCaseIds(plan);
   const executedSuites = report.summary?.controlled_suites || [];
-  const selectedSuites = report.execution_mode === 'dry-run' ? plannedSuites : executedSuites;
+  const executedTargetedCases = report.summary?.targeted_cases || [];
+  const selectedSuites = report.execution_mode === 'dry-run'
+    ? uniqueStrings([...plannedTargetedSuiteIds(plan), ...plannedSuites])
+    : uniqueStrings([...executedTargetedSuiteIds(report), ...executedSuites]);
   const suiteCatalog = loadControlledSuiteCatalog();
-  const plannedCases = casesForSuites(plannedSuites, suiteCatalog);
+  const plannedCases = uniqueStrings([
+    ...plannedTargetedCases,
+    ...casesForSuites(plannedSuites, suiteCatalog),
+  ]);
   const executedCases = report.summary?.controlled_cases || [];
-  const selectedCases = report.execution_mode === 'dry-run' ? plannedCases : executedCases;
+  const selectedCases = report.execution_mode === 'dry-run'
+    ? plannedCases
+    : uniqueStrings([...executedTargetedCases, ...executedCases]);
   const profile = plan.coverage_profile || 'focused-regression';
   const coveredDimensions = CASE_DESIGN_DIMENSIONS
     .filter(dimension => dimension.cases.some(caseId => selectedCases.includes(caseId)))
@@ -909,6 +952,11 @@ function executedCaseIdsFromControlledStep(step) {
   return plannedCaseIdsFromControlledStep(step);
 }
 
+function executedCaseIdsFromTargetedStep(step) {
+  if (step.ok !== true) return [];
+  return uniqueStrings(step.case_ids || []);
+}
+
 function controlledStepEvidenceFailures(step) {
   const suite = step.id.replace(/^controlled-/, '');
   const failures = [];
@@ -939,6 +987,36 @@ function controlledStepEvidenceFailures(step) {
 
 function casesForSuites(suites, suiteCatalog = loadControlledSuiteCatalog()) {
   return suites.flatMap(suite => suiteCatalog[suite] || []);
+}
+
+function plannedTargetedCaseIds(plan) {
+  return uniqueStrings((plan.steps || [])
+    .filter(step => step.kind === 'targeted-local-contract')
+    .flatMap(step => step.case_ids || []));
+}
+
+function plannedTargetedSuiteIds(plan) {
+  return (plan.steps || []).some(step => step.kind === 'targeted-local-contract')
+    ? ['targeted-local-contracts']
+    : [];
+}
+
+function executedTargetedSuiteIds(report) {
+  return (report.steps || []).some(step => step.kind === 'targeted-local-contract' && step.ok === true)
+    ? ['targeted-local-contracts']
+    : [];
+}
+
+function targetedCasesForTests(testPaths) {
+  return uniqueStrings(testPaths
+    .flatMap(testPath => TARGETED_TEST_CASE_COVERAGE[normalizeTargetedTestPath(testPath)] || []));
+}
+
+function normalizeTargetedTestPath(testPath) {
+  const normalized = String(testPath || '').replace(/\\/g, '/');
+  const repoPrefix = `${repoRoot.replace(/\\/g, '/')}/`;
+  if (normalized.startsWith(repoPrefix)) return normalized.slice(repoPrefix.length);
+  return normalized.replace(/^\.\//, '');
 }
 
 function uniqueStrings(values) {
