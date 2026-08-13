@@ -154,7 +154,7 @@ test('host final-source evidence never bypasses failed validation', () => {
   assert.equal(ledger.takeIndependentReviewCandidate(), undefined);
 });
 
-test('host final-source evidence downgrades repeated reviewer unavailability after bounded retry', () => {
+test('host final-source evidence fails closed on reviewer unavailability without implementation reruns', () => {
   const ledger = new RequirementReviewLedger();
   const writes = [sourceWrite('src/order_book.cpp')];
   ledger.request({
@@ -171,31 +171,12 @@ test('host final-source evidence downgrades repeated reviewer unavailability aft
     explanation: '隔离审查未逐条覆盖需求清单，或需求引用不是原文。',
     findings: [],
   });
-  assert.match(firstIndeterminate, /只允许用 read_file 重新读取最终源码以重试审查/);
-
-  const retry = ledger.request({
-    sourceChangeRequested: true,
-    qualityGate: passedGate,
-    writtenFiles: writes,
-    roundReadFiles: [],
-    hostFinalSourceEvidenceReady: true,
-  });
-  assert.match(retry, /自动重试独立需求审查/);
-  assert.deepEqual(ledger.takeIndependentReviewCandidate(), {
-    sourcePaths: ['src/order_book.cpp'],
-  });
-
-  const accepted = ledger.settleIndependentReview({
-    status: 'indeterminate',
-    explanation: '隔离审查输出不是严格 JSON。',
-    findings: [],
-  });
-  assert.equal(accepted, undefined);
-  assert.equal(ledger.completionBlocker(), undefined);
+  assert.equal(firstIndeterminate, undefined);
+  assert.match(ledger.completionBlocker(), /独立需求审查证据不足/);
   assert.equal(ledger.beforeNoToolCompletion(), undefined);
 });
 
-test('host final-source evidence clears provider-transcript-polluted review after local source fallback', () => {
+test('host final-source evidence does not locally clear provider-transcript-polluted review output', () => {
   const ledger = new RequirementReviewLedger();
   const writes = [sourceWrite('include/order_book.hpp'), sourceWrite('src/order_book.cpp')];
   ledger.request({
@@ -213,11 +194,10 @@ test('host final-source evidence clears provider-transcript-polluted review afte
     status: 'indeterminate',
     explanation: '隔离审查输出不是严格 JSON。',
     findings: [],
-    hostClearable: true,
   });
 
   assert.equal(accepted, undefined);
-  assert.equal(ledger.completionBlocker(), undefined);
+  assert.match(ledger.completionBlocker(), /独立需求审查证据不足/);
   assert.equal(ledger.beforeNoToolCompletion(), undefined);
 });
 

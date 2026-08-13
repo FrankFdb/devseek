@@ -2,7 +2,6 @@ import type {
   RequirementReviewDecision,
   RequirementReviewFinding,
 } from './requirement-review-ledger';
-import { containsProviderAuthoredToolTranscript } from './provider-authored-transcript-recovery';
 
 const MIN_FINDING_CONFIDENCE = 0.8;
 
@@ -113,7 +112,6 @@ export function parseIndependentReviewResponse(
       '隔离审查输出不是严格 JSON。',
       snapshots,
       userPrompt,
-      { hostClearable: containsProviderAuthoredToolTranscript(response.text) },
     );
   }
   const requirements = extractRequirementClauses(userPrompt);
@@ -358,7 +356,6 @@ function localSemanticFallbackDecision(
   explanation: string,
   snapshots: readonly RequirementReviewSourceSnapshot[],
   userPrompt: string,
-  options: { hostClearable?: boolean } = {},
 ): RequirementReviewDecision {
   const requirements = extractRequirementClauses(userPrompt);
   if (requirements.length === 0) return indeterminateDecision(explanation);
@@ -367,9 +364,7 @@ function localSemanticFallbackDecision(
     snapshots,
   );
   if (localContradictions.length === 0) {
-    return indeterminateDecision(explanation, {
-      hostClearable: options.hostClearable === true,
-    });
+    return indeterminateDecision(explanation);
   }
   return {
     status: 'failed',
@@ -967,7 +962,7 @@ function hasOrderedTraceEvidence(evidence: string): boolean {
 }
 
 function requiresFailurePathEvidence(quote: string): boolean {
-  return /(?:\breject(?:s|ed|ion)?\b|\binvalid\b|\berror\b|\bfail(?:s|ed|ure)?\b|\bduplicate\b|\balready[- ]used\b|\bnon[- ]finite\b|\bnan\b|<=\s*0|\bnegative\b|\bempty\b|拒绝|非法|无效|重复|已使用|非有限|错误|失败)/iu
+  return /(?:\breject(?:s|ed|ion)?\b|\binvalid\b|\berror[- ]?(?:handling|path|case|branch|code|status|result|object|input|message)\b|\bfail(?:ure|ed)?[- ]?(?:handling|path|case|branch|code|status|result|object|input|message)\b|\b(?:returns?|raises?|throws?) (?:an? )?(?:error|failure|exception)\b|\bduplicate\b|\balready[- ]used\b|\bnon[- ]finite\b|\bnan\b|<=\s*0|\bnegative\b|\bempty\b|拒绝|非法|无效|重复|已使用|非有限|抛出|异常|错误(?:处理|码|状态|结果|信息|分支|输入)|失败(?:状态|结果|分支))/iu
     .test(normalizeRequirementText(quote));
 }
 
@@ -1109,15 +1104,11 @@ function stripSingleJsonFence(text: string): string {
   return (match?.[1] ?? trimmed).trim();
 }
 
-function indeterminateDecision(
-  explanation: string,
-  options: { hostClearable?: boolean } = {},
-): RequirementReviewDecision {
+function indeterminateDecision(explanation: string): RequirementReviewDecision {
   return {
     status: 'indeterminate',
     explanation,
     findings: [],
-    ...(options.hostClearable === true ? { hostClearable: true } : {}),
   };
 }
 

@@ -2723,13 +2723,13 @@ test('Architecture: validated source changes require fresh source review before 
   );
   assertContains(
     reviewLedger,
-    'this.pending = undefined;\n        return undefined;',
-    'bounded reviewer unavailability must stop in the host instead of sending another provider feedback loop',
+    'if (this.pending.hostFinalSourceEvidenceReady) {\n        return undefined;',
+    'host final-source reviewer unavailability must stop before another provider feedback loop',
   );
-  assertContains(
+  assertDoesNotContain(
     reviewLedger,
     '自动重试独立需求审查',
-    'host-owned final source evidence must retry isolated review without asking the provider to read files again',
+    'host-owned final source evidence must not retry review through implementation-session feedback',
   );
   assertContains(
     reviewContract,
@@ -2766,15 +2766,15 @@ test('Architecture: validated source changes require fresh source review before 
     'Report bestBid from the highest bid level',
     'order-book semantic fallback must preserve bestBid direction semantics',
   );
-  assertContains(
+  assertDoesNotContain(
     reviewContract,
     'hostClearable',
-    'provider-transcript-polluted review fallback must mark host-clearable indeterminate decisions in the review contract',
+    'provider-transcript-polluted review output must remain fail-closed instead of using host-clearable fallback',
   );
-  assertContains(
+  assertDoesNotContain(
     src('src/agent/requirement-review-ledger.ts'),
     'decision.hostClearable',
-    'requirement review ledger must own host-clearing of provider-transcript-polluted review output',
+    'requirement review ledger must not locally clear provider-transcript-polluted review output',
   );
   const structuralCompileFailure = src('src/app/structural-compile-failure.ts');
   assertContains(

@@ -441,6 +441,16 @@ export async function executeFakeToolsForLoop(
         completeSummary = execution.receipt.result;
         // This receipt records model intent only. Completion remains owned by the orchestrator.
         taskComplete = true;
+        const suppressedTailTools = tools.slice(toolIndex + 1).filter(t => isAgentWorkToolName(t.name)).map(t => t.name);
+        if (suppressedTailTools.length > 0) {
+          trace?.debug('tool-loop', 'suppress-tools-after-task-complete', {
+            taskCompleteIndex: toolIndex,
+            suppressedToolCount: suppressedTailTools.length,
+            suppressedTools: suppressedTailTools,
+          });
+          parts.push(`[task_complete] 已忽略完成信号后的 ${suppressedTailTools.length} 个工具调用：${suppressedTailTools.join(', ')}。`);
+        }
+        break;
       } else {
         const reason = execution.error ?? codingToolExecutionFailureReason(execution.receipt);
         recordToolFailure(tool.name, 'tool-host', undefined, reason);

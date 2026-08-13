@@ -27,7 +27,6 @@ export interface RequirementReviewDecision {
   status: 'passed' | 'failed' | 'indeterminate';
   explanation: string;
   findings: readonly RequirementReviewFinding[];
-  hostClearable?: boolean;
 }
 
 export interface RequirementReviewCandidate {
@@ -103,22 +102,11 @@ export class RequirementReviewLedger {
       return renderBlockingDecision(this.pending.decision);
     }
     if (this.pending.decision?.status === 'indeterminate') {
-      if (this.pending.indeterminateDecisionCount >= 2) {
-        if (this.pending.hostFinalSourceEvidenceReady) {
-          this.pending = undefined;
-          return undefined;
-        }
-        return renderIndeterminateDecision(this.pending.decision, this.pending, false);
-      }
       if (this.pending.hostFinalSourceEvidenceReady) {
-        this.pending.decision = undefined;
-        this.pending.reviewerRequested = false;
-        this.pending.freshSourceEvidenceReady = true;
-        return [
-          '【系统反馈：自动重试独立需求审查】',
-          '上一轮隔离审查输出不可用，但宿主侧最终源码证据仍有效。',
-          '系统将直接用已绑定的最终源码快照重试隔离审查；实现会话不要请求 read_file、不要修改源码、不要解释性绕过。',
-        ].join('\n');
+        return undefined;
+      }
+      if (this.pending.indeterminateDecisionCount >= 2) {
+        return renderIndeterminateDecision(this.pending.decision, this.pending, false);
       }
       const missingRetryPaths = this.pending.reviewSourcePaths.filter(sourcePath => (
         !input.roundReadFiles.some(readPath => sameWorkspacePath(readPath, sourcePath))
@@ -167,24 +155,22 @@ export class RequirementReviewLedger {
     }
     if (decision.status === 'indeterminate') {
       this.pending.indeterminateDecisionCount += 1;
-      if (this.pending.hostFinalSourceEvidenceReady
-        && (decision.hostClearable === true || this.pending.indeterminateDecisionCount >= 2)) {
-        this.pending = undefined;
+      this.pending.decision = decision;
+      if (this.pending.hostFinalSourceEvidenceReady) {
         return undefined;
       }
+      return renderIndeterminateDecision(
+        decision,
+        this.pending,
+        this.pending.indeterminateDecisionCount < 2,
+      );
     }
     if (decision.status === 'passed') {
       this.pending = undefined;
       return undefined;
     }
     this.pending.decision = decision;
-    return decision.status === 'indeterminate'
-      ? renderIndeterminateDecision(
-          decision,
-          this.pending,
-          this.pending.indeterminateDecisionCount < 2,
-        )
-      : renderBlockingDecision(decision);
+    return renderBlockingDecision(decision);
   }
 
   beforeNoToolCompletion(): string | undefined {
@@ -200,6 +186,7 @@ export class RequirementReviewLedger {
       return '【系统反馈：不能跳过独立需求审查】\n最终源码已读取，但隔离审查者尚未形成结论。';
     }
     if (this.pending.decision.status === 'indeterminate') {
+      if (this.pending.hostFinalSourceEvidenceReady) return undefined;
       return renderIndeterminateDecision(
         this.pending.decision,
         this.pending,

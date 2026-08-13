@@ -120,6 +120,62 @@ test('strict review parser treats minimal program wording as creation scope, not
   assert.equal(decision.status, 'passed');
 });
 
+test('strict review parser treats obvious bug wording as repair scope, not error-path evidence', () => {
+  const source = snapshot('src/math.js', [
+    'function add(a, b) {',
+    '  return a + b;',
+    '}',
+    'module.exports = { add };',
+    '',
+  ].join('\n'));
+  const prompt = '请修复 src/math.js 中 add(a, b) 的明显错误。要求 add(2, 3) 返回 5，修改后用 node 命令验证并结束任务。不要修改其他文件。';
+  const decision = parseIndependentReviewResponse(response({
+    requirement_checks: [{
+      requirement_id: 'R1',
+      requirement_quote: prompt,
+      status: 'satisfied',
+      evidence: 'src/math.js:1 final source snapshot and the validation fact cover add(2, 3) returning 5.',
+    }],
+    findings: [],
+    overall_correctness: 'patch is correct',
+    overall_explanation: 'The final source and validation fact satisfy the requested add repair.',
+    overall_confidence_score: 0.98,
+  }), [source], prompt);
+
+  assert.equal(decision.status, 'passed');
+});
+
+test('strict review parser treats ERROR and WARN as domain tokens, not failure-path requirements', () => {
+  const source = snapshot('tools/log_summary.py', [
+    'import sys',
+    '',
+    'def main():',
+    '    lines = sys.stdin.read().splitlines()',
+    '    errors = sum(1 for line in lines if "ERROR" in line)',
+    '    warns = sum(1 for line in lines if "WARN" in line)',
+    '    print(f"ERROR={errors} WARN={warns}")',
+    '',
+    'if __name__ == "__main__":',
+    '    main()',
+    '',
+  ].join('\n'));
+  const prompt = '我在真实项目里需要一个小 Python 命令行工具 tools/log_summary.py。它从 stdin 读取日志文本，统计包含 ERROR 和 WARN 的行数，输出格式先用 ERROR=<n> WARN=<n>。请实现最小版本并用 python 命令自测；不要引入依赖，不要改其他文件。';
+  const decision = parseIndependentReviewResponse(response({
+    requirement_checks: [{
+      requirement_id: 'R1',
+      requirement_quote: prompt,
+      status: 'satisfied',
+      evidence: 'tools/log_summary.py:1 final source snapshot and the validation fact cover stdin counting with ERROR=1 WARN=1.',
+    }],
+    findings: [],
+    overall_correctness: 'patch is correct',
+    overall_explanation: 'The final source and validation fact satisfy the requested log summary format.',
+    overall_confidence_score: 0.98,
+  }), [source], prompt);
+
+  assert.equal(decision.status, 'passed');
+});
+
 test('strict review parser rejects a mixed trustworthy and malformed verdict', () => {
   const source = snapshot('src/order_book.cpp', 'return empty_trades;\nthrow invalid_order;');
   const prompt = 'submit rejects invalid input.';
@@ -974,7 +1030,7 @@ test('strict review parser cross-checks stale remaining after partial fill', () 
   assert.match(decision.findings[0].counterexample, /remaining\("b1"\)/);
 });
 
-test('strict review parser marks provider-transcript-polluted review as host-clearable when local source has no contradiction', () => {
+test('strict review parser keeps provider-transcript-polluted review indeterminate', () => {
   const header = snapshot('include/order_book.hpp', [
     '#include <cstdint>',
     '#include <optional>',
@@ -1009,7 +1065,7 @@ test('strict review parser marks provider-transcript-polluted review as host-cle
   }, [header, source], prompt);
 
   assert.equal(decision.status, 'indeterminate');
-  assert.equal(decision.hostClearable, true);
+  assert.equal('hostClearable' in decision, false);
 });
 
 test('strict review parser rejects self-negating and unreachable pseudo-findings', () => {

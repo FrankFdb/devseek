@@ -363,6 +363,43 @@ test('ToolLoop records a failed canonical receipt when a registered observation 
   assert.match(result.feedbackForAI, /missing-tool-host:read_file/);
 });
 
+test('ToolLoop treats task_complete as a hard stop for replayed DeepSeek tool blocks', async () => {
+  let readCalls = 0;
+  let terminalCalls = 0;
+  const result = await executeFakeToolsForLoop(
+    [
+      { name: 'manage_todo_list', input: { todoList: [{ id: 1, title: '完成任务', status: 'completed' }] } },
+      { name: 'task_complete', input: { summary: '任务已经完成并验证。' } },
+      { name: 'read_file', input: { path: 'src/math.js' } },
+      { name: 'run_terminal', input: { command: 'node -e "console.log(1)"' } },
+    ],
+    {
+      onReadFile: async () => {
+        readCalls += 1;
+        return 'should-not-read';
+      },
+      ...preparedTerminalCallbacks(async () => {
+        terminalCalls += 1;
+        return 'should-not-run';
+      }),
+      onToolActivity: () => {},
+      onAgentStatus: async () => {},
+    },
+    '/tmp/project',
+    { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: '/tmp/project' },
+  );
+
+  assert.equal(result.taskComplete, true);
+  assert.equal(result.completeSummary, '任务已经完成并验证。');
+  assert.equal(readCalls, 0);
+  assert.equal(terminalCalls, 0);
+  assert.deepEqual(
+    result.toolExecutionReceipts?.map(receipt => receipt.tool),
+    ['manage_todo_list', 'task_complete'],
+  );
+  assert.match(result.feedbackForAI, /已忽略完成信号后的 2 个工具调用/);
+});
+
 test('ToolLoop shares one read recorder across rounds and task settlement retains both refs', async () => {
   const recorder = new ToolReadEvidenceRecorder('/tmp/project', 'run-shared');
   const collected = [];
