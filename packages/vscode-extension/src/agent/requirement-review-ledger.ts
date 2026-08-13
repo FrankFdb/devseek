@@ -173,20 +173,18 @@ export class RequirementReviewLedger {
         return undefined;
       }
     }
+    if (decision.status === 'passed') {
+      this.pending = undefined;
+      return undefined;
+    }
     this.pending.decision = decision;
-    return decision.status === 'passed'
-      ? [
-          '【独立需求审查：通过】',
-          decision.explanation,
-          '审查者使用了与实现会话隔离的只读上下文。下一轮请基于既有验证事实简洁完成交付，不要再次修改源码。',
-        ].join('\n')
-      : decision.status === 'indeterminate'
-        ? renderIndeterminateDecision(
-            decision,
-            this.pending,
-            this.pending.indeterminateDecisionCount < 2,
-          )
-        : renderBlockingDecision(decision);
+    return decision.status === 'indeterminate'
+      ? renderIndeterminateDecision(
+          decision,
+          this.pending,
+          this.pending.indeterminateDecisionCount < 2,
+        )
+      : renderBlockingDecision(decision);
   }
 
   beforeNoToolCompletion(): string | undefined {

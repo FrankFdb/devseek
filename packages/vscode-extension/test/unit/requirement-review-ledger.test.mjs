@@ -55,11 +55,11 @@ test('requirement review is scheduled once for each newly validated source mutat
     sourcePaths: ['include/cache.hpp', 'src/cache.cpp'],
   });
   assert.match(ledger.beforeNoToolCompletion(), /不能跳过独立需求审查/);
-  assert.match(ledger.settleIndependentReview({
+  assert.equal(ledger.settleIndependentReview({
     status: 'passed',
     explanation: 'All stated requirements map to the final source.',
     findings: [],
-  }), /独立需求审查：通过/);
+  }), undefined);
   assert.equal(ledger.beforeNoToolCompletion(), undefined);
   assert.equal(ledger.request({
     sourceChangeRequested: true,
@@ -106,11 +106,11 @@ test('pending requirement review survives read-only rounds without a new quality
   assert.deepEqual(ledger.takeIndependentReviewCandidate(), {
     sourcePaths: ['src/order_book.cpp'],
   });
-  assert.match(ledger.settleIndependentReview({
+  assert.equal(ledger.settleIndependentReview({
     status: 'passed',
     explanation: 'The implementation satisfies the contract.',
     findings: [],
-  }), /独立需求审查：通过/);
+  }), undefined);
   assert.equal(ledger.completionBlocker(), undefined);
   assert.equal(ledger.beforeNoToolCompletion(), undefined);
 });
@@ -131,11 +131,11 @@ test('host final-source evidence can trigger isolated review without provider re
     sourcePaths: ['src/order_book.cpp', 'include/order_book.hpp'],
   });
   assert.match(ledger.beforeNoToolCompletion(), /不能跳过独立需求审查/);
-  assert.match(ledger.settleIndependentReview({
+  assert.equal(ledger.settleIndependentReview({
     status: 'passed',
     explanation: 'Host-captured final source satisfies the user requirements.',
     findings: [],
-  }), /独立需求审查：通过/);
+  }), undefined);
   assert.equal(ledger.completionBlocker(), undefined);
 });
 
