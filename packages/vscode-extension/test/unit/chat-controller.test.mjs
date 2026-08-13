@@ -480,6 +480,76 @@ test('ChatRouteController: provider semantic file-artifact proposal enters the l
   assert.ok(decision.intent.signals.includes('semantic-proposal-accepted'));
 });
 
+test('ChatRouteController: provider workspace answer proposal uses inspect workflow without attachments', () => {
+  const controller = new ChatRouteController();
+  const prompt = 'Can you answer this from the repository?';
+  const decision = controller.decide({
+    userDisplay: prompt,
+    prompt,
+    files: [],
+    agentEnabled: true,
+    semanticIntent: {
+      version: 'devseek.semantic-intent/v1',
+      source: 'test',
+      mode: 'qa',
+      taskKind: 'question-answer',
+      confidence: 0.91,
+      mutation: 'none',
+      targetPaths: ['src/cache.ts'],
+      requiresWorkspace: true,
+      requiresTerminal: false,
+      requiresExternalEffect: false,
+      requiresClarification: false,
+      reason: '用户问题需要读取工作区证据',
+    },
+  });
+
+  assert.equal(decision.intent.mode, 'inspect');
+  assert.equal(decision.intent.kind, 'chat');
+  assert.equal(decision.workflow.kind, 'inspect-agent');
+  assert.equal(decision.workflow.useAgent, true);
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('read'), true);
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
+  assert.equal(decision.intent.semanticContract.kind, 'read-only');
+  assert.deepEqual(decision.intent.semanticContract.read.targets, ['src/cache.ts']);
+  assert.ok(decision.intent.signals.includes('semantic-proposal:workspace-read'));
+  assert.ok(decision.intent.signals.includes('semantic-proposal:workspace-answer'));
+});
+
+test('ChatRouteController: provider clarification keeps workspace scope but stays out of tools', () => {
+  const controller = new ChatRouteController();
+  const prompt = 'Fix it.';
+  const decision = controller.decide({
+    userDisplay: prompt,
+    prompt,
+    files: [],
+    agentEnabled: true,
+    semanticIntent: {
+      version: 'devseek.semantic-intent/v1',
+      source: 'test',
+      mode: 'qa',
+      taskKind: 'question-answer',
+      confidence: 0.9,
+      mutation: 'none',
+      targetPaths: ['src/login.ts'],
+      requiresWorkspace: true,
+      requiresTerminal: false,
+      requiresExternalEffect: false,
+      requiresClarification: true,
+      reason: '目标文件已知但验收标准缺失',
+    },
+  });
+
+  assert.equal(decision.intent.mode, 'qa');
+  assert.equal(decision.workflow.kind, 'plain-chat');
+  assert.equal(decision.workflow.useAgent, false);
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('read'), false);
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
+  assert.equal(decision.intent.blockers.includes('semantic-clarification-needed'), true);
+  assert.deepEqual(decision.intent.semanticContract.read.targets, ['src/login.ts']);
+  assert.ok(decision.intent.signals.includes('semantic-proposal:workspace-clarification'));
+});
+
 test('ChatRouteController: explicit no-change boundary cannot be escalated by semantic edit intent', () => {
   const controller = new ChatRouteController();
   const prompt = '请分析 src/main.ts 的问题，直接回答，不要修改任何文件';

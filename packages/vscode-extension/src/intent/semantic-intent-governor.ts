@@ -93,6 +93,12 @@ function wouldEraseStrongLocalMutation(
 }
 
 function governedSemanticMode(candidate: SemanticIntentInterpretation): ExecutionMode {
+  if (candidate.requiresClarification) return candidate.mode;
+  if (candidate.mutation === 'none'
+    && candidate.taskKind === 'question-answer'
+    && (candidate.requiresWorkspace || candidate.targetPaths.length > 0)) {
+    return 'inspect';
+  }
   if (candidate.mutation !== 'none') return candidate.mode;
   if (!isMutatingExecutionMode(candidate.mode)) return candidate.mode;
   return candidate.taskKind === 'planning' ? 'plan' : 'inspect';

@@ -201,7 +201,8 @@ function shouldUseControlledWorkspaceWorkflow(input: WorkflowSelectionInput): bo
   const hasConcreteWorkspaceTarget = input.files.length > 0
     || input.intent.signals.includes('explicit-file-path')
     || input.intent.signals.includes('artifact-path-query')
-    || input.intent.signals.includes('workspace-diff-review');
+    || input.intent.signals.includes('workspace-diff-review')
+    || input.intent.signals.includes('semantic-proposal:workspace-read');
   if (!hasConcreteWorkspaceTarget) return false;
 
   // Explicit file tasks must stay inside DevSeek's tool/permission runtime.

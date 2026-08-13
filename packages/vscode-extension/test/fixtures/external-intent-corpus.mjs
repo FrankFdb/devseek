@@ -155,6 +155,20 @@ export const EXTERNAL_INTENT_CORPUS = [
     expect: { mode: 'qa', workflow: 'plain-chat', useAgent: false, toolPolicy: 'qa' },
   },
   {
+    id: 'EXT-QA-005',
+    taskKind: 'question-answer',
+    sourceRefs: ['claude_code_workflows', 'vscode_agents'],
+    prompt: 'Can you answer how this router decides between chat and agent mode from the repo?',
+    files: [],
+    semanticIntent: semantic({
+      mode: 'qa',
+      taskKind: 'question-answer',
+      targetPaths: [path('src/router.ts')],
+      requiresWorkspace: true,
+    }),
+    expect: { mode: 'inspect', workflow: 'inspect-agent', useAgent: true, toolPolicy: 'inspect' },
+  },
+  {
     id: 'EXT-INSPECT-001',
     taskKind: 'read-only-analysis',
     sourceRefs: ['claude_code_workflows'],

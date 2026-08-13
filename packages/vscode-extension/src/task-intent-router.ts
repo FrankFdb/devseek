@@ -173,6 +173,7 @@ function resolveTaskIntentFamily(
   if (classification.mode === 'destructive' || semanticContract.kind === 'destructive') return 'destructive';
   if (simpleFile) return 'simple-file';
   if (semanticContract.intent.context.externalEffect === 'requested') return 'release-external-effect';
+  if (classification.blockers.includes('semantic-clarification-needed')) return 'qa';
   if (isReadOnlyRoute(classification, semanticContract)) {
     return semanticContract.intent.context.reviewRequested ? 'review' : 'read-only-advisory';
   }

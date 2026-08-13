@@ -123,7 +123,8 @@ export function shouldUseAgentMode(
     return files.length > 0
       || intent.signals.includes('explicit-file-path')
       || intent.signals.includes('artifact-path-query')
-      || intent.signals.includes('workspace-diff-review');
+      || intent.signals.includes('workspace-diff-review')
+      || intent.signals.includes('semantic-proposal:workspace-read');
   }
 
   if (intent.kind === 'chat') return false;

@@ -185,6 +185,13 @@ function assertSemanticContractProjection(decision, item) {
     assert.equal(contract.mutation.fileArtifact, false, item.id);
     assert.equal(contract.validation.requested, false, item.id);
     assert.equal(contract.taskContract.deliverables.includes('source-change'), false, item.id);
+    if (item.semanticIntent.requiresWorkspace || item.semanticIntent.targetPaths.length > 0) {
+      assert.equal(contract.kind, 'read-only', item.id);
+      assert.equal(contract.read.requested, true, item.id);
+      assertTargetsIncluded(contract.read.targets, item.semanticIntent.targetPaths, item.id);
+      assertTargetsIncluded(contract.taskContract.inputs, item.semanticIntent.targetPaths, item.id);
+      assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false, item.id);
+    }
     return;
   }
 

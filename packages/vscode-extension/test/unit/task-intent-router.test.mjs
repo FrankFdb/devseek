@@ -550,6 +550,32 @@ test('TaskIntentRouter: accepted semantic read-only proposal narrows fix wording
   assert.ok(route.signals.includes('semantic-proposal:narrowed-no-mutation'));
 });
 
+test('TaskIntentRouter: workspace-bound semantic answer proposal uses read-only route', () => {
+  const route = routeTaskIntent('Can you answer from the repo?', {
+    semanticIntent: semanticIntent({
+      mode: 'qa',
+      taskKind: 'question-answer',
+      mutation: 'none',
+      targetPaths: ['src/cache.ts'],
+      requiresWorkspace: true,
+      reason: 'model identifies a repository question requiring local evidence',
+    }),
+  });
+
+  assert.equal(route.family, 'read-only-advisory');
+  assert.equal(route.chatKind, 'chat');
+  assert.equal(route.mode, 'inspect');
+  assert.equal(route.semanticContract.kind, 'read-only');
+  assert.equal(route.mutation.requested, false);
+  assert.deepEqual(route.semanticContract.read.targets, ['src/cache.ts']);
+  assert.deepEqual(route.semanticContract.taskContract.inputs, ['src/cache.ts']);
+  assert.equal(route.allowedToolKinds.includes('edit'), false);
+  assert.ok(route.allowedToolKinds.includes('read'));
+  assert.ok(route.signals.includes('semantic-proposal:workspace-read'));
+  assert.ok(route.signals.includes('semantic-proposal:workspace-answer'));
+  assert.ok(route.signals.includes('semantic-proposal:read-only-analysis'));
+});
+
 test('TaskIntentRouter: accepted semantic clarification proposal cannot leave edit route active', () => {
   const route = routeTaskIntent('Fix it.', {
     semanticIntent: semanticIntent({
@@ -567,6 +593,33 @@ test('TaskIntentRouter: accepted semantic clarification proposal cannot leave ed
   assert.equal(route.mutation.requested, false);
   assert.equal(route.blockers.includes('semantic-clarification-needed'), true);
   assert.ok(route.signals.includes('semantic-proposal:clarification'));
+});
+
+test('TaskIntentRouter: semantic clarification preserves workspace scope without opening execution', () => {
+  const route = routeTaskIntent('Fix it.', {
+    semanticIntent: semanticIntent({
+      mode: 'qa',
+      taskKind: 'question-answer',
+      mutation: 'none',
+      targetPaths: ['src/login.ts'],
+      requiresWorkspace: true,
+      requiresClarification: true,
+      reason: 'target is known but expected behavior is missing',
+    }),
+  });
+
+  assert.equal(route.family, 'qa');
+  assert.equal(route.chatKind, 'chat');
+  assert.equal(route.mode, 'qa');
+  assert.equal(route.mutation.requested, false);
+  assert.equal(route.mutation.sourceChange, false);
+  assert.deepEqual(route.semanticContract.read.targets, ['src/login.ts']);
+  assert.deepEqual(route.semanticContract.taskContract.inputs, ['src/login.ts']);
+  assert.equal(route.allowedToolKinds.includes('read'), false);
+  assert.equal(route.allowedToolKinds.includes('edit'), false);
+  assert.equal(route.blockers.includes('semantic-clarification-needed'), true);
+  assert.ok(route.signals.includes('semantic-proposal:clarification'));
+  assert.ok(route.signals.includes('semantic-proposal:workspace-clarification'));
 });
 
 test('TaskIntentRouter: accepted semantic terminal validation proposal keeps run route and contract consistent', () => {

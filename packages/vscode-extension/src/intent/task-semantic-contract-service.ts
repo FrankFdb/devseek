@@ -259,11 +259,14 @@ function projectAcceptedSemanticProposal(
   contract: TaskSemanticContract,
   candidate: SemanticIntentInterpretation,
 ): TaskSemanticContract {
-  if (candidate.taskKind === 'smalltalk' || candidate.taskKind === 'question-answer') {
-    return projectConversationSemanticProposal(contract, candidate);
-  }
   if (candidate.requiresClarification || candidate.taskKind === 'ambiguous') {
     return projectClarificationSemanticProposal(contract, candidate);
+  }
+  if (candidate.taskKind === 'question-answer' && semanticProposalRequiresWorkspaceRead(candidate)) {
+    return projectReadOnlySemanticProposal(contract, candidate);
+  }
+  if (candidate.taskKind === 'smalltalk' || candidate.taskKind === 'question-answer') {
+    return projectConversationSemanticProposal(contract, candidate);
   }
   if (candidate.taskKind === 'existing-project-edit' || candidate.taskKind === 'standalone-program') {
     return projectSourceMutationSemanticProposal(contract, candidate);
@@ -285,6 +288,10 @@ function projectAcceptedSemanticProposal(
     return projectReadOnlySemanticProposal(contract, candidate);
   }
   return contract;
+}
+
+function semanticProposalRequiresWorkspaceRead(candidate: SemanticIntentInterpretation): boolean {
+  return candidate.requiresWorkspace || candidate.targetPaths.length > 0;
 }
 
 function projectConversationSemanticProposal(
@@ -322,21 +329,36 @@ function projectClarificationSemanticProposal(
   candidate: SemanticIntentInterpretation,
 ): TaskSemanticContract {
   if (!canSemanticNoMutationNarrowLocalContract(contract)) return contract;
+  const targets = uniquePaths([
+    ...contract.read.targets,
+    ...contract.taskContract.inputs,
+    ...candidate.targetPaths,
+  ]);
+  const baseTaskContract = clearMutationTaskContract(contract.taskContract, {
+    keepVerificationResult: false,
+  });
   return {
     ...contract,
     kind: 'general',
     scope: 'none',
     mutation: clearWorkspaceMutation(contract, false),
+    read: {
+      ...contract.read,
+      requested: contract.read.requested || targets.length > 0 || candidate.requiresWorkspace,
+      targets,
+    },
     validation: clearRuntimeValidation(contract.validation),
     quality: {
       formalProjectRequired: false,
     },
-    taskContract: clearMutationTaskContract(contract.taskContract, {
-      keepVerificationResult: false,
-    }),
+    taskContract: {
+      ...baseTaskContract,
+      inputs: uniquePaths([...baseTaskContract.inputs, ...targets]),
+    },
     signals: uniqueStrings([
       'semantic-proposal:clarification',
       `semantic-proposal:${candidate.taskKind}`,
+      ...(targets.length > 0 || candidate.requiresWorkspace ? ['semantic-proposal:workspace-clarification'] : []),
       ...clearNarrowedNoMutationSignals(contract.signals),
     ]),
   };
@@ -574,6 +596,11 @@ function projectReadOnlySemanticProposal(
     },
     signals: uniqueStrings([
       `semantic-proposal:${candidate.taskKind}`,
+      ...(targets.length > 0 || candidate.requiresWorkspace ? ['semantic-proposal:workspace-read'] : []),
+      ...(candidate.taskKind === 'question-answer' ? [
+        'semantic-proposal:workspace-answer',
+        'semantic-proposal:read-only-analysis',
+      ] : []),
       ...(narrowed ? ['semantic-proposal:narrowed-no-mutation'] : []),
       ...(narrowed ? clearNarrowedNoMutationSignals(contract.signals) : contract.signals),
     ]),

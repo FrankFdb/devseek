@@ -23,7 +23,9 @@ const TARGETED_TEST_CASE_COVERAGE = Object.freeze({
   'packages/vscode-extension/test/unit/task-intent-router.test.mjs': Object.freeze([
     'semantic-source-proposal-route-consistency',
     'semantic-readonly-proposal-route-consistency',
+    'semantic-workspace-answer-route-consistency',
     'semantic-clarification-proposal-route-consistency',
+    'semantic-clarification-workspace-scope-consistency',
     'semantic-terminal-validation-route-consistency',
     'semantic-external-effect-confirmation-consistency',
   ]),
@@ -139,7 +141,9 @@ const CASE_DESIGN_DIMENSIONS = Object.freeze([
     cases: [
       'semantic-source-proposal-route-consistency',
       'semantic-readonly-proposal-route-consistency',
+      'semantic-workspace-answer-route-consistency',
       'semantic-clarification-proposal-route-consistency',
+      'semantic-clarification-workspace-scope-consistency',
       'semantic-terminal-validation-route-consistency',
       'semantic-external-effect-confirmation-consistency',
     ],
