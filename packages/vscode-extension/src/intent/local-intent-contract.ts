@@ -112,7 +112,11 @@ export function buildLocalIntentContract(
     && !READ_ONLY_CAPABILITY_QUESTION_RE.test(withoutGreeting);
   const hasDeliverableWriteRequest = isDeliverableWriteRequest(text);
   const hasScopedNoChangeWithDeliverableWrite = isScopedNoChangeWithDeliverableWriteRequest(text);
-  const externalEffect = classifyExternalEffectIntent(positiveActionText);
+  const localExternalEffect = classifyExternalEffectIntent(positiveActionText);
+  const semanticExternalEffectProposal = semantic.semanticSignals.includes('semantic-proposal:external-effect');
+  const externalEffect = localExternalEffect === 'none' && semanticExternalEffectProposal
+    ? 'requested'
+    : localExternalEffect;
   const isRunRequest = RUN_RE.test(text);
   const isRepairSelfHelpQuestion = isSelfHelpRepairQuestion(text);
   const hasValidationHealthRepairRequest = hasValidationHealthRepairIntent(text)
@@ -182,11 +186,36 @@ export function buildLocalIntentContract(
     return finish(decision('qa', 0.78, -2, ['question-answer', 'external-effect-question'], 'external-effect-question'));
   }
   if (context.externalEffect === 'requested') {
-    const signals = ['external-effect-request', 'edit-request'];
+    const mode: ExecutionMode = semanticExternalEffectProposal
+      && semantic.semanticSignals.includes('semantic-proposal-mode:run')
+      ? 'run'
+      : 'edit';
+    const signals = [
+      'external-effect-request',
+      mode === 'run' ? 'run-request' : 'edit-request',
+      ...(semanticExternalEffectProposal ? ['semantic-external-effect-proposal', ...semantic.semanticSignals] : []),
+    ];
     if (hasPath) signals.push('explicit-file-path');
     return finish(decision(
-      'edit', hasPath ? 0.9 : 0.84, hasPath ? 5 : 4, signals,
+      mode, hasPath ? 0.9 : 0.84, hasPath ? 5 : 4, signals,
       hasPath ? 'external-effect-with-file-path' : 'external-effect-request',
+      [],
+      semanticExternalEffectProposal,
+    ));
+  }
+
+  const semanticRunOnlyProposal = hasAcceptedSemanticRunOnlyProposal(semantic);
+  if (semanticRunOnlyProposal) {
+    const signals = ['run-request', 'semantic-run-only-proposal', ...semantic.semanticSignals];
+    if (hasPath) signals.push('explicit-file-path');
+    return finish(decision(
+      'run',
+      hasPath || semantic.mutation.targets.length > 0 ? 0.9 : 0.86,
+      hasPath || semantic.mutation.targets.length > 0 ? 5 : 4,
+      [...new Set(signals)],
+      hasPath || semantic.mutation.targets.length > 0
+        ? 'semantic-terminal-validation-with-target'
+        : 'semantic-terminal-validation',
     ));
   }
 
@@ -434,6 +463,12 @@ function hasAcceptedSemanticNoMutationProposal(semantic: LocalIntentSemanticInpu
       || signal === 'semantic-proposal:planning'
       || signal === 'semantic-proposal:code-review'
     ));
+}
+
+function hasAcceptedSemanticRunOnlyProposal(semantic: LocalIntentSemanticInput): boolean {
+  return !semantic.mutation.requested
+    && semantic.validation.runRequested
+    && semantic.semanticSignals.includes('semantic-proposal:terminal-validation');
 }
 
 function isPlanningOnlyRequest(text: string): boolean {

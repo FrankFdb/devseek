@@ -569,6 +569,57 @@ test('TaskIntentRouter: accepted semantic clarification proposal cannot leave ed
   assert.ok(route.signals.includes('semantic-proposal:clarification'));
 });
 
+test('TaskIntentRouter: accepted semantic terminal validation proposal keeps run route and contract consistent', () => {
+  const route = routeTaskIntent('Make sure the login flow still works.', {
+    semanticIntent: semanticIntent({
+      mode: 'run',
+      taskKind: 'terminal-validation',
+      mutation: 'run-only',
+      targetPaths: ['src/login.ts'],
+      requiresWorkspace: true,
+      requiresTerminal: true,
+      reason: 'model identifies a run-only validation request',
+    }),
+  });
+
+  assert.equal(route.family, 'terminal-validation');
+  assert.equal(route.chatKind, 'code-change');
+  assert.equal(route.mode, 'run');
+  assert.equal(route.semanticContract.kind, 'validation');
+  assert.equal(route.semanticContract.intent.mode, 'run');
+  assert.equal(route.mutation.requested, false);
+  assert.equal(route.mutation.sourceChange, false);
+  assert.equal(route.validation.runRequested, true);
+  assert.equal(route.validation.commandEvidenceRequired, true);
+  assert.ok(route.allowedToolKinds.includes('terminal'));
+  assert.ok(route.signals.includes('semantic-run-only-proposal'));
+  assert.ok(route.signals.includes('semantic-proposal:terminal-validation'));
+});
+
+test('TaskIntentRouter: accepted semantic external-effect proposal routes to confirmation boundary', () => {
+  const route = routeTaskIntent('Ship this change.', {
+    semanticIntent: semanticIntent({
+      mode: 'edit',
+      taskKind: 'external-effect',
+      mutation: 'external-effect',
+      requiresWorkspace: true,
+      requiresTerminal: true,
+      requiresExternalEffect: true,
+      reason: 'model identifies a release or push action',
+    }),
+  });
+
+  assert.equal(route.family, 'release-external-effect');
+  assert.equal(route.chatKind, 'code-change');
+  assert.equal(route.mode, 'edit');
+  assert.equal(route.requiresConfirmation, true);
+  assert.equal(route.semanticContract.intent.context.externalEffect, 'requested');
+  assert.equal(route.semanticContract.intent.requiresConfirmation, true);
+  assert.equal(route.mutation.requested, false);
+  assert.ok(route.signals.includes('semantic-external-effect-proposal'));
+  assert.ok(route.signals.includes('semantic-proposal:external-effect'));
+});
+
 function semanticIntent(overrides) {
   return {
     version: 'devseek.semantic-intent/v1',

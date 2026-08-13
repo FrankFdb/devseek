@@ -277,6 +277,9 @@ function projectAcceptedSemanticProposal(
   if (candidate.mutation === 'run-only' || candidate.taskKind === 'terminal-validation') {
     return projectRunOnlySemanticProposal(contract, candidate);
   }
+  if (candidate.mutation === 'external-effect' || candidate.taskKind === 'external-effect') {
+    return projectExternalEffectSemanticProposal(contract, candidate);
+  }
   if (candidate.mutation === 'none'
     && ['read-only-analysis', 'planning', 'code-review'].includes(candidate.taskKind)) {
     return projectReadOnlySemanticProposal(contract, candidate);
@@ -309,7 +312,7 @@ function projectConversationSemanticProposal(
     signals: uniqueStrings([
       `semantic-proposal:${candidate.taskKind}`,
       'semantic-proposal:no-workspace-action',
-      ...contract.signals,
+      ...clearNarrowedNoMutationSignals(contract.signals),
     ]),
   };
 }
@@ -334,7 +337,7 @@ function projectClarificationSemanticProposal(
     signals: uniqueStrings([
       'semantic-proposal:clarification',
       `semantic-proposal:${candidate.taskKind}`,
-      ...contract.signals,
+      ...clearNarrowedNoMutationSignals(contract.signals),
     ]),
   };
 }
@@ -489,7 +492,45 @@ function projectRunOnlySemanticProposal(
     signals: uniqueStrings([
       'semantic-proposal:terminal-validation',
       ...(narrowed ? ['semantic-proposal:narrowed-no-mutation'] : []),
-      ...contract.signals,
+      ...(narrowed ? clearNarrowedNoMutationSignals(contract.signals) : contract.signals),
+    ]),
+  };
+}
+
+function projectExternalEffectSemanticProposal(
+  contract: TaskSemanticContract,
+  candidate: SemanticIntentInterpretation,
+): TaskSemanticContract {
+  const narrowed = canSemanticNoMutationNarrowLocalContract(contract);
+  const baseTaskContract = narrowed
+    ? clearMutationTaskContract(contract.taskContract, { keepVerificationResult: true })
+    : contract.taskContract;
+  return {
+    ...contract,
+    kind: narrowed ? 'general' : contract.kind,
+    scope: narrowed ? 'unknown' : contract.scope,
+    mutation: narrowed
+      ? clearWorkspaceMutation(contract, contract.mutation.prohibited)
+      : contract.mutation,
+    validation: {
+      ...contract.validation,
+      requested: contract.validation.requested || candidate.requiresTerminal,
+      runRequested: contract.validation.runProhibited
+        ? false
+        : contract.validation.runRequested || candidate.requiresTerminal,
+    },
+    taskContract: {
+      ...baseTaskContract,
+      deliverables: uniqueStrings([
+        ...baseTaskContract.deliverables,
+        ...(candidate.requiresTerminal ? ['verification-result'] : []),
+      ]) as TaskContract['deliverables'],
+    },
+    signals: uniqueStrings([
+      'semantic-proposal:external-effect',
+      `semantic-proposal-mode:${candidate.mode}`,
+      ...(narrowed ? ['semantic-proposal:narrowed-no-mutation'] : []),
+      ...(narrowed ? clearNarrowedNoMutationSignals(contract.signals) : contract.signals),
     ]),
   };
 }
@@ -534,9 +575,13 @@ function projectReadOnlySemanticProposal(
     signals: uniqueStrings([
       `semantic-proposal:${candidate.taskKind}`,
       ...(narrowed ? ['semantic-proposal:narrowed-no-mutation'] : []),
-      ...contract.signals,
+      ...(narrowed ? clearNarrowedNoMutationSignals(contract.signals) : contract.signals),
     ]),
   };
+}
+
+function clearNarrowedNoMutationSignals(signals: readonly string[]): string[] {
+  return signals.filter(signal => signal !== 'semantic-edit-mutation-inferred');
 }
 
 function canSemanticNoMutationNarrowLocalContract(contract: TaskSemanticContract): boolean {

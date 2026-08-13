@@ -24,6 +24,8 @@ const TARGETED_TEST_CASE_COVERAGE = Object.freeze({
     'semantic-source-proposal-route-consistency',
     'semantic-readonly-proposal-route-consistency',
     'semantic-clarification-proposal-route-consistency',
+    'semantic-terminal-validation-route-consistency',
+    'semantic-external-effect-confirmation-consistency',
   ]),
   'packages/vscode-extension/test/unit/semantic-intent-routing-matrix.test.mjs': Object.freeze([
     'external-semantic-intent-routing-matrix',
@@ -138,6 +140,8 @@ const CASE_DESIGN_DIMENSIONS = Object.freeze([
       'semantic-source-proposal-route-consistency',
       'semantic-readonly-proposal-route-consistency',
       'semantic-clarification-proposal-route-consistency',
+      'semantic-terminal-validation-route-consistency',
+      'semantic-external-effect-confirmation-consistency',
     ],
   },
   {

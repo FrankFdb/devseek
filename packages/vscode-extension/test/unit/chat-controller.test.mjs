@@ -576,6 +576,37 @@ test('ChatRouteController: semantic external-effect intent requires confirmation
   assert.equal(decision.workflow.kind, 'confirmation-required');
 });
 
+test('ChatRouteController: semantic-only external-effect proposal still requires confirmation', () => {
+  const controller = new ChatRouteController();
+  const prompt = 'Ship this change.';
+  const decision = controller.decide({
+    userDisplay: prompt,
+    prompt,
+    files: ['/workspace/src/main.ts'],
+    agentEnabled: true,
+    semanticIntent: {
+      version: 'devseek.semantic-intent/v1',
+      source: 'test',
+      mode: 'edit',
+      taskKind: 'external-effect',
+      confidence: 0.93,
+      mutation: 'external-effect',
+      targetPaths: [],
+      requiresWorkspace: true,
+      requiresTerminal: true,
+      requiresExternalEffect: true,
+      requiresClarification: false,
+      reason: 'model identifies release or push semantics',
+    },
+  });
+
+  assert.equal(decision.intent.semanticContract.intent.context.externalEffect, 'requested');
+  assert.equal(decision.intent.requiresConfirmation, true);
+  assert.equal(decision.workflow.kind, 'confirmation-required');
+  assert.equal(decision.workflow.useAgent, false);
+  assert.ok(decision.intent.signals.includes('semantic-proposal:external-effect'));
+});
+
 test('ChatRouteController: contradictory semantic no-mutation edit is governed down to inspect', () => {
   const controller = new ChatRouteController();
   const prompt = '看看 src/main.ts 里有没有明显问题，不要改';

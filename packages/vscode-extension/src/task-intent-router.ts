@@ -111,6 +111,7 @@ export function routeTaskSemanticContract(semanticContract: TaskSemanticContract
     && shouldRunCppValidationForContract(semanticContract);
   const commandEvidenceRequired = !safetyRefusal && (runtimeRequired
     || semanticContract.validation.compileRequested
+    || semanticContract.validation.runRequested
     || semanticContract.validation.testRequested
     || (fileCheckRequired && semanticContract.validation.requested));
 
@@ -216,12 +217,12 @@ function isReadOnlyRoute(
   semanticContract: TaskSemanticContract,
 ): boolean {
   if (semanticContract.mutation.requested && !semanticContract.mutation.prohibited) return false;
-  if (semanticContract.read.requested) return true;
-  if (semanticContract.kind === 'read-only') return true;
   if (classification.mode === 'run' || semanticContract.kind === 'validation') return false;
   if (semanticContract.validation.runRequested
     || semanticContract.validation.testRequested
     || semanticContract.validation.compileRequested) return false;
+  if (semanticContract.read.requested) return true;
+  if (semanticContract.kind === 'read-only') return true;
   if (classification.blockers.includes('explicit-no-change')) return true;
   return classification.mode === 'inspect' || classification.mode === 'plan';
 }
