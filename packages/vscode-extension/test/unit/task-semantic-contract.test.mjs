@@ -480,6 +480,30 @@ test('TaskSemanticContract: CI health repair grants source mutation plus test ev
   assert.ok(contract.signals.includes('validation-health-repair-request'));
 });
 
+test('TaskSemanticContract: project health repair grants source mutation plus run evidence', () => {
+  for (const prompt of [
+    'The app is broken, make it work again.',
+    'The login flow regressed, can you get it working again?',
+    'The page crashes on load, get it stable again.',
+    'Red squiggles everywhere, clean it up.',
+    '登录流程坏了，帮我恢复可用。',
+  ]) {
+    const contract = buildTaskSemanticContract(prompt);
+
+    assert.equal(contract.kind, 'existing-project-code', prompt);
+    assert.equal(contract.scope, 'existing-project', prompt);
+    assert.equal(contract.mutation.requested, true, prompt);
+    assert.equal(contract.mutation.sourceChange, true, prompt);
+    assert.equal(contract.validation.requested, true, prompt);
+    assert.equal(contract.validation.runRequested, true, prompt);
+    assert.equal(contract.validation.testRequested, false, prompt);
+    assert.equal(contract.intent.mode, 'edit', prompt);
+    assert.ok(contract.signals.includes('conditional-repair-on-failure'), prompt);
+    assert.ok(contract.signals.includes('project-health-repair-request'), prompt);
+    assert.ok(!contract.signals.includes('validation-health-repair-request'), prompt);
+  }
+});
+
 test('TaskSemanticContract: broken build health repair requires compile evidence', () => {
   const contract = buildTaskSemanticContract('Build is broken, please make it pass.');
 
@@ -503,6 +527,22 @@ test('TaskSemanticContract: read-only CI failure analysis does not grant health 
   assert.equal(contract.validation.requested, false);
   assert.equal(contract.intent.mode, 'inspect');
   assert.equal(contract.signals.includes('validation-health-repair-request'), false);
+});
+
+test('TaskSemanticContract: project health questions do not grant repair mutation', () => {
+  for (const prompt of [
+    'Why is the app broken?',
+    'The app is broken, can I get an explanation?',
+    'The app is broken, explain what you would check first; do not change files.',
+  ]) {
+    const contract = buildTaskSemanticContract(prompt);
+
+    assert.equal(contract.mutation.requested, false, prompt);
+    assert.equal(contract.mutation.sourceChange, false, prompt);
+    assert.equal(contract.validation.runRequested, false, prompt);
+    assert.equal(contract.signals.includes('project-health-repair-request'), false, prompt);
+    assert.notEqual(contract.intent.mode, 'edit', prompt);
+  }
 });
 
 test('TaskSemanticContract: negated conditional repair keeps run-only validation', () => {

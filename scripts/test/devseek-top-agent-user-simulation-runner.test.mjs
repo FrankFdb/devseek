@@ -38,6 +38,9 @@ test('controlled VSIX harness exposes a machine-readable suite case catalog', as
   assert.ok(catalog.suites['coding-conformance-product'].some(entry =>
     entry.id === 'conformance-cn-tests-pass-repair'
   ));
+  assert.ok(catalog.suites['coding-conformance-product'].some(entry =>
+    entry.id === 'conformance-project-health-repair'
+  ));
 });
 
 test('top-agent user simulation runner plans targeted checks before broad controlled VSIX suites', async () => {
@@ -67,6 +70,7 @@ test('top-agent user simulation runner plans targeted checks before broad contro
   assert.ok(report.case_design_review.required_acceptance_cases.includes('conformance-verify-repair-reverify'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('conformance-ci-green-repair'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('conformance-cn-tests-pass-repair'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('conformance-project-health-repair'));
   assert.equal(report.plan.steps[0].id, 'targeted-local-contracts');
   assert.equal(report.plan.steps[0].kind, 'targeted-local-contract');
 
@@ -318,7 +322,7 @@ test('top-agent user simulation runner renders markdown from existing evidence w
     assert.match(markdown, /--controlled-suites realistic-product/);
     assert.match(markdown, /focused-regression-only-not-release-acceptance/);
     assert.match(markdown, /Selected case count: `2`/);
-    assert.match(markdown, /Required acceptance case count: `22`/);
+    assert.match(markdown, /Required acceptance case count: `23`/);
     assert.match(markdown, /Execution evidence missing:/);
     assert.match(markdown, /realistic-product:driver-cases-missing/);
     assert.match(markdown, /realistic-product:driver-case-missing:realistic-python-log-json-followup/);
@@ -477,6 +481,7 @@ test('top-agent user simulation runner rejects acceptance reports without per-ca
         'conformance-verify-repair-reverify',
         'conformance-ci-green-repair',
         'conformance-cn-tests-pass-repair',
+        'conformance-project-health-repair',
         'conformance-permission-denied-no-effect',
         'conformance-policy-refusal-no-mutation',
       ],

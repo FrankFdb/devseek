@@ -140,6 +140,27 @@ test('VS Code requires verification for implicit validation health repairs', () 
   ]);
 });
 
+test('VS Code requires verification for implicit project health repairs', () => {
+  const contract = projectVsCodeCodingKernelTaskContract({
+    userPrompt: 'The app is broken, make it work again.',
+    workflowMode: 'edit',
+    contextFiles: [],
+    workspaceRoot: '/workspace',
+    taskContract: makeEmptyTaskContract(),
+  });
+
+  assert.equal(contract.mode, 'change');
+  assert.deepEqual(contract.deliverables.map(deliverable => deliverable.id), [
+    'source-change',
+    'verification-result',
+  ]);
+  assert.equal(contract.constraints.includes('verification-before-completion'), true);
+  assert.deepEqual(contract.acceptance.map(criterion => criterion.id), [
+    'requested-outcome',
+    'verified',
+  ]);
+});
+
 test('VS Code projects report-only Markdown deliverables as scoped workspace mutation', () => {
   const workspaceRoot = '/tmp/devseek-r3/workspace';
   const contract = projectVsCodeCodingKernelTaskContract({

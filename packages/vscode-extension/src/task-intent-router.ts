@@ -200,13 +200,14 @@ function resolveAgentTaskShape(
   semanticContract: TaskSemanticContract,
 ): RoutedAgentTaskShape {
   if (family === 'safety-refusal') return 'read-only-analysis';
+  if (family === 'read-only-advisory' || family === 'review') return 'read-only-analysis';
+  if (family === 'smalltalk' || family === 'qa') return 'general';
   if (semanticContract.intent.context.failureContext) {
     return 'validation-repair';
   }
   if (family === 'simple-file') return 'simple-file';
   if (family === 'existing-project-edit') return 'existing-project';
   if (family === 'standalone-program') return 'standalone-project';
-  if (family === 'read-only-advisory' || family === 'review') return 'read-only-analysis';
   return 'general';
 }
 

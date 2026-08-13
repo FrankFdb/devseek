@@ -16,8 +16,8 @@ import {
   validateCodingConformanceProjection,
 } from '../dist/index.js';
 
-test('coding conformance catalog freezes seven Codex and Claude Code observable behavior fixtures', () => {
-  assert.equal(CODING_CONFORMANCE_DEVELOPMENT_FIXTURES.length, 7);
+test('coding conformance catalog freezes eight Codex and Claude Code observable behavior fixtures', () => {
+  assert.equal(CODING_CONFORMANCE_DEVELOPMENT_FIXTURES.length, 8);
   assert.deepEqual(
     CODING_CONFORMANCE_DEVELOPMENT_FIXTURES.map(fixture => fixture.fixtureId),
     [
@@ -26,6 +26,7 @@ test('coding conformance catalog freezes seven Codex and Claude Code observable 
       'verify-repair-reverify',
       'implicit-ci-health-repair',
       'implicit-cn-test-health-repair',
+      'implicit-project-health-repair',
       'permission-denied-no-effect',
       'policy-refusal-no-mutation',
     ],
@@ -67,7 +68,7 @@ test('fixture self-tests prove the adapter contract without claiming product-rou
   }
 });
 
-test('one settled projection owner keeps all seven fixtures equivalent across three Surfaces', () => {
+test('one settled projection owner keeps all eight fixtures equivalent across three Surfaces', () => {
   for (const fixture of CODING_CONFORMANCE_DEVELOPMENT_FIXTURES) {
     const projection = projectSettledCodingConformanceRun(settledRun(fixture));
     const evaluation = evaluateCodingConformanceFixture(fixture, [

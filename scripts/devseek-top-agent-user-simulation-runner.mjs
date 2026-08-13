@@ -71,6 +71,12 @@ const CASE_DESIGN_DIMENSIONS = Object.freeze([
     cases: ['conformance-ci-green-repair', 'conformance-cn-tests-pass-repair'],
   },
   {
+    id: 'implicit_project_health_repair',
+    user_need: 'Users describe a broken app, page, or flow as a health goal and expect repair plus verification.',
+    suites: ['coding-conformance-product'],
+    cases: ['conformance-project-health-repair'],
+  },
+  {
     id: 'incremental_followup_context',
     user_need: 'Users refine previous work in the same session.',
     suites: ['realistic-product'],

@@ -580,9 +580,19 @@ test('file-write authorization covers neutral, prohibited, exclusive, and correc
 
   assert.equal(decide('CI is red, get it green.', `${root}/src/parser.js`).allowed, true);
   assert.equal(decide('测试挂了，帮我过掉。', `${root}/src/parser.js`).allowed, true);
+  assert.equal(decide('The app is broken, make it work again.', `${root}/src/parser.js`).allowed, true);
+  assert.equal(decide('登录流程坏了，帮我恢复可用。', `${root}/src/auth.js`).allowed, true);
   assert.equal(decide('CI is red, get it green.', `${root}/README.md`).reason, 'markdown-artifact-target-not-requested');
   assert.equal(
+    decide('The app is broken, make it work again.', `${root}/README.md`).reason,
+    'markdown-artifact-target-not-requested',
+  );
+  assert.equal(
     decide('CI is red, get it green, but do not change files.', `${root}/src/parser.js`).reason,
+    'all-file-writes-prohibited',
+  );
+  assert.equal(
+    decide('The app is broken, explain why; do not change files.', `${root}/src/parser.js`).reason,
     'all-file-writes-prohibited',
   );
 

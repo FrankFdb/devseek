@@ -79,6 +79,19 @@ test('WorkflowService: green-suite repair routes to edit agent with edit policy'
   assert.equal(selected.toolPolicyMode, 'edit');
 });
 
+test('WorkflowService: project health repair routes to edit agent with edit policy', () => {
+  const prompt = 'The page crashes on load, get it stable again.';
+  const intent = decideChatIntent(prompt);
+  const selected = selectWorkflow({ intent, files: [], agentEnabled: true, prompt });
+
+  assert.equal(intent.mode, 'edit');
+  assert.ok(intent.signals.includes('project-health-repair-request'));
+  assert.equal(selected.kind, 'edit-agent');
+  assert.equal(selected.state, 'editing');
+  assert.equal(selected.useAgent, true);
+  assert.equal(selected.toolPolicyMode, 'edit');
+});
+
 test('WorkflowService: negated repair keeps terminal validation in run agent', () => {
   const prompt = 'Run tests, but do not fix failures.';
   const intent = decideChatIntent(prompt);

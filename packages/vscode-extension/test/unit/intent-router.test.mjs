@@ -185,6 +185,33 @@ test('decideChatIntent: CI health repair becomes validation repair edit intent',
   assert.equal(shouldUseAgentMode(result, []), true);
 });
 
+test('decideChatIntent: project health repair becomes edit intent with run evidence', () => {
+  for (const prompt of [
+    'The app is broken, make it work again.',
+    'The page crashes on load, get it stable again.',
+    '登录流程坏了，帮我恢复可用。',
+  ]) {
+    const result = decideChatIntent(prompt);
+    assert.equal(result.kind, 'code-change', prompt);
+    assert.equal(result.mode, 'edit', prompt);
+    assert.equal(result.autoApplyEligible, true, prompt);
+    assert.ok(result.signals.includes('conditional-repair-on-failure'), prompt);
+    assert.ok(result.signals.includes('project-health-repair-request'), prompt);
+    assert.deepEqual(result.allowedToolKinds, EDIT_TOOLS, prompt);
+    assert.equal(shouldUseAgentMode(result, []), true, prompt);
+  }
+});
+
+test('decideChatIntent: project health explanation remains QA', () => {
+  const result = decideChatIntent('The app is broken, can I get an explanation?');
+
+  assert.equal(result.kind, 'chat');
+  assert.equal(result.mode, 'qa');
+  assert.equal(result.autoApplyEligible, false);
+  assert.equal(result.signals.includes('project-health-repair-request'), false);
+  assert.deepEqual(result.allowedToolKinds, []);
+});
+
 test('decideChatIntent: negated conditional repair remains run-only', () => {
   const result = decideChatIntent('Run tests, but do not fix failures.');
   assert.equal(result.kind, 'code-change');

@@ -7,7 +7,10 @@ import {
 } from '@devseek-netai/shared';
 import type { TaskContract } from '../agent/task-contract';
 import type { ExecutionMode } from '../intent/intent-types';
-import { hasValidationHealthRepairIntent } from '../intent/conditional-repair-intent';
+import {
+  hasProjectHealthRepairIntent,
+  hasValidationHealthRepairIntent,
+} from '../intent/conditional-repair-intent';
 
 export interface VsCodeCodingKernelTaskContractInput {
   readonly userPrompt: string;
@@ -39,6 +42,7 @@ export function projectVsCodeCodingKernelTaskContract(
     sourceChangeRequested,
     reportFileRequested,
     explicitlyRequiresVerification,
+    projectHealthRepairRequested: hasProjectHealthRepairIntent(input.userPrompt),
     validationHealthRepairRequested: hasValidationHealthRepairIntent(input.userPrompt),
   });
   return resolveCodingKernelTaskContract({
@@ -58,10 +62,12 @@ function resolveVsCodeVerificationRequirement(input: {
   readonly sourceChangeRequested: boolean;
   readonly reportFileRequested: boolean;
   readonly explicitlyRequiresVerification: boolean;
+  readonly projectHealthRepairRequested: boolean;
   readonly validationHealthRepairRequested: boolean;
 }): boolean | undefined {
   if (input.sourceChangeRequested
     || input.explicitlyRequiresVerification
+    || input.projectHealthRepairRequested
     || input.validationHealthRepairRequested) {
     return true;
   }

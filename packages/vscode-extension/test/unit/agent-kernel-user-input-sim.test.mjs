@@ -267,6 +267,14 @@ const USER_INPUT_CASES = [
     mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
   },
   {
+    name: 'implicit-project-health-repair',
+    prompt: 'The app is broken, make it work again.',
+    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
+    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
+    validation: { runtimeRequired: true, fileCheckRequired: false, formalProjectRequired: false },
+    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
+  },
+  {
     name: 'release-external-effect',
     prompt: '发布当前扩展到生产环境',
     route: { family: 'release-external-effect', chatKind: 'code-change', mode: 'edit', shape: 'general' },

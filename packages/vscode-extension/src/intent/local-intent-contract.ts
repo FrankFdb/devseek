@@ -8,7 +8,10 @@ import {
 } from './advisory-patterns';
 import { isUnsafeSecretHarvestingImplementationRequest } from './safety-intent';
 import { classifyExternalEffectIntent } from './operational-language-boundary';
-import { hasValidationHealthRepairIntent } from './conditional-repair-intent';
+import {
+  hasProjectHealthRepairIntent,
+  hasValidationHealthRepairIntent,
+} from './conditional-repair-intent';
 import type { SemanticTaskKind } from './semantic-intent';
 import type { ExecutionMode } from './intent-types';
 import type { TaskSemanticKind, TaskSemanticScope } from '../task-semantic-contract';
@@ -108,8 +111,11 @@ export function buildLocalIntentContract(
   const hasScopedNoChangeWithDeliverableWrite = isScopedNoChangeWithDeliverableWriteRequest(text);
   const externalEffect = classifyExternalEffectIntent(positiveActionText);
   const isRunRequest = RUN_RE.test(text);
-  const hasConditionalRepairRequest = hasValidationHealthRepairIntent(text)
+  const hasValidationHealthRepairRequest = hasValidationHealthRepairIntent(text)
     && !semantic.mutation.prohibited;
+  const hasProjectHealthRepairRequest = hasProjectHealthRepairIntent(text)
+    && !semantic.mutation.prohibited;
+  const hasConditionalRepairRequest = hasValidationHealthRepairRequest || hasProjectHealthRepairRequest;
   const hasWorkspaceDiffContext = WORKSPACE_DIFF_CONTEXT_RE.test(text);
   const context: LocalIntentContext = {
     empty: !text,
@@ -238,8 +244,11 @@ export function buildLocalIntentContract(
       'edit-request',
       'run-request',
       'conditional-repair-on-failure',
-      'validation-repair-request',
-      'validation-health-repair-request',
+      ...(hasValidationHealthRepairRequest ? [
+        'validation-repair-request',
+        'validation-health-repair-request',
+      ] : []),
+      ...(hasProjectHealthRepairRequest ? ['project-health-repair-request'] : []),
       ...semantic.semanticSignals,
     ];
     if (isFollowUpRunRequest) signals.push('follow-up-run-request');
