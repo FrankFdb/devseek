@@ -121,6 +121,7 @@ export function decideAgentFileWrite(input: AgentFileWriteDecisionInput): AgentF
     allowScopedSourceArtifact: targetInsideIsolatedScope,
     allowExactScopedArtifact: targetExactIsolatedScope,
     targetKind: isDirectoryWriteAction(input.context?.taskAction) ? 'directory' : 'file',
+    writeAction: input.context?.taskAction,
   });
   const audit = {
     absPath,

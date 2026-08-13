@@ -156,6 +156,21 @@ test('top-agent user simulation runner rejects unsupported arguments', async () 
   );
 });
 
+test('top-agent user simulation runner prints actionable help without starting a run', async () => {
+  const { stdout, stderr } = await execFile(
+    process.execPath,
+    ['scripts/devseek-top-agent-user-simulation-runner.mjs', '--help'],
+    { cwd: repoRoot, maxBuffer: 4 * 1024 * 1024 },
+  );
+
+  assert.equal(stderr, '');
+  assert.match(stdout, /Usage: node scripts\/devseek-top-agent-user-simulation-runner\.mjs/);
+  assert.match(stdout, /--controlled-suites <a,b>/);
+  assert.match(stdout, /--keep-last-window/);
+  assert.match(stdout, /never grants release qualification claims/);
+  assert.doesNotMatch(stdout, /"execution_mode"/);
+});
+
 test('top-agent user simulation runner prints compact execute summaries and stores full evidence', async () => {
   const evidenceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'devseek-top-agent-runner-test-'));
   try {

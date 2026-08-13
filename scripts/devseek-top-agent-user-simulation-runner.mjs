@@ -138,6 +138,10 @@ main();
 function main() {
   const startedAt = new Date();
   const options = parseOptions(args);
+  if (options.help && options.errors.length === 0) {
+    console.log(renderUsage());
+    return;
+  }
   const errors = [...options.errors];
   if (options.fromReportPath) {
     const report = loadExistingReport(options.fromReportPath, errors);
@@ -264,6 +268,7 @@ function parseOptions(argv) {
     '--print-full',
     '--force',
     '--keep-last-window',
+    '--help',
   ]);
   const errors = [];
   for (let index = 0; index < argv.length; index += 1) {
@@ -302,6 +307,7 @@ function parseOptions(argv) {
   }
   return {
     dryRun,
+    help: argv.includes('--help'),
     printFull: argv.includes('--print-full'),
     force: argv.includes('--force'),
     fromReportPath: optionValue(argv, '--from-report')
@@ -319,6 +325,33 @@ function parseOptions(argv) {
     keepLastWindow: argv.includes('--keep-last-window'),
     errors,
   };
+}
+
+function renderUsage() {
+  return [
+    'Usage: node scripts/devseek-top-agent-user-simulation-runner.mjs [options]',
+    '',
+    'Runs local DevSeek top-agent user simulation evidence. This runner never grants release qualification claims.',
+    '',
+    'Options:',
+    '  --dry-run                         Print the planned targeted checks and controlled VSIX suites.',
+    '  --run-id <id>                     Use a stable run id for evidence paths.',
+    '  --evidence-root <path>            Store or reuse runner evidence at this path.',
+    '  --markdown <path>                 Write a Markdown report for the run or existing evidence.',
+    '  --controlled-suites <a,b>         Run a focused controlled VSIX suite subset.',
+    '  --targeted-tests <a,b>            Run a focused targeted Node test subset.',
+    '  --from-report <path>              Re-render and re-evaluate an existing runner report without rerunning.',
+    '  --skip-controlled                 Skip controlled VSIX simulations.',
+    '  --skip-targeted                   Skip targeted Node tests.',
+    '  --print-full                      Print the full JSON report for execute mode.',
+    '  --force                           Ignore reusable PASS evidence under --evidence-root.',
+    '  --keep-last-window                Close previous controlled windows and retain only the final VSIX window.',
+    '  --help                            Print this usage text and exit without side effects.',
+    '',
+    'Examples:',
+    '  node scripts/devseek-top-agent-user-simulation-runner.mjs --dry-run',
+    '  node scripts/devseek-top-agent-user-simulation-runner.mjs --skip-targeted --controlled-suites agent-fit-product --keep-last-window',
+  ].join('\n');
 }
 
 function maybeLoadReusableExistingReport(options, errors) {

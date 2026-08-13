@@ -795,6 +795,7 @@ export function authorizeAgentFileWriteContract(input: {
   allowScopedSourceArtifact?: boolean;
   allowExactScopedArtifact?: boolean;
   targetKind?: 'file' | 'directory';
+  writeAction?: string;
 }): AgentFileWriteContractAuthorization {
   const promptText = extractCurrentUserRequest(input.promptText);
   const markdownAuthorization = authorizeMarkdownArtifactWrite({
@@ -827,7 +828,11 @@ export function authorizeAgentFileWriteContract(input: {
   if ((targetMutation.prohibited || targetMutation.readOnly) && !targetExcepted) {
     return { allowed: false, reason: 'target-file-write-prohibited', requestedTargets };
   }
-  const allFileProhibitionIndex = lastAllFileWriteProhibitionIndex(promptText, input.targetKind || 'file');
+  const allFileProhibitionIndex = lastAllFileWriteProhibitionIndex(
+    promptText,
+    input.targetKind || 'file',
+    input.writeAction,
+  );
   if (allFileProhibitionIndex !== undefined
     && !targetExcepted
     && !(targetMutation.requested && (targetMutation.actionIndex ?? -1) > allFileProhibitionIndex)) {
@@ -884,6 +889,7 @@ export function authorizeAgentFileWriteContract(input: {
 function lastAllFileWriteProhibitionIndex(
   prompt: string,
   targetKind: 'file' | 'directory' = 'file',
+  writeAction = '',
 ): number | undefined {
   const chineseObject = targetKind === 'directory'
     ? '(?:目录|文件夹|路径)'
@@ -908,10 +914,29 @@ function lastAllFileWriteProhibitionIndex(
     for (const match of prompt.matchAll(pattern)) {
       if (isScopedOrExceptedWriteProhibition(match[0])) continue;
       if (targetKind === 'file' && /(?:源码|源代码|代码目录)|\bsource(?:\s+code|\s+files?)?\b|\bcode\s+files?\b/i.test(match[0])) continue;
+      if (targetKind === 'file'
+        && isCreationOnlyFileProhibition(match[0])
+        && isExplicitNonCreateWriteAction(writeAction)) continue;
       latest = Math.max(latest ?? -1, match.index ?? 0);
     }
   }
   return latest;
+}
+
+function isExplicitNonCreateWriteAction(action: string): boolean {
+  const normalized = String(action || '').trim().toLowerCase();
+  if (!normalized) return false;
+  if (/(?:^|[_-])(?:create|new|mkdir)(?:[_-]|$)|write_file|create_file|create_directory/.test(normalized)) {
+    return false;
+  }
+  return /replace|update|modify|edit|patch|append|insert|delete|remove|rename|move|overwrite|修复|修正|更新|修改|改写|改动|编辑|覆盖/.test(normalized);
+}
+
+function isCreationOnlyFileProhibition(text: string): boolean {
+  const value = String(text || '');
+  const hasCreation = /(?:创建|新建|新增|添加)|\b(?:create|add|generate|write)\b[^,.;\n]{0,16}\b(?:new\s+)?files?\b/i.test(value);
+  if (!hasCreation) return false;
+  return !/(?:修复|修正|解决|处理|更新|修改|改写|改动|改|变更|编辑|覆盖|删除|删|移除|触碰|动)|\b(?:fix|repair|resolve|update|modify|change|edit|overwrite|delete|remove|touch)\b/i.test(value);
 }
 
 interface FileScopeRestriction {

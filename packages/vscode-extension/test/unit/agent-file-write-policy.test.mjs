@@ -780,6 +780,43 @@ test('AgentFileWritePolicy: explicit nested standalone source target survives no
   assert.equal(extra.reason, 'artifact-other-file-write-prohibited');
 });
 
+test('AgentFileWritePolicy: no-new-file follow-up still allows editing the named existing target', () => {
+  const requestPrompt = [
+    '继续刚才的工具：下游系统现在只接受一行 JSON。',
+    '请把 tools/log_summary.py 的输出改成 JSON 对象，保留从 stdin 读取日志的行为。',
+    '不要新增文件，改完用 python 命令自测。',
+  ].join('');
+
+  const updateExisting = decideAgentFileWrite({
+    absPath: '/workspace/project/tools/log_summary.py',
+    workspaceRoot: '/workspace/project',
+    autopilotMode: true,
+    context: {
+      purpose: 'tool-write',
+      userRequested: false,
+      taskAction: 'replace_in_file',
+      displayName: 'tools/log_summary.py',
+      requestPrompt,
+    },
+  });
+  assert.equal(updateExisting.action, 'allow');
+
+  const createMissingTarget = decideAgentFileWrite({
+    absPath: '/workspace/project/tools/log_summary.py',
+    workspaceRoot: '/workspace/project',
+    autopilotMode: true,
+    context: {
+      purpose: 'tool-write',
+      userRequested: false,
+      taskAction: 'create',
+      displayName: 'tools/log_summary.py',
+      requestPrompt,
+    },
+  });
+  assert.equal(createMissingTarget.action, 'deny');
+  assert.equal(createMissingTarget.reason, 'all-file-writes-prohibited');
+});
+
 test('AgentFileWritePolicy: an explicit source directory authorizes nested semantic owners only', () => {
   const requestPrompt = [
     '请直接修改当前既有 Node.js 项目。',
