@@ -516,6 +516,40 @@ test('ChatRouteController: provider workspace answer proposal uses inspect workf
   assert.ok(decision.intent.signals.includes('semantic-proposal:workspace-answer'));
 });
 
+test('ChatRouteController: provider code-review proposal preserves review posture without keyword', () => {
+  const controller = new ChatRouteController();
+  const prompt = 'Can you check this patch for risk?';
+  const decision = controller.decide({
+    userDisplay: prompt,
+    prompt,
+    files: [],
+    agentEnabled: true,
+    semanticIntent: {
+      version: 'devseek.semantic-intent/v1',
+      source: 'test',
+      mode: 'inspect',
+      taskKind: 'code-review',
+      confidence: 0.92,
+      mutation: 'none',
+      targetPaths: ['src/payment.ts'],
+      requiresWorkspace: true,
+      requiresTerminal: false,
+      requiresExternalEffect: false,
+      requiresClarification: false,
+      reason: '用户要求风险优先的代码审查',
+    },
+  });
+
+  assert.equal(decision.intent.mode, 'inspect');
+  assert.equal(decision.intent.semanticContract.intent.taskKind, 'code-review');
+  assert.equal(decision.intent.semanticContract.intent.context.reviewRequested, true);
+  assert.equal(decision.workflow.kind, 'inspect-agent');
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('read'), true);
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
+  assert.deepEqual(decision.intent.semanticContract.read.targets, ['src/payment.ts']);
+  assert.ok(decision.intent.signals.includes('semantic-proposal:code-review'));
+});
+
 test('ChatRouteController: provider clarification keeps workspace scope but stays out of tools', () => {
   const controller = new ChatRouteController();
   const prompt = 'Fix it.';

@@ -114,6 +114,7 @@ export function buildLocalIntentContract(
   const hasScopedNoChangeWithDeliverableWrite = isScopedNoChangeWithDeliverableWriteRequest(text);
   const localExternalEffect = classifyExternalEffectIntent(positiveActionText);
   const semanticExternalEffectProposal = semantic.semanticSignals.includes('semantic-proposal:external-effect');
+  const semanticCodeReviewProposal = semantic.semanticSignals.includes('semantic-proposal:code-review');
   const externalEffect = localExternalEffect === 'none' && semanticExternalEffectProposal
     ? 'requested'
     : localExternalEffect;
@@ -136,7 +137,7 @@ export function buildLocalIntentContract(
     empty: !text,
     greetingOnly: GREETING_ONLY_RE.test(text),
     hasExplicitWorkspacePath: hasPath,
-    reviewRequested: REVIEW_RE.test(text),
+    reviewRequested: REVIEW_RE.test(text) || semanticCodeReviewProposal,
     failureContext: FAILURE_RE.test(text) || hasConditionalRepairRequest,
     externalEffect,
     broadScope: BROAD_SCOPE_RE.test(text),

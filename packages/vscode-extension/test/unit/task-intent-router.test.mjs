@@ -576,6 +576,30 @@ test('TaskIntentRouter: workspace-bound semantic answer proposal uses read-only 
   assert.ok(route.signals.includes('semantic-proposal:read-only-analysis'));
 });
 
+test('TaskIntentRouter: accepted semantic code-review proposal uses review family without keyword', () => {
+  const route = routeTaskIntent('Can you check this patch for risk?', {
+    semanticIntent: semanticIntent({
+      mode: 'inspect',
+      taskKind: 'code-review',
+      mutation: 'none',
+      targetPaths: ['src/payment.ts'],
+      requiresWorkspace: true,
+      reason: 'model identifies review posture without a review keyword',
+    }),
+  });
+
+  assert.equal(route.family, 'review');
+  assert.equal(route.chatKind, 'chat');
+  assert.equal(route.mode, 'inspect');
+  assert.equal(route.semanticContract.intent.taskKind, 'code-review');
+  assert.equal(route.semanticContract.intent.context.reviewRequested, true);
+  assert.equal(route.mutation.requested, false);
+  assert.deepEqual(route.semanticContract.read.targets, ['src/payment.ts']);
+  assert.equal(route.allowedToolKinds.includes('edit'), false);
+  assert.ok(route.signals.includes('semantic-proposal:code-review'));
+  assert.ok(route.signals.includes('review-route'));
+});
+
 test('TaskIntentRouter: accepted semantic clarification proposal cannot leave edit route active', () => {
   const route = routeTaskIntent('Fix it.', {
     semanticIntent: semanticIntent({

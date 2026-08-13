@@ -201,6 +201,10 @@ function assertSemanticContractProjection(decision, item) {
     assert.equal(contract.mutation.fileArtifact, false, item.id);
     assert.equal(contract.taskContract.deliverables.includes('source-change'), false, item.id);
     assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false, item.id);
+    if (item.taskKind === 'code-review') {
+      assert.equal(contract.intent.taskKind, 'code-review', item.id);
+      assert.equal(contract.intent.context.reviewRequested, true, item.id);
+    }
     if (item.semanticIntent.requiresWorkspace || item.semanticIntent.targetPaths.length > 0) {
       assert.equal(contract.read.requested, true, item.id);
     }

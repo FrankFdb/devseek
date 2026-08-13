@@ -322,6 +322,20 @@ export const EXTERNAL_INTENT_CORPUS = [
     expect: { mode: 'inspect', workflow: 'inspect-agent', useAgent: true, toolPolicy: 'inspect' },
   },
   {
+    id: 'EXT-REVIEW-005',
+    taskKind: 'code-review',
+    sourceRefs: ['codex_prompting_guide', 'visual_studio_agent_mode'],
+    prompt: 'Can you check this patch for risky edge cases and missing tests?',
+    files: [],
+    semanticIntent: semantic({
+      mode: 'inspect',
+      taskKind: 'code-review',
+      targetPaths: [path('src/payment.ts')],
+      requiresWorkspace: true,
+    }),
+    expect: { mode: 'inspect', workflow: 'inspect-agent', useAgent: true, toolPolicy: 'inspect' },
+  },
+  {
     id: 'EXT-STANDALONE-001',
     taskKind: 'standalone-program',
     sourceRefs: ['aider_modes'],
