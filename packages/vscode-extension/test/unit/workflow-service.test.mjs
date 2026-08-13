@@ -105,6 +105,19 @@ test('WorkflowService: runtime error repair routes to edit agent with edit polic
   assert.equal(selected.toolPolicyMode, 'edit');
 });
 
+test('WorkflowService: user symptom repair routes to edit agent with edit policy', () => {
+  const prompt = 'Users cannot sign in after entering the correct password. Please sort it out.';
+  const intent = decideChatIntent(prompt);
+  const selected = selectWorkflow({ intent, files: [], agentEnabled: true, prompt });
+
+  assert.equal(intent.mode, 'edit');
+  assert.ok(intent.signals.includes('user-symptom-repair-request'));
+  assert.equal(selected.kind, 'edit-agent');
+  assert.equal(selected.state, 'editing');
+  assert.equal(selected.useAgent, true);
+  assert.equal(selected.toolPolicyMode, 'edit');
+});
+
 test('WorkflowService: negated repair keeps terminal validation in run agent', () => {
   const prompt = 'Run tests, but do not fix failures.';
   const intent = decideChatIntent(prompt);

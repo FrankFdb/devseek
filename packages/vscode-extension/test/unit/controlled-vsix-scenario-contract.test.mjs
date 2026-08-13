@@ -44,6 +44,7 @@ const REQUIRED_SCENARIOS = [
   'conformance-cn-tests-pass-repair',
   'conformance-project-health-repair',
   'conformance-runtime-error-repair',
+  'conformance-user-symptom-repair',
   'conformance-permission-denied-no-effect',
   'conformance-policy-refusal-no-mutation',
   'stream-truncated-no-mutation',
@@ -56,7 +57,7 @@ const REQUIRED_SUITES = [
   { id: 'journey-core', scenarioCount: 6, sameDevSeekSession: false },
   { id: 'realistic-product', scenarioCount: 4, sameDevSeekSession: true },
   { id: 'agent-fit-product', scenarioCount: 5, sameDevSeekSession: false },
-  { id: 'coding-conformance-product', scenarioCount: 9, sameDevSeekSession: false },
+  { id: 'coding-conformance-product', scenarioCount: 10, sameDevSeekSession: false },
   { id: 'r2-07e-stream-protocol', scenarioCount: 2, sameDevSeekSession: false },
   { id: 'r2-07f-connector-security', scenarioCount: 1, sameDevSeekSession: false },
 ];

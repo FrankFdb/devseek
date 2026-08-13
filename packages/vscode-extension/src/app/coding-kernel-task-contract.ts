@@ -10,6 +10,7 @@ import type { ExecutionMode } from '../intent/intent-types';
 import {
   hasProjectHealthRepairIntent,
   hasRuntimeErrorRepairIntent,
+  hasUserSymptomRepairIntent,
   hasValidationHealthRepairIntent,
 } from '../intent/conditional-repair-intent';
 
@@ -45,6 +46,7 @@ export function projectVsCodeCodingKernelTaskContract(
     explicitlyRequiresVerification,
     projectHealthRepairRequested: hasProjectHealthRepairIntent(input.userPrompt),
     runtimeErrorRepairRequested: hasRuntimeErrorRepairIntent(input.userPrompt),
+    userSymptomRepairRequested: hasUserSymptomRepairIntent(input.userPrompt),
     validationHealthRepairRequested: hasValidationHealthRepairIntent(input.userPrompt),
   });
   return resolveCodingKernelTaskContract({
@@ -66,12 +68,14 @@ function resolveVsCodeVerificationRequirement(input: {
   readonly explicitlyRequiresVerification: boolean;
   readonly projectHealthRepairRequested: boolean;
   readonly runtimeErrorRepairRequested: boolean;
+  readonly userSymptomRepairRequested: boolean;
   readonly validationHealthRepairRequested: boolean;
 }): boolean | undefined {
   if (input.sourceChangeRequested
     || input.explicitlyRequiresVerification
     || input.projectHealthRepairRequested
     || input.runtimeErrorRepairRequested
+    || input.userSymptomRepairRequested
     || input.validationHealthRepairRequested) {
     return true;
   }

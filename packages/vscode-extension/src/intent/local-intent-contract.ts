@@ -11,7 +11,9 @@ import { classifyExternalEffectIntent } from './operational-language-boundary';
 import {
   hasProjectHealthRepairIntent,
   hasRuntimeErrorRepairIntent,
+  hasUserSymptomRepairIntent,
   hasValidationHealthRepairIntent,
+  isSelfHelpRepairQuestion,
 } from './conditional-repair-intent';
 import type { SemanticTaskKind } from './semantic-intent';
 import type { ExecutionMode } from './intent-types';
@@ -112,15 +114,19 @@ export function buildLocalIntentContract(
   const hasScopedNoChangeWithDeliverableWrite = isScopedNoChangeWithDeliverableWriteRequest(text);
   const externalEffect = classifyExternalEffectIntent(positiveActionText);
   const isRunRequest = RUN_RE.test(text);
+  const isRepairSelfHelpQuestion = isSelfHelpRepairQuestion(text);
   const hasValidationHealthRepairRequest = hasValidationHealthRepairIntent(text)
     && !semantic.mutation.prohibited;
   const hasProjectHealthRepairRequest = hasProjectHealthRepairIntent(text)
     && !semantic.mutation.prohibited;
   const hasRuntimeErrorRepairRequest = hasRuntimeErrorRepairIntent(text)
     && !semantic.mutation.prohibited;
+  const hasUserSymptomRepairRequest = hasUserSymptomRepairIntent(text)
+    && !semantic.mutation.prohibited;
   const hasConditionalRepairRequest = hasValidationHealthRepairRequest
     || hasProjectHealthRepairRequest
-    || hasRuntimeErrorRepairRequest;
+    || hasRuntimeErrorRepairRequest
+    || hasUserSymptomRepairRequest;
   const hasWorkspaceDiffContext = WORKSPACE_DIFF_CONTEXT_RE.test(text);
   const context: LocalIntentContext = {
     empty: !text,
@@ -181,6 +187,19 @@ export function buildLocalIntentContract(
     return finish(decision(
       'edit', hasPath ? 0.9 : 0.84, hasPath ? 5 : 4, signals,
       hasPath ? 'external-effect-with-file-path' : 'external-effect-request',
+    ));
+  }
+
+  if (isRepairSelfHelpQuestion) {
+    const mode = hasCodeContext ? 'inspect' : 'qa';
+    const signals = ['question-answer', 'self-help-repair-question'];
+    if (hasPath) signals.push('explicit-file-path');
+    return finish(decision(
+      mode,
+      hasPath ? 0.86 : 0.8,
+      hasPath ? 3 : -1,
+      signals,
+      hasPath ? 'self-help-repair-question-with-file-path' : 'self-help-repair-question',
     ));
   }
 
@@ -255,6 +274,7 @@ export function buildLocalIntentContract(
       ] : []),
       ...(hasProjectHealthRepairRequest ? ['project-health-repair-request'] : []),
       ...(hasRuntimeErrorRepairRequest ? ['runtime-error-repair-request'] : []),
+      ...(hasUserSymptomRepairRequest ? ['user-symptom-repair-request'] : []),
       ...semantic.semanticSignals,
     ];
     if (isFollowUpRunRequest) signals.push('follow-up-run-request');

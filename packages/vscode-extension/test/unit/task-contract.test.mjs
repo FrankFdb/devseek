@@ -586,6 +586,10 @@ test('file-write authorization covers neutral, prohibited, exclusive, and correc
     decide('Here is the stack trace from login: TypeError: Cannot read properties of undefined. Can you take care of it?', `${root}/src/auth.js`).allowed,
     true,
   );
+  assert.equal(
+    decide('Users cannot sign in after entering the correct password. Please sort it out.', `${root}/src/auth.js`).allowed,
+    true,
+  );
   assert.equal(decide('CI is red, get it green.', `${root}/README.md`).reason, 'markdown-artifact-target-not-requested');
   assert.equal(
     decide('The app is broken, make it work again.', `${root}/README.md`).reason,
@@ -593,6 +597,10 @@ test('file-write authorization covers neutral, prohibited, exclusive, and correc
   );
   assert.equal(
     decide('Here is the stack trace from login: TypeError: Cannot read properties of undefined. Can you take care of it?', `${root}/README.md`).reason,
+    'markdown-artifact-target-not-requested',
+  );
+  assert.equal(
+    decide('Users cannot sign in after entering the correct password. Please sort it out.', `${root}/README.md`).reason,
     'markdown-artifact-target-not-requested',
   );
   assert.equal(
@@ -606,6 +614,10 @@ test('file-write authorization covers neutral, prohibited, exclusive, and correc
   assert.equal(
     decide('Here is the stack trace. Explain the likely cause only, do not change files.', `${root}/src/auth.js`).reason,
     'all-file-writes-prohibited',
+  );
+  assert.equal(
+    decide('How do I fix src/login.ts if users cannot sign in?', `${root}/src/login.ts`).reason,
+    'target-file-write-prohibited',
   );
 
   const directoryScope = '只允许修改 `src/` 下的生产代码，不得修改 `tests/`、`package.json`。';

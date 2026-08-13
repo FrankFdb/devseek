@@ -239,6 +239,34 @@ test('decideChatIntent: runtime error explanation remains non-mutating', () => {
   assert.deepEqual(result.allowedToolKinds, []);
 });
 
+test('decideChatIntent: user symptom repair becomes edit intent with run evidence', () => {
+  for (const prompt of [
+    'Users cannot sign in after entering the correct password. Please sort it out.',
+    'Clicking submit keeps the spinner forever. Please look into it and make it work.',
+    '用户反馈点击保存没有反应，帮我修一下。',
+  ]) {
+    const result = decideChatIntent(prompt);
+    assert.equal(result.kind, 'code-change', prompt);
+    assert.equal(result.mode, 'edit', prompt);
+    assert.equal(result.autoApplyEligible, true, prompt);
+    assert.ok(result.signals.includes('conditional-repair-on-failure'), prompt);
+    assert.ok(result.signals.includes('user-symptom-repair-request'), prompt);
+    assert.deepEqual(result.allowedToolKinds, EDIT_TOOLS, prompt);
+    assert.equal(shouldUseAgentMode(result, []), true, prompt);
+  }
+});
+
+test('decideChatIntent: user symptom self-help remains non-mutating', () => {
+  const result = decideChatIntent('How do I fix users cannot sign in after entering the correct password?');
+
+  assert.equal(result.kind, 'chat');
+  assert.equal(result.mode, 'qa');
+  assert.equal(result.autoApplyEligible, false);
+  assert.equal(result.signals.includes('user-symptom-repair-request'), false);
+  assert.ok(result.signals.includes('self-help-repair-question'));
+  assert.deepEqual(result.allowedToolKinds, []);
+});
+
 test('decideChatIntent: negated conditional repair remains run-only', () => {
   const result = decideChatIntent('Run tests, but do not fix failures.');
   assert.equal(result.kind, 'code-change');

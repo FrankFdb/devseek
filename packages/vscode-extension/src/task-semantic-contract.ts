@@ -20,7 +20,9 @@ import {
 import {
   hasProjectHealthRepairIntent,
   hasRuntimeErrorRepairIntent,
+  hasUserSymptomRepairIntent,
   hasValidationHealthRepairIntent,
+  isSelfHelpRepairQuestion,
 } from './intent/conditional-repair-intent';
 import {
   buildTaskSemanticObligationContracts,
@@ -148,11 +150,12 @@ const PROJECT_SCALE_QUALITY_RE = /(?:正式项目|生产项目|正式源码|正�
 export function buildTaskSemanticContract(promptText: string): TaskSemanticContract {
   const prompt = String(promptText || '').trim();
   const taskContract = buildTaskContract(prompt);
-  const classifiedMutationTargets = resolveTaskMutationTargets(prompt);
+  const repairSelfHelpQuestion = isSelfHelpRepairQuestion(prompt);
+  const classifiedMutationTargets = repairSelfHelpQuestion ? [] : resolveTaskMutationTargets(prompt);
   const requestedMutationTargets = [...new Set([
     ...taskContract.deliverableTargets,
     ...classifiedMutationTargets,
-  ])];
+  ].filter(() => !repairSelfHelpQuestion))];
   const sourceMutationTargets = requestedMutationTargets.filter(isSourcePath);
   const nonCodeMutationTargets = requestedMutationTargets.filter(isNonCodeArtifactPath);
   const artifactPathQuery = ARTIFACT_PATH_QUERY_RE.test(prompt);
@@ -181,7 +184,7 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const positiveWriteAction = !artifactPathQuery && (
     WRITE_ACTION_RE.test(positiveIntentText)
     || DERIVED_ARTIFACT_OUTPUT_RE.test(positiveIntentText)
-  );
+  ) && !repairSelfHelpQuestion;
   const effectivePositiveWriteAction = positiveWriteAction && !hasUnscopedNoWrite;
   const explicitSourceFileWrite = effectivePositiveWriteAction && sourceMutationTargets.length > 0;
   const explicitNonCodeFileWrite = effectivePositiveWriteAction && nonCodeMutationTargets.length > 0;
@@ -206,9 +209,13 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const runtimeErrorRepairRequested = !artifactPathQuery
     && !hasUnscopedNoWrite
     && hasRuntimeErrorRepairIntent(prompt);
+  const userSymptomRepairRequested = !artifactPathQuery
+    && !hasUnscopedNoWrite
+    && hasUserSymptomRepairIntent(prompt);
   const healthRepairRequested = validationHealthRepairRequested
     || projectHealthRepairRequested
-    || runtimeErrorRepairRequested;
+    || runtimeErrorRepairRequested
+    || userSymptomRepairRequested;
   const existingProjectCodeDelivery = !hasUnscopedNoWrite && (
     (taskContract.taskShapes.includes('existing-project') && CODE_DELIVERY_RE.test(positiveIntentText))
     || (explicitSourceFileWrite && EXISTING_SOURCE_EDIT_RE.test(positiveIntentText))
@@ -248,7 +255,8 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
       || stdoutRequested
       || testRequested
       || projectHealthRepairRequested
-      || runtimeErrorRepairRequested);
+      || runtimeErrorRepairRequested
+      || userSymptomRepairRequested);
   const fileCheckRequested = fileArtifact
     && (validationRequested
       || taskContract.verificationContract.requireArtifactReadback
@@ -306,6 +314,8 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     projectHealthRepairRequested ? 'project-health-repair-request' : '',
     runtimeErrorRepairRequested ? 'conditional-repair-on-failure' : '',
     runtimeErrorRepairRequested ? 'runtime-error-repair-request' : '',
+    userSymptomRepairRequested ? 'conditional-repair-on-failure' : '',
+    userSymptomRepairRequested ? 'user-symptom-repair-request' : '',
     runRequested ? 'run-requested' : '',
     testRequested ? 'test-requested' : '',
     stdoutRequested ? 'stdout-requested' : '',

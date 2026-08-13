@@ -784,6 +784,33 @@ test('AgentFileWritePolicy: runtime error repair permits discovered source targe
   assert.equal(noWrite.reason, 'all-file-writes-prohibited');
 });
 
+test('AgentFileWritePolicy: user symptom repair permits discovered source targets only', () => {
+  const requestPrompt = 'Users cannot sign in after entering the correct password. Please sort it out.';
+  const decide = (relPath, prompt = requestPrompt) => decideAgentFileWrite({
+    absPath: path.join('/workspace', relPath),
+    workspaceRoot: '/workspace',
+    autopilotMode: true,
+    context: {
+      purpose: 'tool-write',
+      userRequested: false,
+      taskAction: 'replace_in_file',
+      displayName: relPath,
+      requestPrompt: prompt,
+    },
+  });
+
+  assert.equal(decide('src/auth.js').action, 'allow');
+  const nonSource = decide('README.md');
+  assert.equal(nonSource.action, 'deny');
+  assert.equal(nonSource.reason, 'markdown-artifact-target-not-requested');
+  const noWrite = decide('src/auth.js', '用户反馈点击保存没反应，先分析原因，不要改文件。');
+  assert.equal(noWrite.action, 'deny');
+  assert.equal(noWrite.reason, 'all-file-writes-prohibited');
+  const selfHelp = decide('src/login.ts', 'How do I fix src/login.ts if users cannot sign in?');
+  assert.equal(selfHelp.action, 'deny');
+  assert.equal(selfHelp.reason, 'target-file-write-prohibited');
+});
+
 test('AgentFileWritePolicy: repair prompts allow the named source file and block sibling writes', () => {
   const requestPrompt = '请修复 src/math.js 中 add(a, b) 的明显错误。要求 add(2, 3) 返回 5，修改后用 node 命令验证并结束任务。不要修改其他文件。';
   const allowed = decideAgentFileWrite({

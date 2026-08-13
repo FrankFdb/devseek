@@ -396,6 +396,38 @@ test('TaskIntentRouter: runtime error explanation remains non-mutating QA', () =
   assert.equal(route.signals.includes('runtime-error-repair-request'), false);
 });
 
+test('TaskIntentRouter: user symptom repair grants edit and terminal authority with run evidence', () => {
+  const route = routeTaskIntent('Users cannot sign in after entering the correct password. Please sort it out.');
+
+  assert.equal(route.family, 'existing-project-edit');
+  assert.equal(route.chatKind, 'code-change');
+  assert.equal(route.mode, 'edit');
+  assert.equal(route.agentTaskShape, 'validation-repair');
+  assert.equal(route.mutation.requested, true);
+  assert.equal(route.mutation.sourceChange, true);
+  assert.equal(route.validation.runRequested, true);
+  assert.equal(route.validation.testRequested, false);
+  assert.equal(route.validation.commandEvidenceRequired, true);
+  assert.ok(route.signals.includes('conditional-repair-on-failure'));
+  assert.ok(route.signals.includes('user-symptom-repair-request'));
+  assert.deepEqual(route.allowedToolKinds, ['read', 'search', 'diagnostics', 'network', 'control', 'plan', 'memory', 'edit', 'terminal']);
+});
+
+test('TaskIntentRouter: self-help repair question with a path remains read-only', () => {
+  const route = routeTaskIntent('How do I fix src/login.ts if users cannot sign in?');
+
+  assert.equal(route.family, 'read-only-advisory');
+  assert.equal(route.chatKind, 'chat');
+  assert.equal(route.mode, 'inspect');
+  assert.equal(route.agentTaskShape, 'read-only-analysis');
+  assert.equal(route.mutation.requested, false);
+  assert.equal(route.mutation.sourceChange, false);
+  assert.deepEqual(route.mutation.targets, []);
+  assert.equal(route.validation.commandEvidenceRequired, false);
+  assert.equal(route.signals.includes('user-symptom-repair-request'), false);
+  assert.ok(route.signals.includes('self-help-repair-question'));
+});
+
 test('TaskIntentRouter: reproduce without repair is terminal validation only', () => {
   const route = routeTaskIntent('复现一下失败，不要修，给我命令输出。');
 

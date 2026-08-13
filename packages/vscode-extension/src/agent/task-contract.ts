@@ -4,7 +4,9 @@ import { hasDestructiveIntent } from '../intent/destructive-intent';
 import {
   hasProjectHealthRepairIntent,
   hasRuntimeErrorRepairIntent,
+  hasUserSymptomRepairIntent,
   hasValidationHealthRepairIntent,
+  isSelfHelpRepairQuestion,
 } from '../intent/conditional-repair-intent';
 
 export type TaskShape =
@@ -816,6 +818,10 @@ export function authorizeAgentFileWriteContract(input: {
   const target = nodePath.normalize(nodePath.resolve(input.targetPath));
   const targetMutation = classifyTargetFileMutation(promptText, target, input.workspaceRoot);
   const targetExcepted = isTargetExceptedFromFileProhibition(promptText, target, input.workspaceRoot);
+  const repairSelfHelpQuestion = isSelfHelpRepairQuestion(promptText);
+  if (repairSelfHelpQuestion && !targetExcepted) {
+    return { allowed: false, reason: 'target-file-write-prohibited', requestedTargets };
+  }
   const sourceProhibition = getSourceFileWriteProhibition(promptText);
   if (sourceProhibition
     && (sourceProhibition.scope === 'all'
@@ -883,12 +889,15 @@ export function authorizeAgentFileWriteContract(input: {
     && isLikelySourceWriteTarget(target, promptText);
   const runtimeErrorRepairSourceAuthority = hasRuntimeErrorRepairIntent(promptText)
     && isLikelySourceWriteTarget(target, promptText);
+  const userSymptomRepairSourceAuthority = hasUserSymptomRepairIntent(promptText)
+    && isLikelySourceWriteTarget(target, promptText);
   const hasBroadMutationAuthority = targetMutation.requested
     || classifyArtifactWriteIntent(promptText).requested
     || sourceChangeAuthority
     || validationHealthRepairSourceAuthority
     || projectHealthRepairSourceAuthority
     || runtimeErrorRepairSourceAuthority
+    || userSymptomRepairSourceAuthority
     || contract.taskShapes.includes('destructive')
     || input.allowScopedSourceArtifact === true;
   if (promptText.trim()

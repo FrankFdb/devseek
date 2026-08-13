@@ -584,6 +584,48 @@ test('TaskSemanticContract: runtime error explanation stays non-mutating', () =>
   }
 });
 
+test('TaskSemanticContract: user symptom repair grants source mutation plus run evidence', () => {
+  for (const prompt of [
+    'Users cannot sign in after entering the correct password. Please sort it out.',
+    'The Save button does nothing on the profile page, can you fix it?',
+    'Checkout total becomes NaN for discounted carts, please fix.',
+    'Clicking submit keeps the spinner forever. Please look into it and make it work.',
+    '用户反馈点击保存没有反应，帮我修一下。',
+    '登录后一直转圈，麻烦定位并处理。',
+  ]) {
+    const contract = buildTaskSemanticContract(prompt);
+
+    assert.equal(contract.kind, 'existing-project-code', prompt);
+    assert.equal(contract.scope, 'existing-project', prompt);
+    assert.equal(contract.mutation.requested, true, prompt);
+    assert.equal(contract.mutation.sourceChange, true, prompt);
+    assert.equal(contract.validation.requested, true, prompt);
+    assert.equal(contract.validation.runRequested, true, prompt);
+    assert.equal(contract.validation.testRequested, false, prompt);
+    assert.equal(contract.intent.mode, 'edit', prompt);
+    assert.ok(contract.signals.includes('conditional-repair-on-failure'), prompt);
+    assert.ok(contract.signals.includes('user-symptom-repair-request'), prompt);
+  }
+});
+
+test('TaskSemanticContract: user symptom explanation and self-help stay non-mutating', () => {
+  for (const prompt of [
+    'The login button does nothing. Why might that happen?',
+    '用户反馈点击保存没反应，先分析原因，不要改文件。',
+    'How do I fix users cannot sign in after entering the correct password?',
+    'How do I fix src/login.ts if users cannot sign in?',
+  ]) {
+    const contract = buildTaskSemanticContract(prompt);
+
+    assert.equal(contract.mutation.requested, false, prompt);
+    assert.equal(contract.mutation.sourceChange, false, prompt);
+    assert.deepEqual(contract.mutation.targets, [], prompt);
+    assert.equal(contract.validation.runRequested, false, prompt);
+    assert.equal(contract.signals.includes('user-symptom-repair-request'), false, prompt);
+    assert.notEqual(contract.intent.mode, 'edit', prompt);
+  }
+});
+
 test('TaskSemanticContract: negated conditional repair keeps run-only validation', () => {
   const contract = buildTaskSemanticContract('Run tests, but do not fix failures.');
 

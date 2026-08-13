@@ -179,6 +179,22 @@ const USER_INPUT_CASES = [
     },
   },
   {
+    name: 'implicit-user-symptom-repair',
+    prompt: 'Users cannot sign in after entering the correct password. Please sort it out.',
+    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
+    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
+    validation: { runtimeRequired: true, fileCheckRequired: false, formalProjectRequired: false },
+    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
+  },
+  {
+    name: 'self-help-repair-question-with-path',
+    prompt: 'How do I fix src/login.ts if users cannot sign in?',
+    route: { family: 'read-only-advisory', chatKind: 'chat', mode: 'inspect', shape: 'read-only-analysis' },
+    workflow: { kind: 'inspect-agent', useAgent: true, toolPolicy: 'inspect' },
+    validation: { runtimeRequired: false, fileCheckRequired: false, formalProjectRequired: false },
+    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
+  },
+  {
     name: 'advisory-code-no-file-write',
     prompt: '给我一个 C++ hello 示例，不要写入文件',
     route: { family: 'read-only-advisory', chatKind: 'chat', mode: 'inspect', shape: 'read-only-analysis' },

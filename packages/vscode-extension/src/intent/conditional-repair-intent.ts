@@ -16,6 +16,11 @@ const PROJECT_DIAGNOSTIC_FAILURE = '(?:red\\s+squiggles?|squiggles?|diagnostics?
 const RUNTIME_ERROR_CONTEXT = '(?:stack\\s+trace|traceback|call\\s+stack|console|logs?|error\\s+below|exception|crash\\s+report|TypeError|ReferenceError|SyntaxError|NullPointerException|undefined|null\\s+pointer|NaN|blank\\s+screen|white\\s+screen|bug|prod(?:uction)?\\s+bug|报错|异常|错误|栈|堆栈|日志|崩溃|闪退|白屏|黑屏|故障|线上问题|线上故障|用户反馈)';
 const RUNTIME_ERROR_FAILURE = '(?:happens?|shows?|throws?|thrown|failing|breaks?|crashes?|undefined|NaN|wrong|incorrect|goes\\s+blank|blank\\s+screen|white\\s+screen|报错|异常|错误|崩溃|闪退|白屏|黑屏|不对|不正常|有问题)';
 const RUNTIME_ERROR_REPAIR_ACTION = '(?:take\\s+care\\s+of\\s+it|take\\s+it\\s+from\\s+here|handle\\s+it|make\\s+it\\s+go\\s+away|get\\s+rid\\s+of\\s+it|make\\s+(?:it|this)\\s+stop|stop\\s+(?:it|this)\\s+happening|please\\s+handle|处理一下|处理|看一下并处理|排查并处理|帮(?:我|忙)?处理|修掉|消掉|解决|搞定|修复|修好)';
+const USER_SYMPTOM_CONTEXT = '(?:users?|customers?|clients?|account|login|log\\s*in|sign\\s*in|signin|signup|checkout|cart|payment|profile|form|button|save|submit|search|filter|upload|download|page|screen|modal|dropdown|link|redirect|spinner|用户|客户|登录|登陆|保存|按钮|提交|支付|结账|购物车|表单|页面|界面|弹窗|下拉|链接|跳转|搜索|筛选|上传|下载)';
+const USER_SYMPTOM_FAILURE = "(?:can(?:not|'t)|unable\\s+to|fail(?:s|ed|ing)?\\s+to|does\\s+nothing|not\\s+respond(?:ing)?|no\\s+response|stuck|hang(?:s|ing)?|keeps?\\s+(?:spinning|loading)|spinner\\s+forever|forever|not\\s+sav(?:e|ed|ing)|not\\s+working|won(?:'|\\u2019)?t\\s+work|wrong|incorrect|NaN|无法|不能|没法|没有反应|没反应|无响应|点(?:了|击)?没用|一直转圈|一直加载|卡住|卡死|保存不了|没保存|不生效|不对|异常)";
+const USER_SYMPTOM_REPAIR_ACTION = '(?:please\\s+(?:fix|repair|resolve|handle)|can\\s+you\\s+(?:fix|repair|resolve|handle)|could\\s+you\\s+(?:fix|repair|resolve|handle)|fix\\s+it|repair\\s+it|resolve\\s+it|sort\\s+it\\s+out|look\\s+into\\s+it\\s+and\\s+make\\s+it\\s+work|make\\s+it\\s+work|get\\s+it\\s+working|take\\s+care\\s+of\\s+it|handle\\s+it|处理一下|处理|定位并处理|排查并处理|帮(?:我|忙)?(?:修|处理|解决)|麻烦(?:修|处理|解决|定位)|修一下|修复|修好|解决|搞定)';
+const SELF_HELP_REPAIR_QUESTION_RE = /(?:how\s+(?:do|can|should)\s+i|what(?:'s|\s+is)\s+the\s+(?:best\s+)?way\s+to|如何|怎么|怎样)[\s\S]{0,80}(?:fix|repair|resolve|修复|处理|解决)/i;
+const AGENT_DELEGATION_RE = /(?:please|can\s+you|could\s+you|帮(?:我|忙)|麻烦|处理一下|定位并处理|排查并处理|take\s+care\s+of\s+it|handle\s+it|sort\s+it\s+out)/i;
 
 const RUN_THEN_REPAIR_RE = new RegExp(
   `${RUN_ACTION}[\\s\\S]{0,80}${FAILURE_CONDITION}[\\s\\S]{0,60}${REPAIR_ACTION}`,
@@ -62,6 +67,12 @@ const RUNTIME_ERROR_REPAIR_RE = new RegExp(
     + `|${RUNTIME_ERROR_CONTEXT}[\\s\\S]{0,120}${RUNTIME_ERROR_FAILURE}[\\s\\S]{0,100}${RUNTIME_ERROR_REPAIR_ACTION})`,
   'i',
 );
+const USER_SYMPTOM_REPAIR_RE = new RegExp(
+  `(?:${USER_SYMPTOM_CONTEXT}[\\s\\S]{0,120}${USER_SYMPTOM_FAILURE}[\\s\\S]{0,120}${USER_SYMPTOM_REPAIR_ACTION}`
+    + `|${USER_SYMPTOM_FAILURE}[\\s\\S]{0,120}${USER_SYMPTOM_CONTEXT}[\\s\\S]{0,120}${USER_SYMPTOM_REPAIR_ACTION}`
+    + `|${USER_SYMPTOM_REPAIR_ACTION}[\\s\\S]{0,120}${USER_SYMPTOM_CONTEXT}[\\s\\S]{0,120}${USER_SYMPTOM_FAILURE})`,
+  'i',
+);
 
 export function stripNegatedRepairClauses(text: string): string {
   return String(text || '').replace(NEGATED_REPAIR_CLAUSE_RE, ' ');
@@ -95,4 +106,17 @@ export function hasRuntimeErrorRepairIntent(text: string): boolean {
   const positive = stripNegatedRepairClauses(text).trim();
   if (!positive) return false;
   return RUNTIME_ERROR_REPAIR_RE.test(positive);
+}
+
+export function hasUserSymptomRepairIntent(text: string): boolean {
+  const positive = stripNegatedRepairClauses(text).trim();
+  if (!positive) return false;
+  if (isSelfHelpRepairQuestion(positive)) return false;
+  return USER_SYMPTOM_REPAIR_RE.test(positive);
+}
+
+export function isSelfHelpRepairQuestion(text: string): boolean {
+  const positive = stripNegatedRepairClauses(text).trim();
+  if (!positive) return false;
+  return SELF_HELP_REPAIR_QUESTION_RE.test(positive) && !AGENT_DELEGATION_RE.test(positive);
 }
