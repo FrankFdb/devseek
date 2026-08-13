@@ -68,7 +68,7 @@ export interface TaskSemanticProjectInstructionBinding {
 }
 
 export interface TaskSemanticRevisionBinding {
-  strategy: 'initial' | 'merge' | 'replace-scope';
+  strategy: 'initial' | 'merge' | 'replace-scope' | 'replace-current';
   revisionId?: string;
   parentRevisionId?: string;
   inheritedFields: string[];
@@ -130,7 +130,7 @@ const VERSION_CONTROL_SCOPE_RE = /(?:\bgit\b|版本控制|仓库状态|提交记
 const NARROW_WRITE_OBJECT_SCOPE_RE = /(?:目录|文件夹|directories?|folders?)/i;
 const CODE_DELIVERY_RE = /(?:代码实现|实现代码|实现接口|交付代码|代码副本|新增或修改代码|新增代码|修改代码|落地实现|implement(?:ing)?\s+(?:code|interface)|code\s+delivery)/i;
 const ARTIFACT_PATH_QUERY_RE = /(?:(?:可执行文件|执行文件|二进制|binary|executable|build\s+artifact|构建产物|生成的文件|创建的文件|写入的文件|输出文件|产物|artifact).{0,18}(?:在哪里|在哪|哪里|路径|位置|path|where)|(?:在哪里|在哪|哪里|路径|位置|path|where).{0,18}(?:可执行文件|执行文件|二进制|binary|executable|build\s+artifact|构建产物|生成的文件|创建的文件|写入的文件|输出文件|产物|artifact))/i;
-const VALIDATION_RE = /(?:验证|测试|编译|构建|运行|执行|确认|检查|读回|重新读取|复现|test|verify|compile|\bbuild\b(?!\s*(?:目录|文件夹|dir|directory))|run|execute|check|reproduce|read\s*back)/i;
+const VALIDATION_RE = /(?:验证|测试|编译|构建|运行|执行|读回|重新读取|复现|test|verify|compile|\bbuild\b(?!\s*(?:目录|文件夹|dir|directory))|run|execute|reproduce|read\s*back|(?:确认|检查)[^，,。；;\n]{0,32}(?:验证|测试|编译|构建|运行|执行|结果|输出|退出码|状态码|通过)|(?:check|confirm)[^,.;\n]{0,32}(?:tests?|verification|compile|build|run|execute|results?|outputs?|exit\s+code|status\s+code|passes?|passed)|\b(?:grep|rg|ripgrep)\b[^，,。；;\n]{0,32}(?:确认|验证|检查|verify|check|confirm))/i;
 const COMPILE_RE = /(?:编译|构建|g\+\+|gcc|clang|cmake|\bmake\s+(?:all|build|check|test|install|clean|compile|lint|dist|package|release|debug|prod|dev|ci|verify|validate|coverage|bench|run|start|e2e|unit|integration|[-\w./]*[/.:][-\w./:]+)\b|\bcompile\b|\bbuild\b(?!\s*(?:目录|文件夹|dir|directory)))/i;
 const RUN_RE = /(?:运行|执行|启动|跑一下|复现|\b(?:run|execute|start|reproduce)\b)/i;
 const TEST_RE = /(?:测试|单元测试|test|ctest|pytest|npm\s+test|pnpm\s+test|yarn\s+test|bun\s+test|go\s+test|cargo\s+test|unit\s+tests?)/i;
@@ -141,7 +141,8 @@ const TEST_AS_IMPLEMENTATION_CONSTRAINT_RE = /(?:不要|不得|禁止|别|勿|�
 const TEST_DISCUSSION_RE = /(?:missing|missed|lacking|lack\s+of|uncovered|insufficient)\s+tests?|test\s+coverage|test\s+results?|缺少测试|测试缺失|未覆盖测试|测试覆盖率不足|测试结果/gi;
 const EXPLICIT_TEST_COMMAND_RE = /(?:运行|执行|run|execute)[^，,。；;\n]{0,24}(?:\.\/?|\b)(?:test\.sh|tests?|ctest|pytest|jest|vitest|mocha)\b/i;
 const READ_ONLY_RE = /(?:只读|仅分析|只分析|仅讨论|只讨论|只指出|仅指出|只说结论|仅说结论|只给结论|仅给结论|直接回复|直接回答|当前不准备|不准备|先不要|暂不|不要落地|不需要代码|only\s+(?:explain|discuss|answer)|just\s+(?:chat|talk|discuss))/i;
-const READ_REQUEST_RE = /(?:读取|读出|查看|看下|看一下|检查|确认|分析|提取|显示|告诉我|read|inspect|check|confirm|scan|analy[sz]e|extract|show|display|take\s+a\s+look|look\s+(?:at|through))/i;
+const READ_REQUEST_RE = /(?:读取|读出|查看|看下|看一下|检查|确认|分析|提取|显示|告诉我|审查|评审|read|inspect|check|confirm|scan|analy[sz]e|extract|show|display|review|take\s+a\s+look|look\s+(?:at|through))/i;
+const REVIEW_READ_FALLBACK_RE = /(?:审查|评审|\breview\b|code\s+review)/i;
 const READ_CONTENT_RE = /(?:文件内容|内容|第一行|首行|真实值|常量值|显示|读出|提取|告诉我[^，,。；;\n]{0,20}(?:行|内容|值)|(?:show|display|read|extract)[^,.;\n]{0,28}(?:content|line|value)|(?:content|first\s+line|actual\s+value))/i;
 const DERIVED_ARTIFACT_OUTPUT_RE = /(?:(?:读取|读出|查看|参考|根据|基于|read|from|based\s+on)[^，,。；;\n]{0,100}(?:翻译|总结|摘要|概括|提取|生成|写入|写到|保存|输出|translate|summari[sz]e|extract|generate|write|save|output)[^，,。；;\n]{0,40}(?:成|为|到|至|入|\bto\b|\binto\b|\bas\b)|(?:翻译|总结|摘要|概括|提取|translate|summari[sz]e|extract)[^，,。；;\n]{0,80}(?:成|为|到|至|入|\bto\b|\binto\b|\bas\b)|(?:复制|拷贝|copy)[^，,。；;\n]{0,40}(?:到|至|为|成|入|\bto\b|\binto\b|\bas\b))/i;
 const DEVSEEK_ISOLATED_ARTIFACT_PATH_RE = /(?:^|\/)\.devseek[^/]*(?:\/|$)/i;
@@ -152,12 +153,11 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const taskContract = buildTaskContract(prompt);
   const repairSelfHelpQuestion = isSelfHelpRepairQuestion(prompt);
   const classifiedMutationTargets = repairSelfHelpQuestion ? [] : resolveTaskMutationTargets(prompt);
-  const requestedMutationTargets = [...new Set([
+  const baseRequestedMutationTargets = [...new Set([
     ...taskContract.deliverableTargets,
     ...classifiedMutationTargets,
   ].filter(() => !repairSelfHelpQuestion))];
-  const sourceMutationTargets = requestedMutationTargets.filter(isSourcePath);
-  const nonCodeMutationTargets = requestedMutationTargets.filter(isNonCodeArtifactPath);
+  let requestedMutationTargets = baseRequestedMutationTargets;
   const artifactPathQuery = ARTIFACT_PATH_QUERY_RE.test(prompt);
   const writeProhibitionClauses = splitOperationalClauses(prompt)
     .filter(clause => NO_WRITE_RE.test(clause));
@@ -170,11 +170,11 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     taskContract.inputs.some(target => clauseMentionsTaskPath(clause, target))
   ));
   const hasScopedRequestedTargetProhibition = writeProhibitionClauses.some(clause => (
-    requestedMutationTargets.some(target => clauseMentionsTaskPath(clause, target))
+    baseRequestedMutationTargets.some(target => clauseMentionsTaskPath(clause, target))
   ));
   const hasScopedDifferentTargetProhibition = writeProhibitionClauses.some(clause => (
     taskContract.inputs.some(target => clauseMentionsTaskPath(clause, target))
-      && !requestedMutationTargets.some(target => clauseMentionsTaskPath(clause, target))
+      && !baseRequestedMutationTargets.some(target => clauseMentionsTaskPath(clause, target))
   ));
   const hasUnscopedNoWrite = writeProhibitionClauses.some(clause => !(
     OTHER_FILE_SCOPE_RE.test(clause)
@@ -184,7 +184,7 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
       || NARROW_WRITE_OBJECT_SCOPE_RE.test(clause)
       || taskContract.inputs.some(target => clauseMentionsTaskPath(clause, target))
   ));
-  const hasScopedTargetWriteBoundary = requestedMutationTargets.length > 0
+  const hasScopedTargetWriteBoundary = baseRequestedMutationTargets.length > 0
     && !hasUnscopedNoWrite
     && !hasScopedRequestedTargetProhibition
     && (
@@ -208,6 +208,12 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     )
     && !repairSelfHelpQuestion;
   const effectivePositiveWriteAction = (positiveWriteAction || scopedPositiveWriteAction) && !hasUnscopedNoWrite;
+  requestedMutationTargets = [...new Set([
+    ...requestedMutationTargets,
+    ...(effectivePositiveWriteAction ? resolveExplicitInputWriteTargets(positiveIntentText, taskContract.inputs) : []),
+  ])];
+  const sourceMutationTargets = requestedMutationTargets.filter(isSourcePath);
+  const nonCodeMutationTargets = requestedMutationTargets.filter(isNonCodeArtifactPath);
   const explicitSourceFileWrite = effectivePositiveWriteAction && sourceMutationTargets.length > 0;
   const explicitNonCodeFileWrite = effectivePositiveWriteAction && nonCodeMutationTargets.length > 0;
   const isolatedSourceArtifact = sourceMutationTargets.some(target => DEVSEEK_ISOLATED_ARTIFACT_PATH_RE.test(target));
@@ -248,7 +254,7 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     || explicitNonCodeFileWrite;
   const prohibited = writeProhibitionClauses.length > 0 && !sourceChange && !fileArtifact;
   const destructiveIntent = hasDestructiveIntent(prompt) && !prohibited;
-  const mutationRequested = (sourceChange || fileArtifact || taskContract.deliverableTargets.length > 0)
+  const mutationRequested = (sourceChange || fileArtifact || requestedMutationTargets.length > 0)
     && !prohibited;
   const simpleFileRequest = parseSimpleFileWriteRequest(prompt);
   const validationPrompt = stripAgentProceduralExecutionPhrases(
@@ -284,9 +290,16 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
       || taskContract.verificationContract.requireArtifactReadback
       || explicitNonCodeFileWrite);
   const readTargets = resolveTaskReadTargets(prompt);
+  const readActionRequested = READ_REQUEST_RE.test(prompt);
+  const effectiveReadTargets = [...new Set([
+    ...readTargets,
+    ...(readActionRequested && readTargets.length === 0 && REVIEW_READ_FALLBACK_RE.test(prompt)
+      ? taskContract.inputs
+      : []),
+  ])];
   const readRequested = !artifactPathQuery
-    && READ_REQUEST_RE.test(prompt)
-    && readTargets.length > 0;
+    && readActionRequested
+    && effectiveReadTargets.length > 0;
   const readContentRequested = readRequested && READ_CONTENT_RE.test(prompt);
   const rawFormalProjectRequired = requiresFormalProjectQualityFromTaskContract(taskContract, prompt);
   const readOnlyIntent = (READ_ONLY_RE.test(prompt)
@@ -349,7 +362,7 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     prohibited,
     sourceChange,
     fileArtifact,
-    targets: requestedMutationTargets,
+    targets: mutationRequested ? requestedMutationTargets : [],
   };
   const validation = {
     requested: validationRequested,
@@ -373,7 +386,9 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
       prohibited: false,
       sourceChange: true,
       fileArtifact: false,
-      targets: mutation.targets,
+      targets: mutation.targets.length > 0
+        ? mutation.targets
+        : taskContract.inputs.filter(isSourcePath),
     };
     scope = 'existing-project';
     kind = 'existing-project-code';
@@ -389,10 +404,15 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const read = {
     requested: readRequested,
     contentRequested: readContentRequested,
-    targets: readRequested ? readTargets : [],
+    targets: readRequested ? effectiveReadTargets : [],
   };
+  const semanticTaskContract = normalizeTaskContractForSemanticContract(taskContract, {
+    mutation,
+    validation,
+    preserveDeferredSourceChange: intent.mode === 'plan' && !mutation.prohibited,
+  });
   const contracts = buildTaskSemanticObligationContracts({
-    taskContract,
+    taskContract: semanticTaskContract,
     kind,
     scope,
     mutation,
@@ -406,7 +426,7 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   return {
     version: 'devseek.task-semantic-contract/v3',
     prompt,
-    taskContract,
+    taskContract: semanticTaskContract,
     kind,
     scope,
     mutation,
@@ -432,6 +452,87 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     intent,
     signals,
   };
+}
+
+function normalizeTaskContractForSemanticContract(
+  taskContract: TaskContract,
+  input: {
+    mutation: TaskSemanticContract['mutation'];
+    validation: TaskSemanticContract['validation'];
+    preserveDeferredSourceChange: boolean;
+  },
+): TaskContract {
+  const deliverables = taskContract.deliverables.filter(deliverable => {
+    if (deliverable === 'source-change') return input.mutation.sourceChange || input.preserveDeferredSourceChange;
+    if (deliverable === 'report') return input.mutation.fileArtifact;
+    if (deliverable === 'verification-result') return input.validation.requested;
+    return true;
+  }) as TaskContract['deliverables'];
+  if ((input.mutation.sourceChange || input.preserveDeferredSourceChange) && !deliverables.includes('source-change')) {
+    deliverables.push('source-change');
+  }
+  if (input.mutation.fileArtifact && !deliverables.includes('report')) {
+    deliverables.push('report');
+  }
+  if (input.validation.requested && !deliverables.includes('verification-result')) {
+    deliverables.push('verification-result');
+  }
+
+  const verificationContract = {
+    ...taskContract.verificationContract,
+    requireSourceClaimGrounding: input.mutation.sourceChange
+      ? taskContract.verificationContract.requireSourceClaimGrounding
+      : false,
+    requiredSourcePaths: input.mutation.sourceChange
+      ? [...taskContract.verificationContract.requiredSourcePaths]
+      : [],
+    requireArtifactReadback: input.mutation.fileArtifact
+      ? taskContract.verificationContract.requireArtifactReadback
+      : false,
+    exactArtifactRequested: input.mutation.fileArtifact
+      ? taskContract.verificationContract.exactArtifactRequested
+      : false,
+    exactArtifact: input.mutation.fileArtifact
+      ? taskContract.verificationContract.exactArtifact
+      : undefined,
+    maxWrittenFiles: input.mutation.requested
+      ? taskContract.verificationContract.maxWrittenFiles
+      : undefined,
+  };
+
+  return {
+    ...taskContract,
+    deliverableTargets: input.mutation.requested ? [...taskContract.deliverableTargets] : [],
+    deliverables,
+    qualityObligations: taskContract.qualityObligations.filter(obligation => (
+      input.mutation.sourceChange || !['source-evidence', 'modification-plan'].includes(obligation)
+    )),
+    verificationContract,
+  };
+}
+
+const EXPLICIT_INPUT_WRITE_ACTION_RE = /(?:创建|新建|生成|编写|写入|写到|保存|输出|新增|添加|落盘|create|write|generate|save|output|add|touch)/i;
+
+function resolveExplicitInputWriteTargets(prompt: string, inputs: readonly string[]): string[] {
+  return [...new Set(inputs.filter(target => {
+    if (!target || /[\\/]$/u.test(target)) return false;
+    const match = new RegExp(escapeRegExp(target), 'i').exec(prompt);
+    if (!match || match.index === undefined) return false;
+    const clauseStart = findPreviousClauseBoundary(prompt, match.index);
+    const beforeTarget = prompt.slice(clauseStart, match.index);
+    return EXPLICIT_INPUT_WRITE_ACTION_RE.test(beforeTarget.slice(-96));
+  }))];
+}
+
+function findPreviousClauseBoundary(text: string, index: number): number {
+  return Math.max(
+    text.lastIndexOf('\n', index),
+    text.lastIndexOf('。', index),
+    text.lastIndexOf('；', index),
+    text.lastIndexOf(';', index),
+    text.lastIndexOf('，', index),
+    text.lastIndexOf(',', index),
+  ) + 1;
 }
 
 export function requiresFormalProjectQuality(contract: TaskSemanticContract): boolean {

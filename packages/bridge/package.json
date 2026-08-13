@@ -1,6 +1,6 @@
 {
   "name": "@devseek-netai/bridge",
-  "version": "2.0.10",
+  "version": "2.0.11",
   "main": "dist/server.js",
   "scripts": {
     "dev": "ts-node --project tsconfig.json src/server.ts",

@@ -314,6 +314,10 @@ function controlledScenarioSuiteCatalog() {
       'scope-replace-alpha-plan',
       'scope-replace-beta-instead',
     ],
+    'cancellation-replacement-product': [
+      'cancel-plan-source-change',
+      'cancel-review-instead',
+    ],
     'agent-fit-product': [
       'agent-fit-ambiguous-clarify',
       'agent-fit-review-only',
@@ -363,6 +367,10 @@ function resolveControlledScenarioSuiteOptions(id) {
     },
     'scope-replacement-product': {
       kind: 'same-window-corrective-scope-replacement-journey',
+      sameDevSeekSession: true,
+    },
+    'cancellation-replacement-product': {
+      kind: 'same-window-cancellation-replacement-journey',
       sameDevSeekSession: true,
     },
     'agent-fit-product': {
@@ -436,6 +444,15 @@ function controlledScenarioCatalog() {
     '}',
     '',
     'module.exports = { label };',
+    '',
+  ].join('\n');
+  const cancelLoginBaselineContent = [
+    'function login(user) {',
+    "  if (!user) return 'guest';",
+    '  return user.name;',
+    '}',
+    '',
+    'module.exports = { login };',
     '',
   ].join('\n');
   const latestRequirementContent = 'FINAL_REQUIREMENT_OK\n';
@@ -829,6 +846,49 @@ function controlledScenarioCatalog() {
         'BETA_OK',
         'src/beta.js',
         'src/alpha.js',
+      ],
+    },
+    'cancel-plan-source-change': {
+      id: 'cancel-plan-source-change',
+      kind: 'journey-cancel-replacement-plan-no-mutation',
+      targetRelativePath: 'src/login.js',
+      targetContent: cancelLoginBaselineContent,
+      seedFiles: {
+        'src/login.js': cancelLoginBaselineContent,
+      },
+      prompt: 'Plan the implementation for src/login.js before touching any files.',
+      providerPlan: 'plan-only-no-mutation',
+      expected: 'completed-advisory-no-mutation',
+      expectedFiles: {
+        'src/login.js': cancelLoginBaselineContent,
+      },
+      expectedChangedPaths: [],
+      expectedMutatedUserFiles: [],
+      requiredRunLogSubstrings: [
+        'src/login.js',
+        '未修改文件',
+      ],
+    },
+    'cancel-review-instead': {
+      id: 'cancel-review-instead',
+      kind: 'journey-cancel-replacement-read-only-review',
+      targetRelativePath: 'src/login.js',
+      targetContent: cancelLoginBaselineContent,
+      prompt: [
+        'Cancel that change. Review src/login.js only and tell me the likely cause.',
+        'Do not modify files.',
+      ].join(' '),
+      providerPlan: 'review-only-no-mutation',
+      expected: 'completed-advisory-no-mutation',
+      expectedFiles: {
+        'src/login.js': cancelLoginBaselineContent,
+      },
+      expectedChangedPaths: [],
+      expectedMutatedUserFiles: [],
+      requiredRunLogSubstrings: [
+        '只读审查',
+        'src/login.js',
+        '未修改文件',
       ],
     },
     'agent-fit-ambiguous-clarify': {
@@ -3025,6 +3085,7 @@ function controlledProviderResponse({ ordinal, workspaceDir, scenario, requestKi
   }
 
   if (scenario.providerPlan === 'review-only-no-mutation') {
+    const reviewPath = scenario.targetRelativePath;
     const completedTodos = {
       todoList: [
         { id: 1, title: '读取待审查文件', status: 'completed' },
@@ -3034,11 +3095,11 @@ function controlledProviderResponse({ ordinal, workspaceDir, scenario, requestKi
     return [
       '我会做只读审查，不提交任何文件修改。',
       `[TOOL:manage_todo_list ${JSON.stringify({ todoList: [{ id: 1, title: '读取待审查文件', status: 'in-progress' }, { id: 2, title: '输出只读审查结论', status: 'not-started' }] })}]`,
-      `[TOOL:read_file ${JSON.stringify({ path: scenario.targetRelativePath })}]`,
-      '只读审查发现：src/billing.js 中 total(items) 直接累加 item.price，缺少数量、折扣和非法输入处理；建议补充需求后再修改。',
+      `[TOOL:read_file ${JSON.stringify({ path: reviewPath })}]`,
+      `只读审查发现：${reviewPath} 的当前实现需要补充边界条件说明；建议确认预期行为后再修改。`,
       `[TOOL:manage_todo_list ${JSON.stringify(completedTodos)}]`,
       `[TOOL:task_complete ${JSON.stringify({
-        summary: '已完成 src/billing.js 只读审查：发现价格累加逻辑缺少业务边界；未修改文件。',
+        summary: `已完成 ${reviewPath} 只读审查：发现当前实现缺少业务边界说明；未修改文件。`,
       })}]`,
     ].join('\n');
   }

@@ -23,6 +23,7 @@ const DEFAULT_CONTROLLED_SUITES = Object.freeze([
   'realistic-product',
   'prior-task-continuation-product',
   'scope-replacement-product',
+  'cancellation-replacement-product',
   'agent-fit-product',
   'coding-conformance-product',
   'r2-07f-connector-security',
@@ -33,6 +34,7 @@ const ACCEPTANCE_CONTROLLED_SUITES = Object.freeze([
   'realistic-product',
   'prior-task-continuation-product',
   'scope-replacement-product',
+  'cancellation-replacement-product',
   'agent-fit-product',
   'coding-conformance-product',
   'r2-07f-connector-security',
@@ -109,6 +111,12 @@ const CASE_DESIGN_DIMENSIONS = Object.freeze([
     user_need: 'Users correct the previous target and expect the newest bounded target to replace the old one.',
     suites: ['scope-replacement-product'],
     cases: ['scope-replace-alpha-plan', 'scope-replace-beta-instead'],
+  },
+  {
+    id: 'cancellation_readonly_replacement',
+    user_need: 'Users cancel a prior coding task and expect the newest read-only instruction to revoke inherited edits.',
+    suites: ['cancellation-replacement-product'],
+    cases: ['cancel-plan-source-change', 'cancel-review-instead'],
   },
   {
     id: 'latest_requirement_wins',

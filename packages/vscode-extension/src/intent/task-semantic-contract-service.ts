@@ -31,7 +31,7 @@ export interface TaskSemanticProjectInstructionInput {
 }
 
 export interface TaskSemanticRevisionInput {
-  strategy: 'initial' | 'merge' | 'replace-scope';
+  strategy: 'initial' | 'merge' | 'replace-scope' | 'replace-current';
   revisionId?: string;
   parentRevisionId?: string;
   prohibitedTargets?: readonly string[];
@@ -46,6 +46,9 @@ export interface TaskSemanticResolutionContext {
 }
 
 const MIN_SEMANTIC_PROPOSAL_CONFIDENCE = 0.62;
+const PRIOR_TASK_CANCELLATION_RE = /(?:cancel(?:\s+(?:that|the|previous|last|change|task))?|stop(?:\s+(?:that|the|previous|last|change|task|editing|working))?|never\s+mind|hold\s+off|ignore\s+(?:that|the\s+previous|the\s+last|previous|last)|forget\s+(?:that|the\s+previous|the\s+last|previous|last)|take\s+that\s+back|取消|算了|先别|先不要|不要继续|别继续|不用继续|暂停|停止|撤回|撤销|作废|不做了|别做了)/i;
+const GLOBAL_WRITE_REVOCATION_RE = /(?:no\s+(?:code\s+)?(?:edits?|changes?|implementation|file\s+writes?)|no\s+code\s+changes?|(?:do\s+not|don't|must\s+not|should\s+not|never|without)[^,.;\n]{0,40}(?:edit|modify|change|write|touch|implement)[^,.;\n]{0,24}(?:files?|code|source|anything)|(?:不要|别|先别|先不要|无需|无须|不需要|不准|禁止|不允许)[^，,。；;\n]{0,24}(?:改|修改|写|写入|创建|生成|动|触碰|碰)[^，,。；;\n]{0,16}(?:任何)?(?:文件|代码|源码)|不(?:改|修改|写|写入|创建|生成|动|触碰|碰)(?:任何)?(?:文件|代码|源码))/i;
+const CURRENT_ONLY_NON_MUTATING_RE = /(?:(?:just|only)\s+(?:explain|discuss|answer|tell|review|analy[sz]e|inspect|run|test|verify)|(?:只|仅|只是|仅仅)(?:说明|解释|分析|讨论|回答|回复|审查|评审|只读|运行|执行|测试|验证)|(?:改成|改为)\s*(?:只读|仅分析|只分析|只运行|只测试|只验证|read-only|run-only))/i;
 
 interface PriorTaskContinuationProjection {
   requested: boolean;
@@ -85,7 +88,12 @@ export function resolveTaskSemanticContract(
     context.projectInstructions,
     effective.context.projectInstructions,
   );
-  return finalizeContract(effective, revision, projectInstructions, previous !== undefined);
+  return finalizeContract(
+    effective,
+    revision,
+    projectInstructions,
+    previous !== undefined && revision.strategy === 'merge',
+  );
 }
 
 function normalizeSemanticContract(contract: TaskSemanticContract): TaskSemanticContract {
@@ -110,16 +118,26 @@ function resolveEffectiveTaskSemanticRevision(
   current: TaskSemanticContract,
 ): TaskSemanticRevisionInput {
   if (!previous || revision.strategy !== 'merge') return revision;
+  const previousTargets = uniquePaths([
+    ...previous.mutation.targets,
+    ...previous.taskContract.deliverableTargets,
+  ]);
+  if (isNoMutationReplacementRequest(current)) {
+    return {
+      ...revision,
+      strategy: 'replace-current',
+      prohibitedTargets: uniquePaths([
+        ...(revision.prohibitedTargets ?? []),
+        ...previousTargets,
+      ]),
+    };
+  }
   const currentTargets = uniquePaths([
     ...current.mutation.targets,
     ...current.taskContract.deliverableTargets,
   ]);
   if (currentTargets.length === 0) return revision;
   if (current.mutation.prohibited && !current.signals.includes('scoped-target-write-boundary')) return revision;
-  const previousTargets = uniquePaths([
-    ...previous.mutation.targets,
-    ...previous.taskContract.deliverableTargets,
-  ]);
   if (!isCorrectiveScopeReplacementRequest(current, previousTargets)) return revision;
   const replacedTargets = previousTargets.filter(previousTarget => !currentTargets.some(currentTarget => (
     samePathToken(previousTarget, currentTarget)
@@ -132,6 +150,23 @@ function resolveEffectiveTaskSemanticRevision(
       ...replacedTargets,
     ]),
   };
+}
+
+function isNoMutationReplacementRequest(current: TaskSemanticContract): boolean {
+  if (isProceedWithPriorTaskRequest(current.prompt)) return false;
+  if (current.mutation.requested || current.mutation.sourceChange || current.mutation.fileArtifact) return false;
+  const prompt = String(current.prompt || '');
+  const cancellation = PRIOR_TASK_CANCELLATION_RE.test(prompt);
+  const globalWriteRevocation = GLOBAL_WRITE_REVOCATION_RE.test(prompt);
+  const currentOnlyNonMutating = CURRENT_ONLY_NON_MUTATING_RE.test(prompt);
+  if (!cancellation && !globalWriteRevocation && !currentOnlyNonMutating) return false;
+  return current.kind === 'read-only'
+    || current.kind === 'validation'
+    || current.kind === 'general'
+    || current.intent.mode === 'inspect'
+    || current.intent.mode === 'plan'
+    || current.intent.mode === 'run'
+    || current.intent.mode === 'qa';
 }
 
 function isCorrectiveScopeReplacementRequest(
@@ -597,18 +632,25 @@ function mergeTaskSemanticContracts(
     ...previous.taskContract.deliverableTargets,
   ]);
   const priorTaskContinuation = projectPriorTaskContinuation(previous, current);
+  const replaceCurrent = revision.strategy === 'replace-current';
   const replaceScope = revision.strategy === 'replace-scope' && currentTargets.length > 0;
-  const targets = (replaceScope ? currentTargets : uniquePaths([
-    ...previousTargets,
-    ...priorTaskContinuation.targets,
-    ...currentTargets,
-  ]))
+  const targets = (replaceCurrent || replaceScope
+    ? currentTargets
+    : uniquePaths([
+      ...previousTargets,
+      ...priorTaskContinuation.targets,
+      ...currentTargets,
+    ]))
     .filter(target => !prohibitedTargets.has(normalizePathToken(target)));
-  const mutation = mergeMutation(previous, current, targets, replaceScope, priorTaskContinuation);
-  const read = mergeRead(previous, current, replaceScope);
-  const validation = mergeValidation(previous, current, mutation.fileArtifact);
+  const mutation = mergeMutation(previous, current, targets, {
+    replaceCurrent,
+    replaceScope,
+    priorTaskContinuation,
+  });
+  const read = mergeRead(previous, current, replaceCurrent || replaceScope);
+  const validation = mergeValidation(previous, current, mutation.fileArtifact, replaceCurrent);
   const quality = {
-    formalProjectRequired: replaceScope || current.mutation.prohibited
+    formalProjectRequired: replaceCurrent || replaceScope || current.mutation.prohibited
       ? current.quality.formalProjectRequired
       : previous.quality.formalProjectRequired || current.quality.formalProjectRequired,
   };
@@ -618,15 +660,17 @@ function mergeTaskSemanticContracts(
     targets,
     mutation,
     validation,
+    replaceCurrent,
     replaceScope,
     prohibitedTargets,
     mutationProhibited: current.mutation.prohibited,
   });
   const signals = uniqueStrings([
-    ...previous.signals,
+    ...(replaceCurrent ? [] : previous.signals),
     ...current.signals,
-    'semantic-context-merged',
-    ...priorTaskContinuation.signals,
+    replaceCurrent ? 'semantic-context-replaced' : 'semantic-context-merged',
+    ...(replaceCurrent ? [] : priorTaskContinuation.signals),
+    ...(replaceCurrent ? ['semantic-current-replaced'] : []),
     ...(replaceScope ? ['semantic-scope-replaced'] : []),
   ]);
   const intent = buildLocalIntentContract(current.prompt, {
@@ -749,9 +793,21 @@ function mergeMutation(
   previous: TaskSemanticContract,
   current: TaskSemanticContract,
   targets: string[],
-  replaceScope: boolean,
-  priorTaskContinuation: PriorTaskContinuationProjection,
+  options: {
+    replaceCurrent: boolean;
+    replaceScope: boolean;
+    priorTaskContinuation: PriorTaskContinuationProjection;
+  },
 ): TaskSemanticContract['mutation'] {
+  if (options.replaceCurrent) {
+    return {
+      requested: current.mutation.requested || targets.length > 0,
+      prohibited: current.mutation.prohibited,
+      sourceChange: current.mutation.sourceChange,
+      fileArtifact: current.mutation.fileArtifact,
+      targets,
+    };
+  }
   if (current.mutation.prohibited) {
     return {
       requested: false,
@@ -761,17 +817,17 @@ function mergeMutation(
       targets: [],
     };
   }
-  const useCurrentShape = replaceScope && current.mutation.requested;
+  const useCurrentShape = options.replaceScope && current.mutation.requested;
   const sourceChange = useCurrentShape
     ? current.mutation.sourceChange
-    : previous.mutation.sourceChange || current.mutation.sourceChange || priorTaskContinuation.sourceChange;
+    : previous.mutation.sourceChange || current.mutation.sourceChange || options.priorTaskContinuation.sourceChange;
   const fileArtifact = useCurrentShape
     ? current.mutation.fileArtifact
-    : previous.mutation.fileArtifact || current.mutation.fileArtifact || priorTaskContinuation.fileArtifact;
+    : previous.mutation.fileArtifact || current.mutation.fileArtifact || options.priorTaskContinuation.fileArtifact;
   return {
     requested: previous.mutation.requested
       || current.mutation.requested
-      || priorTaskContinuation.requested
+      || options.priorTaskContinuation.requested
       || targets.length > 0,
     prohibited: false,
     sourceChange,
@@ -784,7 +840,14 @@ function mergeValidation(
   previous: TaskSemanticContract,
   current: TaskSemanticContract,
   fileArtifact: boolean,
+  replaceCurrent: boolean,
 ): TaskSemanticContract['validation'] {
+  if (replaceCurrent) {
+    return {
+      ...current.validation,
+      fileCheckRequested: fileArtifact && current.validation.fileCheckRequested,
+    };
+  }
   const currentExplicitlyRequestsRuntime = current.validation.runRequested
     || current.validation.testRequested
     || current.validation.stdoutRequested;
@@ -844,6 +907,7 @@ function mergeTaskContracts(
     targets: string[];
     mutation: TaskSemanticContract['mutation'];
     validation: TaskSemanticContract['validation'];
+    replaceCurrent: boolean;
     replaceScope: boolean;
     prohibitedTargets: Set<string>;
     mutationProhibited: boolean;
@@ -853,7 +917,7 @@ function mergeTaskContracts(
   const previousMutationDeliverables = previous.deliverables.filter(kind => kind !== 'verification-result');
   const mutationDeliverables = context.mutationProhibited
     ? []
-    : context.replaceScope
+    : context.replaceCurrent || context.replaceScope
       ? currentMutationDeliverables
       : uniqueStrings([...previousMutationDeliverables, ...currentMutationDeliverables]);
   const deliverables = uniqueStrings([
@@ -865,9 +929,9 @@ function mergeTaskContracts(
 
   const currentVerification = current.verificationContract;
   const previousVerification = previous.verificationContract;
-  const useCurrentExactContract = context.replaceScope;
+  const useCurrentExactContract = context.replaceCurrent || context.replaceScope;
   const isAllowedPath = (target: string): boolean => !context.prohibitedTargets.has(normalizePathToken(target));
-  const requiredSourcePaths = uniquePaths((context.replaceScope
+  const requiredSourcePaths = uniquePaths((context.replaceCurrent || context.replaceScope
     ? [
       ...currentVerification.requiredSourcePaths,
       ...current.inputs,
@@ -882,17 +946,21 @@ function mergeTaskContracts(
     ]).filter(target => isSourceContextPath(target) && isAllowedPath(target)));
 
   return {
-    taskShapes: context.replaceScope && current.taskShapes.length > 0
+    taskShapes: (context.replaceCurrent || context.replaceScope) && current.taskShapes.length > 0
       ? [...current.taskShapes]
       : uniqueStrings([...previous.taskShapes, ...current.taskShapes]),
-    objectives: current.objectives.length > 0 ? [...current.objectives] : [...previous.objectives],
-    inputs: context.replaceScope
+    objectives: current.objectives.length > 0 || context.replaceCurrent
+      ? [...current.objectives]
+      : [...previous.objectives],
+    inputs: context.replaceCurrent || context.replaceScope
       ? uniquePaths([...current.inputs, ...context.targets].filter(isAllowedPath))
       : uniquePaths([...previous.inputs, ...current.inputs].filter(isAllowedPath)),
     deliverableTargets: [...context.targets],
     deliverables,
-    constraints: uniqueStrings([...previous.constraints, ...current.constraints]),
-    qualityObligations: context.mutationProhibited || context.replaceScope
+    constraints: context.replaceCurrent
+      ? [...current.constraints]
+      : uniqueStrings([...previous.constraints, ...current.constraints]),
+    qualityObligations: context.mutationProhibited || context.replaceCurrent || context.replaceScope
       ? [...current.qualityObligations]
       : uniqueStrings([...previous.qualityObligations, ...current.qualityObligations]),
     evidenceRequirements: mergeEvidenceRequirements(

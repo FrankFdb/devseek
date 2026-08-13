@@ -359,6 +359,29 @@ test('TaskSemanticContract v3: natural inspect wording with no-change is read-on
   assert.equal(contract.intent.mode, 'inspect');
 });
 
+test('TaskSemanticContract v3: read-only review and file checks do not leak write or validation deliverables', () => {
+  for (const prompt of [
+    '只读 review src/login.ts，不要修改。',
+    'Review src/login.ts only, do not modify files.',
+    '检查 src/login.ts 并说明问题，不要改文件。',
+    'Analyze src/login.ts and do not change code.',
+  ]) {
+    const contract = buildTaskSemanticContract(prompt);
+
+    assert.equal(contract.kind, 'read-only', prompt);
+    assert.equal(contract.mutation.requested, false, prompt);
+    assert.equal(contract.mutation.sourceChange, false, prompt);
+    assert.equal(contract.taskContract.deliverables.includes('source-change'), false, prompt);
+    assert.equal(contract.taskContract.deliverables.includes('verification-result'), false, prompt);
+    assert.equal(contract.obligations.artifacts.some(item => item.kind === 'source-change'), false, prompt);
+    assert.equal(contract.obligations.artifacts.some(item => item.kind === 'verification-result'), false, prompt);
+    assert.deepEqual(contract.read.targets, ['src/login.ts'], prompt);
+    assert.ok(contract.completion.doneIff.some(item => (
+      item.kind === 'read-evidence' && item.target === 'src/login.ts'
+    )), prompt);
+  }
+});
+
 test('TaskSemanticContract v3: plan-only repair wording cannot request source mutation', () => {
   const contract = buildTaskSemanticContract(
     'I only need a plan for fixing src/cache.ts, no implementation yet.',
@@ -816,6 +839,80 @@ test('TaskSemanticContract v3: corrective source retarget replaces prior scope a
   }
 });
 
+test('TaskSemanticContract v3: cancellation follow-up replaces inherited write scope with current read-only contract', () => {
+  const previous = resolveTaskSemanticContract('Modify src/login.ts to fix the login crash and run tests.');
+  const cases = [
+    {
+      prompt: 'Actually stop, do not modify files. Just explain what you would check.',
+      expectedReadTargets: [],
+      prohibited: true,
+    },
+    {
+      prompt: '先别改文件，只说明你会怎么排查。',
+      expectedReadTargets: [],
+      prohibited: true,
+    },
+    {
+      prompt: 'Cancel that change. Review src/login.ts only and tell me the likely cause.',
+      expectedReadTargets: ['src/login.ts'],
+      prohibited: false,
+    },
+    {
+      prompt: '不要继续刚才的修改，改成只读 review src/login.ts。',
+      expectedReadTargets: ['src/login.ts'],
+      prohibited: true,
+    },
+  ];
+
+  for (const entry of cases) {
+    const current = resolveTaskSemanticContract(entry.prompt, { previous });
+
+    assert.equal(current.context.revision.strategy, 'replace-current', entry.prompt);
+    assert.equal(current.kind, 'read-only', entry.prompt);
+    assert.equal(current.mutation.requested, false, entry.prompt);
+    assert.equal(current.mutation.prohibited, entry.prohibited, entry.prompt);
+    assert.deepEqual(current.mutation.targets, [], entry.prompt);
+    assert.deepEqual(current.taskContract.deliverableTargets, [], entry.prompt);
+    assert.deepEqual(current.read.targets, entry.expectedReadTargets, entry.prompt);
+    assert.equal(current.validation.requested, false, entry.prompt);
+    assert.equal(current.taskContract.deliverables.includes('source-change'), false, entry.prompt);
+    assert.equal(current.taskContract.deliverables.includes('verification-result'), false, entry.prompt);
+    assert.ok(current.signals.includes('semantic-current-replaced'), entry.prompt);
+    assert.equal(current.context.revision.inheritedFields.length, 0, entry.prompt);
+    assert.ok(!current.completion.doneIff.some(item => item.kind === 'code-written'), entry.prompt);
+    assert.ok(!current.completion.doneIff.some(item => item.kind === 'test-passed'), entry.prompt);
+    assert.ok(!current.completion.doneIff.some(item => item.target === 'src/login.ts'
+      && item.kind === 'code-written'), entry.prompt);
+  }
+});
+
+test('TaskSemanticContract v3: run-only no-change follow-up replaces inherited edit but keeps validation', () => {
+  const previous = resolveTaskSemanticContract('Modify src/login.ts to fix the login crash and run tests.');
+
+  for (const prompt of [
+    'Never mind, no code changes. Just run tests.',
+    'Actually just run npm test, do not edit files.',
+  ]) {
+    const current = resolveTaskSemanticContract(prompt, { previous });
+
+    assert.equal(current.context.revision.strategy, 'replace-current', prompt);
+    assert.equal(current.kind, 'validation', prompt);
+    assert.equal(current.intent.mode, 'run', prompt);
+    assert.equal(current.mutation.requested, false, prompt);
+    assert.equal(current.mutation.prohibited, true, prompt);
+    assert.deepEqual(current.mutation.targets, [], prompt);
+    assert.deepEqual(current.taskContract.deliverableTargets, [], prompt);
+    assert.deepEqual(current.taskContract.inputs, [], prompt);
+    assert.deepEqual(current.taskContract.deliverables, ['verification-result'], prompt);
+    assert.equal(current.validation.requested, true, prompt);
+    assert.equal(current.validation.runRequested, true, prompt);
+    assert.equal(current.validation.testRequested, true, prompt);
+    assert.ok(current.signals.includes('semantic-current-replaced'), prompt);
+    assert.ok(!current.completion.doneIff.some(item => item.kind === 'code-written'), prompt);
+    assert.ok(current.completion.doneIff.some(item => item.kind === 'test-passed'), prompt);
+  }
+});
+
 test('TaskSemanticContract v3: additive follow-up still merges while global no-write blocks replacement', () => {
   const previous = resolveTaskSemanticContract('Modify src/alpha.js to return alpha and run its test.');
   const additive = resolveTaskSemanticContract('Actually also change src/beta.js.', { previous });
@@ -827,11 +924,12 @@ test('TaskSemanticContract v3: additive follow-up still merges while global no-w
   assert.equal(additive.context.revision.strategy, 'merge');
   assert.deepEqual(additive.mutation.targets, ['src/alpha.js', 'src/beta.js']);
 
-  assert.equal(stopped.context.revision.strategy, 'merge');
+  assert.equal(stopped.context.revision.strategy, 'replace-current');
   assert.equal(stopped.mutation.requested, false);
   assert.equal(stopped.mutation.prohibited, true);
   assert.deepEqual(stopped.mutation.targets, []);
-  assert.equal(stopped.signals.includes('semantic-scope-replaced'), false);
+  assert.equal(stopped.taskContract.deliverables.includes('source-change'), false);
+  assert.equal(stopped.signals.includes('semantic-current-replaced'), true);
 });
 
 test('TaskSemanticContract v3: project instructions are source-bound and fingerprinted', () => {

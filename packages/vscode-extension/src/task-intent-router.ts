@@ -218,6 +218,10 @@ function isReadOnlyRoute(
   if (semanticContract.mutation.requested && !semanticContract.mutation.prohibited) return false;
   if (semanticContract.read.requested) return true;
   if (semanticContract.kind === 'read-only') return true;
+  if (classification.mode === 'run' || semanticContract.kind === 'validation') return false;
+  if (semanticContract.validation.runRequested
+    || semanticContract.validation.testRequested
+    || semanticContract.validation.compileRequested) return false;
   if (classification.blockers.includes('explicit-no-change')) return true;
   return classification.mode === 'inspect' || classification.mode === 'plan';
 }

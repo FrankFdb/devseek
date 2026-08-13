@@ -75,7 +75,7 @@ const EXPLICIT_NO_CHANGE_RE = /(不要修改|无需修改|不修改|不要改|�
 const GREETING_ONLY_RE = /^(?:hi|hello|ello|hey|thanks?|thank\s+you|thx|great[,，\s]+thank\s+you|appreciate\s+it|that\s+helps|thanks[,，\s]+that\s+helps|ok(?:ay)?(?:[,，\s]+(?:got\s+it|thanks?))?|got\s+it|sounds\s+good|谢谢|多谢|感谢|你好|您好|嗨|哈喽|早上好|上午好|下午好|晚上好|在吗|在不在|辛苦了|好(?:的)?(?:[,，\s]+(?:明白了|了解|收到))?|明白了|了解|收到)[\s!.。！？?，,]*$/i;
 const GREETING_PREFIX_RE = /^(?:hi|hello|hey|你好|您好|嗨|哈喽)[,，\s]+/i;
 const EDIT_RE = /(修复|修正|修改|改一下|改成|改为|改用|换成|换为|调整为|实现|编写|写一个|写个|创建|新建|生成|新增|添加|补全|完善|重构|改造|替换|替换为|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|删除|移除|删掉|优化|升级|接入|封装|拆分|处理一下|帮(?:我|忙)?[^，,。；;\n]{0,8}处理|解决|搞定|发布|上线|部署|安装插件|安装扩展|fix|repair|modify|change|implement|create|write|add|update|refactor|generate|replace|rename|move|copy|append|insert|delete|remove|release|deploy|publish|install\s+extension)/i;
-const NEGATED_EDIT_CLAUSE_RE = /(?:当前不准备|先不准备|不准备|先不要|暂不|不要|不得|禁止|不允许|无需|无须|不需要|别)[^，,。；;\n]{0,24}(?:修复|修正|修改|改动|动|触碰|创建|新建|生成|编写|写入|保存|输出|新增|添加|实现|重构|替换|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|发布|上线|部署|安装|提交|推送|拉取)|不(?:修复|修正|修改|改动|动|触碰|创建|新建|生成|编写|写入|保存|输出|新增|添加|实现|重构|替换|发布|上线|部署|安装|提交|推送|拉取)|(?:do\s+not|don't|must\s+not|should\s+not|never|without)[^,.;\n]{0,32}(?:fix|repair|modify|change|create|write|generate|save|add|update|implement|refactor|replace|rename|move|copy|append|insert|release|deploy|publish|install|commit|push|pull|fetch|merge|rebase)/gi;
+const NEGATED_EDIT_CLAUSE_RE = /(?:当前不准备|先不准备|不准备|先不要|暂不|不要|不得|禁止|不允许|无需|无须|不需要|别)[^，,。；;\n]{0,24}(?:修复|修正|修改|改动|动|触碰|创建|新建|生成|编写|写入|保存|输出|新增|添加|实现|重构|替换|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|发布|上线|部署|安装|提交|推送|拉取)|不(?:修复|修正|修改|改动|动|触碰|创建|新建|生成|编写|写入|保存|输出|新增|添加|实现|重构|替换|发布|上线|部署|安装|提交|推送|拉取)|(?:do\s+not|don't|must\s+not|should\s+not|never|without)[^,.;\n]{0,32}(?:fix|repair|modify|change|edit|touch|create|write|generate|save|add|update|implement|refactor|replace|rename|move|copy|append|insert|release|deploy|publish|install|commit|push|pull|fetch|merge|rebase)|no\s+(?:edits?|changes?|implementation|code)(?:\s+yet)?/gi;
 const RUN_RE = /(运行|执行|编译|构建|测试|跑一下|复现|验证|启动|调试|\b(?:run|execute|compile|build|test|start|reproduce)\b)/i;
 const FOLLOW_UP_RUN_RE = /(?:能(?:否)?(?:执行|运行|编译|构建|测试|验证)|看(?:一下|下|看)?(?:执行|运行|编译|构建|测试|验证)?结果|看到(?:执行|运行|编译|构建|测试|验证)?结果|(?:给(?:我)?|输出|展示|显示|提供|返回).{0,12}(?:执行|运行|编译|构建|测试|验证)?结果|(?:执行|运行|编译|构建|测试|验证|跑)(?:一下|下|一遍|一次)?(?:看看|看结果)|(?:执行|运行|编译|构建|测试|验证|跑).{0,8}结果|(?:show|see|view).{0,20}(?:result|output)|(?:can|could).{0,20}(?:run|execute|compile|build|test|verify))/i;
 const ARTIFACT_PATH_QUERY_RE = /(?:(?:可执行文件|执行文件|二进制|binary|executable|build\s+artifact|构建产物|生成的文件|创建的文件|写入的文件|输出文件|产物|artifact).{0,18}(?:在哪里|在哪|哪里|路径|位置|path|where)|(?:在哪里|在哪|哪里|路径|位置|path|where).{0,18}(?:可执行文件|执行文件|二进制|binary|executable|build\s+artifact|构建产物|生成的文件|创建的文件|写入的文件|输出文件|产物|artifact))/i;
@@ -299,6 +299,22 @@ export function buildLocalIntentContract(
     return finish(decision(
       'edit', hasPath ? 0.92 : 0.88, hasPath ? 5 : 4, [...new Set(signals)],
       hasPath ? 'run-to-repair-with-file-path' : 'run-to-repair',
+    ));
+  }
+
+  if (isRunRequest
+    && EXPLICIT_NO_CHANGE_RE.test(text)
+    && !semantic.mutation.requested) {
+    const signals = ['run-request', 'write-revoked-run-only'];
+    if (isFollowUpRunRequest) signals.push('follow-up-run-request');
+    if (hasPath) signals.push('explicit-file-path');
+    return finish(decision(
+      'run',
+      hasPath ? 0.88 : isFollowUpRunRequest ? 0.86 : 0.82,
+      hasPath ? 4 : 3,
+      signals,
+      hasPath ? 'run-with-file-path-no-change' : 'run-only-no-change',
+      ['explicit-no-change'],
     ));
   }
 
