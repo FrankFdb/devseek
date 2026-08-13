@@ -1,6 +1,7 @@
 import { hasReadOnlyAnswerEvidence } from './completion-evidence';
 import { hasIncompleteFakeToolCallProtocol, parseFakeToolCalls } from './fake-tool-parser';
 import { isolateModelToolRequestText } from './model-tool-protocol-adapter';
+import { containsProviderAuthoredToolTranscript } from './provider-authored-transcript-recovery';
 import { normalizeStructuredToolEnvelope } from './structured-tool-envelope-normalizer';
 import {
   looksLikeProviderErrorSurface,
@@ -44,6 +45,15 @@ export function classifyProviderOutputIntegrity(text: string | undefined): Provi
 
   if (toolCallCount > 0) {
     return buildProviderIntegrity('tool_call', toolCallCount, false, 'provider requested tool execution');
+  }
+
+  if (containsProviderAuthoredToolTranscript(trimmed)) {
+    return buildProviderIntegrity(
+      'incomplete_answer',
+      0,
+      false,
+      'provider response contains provider-authored tool-result transcript instead of executable evidence',
+    );
   }
 
   if (looksLikeProviderLoginGate(trimmed) || looksLikeProviderVerificationGate(trimmed)) {
