@@ -49,10 +49,14 @@ export async function initializeWorkspaceMcp(
     surface.warn('DevSeek MCP 初始化失败：unexpected-runtime-failure');
     return undefined;
   }
-  if (report.failures.length > 0) {
+  if (shouldWarnMcpStartupFailure(report)) {
     surface.warn(`DevSeek MCP 初始化未完全成功：${summarizeFailures(report)}`);
   }
   return report;
+}
+
+function shouldWarnMcpStartupFailure(report: McpLoadReport): boolean {
+  return report.failures.some(failure => failure.stage !== 'config-read');
 }
 
 async function authorizeServerLaunch(

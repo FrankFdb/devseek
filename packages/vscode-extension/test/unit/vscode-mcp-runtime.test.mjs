@@ -129,6 +129,30 @@ test('VS Code MCP startup stays quiet when the optional workspace config is abse
   assert.deepEqual(warnings, []);
 });
 
+test('VS Code MCP startup keeps optional config read failures out of repeated user popups', async () => {
+  const warnings = [];
+  const report = await initializeWorkspaceMcp({
+    load: async () => ({
+      configStatus: 'invalid',
+      configuredServers: 0,
+      connectedServers: [],
+      deniedServers: [],
+      registeredTools: 0,
+      failures: [
+        { stage: 'config-read', code: 'error' },
+      ],
+    }),
+  }, {
+    workspaceRoot: () => '/workspace',
+    confirmLaunch: async () => false,
+    warn: message => warnings.push(message),
+  });
+
+  assert.equal(report.configStatus, 'invalid');
+  assert.deepEqual(report.failures, [{ stage: 'config-read', code: 'error' }]);
+  assert.deepEqual(warnings, []);
+});
+
 test('VS Code MCP startup contains unexpected runtime rejection at the Surface boundary', async () => {
   const warnings = [];
   const report = await initializeWorkspaceMcp({
