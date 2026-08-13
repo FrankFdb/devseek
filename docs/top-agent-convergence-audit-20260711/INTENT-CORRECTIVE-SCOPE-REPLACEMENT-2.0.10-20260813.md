@@ -74,6 +74,42 @@ node scripts/devseek-top-agent-user-simulation-runner.mjs --dry-run --force --ma
 - Controlled suite prompt-contract self-test passed for 2 cases.
 - Dry-run acceptance matrix included `scope-replacement-product`, required 29 acceptance cases, and reported no missing dimensions.
 
+## Tagged Local Acceptance Evidence
+
+Code and release identity:
+
+- Commit: `a498a80c3bec4a2f2ac1d9407df3413dd25d6bd3`
+- Tag: `2.0.10`
+- Packaged VSIX: `devseek-netai-2.0.10-debug.20260813.t222536.ga498a80.vsix`
+- VSIX SHA-256: `368da54ad3b78064c100f2f831864f785602f9c0bf44c381212428d27538563a`
+- Source compatibility: `exact-head`
+- Dirty runtime fingerprint: none
+- Local install command passed: `code --install-extension /home/ff/work/devseek_netai/devseek-netai-latest.vsix --force`
+
+Focused exact-VSIX corrective-scope report:
+
+```bash
+node packages/vscode-extension/test/devseek-controlled-vsix-harness.mjs --suite scope-replacement-product --report /tmp/devseek-scope-replacement-2.0.10-ga498a80.report.json --timeout-ms 240000
+```
+
+- Result: PASS.
+- Report: `/tmp/devseek-scope-replacement-2.0.10-ga498a80.report.json`
+- Cases: `scope-replace-alpha-plan`, `scope-replace-beta-instead`
+
+Full local top-agent acceptance:
+
+```bash
+node scripts/devseek-top-agent-user-simulation-runner.mjs --run-id 20260813-intent-2.0.10-local-acceptance-ga498a80 --markdown docs/testing/devseek-20260813-intent-2.0.10-local-acceptance-ga498a80.md --force
+```
+
+- Result: PASS.
+- Markdown report: `docs/testing/devseek-20260813-intent-2.0.10-local-acceptance-ga498a80.md`
+- Evidence root: `code/devseek-tests/top-agent-convergence/runs/20260813-intent-2.0.10-local-acceptance-ga498a80`
+- Required acceptance case count: 29.
+- Missing dimensions: none.
+- Missing execution evidence: none.
+- Release claim permitted: false, because this remains local T3 evidence below the C14 release qualification boundary.
+
 ## Remaining Qualification Boundary
 
 This is a local capability iteration toward Codex/Claude Code class behavior. It still does not close the C14/top-agent release qualification gap, which requires live Provider, release-candidate, sealed holdout, and external authority evidence.
