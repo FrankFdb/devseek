@@ -109,13 +109,13 @@ export interface TaskSemanticContract {
 }
 
 const NON_CODE_ARTIFACT_RE = /\.(?:md|markdown|txt|json|jsonc|ya?ml|toml|ini|csv|tsv|log|xml|html|css)$/i;
-const WRITE_ACTION_RE = /(?:创建|新建|生成|编写|写一个|写个|写入|写到|保存|输出|新增|添加|修改|更新|修复|修正|补全|完善|重构|改造|替换|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|翻译|总结|摘要|概括|删除|移除|删掉|接入|封装|拆分|实现|交付|create|write|generate|save|add|update|modify|fix|repair|implement|refactor|replace|rename|move|copy|append|insert|translate|summari[sz]e|delete|remove|deliver)/i;
+const WRITE_ACTION_RE = /(?:创建|新建|生成|编写|写一个|写个|写入|写到|保存|输出|新增|添加|整理|记录|汇总|修改|更新|修复|修正|处理一下|解决|搞定|补全|完善|重构|改造|替换|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|翻译|总结|摘要|概括|删除|移除|删掉|接入|封装|拆分|实现|交付|create|write|compose|draft|generate|save|add|update|modify|fix|repair|resolve|implement|refactor|replace|rename|move|copy|append|insert|translate|summari[sz]e|delete|remove|deliver)/i;
 const CREATE_SOURCE_ACTION_RE = /(?:创建|新建|生成|编写|写一个|写个|新增|添加|制作|create|write|generate|add|build|produce)/i;
-const EXISTING_SOURCE_EDIT_RE = /(?:修改|更新|修复|修正|补全|完善|重构|改造|替换|接入|封装|拆分|删除|移除|删掉|update|modify|fix|repair|refactor|replace|delete|remove)/i;
+const EXISTING_SOURCE_EDIT_RE = /(?:修改|更新|修复|修正|处理一下|解决|搞定|补全|完善|重构|改造|替换|接入|封装|拆分|删除|移除|删掉|update|modify|fix|repair|resolve|refactor|replace|delete|remove)/i;
 const EXISTING_IMPLEMENTATION_CONTEXT_RE = /(?:(?:现有|原有|已有|既有|原来|旧|当前)[^，,。；;\n]{0,10}(?:实现|代码|逻辑|模块|功能|implementation|code|logic)|(?:existing|current|old|previous)[^,.;\n]{0,16}(?:implementation|code|logic))/gi;
 const ADVISORY_ACTION_CONTEXT_RE = /(?:(?:修改|修复|修正|补全|完善|重构|改造|替换|接入|封装|拆分|实现|交付|发布|上线|部署|modify|fix|repair|refactor|implement|deliver|release|deploy|publish)[^，,。；;、\n]{0,80}(?:方案|计划|设计|思路|步骤|对策|建议|检讨|任务|清单|文档|角度|\broadmap\b|\bplan\b|\bdesign\b|\bapproach\b|\badvice\b)|(?:方案|计划|设计|思路|步骤|对策|建议|检讨|任务|清单|文档|角度|\broadmap\b|\bplan\b|\bdesign\b|\bapproach\b|\badvice\b)[^，,。；;、\n]{0,80}(?:修改|修复|修正|补全|完善|重构|改造|替换|接入|封装|拆分|实现|交付|发布|上线|部署|modify|fix|repair|refactor|implement|deliver|release|deploy|publish))/gi;
-const NO_WRITE_RE = /(?:停止(?:创建|写入|修改|改写|编辑)|stop\s+(?:writing|editing|modifying)|(?:当前不准备|先不准备|不准备|先不要|暂不|不要|不得|禁止|不允许|无需|无须|不需要|别)[^，,。；;\n]{0,24}(?:创建|新建|生成|编写|写|写入|写到|保存|输出|新增|添加|修改|更新|修复|修正|补全|完善|重构|改造|替换|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|翻译|总结|摘要|概括|提取|接入|封装|拆分|实现|交付|改动|触碰|覆盖|删除)|不(?:创建|新建|生成|编写|写|写入|保存|输出|新增|添加|修改|更新|修复|改动|触碰|覆盖|删除|做(?:修改|变更|修复))|(?:do\s+not|don't|must\s+not|should\s+not|never|without)[^,.;\n]{0,32}(?:create|write|generate|save|add|update|modify|change|edit|fix|repair|implement|refactor|replace|rename|move|copy|append|insert|translate|summari[sz]e|deliver|touch|overwrite|delete)|no\s+(?:edits?|changes?|implementation|code)(?:\s+yet)?)/i;
-const NO_WRITE_CLAUSE_RE = /(?:当前不准备|先不准备|不准备|先不要|暂不|不要|不得|禁止|不允许|无需|无须|不需要|别)[^，,。；;\n]{0,24}(?:创建|新建|生成|编写|写|写入|写到|保存|输出|新增|添加|修改|更新|修复|修正|补全|完善|重构|改造|替换|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|翻译|总结|摘要|概括|提取|接入|封装|拆分|实现|交付|改动|触碰|覆盖|删除)|不(?:创建|新建|生成|编写|写|写入|保存|输出|新增|添加|修改|更新|修复|改动|触碰|覆盖|删除|做(?:修改|变更|修复))|(?:do\s+not|don't|must\s+not|should\s+not|never|without)[^,.;\n]{0,32}(?:create|write|generate|save|add|update|modify|change|edit|fix|repair|implement|refactor|replace|rename|move|copy|append|insert|translate|summari[sz]e|deliver|touch|overwrite|delete)|no\s+(?:edits?|changes?|implementation|code)(?:\s+yet)?/gi;
+const NO_WRITE_RE = /(?:停止(?:创建|写入|修改|改写|编辑)|stop\s+(?:writing|editing|modifying)|(?:当前不准备|先不准备|不准备|先不要|暂不|不要|不得|禁止|不允许|无需|无须|不需要|别)[^，,。；;\n]{0,24}(?:创建|新建|生成|编写|写|写入|写到|保存|输出|新增|添加|修改|改|更新|修复|修正|补全|完善|重构|改造|替换|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|翻译|总结|摘要|概括|提取|接入|封装|拆分|实现|交付|改动|动|触碰|覆盖|删除)|不(?:创建|新建|生成|编写|写|写入|保存|输出|新增|添加|修改|改|更新|修复|改动|动|触碰|覆盖|删除|做(?:修改|变更|修复))|(?:do\s+not|don't|must\s+not|should\s+not|never|without)[^,.;\n]{0,32}(?:create|write|generate|save|add|update|modify|change|edit|fix|repair|implement|refactor|replace|rename|move|copy|append|insert|translate|summari[sz]e|deliver|touch|overwrite|delete)|no\s+(?:edits?|changes?|implementation|code)(?:\s+yet)?)/i;
+const NO_WRITE_CLAUSE_RE = /(?:当前不准备|先不准备|不准备|先不要|暂不|不要|不得|禁止|不允许|无需|无须|不需要|别)[^，,。；;\n]{0,24}(?:创建|新建|生成|编写|写|写入|写到|保存|输出|新增|添加|修改|改|更新|修复|修正|补全|完善|重构|改造|替换|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|翻译|总结|摘要|概括|提取|接入|封装|拆分|实现|交付|改动|动|触碰|覆盖|删除)|不(?:创建|新建|生成|编写|写|写入|保存|输出|新增|添加|修改|改|更新|修复|改动|动|触碰|覆盖|删除|做(?:修改|变更|修复))|(?:do\s+not|don't|must\s+not|should\s+not|never|without)[^,.;\n]{0,32}(?:create|write|generate|save|add|update|modify|change|edit|fix|repair|implement|refactor|replace|rename|move|copy|append|insert|translate|summari[sz]e|deliver|touch|overwrite|delete)|no\s+(?:edits?|changes?|implementation|code)(?:\s+yet)?/gi;
 const OTHER_FILE_SCOPE_RE = /(?:其他|其它|其余|用户)(?:的)?(?:文件|文档|源码|代码)|(?:other|unrelated|user)\s+files?/i;
 const FORMAL_SOURCE_SCOPE_RE = /(?:正式|原有|现有|既有|生产|主线|原项目|任何|所有|全部)?[^，,。；;\n]{0,8}(?:源码|源码目录|source\s+code)|(?:正式|原有|现有|既有|生产|主线|原项目)[^，,。；;\n]{0,8}(?:代码|代码目录|code)|(?:formal|production|existing|original|any|all)\s+(?:source\s+code|source|code)|\bsource(?:\s+(?:code|files?))?\b/i;
 const HISTORICAL_REQUIREMENT_SCOPE_RE = /(?:旧要求|旧需求|旧版本|原要求|原需求|先前要求|之前要求|前面(?:曾)?说|历史要求|历史需求|old|previous|prior|earlier)/i;
@@ -131,9 +131,10 @@ const STDOUT_RE = /(?:打印|输出|stdout|std::cout|\bcout\b|console\.log|print
 const OUTPUT_ARTIFACT_RE = /(?:(?:输出|打印)[^，,。；;\n]{0,20}(?:文件|文档|报告|Markdown|md|目录|路径|清单|内容)|(?:文件|文档|报告|内容|最后一行|每行|一行)[^，,。；;\n]{0,24}(?:打印|输出|console\.log|print)|(?:output|print)[^,.;\n]{0,24}(?:file|document|report|markdown|content|line))/i;
 const NO_RUN_CLAUSE_RE = /(?:不(?:要|用|需|需要|必|得|准|能)?|禁止|别|勿|请勿|未)[^，,。；;\n]{0,32}(?:运行|执行|启动|测试)[^，,。；;\n]*|(?:do\s+not|don't|without|no)\s+[^,.;\n]*(?:run|execute|start|test)[^,.;\n]*/gi;
 const TEST_AS_IMPLEMENTATION_CONSTRAINT_RE = /(?:不要|不得|禁止|别|勿|请勿)[^，,。；;\n]{0,20}(?:为(?:了)?(?:通)?过|迎合|针对)\s*(?:测试|tests?)[^，,。；;\n]*|\b(?:do\s+not|don't|never)\b[^,.;\n]{0,24}\bhardcode\b[^,.;\n]{0,16}\btests?\b/gi;
+const TEST_DISCUSSION_RE = /(?:missing|missed|lacking|lack\s+of|uncovered|insufficient)\s+tests?|test\s+coverage|test\s+results?|缺少测试|测试缺失|未覆盖测试|测试覆盖率不足|测试结果/gi;
 const EXPLICIT_TEST_COMMAND_RE = /(?:运行|执行|run|execute)[^，,。；;\n]{0,24}(?:\.\/?|\b)(?:test\.sh|tests?|ctest|pytest|jest|vitest|mocha)\b/i;
-const READ_ONLY_RE = /(?:只读|仅分析|只分析|仅讨论|只讨论|只指出|仅指出|直接回复|直接回答|当前不准备|不准备|先不要|暂不|不要落地|不需要代码|only\s+(?:explain|discuss|answer)|just\s+(?:chat|talk|discuss))/i;
-const READ_REQUEST_RE = /(?:读取|读出|查看|检查|确认|分析|提取|显示|告诉我|read|inspect|check|confirm|analy[sz]e|extract|show|display|take\s+a\s+look|look\s+at)/i;
+const READ_ONLY_RE = /(?:只读|仅分析|只分析|仅讨论|只讨论|只指出|仅指出|只说结论|仅说结论|只给结论|仅给结论|直接回复|直接回答|当前不准备|不准备|先不要|暂不|不要落地|不需要代码|only\s+(?:explain|discuss|answer)|just\s+(?:chat|talk|discuss))/i;
+const READ_REQUEST_RE = /(?:读取|读出|查看|看下|看一下|检查|确认|分析|提取|显示|告诉我|read|inspect|check|confirm|scan|analy[sz]e|extract|show|display|take\s+a\s+look|look\s+(?:at|through))/i;
 const READ_CONTENT_RE = /(?:文件内容|内容|第一行|首行|真实值|常量值|显示|读出|提取|告诉我[^，,。；;\n]{0,20}(?:行|内容|值)|(?:show|display|read|extract)[^,.;\n]{0,28}(?:content|line|value)|(?:content|first\s+line|actual\s+value))/i;
 const DERIVED_ARTIFACT_OUTPUT_RE = /(?:(?:读取|读出|查看|参考|根据|基于|read|from|based\s+on)[^，,。；;\n]{0,100}(?:翻译|总结|摘要|概括|提取|生成|写入|写到|保存|输出|translate|summari[sz]e|extract|generate|write|save|output)[^，,。；;\n]{0,40}(?:成|为|到|至|入|\bto\b|\binto\b|\bas\b)|(?:翻译|总结|摘要|概括|提取|translate|summari[sz]e|extract)[^，,。；;\n]{0,80}(?:成|为|到|至|入|\bto\b|\binto\b|\bas\b)|(?:复制|拷贝|copy)[^，,。；;\n]{0,40}(?:到|至|为|成|入|\bto\b|\binto\b|\bas\b))/i;
 const DEVSEEK_ISOLATED_ARTIFACT_PATH_RE = /(?:^|\/)\.devseek[^/]*(?:\/|$)/i;
@@ -205,7 +206,9 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const simpleFileRequest = parseSimpleFileWriteRequest(prompt);
   const validationPrompt = stripAgentProceduralExecutionPhrases(
     stripSimpleFileContentPayload(prompt, simpleFileRequest?.content),
-  ).replace(TEST_AS_IMPLEMENTATION_CONSTRAINT_RE, ' ');
+  )
+    .replace(TEST_AS_IMPLEMENTATION_CONSTRAINT_RE, ' ')
+    .replace(TEST_DISCUSSION_RE, ' ');
   const validationText = maskTaskTargetPaths(validationPrompt, taskContract.inputs);
   const validationRequested = !artifactPathQuery
     && !destructiveIntent

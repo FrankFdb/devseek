@@ -121,6 +121,56 @@ function isToolName(name) {
   return !!TOOL_NAMES[n] || n.startsWith('mcp__');
 }
 
+function structuredToolName(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return '';
+  if (typeof obj.tool === 'string') return obj.tool.trim();
+  if (typeof obj.name === 'string') return obj.name.trim();
+  const fn = obj.function;
+  if (fn && typeof fn === 'object' && !Array.isArray(fn) && typeof fn.name === 'string') {
+    return fn.name.trim();
+  }
+  const nestedTool = obj.tool;
+  if (nestedTool && typeof nestedTool === 'object' && !Array.isArray(nestedTool) && typeof nestedTool.name === 'string') {
+    return nestedTool.name.trim();
+  }
+  return typeof obj.type === 'string' ? obj.type.trim() : '';
+}
+
+function isKnownStructuredToolCall(value) {
+  const name = structuredToolName(value);
+  return !!name && isToolName(name);
+}
+
+function isToolCallsEnvelope(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const calls = Array.isArray(value.tool_calls)
+    ? value.tool_calls
+    : (Array.isArray(value.toolCalls) ? value.toolCalls : null);
+  return !!calls && calls.length > 0 && calls.every(isKnownStructuredToolCall);
+}
+
+function isFunctionCallEnvelope(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const call = value.function_call || value.functionCall;
+  return !!call && isKnownStructuredToolCall(call);
+}
+
+function isMixedContentToolEnvelope(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !Array.isArray(value.content)) return false;
+  let sawTool = false;
+  for (const item of value.content) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+    if (item.type === 'text' && typeof item.text === 'string') continue;
+    if (!isKnownStructuredToolCall(item)) return false;
+    sawTool = true;
+  }
+  return sawTool;
+}
+
+function isToolPayloadEnvelope(value) {
+  return isToolCallsEnvelope(value) || isFunctionCallEnvelope(value) || isMixedContentToolEnvelope(value);
+}
+
 function normalizeXmlToolName(name) {
   return String(name || '').trim().replace(/^TOOL_/i, '');
 }
@@ -293,6 +343,7 @@ function looksLikeToolArgumentPayload(text) {
   const items = Array.isArray(parsed) ? parsed : [parsed];
   return items.some((item) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+    if (isToolPayloadEnvelope(item)) return true;
     return Object.keys(item).some((key) => /^(?:filePath|path|target_directory|targetDirectory|pattern|recursive|command|content|oldText|newText|todoList|summary|query|include|type)$/i.test(key));
   });
 }
@@ -397,6 +448,34 @@ function findJsonObjectEnd(text, start) {
   return -1;
 }
 
+function findJsonArrayEnd(text, start) {
+  let depth = 0;
+  let inStr = false;
+  for (let j = start; j < text.length; j++) {
+    const ch = text[j];
+    if (inStr) {
+      if (ch === '\\') j++;
+      else if (ch === '"') inStr = false;
+    } else if (ch === '"') {
+      inStr = true;
+    } else if (ch === '[') {
+      depth++;
+    } else if (ch === ']') {
+      depth--;
+      if (depth === 0) return j;
+    }
+  }
+  return -1;
+}
+
+function findNextJsonStart(text, startAt) {
+  const objectStart = text.indexOf('{', startAt);
+  const arrayStart = text.indexOf('[', startAt);
+  if (objectStart < 0) return arrayStart;
+  if (arrayStart < 0) return objectStart;
+  return Math.min(objectStart, arrayStart);
+}
+
 function stripCallingToolBlocksFromText(text) {
   let out = '';
   let i = 0;
@@ -494,6 +573,63 @@ function stripToolArgumentBlocksFromText(text) {
     let next = jsonEnd + 1;
     while (next < text.length && /[ \t\r\n`]/.test(text[next])) next++;
     i = next;
+  }
+  return out;
+}
+
+function jsonObjectToTool(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+  const name = structuredToolName(obj);
+  return name && isToolName(name) ? name : null;
+}
+
+function jsonArrayIsToolPayload(value) {
+  return Array.isArray(value) && value.length > 0 && value.every((item) => !!jsonObjectToTool(item));
+}
+
+function jsonObjectIsToolPayload(value) {
+  return !!(jsonObjectToTool(value) || isToolPayloadEnvelope(value));
+}
+
+function stripJsonToolPayloadsFromText(text) {
+  if (!text) return '';
+  let result = text.replace(/```(?:json|JSON)?\s*\n([\s\S]*?)```/g, (full, inner) => {
+    const trimmed = String(inner || '').trim();
+    if (trimmed[0] !== '{' && trimmed[0] !== '[') return full;
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return jsonArrayIsToolPayload(parsed) ? '' : full;
+      return jsonObjectIsToolPayload(parsed) ? '' : full;
+    } catch {
+      return full;
+    }
+  });
+
+  let out = '';
+  let i = 0;
+  while (i < result.length) {
+    const start = findNextJsonStart(result, i);
+    if (start < 0) {
+      out += result.slice(i);
+      break;
+    }
+    out += result.slice(i, start);
+    const isArray = result[start] === '[';
+    const end = isArray ? findJsonArrayEnd(result, start) : findJsonObjectEnd(result, start);
+    if (end < 0) {
+      out += result.slice(start);
+      break;
+    }
+    const candidate = result.slice(start, end + 1);
+    let shouldStrip = false;
+    try {
+      const parsed = JSON.parse(candidate);
+      shouldStrip = isArray ? jsonArrayIsToolPayload(parsed) : jsonObjectIsToolPayload(parsed);
+    } catch {
+      shouldStrip = false;
+    }
+    if (!shouldStrip) out += candidate;
+    i = end + 1;
   }
   return out;
 }
@@ -752,6 +888,9 @@ function stripToolCallBlocks(text) {
   const beforeXmlTagCleanup = result;
   result = stripXmlToolTagBlocksFromText(result);
   removedInternalBlock = removedInternalBlock || result !== beforeXmlTagCleanup;
+  const beforeJsonCleanup = result;
+  result = stripJsonToolPayloadsFromText(result);
+  removedInternalBlock = removedInternalBlock || result !== beforeJsonCleanup;
   const beforeDsmlCleanup = result;
   result = stripDsmlToolCallBlocksFromText(result);
   removedInternalBlock = removedInternalBlock || result !== beforeDsmlCleanup;

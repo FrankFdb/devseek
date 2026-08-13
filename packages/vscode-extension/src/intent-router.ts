@@ -122,7 +122,8 @@ export function shouldUseAgentMode(
   if (intent.mode === 'inspect' || intent.mode === 'plan') {
     return files.length > 0
       || intent.signals.includes('explicit-file-path')
-      || intent.signals.includes('artifact-path-query');
+      || intent.signals.includes('artifact-path-query')
+      || intent.signals.includes('workspace-diff-review');
   }
 
   if (intent.kind === 'chat') return false;

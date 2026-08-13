@@ -85,6 +85,59 @@ function isWebviewToolName(name) {
   return !!WEBVIEW_TOOL_NAMES[n] || n.indexOf('mcp__') === 0;
 }
 
+function webviewStructuredToolName(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return '';
+  if (typeof obj.tool === 'string') return obj.tool.trim();
+  if (typeof obj.name === 'string') return obj.name.trim();
+  var fn = obj.function;
+  if (fn && typeof fn === 'object' && !Array.isArray(fn) && typeof fn.name === 'string') {
+    return fn.name.trim();
+  }
+  var nestedTool = obj.tool;
+  if (nestedTool && typeof nestedTool === 'object' && !Array.isArray(nestedTool) && typeof nestedTool.name === 'string') {
+    return nestedTool.name.trim();
+  }
+  return typeof obj.type === 'string' ? obj.type.trim() : '';
+}
+
+function isWebviewKnownStructuredToolCall(value) {
+  var name = webviewStructuredToolName(value);
+  return !!name && isWebviewToolName(name);
+}
+
+function isWebviewToolCallsEnvelope(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  var calls = Array.isArray(value.tool_calls)
+    ? value.tool_calls
+    : (Array.isArray(value.toolCalls) ? value.toolCalls : null);
+  return !!calls && calls.length > 0 && calls.every(isWebviewKnownStructuredToolCall);
+}
+
+function isWebviewFunctionCallEnvelope(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  var call = value.function_call || value.functionCall;
+  return !!call && isWebviewKnownStructuredToolCall(call);
+}
+
+function isWebviewMixedContentToolEnvelope(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !Array.isArray(value.content)) return false;
+  var sawTool = false;
+  for (var i = 0; i < value.content.length; i++) {
+    var item = value.content[i];
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+    if (item.type === 'text' && typeof item.text === 'string') continue;
+    if (!isWebviewKnownStructuredToolCall(item)) return false;
+    sawTool = true;
+  }
+  return sawTool;
+}
+
+function isWebviewToolPayloadEnvelope(value) {
+  return isWebviewToolCallsEnvelope(value)
+    || isWebviewFunctionCallEnvelope(value)
+    || isWebviewMixedContentToolEnvelope(value);
+}
+
 function normalizeWebviewXmlToolName(name) {
   return String(name || '').trim().replace(/^TOOL_/i, '');
 }
@@ -122,6 +175,7 @@ function looksLikeWebviewToolArgumentPayload(text) {
   var items = Array.isArray(parsed) ? parsed : [parsed];
   return items.some(function(item) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+    if (isWebviewToolPayloadEnvelope(item)) return true;
     return Object.keys(item).some(function(key) {
       return /^(?:filePath|path|target_directory|targetDirectory|pattern|recursive|command|content|oldText|newText|todoList|summary|query|include|type)$/i.test(key);
     });
@@ -470,9 +524,7 @@ function stripToolArgumentBlocksFromText(text) {
 
 function jsonObjectToWebviewTool(obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
-  var rawName = typeof obj.tool === 'string'
-    ? obj.tool
-    : (typeof obj.name === 'string' ? obj.name : (typeof obj.type === 'string' ? obj.type : ''));
+  var rawName = webviewStructuredToolName(obj);
   var name = rawName.trim();
   if (!name || (!WEBVIEW_TOOL_NAMES[name] && name.indexOf('mcp__') !== 0)) return null;
   return name;
@@ -540,7 +592,9 @@ function jsonArrayIsWebviewToolPayload(value) {
 }
 
 function jsonObjectIsWebviewToolPayload(value) {
-  return !!(jsonObjectToWebviewTool(value) || jsonObjectToImplicitWebviewArrayTool(value));
+  return !!(jsonObjectToWebviewTool(value)
+    || jsonObjectToImplicitWebviewArrayTool(value)
+    || isWebviewToolPayloadEnvelope(value));
 }
 
 function stripJsonToolPayloadsFromText(text) {
