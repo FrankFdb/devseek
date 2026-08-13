@@ -38,6 +38,22 @@ const keepTmp = hasFlag('--keep') || process.env.DEVSEEK_CONTROLLED_VSIX_KEEP ==
 const keepWindow = hasFlag('--keep-window') || process.env.DEVSEEK_CONTROLLED_VSIX_KEEP_WINDOW === '1';
 const outputReportPath = argValue('--report') || process.env.DEVSEEK_CONTROLLED_VSIX_REPORT || '';
 const scenarioSuiteId = argValue('--suite') || process.env.DEVSEEK_CONTROLLED_VSIX_SUITE || '';
+
+if (hasFlag('--list-suites-json')) {
+  const catalog = controlledScenarioSuiteCatalog();
+  console.log(JSON.stringify({
+    schema_version: 'devseek.controlled-vsix-suite-catalog/v1',
+    suites: Object.fromEntries(Object.entries(catalog).map(([suite, caseIds]) => [
+      suite,
+      caseIds.map(caseId => {
+        const scenario = resolveControlledScenario(caseId);
+        return { id: scenario.id, kind: scenario.kind };
+      }),
+    ])),
+  }, null, 2));
+  process.exit(0);
+}
+
 const selectedSuiteOptions = resolveControlledScenarioSuiteOptions(scenarioSuiteId);
 const selectedScenarios = resolveControlledScenarioSelection({
   caseId: argValue('--case') || process.env.DEVSEEK_CONTROLLED_VSIX_CASE || '',
@@ -272,7 +288,16 @@ function resolveControlledScenarioSelection({ caseId, suiteId }) {
 }
 
 function resolveControlledScenarioSuite(id) {
-  const suites = {
+  const suites = controlledScenarioSuiteCatalog();
+  const scenarioIds = suites[String(id || '').trim()];
+  if (!scenarioIds) {
+    throw new Error(`Unknown controlled VSIX suite: ${id}. Expected one of: ${Object.keys(suites).join(', ')}`);
+  }
+  return scenarioIds.map(resolveControlledScenario);
+}
+
+function controlledScenarioSuiteCatalog() {
+  return {
     'basic-surface': ['normal', 'exception', 'boundary'],
     'journey-core': ['normal', 'exception', 'boundary', 'cpp-program', 'existing-js-fix', 'latest-requirement'],
     'realistic-product': [
@@ -303,11 +328,6 @@ function resolveControlledScenarioSuite(id) {
       'connector-evidence-redaction-replay',
     ],
   };
-  const scenarioIds = suites[String(id || '').trim()];
-  if (!scenarioIds) {
-    throw new Error(`Unknown controlled VSIX suite: ${id}. Expected one of: ${Object.keys(suites).join(', ')}`);
-  }
-  return scenarioIds.map(resolveControlledScenario);
 }
 
 function resolveControlledScenarioSuiteOptions(id) {

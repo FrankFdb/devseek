@@ -38,71 +38,85 @@ const CASE_DESIGN_DIMENSIONS = Object.freeze([
     id: 'provider_reply_corruption',
     user_need: 'DeepSeek Web may return malformed or truncated tool replies.',
     suites: ['r2-07e-stream-protocol'],
+    cases: ['stream-truncated-no-mutation', 'stream-request-mismatch-no-mutation'],
   },
   {
     id: 'read_only_boundary',
     user_need: 'Users ask for analysis or review without allowing file edits.',
     suites: ['journey-core', 'agent-fit-product'],
+    cases: ['boundary', 'agent-fit-review-only'],
   },
   {
     id: 'create_program_and_verify',
     user_need: 'Users ask DevSeek to create runnable code and prove it works.',
     suites: ['journey-core', 'realistic-product', 'coding-conformance-product'],
+    cases: ['cpp-program', 'realistic-python-log-tool', 'conformance-create-and-verify'],
   },
   {
     id: 'modify_existing_project',
     user_need: 'Users ask DevSeek to fix existing code without broad rewrites.',
     suites: ['journey-core', 'realistic-product', 'coding-conformance-product'],
+    cases: ['existing-js-fix', 'conformance-modify-and-verify'],
   },
   {
     id: 'test_failure_repair_loop',
     user_need: 'Users expect DevSeek to run tests, repair failures, and rerun.',
     suites: ['coding-conformance-product'],
+    cases: ['conformance-verify-repair-reverify'],
   },
   {
     id: 'incremental_followup_context',
     user_need: 'Users refine previous work in the same session.',
     suites: ['realistic-product'],
+    cases: ['realistic-python-log-json-followup'],
   },
   {
     id: 'latest_requirement_wins',
     user_need: 'Users change their mind and expect the newest instruction to win.',
     suites: ['journey-core'],
+    cases: ['latest-requirement'],
   },
   {
     id: 'permission_denial_no_effect',
     user_need: 'Users deny risky effects and expect no hidden mutation.',
     suites: ['coding-conformance-product'],
+    cases: ['conformance-permission-denied-no-effect'],
   },
   {
     id: 'policy_refusal_no_mutation',
     user_need: 'Users may request unsafe work; DevSeek must refuse without edits.',
     suites: ['realistic-product', 'coding-conformance-product'],
+    cases: ['realistic-safety-boundary', 'conformance-policy-refusal-no-mutation'],
   },
   {
     id: 'ambiguous_request_clarification',
     user_need: 'Users give vague instructions; DevSeek should clarify or stay minimal.',
     suites: ['agent-fit-product'],
+    cases: ['agent-fit-ambiguous-clarify'],
   },
   {
     id: 'multi_file_tested_edit',
     user_need: 'Users ask for changes that span multiple files and tests.',
     suites: ['agent-fit-product'],
+    cases: ['agent-fit-multifile-with-test'],
   },
   {
     id: 'documentation_deliverable_anchors',
     user_need: 'Users ask for Markdown/report deliverables grounded in source facts.',
     suites: ['agent-fit-product'],
+    cases: ['agent-fit-markdown-report-anchors'],
   },
   {
     id: 'wrapped_tool_reply_compatibility',
     user_need: 'DeepSeek Web may echo OpenAI-style or wrapped tool-call payloads.',
     suites: ['agent-fit-product'],
+    cases: ['agent-fit-openai-tool-calls-wrapper'],
   },
   {
     id: 'connector_evidence_redaction',
     user_need: 'Users attach connector evidence; DevSeek must redact and stay read-only.',
     suites: ['r2-07f-connector-security'],
+    cases: ['connector-evidence-redaction-replay'],
   },
 ]);
 const PROCESS_PATTERNS = Object.freeze([
@@ -722,9 +736,13 @@ function evaluateCaseDesign(report) {
   const plannedSuites = plannedControlledSuites(plan);
   const executedSuites = report.summary?.controlled_suites || [];
   const selectedSuites = report.execution_mode === 'dry-run' ? plannedSuites : executedSuites;
+  const suiteCatalog = loadControlledSuiteCatalog();
+  const plannedCases = casesForSuites(plannedSuites, suiteCatalog);
+  const executedCases = report.summary?.controlled_cases || [];
+  const selectedCases = report.execution_mode === 'dry-run' ? plannedCases : executedCases;
   const profile = plan.coverage_profile || 'focused-regression';
   const coveredDimensions = CASE_DESIGN_DIMENSIONS
-    .filter(dimension => dimension.suites.some(suite => selectedSuites.includes(suite)))
+    .filter(dimension => dimension.cases.some(caseId => selectedCases.includes(caseId)))
     .map(dimension => dimension.id);
   const missingDimensions = CASE_DESIGN_DIMENSIONS
     .filter(dimension => !coveredDimensions.includes(dimension.id))
@@ -750,7 +768,9 @@ function evaluateCaseDesign(report) {
     coverage_profile: profile,
     verdict: caseDesignVerdict({ enforced, planOk, evidenceOk, executionMode: report.execution_mode }),
     selected_suites: selectedSuites,
+    selected_cases: selectedCases,
     required_acceptance_suites: [...ACCEPTANCE_CONTROLLED_SUITES],
+    required_acceptance_cases: requiredAcceptanceCases(),
     missing_acceptance_suites: missingAcceptanceSuites,
     missing_executed_acceptance_suites: missingExecutedAcceptanceSuites,
     covered_dimensions: coveredDimensions,
@@ -761,6 +781,37 @@ function evaluateCaseDesign(report) {
     release_claim_permitted: false,
     release_claim_reason: 'Local T3 user simulation can validate product behavior, but C14 release qualification still requires live Provider, RC, sealed holdout, and external authority evidence.',
   };
+}
+
+function requiredAcceptanceCases() {
+  return [...new Set(CASE_DESIGN_DIMENSIONS.flatMap(dimension => dimension.cases))];
+}
+
+function casesForSuites(suites, suiteCatalog = loadControlledSuiteCatalog()) {
+  return suites.flatMap(suite => suiteCatalog[suite] || []);
+}
+
+function loadControlledSuiteCatalog() {
+  const result = cp.spawnSync(process.execPath, [
+    'packages/vscode-extension/test/devseek-controlled-vsix-harness.mjs',
+    '--list-suites-json',
+  ], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    timeout: 10_000,
+    maxBuffer: 4 * 1024 * 1024,
+  });
+  if (result.status !== 0) return {};
+  try {
+    const parsed = JSON.parse(result.stdout || '{}');
+    if (parsed.schema_version !== 'devseek.controlled-vsix-suite-catalog/v1') return {};
+    return Object.fromEntries(Object.entries(parsed.suites || {}).map(([suite, cases]) => [
+      suite,
+      Array.isArray(cases) ? cases.map(entry => entry.id).filter(Boolean) : [],
+    ]));
+  } catch {
+    return {};
+  }
 }
 
 function caseDesignVerdict({ enforced, planOk, evidenceOk, executionMode }) {
@@ -788,7 +839,7 @@ function writeOptionalOutputs(report, options) {
 }
 
 function consoleReport(report, options) {
-  const caseDesignReview = report.case_design_review || evaluateCaseDesign(report);
+  const caseDesignReview = caseDesignReviewFor(report);
   if (options.printFull || report.execution_mode === 'dry-run') return report;
   return {
     ok: report.ok,
@@ -836,7 +887,7 @@ function consoleReport(report, options) {
 }
 
 function renderMarkdownReport(report) {
-  const caseDesignReview = report.case_design_review || evaluateCaseDesign(report);
+  const caseDesignReview = caseDesignReviewFor(report);
   const stepRows = report.steps.length > 0
     ? report.steps.map(step => (
       `| \`${step.id}\` | ${step.ok ? 'PASS' : 'FAIL'} | \`${step.kind}\` | \`${step.stdout_log}\` |`
@@ -930,6 +981,8 @@ function renderMarkdownReport(report) {
     `- Enforced: \`${caseDesignReview.enforced}\``,
     `- Acceptance plan eligible: \`${caseDesignReview.acceptance_plan_eligible}\``,
     `- Acceptance execution eligible: \`${caseDesignReview.acceptance_execution_eligible}\``,
+    `- Selected case count: \`${caseDesignReview.selected_cases.length}\``,
+    `- Required acceptance case count: \`${caseDesignReview.required_acceptance_cases.length}\``,
     `- Release claim permitted: \`${caseDesignReview.release_claim_permitted}\``,
     `- Release claim reason: ${caseDesignReview.release_claim_reason}`,
     '',
@@ -968,6 +1021,18 @@ function renderMarkdownReport(report) {
     '- Keep resource snapshots in this runner so repeated iteration starts from the last failing class, not from a full reset.',
     '',
   ].join('\n');
+}
+
+function caseDesignReviewFor(report) {
+  const review = report.case_design_review;
+  if (
+    !review
+    || !Array.isArray(review.selected_cases)
+    || !Array.isArray(review.required_acceptance_cases)
+  ) {
+    return evaluateCaseDesign(report);
+  }
+  return review;
 }
 
 function repoState() {

@@ -10,6 +10,30 @@ import test from 'node:test';
 const execFile = promisify(execFileCallback);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
+test('controlled VSIX harness exposes a machine-readable suite case catalog', async () => {
+  const { stdout } = await execFile(
+    process.execPath,
+    ['packages/vscode-extension/test/devseek-controlled-vsix-harness.mjs', '--list-suites-json'],
+    { cwd: repoRoot, maxBuffer: 4 * 1024 * 1024 },
+  );
+  const catalog = JSON.parse(stdout);
+
+  assert.equal(catalog.schema_version, 'devseek.controlled-vsix-suite-catalog/v1');
+  assert.deepEqual(
+    catalog.suites['agent-fit-product'].map(entry => entry.id),
+    [
+      'agent-fit-ambiguous-clarify',
+      'agent-fit-review-only',
+      'agent-fit-multifile-with-test',
+      'agent-fit-markdown-report-anchors',
+      'agent-fit-openai-tool-calls-wrapper',
+    ],
+  );
+  assert.ok(catalog.suites['coding-conformance-product'].some(entry =>
+    entry.id === 'conformance-verify-repair-reverify'
+  ));
+});
+
 test('top-agent user simulation runner plans targeted checks before broad controlled VSIX suites', async () => {
   const { stdout } = await execFile(
     process.execPath,
@@ -33,6 +57,8 @@ test('top-agent user simulation runner plans targeted checks before broad contro
   assert.equal(report.case_design_review.acceptance_execution_eligible, false);
   assert.equal(report.case_design_review.release_claim_permitted, false);
   assert.deepEqual(report.case_design_review.missing_dimensions, []);
+  assert.ok(report.case_design_review.selected_cases.includes('agent-fit-openai-tool-calls-wrapper'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('conformance-verify-repair-reverify'));
   assert.equal(report.plan.steps[0].id, 'targeted-local-contracts');
   assert.equal(report.plan.steps[0].kind, 'targeted-local-contract');
 
@@ -80,6 +106,12 @@ test('top-agent user simulation runner can narrow to one focused controlled suit
   assert.equal(report.case_design_review.acceptance_plan_eligible, false);
   assert.equal(report.case_design_review.acceptance_execution_eligible, false);
   assert.ok(report.case_design_review.missing_dimensions.includes('provider_reply_corruption'));
+  assert.deepEqual(report.case_design_review.selected_cases, [
+    'realistic-python-log-tool',
+    'realistic-python-log-json-followup',
+    'existing-js-fix',
+    'realistic-safety-boundary',
+  ]);
 });
 
 test('top-agent user simulation runner can retain only the last controlled VSIX window', async () => {
@@ -186,6 +218,7 @@ test('top-agent user simulation runner renders markdown from existing evidence w
       },
       plan: {
         source_plan: 'docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md',
+        coverage_profile: 'focused-regression',
       },
       steps: [
         {
@@ -219,6 +252,16 @@ test('top-agent user simulation runner renders markdown from existing evidence w
         qualification_effect: 'NONE',
         claims_permitted: false,
       },
+      case_design_review: {
+        ok: true,
+        enforced: false,
+        coverage_profile: 'focused-regression',
+        verdict: 'focused-regression-only-not-release-acceptance',
+        covered_dimensions: ['incremental_followup_context'],
+        missing_dimensions: [],
+        release_claim_permitted: false,
+        release_claim_reason: 'legacy report without case-level fields',
+      },
       errors: [],
     }, null, 2)}\n`, 'utf8');
 
@@ -243,6 +286,8 @@ test('top-agent user simulation runner renders markdown from existing evidence w
     assert.match(markdown, /## Actual User Cases/);
     assert.match(markdown, /## Case Design Review/);
     assert.match(markdown, /focused-regression-only-not-release-acceptance/);
+    assert.match(markdown, /Selected case count: `2`/);
+    assert.match(markdown, /Required acceptance case count: `20`/);
     assert.match(markdown, /Report render mode: `from-report`/);
     assert.match(markdown, /## Findings And Fixes/);
     assert.match(markdown, /does not overwrite the original execution evidence/);
