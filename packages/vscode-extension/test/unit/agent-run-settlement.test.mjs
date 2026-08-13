@@ -171,27 +171,70 @@ test('agent run settlement preserves canonical blocked completion without recomp
   assert.deepEqual(completionRequest.data.canonicalCompletionEvidenceRefs, ['task-contract:run-4']);
 });
 
+test('agent run settlement clears recovered task failures for canonical completion event data', () => {
+  let completionRequest;
+  const terminalPermissions = {
+    completeRunContext(_runContext, requestedStatus, data) {
+      completionRequest = { requestedStatus, data };
+      return requestedStatus;
+    },
+  };
+
+  const settlement = settleAgentLoopResult(terminalPermissions, { runId: 'run-5' }, {
+    tasksTotal: 1,
+    tasksApplied: 1,
+    tasksFailed: 1,
+    changedPaths: ['src/parser.js'],
+    completionDecision: {
+      version: 'devseek.coding-completion-decision/v1',
+      runId: 'run-5',
+      decisionId: 'vscode-completion',
+      idempotencyKey: 'run-5:vscode-completion',
+      status: 'completed',
+      acceptance: [
+        { criterionId: 'requested-outcome', status: 'passed', evidenceRefs: ['workspace-readback:repair'] },
+        { criterionId: 'verified', status: 'passed', evidenceRefs: ['vscode-terminal-verification:repair:exit-0'] },
+      ],
+      reasonCodes: [],
+      residualRisks: [],
+      evidenceRefs: [
+        'terminal-operation:focused-check:failed',
+        'vscode-terminal-verification:repair:exit-0',
+      ],
+    },
+  });
+
+  assert.equal(settlement.requestedStatus, 'completed');
+  assert.equal(settlement.status, 'completed');
+  assert.equal(completionRequest.data.tasksFailed, 0);
+  assert.equal(completionRequest.data.canonicalCompletionStatus, 'completed');
+  assert.deepEqual(completionRequest.data.canonicalCompletionEvidenceRefs, [
+    'terminal-operation:focused-check:failed',
+    'vscode-terminal-verification:repair:exit-0',
+  ]);
+});
+
 test('agent run settlement preserves canonical cancellation', () => {
   const terminalPermissions = {
     completeRunContext(_runContext, requestedStatus) {
       return requestedStatus;
     },
   };
-  const settlement = settleAgentLoopResult(terminalPermissions, { runId: 'run-5' }, {
+  const settlement = settleAgentLoopResult(terminalPermissions, { runId: 'run-6' }, {
     tasksTotal: 1,
     tasksApplied: 0,
     tasksFailed: 1,
     changedPaths: [],
     completionDecision: {
       version: 'devseek.coding-completion-decision/v1',
-      runId: 'run-5',
+      runId: 'run-6',
       decisionId: 'vscode-completion',
-      idempotencyKey: 'run-5:vscode-completion',
+      idempotencyKey: 'run-6:vscode-completion',
       status: 'cancelled',
       acceptance: [],
       reasonCodes: [],
       residualRisks: [],
-      evidenceRefs: ['task-contract:run-5'],
+      evidenceRefs: ['task-contract:run-6'],
     },
   });
 

@@ -30,10 +30,11 @@ export function settleAgentLoopResult(
   const canonicalStatus = result.completionDecision?.status;
   const requestedStatus: RunContextStatus = canonicalStatus
     ?? (result.tasksFailed > 0 ? 'failed' : 'completed');
+  const settledTasksFailed = canonicalStatus === 'completed' ? 0 : result.tasksFailed;
   const status = terminalPermissions.completeRunContext(runContext, requestedStatus, {
     tasksTotal: result.tasksTotal,
     tasksApplied: result.tasksApplied,
-    tasksFailed: result.tasksFailed,
+    tasksFailed: settledTasksFailed,
     changedPaths: changedPaths.slice(0, 12),
     ...(result.completionDecision ? {
       canonicalCompletionStatus: result.completionDecision.status,

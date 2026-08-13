@@ -2,7 +2,7 @@
   "name": "devseek-netai",
   "displayName": "DevSeek",
   "description": "DevSeek — AI-powered coding agent with local compilation, multi-round repair, and universal learning",
-  "version": "2.0.7",
+  "version": "2.0.8",
   "publisher": "devseek-netai",
   "repository": {
     "type": "git",
