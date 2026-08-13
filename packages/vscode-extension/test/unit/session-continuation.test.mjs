@@ -38,6 +38,15 @@ test('Session continuation: detects explicit same-session follow-up wording', ()
   assert.equal(isLikelySessionContinuation('继续修复 src/math.js'), true);
 });
 
+test('Session continuation: detects approval shorthand for prior task execution', () => {
+  assert.equal(isLikelySessionContinuation('go ahead'), true);
+  assert.equal(isLikelySessionContinuation('do it'), true);
+  assert.equal(isLikelySessionContinuation('开始吧'), true);
+  assert.equal(isLikelySessionContinuation('就按这个改'), true);
+  assert.equal(isLikelySessionContinuation('按上面的计划落地'), true);
+  assert.equal(isLikelySessionContinuation('go ahead?'), false);
+});
+
 test('Session continuation: explicit target actions start independent task contracts', () => {
   assert.equal(isLikelySessionContinuation(
     '请修复 src/math.js 中 add(a, b) 的明显错误。要求 add(2, 3) 返回 5。',

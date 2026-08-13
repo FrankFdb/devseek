@@ -28,6 +28,14 @@ export interface AgentFileWriteContext {
   toolRisk?: ToolRisk;
   displayName?: string;
   requestPrompt?: string;
+  semanticIntent?: {
+    mutationRequested?: boolean;
+    mutationProhibited?: boolean;
+    sourceChange?: boolean;
+    fileArtifact?: boolean;
+    targets?: readonly string[];
+    signals?: readonly string[];
+  };
 }
 
 export interface AgentFileWriteDecisionInput {
@@ -56,6 +64,8 @@ export interface AgentFileWriteDecision {
     markdownArtifactWriteAllowed?: boolean;
     markdownArtifactWriteReason?: string;
     markdownArtifactRequestedTargets?: string[];
+    semanticWriteAllowed?: boolean;
+    semanticWriteReason?: string;
     isolatedArtifactScopeRequired?: boolean;
     isolatedArtifactAllowedRoots?: string[];
   };
@@ -112,6 +122,11 @@ export function decideAgentFileWrite(input: AgentFileWriteDecisionInput): AgentF
     absPath,
     workspaceRoot || undefined,
   );
+  const semanticAuthorization = resolveSemanticFileWriteAuthorization({
+    absPath,
+    workspaceRoot,
+    context: input.context,
+  });
   const markdownAuthorization = authorizeAgentFileWriteContract({
     promptText: input.context?.requestPrompt || '',
     targetPath: absPath,
@@ -132,11 +147,13 @@ export function decideAgentFileWrite(input: AgentFileWriteDecisionInput): AgentF
     protectedPath: !!input.protectedPath,
     autopilotMode: !!input.autopilotMode,
     explicitMarkdownDeliverable,
-    markdownArtifactWriteAllowed: markdownAuthorization.allowed,
+    markdownArtifactWriteAllowed: markdownAuthorization.allowed || semanticAuthorization.allowed,
     markdownArtifactWriteReason: markdownAuthorization.reason,
     markdownArtifactRequestedTargets: markdownAuthorization.requestedTargets.length > 0
       ? markdownAuthorization.requestedTargets
       : undefined,
+    semanticWriteAllowed: semanticAuthorization.allowed || undefined,
+    semanticWriteReason: semanticAuthorization.reason,
   };
   const scopedAudit = {
     ...audit,
@@ -164,7 +181,7 @@ export function decideAgentFileWrite(input: AgentFileWriteDecisionInput): AgentF
       scopedAudit,
     );
   }
-  if (!markdownAuthorization.allowed) {
+  if (!markdownAuthorization.allowed && !semanticAuthorization.allowed) {
     const targetList = markdownAuthorization.requestedTargets.length > 0
       ? `；用户明确允许的 Markdown 目标为 ${markdownAuthorization.requestedTargets.join('、')}`
       : '';
@@ -217,6 +234,31 @@ export function isExplicitMarkdownDeliverable(context: AgentFileWriteContext | u
   return context?.purpose === 'markdown-deliverable'
     && context.userRequested === true
     && ['.md', '.markdown'].includes(nodePath.extname(absPath).toLowerCase());
+}
+
+function resolveSemanticFileWriteAuthorization(input: {
+  absPath: string;
+  workspaceRoot: string;
+  context?: AgentFileWriteContext;
+}): { allowed: boolean; reason?: string } {
+  const semantic = input.context?.semanticIntent;
+  if (!semantic?.mutationRequested || semantic.mutationProhibited) return { allowed: false };
+  if (!semantic.sourceChange && !semantic.fileArtifact) return { allowed: false };
+  if (!semantic.signals?.includes('prior-task-continuation-request')) return { allowed: false };
+
+  const absPath = nodePath.normalize(input.absPath);
+  const targets = Array.isArray(semantic.targets) ? semantic.targets : [];
+  const matched = targets.some(target => {
+    const raw = String(target || '').trim();
+    if (!raw) return false;
+    const candidate = nodePath.normalize(nodePath.isAbsolute(raw)
+      ? raw
+      : nodePath.resolve(input.workspaceRoot || process.cwd(), raw));
+    return candidate === absPath;
+  });
+  return matched
+    ? { allowed: true, reason: 'semantic-prior-task-continuation-target' }
+    : { allowed: false, reason: 'semantic-prior-task-continuation-target-mismatch' };
 }
 
 function isDirectoryWriteAction(taskAction: string | undefined): boolean {

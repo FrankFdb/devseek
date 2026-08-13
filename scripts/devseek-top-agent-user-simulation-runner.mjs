@@ -21,6 +21,7 @@ const DEFAULT_CONTROLLED_SUITES = Object.freeze([
   'r2-07e-stream-protocol',
   'journey-core',
   'realistic-product',
+  'prior-task-continuation-product',
   'agent-fit-product',
   'coding-conformance-product',
   'r2-07f-connector-security',
@@ -29,6 +30,7 @@ const ACCEPTANCE_CONTROLLED_SUITES = Object.freeze([
   'r2-07e-stream-protocol',
   'journey-core',
   'realistic-product',
+  'prior-task-continuation-product',
   'agent-fit-product',
   'coding-conformance-product',
   'r2-07f-connector-security',
@@ -93,6 +95,12 @@ const CASE_DESIGN_DIMENSIONS = Object.freeze([
     user_need: 'Users refine previous work in the same session.',
     suites: ['realistic-product'],
     cases: ['realistic-python-log-json-followup'],
+  },
+  {
+    id: 'prior_task_approval_continuation',
+    user_need: 'Users approve a prior plan or task with shorthand such as go ahead and expect execution to continue.',
+    suites: ['prior-task-continuation-product'],
+    cases: ['prior-plan-source-change', 'prior-plan-go-ahead'],
   },
   {
     id: 'latest_requirement_wins',
@@ -533,6 +541,7 @@ function controlledSuitePurpose(suite) {
   const purposes = {
     'r2-07e-stream-protocol': 'DeepSeek Web malformed/truncated stream replay: fail closed, bounded recovery, no mutation.',
     'realistic-product': 'Same-window realistic coding journey: create a Python log tool, handle an incremental JSON follow-up, modify existing JS, refuse unsafe work.',
+    'prior-task-continuation-product': 'Same-session prior task approval: plan-only first turn, shorthand approval, inherited target, edit and verification.',
     'agent-fit-product': 'Codex-aligned agent fit: clarify ambiguous asks, keep reviews read-only, handle multi-file tested edits, and verify Markdown anchors.',
     'coding-conformance-product': 'Core programming lifecycle: create/modify/verify-repair plus permission denial and policy refusal.',
     'r2-07f-connector-security': 'Connector evidence replay: redacted read-only evidence must not mutate workspace.',
@@ -545,6 +554,7 @@ function controlledSuiteTimeoutMs(suite) {
   if (suite === 'coding-conformance-product') return 300_000;
   if (suite === 'journey-core') return 300_000;
   if (suite === 'realistic-product') return 270_000;
+  if (suite === 'prior-task-continuation-product') return 240_000;
   if (suite === 'agent-fit-product') return 270_000;
   return 210_000;
 }

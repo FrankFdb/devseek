@@ -29,6 +29,13 @@ test('controlled VSIX harness exposes a machine-readable suite case catalog', as
       'agent-fit-openai-tool-calls-wrapper',
     ],
   );
+  assert.deepEqual(
+    catalog.suites['prior-task-continuation-product'].map(entry => entry.id),
+    [
+      'prior-plan-source-change',
+      'prior-plan-go-ahead',
+    ],
+  );
   assert.ok(catalog.suites['coding-conformance-product'].some(entry =>
     entry.id === 'conformance-verify-repair-reverify'
   ));
@@ -79,6 +86,8 @@ test('top-agent user simulation runner plans targeted checks before broad contro
   assert.ok(report.case_design_review.required_acceptance_cases.includes('conformance-project-health-repair'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('conformance-runtime-error-repair'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('conformance-user-symptom-repair'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('prior-plan-source-change'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('prior-plan-go-ahead'));
   assert.equal(report.plan.steps[0].id, 'targeted-local-contracts');
   assert.equal(report.plan.steps[0].kind, 'targeted-local-contract');
 
@@ -89,6 +98,7 @@ test('top-agent user simulation runner plans targeted checks before broad contro
     'r2-07e-stream-protocol',
     'journey-core',
     'realistic-product',
+    'prior-task-continuation-product',
     'agent-fit-product',
     'coding-conformance-product',
     'r2-07f-connector-security',
@@ -330,7 +340,7 @@ test('top-agent user simulation runner renders markdown from existing evidence w
     assert.match(markdown, /--controlled-suites realistic-product/);
     assert.match(markdown, /focused-regression-only-not-release-acceptance/);
     assert.match(markdown, /Selected case count: `2`/);
-    assert.match(markdown, /Required acceptance case count: `25`/);
+    assert.match(markdown, /Required acceptance case count: `27`/);
     assert.match(markdown, /Execution evidence missing:/);
     assert.match(markdown, /realistic-product:driver-cases-missing/);
     assert.match(markdown, /realistic-product:driver-case-missing:realistic-python-log-json-followup/);
@@ -476,6 +486,7 @@ test('top-agent user simulation runner rejects acceptance reports without per-ca
       'r2-07e-stream-protocol': ['stream-truncated-no-mutation', 'stream-request-mismatch-no-mutation'],
       'journey-core': ['boundary', 'cpp-program', 'existing-js-fix', 'latest-requirement'],
       'realistic-product': ['realistic-python-log-tool', 'realistic-python-log-json-followup', 'realistic-safety-boundary'],
+      'prior-task-continuation-product': ['prior-plan-source-change', 'prior-plan-go-ahead'],
       'agent-fit-product': [
         'agent-fit-ambiguous-clarify',
         'agent-fit-review-only',

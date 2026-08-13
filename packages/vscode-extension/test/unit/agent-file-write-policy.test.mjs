@@ -690,6 +690,46 @@ test('AgentFileWritePolicy: ordinary prompts keep normal workspace write behavio
   assert.equal(decision.reason, 'workspace-write-allowed');
 });
 
+test('AgentFileWritePolicy: prior task approval authorizes only inherited semantic targets', () => {
+  const decide = (relPath, semanticIntent) => decideAgentFileWrite({
+    absPath: path.join('/workspace', relPath),
+    workspaceRoot: '/workspace',
+    autopilotMode: true,
+    context: {
+      purpose: 'tool-write',
+      userRequested: false,
+      taskAction: 'replace_in_file',
+      displayName: relPath,
+      requestPrompt: 'go ahead',
+      semanticIntent,
+    },
+  });
+  const semanticIntent = {
+    mutationRequested: true,
+    mutationProhibited: false,
+    sourceChange: true,
+    fileArtifact: false,
+    targets: ['src/math.js'],
+    signals: ['prior-task-continuation-request', 'prior-source-change-continuation'],
+  };
+
+  const allowed = decide('src/math.js', semanticIntent);
+  assert.equal(allowed.action, 'allow');
+  assert.equal(allowed.reason, 'workspace-write-allowed');
+  assert.equal(allowed.audit?.semanticWriteAllowed, true);
+
+  const sibling = decide('src/other.js', semanticIntent);
+  assert.equal(sibling.action, 'deny');
+  assert.equal(sibling.reason, 'target-file-write-prohibited');
+
+  const noSemanticSignal = decide('src/math.js', {
+    ...semanticIntent,
+    signals: [],
+  });
+  assert.equal(noSemanticSignal.action, 'deny');
+  assert.equal(noSemanticSignal.reason, 'target-file-write-prohibited');
+});
+
 test('AgentFileWritePolicy: implementation prompts allow explicitly named source and test files', () => {
   const requestPrompt = '请实现 src/repeat-label.js，并新增 test/repeat-label.test.js。repeatLabel("devseek", 3) 应返回 devseek-devseek-devseek。对非法负数 count 抛出错误，改完运行 node test/repeat-label.test.js。';
   const decide = relPath => decideAgentFileWrite({

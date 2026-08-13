@@ -706,6 +706,49 @@ test('TaskSemanticContract v3: inherited no-run remains active until explicitly 
   assert.equal(reauthorized.validation.testRequested, true);
 });
 
+test('TaskSemanticContract v3: approval shorthand executes the previous source-change contract', () => {
+  const previous = resolveTaskSemanticContract('Modify src/settings.ts to add a loading state and verify it.');
+  const continued = resolveTaskSemanticContract('go ahead', { previous });
+
+  assert.equal(continued.kind, 'existing-project-code');
+  assert.equal(continued.scope, 'existing-project');
+  assert.equal(continued.mutation.requested, true);
+  assert.equal(continued.mutation.sourceChange, true);
+  assert.deepEqual(continued.mutation.targets, ['src/settings.ts']);
+  assert.equal(continued.intent.mode, 'edit');
+  assert.ok(continued.signals.includes('prior-task-continuation-request'));
+  assert.ok(continued.signals.includes('prior-source-change-continuation'));
+  assert.ok(continued.completion.doneIff.some(item => (
+    item.kind === 'code-written' && item.target === 'src/settings.ts'
+  )));
+});
+
+test('TaskSemanticContract v3: approval shorthand can execute a previous plan contract target', () => {
+  const previous = resolveTaskSemanticContract(
+    'Plan the implementation for src/settings.ts before touching any files.',
+  );
+  const continued = resolveTaskSemanticContract('按上面的计划落地', { previous });
+
+  assert.equal(previous.intent.mode, 'plan');
+  assert.equal(previous.mutation.requested, false);
+  assert.equal(continued.kind, 'existing-project-code');
+  assert.equal(continued.mutation.requested, true);
+  assert.equal(continued.mutation.sourceChange, true);
+  assert.deepEqual(continued.mutation.targets, ['src/settings.ts']);
+  assert.equal(continued.intent.mode, 'edit');
+});
+
+test('TaskSemanticContract v3: no-write follow-up blocks previous approval shorthand mutation', () => {
+  const previous = resolveTaskSemanticContract('Modify src/settings.ts to add a loading state.');
+  const continued = resolveTaskSemanticContract('先别改，解释一下风险', { previous });
+
+  assert.equal(continued.mutation.requested, false);
+  assert.equal(continued.mutation.prohibited, true);
+  assert.equal(continued.intent.mode, 'inspect');
+  assert.ok(continued.intent.blockers.includes('explicit-no-change'));
+  assert.equal(continued.signals.includes('prior-task-continuation-request'), false);
+});
+
 test('TaskSemanticContract v3: read obligations survive a continuation turn', () => {
   const previous = resolveTaskSemanticContract(
     '检查 docs/manual-phase5-smoke.md 是否存在，并显示文件内容，不要修改文件。',

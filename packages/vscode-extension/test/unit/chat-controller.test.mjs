@@ -50,6 +50,58 @@ test('ChatRouteController: continued turn inherits target and narrows validation
   assert.ok(!continued.intent.semanticContract.completion.doneIff.some(item => item.kind === 'run-passed'));
 });
 
+test('ChatRouteController: approval shorthand executes previous edit contract', () => {
+  const controller = new ChatRouteController();
+  const previous = controller.decide({
+    userDisplay: 'Modify src/settings.ts to add a loading state and verify it.',
+    prompt: 'Modify src/settings.ts to add a loading state and verify it.',
+    files: [],
+    agentEnabled: true,
+  });
+  const continued = controller.decide({
+    userDisplay: 'go ahead',
+    prompt: 'go ahead',
+    files: [],
+    agentEnabled: true,
+    semanticContext: {
+      previous: previous.intent.semanticContract,
+      revision: { strategy: 'merge' },
+    },
+  });
+
+  assert.equal(continued.intent.mode, 'edit');
+  assert.equal(continued.workflow.kind, 'edit-agent');
+  assert.equal(continued.toolPolicy.allowedToolKinds.includes('edit'), true);
+  assert.deepEqual(continued.intent.semanticContract.mutation.targets, ['src/settings.ts']);
+  assert.ok(continued.intent.signals.includes('prior-task-continuation-request'));
+});
+
+test('ChatRouteController: approval shorthand executes previous plan contract target', () => {
+  const controller = new ChatRouteController();
+  const previous = controller.decide({
+    userDisplay: 'Plan the implementation for src/settings.ts before touching any files.',
+    prompt: 'Plan the implementation for src/settings.ts before touching any files.',
+    files: [],
+    agentEnabled: true,
+  });
+  const continued = controller.decide({
+    userDisplay: '开始吧',
+    prompt: '开始吧',
+    files: [],
+    agentEnabled: true,
+    semanticContext: {
+      previous: previous.intent.semanticContract,
+      revision: { strategy: 'merge' },
+    },
+  });
+
+  assert.equal(previous.intent.mode, 'plan');
+  assert.equal(continued.intent.mode, 'edit');
+  assert.equal(continued.workflow.kind, 'edit-agent');
+  assert.deepEqual(continued.intent.semanticContract.mutation.targets, ['src/settings.ts']);
+  assert.ok(continued.intent.signals.includes('prior-source-change-continuation'));
+});
+
 test('ChatRouteController: routes by visible user text, not attached prompt content', () => {
   const controller = new ChatRouteController();
   const decision = controller.decide({

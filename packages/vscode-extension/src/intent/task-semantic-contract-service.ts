@@ -8,6 +8,7 @@ import {
   type TaskSemanticScope,
 } from '../task-semantic-contract';
 import { buildLocalIntentContract } from './local-intent-contract';
+import { isProceedWithPriorTaskRequest } from './continuation-intent';
 import type { SemanticIntentInterpretation } from './semantic-intent';
 import { buildTaskSemanticObligationContracts } from './task-semantic-obligations';
 
@@ -45,6 +46,22 @@ export interface TaskSemanticResolutionContext {
 }
 
 const MIN_SEMANTIC_PROPOSAL_CONFIDENCE = 0.62;
+
+interface PriorTaskContinuationProjection {
+  requested: boolean;
+  sourceChange: boolean;
+  fileArtifact: boolean;
+  targets: string[];
+  signals: string[];
+}
+
+const NO_PRIOR_TASK_CONTINUATION: PriorTaskContinuationProjection = {
+  requested: false,
+  sourceChange: false,
+  fileArtifact: false,
+  targets: [],
+  signals: [],
+};
 
 /** Resolves lexical intent, cross-turn inheritance, and project rules once. */
 export function resolveTaskSemanticContract(
@@ -518,10 +535,15 @@ function mergeTaskSemanticContracts(
     ...previous.mutation.targets,
     ...previous.taskContract.deliverableTargets,
   ]);
+  const priorTaskContinuation = projectPriorTaskContinuation(previous, current);
   const replaceScope = revision.strategy === 'replace-scope' && currentTargets.length > 0;
-  const targets = (replaceScope ? currentTargets : uniquePaths([...previousTargets, ...currentTargets]))
+  const targets = (replaceScope ? currentTargets : uniquePaths([
+    ...previousTargets,
+    ...priorTaskContinuation.targets,
+    ...currentTargets,
+  ]))
     .filter(target => !prohibitedTargets.has(normalizePathToken(target)));
-  const mutation = mergeMutation(previous, current, targets, replaceScope);
+  const mutation = mergeMutation(previous, current, targets, replaceScope, priorTaskContinuation);
   const read = mergeRead(previous, current, replaceScope);
   const validation = mergeValidation(previous, current, mutation.fileArtifact);
   const quality = {
@@ -542,6 +564,7 @@ function mergeTaskSemanticContracts(
     ...previous.signals,
     ...current.signals,
     'semantic-context-merged',
+    ...priorTaskContinuation.signals,
     ...(replaceScope ? ['semantic-scope-replaced'] : []),
   ]);
   const intent = buildLocalIntentContract(current.prompt, {
@@ -563,6 +586,39 @@ function mergeTaskSemanticContracts(
     quality,
     intent,
     signals,
+  };
+}
+
+function projectPriorTaskContinuation(
+  previous: TaskSemanticContract,
+  current: TaskSemanticContract,
+): PriorTaskContinuationProjection {
+  if (current.mutation.prohibited || !isProceedWithPriorTaskRequest(current.prompt)) {
+    return NO_PRIOR_TASK_CONTINUATION;
+  }
+  const sourceChange = previous.mutation.sourceChange
+    || previous.taskContract.deliverables.includes('source-change');
+  const fileArtifact = previous.mutation.fileArtifact
+    || previous.taskContract.deliverables.includes('report');
+  if (!previous.mutation.requested && !sourceChange && !fileArtifact) {
+    return NO_PRIOR_TASK_CONTINUATION;
+  }
+  const targets = uniquePaths([
+    ...previous.mutation.targets,
+    ...previous.taskContract.deliverableTargets,
+    ...(sourceChange ? previous.taskContract.inputs.filter(isSourceContextPath) : []),
+    ...(fileArtifact ? previous.taskContract.inputs.filter(value => !isSourceContextPath(value)) : []),
+  ]);
+  return {
+    requested: true,
+    sourceChange,
+    fileArtifact,
+    targets,
+    signals: [
+      'prior-task-continuation-request',
+      sourceChange ? 'prior-source-change-continuation' : '',
+      fileArtifact ? 'prior-file-artifact-continuation' : '',
+    ].filter(Boolean),
   };
 }
 
@@ -632,6 +688,7 @@ function mergeMutation(
   current: TaskSemanticContract,
   targets: string[],
   replaceScope: boolean,
+  priorTaskContinuation: PriorTaskContinuationProjection,
 ): TaskSemanticContract['mutation'] {
   if (current.mutation.prohibited) {
     return {
@@ -645,12 +702,15 @@ function mergeMutation(
   const useCurrentShape = replaceScope && current.mutation.requested;
   const sourceChange = useCurrentShape
     ? current.mutation.sourceChange
-    : previous.mutation.sourceChange || current.mutation.sourceChange;
+    : previous.mutation.sourceChange || current.mutation.sourceChange || priorTaskContinuation.sourceChange;
   const fileArtifact = useCurrentShape
     ? current.mutation.fileArtifact
-    : previous.mutation.fileArtifact || current.mutation.fileArtifact;
+    : previous.mutation.fileArtifact || current.mutation.fileArtifact || priorTaskContinuation.fileArtifact;
   return {
-    requested: previous.mutation.requested || current.mutation.requested || targets.length > 0,
+    requested: previous.mutation.requested
+      || current.mutation.requested
+      || priorTaskContinuation.requested
+      || targets.length > 0,
     prohibited: false,
     sourceChange,
     fileArtifact,

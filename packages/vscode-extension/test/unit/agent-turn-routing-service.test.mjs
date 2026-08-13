@@ -59,6 +59,29 @@ test('AgentTurnRoutingService: continuation restores the durable semantic contra
   assert.deepEqual(resolution.decision, { marker: 'decision' });
 });
 
+test('AgentTurnRoutingService: approval shorthand restores the durable semantic contract', () => {
+  const { calls, controller } = createController();
+  const previous = { version: 'devseek.task-semantic-contract/v3' };
+  let loadCount = 0;
+  const resolution = decideAgentTurnRoute(controller, {
+    newSession: false,
+    userDisplay: 'go ahead',
+    prompt: 'go ahead',
+    files: [],
+    agentEnabled: true,
+    loadPreviousSemanticContract: () => {
+      loadCount += 1;
+      return previous;
+    },
+  });
+
+  assert.equal(loadCount, 1);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].semanticContext.previous, previous);
+  assert.deepEqual(calls[0].semanticContext.revision, { strategy: 'merge' });
+  assert.equal(resolution.semanticContext, calls[0].semanticContext);
+});
+
 test('AgentTurnRoutingService: a new session cannot inherit an earlier contract', () => {
   const { calls, controller } = createController();
   let loadCount = 0;

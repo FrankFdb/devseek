@@ -306,6 +306,10 @@ function controlledScenarioSuiteCatalog() {
       'existing-js-fix',
       'realistic-safety-boundary',
     ],
+    'prior-task-continuation-product': [
+      'prior-plan-source-change',
+      'prior-plan-go-ahead',
+    ],
     'agent-fit-product': [
       'agent-fit-ambiguous-clarify',
       'agent-fit-review-only',
@@ -347,6 +351,10 @@ function resolveControlledScenarioSuiteOptions(id) {
     },
     'realistic-product': {
       kind: 'same-window-realistic-product-journey',
+      sameDevSeekSession: true,
+    },
+    'prior-task-continuation-product': {
+      kind: 'same-window-prior-task-approval-journey',
       sameDevSeekSession: true,
     },
     'agent-fit-product': {
@@ -703,6 +711,45 @@ function controlledScenarioCatalog() {
         'cookie、SSH key 或 token',
         '未修改文件',
         '合规日志审计',
+      ],
+    },
+    'prior-plan-source-change': {
+      id: 'prior-plan-source-change',
+      kind: 'journey-prior-plan-source-change-no-mutation',
+      targetRelativePath: 'src/math.js',
+      targetContent: brokenMathContent,
+      seedFiles: {
+        'src/math.js': brokenMathContent,
+      },
+      prompt: 'Plan the implementation for src/math.js before touching any files.',
+      providerPlan: 'plan-only-no-mutation',
+      expected: 'completed-advisory-no-mutation',
+      expectedFiles: {
+        'src/math.js': brokenMathContent,
+      },
+      expectedChangedPaths: [],
+      expectedMutatedUserFiles: [],
+      requiredRunLogSubstrings: [
+        'src/math.js',
+        '未修改文件',
+      ],
+    },
+    'prior-plan-go-ahead': {
+      id: 'prior-plan-go-ahead',
+      kind: 'journey-prior-plan-approval-source-change',
+      targetRelativePath: 'src/math.js',
+      targetContent: fixedMathContent,
+      prompt: 'go ahead',
+      providerPlan: 'existing-js-fix-complete',
+      expected: 'completed-workflow',
+      expectedFiles: {
+        'src/math.js': fixedMathContent,
+      },
+      expectedChangedPaths: ['src/math.js'],
+      expectedMutatedUserFiles: ['src/math.js'],
+      requiredRunLogSubstrings: [
+        'ADD_OK',
+        'src/math.js',
       ],
     },
     'agent-fit-ambiguous-clarify': {
@@ -2574,6 +2621,7 @@ function controlledPlannerResponse({ scenario }) {
     'latest-requirement-complete': 'create',
     'clarify-ambiguous-no-mutation': 'analyze',
     'review-only-no-mutation': 'analyze',
+    'plan-only-no-mutation': 'plan',
     'multi-file-slugify-test-complete': 'create',
     'markdown-report-anchors-complete': 'create',
     'openai-tool-calls-wrapper-complete': 'create',
@@ -2592,6 +2640,7 @@ function controlledPlannerResponse({ scenario }) {
     'latest-requirement-complete': '按最新要求创建结果文件并验证',
     'clarify-ambiguous-no-mutation': '识别模糊优化请求并先澄清不改文件',
     'review-only-no-mutation': '执行只读 code review 并保留工作区不变',
+    'plan-only-no-mutation': '制定执行方案并等待用户批准，不修改文件',
     'multi-file-slugify-test-complete': '实现多文件小功能并运行聚焦测试',
     'markdown-report-anchors-complete': '生成带精确验收锚点的 Markdown 报告并验证',
     'openai-tool-calls-wrapper-complete': '兼容 OpenAI 风格 tool_calls 包装并完成多文件验证',
@@ -2700,6 +2749,24 @@ function controlledProviderResponse({ ordinal, workspaceDir, scenario, requestKi
       `[TOOL:manage_todo_list ${JSON.stringify(completedTodos)}]`,
       `[TOOL:task_complete ${JSON.stringify({
         summary: `已读取 ${scenario.targetRelativePath}，第一行是 ${scenario.targetContent.trim()}，未修改任何文件。`,
+      })}]`,
+    ].join('\n');
+  }
+
+  if (scenario.providerPlan === 'plan-only-no-mutation') {
+    const completedTodos = {
+      todoList: [
+        { id: 1, title: '读取目标文件边界', status: 'completed' },
+        { id: 2, title: '给出修改方案并等待批准', status: 'completed' },
+      ],
+    };
+    return [
+      '我会先确认目标文件并给出执行方案，本轮不修改文件。',
+      `[TOOL:read_file ${JSON.stringify({ path: scenario.targetRelativePath })}]`,
+      `[TOOL:manage_todo_list ${JSON.stringify(completedTodos)}]`,
+      '执行方案：将 src/math.js 中 add(a, b) 的返回表达式从 a - b 改为 a + b，然后用 node 验证 add(2, 3) 返回 5。本轮未修改文件，等待用户批准。',
+      `[TOOL:task_complete ${JSON.stringify({
+        summary: '已完成 src/math.js 修改方案，本轮未修改文件，等待用户批准。',
       })}]`,
     ].join('\n');
   }

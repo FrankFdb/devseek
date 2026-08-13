@@ -230,6 +230,23 @@ export function buildLocalIntentContract(
     ));
   }
 
+  const priorTaskContinuation = semantic.semanticSignals.includes('prior-task-continuation-request');
+  if (priorTaskContinuation
+    && semantic.mutation.requested
+    && semantic.kind === 'existing-project-code') {
+    const signals = ['edit-request', ...semantic.semanticSignals];
+    if (hasPath) signals.push('explicit-file-path');
+    return finish(decision(
+      'edit',
+      hasPath || semantic.mutation.targets.length > 0 ? 0.9 : 0.84,
+      hasPath || semantic.mutation.targets.length > 0 ? 5 : 4,
+      [...new Set(signals)],
+      hasPath || semantic.mutation.targets.length > 0
+        ? 'task-contract-existing-project-code-with-target'
+        : 'task-contract-existing-project-code',
+    ));
+  }
+
   if (hasDeliverableWriteRequest
     && hasCodeContext
     && !semantic.mutation.prohibited

@@ -119,7 +119,19 @@ export function createWriteAuthority(
     guardedCallbacks.onResolveFileWriteConstraint = async (absPath, context) => {
       // A correction can arrive while an earlier provider/tool operation awaits I/O.
       pendingMessages.push(...drain());
-      return resolveFileWriteConstraint(absPath, { ...context, requestPrompt: currentPrompt });
+      const semanticContract = semanticContractRevision.semanticContract;
+      return resolveFileWriteConstraint(absPath, {
+        ...context,
+        requestPrompt: currentPrompt,
+        semanticIntent: {
+          mutationRequested: semanticContract.mutation.requested,
+          mutationProhibited: semanticContract.mutation.prohibited,
+          sourceChange: semanticContract.mutation.sourceChange,
+          fileArtifact: semanticContract.mutation.fileArtifact,
+          targets: semanticContract.mutation.targets,
+          signals: semanticContract.signals,
+        },
+      });
     };
   }
   return {
