@@ -106,8 +106,13 @@ test('top-agent user simulation runner plans targeted checks before broad contro
   assert.ok(report.case_design_review.required_acceptance_cases.includes('scope-replace-beta-instead'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('cancel-plan-source-change'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('cancel-review-instead'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('operational-lexicon-config-dynamic-loading'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('operational-lexicon-multilingual-extension'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('in-flight-user-steer-contract-revision'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('in-flight-committed-effect-preservation'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('semantic-source-proposal-route-consistency'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('semantic-no-run-validation-boundary-consistency'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('semantic-operation-prohibition-arbitration'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('semantic-readonly-proposal-route-consistency'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('semantic-workspace-answer-route-consistency'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('semantic-code-review-proposal-route-consistency'));
@@ -117,8 +122,13 @@ test('top-agent user simulation runner plans targeted checks before broad contro
   assert.ok(report.case_design_review.required_acceptance_cases.includes('semantic-external-effect-confirmation-consistency'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('semantic-destructive-proposal-confirmation-consistency'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('external-semantic-intent-routing-matrix'));
+  assert.ok(report.case_design_review.selected_cases.includes('operational-lexicon-config-dynamic-loading'));
+  assert.ok(report.case_design_review.selected_cases.includes('operational-lexicon-multilingual-extension'));
+  assert.ok(report.case_design_review.selected_cases.includes('in-flight-user-steer-contract-revision'));
+  assert.ok(report.case_design_review.selected_cases.includes('in-flight-committed-effect-preservation'));
   assert.ok(report.case_design_review.selected_cases.includes('semantic-source-proposal-route-consistency'));
   assert.ok(report.case_design_review.selected_cases.includes('semantic-no-run-validation-boundary-consistency'));
+  assert.ok(report.case_design_review.selected_cases.includes('semantic-operation-prohibition-arbitration'));
   assert.ok(report.case_design_review.selected_cases.includes('semantic-workspace-answer-route-consistency'));
   assert.ok(report.case_design_review.selected_cases.includes('semantic-code-review-proposal-route-consistency'));
   assert.ok(report.case_design_review.selected_cases.includes('semantic-clarification-workspace-scope-consistency'));
@@ -129,8 +139,13 @@ test('top-agent user simulation runner plans targeted checks before broad contro
   assert.equal(report.plan.steps[0].id, 'targeted-local-contracts');
   assert.equal(report.plan.steps[0].kind, 'targeted-local-contract');
   assert.deepEqual(report.plan.steps[0].case_ids, [
+    'operational-lexicon-config-dynamic-loading',
+    'operational-lexicon-multilingual-extension',
+    'in-flight-user-steer-contract-revision',
+    'in-flight-committed-effect-preservation',
     'semantic-source-proposal-route-consistency',
     'semantic-no-run-validation-boundary-consistency',
+    'semantic-operation-prohibition-arbitration',
     'semantic-readonly-proposal-route-consistency',
     'semantic-workspace-answer-route-consistency',
     'semantic-code-review-proposal-route-consistency',
@@ -393,7 +408,7 @@ test('top-agent user simulation runner renders markdown from existing evidence w
     assert.match(markdown, /--controlled-suites realistic-product/);
     assert.match(markdown, /focused-regression-only-not-release-acceptance/);
     assert.match(markdown, /Selected case count: `2`/);
-    assert.match(markdown, /Required acceptance case count: `42`/);
+    assert.match(markdown, /Required acceptance case count: `47`/);
     assert.match(markdown, /Execution evidence missing:/);
     assert.match(markdown, /realistic-product:driver-cases-missing/);
     assert.match(markdown, /realistic-product:driver-case-missing:realistic-python-log-json-followup/);
@@ -564,8 +579,13 @@ test('top-agent user simulation runner rejects acceptance reports without per-ca
       'r2-07f-connector-security': ['connector-evidence-redaction-replay'],
     };
     const targetedCases = [
+      'operational-lexicon-config-dynamic-loading',
+      'operational-lexicon-multilingual-extension',
+      'in-flight-user-steer-contract-revision',
+      'in-flight-committed-effect-preservation',
       'semantic-source-proposal-route-consistency',
       'semantic-no-run-validation-boundary-consistency',
+      'semantic-operation-prohibition-arbitration',
       'semantic-readonly-proposal-route-consistency',
       'semantic-workspace-answer-route-consistency',
       'semantic-code-review-proposal-route-consistency',

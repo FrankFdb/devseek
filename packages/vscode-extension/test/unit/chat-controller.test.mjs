@@ -711,6 +711,74 @@ test('ChatRouteController: semantic-only external-effect proposal still requires
   assert.ok(decision.intent.signals.includes('semantic-proposal:external-effect'));
 });
 
+test('ChatRouteController: semantic external-effect proposal cannot override no-commit boundary', () => {
+  const controller = new ChatRouteController();
+  const prompt = 'Fix src/login.ts, but do not commit or push anything.';
+  const decision = controller.decide({
+    userDisplay: prompt,
+    prompt,
+    files: ['/workspace/src/login.ts'],
+    agentEnabled: true,
+    semanticIntent: {
+      version: 'devseek.semantic-intent/v1',
+      source: 'test',
+      mode: 'run',
+      taskKind: 'external-effect',
+      confidence: 0.93,
+      mutation: 'external-effect',
+      targetPaths: [],
+      requiresWorkspace: true,
+      requiresTerminal: true,
+      requiresExternalEffect: true,
+      requiresClarification: false,
+      reason: 'model overread git side effects',
+    },
+  });
+
+  assert.equal(decision.intent.mode, 'edit');
+  assert.equal(decision.workflow.kind, 'edit-agent');
+  assert.equal(decision.intent.requiresConfirmation, false);
+  assert.equal(decision.intent.semanticContract.intent.context.externalEffect, 'none');
+  assert.ok(decision.intent.signals.includes('semantic-intent-constrained'));
+  assert.ok(!decision.intent.semanticContract.completion.doneIff.some(item =>
+    item.kind === 'external-effect-receipt'
+  ));
+});
+
+test('ChatRouteController: semantic run-only proposal cannot override no-command boundary', () => {
+  const controller = new ChatRouteController();
+  const prompt = 'Verify src/login.ts without running commands.';
+  const decision = controller.decide({
+    userDisplay: prompt,
+    prompt,
+    files: ['/workspace/src/login.ts'],
+    agentEnabled: true,
+    semanticIntent: {
+      version: 'devseek.semantic-intent/v1',
+      source: 'test',
+      mode: 'run',
+      taskKind: 'terminal-validation',
+      confidence: 0.93,
+      mutation: 'run-only',
+      targetPaths: ['src/login.ts'],
+      requiresWorkspace: true,
+      requiresTerminal: true,
+      requiresExternalEffect: false,
+      requiresClarification: false,
+      reason: 'model overread verification as terminal execution',
+    },
+  });
+
+  assert.equal(decision.intent.mode, 'inspect');
+  assert.equal(decision.workflow.kind, 'inspect-agent');
+  assert.equal(decision.toolPolicy.mode, 'inspect');
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('terminal'), false);
+  assert.equal(decision.intent.semanticContract.validation.runProhibited, true);
+  assert.equal(decision.intent.semanticContract.validation.runRequested, false);
+  assert.ok(decision.intent.signals.includes('semantic-intent-constrained'));
+  assert.ok(!decision.intent.semanticContract.taskContract.deliverables.includes('verification-result'));
+});
+
 test('ChatRouteController: semantic destructive proposal fails closed to confirmation', () => {
   const controller = new ChatRouteController();
   const prompt = 'Make the generated cache disappear.';

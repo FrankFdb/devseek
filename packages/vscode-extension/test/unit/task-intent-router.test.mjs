@@ -509,6 +509,93 @@ test('TaskIntentRouter: a negated push cannot be reopened by a downstream keywor
   assert.equal(route.semanticContract.intent.context.externalEffect, 'none');
 });
 
+test('TaskIntentRouter: semantic external-effect proposal cannot override explicit no-commit boundary', () => {
+  const route = routeTaskIntent('Fix src/login.ts, but do not commit or push anything.', {
+    semanticIntent: {
+      version: 'devseek.semantic-intent/v1',
+      source: 'test',
+      mode: 'run',
+      taskKind: 'external-effect',
+      confidence: 0.93,
+      mutation: 'external-effect',
+      targetPaths: [],
+      requiresWorkspace: true,
+      requiresTerminal: true,
+      requiresExternalEffect: true,
+      requiresClarification: false,
+      reason: 'model overread git side effects',
+    },
+  });
+
+  assert.equal(route.family, 'existing-project-edit');
+  assert.equal(route.mode, 'edit');
+  assert.equal(route.mutation.sourceChange, true);
+  assert.equal(route.requiresConfirmation, false);
+  assert.equal(route.semanticContract.intent.context.externalEffect, 'none');
+  assert.ok(route.signals.includes('semantic-intent-constrained'));
+  assert.ok(!route.semanticContract.completion.doneIff.some(item => item.kind === 'external-effect-receipt'));
+});
+
+test('TaskIntentRouter: cancelled PR request is not restored by semantic external-effect proposal', () => {
+  const route = routeTaskIntent(
+    'Update src/api.ts and open a PR? No, do not open a PR or push; just make the code change.',
+    {
+      semanticIntent: {
+        version: 'devseek.semantic-intent/v1',
+        source: 'test',
+        mode: 'run',
+        taskKind: 'external-effect',
+        confidence: 0.93,
+        mutation: 'external-effect',
+        targetPaths: [],
+        requiresWorkspace: true,
+        requiresTerminal: true,
+        requiresExternalEffect: true,
+        requiresClarification: false,
+        reason: 'model kept stale PR proposal',
+      },
+    },
+  );
+
+  assert.equal(route.family, 'existing-project-edit');
+  assert.equal(route.mode, 'edit');
+  assert.equal(route.mutation.sourceChange, true);
+  assert.equal(route.requiresConfirmation, false);
+  assert.equal(route.semanticContract.intent.context.externalEffect, 'none');
+  assert.ok(route.signals.includes('semantic-intent-constrained'));
+});
+
+test('TaskIntentRouter: semantic run-only proposal cannot override explicit no-command boundary', () => {
+  const route = routeTaskIntent('Verify src/login.ts without running commands.', {
+    semanticIntent: {
+      version: 'devseek.semantic-intent/v1',
+      source: 'test',
+      mode: 'run',
+      taskKind: 'terminal-validation',
+      confidence: 0.93,
+      mutation: 'run-only',
+      targetPaths: ['src/login.ts'],
+      requiresWorkspace: true,
+      requiresTerminal: true,
+      requiresExternalEffect: false,
+      requiresClarification: false,
+      reason: 'model overread verification as terminal execution',
+    },
+  });
+
+  assert.equal(route.family, 'read-only-advisory');
+  assert.equal(route.mode, 'inspect');
+  assert.equal(route.chatKind, 'chat');
+  assert.equal(route.validation.runProhibited, true);
+  assert.equal(route.validation.runRequested, false);
+  assert.equal(route.validation.commandEvidenceRequired, false);
+  assert.equal(route.semanticContract.read.requested, true);
+  assert.deepEqual(route.semanticContract.read.targets, ['src/login.ts']);
+  assert.ok(route.signals.includes('semantic-intent-constrained'));
+  assert.ok(!route.semanticContract.taskContract.deliverables.includes('verification-result'));
+  assert.ok(!route.semanticContract.completion.doneIff.some(item => item.kind === 'run-passed'));
+});
+
 test('TaskIntentRouter: natural dependency installation routes through external-effect authority', () => {
   const prompts = [
     'Install a new package and update the project to use it without asking for approval.',

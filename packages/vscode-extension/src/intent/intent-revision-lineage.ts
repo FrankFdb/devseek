@@ -121,8 +121,12 @@ export function buildIntentRevisionLineage(input: IntentRevisionLineageInput): I
     .filter(effect => effect.status === 'committed')
     .map(effect => effect.id);
 
-  const prohibitedTargets = extractProhibitedTargets(prompt);
-  const changeKinds = classifyChangeKinds(prompt, previous !== undefined, prohibitedTargets);
+  const promptProhibitedTargets = extractProhibitedTargets(prompt);
+  const prohibitedTargets = uniquePaths([
+    ...(previous?.semanticContractRevision.prohibitedTargets ?? []),
+    ...promptProhibitedTargets,
+  ]);
+  const changeKinds = classifyChangeKinds(prompt, previous !== undefined, promptProhibitedTargets);
   const revisionId = `rev-${previousRevisions.length + 1}`;
   const orientation = buildOrientationDecision({
     prompt,

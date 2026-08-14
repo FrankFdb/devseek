@@ -8,6 +8,7 @@ import {
   type TaskSemanticScope,
 } from '../task-semantic-contract';
 import { buildLocalIntentContract } from './local-intent-contract';
+import { hasExternalEffectProhibition } from './operational-language-boundary';
 import { isProceedWithPriorTaskRequest } from './continuation-intent';
 import type { SemanticIntentInterpretation } from './semantic-intent';
 import {
@@ -257,10 +258,32 @@ function isSemanticProposalConstrainedByLocalBoundary(
   candidate: SemanticIntentInterpretation,
 ): boolean {
   if (contract.intent.context.empty || contract.intent.context.unsafeSecretHarvesting) return true;
+  if (semanticProposalRequestsExternalEffect(candidate) && hasExternalEffectProhibition(contract.prompt)) {
+    return true;
+  }
+  if (semanticProposalRequestsTerminalValidation(candidate)
+    && contract.validation.runProhibited
+    && !shouldRequireValidationResult({
+      ...contract.validation,
+      requested: true,
+    })) {
+    return true;
+  }
   if (contract.kind === 'destructive' || candidate.taskKind === 'destructive' || candidate.mutation === 'delete') {
     return true;
   }
   return contract.mutation.prohibited && semanticProposalRequestsWorkspaceMutation(candidate);
+}
+
+function semanticProposalRequestsExternalEffect(candidate: SemanticIntentInterpretation): boolean {
+  return candidate.taskKind === 'external-effect'
+    || candidate.mutation === 'external-effect'
+    || candidate.requiresExternalEffect;
+}
+
+function semanticProposalRequestsTerminalValidation(candidate: SemanticIntentInterpretation): boolean {
+  return candidate.taskKind === 'terminal-validation'
+    || candidate.mutation === 'run-only';
 }
 
 function semanticProposalRequestsWorkspaceMutation(candidate: SemanticIntentInterpretation): boolean {
@@ -498,6 +521,11 @@ function projectRunOnlySemanticProposal(
   const baseTaskContract = narrowed
     ? clearMutationTaskContract(contract.taskContract, { keepVerificationResult: true })
     : contract.taskContract;
+  const validation = {
+    ...contract.validation,
+    requested: true,
+    runRequested: !contract.validation.runProhibited,
+  };
   return {
     ...contract,
     kind: narrowed || !contract.mutation.requested ? 'validation' : contract.kind,
@@ -510,11 +538,7 @@ function projectRunOnlySemanticProposal(
       requested: contract.read.requested || targets.length > 0,
       targets,
     },
-    validation: {
-      ...contract.validation,
-      requested: true,
-      runRequested: !contract.validation.runProhibited,
-    },
+    validation,
     taskContract: {
       ...baseTaskContract,
       taskShapes: uniqueStrings([
@@ -524,7 +548,7 @@ function projectRunOnlySemanticProposal(
       inputs: uniquePaths([...baseTaskContract.inputs, ...targets]),
       deliverables: uniqueStrings([
         ...baseTaskContract.deliverables,
-        'verification-result',
+        ...(shouldRequireValidationResult(validation) ? ['verification-result'] : []),
       ]) as TaskContract['deliverables'],
     },
     signals: uniqueStrings([
@@ -543,6 +567,13 @@ function projectExternalEffectSemanticProposal(
   const baseTaskContract = narrowed
     ? clearMutationTaskContract(contract.taskContract, { keepVerificationResult: true })
     : contract.taskContract;
+  const validation = {
+    ...contract.validation,
+    requested: contract.validation.requested || candidate.requiresTerminal,
+    runRequested: contract.validation.runProhibited
+      ? false
+      : contract.validation.runRequested || candidate.requiresTerminal,
+  };
   return {
     ...contract,
     kind: narrowed ? 'general' : contract.kind,
@@ -550,18 +581,12 @@ function projectExternalEffectSemanticProposal(
     mutation: narrowed
       ? clearWorkspaceMutation(contract, contract.mutation.prohibited)
       : contract.mutation,
-    validation: {
-      ...contract.validation,
-      requested: contract.validation.requested || candidate.requiresTerminal,
-      runRequested: contract.validation.runProhibited
-        ? false
-        : contract.validation.runRequested || candidate.requiresTerminal,
-    },
+    validation,
     taskContract: {
       ...baseTaskContract,
       deliverables: uniqueStrings([
         ...baseTaskContract.deliverables,
-        ...(candidate.requiresTerminal ? ['verification-result'] : []),
+        ...(shouldRequireValidationResult(validation) ? ['verification-result'] : []),
       ]) as TaskContract['deliverables'],
     },
     signals: uniqueStrings([

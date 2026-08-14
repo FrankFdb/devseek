@@ -109,7 +109,8 @@ test('Semantic intent routing matrix: external corpus covers every task kind', (
 
 test('Semantic intent routing matrix: external effects and destructive actions remain gated', () => {
   const gated = EXTERNAL_INTENT_CORPUS.filter(item =>
-    item.taskKind === 'external-effect' || item.taskKind === 'destructive'
+    (item.taskKind === 'external-effect' || item.taskKind === 'destructive')
+      && item.expect.externalEffect !== 'prohibited'
   );
   assert.ok(gated.length >= 8);
   for (const item of gated) {
@@ -148,6 +149,14 @@ test('Semantic intent routing matrix: no-write run-only cases are executable but
       agentEnabled: true,
       semanticIntent: item.semanticIntent,
     });
+    if (item.expect.validation === 'no-command') {
+      assert.equal(decision.intent.mode, 'inspect', item.id);
+      assert.equal(decision.workflow.kind, 'inspect-agent', item.id);
+      assert.equal(decision.toolPolicy.allowedToolKinds.includes('terminal'), false, item.id);
+      assert.equal(decision.intent.semanticContract.validation.runProhibited, true, item.id);
+      assert.equal(decision.intent.semanticContract.validation.runRequested, false, item.id);
+      continue;
+    }
     assert.equal(decision.intent.mode, 'run', item.id);
     assert.equal(decision.workflow.kind, 'run-agent', item.id);
     assert.equal(decision.toolPolicy.mode, 'run', item.id);
@@ -187,6 +196,20 @@ test('Semantic intent routing matrix: ambiguous corpus asks instead of executing
 function assertSemanticContractProjection(decision, item) {
   const contract = decision.intent.semanticContract;
   assert.ok(contract.signals.includes('semantic-intent-proposal'), item.id);
+
+  if (item.expect.externalEffect === 'prohibited') {
+    assert.equal(contract.intent.context.externalEffect, 'none', item.id);
+    assert.equal(decision.intent.requiresConfirmation, false, item.id);
+    assert.equal(contract.mutation.requested, true, item.id);
+    assert.equal(contract.mutation.sourceChange, true, item.id);
+    assert.equal(contract.obligations.sideEffects.some(effect => effect.kind === 'external-effect'), false, item.id);
+    assert.equal(contract.completion.doneIff.some(condition =>
+      condition.kind === 'external-effect-receipt'
+    ), false, item.id);
+    assert.ok(contract.signals.includes('semantic-intent-constrained'), item.id);
+    assert.ok(contract.mutation.targets.includes('src/login.ts'), item.id);
+    return;
+  }
 
   if (item.taskKind === 'smalltalk' || item.taskKind === 'question-answer') {
     assert.equal(contract.mutation.requested, false, item.id);
@@ -277,6 +300,18 @@ function assertSemanticContractProjection(decision, item) {
   }
 
   if (item.taskKind === 'terminal-validation') {
+    if (item.expect.validation === 'no-command') {
+      assert.equal(contract.kind, 'read-only', item.id);
+      assert.equal(contract.mutation.requested, false, item.id);
+      assert.equal(contract.validation.runProhibited, true, item.id);
+      assert.equal(contract.validation.runRequested, false, item.id);
+      assert.equal(contract.read.requested, true, item.id);
+      assertTargetsIncluded(contract.read.targets, item.semanticIntent.targetPaths, item.id);
+      assert.equal(contract.taskContract.deliverables.includes('verification-result'), false, item.id);
+      assert.equal(contract.obligations.artifacts.some(item => item.kind === 'verification-result'), false, item.id);
+      assert.equal(contract.completion.doneIff.some(item => item.kind === 'run-passed'), false, item.id);
+      return;
+    }
     assert.equal(contract.kind, 'validation', item.id);
     assert.equal(contract.mutation.requested, false, item.id);
     assert.equal(contract.mutation.sourceChange, false, item.id);

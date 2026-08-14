@@ -12,6 +12,7 @@ import { hasDestructiveIntent } from './intent/destructive-intent';
 import {
   hasOperationalRunProhibition,
   splitOperationalClauses,
+  stripOperationalRunProhibitionPhrases,
 } from './intent/operational-language-boundary';
 import {
   buildLocalIntentContract,
@@ -137,7 +138,6 @@ const RUN_RE = /(?:运行|执行|启动|跑一下|复现|\b(?:run|execute|start|
 const TEST_RE = /(?:测试|单元测试|test|ctest|pytest|npm\s+test|pnpm\s+test|yarn\s+test|bun\s+test|go\s+test|cargo\s+test|unit\s+tests?)/i;
 const STDOUT_RE = /(?:打印|输出|stdout|std::cout|\bcout\b|console\.log|print)/i;
 const OUTPUT_ARTIFACT_RE = /(?:(?:输出|打印)[^，,。；;\n]{0,20}(?:文件|文档|报告|Markdown|md|目录|路径|清单|内容)|(?:文件|文档|报告|内容|最后一行|每行|一行)[^，,。；;\n]{0,24}(?:打印|输出|console\.log|print)|(?:output|print)[^,.;\n]{0,24}(?:file|document|report|markdown|content|line))/i;
-const NO_RUN_CLAUSE_RE = /(?:不(?:要|用|需|需要|必|得|准|能)?|禁止|别|勿|请勿|未)[^，,。；;\n]{0,32}(?:运行|执行|启动|测试)[^，,。；;\n]*|(?:do\s+not|don't|without|no)\s+[^,.;\n]*(?:run|execute|start|test)[^,.;\n]*/gi;
 const TEST_AS_IMPLEMENTATION_CONSTRAINT_RE = /(?:不要|不得|禁止|别|勿|请勿)[^，,。；;\n]{0,20}(?:为(?:了)?(?:通)?过|迎合|针对)\s*(?:测试|tests?)[^，,。；;\n]*|\b(?:do\s+not|don't|never)\b[^,.;\n]{0,24}\bhardcode\b[^,.;\n]{0,16}\btests?\b/gi;
 const TEST_DISCUSSION_RE = /(?:missing|missed|lacking|lack\s+of|uncovered|insufficient)\s+tests?|test\s+coverage|test\s+results?|缺少测试|测试缺失|未覆盖测试|测试覆盖率不足|测试结果/gi;
 const EXPLICIT_TEST_COMMAND_RE = /(?:运行|执行|run|execute)[^，,。；;\n]{0,24}(?:\.\/?|\b)(?:test\.sh|tests?|ctest|pytest|jest|vitest|mocha)\b/i;
@@ -271,7 +271,10 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const validationRequested = !artifactPathQuery
     && !destructiveIntent
     && (VALIDATION_RE.test(validationText) || healthRepairRequested);
-  const positiveValidationText = maskTaskTargetPaths(validationPrompt.replace(NO_RUN_CLAUSE_RE, ' '), taskContract.inputs);
+  const positiveValidationText = maskTaskTargetPaths(
+    stripOperationalRunProhibitionPhrases(validationPrompt),
+    taskContract.inputs,
+  );
   const compileRequested = !artifactPathQuery && (COMPILE_RE.test(positiveValidationText) || healthRepairCompileRequested);
   const stdoutRequested = !artifactPathQuery && STDOUT_RE.test(validationText) && !OUTPUT_ARTIFACT_RE.test(validationText);
   const runProhibited = !artifactPathQuery && hasOperationalRunProhibition(validationText);
@@ -294,17 +297,26 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const readActionRequested = READ_REQUEST_RE.test(prompt);
   const effectiveReadTargets = [...new Set([
     ...readTargets,
+    ...(validationRequested && runProhibited ? taskContract.inputs : []),
     ...(readActionRequested && readTargets.length === 0 && REVIEW_READ_FALLBACK_RE.test(prompt)
       ? taskContract.inputs
       : []),
   ])];
+  const noRunValidationInspection = validationRequested
+    && runProhibited
+    && !compileRequested
+    && !runRequested
+    && !testRequested
+    && !fileCheckRequested
+    && effectiveReadTargets.length > 0;
   const readRequested = !artifactPathQuery
-    && readActionRequested
+    && (readActionRequested || noRunValidationInspection)
     && effectiveReadTargets.length > 0;
   const readContentRequested = readRequested && READ_CONTENT_RE.test(prompt);
   const rawFormalProjectRequired = requiresFormalProjectQualityFromTaskContract(taskContract, prompt);
   const readOnlyIntent = (READ_ONLY_RE.test(prompt)
       || readRequested
+      || noRunValidationInspection
       || (prohibited && !compileRequested && !runRequested && !testRequested))
     && !mutationRequested;
   const formalProjectRequired = rawFormalProjectRequired && !readOnlyIntent && !standaloneCode;

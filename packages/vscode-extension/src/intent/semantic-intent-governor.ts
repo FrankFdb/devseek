@@ -68,6 +68,7 @@ function isHardLocalBoundary(
   candidate: SemanticIntentInterpretation,
 ): boolean {
   return intent.blockers.includes('empty-prompt')
+    || intent.signals.includes('semantic-intent-constrained')
     || intent.requiresConfirmation
     || intent.mode === 'smalltalk'
     || intent.mode === 'destructive'

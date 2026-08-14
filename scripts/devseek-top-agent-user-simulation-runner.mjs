@@ -15,14 +15,25 @@ const DEFAULT_TARGETED_TESTS = Object.freeze([
   'packages/vscode-extension/test/unit/agent-tool-loop-terminal-guard.test.mjs',
   'packages/vscode-extension/test/unit/independent-requirement-review.test.mjs',
   'packages/vscode-extension/test/unit/requirement-review-ledger.test.mjs',
+  'packages/vscode-extension/test/unit/operational-language-boundary.test.mjs',
+  'packages/vscode-extension/test/unit/write-authority.test.mjs',
   'packages/vscode-extension/test/unit/task-intent-router.test.mjs',
   'packages/vscode-extension/test/unit/semantic-intent-routing-matrix.test.mjs',
   'packages/vscode-extension/test/unit/controlled-vsix-scenario-contract.test.mjs',
 ]);
 const TARGETED_TEST_CASE_COVERAGE = Object.freeze({
+  'packages/vscode-extension/test/unit/operational-language-boundary.test.mjs': Object.freeze([
+    'operational-lexicon-config-dynamic-loading',
+    'operational-lexicon-multilingual-extension',
+  ]),
+  'packages/vscode-extension/test/unit/write-authority.test.mjs': Object.freeze([
+    'in-flight-user-steer-contract-revision',
+    'in-flight-committed-effect-preservation',
+  ]),
   'packages/vscode-extension/test/unit/task-intent-router.test.mjs': Object.freeze([
     'semantic-source-proposal-route-consistency',
     'semantic-no-run-validation-boundary-consistency',
+    'semantic-operation-prohibition-arbitration',
     'semantic-readonly-proposal-route-consistency',
     'semantic-workspace-answer-route-consistency',
     'semantic-code-review-proposal-route-consistency',
@@ -120,6 +131,24 @@ const CASE_DESIGN_DIMENSIONS = Object.freeze([
     cases: ['realistic-python-log-json-followup'],
   },
   {
+    id: 'dynamic_operational_lexicon',
+    user_need: 'Teams need to extend operational keywords and multilingual boundary evidence without code edits.',
+    suites: ['targeted-local-contracts'],
+    cases: [
+      'operational-lexicon-config-dynamic-loading',
+      'operational-lexicon-multilingual-extension',
+    ],
+  },
+  {
+    id: 'interactive_requirement_revision',
+    user_need: 'Users can add, narrow, correct, or revoke requirements during one task and expect the active contract to update without rewriting committed effects.',
+    suites: ['targeted-local-contracts'],
+    cases: [
+      'in-flight-user-steer-contract-revision',
+      'in-flight-committed-effect-preservation',
+    ],
+  },
+  {
     id: 'prior_task_approval_continuation',
     user_need: 'Users approve a prior plan or task with shorthand such as go ahead and expect execution to continue.',
     suites: ['prior-task-continuation-product'],
@@ -144,6 +173,7 @@ const CASE_DESIGN_DIMENSIONS = Object.freeze([
     cases: [
       'semantic-source-proposal-route-consistency',
       'semantic-no-run-validation-boundary-consistency',
+      'semantic-operation-prohibition-arbitration',
       'semantic-readonly-proposal-route-consistency',
       'semantic-workspace-answer-route-consistency',
       'semantic-code-review-proposal-route-consistency',

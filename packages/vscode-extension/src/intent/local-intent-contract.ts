@@ -7,7 +7,11 @@ import {
   isScopedNoChangeWithDeliverableWriteRequest,
 } from './advisory-patterns';
 import { isUnsafeSecretHarvestingImplementationRequest } from './safety-intent';
-import { classifyExternalEffectIntent } from './operational-language-boundary';
+import {
+  classifyExternalEffectIntent,
+  hasExternalEffectProhibition,
+  stripOperationalRunProhibitionPhrases,
+} from './operational-language-boundary';
 import {
   hasProjectHealthRepairIntent,
   hasRuntimeErrorRepairIntent,
@@ -30,7 +34,10 @@ export interface LocalIntentSemanticInput {
     targets: readonly string[];
   };
   validation: {
+    compileRequested: boolean;
     runRequested: boolean;
+    testRequested: boolean;
+    runProhibited: boolean;
   };
   semanticSignals: readonly string[];
 }
@@ -101,24 +108,31 @@ export function buildLocalIntentContract(
   semantic: LocalIntentSemanticInput,
 ): LocalIntentContract {
   const text = String(promptText || '').trim();
-  const positiveActionText = text.replace(NEGATED_EDIT_CLAUSE_RE, ' ');
+  const runtimePositiveText = stripOperationalRunProhibitionPhrases(text);
+  const positiveActionText = runtimePositiveText.replace(NEGATED_EDIT_CLAUSE_RE, ' ');
   const withoutGreeting = text.replace(GREETING_PREFIX_RE, '').trim();
   const hasPath = hasExplicitWorkspacePath(text);
   const hasInteractiveFeatureContext = INTERACTIVE_FEATURE_CONTEXT_RE.test(text);
   const hasCodeContext = CODE_CONTEXT_RE.test(text) || hasInteractiveFeatureContext || hasPath;
-  const isFollowUpRunRequest = !hasPath && FOLLOW_UP_RUN_RE.test(text);
+  const isFollowUpRunRequest = !hasPath && FOLLOW_UP_RUN_RE.test(runtimePositiveText);
   const isCapabilityFeatureRequest = hasCodeContext
     && CAPABILITY_FEATURE_REQUEST_RE.test(text)
     && !READ_ONLY_CAPABILITY_QUESTION_RE.test(withoutGreeting);
   const hasDeliverableWriteRequest = isDeliverableWriteRequest(text);
   const hasScopedNoChangeWithDeliverableWrite = isScopedNoChangeWithDeliverableWriteRequest(text);
-  const localExternalEffect = classifyExternalEffectIntent(positiveActionText);
+  const localExternalEffect = classifyExternalEffectIntent(runtimePositiveText);
+  const externalEffectProhibited = hasExternalEffectProhibition(text);
   const semanticExternalEffectProposal = semantic.semanticSignals.includes('semantic-proposal:external-effect');
   const semanticCodeReviewProposal = semantic.semanticSignals.includes('semantic-proposal:code-review');
-  const externalEffect = localExternalEffect === 'none' && semanticExternalEffectProposal
+  const externalEffect = localExternalEffect === 'none'
+    && semanticExternalEffectProposal
+    && !externalEffectProhibited
     ? 'requested'
     : localExternalEffect;
-  const isRunRequest = RUN_RE.test(text);
+  const semanticConcreteRuntimeRequested = semantic.validation.compileRequested
+    || semantic.validation.runRequested
+    || semantic.validation.testRequested;
+  const isRunRequest = RUN_RE.test(runtimePositiveText) || semanticConcreteRuntimeRequested;
   const isRepairSelfHelpQuestion = isSelfHelpRepairQuestion(text);
   const hasValidationHealthRepairRequest = hasValidationHealthRepairIntent(text)
     && !semantic.mutation.prohibited;
@@ -180,6 +194,21 @@ export function buildLocalIntentContract(
     return finish(decision(
       'inspect', hasPath ? 0.88 : 0.82, hasPath ? 3 : 2, signals,
       hasPath ? 'artifact-path-query-with-file-path' : 'artifact-path-query',
+    ));
+  }
+
+  if (semantic.kind === 'read-only'
+    && semantic.validation.runProhibited
+    && !semanticConcreteRuntimeRequested
+    && hasCodeContext) {
+    const signals = ['inspection-request', 'read-only-validation-boundary'];
+    if (hasPath) signals.push('explicit-file-path');
+    return finish(decision(
+      'inspect',
+      hasPath ? 0.88 : 0.8,
+      hasPath ? 3 : 2,
+      signals,
+      hasPath ? 'read-only-validation-with-file-path' : 'read-only-validation-boundary',
     ));
   }
 
@@ -468,7 +497,9 @@ function hasAcceptedSemanticNoMutationProposal(semantic: LocalIntentSemanticInpu
 
 function hasAcceptedSemanticRunOnlyProposal(semantic: LocalIntentSemanticInput): boolean {
   return !semantic.mutation.requested
-    && semantic.validation.runRequested
+    && (semantic.validation.runRequested
+      || semantic.validation.compileRequested
+      || semantic.validation.testRequested)
     && semantic.semanticSignals.includes('semantic-proposal:terminal-validation');
 }
 
