@@ -178,6 +178,7 @@ const workspaceDir = usesExistingWorkspace ? path.resolve(workspaceDirArg) : pat
 const driverDir = path.join(tmpRoot, 'driver-extension');
 const userDataDir = path.join(tmpRoot, 'user-data');
 const extensionsDir = path.join(tmpRoot, 'extensions');
+const xdgRuntimeDir = path.join(tmpRoot, 'xdg-runtime');
 const reportPath = path.join(tmpRoot, 'report.json');
 const progressPath = path.join(tmpRoot, 'driver-progress.jsonl');
 const vscodeLogPath = path.join(tmpRoot, 'vscode.log');
@@ -188,9 +189,10 @@ if (usesExistingWorkspace && !fs.existsSync(workspaceDir)) {
   failEarly(`指定的真实工作区不存在：${workspaceDir}`);
 }
 
-for (const dir of [driverDir, userDataDir, extensionsDir]) {
+for (const dir of [driverDir, userDataDir, extensionsDir, xdgRuntimeDir]) {
   fs.mkdirSync(dir, { recursive: true });
 }
+fs.chmodSync(xdgRuntimeDir, 0o700);
 if (!usesExistingWorkspace) fs.mkdirSync(workspaceDir, { recursive: true });
 
 const fixture = usesExistingWorkspace
@@ -2515,13 +2517,20 @@ async function runVsCodeDriver() {
     '--disable-workspace-trust',
     '--skip-release-notes',
     '--skip-welcome',
+    '--disable-chromium-sandbox',
+    '--no-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
+    '--disable-gpu-sandbox',
+    '--disable-software-rasterizer',
+    '--disable-features=UseOzonePlatform,VizDisplayCompositor',
+    '--ozone-platform=x11',
     ...(inputMode === 'natural-ui' ? [
-      '--disable-chromium-sandbox',
-      '--no-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
       `--remote-debugging-port=${vscodeDebugPort}`,
     ] : []),
+    '--preserve-env',
+    '--verbose',
+    '--log', 'trace',
     '--new-window',
     '--wait',
     workspaceDir,
@@ -2535,6 +2544,9 @@ async function runVsCodeDriver() {
       DEVSEEK_REAL_PLUGIN_PROGRESS_PATH: progressPath,
       DEVSEEK_BRIDGE_HEADLESS: headed ? 'false' : 'true',
       DEVSEEK_BRIDGE_KEEP_VISIBLE: bridgeKeepVisible,
+      XDG_RUNTIME_DIR: xdgRuntimeDir,
+      XDG_SESSION_TYPE: 'x11',
+      WAYLAND_DISPLAY: '',
     },
     stdio: ['ignore', logFd, logFd],
   });

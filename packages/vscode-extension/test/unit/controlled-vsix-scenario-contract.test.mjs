@@ -122,6 +122,37 @@ test('controlled VSIX fake bridge advertises the connector status contract', () 
   assert.match(source, /connector:\s*controlledDeepSeekWebConnectorAdvertisement\(0\)/, 'controlled status must expose connector advertisement');
 });
 
+test('VS Code window harnesses preserve injected test environment variables', () => {
+  const controlledSource = readFileSync(harnessPath, 'utf8');
+  const realPluginSource = readFileSync(realPluginHarnessPath, 'utf8');
+  const extensionHostSource = readFileSync(path.join(extensionRoot, 'test/devseek-extension-host-harness.mjs'), 'utf8');
+
+  for (const [label, source] of [
+    ['controlled VSIX harness', controlledSource],
+    ['real plugin harness', realPluginSource],
+    ['extension host harness', extensionHostSource],
+  ]) {
+    const extensionDevelopmentIndex = source.indexOf("'--extensionDevelopmentPath'");
+    const preserveEnvIndex = source.indexOf("'--preserve-env'");
+    const newWindowIndex = source.indexOf("'--new-window'");
+    assert.ok(extensionDevelopmentIndex >= 0, `${label} must launch a VS Code extension host`);
+    assert.ok(preserveEnvIndex > extensionDevelopmentIndex, `${label} must preserve the injected test environment`);
+    assert.ok(newWindowIndex > preserveEnvIndex, `${label} must preserve env before opening the controlled window`);
+    assert.match(source, /const xdgRuntimeDir = path\.join\(tmpRoot, 'xdg-runtime'\)/, `${label} must allocate a writable runtime directory`);
+    assert.match(source, /fs\.chmodSync\(xdgRuntimeDir, 0o700\)/, `${label} must protect the runtime socket directory`);
+    assert.match(source, /XDG_RUNTIME_DIR:\s*xdgRuntimeDir/, `${label} must keep VS Code sockets out of the sandbox read-only runtime`);
+    assert.match(source, /XDG_SESSION_TYPE:\s*'x11'/, `${label} must force the X11 path in sandboxed launches`);
+    assert.match(source, /WAYLAND_DISPLAY:\s*''/, `${label} must not point Wayland at the parent runtime directory`);
+    assert.match(source, /'--ozone-platform=x11'/, `${label} must launch Electron through X11 in the sandbox`);
+    assert.match(source, /'--verbose'/, `${label} must retain VS Code launch diagnostics`);
+    assert.match(source, /'--log', 'trace'/, `${label} must retain extension-host trace diagnostics`);
+  }
+
+  assert.match(controlledSource, /DEVSEEK_REAL_PLUGIN_DEEPSEEK:\s*'1'/, 'controlled VSIX harness injects the test command switch');
+  assert.match(realPluginSource, /DEVSEEK_REAL_PLUGIN_DEEPSEEK:\s*'1'/, 'real plugin harness injects the test command switch');
+  assert.match(extensionHostSource, /DEVSEEK_EXTENSION_HOST_HARNESS:\s*'1'/, 'extension-host harness injects its test switch');
+});
+
 test('real plugin VSIX harness selects product run terminal instead of pending-edit resolution noise', () => {
   const source = readFileSync(realPluginHarnessPath, 'utf8');
   const selectHelperMatches = source.match(/function selectProductRunLog\(logs\)/g) || [];

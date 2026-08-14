@@ -104,13 +104,15 @@ try {
   const driverDir = path.join(tmpRoot, 'driver-extension');
   const userDataDir = path.join(tmpRoot, 'user-data');
   const extensionsDir = path.join(tmpRoot, 'extensions');
+  const xdgRuntimeDir = path.join(tmpRoot, 'xdg-runtime');
   const driverReportPath = path.join(tmpRoot, 'driver-report.json');
   const progressPath = path.join(tmpRoot, 'driver-progress.jsonl');
   const vscodeLogPath = path.join(tmpRoot, 'vscode.log');
   const bridgeToken = crypto.randomBytes(32).toString('hex');
-  for (const directory of [workspaceDir, driverDir, userDataDir, extensionsDir]) {
+  for (const directory of [workspaceDir, driverDir, userDataDir, extensionsDir, xdgRuntimeDir]) {
     fs.mkdirSync(directory, { recursive: true });
   }
+  fs.chmodSync(xdgRuntimeDir, 0o700);
 
   installVsix({ vsixPath, userDataDir, extensionsDir });
   const installed = findInstalledExtension(extensionsDir, expectedIdentity.id);
@@ -153,6 +155,7 @@ try {
     workspaceDir,
     userDataDir,
     extensionsDir,
+    xdgRuntimeDir,
     vscodeLogPath,
     keepWindow,
   });
@@ -3869,6 +3872,7 @@ async function runVsCodeDriver(options) {
     workspaceDir,
     userDataDir,
     extensionsDir,
+    xdgRuntimeDir,
     vscodeLogPath,
     keepWindow,
   } = options;
@@ -3886,6 +3890,13 @@ async function runVsCodeDriver(options) {
     '--no-sandbox',
     '--disable-dev-shm-usage',
     '--disable-gpu',
+    '--disable-gpu-sandbox',
+    '--disable-software-rasterizer',
+    '--disable-features=UseOzonePlatform,VizDisplayCompositor',
+    '--ozone-platform=x11',
+    '--preserve-env',
+    '--verbose',
+    '--log', 'trace',
     '--new-window',
     '--wait',
     workspaceDir,
@@ -3897,6 +3908,9 @@ async function runVsCodeDriver(options) {
       DEVSEEK_REAL_PLUGIN_DEEPSEEK: '1',
       DEVSEEK_REAL_PLUGIN_PROGRESS_PATH: progressPath,
       ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
+      XDG_RUNTIME_DIR: xdgRuntimeDir,
+      XDG_SESSION_TYPE: 'x11',
+      WAYLAND_DISPLAY: '',
     },
     stdio: ['ignore', logFd, logFd],
   });

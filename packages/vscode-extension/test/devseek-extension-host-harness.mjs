@@ -38,13 +38,15 @@ const extensionDir = path.join(tmpRoot, 'extension');
 const workspaceDir = path.join(tmpRoot, 'workspace');
 const userDataDir = path.join(tmpRoot, 'user-data');
 const extensionsDir = path.join(tmpRoot, 'extensions');
+const xdgRuntimeDir = path.join(tmpRoot, 'xdg-runtime');
 const reportPath = path.join(tmpRoot, 'report.json');
 
 const prompt = '在code目录下面编写一个三维动画世界C++程序，小孩可以通过鼠标操作各种三维物体，注意使用系统有的能力实现';
 
-for (const dir of [extensionDir, workspaceDir, userDataDir, extensionsDir, path.join(workspaceDir, 'code')]) {
+for (const dir of [extensionDir, workspaceDir, userDataDir, extensionsDir, xdgRuntimeDir, path.join(workspaceDir, 'code')]) {
   fs.mkdirSync(dir, { recursive: true });
 }
+fs.chmodSync(xdgRuntimeDir, 0o700);
 
 fs.writeFileSync(
   path.join(extensionDir, 'package.json'),
@@ -539,6 +541,7 @@ async function main() {
     '--ozone-platform=x11',
     '--verbose',
     '--log', 'trace',
+    '--preserve-env',
     '--new-window',
     '--wait',
     workspaceDir,
@@ -550,6 +553,9 @@ async function main() {
       DEVSEEK_EXTENSION_HOST_HARNESS: '1',
       ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
       LIBGL_ALWAYS_SOFTWARE: '1',
+      XDG_RUNTIME_DIR: xdgRuntimeDir,
+      XDG_SESSION_TYPE: 'x11',
+      WAYLAND_DISPLAY: '',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
