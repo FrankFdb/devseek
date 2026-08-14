@@ -66,6 +66,31 @@ test('in-flight global write revocation overrides a report-only artifact contrac
   assert.equal(authority.writeRevoked, true);
 });
 
+test('a later explicit correction can restore write authority for the current task', () => {
+  const steers = [
+    '先不要修改，只分析 src/cache.ts。',
+    '更正，现在可以修改 src/cache.ts 并完成修复。',
+  ];
+  const authority = createAuthority('修复 src/cache.ts 的缓存问题。', steers);
+
+  assert.equal(authority.takePendingAndDrain().length, 2);
+  assert.equal(authority.writeRevoked, false);
+  assert.equal(authority.semanticContract.mutation.requested, true);
+  assert.equal(authority.semanticContract.mutation.prohibited, false);
+  assert.ok(authority.semanticContractRevision.pendingTargets.includes('src/cache.ts'));
+});
+
+test('a read-only continuation does not silently restore revoked write authority', () => {
+  const steers = [
+    '先不要修改，只分析 src/cache.ts。',
+    '继续分析 src/cache.ts，说明根因。',
+  ];
+  const authority = createAuthority('修复 src/cache.ts 的缓存问题。', steers);
+
+  assert.equal(authority.takePendingAndDrain().length, 2);
+  assert.equal(authority.writeRevoked, true);
+});
+
 test('in-flight source-only write constraint does not cancel a pending report artifact', () => {
   const steers = ['不要修改任何源码。'];
   const authority = createAuthority(
@@ -99,7 +124,8 @@ test('in-flight user steers revise the active contract without restarting the ta
   assert.ok(revision.prohibitedTargets.includes('src/auth.ts'));
   assert.equal(revision.semanticContract.validation.runProhibited, true);
   assert.equal(revision.semanticContract.validation.runRequested, false);
-  assert.match(authority.currentPrompt, /用户实时补充\/纠偏/);
+  assert.equal(authority.currentPrompt, '继续，但不要运行命令。');
+  assert.doesNotMatch(authority.currentPrompt, /修复 src\/cache\.ts 和 src\/auth\.ts/);
   assert.match(messages.at(-1).content, /TaskSemanticContract Revision/);
 });
 

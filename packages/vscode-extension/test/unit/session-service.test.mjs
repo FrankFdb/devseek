@@ -32,6 +32,28 @@ function createStore() {
   };
 }
 
+function createDeferredStore() {
+  const data = new Map();
+  const pending = [];
+  return {
+    data,
+    pending,
+    get(key, defaultValue) {
+      return data.has(key) ? data.get(key) : defaultValue;
+    },
+    update(key, value) {
+      pending.push(() => {
+        if (value === undefined) data.delete(key);
+        else data.set(key, value);
+      });
+      return Promise.resolve();
+    },
+    flush() {
+      for (const apply of pending.splice(0)) apply();
+    },
+  };
+}
+
 test('SessionService: saves newest session meta first and caps length', () => {
   const store = createStore();
   const service = new SessionService(store, 2);
@@ -96,6 +118,50 @@ test('SessionService: round-trips isolated persisted state', () => {
   assert.equal(service.loadSessionState('a').history[0].content, 'continue the refactor');
   assert.deepEqual(service.loadSessionState('a').files, { service: '/workspace/src/service.ts' });
   assert.deepEqual(service.getSessionAgentState('a'), { changedPaths: ['src/service.ts'], completed: false });
+});
+
+test('SessionService: agent state has read-your-writes semantics before async persistence', () => {
+  const store = createDeferredStore();
+  const service = new SessionService(store);
+  const agentState = {
+    semanticContract: { goal: 'implement the approved plan', mode: 'code' },
+    changedPaths: ['src/service.ts'],
+  };
+
+  service.saveSessionAgentState('a', agentState);
+  agentState.semanticContract.goal = 'mutated after save';
+
+  assert.equal(store.data.has('deepseek.session.a.agentState'), false);
+  assert.deepEqual(service.getSessionAgentState('a'), {
+    semanticContract: { goal: 'implement the approved plan', mode: 'code' },
+    changedPaths: ['src/service.ts'],
+  });
+  assert.deepEqual(service.loadSessionState('a').agentState, {
+    semanticContract: { goal: 'implement the approved plan', mode: 'code' },
+    changedPaths: ['src/service.ts'],
+  });
+
+  const loaded = service.getSessionAgentState('a');
+  loaded.changedPaths.push('wrong.ts');
+  assert.deepEqual(service.getSessionAgentState('a').changedPaths, ['src/service.ts']);
+
+  store.flush();
+  assert.deepEqual(store.data.get('deepseek.session.a.agentState'), {
+    semanticContract: { goal: 'implement the approved plan', mode: 'code' },
+    changedPaths: ['src/service.ts'],
+  });
+});
+
+test('SessionService: clearing agent state is immediately visible before persistence', () => {
+  const store = createDeferredStore();
+  store.data.set('deepseek.session.a.agentState', { completed: true });
+  const service = new SessionService(store);
+
+  service.saveSessionAgentState('a', null);
+
+  assert.equal(service.getSessionAgentState('a'), undefined);
+  assert.equal(service.loadSessionState('a').agentState, undefined);
+  assert.deepEqual(store.data.get('deepseek.session.a.agentState'), { completed: true });
 });
 
 test('SessionService: keeps state isolated between sessions', () => {

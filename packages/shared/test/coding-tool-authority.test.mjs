@@ -42,6 +42,16 @@ function session(mode = 'change') {
   });
 }
 
+function modelLedSession(mode = 'explain', taskContract = contract(mode)) {
+  return new CanonicalToolAuthorityService().bind({
+    runId: `run-model-led-${mode}`,
+    surface: 'headless',
+    workspaceRoot: '/workspace',
+    taskContract,
+    authorityStrategy: 'model-led',
+  });
+}
+
 test('authority derives mutation and verification permission from the immutable task contract', () => {
   const change = session('change');
   const mutation = change.authorize({
@@ -121,6 +131,93 @@ test('read-only task contracts deny mutation even when a Surface tries to allow 
   assert.equal(authorization.receipt.decision, 'deny');
   assert.equal(authorization.permission.reason, 'sandbox-denies-workspace-mutation');
   assert.equal(review.sandbox.workspaceAccess, 'read-only');
+});
+
+test('model-led authority treats the task mode as a hint and arbitrates the concrete action', () => {
+  const authority = modelLedSession('review');
+  const mutation = authority.authorize({
+    actionId: 'model-proposed-write',
+    tool: 'write_file',
+    purpose: 'workspace-mutation',
+    effects: ['workspace-mutation'],
+    input: { path: 'src/value.ts', content: 'export const value = 3;' },
+    targetPaths: ['src/value.ts'],
+    risk: 'medium',
+    surfaceConstraint: {
+      decision: 'allow',
+      reason: 'model-proposed-workspace-action',
+      evidenceRefs: ['surface:model-proposal'],
+    },
+  });
+
+  assert.equal(authority.sandbox.authorityStrategy, 'model-led');
+  assert.equal(authority.sandbox.workspaceAccess, 'read-write');
+  assert.equal(mutation.receipt.status, 'authorized');
+  assert.equal(mutation.permission.reason, 'model-led-allows-workspace-mutation');
+});
+
+test('model-led authority still requires approval for external effects', () => {
+  const authority = modelLedSession('explain');
+  const request = {
+    tool: 'mcp__issues__comment',
+    purpose: 'external-effect',
+    effects: ['network'],
+    input: { issue: 42, body: 'Done.' },
+    risk: 'low',
+  };
+  const unconfirmed = authority.authorize({ ...request, actionId: 'model-external-unconfirmed' });
+  const confirmed = authority.authorize({
+    ...request,
+    actionId: 'model-external-confirmed',
+    surfaceConstraint: {
+      decision: 'require-confirmation',
+      reason: 'user-confirmed-model-action',
+      confirmationRef: 'confirmation-model-action',
+      evidenceRefs: ['surface:confirmed'],
+    },
+  });
+
+  assert.equal(unconfirmed.receipt.status, 'denied');
+  assert.equal(unconfirmed.receipt.decision, 'require-confirmation');
+  assert.equal(confirmed.receipt.status, 'authorized');
+  assert.equal(confirmed.receipt.confirmationRef, 'confirmation-model-action');
+});
+
+test('model-led authority preserves explicit target exclusions', () => {
+  const scopedContract = new CanonicalTaskContractService().build({
+    goal: 'Change only src/value.ts',
+    mode: 'change',
+    include: ['src/value.ts'],
+    exclude: ['src/secret.ts'],
+    constraints: ['no-other-files'],
+    deliverables: [{ id: 'change', kind: 'source-change', path: 'src/value.ts' }],
+    acceptance: [{
+      id: 'settled',
+      statement: 'Only the requested target changes.',
+      deliverableIds: ['change'],
+      oracle: {
+        kind: 'workspace-readback',
+        verifier: 'test-readback',
+        scope: ['src/value.ts'],
+        evidenceKinds: ['workspace-readback'],
+      },
+      externalBoundaryRefs: [],
+    }],
+    provenanceRefs: ['test:user-prompt'],
+  });
+  const authority = modelLedSession('change', scopedContract);
+  const denied = authority.authorize({
+    actionId: 'model-proposed-outside-scope',
+    tool: 'write_file',
+    purpose: 'workspace-mutation',
+    effects: ['workspace-mutation'],
+    input: { path: 'src/other.ts', content: 'nope' },
+    targetPaths: ['src/other.ts'],
+    risk: 'low',
+  });
+
+  assert.equal(denied.receipt.status, 'denied');
+  assert.equal(denied.permission.reason, 'model-led-target-outside-explicit-scope:src/other.ts');
 });
 
 test('high-risk effects require a settled confirmation and Surface policy can narrow authority', () => {

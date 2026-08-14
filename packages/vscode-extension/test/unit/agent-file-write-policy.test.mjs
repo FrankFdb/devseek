@@ -36,6 +36,14 @@ const planPolicy = {
   requireUserConfirmation: false,
 };
 
+const modelLedPolicy = {
+  mode: 'model-led',
+  allowedToolKinds: ['read', 'search', 'diagnostics', 'network', 'control', 'plan', 'memory', 'edit', 'terminal', 'vscode', 'vscode-command', 'mcp'],
+  requireConfirmationKinds: [],
+  deniedToolKinds: [],
+  requireUserConfirmation: false,
+};
+
 test('AgentFileWritePolicy: plan mode blocks ordinary workspace edits', () => {
   const decision = decideAgentFileWrite({
     absPath: '/workspace/src/main.cpp',
@@ -1001,6 +1009,32 @@ test('AgentFileWritePolicy: unquoted C++ source directories authorize nested fil
   assert.equal(decide('src/domain/job_scheduler.cpp').action, 'allow');
   assert.equal(decide('include/job_scheduler.hpp').action, 'allow');
   assert.equal(decide('tests/job_scheduler.test.cpp').action, 'deny');
+});
+
+test('AgentFileWritePolicy: model-led action proposals do not require keyword authorization', () => {
+  const decision = decideAgentFileWrite({
+    absPath: '/workspace/src/login.ts',
+    workspaceRoot: '/workspace',
+    toolPolicy: modelLedPolicy,
+    context: {
+      purpose: 'tool-write',
+      userRequested: false,
+      taskAction: 'replace_in_file',
+      displayName: 'src/login.ts',
+      requestPrompt: '请吧 src/login.ts 修号，然候跑侧试。',
+      semanticIntent: {
+        mutationRequested: false,
+        mutationProhibited: false,
+        sourceChange: false,
+        fileArtifact: false,
+        targets: [],
+        signals: [],
+      },
+    },
+  });
+
+  assert.equal(decision.action, 'allow');
+  assert.equal(decision.audit?.semanticWriteReason, 'model-led-action-proposal');
 });
 
 console.log('\nAgent file write policy tests passed.\n');

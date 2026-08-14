@@ -51,6 +51,10 @@ export function buildToolPolicy(mode: ExecutionMode): ToolPolicy {
       return makePolicy(mode, RUN_TOOLS, []);
     case 'destructive':
       return makePolicy(mode, ALL_TOOLS, ['edit', 'terminal', 'vscode', 'vscode-command', 'mcp'], true);
+    case 'model-led':
+      // The main model may propose any registered action. Concrete risk, target,
+      // sandbox, and approval checks still run before the action can execute.
+      return makePolicy(mode, ALL_TOOLS, []);
   }
 }
 

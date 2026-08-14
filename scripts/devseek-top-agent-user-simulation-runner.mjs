@@ -16,12 +16,32 @@ const DEFAULT_TARGETED_TESTS = Object.freeze([
   'packages/vscode-extension/test/unit/independent-requirement-review.test.mjs',
   'packages/vscode-extension/test/unit/requirement-review-ledger.test.mjs',
   'packages/vscode-extension/test/unit/operational-language-boundary.test.mjs',
+  'packages/vscode-extension/test/unit/model-led-intent-boundary.test.mjs',
+  'packages/vscode-extension/test/unit/model-led-user-simulation.test.mjs',
   'packages/vscode-extension/test/unit/write-authority.test.mjs',
   'packages/vscode-extension/test/unit/task-intent-router.test.mjs',
   'packages/vscode-extension/test/unit/semantic-intent-routing-matrix.test.mjs',
   'packages/vscode-extension/test/unit/controlled-vsix-scenario-contract.test.mjs',
 ]);
+const INTENT_TARGETED_TESTS = Object.freeze([
+  'packages/vscode-extension/test/unit/operational-language-boundary.test.mjs',
+  'packages/vscode-extension/test/unit/model-led-intent-boundary.test.mjs',
+  'packages/vscode-extension/test/unit/model-led-user-simulation.test.mjs',
+  'packages/vscode-extension/test/unit/write-authority.test.mjs',
+  'packages/vscode-extension/test/unit/task-intent-router.test.mjs',
+  'packages/vscode-extension/test/unit/semantic-intent-routing-matrix.test.mjs',
+]);
 const TARGETED_TEST_CASE_COVERAGE = Object.freeze({
+  'packages/vscode-extension/test/unit/model-led-intent-boundary.test.mjs': Object.freeze([
+    'model-led-diverse-input-main-model',
+    'model-led-typo-homophone-prompt',
+  ]),
+  'packages/vscode-extension/test/unit/model-led-user-simulation.test.mjs': Object.freeze([
+    'model-led-noisy-action-real-write',
+    'model-led-exact-simple-main-model',
+    'model-led-noisy-question-no-tools',
+    'model-led-inflight-latest-target',
+  ]),
   'packages/vscode-extension/test/unit/operational-language-boundary.test.mjs': Object.freeze([
     'operational-lexicon-config-dynamic-loading',
     'operational-lexicon-multilingual-extension',
@@ -59,6 +79,11 @@ const DEFAULT_CONTROLLED_SUITES = Object.freeze([
   'agent-fit-product',
   'coding-conformance-product',
   'r2-07f-connector-security',
+]);
+const INTENT_CONTROLLED_SUITES = Object.freeze([
+  'prior-task-continuation-product',
+  'scope-replacement-product',
+  'cancellation-replacement-product',
 ]);
 const ACCEPTANCE_CONTROLLED_SUITES = Object.freeze([
   'r2-07e-stream-protocol',
@@ -148,6 +173,27 @@ const CASE_DESIGN_DIMENSIONS = Object.freeze([
     cases: [
       'in-flight-user-steer-contract-revision',
       'in-flight-committed-effect-preservation',
+      'model-led-inflight-latest-target',
+    ],
+  },
+  {
+    id: 'model_led_turn_ownership',
+    user_need: 'Raw user input, including exact simple tasks and direct questions, must reach the main model before any action choice.',
+    suites: ['targeted-local-contracts'],
+    cases: [
+      'model-led-diverse-input-main-model',
+      'model-led-exact-simple-main-model',
+      'model-led-noisy-question-no-tools',
+    ],
+  },
+  {
+    id: 'noisy_natural_language_recovery',
+    user_need: 'Users make typos, use homophones, colloquial Chinese, ASR-like phrasing, and mixed English without fixed formatting.',
+    suites: ['targeted-local-contracts'],
+    cases: [
+      'model-led-typo-homophone-prompt',
+      'model-led-noisy-action-real-write',
+      'model-led-noisy-question-no-tools',
     ],
   },
   {
@@ -391,6 +437,7 @@ function main() {
 function parseOptions(argv) {
   const allowedFlags = new Set([
     '--dry-run',
+    '--intent-only',
     '--run-id',
     '--evidence-root',
     '--markdown',
@@ -421,6 +468,7 @@ function parseOptions(argv) {
     }
   }
   const dryRun = argv.includes('--dry-run');
+  const intentOnly = argv.includes('--intent-only');
   const runId = optionValue(argv, '--run-id') || defaultRunId();
   const evidenceRootOption = optionValue(argv, '--evidence-root');
   const evidenceRoot = path.resolve(
@@ -430,8 +478,16 @@ function parseOptions(argv) {
   const markdownPath = optionValue(argv, '--markdown')
     ? path.resolve(repoRoot, optionValue(argv, '--markdown'))
     : '';
-  const targetedTests = listOption(argv, '--targeted-tests', DEFAULT_TARGETED_TESTS);
-  const controlledSuites = listOption(argv, '--controlled-suites', DEFAULT_CONTROLLED_SUITES);
+  const targetedTests = listOption(
+    argv,
+    '--targeted-tests',
+    intentOnly ? INTENT_TARGETED_TESTS : DEFAULT_TARGETED_TESTS,
+  );
+  const controlledSuites = listOption(
+    argv,
+    '--controlled-suites',
+    intentOnly ? INTENT_CONTROLLED_SUITES : DEFAULT_CONTROLLED_SUITES,
+  );
   const controlledSuitesExplicit = Boolean(optionValue(argv, '--controlled-suites'));
   if (targetedTests.length === 0 && !argv.includes('--skip-targeted')) {
     errors.push('targeted-tests:empty');
@@ -441,6 +497,7 @@ function parseOptions(argv) {
   }
   return {
     dryRun,
+    intentOnly,
     help: argv.includes('--help'),
     printFull: argv.includes('--print-full'),
     force: argv.includes('--force'),
@@ -468,6 +525,7 @@ function renderUsage() {
     'Runs local DevSeek top-agent user simulation evidence. This runner never grants release qualification claims.',
     '',
     'Options:',
+    '  --intent-only                     Run intent-specific contracts and multi-turn VSIX journeys only.',
     '  --dry-run                         Print the planned targeted checks and controlled VSIX suites.',
     '  --run-id <id>                     Use a stable run id for evidence paths.',
     '  --evidence-root <path>            Store or reuse runner evidence at this path.',
@@ -484,6 +542,7 @@ function renderUsage() {
     '',
     'Examples:',
     '  node scripts/devseek-top-agent-user-simulation-runner.mjs --dry-run',
+    '  node scripts/devseek-top-agent-user-simulation-runner.mjs --intent-only --keep-last-window',
     '  node scripts/devseek-top-agent-user-simulation-runner.mjs --skip-targeted --controlled-suites agent-fit-product --keep-last-window',
   ].join('\n');
 }
@@ -630,6 +689,7 @@ function buildPlan(options) {
 }
 
 function coverageProfileForOptions(options) {
+  if (options.intentOnly) return 'intent-recognition-regression';
   if (
     !options.skipTargeted
     && !options.skipControlled
@@ -646,12 +706,34 @@ function controlledSuitePurpose(suite) {
     'r2-07e-stream-protocol': 'DeepSeek Web malformed/truncated stream replay: fail closed, bounded recovery, no mutation.',
     'realistic-product': 'Same-window realistic coding journey: create a Python log tool, handle an incremental JSON follow-up, modify existing JS, refuse unsafe work.',
     'prior-task-continuation-product': 'Same-session prior task approval: plan-only first turn, shorthand approval, inherited target, edit and verification.',
+    'scope-replacement-product': 'Same-session correction: replace the earlier target and execute only the latest requested scope.',
+    'cancellation-replacement-product': 'Same-session cancellation: withdraw the planned mutation and replace it with a read-only review.',
     'agent-fit-product': 'Codex-aligned agent fit: clarify ambiguous asks, keep reviews read-only, handle multi-file tested edits, and verify Markdown anchors.',
     'coding-conformance-product': 'Core programming lifecycle: create/modify/verify-repair plus permission denial and policy refusal.',
     'r2-07f-connector-security': 'Connector evidence replay: redacted read-only evidence must not mutate workspace.',
     'journey-core': 'General user journey smoke: normal, exception, boundary, C++ create, JS fix, latest requirement wins.',
   };
   return purposes[suite] || `Controlled VSIX user simulation suite ${suite}.`;
+}
+
+function simulationCoverageLines(report) {
+  const executedSteps = Array.isArray(report.steps) ? report.steps : [];
+  const plannedSteps = Array.isArray(report.plan?.steps) ? report.plan.steps : [];
+  const steps = executedSteps.length > 0 ? executedSteps : plannedSteps;
+  const targetedTestFiles = new Set(steps
+    .filter(step => step.kind === 'targeted-local-contract')
+    .flatMap(step => Array.isArray(step.command) ? step.command : [])
+    .filter(value => typeof value === 'string' && value.endsWith('.test.mjs')));
+  const controlledSuites = [...new Set(steps
+    .filter(step => step.kind === 'controlled-vsix-user-simulation')
+    .map(step => step.id?.replace(/^controlled-/, ''))
+    .filter(Boolean))];
+  const lines = [];
+  if (targetedTestFiles.size > 0) {
+    lines.push(`- Targeted local contract coverage: \`${targetedTestFiles.size}\` selected test files.`);
+  }
+  lines.push(...controlledSuites.map(suite => `- \`${suite}\`: ${controlledSuitePurpose(suite)}`));
+  return lines.length > 0 ? lines.join('\n') : '- No local or controlled VSIX coverage was selected.';
 }
 
 function controlledSuiteTimeoutMs(suite) {
@@ -1337,6 +1419,7 @@ function renderFixpointReplayMarkdown(fixpointReplay) {
 function renderMarkdownReport(report) {
   const caseDesignReview = caseDesignReviewFor(report);
   const fixpointReplay = report.fixpoint_replay || buildFixpointReplay(report);
+  const coverageLines = simulationCoverageLines(report);
   const stepRows = report.steps.length > 0
     ? report.steps.map(step => (
       `| \`${step.id}\` | ${step.ok ? 'PASS' : 'FAIL'} | \`${step.kind}\` | \`${step.stdout_log}\` |`
@@ -1412,12 +1495,7 @@ function renderMarkdownReport(report) {
     '',
     '## User Simulation Coverage',
     '',
-    '- DeepSeek Web malformed/truncated reply compatibility: `r2-07e-stream-protocol`.',
-    '- Read-only boundary, standalone program, existing-code fix, and latest requirement handling: `journey-core`.',
-    '- Same-session realistic coding change and safety refusal: `realistic-product`.',
-    '- Codex-aligned input diversity: `agent-fit-product`.',
-    '- Core coding lifecycle, permission denial, and policy refusal: `coding-conformance-product`.',
-    '- Redacted connector evidence replay: `r2-07f-connector-security`.',
+    coverageLines,
     '',
     '## Actual User Cases',
     '',

@@ -55,6 +55,7 @@ import {
 import {
   CanonicalToolAuthorityService,
   type CodingToolAuthorization,
+  type CodingToolAuthorityStrategy,
   type CodingToolAuthoritySessionPort,
 } from './coding-tool-authority';
 import {
@@ -207,6 +208,7 @@ export interface CodingKernelExecutionRequest<TRuntimeContext> {
   readonly userPrompt: string;
   readonly workspaceRoot: string;
   readonly taskContract: CodingKernelTaskContract;
+  readonly toolAuthorityStrategy?: CodingToolAuthorityStrategy;
   readonly contextSeed?: CodingContextSeed;
   readonly memoryCandidates?: readonly CodingMemoryCandidate[];
   readonly resumeCheckpoint?: CodingCheckpoint;
@@ -543,6 +545,9 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       workspaceRoot: request.workspaceRoot,
       taskContract,
       changePlanRevision,
+      ...(request.toolAuthorityStrategy
+        ? { authorityStrategy: request.toolAuthorityStrategy }
+        : {}),
     });
     const toolExecution = TOOL_EXECUTION.bind({
       runId: request.runId,

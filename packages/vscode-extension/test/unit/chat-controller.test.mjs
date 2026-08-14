@@ -22,6 +22,24 @@ execSync(
 const req = createRequire(import.meta.url);
 const { ChatRouteController, getIntentRoutingText } = req(bundlePath);
 
+function assertModelLed(decision) {
+  assert.equal(decision.workflow.kind, 'model-agent');
+  assert.equal(decision.workflow.state, 'acting');
+  assert.equal(decision.workflow.useAgent, true);
+  assert.equal(decision.workflow.requiresPlanReview, false);
+  assert.equal(decision.toolPolicy.mode, 'model-led');
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('read'), true);
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('terminal'), true);
+}
+
+function assertProductBypass(decision, reason) {
+  assert.equal(decision.workflow.kind, 'plain-chat');
+  assert.equal(decision.workflow.state, 'plain_chat');
+  assert.equal(decision.workflow.useAgent, false);
+  assert.equal(decision.workflow.reason, reason);
+}
+
 test('ChatRouteController: continued turn inherits target and narrows validation through semantic context', () => {
   const controller = new ChatRouteController();
   const previous = controller.decide({
@@ -70,7 +88,7 @@ test('ChatRouteController: approval shorthand executes previous edit contract', 
   });
 
   assert.equal(continued.intent.mode, 'edit');
-  assert.equal(continued.workflow.kind, 'edit-agent');
+  assertModelLed(continued);
   assert.equal(continued.toolPolicy.allowedToolKinds.includes('edit'), true);
   assert.deepEqual(continued.intent.semanticContract.mutation.targets, ['src/settings.ts']);
   assert.ok(continued.intent.signals.includes('prior-task-continuation-request'));
@@ -97,7 +115,7 @@ test('ChatRouteController: approval shorthand executes previous plan contract ta
 
   assert.equal(previous.intent.mode, 'plan');
   assert.equal(continued.intent.mode, 'edit');
-  assert.equal(continued.workflow.kind, 'edit-agent');
+  assertModelLed(continued);
   assert.deepEqual(continued.intent.semanticContract.mutation.targets, ['src/settings.ts']);
   assert.ok(continued.intent.signals.includes('prior-source-change-continuation'));
 });
@@ -122,7 +140,7 @@ test('ChatRouteController: corrective retarget replaces prior source scope', () 
   });
 
   assert.equal(replacement.intent.mode, 'edit');
-  assert.equal(replacement.workflow.kind, 'edit-agent');
+  assertModelLed(replacement);
   assert.deepEqual(replacement.intent.semanticContract.mutation.targets, ['src/beta.js']);
   assert.ok(!replacement.intent.semanticContract.taskContract.inputs.includes('src/alpha.js'));
   assert.ok(replacement.intent.semanticContract.signals.includes('semantic-scope-replaced'));
@@ -139,8 +157,7 @@ test('ChatRouteController: routes by visible user text, not attached prompt cont
 
   assert.equal(decision.intentRoutingText, 'hello');
   assert.equal(decision.intent.mode, 'smalltalk');
-  assert.equal(decision.workflow.useAgent, false);
-  assert.deepEqual(decision.toolPolicy.allowedToolKinds, []);
+  assertModelLed(decision);
 });
 
 test('ChatRouteController: preserves edit workflow for real edit requests', () => {
@@ -153,10 +170,10 @@ test('ChatRouteController: preserves edit workflow for real edit requests', () =
   });
 
   assert.equal(decision.intent.mode, 'edit');
-  assert.equal(decision.workflow.kind, 'edit-agent');
+  assertModelLed(decision);
 });
 
-test('ChatRouteController: complex refactor starts in plan review with plan permissions', () => {
+test('ChatRouteController: complex refactor keeps its edit hint inside a model-led turn', () => {
   const controller = new ChatRouteController();
   const decision = controller.decide({
     userDisplay: '重构整个项目代码，拆分 workflow runtime 和 provider 权限模块',
@@ -166,15 +183,10 @@ test('ChatRouteController: complex refactor starts in plan review with plan perm
   });
 
   assert.equal(decision.intent.mode, 'edit');
-  assert.equal(decision.workflow.kind, 'plan-agent');
-  assert.equal(decision.workflow.state, 'plan_review');
-  assert.equal(decision.workflow.requiresPlanReview, true);
-  assert.equal(decision.toolPolicy.mode, 'plan');
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('terminal'), false);
+  assertModelLed(decision);
 });
 
-test('ChatRouteController: explicit read-only file inspection uses inspect policy', () => {
+test('ChatRouteController: explicit read-only file inspection keeps its local contract in a model-led turn', () => {
   const controller = new ChatRouteController();
   const decision = controller.decide({
     userDisplay: '帮我查看 packages/vscode-extension/src/app/workflow-service.ts 的工作流状态机是否清晰，不要修改代码',
@@ -184,15 +196,10 @@ test('ChatRouteController: explicit read-only file inspection uses inspect polic
   });
 
   assert.equal(decision.intent.mode, 'inspect');
-  assert.equal(decision.workflow.kind, 'inspect-agent');
-  assert.equal(decision.workflow.state, 'inspect');
-  assert.equal(decision.toolPolicy.mode, 'inspect');
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('read'), true);
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('terminal'), false);
+  assertModelLed(decision);
 });
 
-test('ChatRouteController: explicit file inspection ignores disabled agent toggle for controlled read tools', () => {
+test('ChatRouteController: explicit file inspection honors the disabled agent toggle', () => {
   const controller = new ChatRouteController();
   const decision = controller.decide({
     userDisplay: '帮我查看 packages/vscode-extension/src/app/workflow-service.ts 的工作流状态机是否清晰，不要修改代码',
@@ -202,14 +209,10 @@ test('ChatRouteController: explicit file inspection ignores disabled agent toggl
   });
 
   assert.equal(decision.intent.mode, 'inspect');
-  assert.equal(decision.workflow.kind, 'inspect-agent');
-  assert.equal(decision.workflow.useAgent, true);
-  assert.equal(decision.toolPolicy.mode, 'inspect');
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('read'), true);
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
+  assertProductBypass(decision, 'agent-disabled');
 });
 
-test('ChatRouteController: explicit no-change refactor plan uses plan workflow', () => {
+test('ChatRouteController: explicit no-change refactor plan honors the disabled agent toggle', () => {
   const controller = new ChatRouteController();
   const decision = controller.decide({
     userDisplay: '制定一个重构 src/agent/tool-executor.ts 的计划，但不要改代码',
@@ -219,15 +222,10 @@ test('ChatRouteController: explicit no-change refactor plan uses plan workflow',
   });
 
   assert.equal(decision.intent.mode, 'plan');
-  assert.equal(decision.workflow.kind, 'plan-agent');
-  assert.equal(decision.workflow.state, 'planning');
-  assert.equal(decision.workflow.useAgent, true);
-  assert.equal(decision.toolPolicy.mode, 'plan');
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('terminal'), false);
+  assertProductBypass(decision, 'agent-disabled');
 });
 
-test('ChatRouteController: explicit file fix ignores disabled agent toggle for controlled edit tools', () => {
+test('ChatRouteController: explicit file fix honors the disabled agent toggle', () => {
   const controller = new ChatRouteController();
   const decision = controller.decide({
     userDisplay: '修复 packages/vscode-extension/src/app/workflow-service.ts 中明显的小问题',
@@ -237,13 +235,10 @@ test('ChatRouteController: explicit file fix ignores disabled agent toggle for c
   });
 
   assert.equal(decision.intent.mode, 'edit');
-  assert.equal(decision.workflow.kind, 'edit-agent');
-  assert.equal(decision.workflow.useAgent, true);
-  assert.equal(decision.toolPolicy.mode, 'edit');
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
+  assertProductBypass(decision, 'agent-disabled');
 });
 
-test('ChatRouteController: explicit file fix is not downgraded by webview no-agent payload', () => {
+test('ChatRouteController: explicit file fix honors the webview no-agent payload', () => {
   const controller = new ChatRouteController();
   const decision = controller.decide({
     userDisplay: '修复 packages/vscode-extension/src/app/workflow-service.ts 中明显的小问题',
@@ -254,13 +249,10 @@ test('ChatRouteController: explicit file fix is not downgraded by webview no-age
   });
 
   assert.equal(decision.intent.mode, 'edit');
-  assert.equal(decision.workflow.kind, 'edit-agent');
-  assert.equal(decision.workflow.useAgent, true);
-  assert.equal(decision.toolPolicy.mode, 'edit');
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
+  assertProductBypass(decision, 'force-no-agent');
 });
 
-test('ChatRouteController: exact unknown-extension write is not downgraded by webview no-agent payload', () => {
+test('ChatRouteController: exact unknown-extension write honors the webview no-agent payload', () => {
   const controller = new ChatRouteController();
   const decision = controller.decide({
     userDisplay: '创建 assets/manual-phase6.unknown，内容为：phase6 unknown validation target。',
@@ -272,13 +264,10 @@ test('ChatRouteController: exact unknown-extension write is not downgraded by we
 
   assert.equal(decision.intent.mode, 'edit');
   assert.ok(decision.intent.signals.includes('explicit-file-path'));
-  assert.equal(decision.workflow.kind, 'edit-agent');
-  assert.equal(decision.workflow.useAgent, true);
-  assert.equal(decision.toolPolicy.mode, 'edit');
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
+  assertProductBypass(decision, 'force-no-agent');
 });
 
-test('ChatRouteController: explicit directory edit is not downgraded by webview no-agent payload', () => {
+test('ChatRouteController: explicit directory edit honors the webview no-agent payload', () => {
   const controller = new ChatRouteController();
   const prompt = '/home/ff/work/devseek_netai/code/shape_manager 请基于这些要求规划方案，并通过代码实现，编译验证';
   const decision = controller.decide({
@@ -291,10 +280,7 @@ test('ChatRouteController: explicit directory edit is not downgraded by webview 
 
   assert.equal(decision.intent.mode, 'edit');
   assert.ok(decision.intent.signals.includes('explicit-file-path'));
-  assert.equal(decision.workflow.kind, 'edit-agent');
-  assert.equal(decision.workflow.useAgent, true);
-  assert.equal(decision.toolPolicy.mode, 'edit');
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
+  assertProductBypass(decision, 'force-no-agent');
 });
 
 test('ChatRouteController: isolated output directory keeps implementation workflow despite scoped no-change', () => {
@@ -317,9 +303,7 @@ test('ChatRouteController: isolated output directory keeps implementation workfl
   assert.equal(decision.intent.mode, 'edit');
   assert.ok(decision.intent.signals.includes('deliverable-write-request'));
   assert.ok(decision.intent.signals.includes('scoped-existing-source-no-change'));
-  assert.equal(decision.workflow.kind, 'edit-agent');
-  assert.equal(decision.toolPolicy.mode, 'edit');
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
+  assertModelLed(decision);
 });
 
 test('ChatRouteController: a source read constraint does not cancel an explicit report path write', () => {
@@ -333,8 +317,7 @@ test('ChatRouteController: a source read constraint does not cancel an explicit 
 
   assert.equal(decision.intent.mode, 'edit');
   assert.ok(decision.intent.signals.includes('deliverable-write-request'));
-  assert.equal(decision.workflow.kind, 'edit-agent');
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
+  assertModelLed(decision);
 });
 
 test('ChatRouteController: C13 MCP Markdown deliverable routes to edit workflow from user entry', () => {
@@ -357,14 +340,11 @@ test('ChatRouteController: C13 MCP Markdown deliverable routes to edit workflow 
   assert.equal(decision.intent.mode, 'edit');
   assert.ok(decision.intent.signals.includes('explicit-file-artifact-target'));
   assert.ok(decision.intent.signals.includes('scoped-formal-source-prohibition'));
-  assert.equal(decision.workflow.kind, 'edit-agent');
-  assert.equal(decision.workflow.useAgent, true);
-  assert.equal(decision.toolPolicy.mode, 'edit');
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
+  assertModelLed(decision);
   assert.ok(!decision.intent.blockers.includes('explicit-no-change'));
 });
 
-test('ChatRouteController: capability feature follow-up with context stays in edit workflow', () => {
+test('ChatRouteController: capability feature follow-up honors explicit no-agent mode', () => {
   const controller = new ChatRouteController();
   const prompt = '现在可以同时显示，但是，6个图形，不能单独通过鼠标或者键盘操作，能提供单独控制每个图形旋转';
   const decision = controller.decide({
@@ -384,14 +364,10 @@ test('ChatRouteController: capability feature follow-up with context stays in ed
   assert.equal(decision.intent.mode, 'edit');
   assert.equal(decision.intent.reason, 'capability-feature-request');
   assert.ok(decision.intent.signals.includes('capability-feature-request'));
-  assert.equal(decision.workflow.kind, 'edit-agent');
-  assert.equal(decision.workflow.useAgent, true);
-  assert.equal(decision.workflow.requiresPlanReview, false);
-  assert.equal(decision.toolPolicy.mode, 'edit');
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
+  assertProductBypass(decision, 'force-no-agent');
 });
 
-test('ChatRouteController: destructive workflow waits for visible confirmation', () => {
+test('ChatRouteController: destructive intent reaches the model and defers confirmation to its concrete action', () => {
   const controller = new ChatRouteController();
   const pending = controller.decide({
     userDisplay: '删除 code/main.cpp',
@@ -407,11 +383,11 @@ test('ChatRouteController: destructive workflow waits for visible confirmation',
     intentConfirmed: true,
   });
 
-  assert.equal(pending.workflow.kind, 'confirmation-required');
-  assert.equal(confirmed.workflow.kind, 'edit-agent');
+  assertModelLed(pending);
+  assertModelLed(confirmed);
 });
 
-test('ChatRouteController: provider semantic intent can upgrade ambiguous local chat into edit workflow', () => {
+test('ChatRouteController: injected semantic evidence can enrich an ambiguous local hint', () => {
   const controller = new ChatRouteController();
   const prompt = '做一个 hello everyday 小程序';
   const decision = controller.decide({
@@ -436,7 +412,7 @@ test('ChatRouteController: provider semantic intent can upgrade ambiguous local 
   });
 
   assert.equal(decision.intent.mode, 'edit');
-  assert.equal(decision.workflow.kind, 'edit-agent');
+  assertModelLed(decision);
   assert.ok(decision.intent.signals.includes('semantic-intent-provider'));
   assert.ok(decision.intent.signals.includes('semantic-proposal-accepted'));
   assert.equal(decision.intent.semanticContract.kind, 'standalone-code');
@@ -444,7 +420,7 @@ test('ChatRouteController: provider semantic intent can upgrade ambiguous local 
   assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
 });
 
-test('ChatRouteController: provider semantic file-artifact proposal enters the local task contract', () => {
+test('ChatRouteController: injected file-artifact evidence enters the local task contract', () => {
   const controller = new ChatRouteController();
   const prompt = 'Can you prepare the audit?';
   const decision = controller.decide({
@@ -469,7 +445,7 @@ test('ChatRouteController: provider semantic file-artifact proposal enters the l
   });
 
   assert.equal(decision.intent.mode, 'edit');
-  assert.equal(decision.workflow.kind, 'edit-agent');
+  assertModelLed(decision);
   assert.equal(decision.intent.semanticContract.kind, 'file-artifact');
   assert.equal(decision.intent.semanticContract.mutation.fileArtifact, true);
   assert.equal(decision.intent.semanticContract.mutation.sourceChange, false);
@@ -480,7 +456,7 @@ test('ChatRouteController: provider semantic file-artifact proposal enters the l
   assert.ok(decision.intent.signals.includes('semantic-proposal-accepted'));
 });
 
-test('ChatRouteController: provider workspace answer proposal uses inspect workflow without attachments', () => {
+test('ChatRouteController: injected workspace-answer evidence preserves a read-only local contract', () => {
   const controller = new ChatRouteController();
   const prompt = 'Can you answer this from the repository?';
   const decision = controller.decide({
@@ -506,17 +482,14 @@ test('ChatRouteController: provider workspace answer proposal uses inspect workf
 
   assert.equal(decision.intent.mode, 'inspect');
   assert.equal(decision.intent.kind, 'chat');
-  assert.equal(decision.workflow.kind, 'inspect-agent');
-  assert.equal(decision.workflow.useAgent, true);
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('read'), true);
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
+  assertModelLed(decision);
   assert.equal(decision.intent.semanticContract.kind, 'read-only');
   assert.deepEqual(decision.intent.semanticContract.read.targets, ['src/cache.ts']);
   assert.ok(decision.intent.signals.includes('semantic-proposal:workspace-read'));
   assert.ok(decision.intent.signals.includes('semantic-proposal:workspace-answer'));
 });
 
-test('ChatRouteController: provider code-review proposal preserves review posture without keyword', () => {
+test('ChatRouteController: injected code-review evidence preserves review posture without a keyword', () => {
   const controller = new ChatRouteController();
   const prompt = 'Can you check this patch for risk?';
   const decision = controller.decide({
@@ -543,14 +516,12 @@ test('ChatRouteController: provider code-review proposal preserves review postur
   assert.equal(decision.intent.mode, 'inspect');
   assert.equal(decision.intent.semanticContract.intent.taskKind, 'code-review');
   assert.equal(decision.intent.semanticContract.intent.context.reviewRequested, true);
-  assert.equal(decision.workflow.kind, 'inspect-agent');
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('read'), true);
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
+  assertModelLed(decision);
   assert.deepEqual(decision.intent.semanticContract.read.targets, ['src/payment.ts']);
   assert.ok(decision.intent.signals.includes('semantic-proposal:code-review'));
 });
 
-test('ChatRouteController: provider clarification keeps workspace scope but stays out of tools', () => {
+test('ChatRouteController: clarification evidence keeps workspace scope inside the model turn', () => {
   const controller = new ChatRouteController();
   const prompt = 'Fix it.';
   const decision = controller.decide({
@@ -575,10 +546,7 @@ test('ChatRouteController: provider clarification keeps workspace scope but stay
   });
 
   assert.equal(decision.intent.mode, 'qa');
-  assert.equal(decision.workflow.kind, 'plain-chat');
-  assert.equal(decision.workflow.useAgent, false);
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('read'), false);
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
+  assertModelLed(decision);
   assert.equal(decision.intent.blockers.includes('semantic-clarification-needed'), true);
   assert.deepEqual(decision.intent.semanticContract.read.targets, ['src/login.ts']);
   assert.ok(decision.intent.signals.includes('semantic-proposal:workspace-clarification'));
@@ -610,8 +578,7 @@ test('ChatRouteController: explicit no-change boundary cannot be escalated by se
 
   assert.notEqual(decision.intent.mode, 'edit');
   assert.equal(decision.intent.blockers.includes('explicit-no-change'), true);
-  assert.equal(decision.workflow.kind, 'inspect-agent');
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
+  assertModelLed(decision);
   assert.ok(decision.intent.signals.includes('semantic-intent-constrained'));
   assert.equal(decision.intent.semanticContract.mutation.requested, false);
   assert.equal(decision.intent.semanticContract.mutation.prohibited, true);
@@ -643,9 +610,7 @@ test('ChatRouteController: proposal-only patch requests stay read-only despite s
   });
 
   assert.notEqual(decision.intent.mode, 'edit');
-  assert.equal(decision.workflow.kind, 'inspect-agent');
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('terminal'), false);
+  assertModelLed(decision);
   assert.equal(decision.intent.blockers.includes('explicit-no-change'), true);
   assert.ok(decision.intent.signals.includes('semantic-intent-constrained'));
   assert.equal(decision.intent.semanticContract.mutation.requested, false);
@@ -680,9 +645,7 @@ test('ChatRouteController: advisory action questions stay read-only despite sema
   });
 
   assert.notEqual(decision.intent.mode, 'edit');
-  assert.notEqual(decision.workflow.kind, 'edit-agent');
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('terminal'), false);
+  assertModelLed(decision);
   assert.ok(decision.intent.signals.includes('semantic-intent-constrained'));
   assert.ok(decision.intent.signals.includes('advisory-action-question'));
   assert.equal(decision.intent.semanticContract.mutation.requested, false);
@@ -715,9 +678,7 @@ test('ChatRouteController: command advice questions do not execute semantic run 
   });
 
   assert.notEqual(decision.intent.mode, 'run');
-  assert.notEqual(decision.workflow.kind, 'run-agent');
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('terminal'), false);
+  assertModelLed(decision);
   assert.ok(decision.intent.signals.includes('semantic-intent-constrained'));
   assert.ok(decision.intent.signals.includes('advisory-action-question'));
   assert.equal(decision.intent.semanticContract.validation.runRequested, false);
@@ -749,8 +710,7 @@ test('ChatRouteController: explicit source edit cannot be erased by semantic rea
   });
 
   assert.equal(decision.intent.mode, 'edit');
-  assert.equal(decision.workflow.kind, 'edit-agent');
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
+  assertModelLed(decision);
   assert.ok(decision.intent.signals.includes('semantic-intent-constrained'));
   assert.equal(decision.intent.semanticContract.kind, 'existing-project-code');
   assert.equal(decision.intent.semanticContract.mutation.requested, true);
@@ -758,7 +718,7 @@ test('ChatRouteController: explicit source edit cannot be erased by semantic rea
   assert.deepEqual(decision.intent.semanticContract.mutation.targets, ['src/main.ts']);
 });
 
-test('ChatRouteController: semantic external-effect intent requires confirmation', () => {
+test('ChatRouteController: external-effect intent defers confirmation to the concrete action', () => {
   const controller = new ChatRouteController();
   const prompt = '提交当前修改并推送到远端';
   const decision = controller.decide({
@@ -783,10 +743,10 @@ test('ChatRouteController: semantic external-effect intent requires confirmation
   });
 
   assert.equal(decision.intent.requiresConfirmation, true);
-  assert.equal(decision.workflow.kind, 'confirmation-required');
+  assertModelLed(decision);
 });
 
-test('ChatRouteController: semantic-only external-effect proposal still requires confirmation', () => {
+test('ChatRouteController: semantic external-effect evidence remains visible in the model-led turn', () => {
   const controller = new ChatRouteController();
   const prompt = 'Ship this change.';
   const decision = controller.decide({
@@ -812,8 +772,7 @@ test('ChatRouteController: semantic-only external-effect proposal still requires
 
   assert.equal(decision.intent.semanticContract.intent.context.externalEffect, 'requested');
   assert.equal(decision.intent.requiresConfirmation, true);
-  assert.equal(decision.workflow.kind, 'confirmation-required');
-  assert.equal(decision.workflow.useAgent, false);
+  assertModelLed(decision);
   assert.ok(decision.intent.signals.includes('semantic-proposal:external-effect'));
 });
 
@@ -842,7 +801,7 @@ test('ChatRouteController: semantic external-effect proposal cannot override no-
   });
 
   assert.equal(decision.intent.mode, 'edit');
-  assert.equal(decision.workflow.kind, 'edit-agent');
+  assertModelLed(decision);
   assert.equal(decision.intent.requiresConfirmation, false);
   assert.equal(decision.intent.semanticContract.intent.context.externalEffect, 'none');
   assert.ok(decision.intent.signals.includes('semantic-intent-constrained'));
@@ -876,16 +835,14 @@ test('ChatRouteController: semantic run-only proposal cannot override no-command
   });
 
   assert.equal(decision.intent.mode, 'inspect');
-  assert.equal(decision.workflow.kind, 'inspect-agent');
-  assert.equal(decision.toolPolicy.mode, 'inspect');
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('terminal'), false);
+  assertModelLed(decision);
   assert.equal(decision.intent.semanticContract.validation.runProhibited, true);
   assert.equal(decision.intent.semanticContract.validation.runRequested, false);
   assert.ok(decision.intent.signals.includes('semantic-intent-constrained'));
   assert.ok(!decision.intent.semanticContract.taskContract.deliverables.includes('verification-result'));
 });
 
-test('ChatRouteController: semantic destructive proposal fails closed to confirmation', () => {
+test('ChatRouteController: semantic destructive evidence reaches action-level confirmation', () => {
   const controller = new ChatRouteController();
   const prompt = 'Make the generated cache disappear.';
   const decision = controller.decide({
@@ -911,8 +868,7 @@ test('ChatRouteController: semantic destructive proposal fails closed to confirm
 
   assert.equal(decision.intent.mode, 'destructive');
   assert.equal(decision.intent.requiresConfirmation, true);
-  assert.equal(decision.workflow.kind, 'confirmation-required');
-  assert.equal(decision.workflow.useAgent, false);
+  assertModelLed(decision);
   assert.equal(decision.intent.semanticContract.kind, 'destructive');
   assert.deepEqual(decision.intent.semanticContract.mutation.targets, ['dist/cache']);
   assert.ok(decision.intent.semanticContract.completion.doneIff.some(item => item.kind === 'destructive-effect-receipt'));
@@ -944,7 +900,7 @@ test('ChatRouteController: semantic edit proposal respects explicit no-run valid
   });
 
   assert.equal(decision.intent.mode, 'edit');
-  assert.equal(decision.workflow.kind, 'edit-agent');
+  assertModelLed(decision);
   assert.equal(decision.intent.semanticContract.validation.runProhibited, true);
   assert.equal(decision.intent.semanticContract.validation.runRequested, false);
   assert.equal(decision.intent.semanticContract.validation.testRequested, false);
@@ -961,7 +917,7 @@ test('ChatRouteController: semantic edit proposal respects explicit no-run valid
   assert.ok(decision.intent.semanticContract.completion.doneIff.some(item => item.kind === 'code-written'));
 });
 
-test('ChatRouteController: contradictory semantic no-mutation edit is governed down to inspect', () => {
+test('ChatRouteController: contradictory semantic no-mutation edit is governed to a read-only hint', () => {
   const controller = new ChatRouteController();
   const prompt = '看看 src/main.ts 里有没有明显问题，不要改';
   const decision = controller.decide({
@@ -986,8 +942,7 @@ test('ChatRouteController: contradictory semantic no-mutation edit is governed d
   });
 
   assert.equal(decision.intent.mode, 'inspect');
-  assert.equal(decision.workflow.kind, 'inspect-agent');
-  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
+  assertModelLed(decision);
 });
 
 test('getIntentRoutingText: strips only attachment badge lines', () => {

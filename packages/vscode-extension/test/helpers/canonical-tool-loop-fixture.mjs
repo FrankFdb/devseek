@@ -34,6 +34,7 @@ export function withCanonicalToolLoopFixture(callbacks, input) {
     surface: 'vscode',
     workspaceRoot: input.workspaceRoot,
     taskContract,
+    authorityStrategy: input.authorityStrategy,
   });
   const journal = new InMemoryCodingOperationJournal();
   const toolExecution = new CanonicalToolExecutionService().bind({ runId });

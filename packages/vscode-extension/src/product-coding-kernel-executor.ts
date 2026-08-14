@@ -62,7 +62,7 @@ export const productCodingKernelExecutor: CodingKernelExecutionPort = {
         });
       const taskContract = projectVsCodeCodingKernelTaskContract({
         userPrompt: request.userPrompt,
-        workflowMode: request.workflowMode,
+        executionMode: request.semanticContract.intent.mode,
         contextFiles: request.contextFiles,
         workspaceRoot: request.workspaceRoot,
         taskContract: request.semanticContract.taskContract,
@@ -75,6 +75,7 @@ export const productCodingKernelExecutor: CodingKernelExecutionPort = {
         userPrompt: request.userPrompt,
         workspaceRoot: request.workspaceRoot,
         taskContract,
+        toolAuthorityStrategy: request.workflowMode === 'model-led' ? 'model-led' : 'contract-bound',
         contextSeed: projectVsCodeCodingContextSeed(request.contextFiles, request.semanticContract),
         memoryCandidates,
         resumeCheckpoint: request.recovery?.kind === 'checkpoint-resume'

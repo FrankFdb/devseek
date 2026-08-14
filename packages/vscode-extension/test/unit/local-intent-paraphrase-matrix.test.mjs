@@ -1,8 +1,8 @@
 /**
  * Provider-free local intent paraphrase matrix.
  *
- * These cases exercise the same front-door route and workflow selection used by
- * the extension, but intentionally provide no model semanticIntent override.
+ * These cases exercise local semantic hints at the same front door used by the
+ * extension. Hints never pre-route execution; the main model owns the turn.
  */
 
 import { test } from 'node:test';
@@ -352,9 +352,9 @@ test('local intent paraphrase matrix: provider-free user input routes semantical
       assert.equal(route.semanticContract.intent.context.externalEffect, scenario.externalEffect, scenario.name);
     }
 
-    assert.equal(decision.workflow.kind, scenario.workflow.kind, scenario.name);
-    assert.equal(decision.workflow.useAgent, scenario.workflow.useAgent, scenario.name);
-    assert.equal(decision.toolPolicy.mode, scenario.workflow.toolPolicy, scenario.name);
+    assert.equal(decision.workflow.kind, 'model-agent', scenario.name);
+    assert.equal(decision.workflow.useAgent, true, scenario.name);
+    assert.equal(decision.toolPolicy.mode, 'model-led', scenario.name);
   }
 });
 

@@ -66,6 +66,21 @@ test('IntentRevisionLineage: scope reduction narrows targets without permission 
   assert.equal(second.allowedToExecute, true);
 });
 
+test('IntentRevisionLineage: correction replaces an obsolete uncommitted prohibition', () => {
+  const first = buildIntentRevisionLineage({
+    prompt: '只读分析 src/cache.ts，不要修改 src/cache.ts。',
+  });
+  const second = buildIntentRevisionLineage({
+    previous: first,
+    prompt: '更正：现在可以修改 src/cache.ts 并完成修复。',
+  });
+
+  assert.deepEqual(second.effectiveRevision.scope.targets, ['src/cache.ts']);
+  assert.deepEqual(second.effectiveRevision.scope.prohibitedTargets, []);
+  assert.equal(second.semanticContractRevision.semanticContract.mutation.requested, true);
+  assert.equal(second.semanticContractRevision.semanticContract.mutation.prohibited, false);
+});
+
 test('IntentRevisionLineage: committed effects are preserved instead of rewritten', () => {
   const first = buildIntentRevisionLineage({
     prompt: '请创建 old.txt，文件内容必须精确为 OLD。',

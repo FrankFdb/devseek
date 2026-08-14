@@ -12,9 +12,23 @@ small enough that automatic context compaction is unlikely to trigger.
 - After changing DevSeek extension or bridge behavior, run the default local
   release loop unless the user explicitly says otherwise: compile the VS Code
   extension, package the latest VSIX, then install that VSIX locally.
-- For all DevSeek fixes and feature work, compare the same problem against how
-  Claude Code and Codex handle it, then optimize DevSeek toward the best coding
-  agent behavior for that class of problem.
+- For all DevSeek fixes and feature work, use the locally archived OpenAI Codex
+  source under `code/upstream-agent-sources/openai-codex` as the primary
+  implementation baseline. Record the relevant source paths and archived commit,
+  map Codex responsibility boundaries to DevSeek, and optimize the entire defect
+  class before implementation. Use Claude Code public source, official docs, and
+  observable behavior only as supplementary evidence because its core agent loop
+  is not publicly auditable.
+- Match Codex architecture by responsibility rather than copying Rust structure
+  into TypeScript: preserve raw turn input, let the main model interpret natural
+  language and propose actions, arbitrate each concrete action locally against
+  current constraints/approval/sandbox state, feed tool results back into the
+  loop, support live steering through versioned turn state, and close completion
+  from real evidence. Keyword routes and task-family predictions may provide
+  hints but must never become execution authority.
+- In comparison notes and handoffs, distinguish facts confirmed by source code,
+  facts confirmed by official documentation, and inferences from observable
+  behavior. Do not claim access to closed-source internals.
 - All code additions and modifications must follow DevSeek's design principles.
   If the necessary change exposes code that violates those principles, consider
   refactoring as part of the fix instead of piling more logic onto the wrong

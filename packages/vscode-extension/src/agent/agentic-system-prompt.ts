@@ -17,7 +17,8 @@ export function buildAgenticSystemPrompt(
   workflowMode: ExecutionMode = 'edit',
   resolvedTaskIntent?: TaskIntentRoute,
 ): string {
-  const taskIntent = resolvedTaskIntent ?? routeTaskIntent(userPrompt);
+  const modelLed = workflowMode === 'model-led';
+  const taskIntent = modelLed ? undefined : (resolvedTaskIntent ?? routeTaskIntent(userPrompt));
   const rulesSection = projectRulesText ? `\n${wrapRulesAsContext(projectRulesText)}\n` : '';
   const memSection = projectMemoryText ? `\n${wrapMemoryAsContext(projectMemoryText)}\n` : '';
   const filesSection = contextFiles.length > 0
@@ -35,18 +36,29 @@ export function buildAgenticSystemPrompt(
       + `${toolLines}\n`;
   }
 
-  const workflowModeSection = workflowMode === 'inspect'
+  const workflowModeSection = modelLed
+    ? `\n【当前工作流模式】model-led / 主模型语义执行\n- 直接理解用户的原始自然语言目标；结合上下文恢复错别字、同音字、口语、省略和中英混输，不要求用户改成固定格式。\n- 先判断用户是在提问、要求澄清、只读调查，还是要求执行动作。需要真实工作区事实或执行结果时主动调用工具；纯问答可以直接回答。\n- 用户明确要求只分析、不要修改、不要运行或限制目标时必须遵守。需求不清且不同理解会导致重要结果差异时，先询问一个聚焦问题。\n- 工具调用只是动作提案；每个动作仍会由本地沙箱、目标范围、风险和确认策略独立仲裁。\n`
+    : workflowMode === 'inspect'
     ? `\n【当前工作流模式】inspect / 只读检查\n- 用户要求只读、检查、显示或分析时，禁止创建、修改、覆盖或删除文件。\n- 不要调用 create_file；不要用 run_terminal 的 python/echo/tee/cat 重定向写文件。\n- 检查文件是否存在时，可以使用 list_dir 或 test/ls/stat/file；显示文件内容时必须使用 read_file，或只读 run_terminal 的 cat/head/sed。\n- test/ls 只能证明路径存在，不能满足“显示文件内容”。\n- 只读任务的完成证据是读取/检查结果，不是文件修改结果。\n`
     : workflowMode === 'plan'
       ? `\n【当前工作流模式】plan / 只读计划\n- 只生成计划和分析，不写文件，不执行会修改工作区的命令。\n- 需要查看文件时使用 read_file/list_dir/grep_search 等只读工具。\n`
-      : `\n【当前工作流模式】${workflowMode}\n- 可以在权限允许时修改工作区；所有写入必须走 create_file 或受控文件工具，并提供真实验证证据。\n`;
+    : `\n【当前工作流模式】${workflowMode}\n- 可以在权限允许时修改工作区；所有写入必须走 create_file 或受控文件工具，并提供真实验证证据。\n`;
+
+  const turnBehavior = modelLed
+    ? `- 把当前最新用户消息视为本轮目标。先依据语义和对话上下文判断是直接回答、聚焦澄清、调查，还是执行；不要用关键词替用户做最终决定
+- 简单问答直接回答；需要工作区事实时先读取；需要产生真实效果时调用工具。不要为了展示流程而调用无关工具
+- 仅在任务确实包含多个可验证步骤时使用 manage_todo_list；直接问答、一次读取或单个简单动作不需要任务清单
+- 用户在执行中补充、纠正、缩小或撤销要求时，以最新消息为准，放弃尚未执行且冲突的旧工具提案；已完成的真实效果必须如实保留并说明`
+    : `- 第一轮必须先输出 1-2 句面向用户的自然语言：说明你理解了什么、将如何处理；不要使用固定模板，不要只输出工具调用
+- 开始前先用 manage_todo_list 列出所有子任务（Copilot 规划阶段）
+- 每个子任务开始时标为 in-progress，完成时标为 completed`;
 
   return `你是一个拥有完整工具访问权限的编程智能体，运行在 VS Code 中。
 
 【工作区根目录】${workspaceRoot}
 ${rulesSection}${memSection}${filesSection}${workflowModeSection}
-${buildTaskShapeGuidancePrompt(userPrompt)}
-${buildEngineeringGuidelinesPrompt('agent', { taskIntent })}
+  ${modelLed ? '' : buildTaskShapeGuidancePrompt(userPrompt)}
+  ${buildEngineeringGuidelinesPrompt('agent', taskIntent ? { taskIntent } : {})}
 
 【可用工具】
 
@@ -87,9 +99,7 @@ ${buildReplaceInFileToolPrompt()}
 [TOOL:task_complete {"summary":"结论摘要（包含证据：文件路径/行号/具体数值）"}]
 ${mcpSection}
 【行为准则】
-- 第一轮必须先输出 1-2 句面向用户的自然语言：说明你理解了什么、将如何处理；不要使用固定模板，不要只输出工具调用
-- 开始前先用 manage_todo_list 列出所有子任务（Copilot 规划阶段）
-- 每个子任务开始时标为 in-progress，完成时标为 completed
+${turnBehavior}
 - memory_write / 项目记忆属于智能体内部能力，不要放进 manage_todo_list，也不要作为用户可见任务展示
 - 创建/修改/删除文件必须调用 create_file/write_file/replace_in_file/delete_file；修改或删除既有文件前先 read_file，replace_in_file 的 old_str 必须来自最新原文；“我正在创建/将创建/现在创建”这类自然语言不算执行；不要用 run_terminal 里的 rm/mv/cp/sed -i/python/echo/tee/cat 等命令绕过文件审计
 - 生成源码时必须保留真实换行，C/C++ 的 #include/#define/#pragma/#endif 等预处理指令必须独占物理行；不要为了缩短响应把源码压成单行

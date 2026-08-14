@@ -692,9 +692,10 @@ export function resolveTaskReadTargets(promptText: string): string[] {
 export function resolveTaskMutationTargets(promptText: string): string[] {
   const prompt = extractCurrentUserRequest(promptText);
   const occurrences = extractPathOccurrences(prompt);
+  const activeOccurrences = discardSupersededMutationTargetOccurrences(prompt, occurrences);
   const decisions = new Map<string, TargetMutationDecision>();
-  for (const occurrence of occurrences) {
-    const decision = classifyPathOccurrenceMutation(prompt, occurrence, occurrences);
+  for (const occurrence of activeOccurrences) {
+    const decision = classifyPathOccurrenceMutation(prompt, occurrence, activeOccurrences);
     const previous = decisions.get(occurrence.path);
     if (decision.actionIndex !== undefined
       && (previous?.actionIndex === undefined || decision.actionIndex >= previous.actionIndex)) {
@@ -708,6 +709,59 @@ export function resolveTaskMutationTargets(promptText: string): string[] {
       && !isDirectoryScopePath(pathValue)
     ))
     .map(([pathValue]) => pathValue);
+}
+
+const REQUIREMENT_SCOPE_CORRECTION_RE = /(?:\b(?:correction|actually)\b\s*[:：,，]?|\b(?:but|however)\s+now\b|\binstead\s+(?:use|create|write|modify|update)\b|\brather\s+than\b|更正\s*[:：]?|纠正\s*[:：]?|改一下\s*[:：,，]?|(?:但|不过|然而)?\s*(?:现在|这次|当前|最终)\s*(?:请)?\s*(?:改为|改成|换成))/giu;
+const HISTORICAL_REQUIREMENT_MENTION_RE = /(?:前面(?:曾)?说|此前|先前|之前|原来(?:要求|说|让)|旧(?:要求|需求|版本)|历史(?:要求|需求)|\b(?:previously|earlier|originally)\b|\b(?:old|previous|prior|earlier)\s+(?:requirement|request|version)\b)/iu;
+const BARE_REQUIREMENT_REPLACEMENT_RE = /(?:改为|改成|换成|\binstead\b)/giu;
+
+function discardSupersededMutationTargetOccurrences(
+  prompt: string,
+  occurrences: PathOccurrence[],
+): PathOccurrence[] {
+  if (occurrences.length < 2) return occurrences;
+  const requested = occurrences.filter(occurrence => (
+    classifyPathOccurrenceMutation(prompt, occurrence, occurrences).requested
+  ));
+  if (requested.length < 2) return occurrences;
+
+  const correctionBoundaries = [
+    ...collectRequirementCorrectionBoundaries(prompt, REQUIREMENT_SCOPE_CORRECTION_RE, requested, false),
+    ...collectRequirementCorrectionBoundaries(prompt, BARE_REQUIREMENT_REPLACEMENT_RE, requested, true),
+  ];
+  const boundary = correctionBoundaries.length > 0 ? Math.max(...correctionBoundaries) : -1;
+  if (boundary < 0) return occurrences;
+
+  const activeTargets = new Set(requested
+    .filter(occurrence => occurrence.index > boundary)
+    .map(occurrence => occurrence.path));
+  return occurrences.filter(occurrence => (
+    occurrence.index > boundary
+    || activeTargets.has(occurrence.path)
+    || !classifyPathOccurrenceMutation(prompt, occurrence, occurrences).requested
+  ));
+}
+
+function collectRequirementCorrectionBoundaries(
+  prompt: string,
+  pattern: RegExp,
+  requested: readonly PathOccurrence[],
+  requireHistoricalContext: boolean,
+): number[] {
+  pattern.lastIndex = 0;
+  const boundaries: number[] = [];
+  for (const match of prompt.matchAll(pattern)) {
+    const boundary = match.index ?? -1;
+    if (boundary < 0) continue;
+    const before = requested.filter(occurrence => occurrence.index < boundary);
+    const after = requested.filter(occurrence => occurrence.index > boundary);
+    if (before.length === 0 || after.length === 0) continue;
+    if (requireHistoricalContext && !before.some(occurrence => (
+      HISTORICAL_REQUIREMENT_MENTION_RE.test(prompt.slice(Math.max(0, occurrence.index - 96), occurrence.index))
+    ))) continue;
+    boundaries.push(boundary);
+  }
+  return boundaries;
 }
 
 function isDirectoryScopePath(pathValue: string): boolean {

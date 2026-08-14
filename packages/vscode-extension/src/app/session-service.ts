@@ -30,6 +30,8 @@ export interface PersistedSessionState<TAgentState = unknown> {
 }
 
 export class SessionService {
+  private readonly agentStateCache = new Map<string, unknown>();
+
   constructor(
     private readonly store: SessionKeyValueStore,
     private readonly maxSessions = 100,
@@ -72,7 +74,7 @@ export class SessionService {
       files: { ...(this.store.get<Record<string, string>>(this.sessionStateKey(id, 'files'), {}) ?? {}) },
       summary: this.store.get<string>(this.sessionStateKey(id, 'summary'), '') ?? '',
       analysisText: this.store.get<string>(this.sessionStateKey(id, 'analysisText'), '') ?? '',
-      agentState: clonePersistedValue(this.store.get<TAgentState>(this.sessionStateKey(id, 'agentState'))),
+      agentState: this.getSessionAgentState<TAgentState>(id),
     };
   }
 
@@ -83,6 +85,9 @@ export class SessionService {
 
   getSessionAgentState<TAgentState>(id: string): TAgentState | undefined {
     if (!id) return undefined;
+    if (this.agentStateCache.has(id)) {
+      return clonePersistedValue(this.agentStateCache.get(id) as TAgentState | undefined);
+    }
     return clonePersistedValue(this.store.get<TAgentState>(this.sessionStateKey(id, 'agentState')));
   }
 
@@ -103,11 +108,15 @@ export class SessionService {
   }
 
   saveSessionAgentState<TAgentState>(id: string, state: TAgentState | null): void {
-    this.updateSessionState(id, 'agentState', clonePersistedValue(state ?? undefined));
+    if (!id) return;
+    const snapshot = clonePersistedValue(state ?? undefined);
+    this.agentStateCache.set(id, snapshot);
+    this.updateSessionState(id, 'agentState', snapshot);
   }
 
   deleteSession(id: string): void {
     if (!id) return;
+    this.agentStateCache.set(id, undefined);
     const sessions = this.getSessions().filter(s => s.id !== id);
     void this.store.update(SESSIONS_KEY, sessions);
     for (const suffix of SESSION_STATE_SUFFIXES) {

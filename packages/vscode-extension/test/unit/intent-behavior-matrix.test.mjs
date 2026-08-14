@@ -2,7 +2,7 @@
  * End-to-end routing matrix for DevSeek intent behavior.
  *
  * These tests exercise the implementation-level decision path:
- * user-visible prompt -> intent -> workflow -> tool permissions.
+ * user-visible prompt -> local semantic hints -> one model-led workflow.
  */
 
 import { test } from 'node:test';
@@ -417,21 +417,25 @@ for (const item of routingCases) {
     const decision = decide(item);
     assert.equal(decision.intent.kind, item.expect.kind, 'intent kind');
     assert.equal(decision.intent.mode, item.expect.mode, 'intent mode');
-    assert.equal(decision.workflow.kind, item.expect.workflow, 'workflow kind');
-    assert.equal(decision.workflow.useAgent, item.expect.useAgent, 'workflow useAgent');
+    if (item.forceNoAgent || item.agentEnabled === false) {
+      assert.equal(decision.workflow.kind, 'plain-chat', 'workflow kind');
+      assert.equal(decision.workflow.useAgent, false, 'workflow useAgent');
+    } else {
+      assert.equal(decision.workflow.kind, 'model-agent', 'workflow kind');
+      assert.equal(decision.workflow.useAgent, true, 'workflow useAgent');
+      assert.equal(decision.toolPolicy.mode, 'model-led', 'tool policy mode');
+      assert.equal(decideToolPermission(decision.toolPolicy, 'read').action, 'allow', 'read proposal');
+      assert.equal(decideToolPermission(decision.toolPolicy, 'edit').action, 'allow', 'edit proposal');
+      assert.equal(decideToolPermission(decision.toolPolicy, 'terminal').action, 'requireConfirm', 'unclassified terminal proposal');
+    }
     if (item.expect.routingText !== undefined) {
       assert.equal(decision.intentRoutingText, item.expect.routingText, 'routing text');
     }
-    if (item.expect.tools !== undefined) {
-      assert.deepEqual(decision.toolPolicy.allowedToolKinds, item.expect.tools, 'allowed tools');
-    }
     if (item.expect.requireConfirmation !== undefined) {
       assert.equal(decision.intent.requiresConfirmation, item.expect.requireConfirmation, 'requires confirmation');
-      assert.equal(decision.toolPolicy.requireUserConfirmation, item.expect.requireConfirmation, 'tool policy confirmation');
     }
     if (item.signal) assert.ok(decision.intent.signals.includes(item.signal), `signal ${item.signal}`);
     if (item.blocker) assert.ok(decision.intent.blockers.includes(item.blocker), `blocker ${item.blocker}`);
-    assertToolActions(decision, item.toolActions);
   });
 }
 

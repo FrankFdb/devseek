@@ -4,8 +4,8 @@
  * The cases mirror common coding-agent workflows documented by Codex,
  * Claude Code, VS Code agents, and Aider: ask, inspect, plan, review,
  * edit, run, external effect, destructive action, and ambiguity handling.
- * The test injects the LLM semantic result and verifies DevSeek governance,
- * without adding prompt keyword rules.
+ * The test injects semantic evidence and verifies local contract projection.
+ * Execution still enters one model-led turn; concrete actions are gated later.
  */
 
 import { test } from 'node:test';
@@ -22,22 +22,14 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
 const routeBundlePath = path.join(rootDir, 'test/unit/semantic-intent-routing.chat-controller.bundle.cjs');
-const interactionBundlePath = path.join(rootDir, 'test/unit/semantic-intent-routing.interaction-service.bundle.cjs');
 
 execSync(
   `npx esbuild src/app/chat-controller.ts --bundle ` +
   `--outfile=${routeBundlePath} --format=cjs --platform=node --external:vscode`,
   { cwd: rootDir, stdio: 'pipe' },
 );
-execSync(
-  `npx esbuild src/app/interaction-service.ts --bundle ` +
-  `--outfile=${interactionBundlePath} --format=cjs --platform=node --external:vscode`,
-  { cwd: rootDir, stdio: 'pipe' },
-);
-
 const req = createRequire(import.meta.url);
 const { ChatRouteController } = req(routeBundlePath);
-const { buildPreExecutionInteraction } = req(interactionBundlePath);
 const controller = new ChatRouteController();
 
 const REQUIRED_TASK_KINDS = [
@@ -66,25 +58,13 @@ for (const item of EXTERNAL_INTENT_CORPUS) {
     });
 
     assert.equal(decision.intent.mode, item.expect.mode);
-    assert.equal(decision.workflow.kind, item.expect.workflow);
-    assert.equal(decision.workflow.useAgent, item.expect.useAgent);
-    assert.equal(decision.toolPolicy.mode, item.expect.toolPolicy);
+    assert.equal(decision.workflow.kind, 'model-agent');
+    assert.equal(decision.workflow.useAgent, true);
+    assert.equal(decision.toolPolicy.mode, 'model-led');
     assert.ok(
       decision.intent.signals.includes('semantic-intent-provider')
         || decision.intent.signals.includes('semantic-intent-constrained'),
     );
-
-    if (item.expect.interaction) {
-      const request = buildPreExecutionInteraction({
-        userText: item.prompt,
-        prompt: item.prompt,
-        files: item.files,
-        intent: decision.intent,
-        workflow: decision.workflow,
-      });
-      assert.equal(request?.kind, item.expect.interaction);
-      assert.equal(decision.intent.blockers.includes('semantic-clarification-needed'), true);
-    }
 
     assertSemanticContractProjection(decision, item);
   });
@@ -107,7 +87,7 @@ test('Semantic intent routing matrix: external corpus covers every task kind', (
   assert.deepEqual(missing, []);
 });
 
-test('Semantic intent routing matrix: external effects and destructive actions remain gated', () => {
+test('Semantic intent routing matrix: external and destructive risks survive into action-level gating', () => {
   const gated = EXTERNAL_INTENT_CORPUS.filter(item =>
     (item.taskKind === 'external-effect' || item.taskKind === 'destructive')
       && item.expect.externalEffect !== 'prohibited'
@@ -121,8 +101,9 @@ test('Semantic intent routing matrix: external effects and destructive actions r
       agentEnabled: true,
       semanticIntent: item.semanticIntent,
     });
-    assert.equal(decision.workflow.kind, 'confirmation-required', item.id);
-    assert.equal(decision.workflow.useAgent, false, item.id);
+    assert.equal(decision.workflow.kind, 'model-agent', item.id);
+    assert.equal(decision.workflow.useAgent, true, item.id);
+    assert.equal(decision.toolPolicy.mode, 'model-led', item.id);
     assert.equal(decision.intent.requiresConfirmation, true, item.id);
     if (item.taskKind === 'destructive') {
       assert.equal(decision.intent.semanticContract.kind, 'destructive', item.id);
@@ -151,15 +132,15 @@ test('Semantic intent routing matrix: no-write run-only cases are executable but
     });
     if (item.expect.validation === 'no-command') {
       assert.equal(decision.intent.mode, 'inspect', item.id);
-      assert.equal(decision.workflow.kind, 'inspect-agent', item.id);
-      assert.equal(decision.toolPolicy.allowedToolKinds.includes('terminal'), false, item.id);
+      assert.equal(decision.workflow.kind, 'model-agent', item.id);
+      assert.equal(decision.toolPolicy.mode, 'model-led', item.id);
       assert.equal(decision.intent.semanticContract.validation.runProhibited, true, item.id);
       assert.equal(decision.intent.semanticContract.validation.runRequested, false, item.id);
       continue;
     }
     assert.equal(decision.intent.mode, 'run', item.id);
-    assert.equal(decision.workflow.kind, 'run-agent', item.id);
-    assert.equal(decision.toolPolicy.mode, 'run', item.id);
+    assert.equal(decision.workflow.kind, 'model-agent', item.id);
+    assert.equal(decision.toolPolicy.mode, 'model-led', item.id);
     assert.equal(decision.intent.blockers.includes('explicit-no-change'), false, item.id);
     assert.equal(decision.intent.semanticContract.mutation.requested, false, item.id);
     assert.equal(decision.intent.semanticContract.mutation.sourceChange, false, item.id);
@@ -167,7 +148,7 @@ test('Semantic intent routing matrix: no-write run-only cases are executable but
   }
 });
 
-test('Semantic intent routing matrix: ambiguous corpus asks instead of executing edits', () => {
+test('Semantic intent routing matrix: ambiguous corpus reaches the model without authorizing edits', () => {
   const ambiguous = EXTERNAL_INTENT_CORPUS.filter(item => item.taskKind === 'ambiguous');
   assert.ok(ambiguous.length >= 4);
   for (const item of ambiguous) {
@@ -178,14 +159,6 @@ test('Semantic intent routing matrix: ambiguous corpus asks instead of executing
       agentEnabled: true,
       semanticIntent: item.semanticIntent,
     });
-    const request = buildPreExecutionInteraction({
-      userText: item.prompt,
-      prompt: item.prompt,
-      files: item.files,
-      intent: decision.intent,
-      workflow: decision.workflow,
-    });
-    assert.equal(request?.kind, 'clarify', item.id);
     assert.equal(decision.intent.blockers.includes('semantic-clarification-needed'), true, item.id);
     assert.equal(decision.intent.semanticContract.mutation.requested, false, item.id);
     assert.equal(decision.intent.semanticContract.mutation.sourceChange, false, item.id);
@@ -222,7 +195,6 @@ function assertSemanticContractProjection(decision, item) {
       assert.equal(contract.read.requested, true, item.id);
       assertTargetsIncluded(contract.read.targets, item.semanticIntent.targetPaths, item.id);
       assertTargetsIncluded(contract.taskContract.inputs, item.semanticIntent.targetPaths, item.id);
-      assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false, item.id);
     }
     return;
   }
@@ -232,7 +204,6 @@ function assertSemanticContractProjection(decision, item) {
     assert.equal(contract.mutation.sourceChange, false, item.id);
     assert.equal(contract.mutation.fileArtifact, false, item.id);
     assert.equal(contract.taskContract.deliverables.includes('source-change'), false, item.id);
-    assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false, item.id);
     if (item.taskKind === 'code-review') {
       assert.equal(contract.intent.taskKind, 'code-review', item.id);
       assert.equal(contract.intent.context.reviewRequested, true, item.id);

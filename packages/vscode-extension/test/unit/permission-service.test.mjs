@@ -1,8 +1,8 @@
 /**
  * Unit tests for app/permission-service.ts.
  *
- * These protect the architecture rule from the refactor review:
- * ExecutionMode must map to explicit tool permissions before the Agent can act.
+ * These protect the action boundary: routing controls which actions may be
+ * proposed, while concrete risk and target facts control execution approval.
  */
 
 import { test } from 'node:test';
@@ -90,6 +90,27 @@ test('PermissionService: destructive requires user confirmation', () => {
   assert.equal(decideToolPermission(policy, 'terminal').action, 'requireConfirm');
   assert.equal(decideToolPermission(policy, 'vscode').action, 'requireConfirm');
   assert.equal(decideToolPermission(policy, 'mcp').action, 'requireConfirm');
+});
+
+test('PermissionService: model-led exposes actions but gates concrete risk at execution time', () => {
+  const policy = buildToolPolicy('model-led');
+
+  assert.equal(decideToolPermission(policy, { kind: 'read', risk: 'low' }).action, 'allow');
+  assert.equal(decideToolPermission(policy, {
+    kind: 'edit',
+    toolName: 'replace_file',
+    risk: 'medium',
+    mutatesWorkspace: true,
+  }).action, 'allow');
+  assert.equal(decideToolPermission(policy, { kind: 'terminal' }).action, 'requireConfirm');
+  assert.equal(decideToolPermission(policy, { kind: 'terminal', risk: 'low' }).action, 'allow');
+  assert.equal(decideToolPermission(policy, { kind: 'terminal', risk: 'high' }).action, 'requireConfirm');
+  assert.equal(decideToolPermission(policy, {
+    kind: 'edit',
+    risk: 'medium',
+    mutatesWorkspace: true,
+    protectedPath: true,
+  }).action, 'requireConfirm');
 });
 
 console.log('\nPermission service tests passed.\n');

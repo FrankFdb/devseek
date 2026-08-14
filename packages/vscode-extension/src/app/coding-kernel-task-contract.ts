@@ -16,7 +16,7 @@ import {
 
 export interface VsCodeCodingKernelTaskContractInput {
   readonly userPrompt: string;
-  readonly workflowMode: ExecutionMode;
+  readonly executionMode: ExecutionMode;
   readonly contextFiles: readonly string[];
   readonly workspaceRoot: string;
   readonly taskContract: TaskContract;
@@ -52,7 +52,7 @@ export function projectVsCodeCodingKernelTaskContract(
   return resolveCodingKernelTaskContract({
     prompt: input.userPrompt,
     surface: 'vscode',
-    modeHint: projectTaskMode(input.workflowMode),
+    modeHint: projectTaskMode(input.executionMode),
     contextFiles,
     targetPaths: deliverableTargets,
     deliverableKinds,

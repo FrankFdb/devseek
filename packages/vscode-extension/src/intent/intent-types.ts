@@ -7,7 +7,8 @@ export type ExecutionMode =
   | 'plan'
   | 'edit'
   | 'run'
-  | 'destructive';
+  | 'destructive'
+  | 'model-led';
 
 export type ToolKind = CodingToolKind;
 

@@ -124,6 +124,11 @@ test('top-agent user simulation runner plans targeted checks before broad contro
   assert.ok(report.case_design_review.required_acceptance_cases.includes('semantic-external-effect-confirmation-consistency'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('semantic-destructive-proposal-confirmation-consistency'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('external-semantic-intent-routing-matrix'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('model-led-diverse-input-main-model'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('model-led-noisy-action-real-write'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('model-led-exact-simple-main-model'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('model-led-noisy-question-no-tools'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('model-led-inflight-latest-target'));
   assert.ok(report.case_design_review.selected_cases.includes('operational-lexicon-config-dynamic-loading'));
   assert.ok(report.case_design_review.selected_cases.includes('operational-lexicon-multilingual-extension'));
   assert.ok(report.case_design_review.selected_cases.includes('in-flight-user-steer-contract-revision'));
@@ -140,11 +145,20 @@ test('top-agent user simulation runner plans targeted checks before broad contro
   assert.ok(report.case_design_review.selected_cases.includes('semantic-external-effect-confirmation-consistency'));
   assert.ok(report.case_design_review.selected_cases.includes('semantic-destructive-proposal-confirmation-consistency'));
   assert.ok(report.case_design_review.selected_cases.includes('external-semantic-intent-routing-matrix'));
+  assert.ok(report.case_design_review.selected_cases.includes('model-led-diverse-input-main-model'));
+  assert.ok(report.case_design_review.selected_cases.includes('model-led-noisy-action-real-write'));
+  assert.ok(report.case_design_review.selected_cases.includes('model-led-inflight-latest-target'));
   assert.equal(report.plan.steps[0].id, 'targeted-local-contracts');
   assert.equal(report.plan.steps[0].kind, 'targeted-local-contract');
   assert.deepEqual(report.plan.steps[0].case_ids, [
     'operational-lexicon-config-dynamic-loading',
     'operational-lexicon-multilingual-extension',
+    'model-led-diverse-input-main-model',
+    'model-led-typo-homophone-prompt',
+    'model-led-noisy-action-real-write',
+    'model-led-exact-simple-main-model',
+    'model-led-noisy-question-no-tools',
+    'model-led-inflight-latest-target',
     'in-flight-user-steer-contract-revision',
     'in-flight-committed-effect-preservation',
     'semantic-source-proposal-route-consistency',
@@ -183,6 +197,55 @@ test('top-agent user simulation runner plans targeted checks before broad contro
     'after-each-step',
     'end',
   ]);
+});
+
+test('top-agent user simulation runner keeps intent regression separate from generic coding journeys', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'devseek-intent-only-report-'));
+  const markdownPath = path.join(root, 'intent-only.md');
+  try {
+    const { stdout } = await execFile(
+      process.execPath,
+      [
+        'scripts/devseek-top-agent-user-simulation-runner.mjs',
+        '--dry-run',
+        '--intent-only',
+        '--markdown',
+        markdownPath,
+      ],
+      { cwd: repoRoot, maxBuffer: 4 * 1024 * 1024 },
+    );
+    const report = JSON.parse(stdout);
+    const markdown = fs.readFileSync(markdownPath, 'utf8');
+    const controlledSuites = report.plan.steps
+      .filter(step => step.kind === 'controlled-vsix-user-simulation')
+      .map(step => step.id.replace(/^controlled-/, ''));
+    const targetedTests = report.plan.steps
+      .filter(step => step.kind === 'targeted-local-contract')
+      .flatMap(step => step.command.filter(value => value.endsWith('.test.mjs')));
+
+    assert.equal(report.ok, true, JSON.stringify(report.errors, null, 2));
+    assert.equal(report.plan.coverage_profile, 'intent-recognition-regression');
+    assert.deepEqual(controlledSuites, [
+      'prior-task-continuation-product',
+      'scope-replacement-product',
+      'cancellation-replacement-product',
+    ]);
+    assert.ok(targetedTests.includes('packages/vscode-extension/test/unit/model-led-intent-boundary.test.mjs'));
+    assert.ok(targetedTests.includes('packages/vscode-extension/test/unit/model-led-user-simulation.test.mjs'));
+    assert.equal(controlledSuites.includes('journey-core'), false);
+    assert.equal(controlledSuites.includes('realistic-product'), false);
+    assert.equal(controlledSuites.includes('coding-conformance-product'), false);
+    assert.equal(targetedTests.includes('packages/vscode-extension/test/unit/provider-output-integrity.test.mjs'), false);
+    assert.match(markdown, /`prior-task-continuation-product`/);
+    assert.match(markdown, /`scope-replacement-product`/);
+    assert.match(markdown, /`cancellation-replacement-product`/);
+    assert.doesNotMatch(markdown, /`journey-core`/);
+    assert.doesNotMatch(markdown, /`realistic-product`/);
+    assert.doesNotMatch(markdown, /`coding-conformance-product`/);
+    assert.doesNotMatch(markdown, /`r2-07e-stream-protocol`/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('top-agent user simulation runner can narrow to one focused controlled suite', async () => {
@@ -270,6 +333,7 @@ test('top-agent user simulation runner prints actionable help without starting a
   assert.equal(stderr, '');
   assert.match(stdout, /Usage: node scripts\/devseek-top-agent-user-simulation-runner\.mjs/);
   assert.match(stdout, /--controlled-suites <a,b>/);
+  assert.match(stdout, /--intent-only/);
   assert.match(stdout, /--keep-last-window/);
   assert.match(stdout, /never grants release qualification claims/);
   assert.doesNotMatch(stdout, /"execution_mode"/);
@@ -414,7 +478,7 @@ test('top-agent user simulation runner renders markdown from existing evidence w
     assert.match(markdown, /--controlled-suites realistic-product/);
     assert.match(markdown, /focused-regression-only-not-release-acceptance/);
     assert.match(markdown, /Selected case count: `2`/);
-    assert.match(markdown, /Required acceptance case count: `49`/);
+    assert.match(markdown, /Required acceptance case count: `55`/);
     assert.match(markdown, /Execution evidence missing:/);
     assert.match(markdown, /realistic-product:driver-cases-missing/);
     assert.match(markdown, /realistic-product:driver-case-missing:realistic-python-log-json-followup/);
@@ -587,6 +651,12 @@ test('top-agent user simulation runner rejects acceptance reports without per-ca
     const targetedCases = [
       'operational-lexicon-config-dynamic-loading',
       'operational-lexicon-multilingual-extension',
+      'model-led-diverse-input-main-model',
+      'model-led-typo-homophone-prompt',
+      'model-led-noisy-action-real-write',
+      'model-led-exact-simple-main-model',
+      'model-led-noisy-question-no-tools',
+      'model-led-inflight-latest-target',
       'in-flight-user-steer-contract-revision',
       'in-flight-committed-effect-preservation',
       'semantic-source-proposal-route-consistency',

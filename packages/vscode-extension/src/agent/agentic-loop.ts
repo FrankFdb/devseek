@@ -185,7 +185,7 @@ export async function runAgenticLoop(
     workspaceRoots: [workspaceRoot],
     relatedPaths: [...contextFiles, ...memoryRelatedPaths],
   });
-  if (!recoveryContextText) {
+  if (workflowMode !== 'model-led' && !recoveryContextText) {
     const groundedMarkdown = await tryRunGroundedMarkdownAgenticTask(
       userPrompt,
       workspaceRoot,
@@ -216,20 +216,33 @@ export async function runAgenticLoop(
     effectiveTaskIntent,
   );
 
-  const promptIsReadOnly = effectiveTaskIntent.family === 'read-only-advisory'
-    || effectiveTaskIntent.family === 'review'
-    || effectiveTaskIntent.family === 'safety-refusal';
   const literalToolProtocolPrompt = isLiteralToolProtocolPrompt(userPrompt);
-  const effectiveSemanticContract = writeAuthority.semanticContract;
-  const promptRequiresFileChange = !literalToolProtocolPrompt
-    && !promptIsReadOnly
-    && requiresFileChangeEvidence(userPrompt, effectiveSemanticContract);
-  const promptRequiresTools = !literalToolProtocolPrompt && (
-    requiresReadEvidence(userPrompt, effectiveSemanticContract)
-    || promptRequiresFileChange
-    || requiresCommandEvidence(userPrompt, effectiveSemanticContract)
-    || effectiveSemanticContract.obligations.sideEffects.length > 0
-  );
+  const resolvePromptRequirements = () => {
+    const currentContract = writeAuthority.semanticContract;
+    const currentTaskIntent = routeTaskSemanticContract(currentContract);
+    if (workflowMode === 'model-led') {
+      return { currentTaskIntent, promptRequiresFileChange: false, promptRequiresTools: false };
+    }
+    const promptIsReadOnly = workflowMode !== 'model-led' && (
+      currentTaskIntent.family === 'read-only-advisory'
+      || currentTaskIntent.family === 'review'
+      || currentTaskIntent.family === 'safety-refusal'
+    );
+    const promptRequiresFileChange = !literalToolProtocolPrompt
+      && !promptIsReadOnly
+      && requiresFileChangeEvidence(writeAuthority.currentPrompt, currentContract);
+    const promptRequiresTools = !literalToolProtocolPrompt && (
+      requiresReadEvidence(writeAuthority.currentPrompt, currentContract)
+      || promptRequiresFileChange
+      || requiresCommandEvidence(writeAuthority.currentPrompt, currentContract)
+      || currentContract.obligations.sideEffects.length > 0
+    );
+    return { currentTaskIntent, promptRequiresFileChange, promptRequiresTools };
+  };
+  let { currentTaskIntent, promptRequiresFileChange, promptRequiresTools } = resolvePromptRequirements();
+  const refreshPromptRequirements = (): void => {
+    ({ currentTaskIntent, promptRequiresFileChange, promptRequiresTools } = resolvePromptRequirements());
+  };
   // Full conversation history (Claude Code pattern: accumulate all rounds)
   const initialPromptContext = createAgenticInitialPromptContext(systemPrompt, userPrompt, sessionContextText, recoveryContextText);
   const messages = initialPromptContext.messages;
@@ -310,7 +323,9 @@ export async function runAgenticLoop(
   // whether the agent ends up analyzing or creating files.
   const _shortPrompt = userPrompt.trim().replace(/\n+/g, ' ');
   const _agentLabel = _shortPrompt.length > 38 ? _shortPrompt.slice(0, 36) + '…' : _shortPrompt;
-  const initialDisplayAction = callbacks.runDisplayAction || 'explore';
+  const initialDisplayAction = workflowMode === 'model-led'
+    ? 'explore'
+    : callbacks.runDisplayAction || 'explore';
   const initialDisplayTarget = callbacks.runDisplayTarget || '';
   const emitAgenticCorrectionStatus = async (
     title: string,
@@ -392,7 +407,7 @@ export async function runAgenticLoop(
     }
   }
 
-  if (!recoveryContextText) {
+  if (workflowMode !== 'model-led' && !recoveryContextText) {
     const simpleFileResult = await tryRunSimpleFileTask({
       userPrompt,
       workspaceRoot,
@@ -479,7 +494,9 @@ export async function runAgenticLoop(
 
     // ReAct: suppress intermediate prose; route only the final answer to ASUM.
     // This avoids showing the same content in both working box AND bubble.
-    messages.push(...writeAuthority.takePendingAndDrain());
+    const pendingSteerMessages = writeAuthority.takePendingAndDrain();
+    if (pendingSteerMessages.length > 0) refreshPromptRequirements();
+    messages.push(...pendingSteerMessages);
     totalChars = compactAgenticMessageHistory({
       messages,
       session: executionContext.contextCompaction,
@@ -531,6 +548,18 @@ export async function runAgenticLoop(
     }
 
     const postProviderSteerMessages = writeAuthority.drainAfterProvider();
+    if (postProviderSteerMessages.length > 0) {
+      refreshPromptRequirements();
+      messages.push({ role: 'assistant', content: text }, ...postProviderSteerMessages);
+      lastProviderText = text;
+      totalChars += text.length;
+      callbacks.onToolActivity?.('label', '已接收最新要求，正在重新规划未执行动作');
+      continue;
+    }
+    if (workflowMode === 'model-led' && tools.some(tool => isAgentWorkToolName(tool.name))) {
+      promptRequiresTools = true;
+      if (tools.some(tool => isFileMutationToolName(tool.name))) promptRequiresFileChange = true;
+    }
 
     const outputScopeDrift = detectTaskOutputScopeDrift({
       requestPrompt: writeAuthority.currentPrompt,
@@ -986,7 +1015,7 @@ export async function runAgenticLoop(
       && !blockingFailureAfterTools
       && summaryFactFailuresAfterTools.length === 0) {
       reviewFeedback = await requirementReview.request({
-        sourceChangeRequested: effectiveTaskIntent.mutation.sourceChange,
+        sourceChangeRequested: currentTaskIntent.mutation.sourceChange,
         qualityGate: normalizedAutoValidation.qualityGate,
         writtenFiles: allWrittenFiles,
         roundReadFiles: loopRes.readFiles ?? [],

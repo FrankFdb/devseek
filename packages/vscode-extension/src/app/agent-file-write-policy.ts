@@ -127,6 +127,7 @@ export function decideAgentFileWrite(input: AgentFileWriteDecisionInput): AgentF
     workspaceRoot,
     context: input.context,
   });
+  const modelLedActionProposal = input.toolPolicy?.mode === 'model-led';
   const markdownAuthorization = authorizeAgentFileWriteContract({
     promptText: input.context?.requestPrompt || '',
     targetPath: absPath,
@@ -147,13 +148,13 @@ export function decideAgentFileWrite(input: AgentFileWriteDecisionInput): AgentF
     protectedPath: !!input.protectedPath,
     autopilotMode: !!input.autopilotMode,
     explicitMarkdownDeliverable,
-    markdownArtifactWriteAllowed: markdownAuthorization.allowed || semanticAuthorization.allowed,
+    markdownArtifactWriteAllowed: modelLedActionProposal || markdownAuthorization.allowed || semanticAuthorization.allowed,
     markdownArtifactWriteReason: markdownAuthorization.reason,
     markdownArtifactRequestedTargets: markdownAuthorization.requestedTargets.length > 0
       ? markdownAuthorization.requestedTargets
       : undefined,
-    semanticWriteAllowed: semanticAuthorization.allowed || undefined,
-    semanticWriteReason: semanticAuthorization.reason,
+    semanticWriteAllowed: modelLedActionProposal || semanticAuthorization.allowed || undefined,
+    semanticWriteReason: modelLedActionProposal ? 'model-led-action-proposal' : semanticAuthorization.reason,
   };
   const scopedAudit = {
     ...audit,
@@ -181,7 +182,7 @@ export function decideAgentFileWrite(input: AgentFileWriteDecisionInput): AgentF
       scopedAudit,
     );
   }
-  if (!markdownAuthorization.allowed && !semanticAuthorization.allowed) {
+  if (!modelLedActionProposal && !markdownAuthorization.allowed && !semanticAuthorization.allowed) {
     const targetList = markdownAuthorization.requestedTargets.length > 0
       ? `；用户明确允许的 Markdown 目标为 ${markdownAuthorization.requestedTargets.join('、')}`
       : '';

@@ -348,7 +348,7 @@ const USER_INPUT_CASES = [
   },
 ];
 
-test('AgentKernel user-input simulation: broad user prompts route through one canonical matrix', () => {
+test('AgentKernel user-input simulation: local task families remain hints inside one model loop', () => {
   const controller = new ChatRouteController();
 
   for (const scenario of USER_INPUT_CASES) {
@@ -372,9 +372,9 @@ test('AgentKernel user-input simulation: broad user prompts route through one ca
     assert.equal(route.mutation.sourceChange, scenario.mutation.sourceChange, scenario.name);
     assert.equal(route.mutation.fileArtifact, scenario.mutation.fileArtifact, scenario.name);
     assert.deepEqual([...route.mutation.targets].sort(), [...scenario.mutation.targets].sort(), scenario.name);
-    assert.equal(decision.workflow.kind, scenario.workflow.kind, scenario.name);
-    assert.equal(decision.workflow.useAgent, scenario.workflow.useAgent, scenario.name);
-    assert.equal(decision.toolPolicy.mode, scenario.workflow.toolPolicy, scenario.name);
+    assert.equal(decision.workflow.kind, 'model-agent', scenario.name);
+    assert.equal(decision.workflow.useAgent, true, scenario.name);
+    assert.equal(decision.toolPolicy.mode, 'model-led', scenario.name);
   }
 });
 
@@ -394,9 +394,9 @@ test('AgentKernel user-input simulation: agent-owned prompts enter kernel-owned 
         throw new Error('unexpected kernel execution in settlement simulation');
       },
     });
-    const mutatingCases = USER_INPUT_CASES.filter(scenario => scenario.workflow.useAgent);
+    const modelLedCases = USER_INPUT_CASES;
 
-    for (const scenario of mutatingCases) {
+    for (const scenario of modelLedCases) {
       const run = kernel.startRun({
         workspaceRoot,
         runId: `sim-${scenario.name}`,
@@ -417,7 +417,7 @@ test('AgentKernel user-input simulation: agent-owned prompts enter kernel-owned 
       assert.equal(status.completed, true, scenario.name);
     }
 
-    assert.equal(completions.length, mutatingCases.length);
+    assert.equal(completions.length, modelLedCases.length);
     assert.ok(completions.every(item => item.requestedStatus === 'completed'));
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });

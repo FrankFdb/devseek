@@ -1,6 +1,7 @@
 import type { ChatMessage } from '../llm/types';
 import {
   buildIntentRevisionLineage,
+  type IntentRevisionChangeKind,
   type IntentRevisionEffectReceipt,
   type IntentSemanticContractRevision,
 } from '../intent/intent-revision-lineage';
@@ -70,6 +71,22 @@ function userSteerRevokesWritesForContract(
   return true;
 }
 
+function resolveWriteRevocation(
+  current: boolean,
+  text: string,
+  revision: IntentSemanticContractRevision,
+  changeKinds: readonly IntentRevisionChangeKind[],
+  previousContract?: TaskSemanticContract,
+): boolean {
+  const contract = revision.semanticContract;
+  if (userSteerRevokesWritesForContract(text, contract, previousContract)) return true;
+  const explicitlyReauthorizes = changeKinds.some(kind => kind === 'correction' || kind === 'scope-reduction')
+    && contract.mutation.requested
+    && !contract.mutation.prohibited;
+  if (explicitlyReauthorizes) return false;
+  return current;
+}
+
 /** Keeps file-write authorization aligned with user steers received in flight. */
 export function createWriteAuthority(
   initialPrompt: string,
@@ -100,17 +117,18 @@ export function createWriteAuthority(
         projectInstructions: options.projectInstructions,
       });
       semanticContractRevision = lineage.semanticContractRevision;
-      writeRevoked = writeRevoked || userSteerRevokesWritesForContract(
+      writeRevoked = resolveWriteRevocation(
+        writeRevoked,
         text,
-        semanticContractRevision.semanticContract,
+        semanticContractRevision,
+        lineage.effectiveRevision.changeKinds,
         previousSemanticContract,
       );
       messages.push(buildUserSteerMessage(text, { semanticContractRevision }));
     }
-    const updates = messages
-      .map(message => typeof message.content === 'string' ? message.content.trim() : '')
-      .filter(Boolean);
-    if (updates.length > 0) currentPrompt = [currentPrompt, ...updates].filter(Boolean).join('\n\n');
+    // Provider history retains earlier turns. Local action arbitration consumes
+    // only the latest revision snapshot so superseded targets cannot look active.
+    if (texts.length > 0) currentPrompt = texts.at(-1)!;
     return messages;
   };
   const guardedCallbacks: AgentLoopCallbacks = { ...callbacks };

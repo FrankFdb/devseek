@@ -1,8 +1,9 @@
-import { ChatIntentDecision, shouldUseAgentMode } from '../intent-router';
+import type { ChatIntentDecision } from '../intent-router';
 import type { ExecutionMode } from '../intent/intent-types';
 
 export type WorkflowKind =
   | 'plain-chat'
+  | 'model-agent'
   | 'inspect-agent'
   | 'plan-agent'
   | 'edit-agent'
@@ -11,6 +12,7 @@ export type WorkflowKind =
 
 export type WorkflowState =
   | 'plain_chat'
+  | 'acting'
   | 'inspect'
   | 'planning'
   | 'plan_review'
@@ -62,47 +64,21 @@ export function selectWorkflow(input: WorkflowSelectionInput): WorkflowSelection
 export class WorkflowStateMachine {
   select(input: WorkflowSelectionInput): WorkflowSelection {
     const normalizedInput = normalizeWorkflowSelectionInput(input);
-    const { intent, files, agentEnabled, forceNoAgent, intentConfirmed } = normalizedInput;
-    const controlledWorkspaceWorkflow = shouldUseControlledWorkspaceWorkflow(normalizedInput);
+    const { intent, agentEnabled, forceNoAgent } = normalizedInput;
 
-    if (intent.requiresConfirmation && !intentConfirmed) {
-      return makeSelection('confirmation-required', 'confirmation_required', false, 'intent-requires-confirmation', intent.mode);
-    }
-
-    if (!intentConfirmed && requiresPlanReview(normalizedInput)) {
-      return makeSelection('plan-agent', 'plan_review', false, 'plan-review-required', 'plan', true);
-    }
-
-    if (forceNoAgent && !controlledWorkspaceWorkflow) {
+    if (forceNoAgent) {
       return makeSelection('plain-chat', 'plain_chat', false, 'force-no-agent', intent.mode);
     }
 
-    if (!agentEnabled && !controlledWorkspaceWorkflow) {
+    if (!agentEnabled) {
       return makeSelection('plain-chat', 'plain_chat', false, 'agent-disabled', intent.mode);
     }
 
-    const agentModeIntent = intentConfirmed && intent.requiresConfirmation
-      ? { ...intent, requiresConfirmation: false }
-      : intent;
-
-    if (!shouldUseAgentMode(agentModeIntent, files)) {
-      return makeSelection('plain-chat', 'plain_chat', false, `mode-${intent.mode}-does-not-use-agent`, intent.mode);
+    if (intent.blockers.includes('empty-prompt')) {
+      return makeSelection('plain-chat', 'plain_chat', false, 'empty-prompt', intent.mode);
     }
 
-    switch (intent.mode) {
-      case 'inspect':
-        return makeSelection('inspect-agent', 'inspect', true, 'read-only-inspection-with-context', 'inspect');
-      case 'plan':
-        return makeSelection('plan-agent', 'planning', true, 'read-only-planning-with-context', 'plan');
-      case 'run':
-        return makeSelection('run-agent', 'running', true, 'run-workflow', 'run');
-      case 'edit':
-        return makeSelection('edit-agent', 'editing', true, 'edit-workflow', 'edit');
-      case 'destructive':
-        return makeSelection('edit-agent', 'editing', true, 'confirmed-destructive-workflow', 'destructive');
-      default:
-        return makeSelection('plain-chat', 'plain_chat', false, `mode-${intent.mode}-not-agent-routable`, intent.mode);
-    }
+    return makeSelection('model-agent', 'acting', true, 'model-led-turn', 'model-led');
   }
 
   transition(selection: WorkflowSelection, event: WorkflowTransitionEvent): WorkflowSelection {
@@ -177,6 +153,7 @@ function transitionsFor(state: WorkflowState): WorkflowTransition[] {
         { event: 'cancel', from: state, to: 'cancelled' },
       ];
     case 'inspect':
+    case 'acting':
     case 'editing':
     case 'running':
       return [
@@ -192,31 +169,4 @@ function transitionsFor(state: WorkflowState): WorkflowTransition[] {
     default:
       return [];
   }
-}
-
-function shouldUseControlledWorkspaceWorkflow(input: WorkflowSelectionInput): boolean {
-  if (input.intent.requiresConfirmation && !input.intentConfirmed) return false;
-  if (['smalltalk', 'qa', 'destructive'].includes(input.intent.mode)) return false;
-
-  const hasConcreteWorkspaceTarget = input.files.length > 0
-    || input.intent.signals.includes('explicit-file-path')
-    || input.intent.signals.includes('artifact-path-query')
-    || input.intent.signals.includes('workspace-diff-review')
-    || input.intent.signals.includes('semantic-proposal:workspace-read');
-  if (!hasConcreteWorkspaceTarget) return false;
-
-  // Explicit file tasks must stay inside DevSeek's tool/permission runtime.
-  // Plain web chat leaks model-side pseudo tools such as "Calling: bash" and
-  // cannot observe local workspace state, while inspect/edit/run workflows can.
-  return ['inspect', 'plan', 'edit', 'run'].includes(input.intent.mode);
-}
-
-function requiresPlanReview(input: WorkflowSelectionInput): boolean {
-  if (!['edit', 'plan'].includes(input.intent.mode)) return false;
-  if (input.intentConfirmed) return false;
-  if (input.intent.signals.includes('capability-feature-request')) return false;
-  if (input.intent.mode === 'plan' && input.intent.signals.includes('planning-only-request')) return false;
-  const hasBroadScope = input.intent.signals.includes('broad-scope');
-  const hasComplexAction = input.intent.signals.includes('complex-action');
-  return (hasBroadScope && hasComplexAction) || (input.files.length > 3 && hasComplexAction);
 }

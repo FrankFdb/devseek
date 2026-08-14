@@ -1573,7 +1573,7 @@ test('§3 Tool filtering: stripToolCallBlocks function present', () => {
 // Architecture refactor boundaries
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('Architecture: webview protocol types exist and extension uses inbound protocol', () => {
+test('Architecture: webview protocol types exist and the extension has no pre-model intent gate', () => {
   const protocol = src('src/ui/webview-protocol.ts');
   const ext = src('src/extension.ts');
   assertContains(protocol, 'WebviewInboundMessage', 'typed inbound webview protocol must exist');
@@ -1582,7 +1582,8 @@ test('Architecture: webview protocol types exist and extension uses inbound prot
   assertContains(protocol, "'planReview'", 'typed outbound webview protocol must include plan review');
   assertContains(ext, "import type { WebviewInboundMessage }", 'extension must use typed inbound webview message');
   assertContains(ext, 'type WebviewMessage = WebviewInboundMessage', 'extension WebviewMessage must be protocol alias');
-  assertContains(ext, "preExecutionInteraction.kind === 'planReview'", 'extension must emit plan review event explicitly');
+  assertDoesNotContain(ext, 'buildPreExecutionInteraction(', 'extension must not gate raw user input before the main model');
+  assertDoesNotContain(ext, 'run-chat-return-pre-execution-interaction', 'extension must not return from keyword-based pre-execution routing');
   assertContains(webviewRuntime(), "msg.type === 'intentConfirmation' || msg.type === 'planReview'", 'webview must render plan review with confirmation card');
 });
 
@@ -1609,15 +1610,15 @@ test('Architecture: PermissionService maps ExecutionMode to tool policy', () => 
   assertContains(terminalCoordinator, "risk: terminalDecision.risk === 'destructive'", 'terminal commands must preserve the command-specific risk projection');
 });
 
-test('Architecture: WorkflowService selects agent entry outside extension inline gate', () => {
+test('Architecture: WorkflowService selects the model-led agent entry outside extension inline gate', () => {
   const service = src('src/app/workflow-service.ts');
   const ext = src('src/extension.ts');
   const controller = src('src/app/chat-controller.ts');
   const turnRouting = src('src/app/agent-turn-routing-service.ts');
   assertContains(service, 'selectWorkflow', 'workflow service must expose selectWorkflow');
   assertContains(service, 'class WorkflowStateMachine', 'workflow service must expose state machine');
-  assertContains(service, 'requiresPlanReview', 'workflow service must support plan review gate');
-  assertContains(service, 'confirmation-required', 'workflow service must route destructive confirmation outside agent');
+  assertContains(service, "makeSelection('model-agent', 'acting'", 'workflow service must route ordinary input to the main model');
+  assertContains(service, "'model-led'", 'workflow service must select action-level model-led authority');
   assertContains(controller, 'const workflow = selectWorkflow', 'chat controller must delegate workflow selection');
   assertContains(ext, 'decideAgentTurnRoute(chatRouteController', 'extension must delegate route selection through the turn routing boundary');
   assertContains(turnRouting, 'controller.decide({', 'turn routing boundary must delegate the decision to ChatRouteController');
@@ -1635,7 +1636,7 @@ test('Architecture: ChatRouteController owns intent/workflow routing', () => {
   assertContains(testFile, 'routes by visible user text', 'chat route controller must have behavior tests');
 });
 
-test('R1-A2: TaskIntentRouter is the canonical task-family owner for downstream routing', () => {
+test('R1-A2: TaskIntentRouter owns local evidence without routing the main model turn', () => {
   const router = src('src/task-intent-router.ts');
   assertContains(router, "version: 'devseek.task-intent-route/v1'", 'canonical route version must be explicit');
   assertContains(router, 'export function routeTaskIntent', 'canonical router must expose routeTaskIntent');
@@ -1661,8 +1662,8 @@ test('R1-A2: TaskIntentRouter is the canonical task-family owner for downstream 
   assertDoesNotContain(display, 'classifyAgentTaskShape', 'display must not bypass router through task-shape');
 
   const workflow = src('src/app/workflow-service.ts');
-  assertContains(workflow, "input.intent.signals.includes('broad-scope')", 'workflow plan-review gate must consume route signals');
-  assertContains(workflow, "input.intent.signals.includes('complex-action')", 'workflow plan-review gate must consume route signals');
+  assertContains(workflow, "return makeSelection('model-agent', 'acting'", 'workflow must send non-empty agent turns to the main model');
+  assertDoesNotContain(workflow, 'input.intent.signals.includes(', 'local semantic labels must not select the model workflow');
   assertDoesNotContain(workflow, 'const hasBroadScope = /', 'workflow must not own broad-scope prompt regex routing');
   assertDoesNotContain(workflow, 'function isPlanningOnlyRequest(', 'workflow must not own planning-only prompt regex routing');
 

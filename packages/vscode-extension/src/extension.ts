@@ -48,7 +48,6 @@ import { decideAgentTurnRoute } from './app/agent-turn-routing-service';
 import { resolveSemanticRouteDecision } from './app/semantic-route-service';
 import { ChatSessionTurnService } from './app/chat-session-turn-service';
 import { migrateLegacyDeepseekConfiguration } from './app/config-migration-service';
-import { buildPreExecutionInteraction } from './app/interaction-service';
 import { buildLocalAttachmentContextPrompt } from './app/local-attachment-context';
 import { MemoryService } from './app/memory-service';
 import { AgentKernelService } from './app/agent-kernel-service';
@@ -132,6 +131,7 @@ let nonBridgeChatHistory: ChatMessage[] = [];
 // ── Session memory (L1a/L1b + L2) ─────────────────────────────────────────
 /** VS Code ExtensionContext，用于 workspaceState 持久化 */
 let extContext: vscode.ExtensionContext;
+let sessionService: SessionService | undefined;
 let agentCheckpointService: ScopedTaskCheckpointService<AgentTask>;
 /** L2: 文件路径字典 basename/relPath → absPath，跨轮次不清空 */
 const sessionRecentFiles = new Map<string, string>();
@@ -196,7 +196,9 @@ async function grepWorkspace(
 }
 
 function getSessionService(): SessionService | undefined {
-  return extContext ? new SessionService(extContext.workspaceState) : undefined;
+  if (!extContext) return undefined;
+  sessionService ??= new SessionService(extContext.workspaceState);
+  return sessionService;
 }
 
 function getActiveEditorContextPath(): string | undefined {
@@ -405,11 +407,11 @@ async function runActiveChat(
     webview.postMessage({ type: 'contextFiles', files: toContextDisplayLabels(lastConversationFiles) });
   }
 
-  // Auto-discover directory context for read/analysis prompts only.
-  const isWriteRequest = /(编写|创建|新建|写一个|写个|generate\s*a|create\s*a|write\s*a)/i.test(prompt);
+  // Directory discovery is read-only context collection. It must not depend on
+  // correctly spelling or pre-classifying the user's requested action.
   let autoDiscoveredNote = '';
   let autoDiscoveredFiles: string[] = [];
-  if (effectiveFiles.length === 0 && !isWriteRequest) {
+  if (effectiveFiles.length === 0) {
     const discovered = discoverFilesFromDirectoryPrompt(prompt, vscode.workspace.workspaceFolders ?? []);
     if (discovered.length > 0) {
       effectiveFiles = discovered;
@@ -468,37 +470,6 @@ async function runActiveChat(
     requiresPlanReview: workflow.requiresPlanReview,
     effectiveFiles: effectiveFiles.length,
   });
-  const preExecutionInteraction = buildPreExecutionInteraction({
-    userText: intentRoutingText,
-    prompt,
-    files: effectiveFiles,
-    intent,
-    workflow,
-    intentConfirmed,
-  });
-  if (preExecutionInteraction) {
-    recordRealPluginHarnessProgress('run-chat-return-pre-execution-interaction', {
-      interactionKind: preExecutionInteraction.kind,
-      title: preExecutionInteraction.title,
-    });
-    webview.postMessage({
-      type: preExecutionInteraction.kind === 'planReview' ? 'planReview' : 'intentConfirmation',
-      request: {
-        ...preExecutionInteraction,
-        original: {
-          text: userDisplay,
-          prompt,
-          files: effectiveFiles.length > 0 ? effectiveFiles : undefined,
-          images,
-          newSession: false,
-          mode,
-          forceNoAgent,
-        },
-      },
-    });
-    return;
-  }
-
   const directInspectionRoot = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath)
     ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
     ?? '';
@@ -540,6 +511,7 @@ async function runActiveChat(
   };
   const localPreflightConfig = vscode.workspace.getConfiguration('devseek');
   const shouldBypassAgentForLocalExecution = (() => {
+    if (workflow.toolPolicyMode === 'model-led') return false;
     if (!localPreflightConfig.get<boolean>('localExecutionFirst', true)) return false;
     if (intent.mode !== 'run') return false;
     const workspaceRootForLocal = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath);
@@ -1594,6 +1566,7 @@ function initOrRestoreSession(): void {
 // ----------------------------------------------------------------
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   extContext = context;
+  sessionService = new SessionService(context.workspaceState);
   agentCheckpointService = new ScopedTaskCheckpointService<AgentTask>({
     storage: context.workspaceState,
     getScope: () => ({

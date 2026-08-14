@@ -155,6 +155,7 @@ function runAgenticLoop(userPrompt, contextFiles, workspaceRoot, mode, callbacks
       workspaceRoot,
       userPrompt,
       executionMode: workflowMode,
+      authorityStrategy: workflowMode === 'model-led' ? 'model-led' : 'contract-bound',
     }),
     ...args,
   );
@@ -1106,6 +1107,10 @@ test(`agentic route: a ${timing} steer revokes write authority before provider t
   };
   globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__ = async () => {
     providerCalls += 1;
+    if (timing === 'provider-in-flight' && providerCalls === 2) {
+      controller.abort();
+      return { text: '已接受最新只读约束，不再执行旧写入。', tools: [] };
+    }
     const text = `[TOOL:create_file ${JSON.stringify({ path: target, content: 'must not persist\n' })}]`;
     return {
       text,
@@ -1114,12 +1119,11 @@ test(`agentic route: a ${timing} steer revokes write authority before provider t
   };
   try {
     const result = await runAgenticLoop(prompt, [], root, 'fast', io.callbacks, '', 'edit', []);
-    assert.equal(providerCalls, 1);
+    assert.equal(providerCalls, timing === 'provider-in-flight' ? 2 : 1);
     assert.ok(steerPolls >= revokePoll, 'steers must be drained after the provider and at the write boundary');
     if (timing === 'write-boundary') {
       assert.equal(observedAuthorityPrompts.length, 1);
-      assert.match(observedAuthorityPrompts[0], /创建总结文件/);
-      assert.match(observedAuthorityPrompts[0], /不要创建任何文件/);
+      assert.equal(observedAuthorityPrompts[0], revoke);
     } else {
       assert.equal(observedAuthorityPrompts.length <= 1, true);
     }

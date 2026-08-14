@@ -16,7 +16,10 @@ import {
 } from './coding-design-plan';
 import type { CodingChangePlanRevisionSessionPort } from './coding-change-plan-revision';
 import type { CodingKernelTaskContract } from './coding-task-contract';
-import { projectCodingWorkspaceTargets } from './coding-workspace-scope';
+import {
+  codingWorkspaceTargetMatchesScope,
+  projectCodingWorkspaceTargets,
+} from './coding-workspace-scope';
 
 export const CODING_SANDBOX_POLICY_VERSION = 'devseek.coding-sandbox-policy/v1' as const;
 export const CODING_TOOL_AUTHORITY_RECEIPT_VERSION = 'devseek.coding-tool-authority-receipt/v1' as const;
@@ -25,6 +28,16 @@ export type CodingToolPermissionDecision = 'allow' | 'require-confirmation' | 'd
 export type CodingToolAuthorityStatus = 'authorized' | 'denied';
 export type CodingToolRisk = 'low' | 'medium' | 'high' | 'destructive';
 export type CodingToolPurpose = 'observe' | 'verify' | 'workspace-mutation' | 'external-effect';
+export type CodingToolAuthorityStrategy = 'contract-bound' | 'model-led';
+
+const ALL_CODING_TOOL_EFFECTS: readonly CodingToolEffect[] = Object.freeze([
+  'read',
+  'process',
+  'network',
+  'workspace-mutation',
+  'git',
+  'release',
+]);
 
 export interface CodingToolAuthorityReceipt {
   readonly version: typeof CODING_TOOL_AUTHORITY_RECEIPT_VERSION;
@@ -81,6 +94,7 @@ export interface CodingSandboxPolicy {
   readonly networkAccess: 'denied' | 'allowed';
   readonly gitAccess: 'denied' | 'allowed';
   readonly releaseAccess: 'denied' | 'allowed';
+  readonly authorityStrategy: CodingToolAuthorityStrategy;
   readonly allowedEffects: readonly CodingToolEffect[];
   readonly policySha256: string;
 }
@@ -117,6 +131,7 @@ export interface PermissionDecisionPort {
     readonly sandbox: CodingSandboxPolicy;
     readonly changePlan?: CodingChangePlan;
     readonly workspaceRoot: string;
+    readonly authorityStrategy?: CodingToolAuthorityStrategy;
   }): CodingPermissionDecision;
 }
 
@@ -125,6 +140,7 @@ export interface SandboxPolicyPort {
     readonly taskContract: CodingKernelTaskContract;
     readonly surface: CodingConformanceSurface;
     readonly workspaceRoot: string;
+    readonly authorityStrategy?: CodingToolAuthorityStrategy;
   }): CodingSandboxPolicy;
 }
 
@@ -151,6 +167,7 @@ export interface ToolAuthorityPort {
     readonly taskContract: CodingKernelTaskContract;
     readonly changePlan?: CodingChangePlan;
     readonly changePlanRevision?: CodingChangePlanRevisionSessionPort;
+    readonly authorityStrategy?: CodingToolAuthorityStrategy;
   }): CodingToolAuthoritySessionPort;
 }
 
@@ -158,6 +175,7 @@ export interface ToolAuthorityPort {
 export class CanonicalPermissionDecisionService implements PermissionDecisionPort {
   decide(input: Parameters<PermissionDecisionPort['decide']>[0]): CodingPermissionDecision {
     const request = snapshotAuthorityRequest(input.request);
+    const authorityStrategy = input.authorityStrategy ?? 'contract-bound';
     const deniedEffect = request.effects.find(effect => !input.sandbox.allowedEffects.includes(effect));
     if (deniedEffect) {
       return freezeDecision('deny', `sandbox-denies-${deniedEffect}`);
@@ -173,7 +191,16 @@ export class CanonicalPermissionDecisionService implements PermissionDecisionPor
     if (targetProjection?.decision === 'denied') {
       return freezeDecision('deny', targetProjection.reason ?? 'workspace-path-invalid');
     }
-    if (input.changePlan) {
+    if (authorityStrategy === 'model-led'
+      && input.taskContract.orientation.source === 'safety-policy'
+      && request.purpose !== 'observe') {
+      return freezeDecision('deny', 'safety-policy-denies-model-proposed-effect');
+    }
+    const modelLedScopeFailure = authorityStrategy === 'model-led' && targetProjection
+      ? validateModelLedTargetScope(input.taskContract, targetProjection.targets)
+      : undefined;
+    if (modelLedScopeFailure) return freezeDecision('deny', modelLedScopeFailure);
+    if (authorityStrategy === 'contract-bound' && input.changePlan) {
       const planDecision = evaluateCodingChangePlanEffect(input.changePlan, {
         effects: request.purpose === 'verify'
           ? request.effects.filter(effect => effect !== 'workspace-mutation')
@@ -184,7 +211,8 @@ export class CanonicalPermissionDecisionService implements PermissionDecisionPor
         return freezeDecision('deny', planDecision.reason, planDecision.evidenceRefs);
       }
     }
-    if ((input.taskContract.mode === 'explain' || input.taskContract.mode === 'review')
+    if (authorityStrategy === 'contract-bound'
+      && (input.taskContract.mode === 'explain' || input.taskContract.mode === 'review')
       && request.purpose === 'external-effect') {
       return freezeDecision('deny', `task-contract-${input.taskContract.mode}-denies-external-effect`);
     }
@@ -201,7 +229,12 @@ export class CanonicalPermissionDecisionService implements PermissionDecisionPor
         `surface-requires-confirmation:${request.surfaceConstraint.reason}`,
       );
     }
-    return freezeDecision('allow', `task-contract-${input.taskContract.mode}-allows-${request.purpose}`);
+    return freezeDecision(
+      'allow',
+      authorityStrategy === 'model-led'
+        ? `model-led-allows-${request.purpose}`
+        : `task-contract-${input.taskContract.mode}-allows-${request.purpose}`,
+    );
   }
 }
 
@@ -209,14 +242,17 @@ export class CanonicalPermissionDecisionService implements PermissionDecisionPor
 export class CanonicalSandboxPolicyService implements SandboxPolicyPort {
   resolve(input: Parameters<SandboxPolicyPort['resolve']>[0]): CodingSandboxPolicy {
     const mode = input.taskContract.mode;
-    const allowedEffects = allowedEffectsForMode(mode);
+    const authorityStrategy = input.authorityStrategy ?? 'contract-bound';
+    const modelLed = authorityStrategy === 'model-led';
+    const allowedEffects = modelLed ? ALL_CODING_TOOL_EFFECTS : allowedEffectsForMode(mode);
     const payload = {
       version: CODING_SANDBOX_POLICY_VERSION,
-      workspaceAccess: mode === 'change' || mode === 'release' ? 'read-write' as const : 'read-only' as const,
-      processAccess: mode === 'explain' ? 'denied' as const : 'allowed' as const,
+      workspaceAccess: modelLed || mode === 'change' || mode === 'release' ? 'read-write' as const : 'read-only' as const,
+      processAccess: modelLed || mode !== 'explain' ? 'allowed' as const : 'denied' as const,
       networkAccess: 'allowed' as const,
-      gitAccess: mode === 'release' ? 'allowed' as const : 'denied' as const,
-      releaseAccess: mode === 'release' ? 'allowed' as const : 'denied' as const,
+      gitAccess: modelLed || mode === 'release' ? 'allowed' as const : 'denied' as const,
+      releaseAccess: modelLed || mode === 'release' ? 'allowed' as const : 'denied' as const,
+      authorityStrategy,
       allowedEffects,
     };
     return Object.freeze({
@@ -245,10 +281,12 @@ export class CanonicalToolAuthorityService implements ToolAuthorityPort {
     const runId = normalizedCodingId(input.runId, 'run-id');
     const workspaceRoot = normalizedCodingId(input.workspaceRoot, 'workspace-root');
     const taskContract = input.taskContract;
+    const authorityStrategy = input.authorityStrategy ?? 'contract-bound';
     const sandbox = this.sandboxPolicy.resolve({
       taskContract,
       surface: input.surface,
       workspaceRoot,
+      authorityStrategy,
     });
     const settled = new Map<string, { canonicalRequest: string; authorization: CodingToolAuthorization }>();
 
@@ -266,7 +304,8 @@ export class CanonicalToolAuthorityService implements ToolAuthorityPort {
           return existing.authorization;
         }
 
-        const revision = request.purpose === 'workspace-mutation'
+        const revision = authorityStrategy === 'contract-bound'
+          && request.purpose === 'workspace-mutation'
           && request.effects.includes('workspace-mutation')
           && sandbox.allowedEffects.includes('workspace-mutation')
           && request.surfaceConstraint?.decision !== 'deny'
@@ -283,6 +322,7 @@ export class CanonicalToolAuthorityService implements ToolAuthorityPort {
               sandbox,
               changePlan: input.changePlanRevision?.currentPlan() ?? input.changePlan,
               workspaceRoot,
+              authorityStrategy,
             });
         const authorization = settleAuthorization(runId, request, decision, sandbox);
         settled.set(key, { canonicalRequest, authorization });
@@ -543,6 +583,21 @@ function allowedEffectsForMode(mode: CodingTaskMode): readonly CodingToolEffect[
     case 'change': return Object.freeze(['read', 'process', 'network', 'workspace-mutation']);
     case 'release': return Object.freeze(['read', 'process', 'network', 'workspace-mutation', 'git', 'release']);
   }
+}
+
+function validateModelLedTargetScope(
+  taskContract: CodingKernelTaskContract,
+  targets: readonly string[],
+): string | undefined {
+  const excluded = targets.find(target => taskContract.scope.exclude.some(scope => (
+    codingWorkspaceTargetMatchesScope(target, scope)
+  )));
+  if (excluded) return `model-led-target-excluded:${excluded}`;
+  if (!taskContract.constraints.includes('no-other-files')) return undefined;
+  const outside = targets.find(target => !taskContract.scope.include.some(scope => (
+    codingWorkspaceTargetMatchesScope(target, scope)
+  )));
+  return outside ? `model-led-target-outside-explicit-scope:${outside}` : undefined;
 }
 
 function uniqueEffects(effects: readonly CodingToolEffect[]): readonly CodingToolEffect[] {

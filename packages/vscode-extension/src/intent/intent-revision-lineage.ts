@@ -122,11 +122,12 @@ export function buildIntentRevisionLineage(input: IntentRevisionLineageInput): I
     .map(effect => effect.id);
 
   const promptProhibitedTargets = extractProhibitedTargets(prompt);
+  const changeKinds = classifyChangeKinds(prompt, previous !== undefined, promptProhibitedTargets);
+  const replacesPendingScope = changeKinds.includes('correction') || changeKinds.includes('scope-reduction');
   const prohibitedTargets = uniquePaths([
-    ...(previous?.semanticContractRevision.prohibitedTargets ?? []),
+    ...(replacesPendingScope ? [] : previous?.semanticContractRevision.prohibitedTargets ?? []),
     ...promptProhibitedTargets,
   ]);
-  const changeKinds = classifyChangeKinds(prompt, previous !== undefined, promptProhibitedTargets);
   const revisionId = `rev-${previousRevisions.length + 1}`;
   const orientation = buildOrientationDecision({
     prompt,
@@ -139,7 +140,7 @@ export function buildIntentRevisionLineage(input: IntentRevisionLineageInput): I
       revision: {
         strategy: previous === undefined
           ? 'initial'
-          : changeKinds.includes('correction') || changeKinds.includes('scope-reduction')
+          : replacesPendingScope
             ? 'replace-scope'
             : 'merge',
         revisionId,

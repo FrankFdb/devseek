@@ -65,6 +65,19 @@ test('TaskSemanticContract: scoped other-file prohibition does not erase explici
   assert.ok(contract.signals.includes('file-check-requested'));
 });
 
+test('TaskSemanticContract: an inline correction drops superseded historical targets', () => {
+  const contract = buildTaskSemanticContract(
+    '这是一次多轮需求的最终轮：前面曾说写 INITIAL_REQUIREMENT，但现在改为 FINAL_REQUIREMENT_OK。请只按最新要求创建 journey-result.txt，文件内容必须精确包含一行 FINAL_REQUIREMENT_OK。完成写入和读回验证后结束任务，不要创建旧要求文件。',
+  );
+
+  assert.deepEqual(contract.mutation.targets, ['journey-result.txt']);
+  assert.deepEqual(
+    contract.obligations.artifacts.filter(item => item.target).map(item => item.target),
+    ['journey-result.txt'],
+  );
+  assert.ok(contract.signals.includes('scoped-historical-requirement-prohibition'));
+});
+
 test('TaskSemanticContract: R3 login-ready audit style guidance is not formal-project quality', () => {
   const contract = buildTaskSemanticContract([
     '请基于 /tmp/workspace/docs/r3-iteration/deepseek-login-ready-state-matrix.md 和 /tmp/workspace/src/deepseek-web-health/deepseek-login-ready-state-contract.ts 创建 Markdown 审计报告。',
