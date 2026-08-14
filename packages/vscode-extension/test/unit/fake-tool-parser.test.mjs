@@ -113,6 +113,60 @@ test('FakeToolParser: parses and strips OpenAI-compatible tool_calls wrappers', 
   assert.equal(stripToolCallBlocks(text), 'I will inspect and verify.');
 });
 
+test('FakeToolParser: recovers malformed OpenAI tool_calls argument strings from DeepSeek Web', () => {
+  const text = [
+    '我会先运行聚焦测试，失败后再根据日志修复。',
+    '{"tool_calls":[{"type":"function","function":{"name":"run_terminal","arguments":"{"command":"npm test","workdir":"/tmp/project"}"}}]}',
+    '本回答由 AI 生成，内容仅供参考。',
+  ].join('\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.deepEqual(tools, [{
+    name: 'run_terminal',
+    input: { command: 'npm test', workdir: '/tmp/project' },
+  }]);
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.equal(hasIncompleteFakeToolCallProtocol(text), false);
+  assert.equal(stripToolCallBlocks(text), '我会先运行聚焦测试，失败后再根据日志修复。\n本回答由 AI 生成，内容仅供参考。');
+});
+
+test('FakeToolParser: recovers multiple malformed OpenAI tool_calls in one DeepSeek Web response', () => {
+  const text = [
+    '我会创建文件、读回确认，然后结束任务。',
+    '{"tool_calls":[{"type":"function","function":{"name":"create_file","arguments":"{"path":"reports/malformed-wrapper-result.txt","content":"MALFORMED_WRAPPER_OK\\n"}"}},{"type":"function","function":{"name":"read_file","arguments":"{"path":"reports/malformed-wrapper-result.txt"}"}},{"type":"function","function":{"name":"task_complete","arguments":"{"summary":"done"}"}}]}',
+    '本回答由 AI 生成，内容仅供参考。',
+  ].join('\n');
+
+  assert.deepEqual(parseFakeToolCalls(text), [
+    {
+      name: 'create_file',
+      input: { path: 'reports/malformed-wrapper-result.txt', content: 'MALFORMED_WRAPPER_OK\n' },
+    },
+    { name: 'read_file', input: { path: 'reports/malformed-wrapper-result.txt' } },
+    { name: 'task_complete', input: { summary: 'done' } },
+  ]);
+  const stripped = stripToolCallBlocks(text);
+  assert.match(stripped, /我会创建文件、读回确认，然后结束任务/);
+  assert.match(stripped, /本回答由 AI 生成，内容仅供参考/);
+  assert.doesNotMatch(stripped, /tool_calls|create_file|read_file|task_complete/);
+});
+
+test('FakeToolParser: parses multiple markdown-listed JSON tool objects', () => {
+  const text = [
+    '我先读取实现并搜索错误处理入口。',
+    '1. {"tool":"read_file","path":"src/app.ts"}',
+    '2. {"tool":"grep_search","pattern":"handleError","path":"src"}',
+  ].join('\n');
+
+  assert.deepEqual(parseFakeToolCalls(text), [
+    { name: 'read_file', input: { path: 'src/app.ts' } },
+    { name: 'grep_search', input: { pattern: 'handleError', path: 'src' } },
+  ]);
+  const stripped = stripToolCallBlocks(text);
+  assert.match(stripped, /我先读取实现并搜索错误处理入口/);
+  assert.doesNotMatch(stripped, /"tool"|"path"|"pattern"/);
+});
+
 test('FakeToolParser: prioritizes OpenAI tool_calls over Chinese calling prose shell heuristics', () => {
   const text = [
     '我会用兼容 OpenAI tool_calls 的格式返回工具调用，并完成写入和验证。',

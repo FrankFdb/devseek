@@ -160,6 +160,30 @@ test('provider output integrity: treats OpenAI-style tool arrays with login-name
   assert.equal(result.toolCallCount, 2);
 });
 
+test('provider output integrity: keeps malformed OpenAI tool_calls wrappers in the executable channel', () => {
+  const result = classifyProviderOutputIntegrity([
+    '我会先运行聚焦测试，失败后根据日志继续修复。',
+    '{"tool_calls":[{"type":"function","function":{"name":"run_terminal","arguments":"{"command":"npm test","workdir":"/tmp/project"}"}}]}',
+    '本回答由 AI 生成，内容仅供参考。',
+  ].join('\n'));
+
+  assert.equal(result.kind, 'tool_call');
+  assert.equal(result.okForSettlement, false);
+  assert.equal(result.toolCallCount, 1);
+});
+
+test('provider output integrity: keeps multi-call malformed OpenAI wrappers executable', () => {
+  const result = classifyProviderOutputIntegrity([
+    '我会创建文件、读回确认，然后结束任务。',
+    '{"tool_calls":[{"type":"function","function":{"name":"create_file","arguments":"{"path":"reports/malformed-wrapper-result.txt","content":"MALFORMED_WRAPPER_OK\\n"}"}},{"type":"function","function":{"name":"read_file","arguments":"{"path":"reports/malformed-wrapper-result.txt"}"}},{"type":"function","function":{"name":"task_complete","arguments":"{"summary":"done"}"}}]}',
+    '本回答由 AI 生成，内容仅供参考。',
+  ].join('\n'));
+
+  assert.equal(result.kind, 'tool_call');
+  assert.equal(result.okForSettlement, false);
+  assert.equal(result.toolCallCount, 3);
+});
+
 test('provider output integrity: accepts a complete quote-damaged replace call as an executable tool request', () => {
   const result = classifyProviderOutputIntegrity(String.raw`我立即修复头文件。
 <TOOL_CALL>[TOOL:replace_in_file] {"path":"/tmp/project/worker.hpp","old_str":"#include <string>\n\n#include "worker_types.hpp"","new_str":"#include <string>\n#include <unordered_map>\n\n#include "worker_types.hpp""}</TOOL_CALL>`);

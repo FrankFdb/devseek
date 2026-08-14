@@ -516,8 +516,10 @@ function jsonFunctionEnvelopeToFakeTool(obj: Record<string, unknown>): FakeTool 
   return { name, input: normalizeToolInput(name, input) };
 }
 
-function extractMalformedFunctionEnvelopeName(body: string): { name: string; afterName: number } | null {
-  const fnStart = /"function"\s*:\s*\{/.exec(body);
+function extractMalformedFunctionEnvelopeName(body: string, startAt = 0): { name: string; afterName: number; functionStart: number } | null {
+  const fnStartRe = /"function"\s*:\s*\{/g;
+  fnStartRe.lastIndex = startAt;
+  const fnStart = fnStartRe.exec(body);
   if (!fnStart) return null;
   const nameRe = /"name"\s*:\s*"((?:\\.|[^"\\])*)"/g;
   nameRe.lastIndex = fnStart.index + fnStart[0].length;
@@ -525,7 +527,7 @@ function extractMalformedFunctionEnvelopeName(body: string): { name: string; aft
   if (!match) return null;
   const name = decodeLooseJsonString(match[1] || '').trim();
   if (!name || !isRegisteredFakeToolName(name)) return null;
-  return { name: normalizeAgentToolName(name), afterName: nameRe.lastIndex };
+  return { name: normalizeAgentToolName(name), afterName: nameRe.lastIndex, functionStart: fnStart.index };
 }
 
 function findMalformedFunctionArgumentsObjectStart(body: string, afterName: number): number {
@@ -542,17 +544,60 @@ function findMalformedFunctionArgumentsObjectStart(body: string, afterName: numb
   return body[index] === '{' ? index : -1;
 }
 
+function parseMalformedFunctionEnvelopeToolSpans(body: string): Array<{ index: number; end: number; tool: FakeTool }> {
+  const spans: Array<{ index: number; end: number; tool: FakeTool }> = [];
+  let searchAt = 0;
+  while (searchAt < body.length) {
+    const named = extractMalformedFunctionEnvelopeName(body, searchAt);
+    if (!named) break;
+    const argsStart = findMalformedFunctionArgumentsObjectStart(body, named.afterName);
+    if (argsStart < 0) {
+      searchAt = named.afterName;
+      continue;
+    }
+    const argsEnd = findToolInputObjectEnd(body, named.name, argsStart);
+    if (argsEnd < 0) {
+      searchAt = argsStart + 1;
+      continue;
+    }
+    const argsText = body.slice(argsStart, argsEnd + 1);
+    const input = parseToolArgumentsRecord(named.name, argsText);
+    if (input) {
+      spans.push({
+        index: malformedFunctionEnvelopePayloadStart(body, named.functionStart),
+        end: malformedFunctionEnvelopePayloadEnd(body, argsEnd),
+        tool: { name: named.name, input: normalizeToolInput(named.name, input) },
+      });
+    }
+    searchAt = argsEnd + 1;
+  }
+  return spans;
+}
+
 function parseMalformedFunctionEnvelopeTool(body: string): FakeTool | null {
-  const named = extractMalformedFunctionEnvelopeName(body);
-  if (!named) return null;
-  const argsStart = findMalformedFunctionArgumentsObjectStart(body, named.afterName);
-  if (argsStart < 0) return null;
-  const argsEnd = findToolInputObjectEnd(body, named.name, argsStart);
-  if (argsEnd < 0) return null;
-  const argsText = body.slice(argsStart, argsEnd + 1);
-  const input = parseToolArgumentsRecord(named.name, argsText);
-  if (!input) return null;
-  return { name: named.name, input: normalizeToolInput(named.name, input) };
+  return parseMalformedFunctionEnvelopeToolSpans(body)[0]?.tool ?? null;
+}
+
+function malformedFunctionEnvelopePayloadStart(body: string, functionStart: number): number {
+  const before = body.slice(0, functionStart);
+  const wrapperKey = Math.max(
+    before.lastIndexOf('"tool_calls"'),
+    before.lastIndexOf('"toolCalls"'),
+    before.lastIndexOf('"tools"'),
+    before.lastIndexOf('"function_call"'),
+    before.lastIndexOf('"functionCall"'),
+    before.lastIndexOf('"tool_call"'),
+    before.lastIndexOf('"toolCall"'),
+  );
+  const searchEnd = wrapperKey >= 0 ? wrapperKey : functionStart;
+  const objectStart = before.lastIndexOf('{', searchEnd);
+  return objectStart >= 0 ? objectStart : functionStart;
+}
+
+function malformedFunctionEnvelopePayloadEnd(body: string, argsEnd: number): number {
+  let end = argsEnd + 1;
+  while (end < body.length && /[ \t"'\\}\],]/.test(body[end])) end++;
+  return end;
 }
 
 function parseNamedParameterToolCallEnvelopeBody(rawBody: string): FakeTool | null {
@@ -1002,7 +1047,9 @@ function stripJsonToolPayloads(text: string): string {
     try {
       const parsed = JSON.parse(trimmed) as unknown;
       if (jsonValueContainsToolPayload(parsed)) return '';
-    } catch { /* keep non-tool JSON */ }
+    } catch {
+      if (parseMalformedFunctionEnvelopeToolSpans(trimmed).length > 0) return '';
+    }
     return full;
   });
 
@@ -1014,6 +1061,11 @@ function stripJsonToolPayloads(text: string): string {
     out += result.slice(i, start);
     const end = result[start] === '[' ? findJsonArrayEnd(result, start) : findJsonObjectEnd(result, start);
     if (end < 0) {
+      const malformedSpan = parseMalformedFunctionEnvelopeToolSpans(result.slice(start))[0];
+      if (malformedSpan) {
+        i = start + malformedSpan.end;
+        continue;
+      }
       if (result[start] === '[') {
         out += result[start];
         i = start + 1;
@@ -1029,7 +1081,9 @@ function stripJsonToolPayloads(text: string): string {
       if (jsonValueContainsToolPayload(parsed)) {
         stripped = true;
       }
-    } catch { /* keep non-tool JSON */ }
+    } catch {
+      stripped = parseMalformedFunctionEnvelopeToolSpans(candidate).length > 0;
+    }
     if (!stripped) out += candidate;
     i = end + 1;
   }
@@ -1297,6 +1351,7 @@ function findJsonToolPayloadStart(text: string): number {
     const end = text[start] === '[' ? findJsonArrayEnd(text, start) : findJsonObjectEnd(text, start);
     if (end < 0) {
       const tail = text.slice(start);
+      if (parseMalformedFunctionEnvelopeToolSpans(tail).length > 0) return start;
       if (/"(?:tool|name|type)"\s*:\s*"[A-Za-z_]\w*"/.test(tail)) return start;
       searchAt = start + 1;
       continue;
@@ -1304,28 +1359,71 @@ function findJsonToolPayloadStart(text: string): number {
     try {
       const parsed = JSON.parse(text.slice(start, end + 1)) as unknown;
       if (jsonValueContainsToolPayload(parsed)) return start;
-    } catch { /* ignore non-tool JSON */ }
+    } catch {
+      if (parseMalformedFunctionEnvelopeToolSpans(text.slice(start, end + 1)).length > 0) return start;
+    }
     searchAt = end + 1;
   }
   return -1;
 }
 
 function parseJsonObjectToolCalls(text: string): FakeTool[] {
-  const start = findNextJsonStart(text, 0);
-  if (start < 0 || text[start] !== '{') return [];
-  if (hasUnclosedToolCallEnvelopePrefixBeforeJson(text, start)) return [];
-  const end = findJsonObjectEnd(text, start);
-  if (end < 0) return [];
-  try {
-    const obj = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
-    const tools = jsonValueToFakeTools(obj);
-    if (tools.length > 0) return tools;
-    if (Array.isArray(obj.todoList)) return [{ name: 'manage_todo_list', input: { todoList: obj.todoList } }];
-    if (typeof obj.summary === 'string' && /(?:完成|结束|complete|done)/i.test(text) && !hasShellTranscriptMarker(text)) {
-      return [{ name: 'task_complete', input: { summary: obj.summary } }];
+  const tools: FakeTool[] = [];
+  let searchAt = 0;
+  while (searchAt < text.length) {
+    const start = findNextJsonStart(text, searchAt);
+    if (start < 0) break;
+    if (text[start] !== '{') {
+      searchAt = start + 1;
+      continue;
     }
-  } catch { /* ignore non-tool JSON */ }
-  return [];
+    if (looksLikeJsonArrayElementObjectStart(text, start)) {
+      searchAt = start + 1;
+      continue;
+    }
+    if (hasUnclosedToolCallEnvelopePrefixBeforeJson(text, start)) {
+      searchAt = start + 1;
+      continue;
+    }
+    const end = findJsonObjectEnd(text, start);
+    if (end < 0) {
+      const malformed = parseMalformedFunctionEnvelopeToolSpans(text.slice(start));
+      if (malformed.length > 0) {
+        tools.push(...malformed.map(span => span.tool));
+        searchAt = start + malformed[malformed.length - 1].end;
+        continue;
+      }
+      searchAt = start + 1;
+      continue;
+    }
+    const candidate = text.slice(start, end + 1);
+    try {
+      const obj = JSON.parse(candidate) as Record<string, unknown>;
+      const converted = jsonValueToFakeTools(obj);
+      if (converted.length > 0) {
+        tools.push(...converted);
+      } else if (Array.isArray(obj.todoList)) {
+        tools.push({ name: 'manage_todo_list', input: { todoList: obj.todoList } });
+      } else if (typeof obj.summary === 'string' && /(?:完成|结束|complete|done)/i.test(text) && !hasShellTranscriptMarker(text)) {
+        tools.push({ name: 'task_complete', input: { summary: obj.summary } });
+      }
+    } catch {
+      const malformed = parseMalformedFunctionEnvelopeToolSpans(candidate);
+      if (malformed.length > 0) tools.push(...malformed.map(span => span.tool));
+    }
+    searchAt = end + 1;
+  }
+  return tools.map(normalizeFakeTool);
+}
+
+function looksLikeJsonArrayElementObjectStart(text: string, objectStart: number): boolean {
+  let previous = objectStart - 1;
+  while (previous >= 0 && /[ \t\r\n]/.test(text[previous])) previous--;
+  if (previous < 0 || (text[previous] !== '[' && text[previous] !== ',')) return false;
+
+  const lineStart = text.lastIndexOf('\n', objectStart - 1) + 1;
+  const linePrefix = text.slice(lineStart, objectStart);
+  return !/^\s*\d+\.\s*$/.test(linePrefix);
 }
 
 function parseJsonToolPayloadToolCalls(text: string): FakeTool[] {

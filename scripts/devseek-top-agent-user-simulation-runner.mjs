@@ -112,6 +112,7 @@ const DEFAULT_CONTROLLED_SUITES = Object.freeze([
   'scope-replacement-product',
   'cancellation-replacement-product',
   'agent-fit-product',
+  't3-deepseek-web-compat',
   'independent-user-diversity-product',
   'coding-conformance-product',
   'r2-07f-connector-security',
@@ -129,6 +130,7 @@ const ACCEPTANCE_CONTROLLED_SUITES = Object.freeze([
   'scope-replacement-product',
   'cancellation-replacement-product',
   'agent-fit-product',
+  't3-deepseek-web-compat',
   'independent-user-diversity-product',
   'coding-conformance-product',
   'r2-07f-connector-security',
@@ -139,6 +141,12 @@ const CASE_DESIGN_DIMENSIONS = Object.freeze([
     user_need: 'DeepSeek Web may return malformed or truncated tool replies.',
     suites: ['r2-07e-stream-protocol'],
     cases: ['stream-truncated-no-mutation', 'stream-request-mismatch-no-mutation'],
+  },
+  {
+    id: 'deepseek_web_tool_json_compatibility',
+    user_need: 'DeepSeek Web may mix tool JSON with Markdown, malformed OpenAI wrappers, and provider footers while still intending real tool execution.',
+    suites: ['t3-deepseek-web-compat'],
+    cases: ['t3-deepseek-malformed-openai-tool-calls', 't3-deepseek-markdown-json-tool-list'],
   },
   {
     id: 'read_only_boundary',

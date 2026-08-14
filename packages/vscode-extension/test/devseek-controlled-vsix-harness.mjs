@@ -337,6 +337,10 @@ function controlledScenarioSuiteCatalog() {
       'agent-fit-markdown-report-anchors',
       'agent-fit-openai-tool-calls-wrapper',
     ],
+    't3-deepseek-web-compat': [
+      't3-deepseek-malformed-openai-tool-calls',
+      't3-deepseek-markdown-json-tool-list',
+    ],
     'independent-user-diversity-product': [
       'diverse-novice-typo-create',
       'diverse-asr-readonly-review',
@@ -399,6 +403,10 @@ function resolveControlledScenarioSuiteOptions(id) {
     },
     'agent-fit-product': {
       kind: 'same-window-agent-fit-product-suite',
+      sameDevSeekSession: false,
+    },
+    't3-deepseek-web-compat': {
+      kind: 'same-window-deepseek-web-compat-suite',
       sameDevSeekSession: false,
     },
     'independent-user-diversity-product': {
@@ -628,6 +636,8 @@ function controlledScenarioCatalog() {
     'module.exports = { health };',
     '',
   ].join('\n');
+  const malformedWrapperContent = 'MALFORMED_WRAPPER_OK\n';
+  const markdownJsonToolListContent = 'MARKDOWN_JSON_LIST_OK\n';
   return {
     normal: {
       id: 'normal',
@@ -1084,6 +1094,64 @@ function controlledScenarioCatalog() {
         'OPENAI_WRAPPER_TESTS_PASSED',
         'src/repeat-label.js',
         'test/repeat-label.test.js',
+      ],
+    },
+    't3-deepseek-malformed-openai-tool-calls': {
+      id: 't3-deepseek-malformed-openai-tool-calls',
+      kind: 't3-deepseek-web-malformed-openai-wrapper-recovery',
+      userProfile: 'rushed-bilingual-user',
+      languageStyle: 'zh-en-web-noisy',
+      intentClass: 'deepseek-web-tool-protocol-recovery',
+      targetRelativePath: 'reports/malformed-wrapper-result.txt',
+      targetContent: malformedWrapperContent,
+      seedFiles: { 'reports/.keep': '' },
+      prompt: [
+        'DeepSeek 网页刚才吐了奇怪的 tool_calls JSON。',
+        '请创建 reports/malformed-wrapper-result.txt，内容必须是一行 MALFORMED_WRAPPER_OK。',
+        '写完读回确认，不要修改其他文件。',
+      ].join(''),
+      providerPlan: 'deepseek-malformed-openai-tool-calls-complete',
+      expected: 'completed-workflow',
+      expectedFiles: {
+        'reports/malformed-wrapper-result.txt': malformedWrapperContent,
+      },
+      expectedChangedPaths: ['reports/malformed-wrapper-result.txt'],
+      expectedMutatedUserFiles: ['reports/malformed-wrapper-result.txt'],
+      expectedTaskMode: 'change',
+      requiredTools: ['create_file', 'read_file', 'task_complete'],
+      forbiddenTools: ['run_terminal', 'replace_in_file', 'delete_file'],
+      requiredRunLogSubstrings: [
+        'MALFORMED_WRAPPER_OK',
+        'malformed OpenAI tool_calls wrapper',
+      ],
+    },
+    't3-deepseek-markdown-json-tool-list': {
+      id: 't3-deepseek-markdown-json-tool-list',
+      kind: 't3-deepseek-web-markdown-json-tool-list-recovery',
+      userProfile: 'novice-rushed-user',
+      languageStyle: 'zh-markdown-mixed-json',
+      intentClass: 'deepseek-web-tool-protocol-recovery',
+      targetRelativePath: 'reports/markdown-json-list-result.txt',
+      targetContent: markdownJsonToolListContent,
+      seedFiles: { 'reports/.keep': '' },
+      prompt: [
+        '如果网页把工具 JSON 编号列出来，也要正常执行。',
+        '请创建 reports/markdown-json-list-result.txt，内容必须是一行 MARKDOWN_JSON_LIST_OK。',
+        '写完读回确认，不要运行终端，不要改其他文件。',
+      ].join(''),
+      providerPlan: 'deepseek-markdown-json-tool-list-complete',
+      expected: 'completed-workflow',
+      expectedFiles: {
+        'reports/markdown-json-list-result.txt': markdownJsonToolListContent,
+      },
+      expectedChangedPaths: ['reports/markdown-json-list-result.txt'],
+      expectedMutatedUserFiles: ['reports/markdown-json-list-result.txt'],
+      expectedTaskMode: 'change',
+      requiredTools: ['create_file', 'read_file', 'task_complete'],
+      forbiddenTools: ['run_terminal', 'replace_in_file', 'delete_file'],
+      requiredRunLogSubstrings: [
+        'MARKDOWN_JSON_LIST_OK',
+        'Markdown-listed JSON tool objects',
       ],
     },
     'diverse-novice-typo-create': {
@@ -3002,6 +3070,8 @@ function controlledPlannerResponse({ scenario }) {
     'multi-file-slugify-test-complete': 'create',
     'markdown-report-anchors-complete': 'create',
     'openai-tool-calls-wrapper-complete': 'create',
+    'deepseek-malformed-openai-tool-calls-complete': 'create',
+    'deepseek-markdown-json-tool-list-complete': 'create',
     'provider-error': 'create',
     'stream-corrupting-python-cli-complete': 'create',
     'conformance-parser-repair': 'modify',
@@ -3023,6 +3093,8 @@ function controlledPlannerResponse({ scenario }) {
     'multi-file-slugify-test-complete': '实现多文件小功能并运行聚焦测试',
     'markdown-report-anchors-complete': '生成带精确验收锚点的 Markdown 报告并验证',
     'openai-tool-calls-wrapper-complete': '兼容 OpenAI 风格 tool_calls 包装并完成多文件验证',
+    'deepseek-malformed-openai-tool-calls-complete': '恢复 malformed OpenAI tool_calls wrapper 并完成写入读回',
+    'deepseek-markdown-json-tool-list-complete': '恢复 Markdown 编号 JSON 工具对象并完成写入读回',
     'provider-error': '创建指定文件并处理 Provider 失败路径',
     'stream-corrupting-python-cli-complete': '创建 Python CLI 并由 stream 协议故障测试 fail-closed',
     'conformance-parser-repair': '根据验证失败修复 parser 并重新验证',
@@ -3092,6 +3164,33 @@ function controlledOpenAiToolCallsResponse(intro, calls) {
       })),
     }, null, 2),
     '```',
+  ].join('\n');
+}
+
+function controlledMalformedOpenAiToolCallsResponse(intro, calls) {
+  return [
+    intro,
+    '```json',
+    '{"tool_calls":[',
+    calls.map((call, index) => [
+      '{"id":"call_',
+      String(index + 1),
+      '","type":"function","function":{"name":"',
+      call.name,
+      '","arguments":"',
+      JSON.stringify(call.input),
+      '"}}',
+    ].join('')).join(','),
+    ']}',
+    '```',
+    '本回答由 AI 生成，内容仅供参考。',
+  ].join('\n');
+}
+
+function controlledMarkdownJsonToolListResponse(intro, calls) {
+  return [
+    intro,
+    ...calls.map((call, index) => `${index + 1}. ${JSON.stringify({ tool: call.name, ...call.input })}`),
   ].join('\n');
 }
 
@@ -3428,6 +3527,38 @@ function controlledProviderResponse({ ordinal, workspaceDir, scenario, requestKi
           name: 'task_complete',
           input: {
             summary: '已通过 OpenAI 风格 tool_calls wrapper 创建 src/repeat-label.js 和 test/repeat-label.test.js，并运行 node test/repeat-label.test.js 看到 OPENAI_WRAPPER_TESTS_PASSED。',
+          },
+        },
+      ],
+    );
+  }
+
+  if (scenario.providerPlan === 'deepseek-malformed-openai-tool-calls-complete') {
+    return controlledMalformedOpenAiToolCallsResponse(
+      '我会通过 malformed OpenAI tool_calls wrapper 创建文件并读回确认。',
+      [
+        { name: 'create_file', input: { path: scenario.targetRelativePath, content: scenario.targetContent } },
+        { name: 'read_file', input: { path: scenario.targetRelativePath } },
+        {
+          name: 'task_complete',
+          input: {
+            summary: `Recovered malformed OpenAI tool_calls wrapper, wrote ${scenario.targetRelativePath}, and read back ${scenario.targetContent.trim()}.`,
+          },
+        },
+      ],
+    );
+  }
+
+  if (scenario.providerPlan === 'deepseek-markdown-json-tool-list-complete') {
+    return controlledMarkdownJsonToolListResponse(
+      '我会通过 Markdown-listed JSON tool objects 创建文件并读回确认。',
+      [
+        { name: 'create_file', input: { path: scenario.targetRelativePath, content: scenario.targetContent } },
+        { name: 'read_file', input: { path: scenario.targetRelativePath } },
+        {
+          name: 'task_complete',
+          input: {
+            summary: `Recovered Markdown-listed JSON tool objects, wrote ${scenario.targetRelativePath}, and read back ${scenario.targetContent.trim()}.`,
           },
         },
       ],
