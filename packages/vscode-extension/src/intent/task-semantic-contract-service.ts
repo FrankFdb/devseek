@@ -269,6 +269,14 @@ function isSemanticProposalConstrainedByLocalBoundary(
     })) {
     return true;
   }
+  if (contract.signals.includes('advisory-action-question')
+    && (
+      semanticProposalRequestsWorkspaceMutation(candidate)
+      || semanticProposalRequestsTerminalValidation(candidate)
+      || semanticProposalRequestsExternalEffect(candidate)
+    )) {
+    return true;
+  }
   if (contract.kind === 'destructive' || candidate.taskKind === 'destructive' || candidate.mutation === 'delete') {
     return true;
   }

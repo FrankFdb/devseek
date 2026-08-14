@@ -655,6 +655,75 @@ test('ChatRouteController: proposal-only patch requests stay read-only despite s
   assert.equal(decision.intent.semanticContract.validation.testRequested, false);
 });
 
+test('ChatRouteController: advisory action questions stay read-only despite semantic edit intent', () => {
+  const controller = new ChatRouteController();
+  const prompt = 'What changes are needed to fix src/login.ts?';
+  const decision = controller.decide({
+    userDisplay: prompt,
+    prompt,
+    files: ['/workspace/src/login.ts'],
+    agentEnabled: true,
+    semanticIntent: {
+      version: 'devseek.semantic-intent/v1',
+      source: 'test',
+      mode: 'edit',
+      taskKind: 'existing-project-edit',
+      confidence: 0.96,
+      mutation: 'modify-source',
+      targetPaths: ['/workspace/src/login.ts'],
+      requiresWorkspace: true,
+      requiresTerminal: true,
+      requiresExternalEffect: false,
+      requiresClarification: false,
+      reason: '模型误把咨询式修改问题当成源码修改授权',
+    },
+  });
+
+  assert.notEqual(decision.intent.mode, 'edit');
+  assert.notEqual(decision.workflow.kind, 'edit-agent');
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('terminal'), false);
+  assert.ok(decision.intent.signals.includes('semantic-intent-constrained'));
+  assert.ok(decision.intent.signals.includes('advisory-action-question'));
+  assert.equal(decision.intent.semanticContract.mutation.requested, false);
+  assert.equal(decision.intent.semanticContract.mutation.sourceChange, false);
+  assert.equal(decision.intent.semanticContract.validation.runRequested, false);
+});
+
+test('ChatRouteController: command advice questions do not execute semantic run proposals', () => {
+  const controller = new ChatRouteController();
+  const prompt = 'What command should I run to test this project?';
+  const decision = controller.decide({
+    userDisplay: prompt,
+    prompt,
+    files: [],
+    agentEnabled: true,
+    semanticIntent: {
+      version: 'devseek.semantic-intent/v1',
+      source: 'test',
+      mode: 'run',
+      taskKind: 'terminal-validation',
+      confidence: 0.94,
+      mutation: 'run-only',
+      targetPaths: [],
+      requiresWorkspace: true,
+      requiresTerminal: true,
+      requiresExternalEffect: false,
+      requiresClarification: false,
+      reason: '模型误把命令建议问题当成运行授权',
+    },
+  });
+
+  assert.notEqual(decision.intent.mode, 'run');
+  assert.notEqual(decision.workflow.kind, 'run-agent');
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('terminal'), false);
+  assert.ok(decision.intent.signals.includes('semantic-intent-constrained'));
+  assert.ok(decision.intent.signals.includes('advisory-action-question'));
+  assert.equal(decision.intent.semanticContract.validation.runRequested, false);
+  assert.equal(decision.intent.semanticContract.validation.testRequested, false);
+});
+
 test('ChatRouteController: explicit source edit cannot be erased by semantic read-only intent', () => {
   const controller = new ChatRouteController();
   const prompt = '请修改 src/main.ts，把标题改成英文';

@@ -741,6 +741,76 @@ test('TaskIntentRouter: local proposal-only boundary constrains semantic edit pr
   assert.ok(route.signals.includes('semantic-intent-constrained'));
 });
 
+test('TaskIntentRouter: advisory action questions do not enter edit or terminal routing', () => {
+  for (const prompt of [
+    'What changes are needed to fix src/login.ts?',
+    'Can you explain how to implement caching in src/cache.ts?',
+    'Should we refactor src/api.ts or leave it as-is?',
+    'src/auth.ts has a bug, what would you change?',
+    '请说明如何修复 src/login.ts？',
+    'src/login.ts 应该怎么改？',
+    'What command should I run to test this project?',
+    'Should I run npm test before changing anything?',
+  ]) {
+    const route = routeTaskIntent(prompt);
+
+    assert.equal(route.family, 'read-only-advisory', prompt);
+    assert.equal(route.chatKind, 'chat', prompt);
+    assert.equal(route.agentTaskShape, 'read-only-analysis', prompt);
+    assert.equal(route.semanticContract.kind, 'read-only', prompt);
+    assert.equal(route.mutation.requested, false, prompt);
+    assert.equal(route.mutation.sourceChange, false, prompt);
+    assert.equal(route.validation.commandEvidenceRequired, false, prompt);
+    assert.equal(route.allowedToolKinds.includes('edit'), false, prompt);
+    assert.equal(route.allowedToolKinds.includes('terminal'), false, prompt);
+    assert.ok(route.signals.includes('advisory-action-question'), prompt);
+    assert.ok(route.signals.includes('read-only-route'), prompt);
+  }
+});
+
+test('TaskIntentRouter: advisory action boundary constrains semantic edit and run proposals', () => {
+  const edit = routeTaskIntent('What changes are needed to fix src/login.ts?', {
+    semanticIntent: semanticIntent({
+      mode: 'edit',
+      taskKind: 'existing-project-edit',
+      mutation: 'modify-source',
+      targetPaths: ['src/login.ts'],
+      requiresWorkspace: true,
+      requiresTerminal: true,
+      reason: 'model over-read advice as delegated source work',
+    }),
+  });
+  assert.equal(edit.family, 'read-only-advisory');
+  assert.equal(edit.chatKind, 'chat');
+  assert.notEqual(edit.mode, 'edit');
+  assert.equal(edit.mutation.requested, false);
+  assert.equal(edit.validation.commandEvidenceRequired, false);
+  assert.equal(edit.allowedToolKinds.includes('edit'), false);
+  assert.equal(edit.allowedToolKinds.includes('terminal'), false);
+  assert.ok(edit.signals.includes('semantic-intent-constrained'));
+  assert.ok(edit.signals.includes('advisory-action-question'));
+
+  const run = routeTaskIntent('What command should I run to test this project?', {
+    semanticIntent: semanticIntent({
+      mode: 'run',
+      taskKind: 'terminal-validation',
+      mutation: 'run-only',
+      requiresWorkspace: true,
+      requiresTerminal: true,
+      reason: 'model over-read command advice as permission to run',
+    }),
+  });
+  assert.equal(run.family, 'read-only-advisory');
+  assert.equal(run.chatKind, 'chat');
+  assert.notEqual(run.mode, 'run');
+  assert.equal(run.mutation.requested, false);
+  assert.equal(run.validation.commandEvidenceRequired, false);
+  assert.equal(run.allowedToolKinds.includes('edit'), false);
+  assert.equal(run.allowedToolKinds.includes('terminal'), false);
+  assert.ok(run.signals.includes('semantic-intent-constrained'));
+  assert.ok(run.signals.includes('advisory-action-question'));
+});
+
 test('TaskIntentRouter: workspace-bound semantic answer proposal uses read-only route', () => {
   const route = routeTaskIntent('Can you answer from the repo?', {
     semanticIntent: semanticIntent({

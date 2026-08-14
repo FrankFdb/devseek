@@ -19,6 +19,10 @@ import {
   type LocalIntentContract,
 } from './intent/local-intent-contract';
 import {
+  isAdvisoryActionQuestion,
+  stripAdvisoryActionQuestionPhrases,
+} from './intent/advisory-patterns';
+import {
   hasProjectHealthRepairIntent,
   hasRuntimeErrorRepairIntent,
   hasUserSymptomRepairIntent,
@@ -153,8 +157,14 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const prompt = String(promptText || '').trim();
   const taskContract = buildTaskContract(prompt);
   const repairSelfHelpQuestion = isSelfHelpRepairQuestion(prompt);
-  const classifiedMutationTargets = repairSelfHelpQuestion ? [] : resolveTaskMutationTargets(prompt);
-  const baseRequestedMutationTargets = [...new Set([
+  const advisoryActionQuestion = isAdvisoryActionQuestion(prompt);
+  const actionIntentText = advisoryActionQuestion
+    ? stripAdvisoryActionQuestionPhrases(prompt)
+    : prompt;
+  const classifiedMutationTargets = repairSelfHelpQuestion || advisoryActionQuestion
+    ? []
+    : resolveTaskMutationTargets(prompt);
+  const baseRequestedMutationTargets = advisoryActionQuestion ? [] : [...new Set([
     ...taskContract.deliverableTargets,
     ...classifiedMutationTargets,
   ].filter(() => !repairSelfHelpQuestion))];
@@ -193,7 +203,7 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
       || hasScopedHistoricalRequirementProhibition
       || hasScopedDifferentTargetProhibition
     );
-  const positiveIntentText = prompt
+  const positiveIntentText = actionIntentText
     .replace(NO_WRITE_CLAUSE_RE, ' ')
     .replace(EXISTING_IMPLEMENTATION_CONTEXT_RE, ' ')
     .replace(ADVISORY_ACTION_CONTEXT_RE, ' ');
@@ -219,26 +229,32 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const explicitNonCodeFileWrite = effectivePositiveWriteAction && nonCodeMutationTargets.length > 0;
   const isolatedSourceArtifact = sourceMutationTargets.some(target => DEVSEEK_ISOLATED_ARTIFACT_PATH_RE.test(target));
   const explicitNewSourceFile = explicitSourceFileWrite && CREATE_SOURCE_ACTION_RE.test(positiveIntentText);
-  const standaloneCodeRaw = taskContract.taskShapes.includes('standalone')
+  const standaloneCodeRaw = !advisoryActionQuestion && (
+    taskContract.taskShapes.includes('standalone')
     || (hasStandaloneCodeGenerationIntent(prompt) && !taskContract.taskShapes.includes('existing-project'))
     || (explicitNewSourceFile && (
       isolatedSourceArtifact
       || !taskContract.taskShapes.includes('existing-project')
-    ));
+    ))
+  );
   const standaloneCode = standaloneCodeRaw && !hasUnscopedNoWrite;
   const taskContractSourceChange = taskContract.deliverables.includes('source-change')
     && effectivePositiveWriteAction
     && !hasUnscopedNoWrite;
   const validationHealthRepairRequested = !artifactPathQuery
+    && !advisoryActionQuestion
     && !hasUnscopedNoWrite
     && hasValidationHealthRepairIntent(prompt);
   const projectHealthRepairRequested = !artifactPathQuery
+    && !advisoryActionQuestion
     && !hasUnscopedNoWrite
     && hasProjectHealthRepairIntent(prompt);
   const runtimeErrorRepairRequested = !artifactPathQuery
+    && !advisoryActionQuestion
     && !hasUnscopedNoWrite
     && hasRuntimeErrorRepairIntent(prompt);
   const userSymptomRepairRequested = !artifactPathQuery
+    && !advisoryActionQuestion
     && !hasUnscopedNoWrite
     && hasUserSymptomRepairIntent(prompt);
   const healthRepairRequested = validationHealthRepairRequested
@@ -263,7 +279,10 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   )
     .replace(TEST_AS_IMPLEMENTATION_CONSTRAINT_RE, ' ')
     .replace(TEST_DISCUSSION_RE, ' ');
-  const validationText = maskTaskTargetPaths(validationPrompt, taskContract.inputs);
+  const validationIntentPrompt = advisoryActionQuestion
+    ? stripAdvisoryActionQuestionPhrases(validationPrompt)
+    : validationPrompt;
+  const validationText = maskTaskTargetPaths(validationIntentPrompt, taskContract.inputs);
   const healthRepairCompileRequested = validationHealthRepairRequested
     && /(?:build|compile|构建|编译)/i.test(prompt);
   const healthRepairTestRequested = validationHealthRepairRequested
@@ -272,7 +291,7 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     && !destructiveIntent
     && (VALIDATION_RE.test(validationText) || healthRepairRequested);
   const positiveValidationText = maskTaskTargetPaths(
-    stripOperationalRunProhibitionPhrases(validationPrompt),
+    stripOperationalRunProhibitionPhrases(validationIntentPrompt),
     taskContract.inputs,
   );
   const compileRequested = !artifactPathQuery && (COMPILE_RE.test(positiveValidationText) || healthRepairCompileRequested);
@@ -280,7 +299,7 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const runProhibited = !artifactPathQuery && hasOperationalRunProhibition(validationText);
   const testRequested = !runProhibited
     && !artifactPathQuery
-    && (TEST_RE.test(positiveValidationText) || EXPLICIT_TEST_COMMAND_RE.test(validationPrompt) || healthRepairTestRequested);
+    && (TEST_RE.test(positiveValidationText) || EXPLICIT_TEST_COMMAND_RE.test(validationIntentPrompt) || healthRepairTestRequested);
   const runRequested = !runProhibited
     && !artifactPathQuery
     && (RUN_RE.test(positiveValidationText)
@@ -319,6 +338,7 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const readContentRequested = readRequested && READ_CONTENT_RE.test(prompt);
   const rawFormalProjectRequired = requiresFormalProjectQualityFromTaskContract(taskContract, prompt);
   const readOnlyIntent = (READ_ONLY_RE.test(prompt)
+      || advisoryActionQuestion
       || readRequested
       || noRunValidationInspection
       || (prohibited && !compileRequested && !runRequested && !testRequested))
@@ -351,6 +371,7 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     explicitSourceFileWrite ? 'explicit-source-file-target' : '',
     explicitNonCodeFileWrite ? 'explicit-file-artifact-target' : '',
     existingProjectCodeDelivery ? 'existing-project-code-delivery' : '',
+    advisoryActionQuestion ? 'advisory-action-question' : '',
     artifactPathQuery ? 'artifact-path-query' : '',
     hasScopedOtherFileProhibition ? 'scoped-other-file-prohibition' : '',
     hasScopedFormalSourceProhibition ? 'scoped-formal-source-prohibition' : '',

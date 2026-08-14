@@ -985,4 +985,45 @@ test('TaskSemanticContract v3: stop-writing steer revokes inherited mutation and
   assert.ok(!stopped.completion.doneIff.some(item => item.kind === 'file-written'));
 });
 
+test('TaskSemanticContract v3: advisory action questions are read-only even with edit or command verbs', () => {
+  for (const prompt of [
+    'What changes are needed to fix src/login.ts?',
+    'Can you explain how to implement caching in src/cache.ts?',
+    'Should we refactor src/api.ts or leave it as-is?',
+    'src/auth.ts has a bug, what would you change?',
+    '请说明如何修复 src/login.ts？',
+    'src/login.ts 应该怎么改？',
+    'What command should I run to test this project?',
+    'Should I run npm test before changing anything?',
+  ]) {
+    const contract = buildTaskSemanticContract(prompt);
+
+    assert.equal(contract.kind, 'read-only', prompt);
+    assert.equal(contract.mutation.requested, false, prompt);
+    assert.equal(contract.mutation.sourceChange, false, prompt);
+    assert.equal(contract.mutation.fileArtifact, false, prompt);
+    assert.deepEqual(contract.mutation.targets, [], prompt);
+    assert.equal(contract.validation.requested, false, prompt);
+    assert.equal(contract.validation.runRequested, false, prompt);
+    assert.equal(contract.validation.testRequested, false, prompt);
+    assert.equal(contract.validation.compileRequested, false, prompt);
+    assert.ok(contract.signals.includes('advisory-action-question'), prompt);
+    assert.ok(!contract.completion.doneIff.some(item => item.kind === 'code-written'), prompt);
+    assert.ok(!contract.completion.doneIff.some(item => item.kind === 'test-passed'), prompt);
+  }
+});
+
+test('TaskSemanticContract v3: direct delegated fix and run requests remain actionable', () => {
+  const edit = buildTaskSemanticContract('Please fix src/login.ts.');
+  assert.equal(edit.kind, 'existing-project-code');
+  assert.equal(edit.mutation.requested, true);
+  assert.equal(edit.mutation.sourceChange, true);
+
+  const run = buildTaskSemanticContract('Can you run npm test?');
+  assert.equal(run.kind, 'validation');
+  assert.equal(run.validation.requested, true);
+  assert.equal(run.validation.runRequested, true);
+  assert.equal(run.validation.testRequested, true);
+});
+
 console.log('\nTask-semantic-contract tests passed.\n');

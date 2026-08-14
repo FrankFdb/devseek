@@ -35,6 +35,7 @@ const TARGETED_TEST_CASE_COVERAGE = Object.freeze({
     'semantic-no-run-validation-boundary-consistency',
     'semantic-operation-prohibition-arbitration',
     'proposal-only-patch-readonly-boundary',
+    'advisory-action-question-readonly-boundary',
     'semantic-readonly-proposal-route-consistency',
     'semantic-workspace-answer-route-consistency',
     'semantic-code-review-proposal-route-consistency',
@@ -172,6 +173,12 @@ const CASE_DESIGN_DIMENSIONS = Object.freeze([
     user_need: 'Users ask for a patch, diff, or draft while explicitly withholding permission to apply workspace changes.',
     suites: ['targeted-local-contracts'],
     cases: ['proposal-only-patch-readonly-boundary'],
+  },
+  {
+    id: 'advisory_action_question_boundary',
+    user_need: 'Users ask what to change or which command to run, and expect advice instead of workspace mutation or terminal execution.',
+    suites: ['targeted-local-contracts'],
+    cases: ['advisory-action-question-readonly-boundary'],
   },
   {
     id: 'semantic_proposal_arbitration',

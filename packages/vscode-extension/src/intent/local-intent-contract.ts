@@ -1,10 +1,12 @@
 import { hasExplicitWorkspacePath } from '../workspace/path-patterns';
 import {
+  isAdvisoryActionQuestion,
   isAdvisoryPlanningRequest,
   isDeferredImplementationRequest,
   isDeliverableWriteRequest,
   isDirectImplementationRequest,
   isScopedNoChangeWithDeliverableWriteRequest,
+  stripAdvisoryActionQuestionPhrases,
 } from './advisory-patterns';
 import { isUnsafeSecretHarvestingImplementationRequest } from './safety-intent';
 import {
@@ -108,7 +110,11 @@ export function buildLocalIntentContract(
   semantic: LocalIntentSemanticInput,
 ): LocalIntentContract {
   const text = String(promptText || '').trim();
-  const runtimePositiveText = stripOperationalRunProhibitionPhrases(text);
+  const advisoryActionQuestion = isAdvisoryActionQuestion(text);
+  const actionIntentText = advisoryActionQuestion
+    ? stripAdvisoryActionQuestionPhrases(text)
+    : text;
+  const runtimePositiveText = stripOperationalRunProhibitionPhrases(actionIntentText);
   const positiveActionText = runtimePositiveText.replace(NEGATED_EDIT_CLAUSE_RE, ' ');
   const withoutGreeting = text.replace(GREETING_PREFIX_RE, '').trim();
   const hasPath = hasExplicitWorkspacePath(text);
@@ -233,6 +239,29 @@ export function buildLocalIntentContract(
       hasPath ? 3 : 2,
       signals,
       hasPath ? 'read-only-validation-with-file-path' : 'read-only-validation-boundary',
+    ));
+  }
+
+  if (advisoryActionQuestion
+    && !semantic.mutation.requested
+    && !semanticConcreteRuntimeRequested
+    && !hasAcceptedSemanticNoMutationProposal(semantic)) {
+    const isPlanningAdvice = isAdvisoryPlanningRequest(text) && hasCodeContext;
+    const mode: ExecutionMode = isPlanningAdvice
+      ? 'plan'
+      : hasCodeContext || INSPECT_RE.test(text) ? 'inspect' : 'qa';
+    const signals = [
+      'advisory-action-question',
+      mode === 'plan' ? 'planning-request' : mode === 'inspect' ? 'inspection-request' : 'question-answer',
+      ...semantic.semanticSignals,
+    ];
+    if (hasPath) signals.push('explicit-file-path');
+    return finish(decision(
+      mode,
+      mode === 'qa' ? 0.82 : hasPath ? 0.9 : 0.84,
+      mode === 'qa' ? -1 : hasPath ? 3 : 2,
+      [...new Set(signals)],
+      hasPath ? 'advisory-action-question-with-file-path' : 'advisory-action-question',
     ));
   }
 
