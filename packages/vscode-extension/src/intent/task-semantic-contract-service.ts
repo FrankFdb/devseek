@@ -427,11 +427,10 @@ function projectFileArtifactSemanticProposal(
   contract: TaskSemanticContract,
   candidate: SemanticIntentInterpretation,
 ): TaskSemanticContract {
-  const targets = uniquePaths([
+  const targets = mergeModelProposedMutationTargets([
     ...contract.mutation.targets,
     ...contract.taskContract.deliverableTargets,
-    ...candidate.targetPaths,
-  ]);
+  ], candidate.targetPaths);
   const preserveSourceChange = candidate.taskKind !== 'file-artifact'
     && contract.mutation.sourceChange
     && (contract.taskContract.deliverables.includes('source-change')
@@ -483,11 +482,10 @@ function projectSourceMutationSemanticProposal(
   contract: TaskSemanticContract,
   candidate: SemanticIntentInterpretation,
 ): TaskSemanticContract {
-  const targets = uniquePaths([
+  const targets = mergeModelProposedMutationTargets([
     ...contract.mutation.targets,
     ...contract.taskContract.deliverableTargets.filter(isSourceContextPath),
-    ...candidate.targetPaths,
-  ]);
+  ], candidate.targetPaths);
   const standalone = candidate.taskKind === 'standalone-program';
   const mutation = {
     requested: true,
@@ -1256,6 +1254,27 @@ function uniquePaths(values: readonly string[]): string[] {
     if (normalized && !byNormalized.has(normalized)) byNormalized.set(normalized, value);
   }
   return [...byNormalized.values()];
+}
+
+/**
+ * A concrete model tool target refines a basename-only target inferred from the
+ * prompt. Directory-qualified user targets remain independent obligations.
+ */
+function mergeModelProposedMutationTargets(
+  inferredTargets: readonly string[],
+  proposedTargets: readonly string[],
+): string[] {
+  const concreteProposals = uniquePaths(proposedTargets);
+  const retainedInferences = uniquePaths(inferredTargets).filter(inferred => {
+    const normalized = normalizePathToken(inferred);
+    if (!normalized || normalized.includes('/')) return true;
+    return !concreteProposals.some(proposed => {
+      const normalizedProposal = normalizePathToken(proposed);
+      return normalizedProposal.includes('/')
+        && normalizedProposal.split('/').at(-1) === normalized;
+    });
+  });
+  return uniquePaths([...retainedInferences, ...concreteProposals]);
 }
 
 function uniqueStrings<T extends string>(values: readonly T[]): T[] {

@@ -13,6 +13,7 @@ const DEFAULT_TARGETED_TESTS = Object.freeze([
   'packages/shared/test/coding-task-contract-resolver.test.mjs',
   'packages/shared/test/coding-task-contract-revision.test.mjs',
   'packages/shared/test/coding-code-change.test.mjs',
+  'packages/shared/test/coding-workspace-path-boundary.test.mjs',
   'packages/vscode-extension/test/unit/provider-authored-transcript-recovery.test.mjs',
   'packages/vscode-extension/test/unit/provider-output-integrity.test.mjs',
   'packages/vscode-extension/test/unit/agent-tool-loop-terminal-guard.test.mjs',
@@ -28,6 +29,7 @@ const DEFAULT_TARGETED_TESTS = Object.freeze([
   'packages/vscode-extension/test/unit/coding-completion-adapter.test.mjs',
   'packages/vscode-extension/test/unit/task-intent-router.test.mjs',
   'packages/vscode-extension/test/unit/semantic-intent-routing-matrix.test.mjs',
+  'packages/vscode-extension/test/unit/terminal-command-policy.test.mjs',
   'packages/vscode-extension/test/unit/controlled-vsix-scenario-contract.test.mjs',
 ]);
 const INTENT_TARGETED_TESTS = Object.freeze([
@@ -51,6 +53,11 @@ const TARGETED_TEST_CASE_COVERAGE = Object.freeze({
     'task-contract-structured-latest-scope',
     'task-contract-stale-authority-invalidation',
     'model-led-latest-steer-authority-settlement',
+  ]),
+  'packages/shared/test/coding-workspace-path-boundary.test.mjs': Object.freeze([
+    'canonical-workspace-path-boundary',
+    'workspace-symlink-escape-boundary',
+    'workspace-route-race-identity',
   ]),
   'packages/vscode-extension/test/unit/model-led-intent-boundary.test.mjs': Object.freeze([
     'model-led-diverse-input-main-model',
@@ -103,6 +110,11 @@ const TARGETED_TEST_CASE_COVERAGE = Object.freeze({
   'packages/vscode-extension/test/unit/semantic-intent-routing-matrix.test.mjs': Object.freeze([
     'external-semantic-intent-routing-matrix',
   ]),
+  'packages/vscode-extension/test/unit/terminal-command-policy.test.mjs': Object.freeze([
+    'terminal-symlink-read-boundary',
+    'terminal-symlink-workdir-boundary',
+    'terminal-dynamic-path-fail-closed',
+  ]),
 });
 const DEFAULT_CONTROLLED_SUITES = Object.freeze([
   'r2-07e-stream-protocol',
@@ -113,6 +125,7 @@ const DEFAULT_CONTROLLED_SUITES = Object.freeze([
   'cancellation-replacement-product',
   'agent-fit-product',
   't3-deepseek-web-compat',
+  't4-permission-write-boundary',
   'independent-user-diversity-product',
   'coding-conformance-product',
   'r2-07f-connector-security',
@@ -131,6 +144,7 @@ const ACCEPTANCE_CONTROLLED_SUITES = Object.freeze([
   'cancellation-replacement-product',
   'agent-fit-product',
   't3-deepseek-web-compat',
+  't4-permission-write-boundary',
   'independent-user-diversity-product',
   'coding-conformance-product',
   'r2-07f-connector-security',
@@ -147,6 +161,18 @@ const CASE_DESIGN_DIMENSIONS = Object.freeze([
     user_need: 'DeepSeek Web may mix tool JSON with Markdown, malformed OpenAI wrappers, and provider footers while still intending real tool execution.',
     suites: ['t3-deepseek-web-compat'],
     cases: ['t3-deepseek-malformed-openai-tool-calls', 't3-deepseek-markdown-json-tool-list'],
+  },
+  {
+    id: 'bounded_workspace_write_authority',
+    user_need: 'Users expect harmless files and explicitly allowed report artifacts inside the workspace to be created without broadening source-write authority.',
+    suites: ['t4-permission-write-boundary'],
+    cases: ['t4-bounded-workspace-create', 't4-source-readonly-report-artifact'],
+  },
+  {
+    id: 'external_path_and_shell_fail_closed',
+    user_need: 'Users expect workspace escapes and dangerous shell effects to fail closed without changing protected files.',
+    suites: ['t4-permission-write-boundary'],
+    cases: ['t4-outside-workspace-write-denied', 't4-dangerous-shell-denied'],
   },
   {
     id: 'read_only_boundary',

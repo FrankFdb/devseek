@@ -1,5 +1,5 @@
 import * as nodePath from 'path';
-import { isCanonicalPathInsideRoot } from '../workspace/path-containment';
+import { isCanonicalPathInsideRoot } from '@devseek-netai/shared';
 
 export interface IsolatedArtifactWriteScope {
   required: boolean;

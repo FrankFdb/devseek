@@ -1,8 +1,8 @@
 import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as nodePath from 'path';
+import { isCanonicalPathInsideRoot } from '@devseek-netai/shared';
 import type { AgentTask, AgentTaskAction } from '../agent-task-decomposer';
-import { isCanonicalPathInsideRoot } from '../workspace/path-containment';
 import type { AgentStatusEvent } from './events';
 import {
   assessMissingCompletionEvidence,

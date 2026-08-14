@@ -1,4 +1,6 @@
+import * as fs from 'node:fs';
 import * as nodePath from 'node:path';
+import { inspectCodingWorkspacePathBoundary } from './coding-workspace-path-boundary';
 
 export type TerminalCommandRiskClass =
   | 'read-only'
@@ -37,6 +39,9 @@ const NODE_INLINE_ASSERTION_RE = /\b(?:assert(?:\.\w+)?\s*\(|process\.exit\s*\(\
 const PYTHON_FILE_WRITE_RE = /\bpython3?\s+-c\s+["'][\s\S]*(?:\bopen\(\s*["'][^"']+["']\s*,\s*["'][^"']*[wax+]|Path\(\s*["'][^"']+["']\s*\)\.write_(?:text|bytes)\s*\()/i;
 const IN_PLACE_EDIT_RE = /\bsed\b(?=[^;&|]*\s-i(?:\b|[^\s;&|]*))|\bperl\b(?=[^;&|]*\s-[^\s;&|]*p)(?=[^;&|]*\s-[^\s;&|]*i)/i;
 const COMMAND_SUBSTITUTION_RE = /[`$]\(/;
+const PROCESS_SUBSTITUTION_RE = /(?:<|>)\(/;
+const DYNAMIC_VALUE_EXPANSION_RE = /(?:^|[\s"'=:(,])(?:\$(?:\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)|%[A-Za-z_][A-Za-z0-9_]*%)/;
+const DYNAMIC_PATH_SUFFIX_RE = /(?:\$(?:\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)|%[A-Za-z_][A-Za-z0-9_]*%)[\\/]/;
 const FIND_WRITE_ACTION_RE = /(?:^|\s)-(?:delete|exec(?:dir)?|ok(?:dir)?|fprint(?:0)?|fprintf|fls)(?=\s|$)/i;
 const GIT_OUTPUT_RE = /(?:^|\s)--output(?==|\s|$)/i;
 const SORT_OUTPUT_RE = /(?:^|\s)(?:-o\S*|--out(?:put)?(?:=\S*)?)(?=\s|$)/i;
@@ -55,9 +60,16 @@ export function decideTerminalCommandPermission(input: TerminalCommandPermission
     return decision('mutating', 'mutating-command');
   }
   if (COMMAND_SUBSTITUTION_RE.test(command)) return decision('unknown', 'command-substitution');
-  if (referencesOutsideWorkspace(command, input.workspaceRoot, input.workdir)) {
-    return decision('unknown', 'command-references-outside-workspace');
+  if (PROCESS_SUBSTITUTION_RE.test(command)) return decision('unknown', 'process-substitution');
+  if (DYNAMIC_VALUE_EXPANSION_RE.test(command) && !isScalarEnvironmentDisplay(command)) {
+    return decision('unknown', 'dynamic-path-expansion');
   }
+  const workspaceBoundaryFailure = terminalWorkspaceBoundaryFailure(
+    command,
+    input.workspaceRoot,
+    input.workdir,
+  );
+  if (workspaceBoundaryFailure) return decision('unknown', workspaceBoundaryFailure);
 
   const segments = splitShellSegments(command).map(s => s.trim()).filter(Boolean);
   if (segments.length === 0) return decision('unknown', 'empty-command');
@@ -184,25 +196,117 @@ function isNoEmitTypeScriptValidation(segment: string): boolean {
   return /(?:^|\s)--noEmit(?:=true)?(?=\s|$)/i.test(segment) && !TSC_AUXILIARY_WRITE_RE.test(segment);
 }
 
-function referencesOutsideWorkspace(command: string, workspaceRoot?: string, workdir?: string): boolean {
+function isScalarEnvironmentDisplay(command: string): boolean {
+  if (DYNAMIC_PATH_SUFFIX_RE.test(command) || /[;&|<>]/.test(command)) return false;
+  return /^\s*(?:echo|printf)\b/i.test(command);
+}
+
+function terminalWorkspaceBoundaryFailure(
+  command: string,
+  workspaceRoot?: string,
+  workdir?: string,
+): string | undefined {
   const root = workspaceRoot ? nodePath.resolve(workspaceRoot) : '';
-  if (workdir && nodePath.isAbsolute(workdir) && root && !isInsideWorkspace(workdir, root)) return true;
-  if (/(?:^|[\s'"])\.\.(?:\/|$)/.test(command)) return true;
-  if (/(?:^|[\s'"])~(?:\/|$)/.test(command)) return true;
+  if (workdir && root) {
+    const workdirBoundary = inspectCodingWorkspacePathBoundary({
+      workspaceRoot: root,
+      candidatePath: workdir,
+    });
+    if (workdirBoundary.decision === 'denied') {
+      return workdirBoundary.reason === 'path-resolves-outside-root'
+        ? 'command-workdir-resolves-outside-workspace'
+        : 'command-workdir-outside-workspace';
+    }
+  }
+  if (/(?:^|[\s'"])\.\.(?:\/|$)/.test(command)) return 'command-references-outside-workspace';
+  if (/(?:^|[\s'"])~(?:\/|$)/.test(command)) return 'command-references-outside-workspace';
 
   const absPathRe = /(?:^|[\s=:(,])(['"]?)(\/[^'"`\s;&|)]+)\1/g;
   let match: RegExpExecArray | null;
   while ((match = absPathRe.exec(command)) !== null) {
     const rawPath = cleanToken(match[2] || '');
     if (!rawPath || rawPath === '/dev/null') continue;
-    if (!root || !isInsideWorkspace(rawPath, root)) return true;
+    if (!root) return 'command-references-outside-workspace';
+    const boundary = inspectCodingWorkspacePathBoundary({
+      workspaceRoot: root,
+      candidatePath: rawPath,
+      ...(workdir ? { baseDir: workdir } : {}),
+    });
+    if (boundary.decision === 'denied') {
+      return boundary.reason === 'path-resolves-outside-root'
+        ? 'command-path-resolves-outside-workspace'
+        : 'command-references-outside-workspace';
+    }
   }
-  return false;
+
+  if (!root) return undefined;
+  const baseDir = workdir || root;
+  for (const candidate of existingRelativePathCandidates(command, root, baseDir)) {
+    const boundary = inspectCodingWorkspacePathBoundary({
+      workspaceRoot: root,
+      candidatePath: candidate,
+      baseDir,
+    });
+    if (boundary.decision === 'denied') {
+      return boundary.reason === 'path-resolves-outside-root'
+        ? 'command-path-resolves-outside-workspace'
+        : 'command-references-outside-workspace';
+    }
+  }
+  return undefined;
+}
+
+function existingRelativePathCandidates(command: string, workspaceRoot: string, workdir: string): string[] {
+  const baseDir = nodePath.isAbsolute(workdir)
+    ? nodePath.resolve(workdir)
+    : nodePath.resolve(workspaceRoot, workdir);
+  const candidates: string[] = [];
+  for (const segment of splitShellSegments(command)) {
+    for (const word of splitShellWords(segment)) {
+      const candidate = cleanPathOperand(word);
+      if (!candidate || nodePath.isAbsolute(candidate) || candidate.startsWith('-')
+        || /^[A-Za-z_][A-Za-z0-9_]*=/.test(candidate)) {
+        continue;
+      }
+      const existingPrefix = existingPathPrefix(candidate, baseDir);
+      if (existingPrefix) candidates.push(existingPrefix);
+    }
+  }
+  return [...new Set(candidates)];
+}
+
+function cleanPathOperand(value: string): string {
+  return cleanToken(value)
+    .replace(/^\d*(?:<|>)+/u, '')
+    .replace(/[,:]+$/u, '');
+}
+
+function existingPathPrefix(candidate: string, baseDir: string): string | undefined {
+  if (!candidate || candidate === '.' || candidate === '/dev/null'
+    || /^[&|]+$/u.test(candidate) || /^[a-z][a-z0-9+.-]*:\/\//iu.test(candidate)) {
+    return undefined;
+  }
+  const wildcardIndex = candidate.search(/[*?[]/u);
+  let concrete = wildcardIndex >= 0 ? candidate.slice(0, wildcardIndex) : candidate;
+  if (wildcardIndex >= 0 && concrete && !/[\\/]$/u.test(concrete)) {
+    concrete = nodePath.dirname(concrete);
+  }
+  concrete = concrete.replace(/[\\/]+$/u, '') || '.';
+  const absolute = nodePath.resolve(baseDir, concrete);
+  try {
+    fs.lstatSync(absolute);
+    return concrete;
+  } catch {
+    return undefined;
+  }
 }
 
 function isInsideWorkspace(filePath: string, workspaceRoot: string): boolean {
-  const rel = nodePath.relative(nodePath.resolve(workspaceRoot), nodePath.resolve(filePath));
-  return rel === '' || (!!rel && !rel.startsWith('..') && !nodePath.isAbsolute(rel));
+  const boundary = inspectCodingWorkspacePathBoundary({
+    workspaceRoot,
+    candidatePath: filePath,
+  });
+  return boundary.decision === 'accepted';
 }
 
 function splitShellSegments(command: string): string[] {

@@ -37,6 +37,15 @@ test('controlled VSIX harness exposes a machine-readable suite case catalog', as
     ],
   );
   assert.deepEqual(
+    catalog.suites['t4-permission-write-boundary'].map(entry => entry.id),
+    [
+      't4-bounded-workspace-create',
+      't4-source-readonly-report-artifact',
+      't4-outside-workspace-write-denied',
+      't4-dangerous-shell-denied',
+    ],
+  );
+  assert.deepEqual(
     catalog.suites['prior-task-continuation-product'].map(entry => entry.id),
     [
       'prior-plan-source-change',
@@ -122,6 +131,10 @@ test('top-agent user simulation runner plans targeted checks before broad contro
   assert.ok(report.case_design_review.selected_cases.includes('t3-deepseek-markdown-json-tool-list'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('t3-deepseek-malformed-openai-tool-calls'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('t3-deepseek-markdown-json-tool-list'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('t4-bounded-workspace-create'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('t4-source-readonly-report-artifact'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('t4-outside-workspace-write-denied'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('t4-dangerous-shell-denied'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('conformance-verify-repair-reverify'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('conformance-ci-green-repair'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('conformance-cn-tests-pass-repair'));
@@ -182,9 +195,11 @@ test('top-agent user simulation runner plans targeted checks before broad contro
     'packages/shared/test/coding-task-contract-resolver.test.mjs',
     'packages/shared/test/coding-task-contract-revision.test.mjs',
     'packages/shared/test/coding-code-change.test.mjs',
+    'packages/shared/test/coding-workspace-path-boundary.test.mjs',
     'packages/vscode-extension/test/unit/coding-kernel-task-contract.test.mjs',
     'packages/vscode-extension/test/unit/coding-kernel-execution.test.mjs',
     'packages/vscode-extension/test/unit/coding-completion-adapter.test.mjs',
+    'packages/vscode-extension/test/unit/terminal-command-policy.test.mjs',
   ]) {
     assert.ok(report.plan.steps[0].command.includes(requiredTest), `missing default targeted test ${requiredTest}`);
   }
@@ -196,6 +211,9 @@ test('top-agent user simulation runner plans targeted checks before broad contro
     'task-contract-structured-latest-scope',
     'task-contract-stale-authority-invalidation',
     'model-led-latest-steer-authority-settlement',
+    'canonical-workspace-path-boundary',
+    'workspace-symlink-escape-boundary',
+    'workspace-route-race-identity',
     'operational-lexicon-config-dynamic-loading',
     'operational-lexicon-multilingual-extension',
     'model-led-diverse-input-main-model',
@@ -229,6 +247,9 @@ test('top-agent user simulation runner plans targeted checks before broad contro
     'semantic-external-effect-confirmation-consistency',
     'semantic-destructive-proposal-confirmation-consistency',
     'external-semantic-intent-routing-matrix',
+    'terminal-symlink-read-boundary',
+    'terminal-symlink-workdir-boundary',
+    'terminal-dynamic-path-fail-closed',
   ]);
 
   const controlledSuites = report.plan.steps
@@ -243,6 +264,7 @@ test('top-agent user simulation runner plans targeted checks before broad contro
     'cancellation-replacement-product',
     'agent-fit-product',
     't3-deepseek-web-compat',
+    't4-permission-write-boundary',
     'independent-user-diversity-product',
     'coding-conformance-product',
     'r2-07f-connector-security',
@@ -298,6 +320,7 @@ test('top-agent user simulation runner keeps intent regression separate from gen
     assert.equal(controlledSuites.includes('realistic-product'), false);
     assert.equal(controlledSuites.includes('coding-conformance-product'), false);
     assert.equal(controlledSuites.includes('t3-deepseek-web-compat'), false);
+    assert.equal(controlledSuites.includes('t4-permission-write-boundary'), false);
     assert.equal(targetedTests.includes('packages/vscode-extension/test/unit/provider-output-integrity.test.mjs'), false);
     assert.match(markdown, /`prior-task-continuation-product`/);
     assert.match(markdown, /`scope-replacement-product`/);
@@ -307,6 +330,7 @@ test('top-agent user simulation runner keeps intent regression separate from gen
     assert.doesNotMatch(markdown, /`coding-conformance-product`/);
     assert.doesNotMatch(markdown, /`r2-07e-stream-protocol`/);
     assert.doesNotMatch(markdown, /`t3-deepseek-web-compat`/);
+    assert.doesNotMatch(markdown, /`t4-permission-write-boundary`/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -542,7 +566,7 @@ test('top-agent user simulation runner renders markdown from existing evidence w
     assert.match(markdown, /--controlled-suites realistic-product/);
     assert.match(markdown, /focused-regression-only-not-release-acceptance/);
     assert.match(markdown, /Selected case count: `2`/);
-    assert.match(markdown, /Required acceptance case count: `67`/);
+    assert.match(markdown, /Required acceptance case count: `71`/);
     assert.match(markdown, /Execution evidence missing:/);
     assert.match(markdown, /realistic-product:driver-cases-missing/);
     assert.match(markdown, /realistic-product:driver-case-missing:realistic-python-log-json-followup/);
@@ -701,6 +725,12 @@ test('top-agent user simulation runner rejects acceptance reports without per-ca
       't3-deepseek-web-compat': [
         't3-deepseek-malformed-openai-tool-calls',
         't3-deepseek-markdown-json-tool-list',
+      ],
+      't4-permission-write-boundary': [
+        't4-bounded-workspace-create',
+        't4-source-readonly-report-artifact',
+        't4-outside-workspace-write-denied',
+        't4-dangerous-shell-denied',
       ],
       'independent-user-diversity-product': [
         'diverse-novice-typo-create',

@@ -10,6 +10,8 @@ import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -285,6 +287,58 @@ test('TerminalCommandPolicy: project scripts and bounded CMake builds remain val
   assert.equal(
     decideTerminalCommandPermission({ command: './test.sh > validation.log', workspaceRoot }).risk,
     'mutating',
+  );
+});
+
+test('TerminalCommandPolicy: canonical workspace paths reject symlink escapes for reads and workdirs', t => {
+  const actualWorkspace = mkdtempSync(path.join(tmpdir(), 'devseek-terminal-policy-workspace-'));
+  const outsideRoot = mkdtempSync(path.join(tmpdir(), 'devseek-terminal-policy-outside-'));
+  t.after(() => {
+    rmSync(actualWorkspace, { recursive: true, force: true });
+    rmSync(outsideRoot, { recursive: true, force: true });
+  });
+  mkdirSync(path.join(actualWorkspace, 'safe'));
+  writeFileSync(path.join(actualWorkspace, 'safe', 'status.txt'), 'SAFE\n');
+  writeFileSync(path.join(outsideRoot, 'secret.txt'), 'SECRET\n');
+  symlinkSync(outsideRoot, path.join(actualWorkspace, 'linked'), 'dir');
+
+  assert.equal(decideTerminalCommandPermission({
+    command: 'cat safe/status.txt',
+    workspaceRoot: actualWorkspace,
+  }).risk, 'read-only');
+
+  const linkedRead = decideTerminalCommandPermission({
+    command: 'cat linked/secret.txt',
+    workspaceRoot: actualWorkspace,
+  });
+  assert.equal(linkedRead.risk, 'unknown');
+  assert.equal(linkedRead.reason, 'command-path-resolves-outside-workspace');
+
+  const linkedWorkdir = decideTerminalCommandPermission({
+    command: 'npm test',
+    workspaceRoot: actualWorkspace,
+    workdir: path.join(actualWorkspace, 'linked'),
+  });
+  assert.equal(linkedWorkdir.risk, 'unknown');
+  assert.equal(linkedWorkdir.reason, 'command-workdir-resolves-outside-workspace');
+});
+
+test('TerminalCommandPolicy: unresolved shell path execution stays outside unattended authority', () => {
+  assert.deepEqual(
+    decideTerminalCommandPermission({ command: 'cat "$HOME/.ssh/config"', workspaceRoot }),
+    { risk: 'unknown', requiresConfirmation: true, canRememberDecision: false, reason: 'dynamic-path-expansion' },
+  );
+  assert.deepEqual(
+    decideTerminalCommandPermission({ command: 'cat "$TARGET_FILE"', workspaceRoot }),
+    { risk: 'unknown', requiresConfirmation: true, canRememberDecision: false, reason: 'dynamic-path-expansion' },
+  );
+  assert.deepEqual(
+    decideTerminalCommandPermission({ command: 'cat <(printf secret)', workspaceRoot }),
+    { risk: 'unknown', requiresConfirmation: true, canRememberDecision: false, reason: 'process-substitution' },
+  );
+  assert.equal(
+    decideTerminalCommandPermission({ command: 'echo "$CI"', workspaceRoot }).risk,
+    'read-only',
   );
 });
 

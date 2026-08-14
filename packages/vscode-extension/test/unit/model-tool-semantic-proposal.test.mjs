@@ -40,6 +40,32 @@ test('Model tool semantic proposal: typo create becomes an arbitrated file chang
   assert.ok(route.signals.includes('semantic-proposal-accepted'));
 });
 
+test('Model tool semantic proposal: concrete tool path refines a basename inferred from directory prose', () => {
+  const prompt = '帮我在指定目录 generated/settings 里见个 devseek.ini，写好后读回来确认，别碰其他文件。';
+  const initial = routeTaskIntent(prompt).semanticContract;
+  const semanticIntent = projectModelToolSemanticProposal([
+    tool('create_file', 'edit', 'workspace-mutation', ['generated/settings/devseek.ini']),
+  ], initial);
+  const route = routeTaskIntent(prompt, { current: initial, semanticIntent });
+
+  assert.deepEqual(initial.mutation.targets, ['devseek.ini']);
+  assert.deepEqual(route.mutation.targets, ['generated/settings/devseek.ini']);
+  assert.deepEqual(route.semanticContract.taskContract.deliverableTargets, [
+    'generated/settings/devseek.ini',
+  ]);
+});
+
+test('Model tool semantic proposal: directory-qualified targets with the same basename stay independent', () => {
+  const prompt = '创建 docs/README.md 和 packages/demo/README.md，别改其他文件。';
+  const initial = routeTaskIntent(prompt).semanticContract;
+  const semanticIntent = projectModelToolSemanticProposal([
+    tool('create_file', 'edit', 'workspace-mutation', ['docs/README.md', 'packages/demo/README.md']),
+  ], initial);
+  const route = routeTaskIntent(prompt, { current: initial, semanticIntent });
+
+  assert.deepEqual(route.mutation.targets, ['docs/README.md', 'packages/demo/README.md']);
+});
+
 test('Model tool semantic proposal: mixed-language plan stays non-mutating and needs no command', () => {
   const prompt = '先 inspect src/math.js，然后 give me a fix plan only，暂时不要 apply，也不要 run command。';
   const initial = routeTaskIntent(prompt).semanticContract;

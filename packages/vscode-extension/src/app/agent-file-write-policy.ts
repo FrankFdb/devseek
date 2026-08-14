@@ -1,12 +1,14 @@
 import * as nodePath from 'path';
-import type { CodingToolSurfaceConstraint } from '@devseek-netai/shared';
+import {
+  isCanonicalPathInsideRoot,
+  type CodingToolSurfaceConstraint,
+} from '@devseek-netai/shared';
 import { authorizeAgentFileWriteContract } from '../agent/task-contract';
 import {
   detectIsolatedArtifactWriteScope,
   isTargetExactIsolatedArtifactWriteScope,
   isTargetInsideIsolatedArtifactWriteScope,
 } from '../agent/isolated-artifact-write-scope';
-import { isCanonicalPathInsideRoot } from '../workspace/path-containment';
 import type { ToolPolicy } from './permission-service';
 import { decideToolPermission } from './permission-service';
 import type { ToolRisk } from '../intent/intent-types';

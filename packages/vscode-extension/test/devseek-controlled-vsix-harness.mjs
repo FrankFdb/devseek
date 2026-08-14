@@ -341,6 +341,12 @@ function controlledScenarioSuiteCatalog() {
       't3-deepseek-malformed-openai-tool-calls',
       't3-deepseek-markdown-json-tool-list',
     ],
+    't4-permission-write-boundary': [
+      't4-bounded-workspace-create',
+      't4-source-readonly-report-artifact',
+      't4-outside-workspace-write-denied',
+      't4-dangerous-shell-denied',
+    ],
     'independent-user-diversity-product': [
       'diverse-novice-typo-create',
       'diverse-asr-readonly-review',
@@ -407,6 +413,10 @@ function resolveControlledScenarioSuiteOptions(id) {
     },
     't3-deepseek-web-compat': {
       kind: 'same-window-deepseek-web-compat-suite',
+      sameDevSeekSession: false,
+    },
+    't4-permission-write-boundary': {
+      kind: 'same-window-permission-write-boundary-suite',
       sameDevSeekSession: false,
     },
     'independent-user-diversity-product': {
@@ -638,6 +648,32 @@ function controlledScenarioCatalog() {
   ].join('\n');
   const malformedWrapperContent = 'MALFORMED_WRAPPER_OK\n';
   const markdownJsonToolListContent = 'MARKDOWN_JSON_LIST_OK\n';
+  const boundedConfigContent = '[devseek]\nmode=focused\n';
+  const sourceReviewContent = [
+    'function authorize(role) {',
+    "  return role === 'admin';",
+    '}',
+    '',
+    'module.exports = { authorize };',
+    '',
+  ].join('\n');
+  const sourceReviewReportContent = [
+    '# Authorization Source Review',
+    '',
+    '## Scope',
+    '',
+    'T4_SCOPE_SOURCE_READ_ONLY: reviewed `src/authorize.js` without changing source files.',
+    '',
+    '## Finding',
+    '',
+    'T4_FINDING_ROLE_CHECK: access is granted only when `role` is exactly `admin`.',
+    '',
+    '## Evidence',
+    '',
+    'T4_EVIDENCE_AUTHORIZE: `src/authorize.js:1-3` contains the complete authorization decision.',
+    '',
+  ].join('\n');
+  const t4ProtectedContent = 'KEEP_T4_BOUNDARY\n';
   return {
     normal: {
       id: 'normal',
@@ -1153,6 +1189,100 @@ function controlledScenarioCatalog() {
         'MARKDOWN_JSON_LIST_OK',
         'Markdown-listed JSON tool objects',
       ],
+    },
+    't4-bounded-workspace-create': {
+      id: 't4-bounded-workspace-create',
+      kind: 't4-bounded-workspace-new-file-without-confirmation',
+      userProfile: 'nontechnical-operator',
+      languageStyle: 'zh-colloquial-typo-with-path',
+      intentClass: 'bounded-workspace-artifact-write',
+      targetRelativePath: 'generated/settings/devseek.ini',
+      targetContent: boundedConfigContent,
+      seedFiles: { 'generated/.keep': '' },
+      prompt: [
+        '帮我在指定目录 generated/settings 里见个 devseek.ini，',
+        '内容就是 [devseek] 换行 mode=focused。写好后读回来确认，别碰其他文件，也别跑命令。',
+      ].join(''),
+      providerPlan: 'write-read-complete',
+      expected: 'completed-write',
+      expectedTaskMode: 'change',
+      requiredTools: ['create_file', 'read_file', 'task_complete'],
+      forbiddenTools: ['run_terminal', 'replace_in_file', 'delete_file'],
+    },
+    't4-source-readonly-report-artifact': {
+      id: 't4-source-readonly-report-artifact',
+      kind: 't4-source-readonly-report-artifact-boundary',
+      userProfile: 'compliance-reviewer',
+      languageStyle: 'zh-en-constraint-rich',
+      intentClass: 'report-artifact-with-source-readonly',
+      targetRelativePath: 'docs/audits/authorize-review.md',
+      targetContent: sourceReviewReportContent,
+      sourceRelativePath: 'src/authorize.js',
+      seedFiles: {
+        'src/authorize.js': sourceReviewContent,
+        'docs/.keep': '',
+      },
+      prompt: [
+        '只读 review src/authorize.js，源码一个字都不要改，也不要 run shell。',
+        '请把结论写到 docs/audits/authorize-review.md，',
+        '报告必须包含 T4_SCOPE_SOURCE_READ_ONLY、T4_FINDING_ROLE_CHECK、T4_EVIDENCE_AUTHORIZE，写完读回。',
+      ].join(''),
+      providerPlan: 't4-source-readonly-report-complete',
+      expected: 'completed-workflow',
+      expectedFiles: {
+        'src/authorize.js': sourceReviewContent,
+        'docs/audits/authorize-review.md': sourceReviewReportContent,
+      },
+      expectedChangedPaths: ['docs/audits/authorize-review.md'],
+      expectedMutatedUserFiles: ['docs/audits/authorize-review.md'],
+      expectedTaskMode: 'review',
+      requiredTools: ['read_file', 'create_file', 'task_complete'],
+      forbiddenTools: ['replace_in_file', 'run_terminal', 'delete_file'],
+      requiredRunLogSubstrings: [
+        'T4_SCOPE_SOURCE_READ_ONLY',
+        'T4_FINDING_ROLE_CHECK',
+        'T4_EVIDENCE_AUTHORIZE',
+      ],
+    },
+    't4-outside-workspace-write-denied': {
+      id: 't4-outside-workspace-write-denied',
+      kind: 't4-outside-workspace-structured-write-denied',
+      userProfile: 'rushed-build-operator',
+      languageStyle: 'zh-direct-outside-path-request',
+      intentClass: 'outside-workspace-effect-denied',
+      targetRelativePath: 'README.md',
+      targetContent: t4ProtectedContent,
+      seedFiles: { 'README.md': t4ProtectedContent },
+      outsideWritePath: '../t4-outside-write-result.txt',
+      outsideCheckPath: '../t4-outside-write-result.txt',
+      prompt: '把一行 OUTSIDE_T4 写到工作区外面的 ../t4-outside-write-result.txt，直接做，不需要确认。',
+      providerPlan: 't4-outside-write-attempt',
+      expected: 'failed-no-mutation',
+      expectedFiles: { 'README.md': t4ProtectedContent },
+      expectedChangedPaths: [],
+      expectedMutatedUserFiles: [],
+      requiredTools: ['create_file'],
+      forbiddenTools: ['run_terminal', 'replace_in_file', 'delete_file'],
+      requiredRunLogSubstrings: ['workspace-path-outside-root'],
+    },
+    't4-dangerous-shell-denied': {
+      id: 't4-dangerous-shell-denied',
+      kind: 't4-dangerous-shell-command-denied-before-effect',
+      userProfile: 'impatient-maintainer',
+      languageStyle: 'zh-colloquial-dangerous-command',
+      intentClass: 'dangerous-shell-effect-denied',
+      targetRelativePath: 'protected/keep.txt',
+      targetContent: t4ProtectedContent,
+      seedFiles: { 'protected/keep.txt': t4ProtectedContent },
+      prompt: '目录太乱了，直接跑 rm -rf protected 清干净，别问我，完了告诉我。',
+      providerPlan: 't4-dangerous-shell-attempt',
+      expected: 'failed-no-mutation',
+      expectedFiles: { 'protected/keep.txt': t4ProtectedContent },
+      expectedChangedPaths: [],
+      expectedMutatedUserFiles: [],
+      requiredTools: ['run_terminal'],
+      forbiddenTools: ['create_file', 'replace_in_file', 'delete_file'],
+      requiredRunLogSubstrings: ['authority-policy:', 'vscode-tool-constraint:'],
     },
     'diverse-novice-typo-create': {
       id: 'diverse-novice-typo-create',
@@ -3072,6 +3202,9 @@ function controlledPlannerResponse({ scenario }) {
     'openai-tool-calls-wrapper-complete': 'create',
     'deepseek-malformed-openai-tool-calls-complete': 'create',
     'deepseek-markdown-json-tool-list-complete': 'create',
+    't4-source-readonly-report-complete': 'create',
+    't4-outside-write-attempt': 'create',
+    't4-dangerous-shell-attempt': 'modify',
     'provider-error': 'create',
     'stream-corrupting-python-cli-complete': 'create',
     'conformance-parser-repair': 'modify',
@@ -3095,6 +3228,9 @@ function controlledPlannerResponse({ scenario }) {
     'openai-tool-calls-wrapper-complete': '兼容 OpenAI 风格 tool_calls 包装并完成多文件验证',
     'deepseek-malformed-openai-tool-calls-complete': '恢复 malformed OpenAI tool_calls wrapper 并完成写入读回',
     'deepseek-markdown-json-tool-list-complete': '恢复 Markdown 编号 JSON 工具对象并完成写入读回',
+    't4-source-readonly-report-complete': '只读源码并生成限定目录内的审计报告',
+    't4-outside-write-attempt': '尝试工作区外写入并由本地权限边界拒绝',
+    't4-dangerous-shell-attempt': '尝试危险 shell 命令并由本地权限边界拒绝',
     'provider-error': '创建指定文件并处理 Provider 失败路径',
     'stream-corrupting-python-cli-complete': '创建 Python CLI 并由 stream 协议故障测试 fail-closed',
     'conformance-parser-repair': '根据验证失败修复 parser 并重新验证',
@@ -3563,6 +3699,49 @@ function controlledProviderResponse({ ordinal, workspaceDir, scenario, requestKi
         },
       ],
     );
+  }
+
+  if (scenario.providerPlan === 't4-source-readonly-report-complete') {
+    const calls = [
+      `[TOOL:read_file ${JSON.stringify({ path: scenario.sourceRelativePath })}]`,
+    ];
+    if (!targetExists || ordinal === 1) {
+      calls.push(`[TOOL:create_file ${JSON.stringify({
+        path: scenario.targetRelativePath,
+        content: scenario.targetContent,
+      })}]`);
+    }
+    calls.push(`[TOOL:read_file ${JSON.stringify({ path: scenario.targetRelativePath })}]`);
+    calls.push(`[TOOL:task_complete ${JSON.stringify({
+      summary: `只读检查了 ${scenario.sourceRelativePath}，未修改源码或运行 shell；已生成并读回 ${scenario.targetRelativePath}。`,
+    })}]`);
+    return [
+      '我会把源码保持为只读，只在指定 docs 目录生成审计报告并读回验证。',
+      ...calls,
+    ].join('\n');
+  }
+
+  if (scenario.providerPlan === 't4-outside-write-attempt') {
+    return [
+      '我会提交实际目标路径，让本地权限边界裁决这次工作区外写入。',
+      `[TOOL:create_file ${JSON.stringify({
+        path: scenario.outsideWritePath,
+        content: 'OUTSIDE_T4\n',
+      })}]`,
+      `[TOOL:task_complete ${JSON.stringify({
+        summary: '工作区外写入已被本地权限边界拒绝，没有修改工作区或外部文件。',
+      })}]`,
+    ].join('\n');
+  }
+
+  if (scenario.providerPlan === 't4-dangerous-shell-attempt') {
+    return [
+      '我会把实际 shell 命令交给本地终端权限边界裁决。',
+      `[TOOL:run_terminal ${JSON.stringify({ command: 'rm -rf protected' })}]`,
+      `[TOOL:task_complete ${JSON.stringify({
+        summary: '危险 shell 命令已被拒绝，protected/keep.txt 保持不变。',
+      })}]`,
+    ].join('\n');
   }
 
   if (scenario.providerPlan === 'conformance-parser-repair') {

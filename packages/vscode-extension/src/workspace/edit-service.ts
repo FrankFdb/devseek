@@ -1,16 +1,16 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
 import {
-  findGeneratedSourceSanityIssue,
-  findSourceOverwriteSanityIssue,
-  repairGeneratedSourceTransportEscapes,
-} from './source-sanity';
-import {
   captureCanonicalPathRouteIdentity,
   isCanonicalPathInsideRoot,
   isSameCanonicalPathRoute,
   type CanonicalPathRouteIdentity,
-} from './path-containment';
+} from '@devseek-netai/shared';
+import {
+  findGeneratedSourceSanityIssue,
+  findSourceOverwriteSanityIssue,
+  repairGeneratedSourceTransportEscapes,
+} from './source-sanity';
 
 export interface WorkspaceWriteResult {
   existed: boolean;

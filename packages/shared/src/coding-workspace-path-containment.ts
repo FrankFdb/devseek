@@ -1,5 +1,5 @@
-import * as fs from 'fs';
-import * as nodePath from 'path';
+import * as fs from 'node:fs';
+import * as nodePath from 'node:path';
 
 export interface CanonicalPathRouteIdentity {
   canonicalPath: string;
@@ -16,13 +16,13 @@ export function isCanonicalPathInsideRoot(targetPath: string, rootPath: string):
   const canonicalTarget = canonicalizeThroughExistingAncestor(targetPath);
   if (!canonicalRoot || !canonicalTarget) return false;
   const relative = nodePath.relative(canonicalRoot, canonicalTarget);
-  return relative === '' || (!!relative && !relative.startsWith('..') && !nodePath.isAbsolute(relative));
+  return relative === '' || (!!relative
+    && relative !== '..'
+    && !relative.startsWith(`..${nodePath.sep}`)
+    && !nodePath.isAbsolute(relative));
 }
 
-/**
- * Resolve a lexical path through its nearest existing ancestor. Missing suffixes
- * remain lexical, while every existing symlink is resolved by realpath.
- */
+/** Resolve a lexical path through its nearest existing ancestor. */
 export function canonicalizeThroughExistingAncestor(inputPath: string): string | undefined {
   let cursor = nodePath.resolve(inputPath);
   const missingSegments: string[] = [];
@@ -40,12 +40,8 @@ export function canonicalizeThroughExistingAncestor(inputPath: string): string |
 }
 
 /**
- * Capture the route that an eventual filesystem mutation would traverse.
- *
- * The nearest existing ancestor identity is intentionally part of the snapshot:
- * replacing a missing parent with a directory or symlink during an async
- * authorization wait must invalidate the original write authority, even if the
- * final lexical path still appears to be inside the workspace.
+ * Captures the route traversed by a later mutation. Replacing a missing parent
+ * while authorization is pending changes this identity and invalidates the write.
  */
 export function captureCanonicalPathRouteIdentity(inputPath: string): CanonicalPathRouteIdentity | undefined {
   let cursor = nodePath.resolve(inputPath);
@@ -79,7 +75,6 @@ export function captureCanonicalPathRouteIdentity(inputPath: string): CanonicalP
         missingSegments,
       };
     } catch {
-      // An existing but dangling/unresolvable symlink is never a safe mutation route.
       return undefined;
     }
   }

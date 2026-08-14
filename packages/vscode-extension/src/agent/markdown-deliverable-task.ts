@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
 import type * as vscode from 'vscode';
+import { isCanonicalPathInsideRoot } from '@devseek-netai/shared';
 import type { AgentTask } from '../agent-task-decomposer';
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import { resolveTaskSemanticContract } from '../intent/task-semantic-contract-service';
@@ -12,7 +13,6 @@ import {
 } from '../workspace/edit-service';
 import { VsCodeWorkspaceMutationAdapter } from '../workspace/coding-workspace-mutation-adapter';
 import { resolveProductWorkspaceMutationSession } from '../workspace/product-workspace-mutation-transaction';
-import { isCanonicalPathInsideRoot } from '../workspace/path-containment';
 import { isAgentFileWriteConstraintSatisfied } from '../app/agent-file-write-policy';
 import {
   isMarkdownDocumentDeliverableRequest,
