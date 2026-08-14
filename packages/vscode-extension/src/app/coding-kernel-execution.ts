@@ -21,6 +21,7 @@ import {
 import { VsCodeCompletionEvidenceAdapter } from './coding-completion-adapter';
 import { projectAgentTaskCheckpointEffect } from './coding-checkpoint-effect';
 import type { VsCodeRecoveryFallback } from './coding-kernel-recovery-delivery';
+import { projectVsCodeCodingKernelTaskContract } from './coding-kernel-task-contract';
 
 export { deliverVsCodeRecoverySettlement } from './coding-kernel-recovery-delivery';
 
@@ -101,6 +102,7 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
       ? request.recovery.checkpoint.completedUnitCount
       : 0;
     const originalCheckpoint = request.callbacks.onTaskCheckpoint;
+    const originalTaskSemanticContractRevision = request.callbacks.onTaskSemanticContractRevision;
     const callbacks: AgentLoopCallbacks = {
       ...request.callbacks,
       traceRunId: request.callbacks.traceRunId ?? kernelRequest.runId,
@@ -121,6 +123,37 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
       canonicalVerification: kernelRequest.verification,
       onUserSteer: () => kernelRequest.runControl.consumeSteering()
         .map(decision => decision.instruction),
+      onTaskSemanticContractRevision: revision => {
+        const executionAllowed = revision.allowedToExecute;
+        const latestContract = projectVsCodeCodingKernelTaskContract({
+          userPrompt: revision.semanticContract.prompt,
+          executionMode: revision.semanticContract.intent.mode,
+          contextFiles: request.contextFiles,
+          workspaceRoot: kernelRequest.workspaceRoot,
+          taskContract: revision.semanticContract.taskContract,
+          targetPaths: executionAllowed ? revision.pendingTargets : [],
+          prohibitedTargets: executionAllowed
+            ? revision.prohibitedTargets
+            : [
+                ...revision.prohibitedTargets,
+                ...revision.pendingTargets,
+                ...kernelRequest.taskContract.scope.include,
+              ],
+          strictTargetScope: !executionAllowed
+            || revision.semanticContract.signals.includes('scoped-target-write-boundary'),
+        });
+        kernelRequest.taskContractRevision.revise({
+          revisionId: revision.revisionId,
+          taskContract: latestContract,
+          evidenceRefs: [
+            `intent-revision:${revision.revisionId}`,
+            ...(revision.parentRevisionId
+              ? [`intent-revision-parent:${revision.parentRevisionId}`]
+              : []),
+          ],
+        });
+        originalTaskSemanticContractRevision?.(revision);
+      },
       ...(originalCheckpoint ? {
         onTaskCheckpoint: async (firstUnfinishedIndex, remainingTasks, reason) => {
           if (firstUnfinishedIndex === null || reason === 'paused' || reason === 'completed') {
@@ -187,7 +220,7 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
     };
     const completionEvidence = this.completionEvidence.project({
         runId: kernelRequest.runId,
-        taskContract: kernelRequest.taskContract,
+        taskContract: kernelRequest.taskContractRevision.current(),
         result,
     });
     const pendingRecoveryTasks = request.recovery && originalCheckpoint && !terminalCheckpointEmitted

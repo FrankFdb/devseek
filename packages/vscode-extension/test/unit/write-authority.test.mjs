@@ -20,8 +20,9 @@ const req = createRequire(import.meta.url);
 const { createWriteAuthority } = req(path.join(path.dirname(bundlePath), 'agent/write-authority.js'));
 const { buildTaskSemanticContract } = req(path.join(path.dirname(bundlePath), 'task-semantic-contract.js'));
 
-function createAuthority(prompt, steers = [], options = {}) {
+function createAuthority(prompt, steers = [], options = {}, callbacks = {}) {
   return createWriteAuthority(prompt, {
+    ...callbacks,
     onUserSteer() {
       return steers.splice(0);
     },
@@ -127,6 +128,31 @@ test('in-flight user steers revise the active contract without restarting the ta
   assert.equal(authority.currentPrompt, '继续，但不要运行命令。');
   assert.doesNotMatch(authority.currentPrompt, /修复 src\/cache\.ts 和 src\/auth\.ts/);
   assert.match(messages.at(-1).content, /TaskSemanticContract Revision/);
+});
+
+test('queued steers publish every ordered contract revision and preserve independent prohibitions', () => {
+  const steers = [
+    '再加一个约束：不要修改 tests/fixture.ts。',
+    '更正，不再创建 alpha.txt，改为只创建 beta.txt。',
+  ];
+  const published = [];
+  const authority = createAuthority(
+    '只创建 alpha.txt。',
+    steers,
+    {},
+    { onTaskSemanticContractRevision: revision => published.push(revision) },
+  );
+
+  const messages = authority.takePendingAndDrain();
+
+  assert.equal(messages.length, 2);
+  assert.deepEqual(published.map(revision => revision.revisionId), ['rev-2', 'rev-3']);
+  assert.equal(published[0].prohibitedTargets.includes('tests/fixture.ts'), true);
+  assert.equal(published[1].prohibitedTargets.includes('tests/fixture.ts'), true);
+  assert.equal(published[1].prohibitedTargets.includes('alpha.txt'), true);
+  assert.equal(published[1].pendingTargets.includes('beta.txt'), true);
+  assert.match(messages[0].content, /不要修改 tests\/fixture\.ts/u);
+  assert.match(messages[1].content, /只创建 beta\.txt/u);
 });
 
 test('in-flight correction preserves committed effects and replans only uncommitted work', () => {

@@ -161,6 +161,7 @@ test('top-agent user simulation runner plans targeted checks before broad contro
     'model-led-inflight-latest-target',
     'in-flight-user-steer-contract-revision',
     'in-flight-committed-effect-preservation',
+    'queued-steer-ordered-contract-revisions',
     'semantic-source-proposal-route-consistency',
     'semantic-no-run-validation-boundary-consistency',
     'semantic-operation-prohibition-arbitration',
@@ -232,6 +233,12 @@ test('top-agent user simulation runner keeps intent regression separate from gen
     ]);
     assert.ok(targetedTests.includes('packages/vscode-extension/test/unit/model-led-intent-boundary.test.mjs'));
     assert.ok(targetedTests.includes('packages/vscode-extension/test/unit/model-led-user-simulation.test.mjs'));
+    assert.ok(targetedTests.includes('packages/shared/test/coding-task-contract-revision.test.mjs'));
+    assert.ok(report.case_design_review.selected_cases.includes('task-contract-revision-idempotency'));
+    assert.ok(report.case_design_review.selected_cases.includes('task-contract-structured-latest-scope'));
+    assert.ok(report.case_design_review.selected_cases.includes('task-contract-stale-authority-invalidation'));
+    assert.ok(report.case_design_review.selected_cases.includes('model-led-latest-steer-authority-settlement'));
+    assert.ok(report.case_design_review.selected_cases.includes('queued-steer-ordered-contract-revisions'));
     assert.equal(controlledSuites.includes('journey-core'), false);
     assert.equal(controlledSuites.includes('realistic-product'), false);
     assert.equal(controlledSuites.includes('coding-conformance-product'), false);

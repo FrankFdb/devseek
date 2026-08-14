@@ -8,13 +8,23 @@ import {
   type CodingDesignImpact,
   type DesignDecisionPort,
 } from './coding-design-plan';
-import type { CodingContextGraph } from './coding-context-graph';
-import type { CodingRequirementDecision } from './coding-requirements';
+import {
+  CanonicalContextGraphService,
+  type CodingContextGraph,
+  type CodingContextSeed,
+  type ContextGraphPort,
+} from './coding-context-graph';
+import {
+  CanonicalRequirementDecisionService,
+  type CodingRequirementDecision,
+  type RequirementDecisionPort,
+} from './coding-requirements';
 import { codingSemanticDigest } from './coding-semantic-digest';
 import {
   snapshotCodingKernelTaskContract,
   type CodingKernelTaskContract,
 } from './coding-task-contract';
+import type { CodingTaskContractSourcePort } from './coding-task-contract-revision';
 import {
   codingWorkspaceTargetMatchesScope,
   projectCodingWorkspaceTargets,
@@ -38,7 +48,10 @@ export interface CodingChangePlanSourcePort {
 }
 
 export interface CodingChangePlanRevisionSessionPort extends CodingChangePlanSourcePort {
+  currentContextGraph(): CodingContextGraph;
+  currentRequirements(): CodingRequirementDecision;
   currentDesign(): CodingDesignDecision;
+  reconcile(input: { readonly actionId: string }): CodingChangePlanRevisionDecision;
   ensureTargets(input: {
     readonly actionId: string;
     readonly targetPaths: readonly string[];
@@ -56,6 +69,8 @@ export interface ChangePlanRevisionPort {
     readonly requirements: CodingRequirementDecision;
     readonly design: CodingDesignDecision;
     readonly plan: CodingChangePlan;
+    readonly contextSeed?: CodingContextSeed;
+    readonly taskContractSource?: CodingTaskContractSourcePort;
   }): CodingChangePlanRevisionSessionPort;
 }
 
@@ -64,6 +79,8 @@ export class CanonicalChangePlanRevisionService implements ChangePlanRevisionPor
   constructor(
     private readonly designs: DesignDecisionPort = new CanonicalDesignDecisionService(),
     private readonly plans: ChangePlanPort = new CanonicalChangePlanService(),
+    private readonly contexts: ContextGraphPort = new CanonicalContextGraphService(),
+    private readonly requirements: RequirementDecisionPort = new CanonicalRequirementDecisionService(),
   ) {}
 
   bind(input: Parameters<ChangePlanRevisionPort['bind']>[0]): CodingChangePlanRevisionSessionPort {
@@ -72,12 +89,89 @@ export class CanonicalChangePlanRevisionService implements ChangePlanRevisionPor
     const designHistory: CodingDesignDecision[] = [input.design];
     const planHistory: CodingChangePlan[] = [input.plan];
     const decisions: CodingChangePlanRevisionDecision[] = [];
+    let currentContextGraph = input.contextGraph;
+    let currentRequirements = input.requirements;
     let currentDesign = input.design;
     let currentPlan = input.plan;
 
+    const reconcileTaskContract = (actionId: string): CodingChangePlanRevisionDecision | undefined => {
+      const currentTaskContract = input.taskContractSource?.current() ?? taskContract;
+      const contractSha256 = codingSemanticDigest(currentTaskContract);
+      if (currentRequirements.taskContractSha256 === contractSha256) return undefined;
+      const revisedContextGraph = this.contexts.build({
+        workspaceRoot,
+        userPrompt: currentTaskContract.goal,
+        taskContract: currentTaskContract,
+        seed: input.contextSeed,
+      });
+      const revisionEvidenceRef = revisedContextGraph.provenanceRefs.includes('task-contract:current')
+        ? 'task-contract:current'
+        : revisedContextGraph.provenanceRefs[0];
+      if (!revisionEvidenceRef) {
+        throw new Error('coding-change-plan-revision:missing-task-contract-provenance');
+      }
+      const revisedRequirements = this.requirements.decide({
+        taskContract: currentTaskContract,
+        contextGraph: revisedContextGraph,
+        previousDecision: currentRequirements,
+        revisionReason: 'task-contract-revision',
+        newEvidenceRefs: [revisionEvidenceRef],
+      });
+      const revisedDesign = this.designs.decide({
+        taskContract: currentTaskContract,
+        contextGraph: revisedContextGraph,
+        requirements: revisedRequirements,
+        evidence: { evidenceRefs: [revisionEvidenceRef] },
+      });
+      const revisedPlan = this.plans.revise({
+        previousPlan: currentPlan,
+        taskContract: currentTaskContract,
+        requirements: revisedRequirements,
+        design: revisedDesign,
+        revisionReason: 'task-contract-revision',
+        newEvidenceRefs: [revisionEvidenceRef],
+      });
+      currentContextGraph = revisedContextGraph;
+      currentRequirements = revisedRequirements;
+      if (revisedDesign.decisionSha256 !== currentDesign.decisionSha256) {
+        designHistory.push(revisedDesign);
+        currentDesign = revisedDesign;
+      }
+      if (revisedPlan.planSha256 !== currentPlan.planSha256) {
+        planHistory.push(revisedPlan);
+        currentPlan = revisedPlan;
+      }
+      return recordDecision(decisions, {
+        status: 'revised',
+        actionId,
+        reason: 'change-plan-revised-for-task-contract-revision',
+        targetPaths: currentTaskContract.scope.include,
+        planId: currentPlan.planId,
+        evidenceRefs: [
+          revisionEvidenceRef,
+          currentRequirements.decisionSha256,
+          currentDesign.decisionSha256,
+          currentPlan.planSha256,
+        ],
+      });
+    };
+
     return Object.freeze({
+      currentContextGraph: () => currentContextGraph,
+      currentRequirements: () => currentRequirements,
       currentDesign: () => currentDesign,
       currentPlan: () => currentPlan,
+      reconcile: (candidate: Parameters<CodingChangePlanRevisionSessionPort['reconcile']>[0]) => {
+        const actionId = requireText(candidate?.actionId, 'action-id');
+        return reconcileTaskContract(actionId) ?? recordDecision(decisions, {
+          status: 'unchanged',
+          actionId,
+          reason: 'task-contract-derived-state-current',
+          targetPaths: (input.taskContractSource?.current() ?? taskContract).scope.include,
+          planId: currentPlan.planId,
+          evidenceRefs: [currentRequirements.decisionSha256, currentPlan.planSha256],
+        });
+      },
       ensureTargets: (candidate: Parameters<CodingChangePlanRevisionSessionPort['ensureTargets']>[0]) => {
         const actionId = requireText(candidate?.actionId, 'action-id');
         const projection = projectCodingWorkspaceTargets(candidate?.targetPaths ?? [], workspaceRoot);
@@ -91,8 +185,10 @@ export class CanonicalChangePlanRevisionService implements ChangePlanRevisionPor
             evidenceRefs: [currentPlan.planId],
           });
         }
+        const taskContractReconciliation = reconcileTaskContract(actionId);
+        const currentTaskContract = input.taskContractSource?.current() ?? taskContract;
         const targetPaths = projection.targets;
-        const scopeFailure = validateTargetScopes(taskContract, targetPaths);
+        const scopeFailure = validateTargetScopes(currentTaskContract, targetPaths);
         if (scopeFailure) {
           return recordDecision(decisions, {
             status: 'denied',
@@ -109,7 +205,7 @@ export class CanonicalChangePlanRevisionService implements ChangePlanRevisionPor
           targetPaths,
         });
         if (currentEffect.decision === 'allow') {
-          return recordDecision(decisions, {
+          return taskContractReconciliation ?? recordDecision(decisions, {
             status: 'unchanged',
             actionId,
             reason: 'change-plan-already-authorizes-targets',
@@ -126,9 +222,9 @@ export class CanonicalChangePlanRevisionService implements ChangePlanRevisionPor
           proposalEvidenceRef,
         );
         const revisedDesign = this.designs.decide({
-          taskContract,
-          contextGraph: input.contextGraph,
-          requirements: input.requirements,
+          taskContract: currentTaskContract,
+          contextGraph: currentContextGraph,
+          requirements: currentRequirements,
           evidence: {
             impacts: proposedImpacts,
             dependencyChecks: currentDesign.dependencyChecks,
@@ -140,8 +236,8 @@ export class CanonicalChangePlanRevisionService implements ChangePlanRevisionPor
         });
         const revisedPlan = this.plans.revise({
           previousPlan: currentPlan,
-          taskContract,
-          requirements: input.requirements,
+          taskContract: currentTaskContract,
+          requirements: currentRequirements,
           design: revisedDesign,
           revisionReason: 'tool-proposed-targets',
           newEvidenceRefs: [proposalEvidenceRef],

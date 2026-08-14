@@ -2,6 +2,7 @@ import {
   compileOperationalLanguageLexicon,
   loadOperationalLanguageLexiconConfigFromFile,
   type CompiledOperationalLanguageLexicon,
+  type IntentRevisionPatternGroup,
   type OperationalLanguageLexiconConfig,
 } from './operational-language-lexicon';
 
@@ -19,6 +20,13 @@ export function loadOperationalLanguageLexicon(filePath: string): void {
 
 export function resetOperationalLanguageLexicon(): void {
   activeLexicon = compileOperationalLanguageLexicon();
+}
+
+export function hasIntentRevisionLanguageSignal(
+  group: IntentRevisionPatternGroup,
+  text: string,
+): boolean {
+  return testAny(activeLexicon.intentRevision[group], text);
 }
 
 /** Splits user intent at top-level prose boundaries used by action classifiers. */

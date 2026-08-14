@@ -24,6 +24,7 @@ export * from './coding-engineering-orientation';
 export * from './coding-external-effect';
 export * from './coding-instruction-precedence';
 export * from './coding-task-contract';
+export * from './coding-task-contract-revision';
 export * from './coding-task-contract-resolver';
 export * from './coding-task-path-intent';
 export * from './coding-change-plan-revision';

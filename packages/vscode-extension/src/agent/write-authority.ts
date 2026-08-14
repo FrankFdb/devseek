@@ -117,6 +117,7 @@ export function createWriteAuthority(
         projectInstructions: options.projectInstructions,
       });
       semanticContractRevision = lineage.semanticContractRevision;
+      callbacks.onTaskSemanticContractRevision?.(semanticContractRevision);
       writeRevoked = resolveWriteRevocation(
         writeRevoked,
         text,

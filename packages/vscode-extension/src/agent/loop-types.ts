@@ -5,6 +5,7 @@ import type { MemoryWriteProposal } from '../memory/types';
 import type { AgentStatusEvent } from './events';
 import type { TodoItem } from './evidence-recovery';
 import type { ExecutionMode } from '../intent/intent-types';
+import type { IntentSemanticContractRevision } from '../intent/intent-revision-lineage';
 import type { AgentFileWriteContext } from '../app/agent-file-write-policy';
 import type { ArtifactClaim, EvidenceRef, VerificationResult } from './evidence-grounding';
 import type { ValidationCommandRunner } from '../workspace/validation-service';
@@ -226,6 +227,8 @@ export interface AgentLoopCallbacks {
    * incremental correction/supplement, not as a brand-new task.
    */
   onUserSteer?: () => string[];
+  /** Publishes each ordered semantic revision before the next tool can execute. */
+  onTaskSemanticContractRevision?: (revision: IntentSemanticContractRevision) => void;
   /**
    * Display-only classification for the first free-explore Working row.
    * This must not affect tool execution; it only prevents UI from describing

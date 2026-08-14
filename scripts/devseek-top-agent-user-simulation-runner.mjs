@@ -24,6 +24,7 @@ const DEFAULT_TARGETED_TESTS = Object.freeze([
   'packages/vscode-extension/test/unit/controlled-vsix-scenario-contract.test.mjs',
 ]);
 const INTENT_TARGETED_TESTS = Object.freeze([
+  'packages/shared/test/coding-task-contract-revision.test.mjs',
   'packages/vscode-extension/test/unit/operational-language-boundary.test.mjs',
   'packages/vscode-extension/test/unit/model-led-intent-boundary.test.mjs',
   'packages/vscode-extension/test/unit/model-led-user-simulation.test.mjs',
@@ -32,6 +33,12 @@ const INTENT_TARGETED_TESTS = Object.freeze([
   'packages/vscode-extension/test/unit/semantic-intent-routing-matrix.test.mjs',
 ]);
 const TARGETED_TEST_CASE_COVERAGE = Object.freeze({
+  'packages/shared/test/coding-task-contract-revision.test.mjs': Object.freeze([
+    'task-contract-revision-idempotency',
+    'task-contract-structured-latest-scope',
+    'task-contract-stale-authority-invalidation',
+    'model-led-latest-steer-authority-settlement',
+  ]),
   'packages/vscode-extension/test/unit/model-led-intent-boundary.test.mjs': Object.freeze([
     'model-led-diverse-input-main-model',
     'model-led-typo-homophone-prompt',
@@ -49,6 +56,7 @@ const TARGETED_TEST_CASE_COVERAGE = Object.freeze({
   'packages/vscode-extension/test/unit/write-authority.test.mjs': Object.freeze([
     'in-flight-user-steer-contract-revision',
     'in-flight-committed-effect-preservation',
+    'queued-steer-ordered-contract-revisions',
   ]),
   'packages/vscode-extension/test/unit/task-intent-router.test.mjs': Object.freeze([
     'semantic-source-proposal-route-consistency',

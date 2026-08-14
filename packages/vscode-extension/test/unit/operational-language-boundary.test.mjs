@@ -21,6 +21,7 @@ const {
   classifyExternalEffectIntent,
   configureOperationalLanguageLexicon,
   hasExternalEffectProhibition,
+  hasIntentRevisionLanguageSignal,
   hasOperationalRunProhibition,
   loadOperationalLanguageLexicon,
   resetOperationalLanguageLexicon,
@@ -75,6 +76,7 @@ test('OperationalLanguageBoundary: explicit host validation prohibitions remain 
 test('OperationalLanguageBoundary: lexicon config can add multilingual external-effect evidence dynamically', () => {
   resetOperationalLanguageLexicon();
   assert.equal(classifyExternalEffectIntent('Bitte shipit-now src/login.ts.'), 'none');
+  assert.equal(hasIntentRevisionLanguageSignal('correction', 'corrige-ahora src/login.ts'), false);
 
   try {
     configureOperationalLanguageLexicon({
@@ -85,14 +87,22 @@ test('OperationalLanguageBoundary: lexicon config can add multilingual external-
           source: String.raw`\bshipit-now\b`,
         }],
       },
+      intentRevision: {
+        correction: [{
+          id: 'test-spanish-correction',
+          source: String.raw`\bcorrige-ahora\b`,
+        }],
+      },
     });
 
     assert.equal(classifyExternalEffectIntent('Bitte shipit-now src/login.ts.'), 'requested');
+    assert.equal(hasIntentRevisionLanguageSignal('correction', 'corrige-ahora src/login.ts'), true);
   } finally {
     resetOperationalLanguageLexicon();
   }
 
   assert.equal(classifyExternalEffectIntent('Bitte shipit-now src/login.ts.'), 'none');
+  assert.equal(hasIntentRevisionLanguageSignal('correction', 'corrige-ahora src/login.ts'), false);
 });
 
 test('OperationalLanguageBoundary: lexicon JSON can be loaded without code changes', () => {

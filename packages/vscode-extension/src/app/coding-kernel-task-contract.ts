@@ -20,6 +20,9 @@ export interface VsCodeCodingKernelTaskContractInput {
   readonly contextFiles: readonly string[];
   readonly workspaceRoot: string;
   readonly taskContract: TaskContract;
+  readonly targetPaths?: readonly string[];
+  readonly prohibitedTargets?: readonly string[];
+  readonly strictTargetScope?: boolean;
 }
 
 const DEPENDENCY_EXTERNAL_EFFECT_RE = /(?:安装[^，,。；;\n]{0,32}(?:依赖|npm\s*包|软件包|包|库|模块)|(?:新增|添加|引入)[^，,。；;\n]{0,24}(?:依赖|npm\s*包|软件包|包|库|模块)|\binstall\b[^,.;\n]{0,48}\b(?:packages?|dependenc(?:y|ies)|librar(?:y|ies)|modules?)\b|\b(?:add|introduce)\b[^,.;\n]{0,48}\b(?:new\s+)?dependenc(?:y|ies)\b|npm\s+(?:install|i|add|ci)|pnpm\s+(?:install|i|add)|yarn\s+(?:install|add)|pip\s+install)/iu;
@@ -27,7 +30,9 @@ const DEPENDENCY_EXTERNAL_EFFECT_RE = /(?:安装[^，,。；;\n]{0,32}(?:依赖|
 export function projectVsCodeCodingKernelTaskContract(
   input: VsCodeCodingKernelTaskContractInput,
 ): CodingKernelTaskContract {
-  const deliverableTargets = uniqueNonEmpty(input.taskContract.deliverableTargets
+  const deliverableTargets = uniqueNonEmpty((input.targetPaths ?? input.taskContract.deliverableTargets)
+    .map(target => projectWorkspacePath(target, input.workspaceRoot)));
+  const prohibitedTargets = uniqueNonEmpty((input.prohibitedTargets ?? [])
     .map(target => projectWorkspacePath(target, input.workspaceRoot)));
   const contextFiles = uniqueNonEmpty([
     ...input.contextFiles,
@@ -55,6 +60,9 @@ export function projectVsCodeCodingKernelTaskContract(
     modeHint: projectTaskMode(input.executionMode),
     contextFiles,
     targetPaths: deliverableTargets,
+    targetPathsAuthoritative: input.targetPaths !== undefined,
+    excludedTargetPaths: prohibitedTargets,
+    strictTargetScope: input.strictTargetScope,
     deliverableKinds,
     confirmedWorkspaceMutation: workspaceMutationConfirmed,
     verificationRequired,

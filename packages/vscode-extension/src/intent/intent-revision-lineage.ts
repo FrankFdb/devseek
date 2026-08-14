@@ -7,6 +7,7 @@ import {
 } from './orientation-decision';
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import type { TaskSemanticProjectInstructionInput } from './task-semantic-contract-service';
+import { hasIntentRevisionLanguageSignal } from './operational-language-boundary';
 
 export type IntentRevisionChangeKind =
   | 'initial'
@@ -105,10 +106,6 @@ export interface IntentRevisionLineage {
   allowedToExecute: boolean;
 }
 
-const CORRECTION_RE = /(?:更正|纠正|改为|改成|改口|现在(?:改|只)|最终(?:要求|轮)|instead|rather\s+than|change\s+(?:it\s+)?to)/i;
-const SCOPE_REDUCTION_RE = /(?:缩小范围|收缩范围|只(?:改|修改|处理|修复|创建|生成|写)|仅(?:改|修改|处理|修复|创建|生成|写)|only\s+(?:change|modify|fix|touch|write|create))/i;
-const STEER_RE = /(?:继续|接着|下一步|后续|按这个方向|steer|continue|resume|follow\s+up)/i;
-const NEGATION_RE = /(?:不要|不得|禁止|别|不允许|不要碰|不要触碰|无需|无须|do\s+not|don't|must\s+not|never|without)/i;
 const PATH_RE = /(?:^|[^A-Za-z0-9_.@+~/-])((?:(?:\.{0,2}\/)?[\w.@+~-]+(?:\/[\w.@+~-]+)+|[\w.@+~-]+\.(?:cxx|cpp|cc|c|hxx|hpp|hh|h|tsx|ts|jsx|js|mjs|cjs|py|json|ya?ml|toml|xml|txt|log|csv|ini|conf|cfg|proto|graphql|sh|bash|zsh|ps1|sql|cmake|gradle|markdown|md)))(?=$|[^A-Za-z0-9_.@+~/-])/gi;
 
 export function buildIntentRevisionLineage(input: IntentRevisionLineageInput): IntentRevisionLineage {
@@ -124,8 +121,10 @@ export function buildIntentRevisionLineage(input: IntentRevisionLineageInput): I
   const promptProhibitedTargets = extractProhibitedTargets(prompt);
   const changeKinds = classifyChangeKinds(prompt, previous !== undefined, promptProhibitedTargets);
   const replacesPendingScope = changeKinds.includes('correction') || changeKinds.includes('scope-reduction');
-  const prohibitedTargets = uniquePaths([
-    ...(replacesPendingScope ? [] : previous?.semanticContractRevision.prohibitedTargets ?? []),
+  const reauthorizedTargets = new Set(extractReauthorizedTargets(prompt).map(normalizePathToken));
+  const inheritedProhibitedTargets = uniquePaths([
+    ...(previous?.semanticContractRevision.prohibitedTargets ?? [])
+      .filter(target => !reauthorizedTargets.has(normalizePathToken(target))),
     ...promptProhibitedTargets,
   ]);
   const revisionId = `rev-${previousRevisions.length + 1}`;
@@ -145,10 +144,26 @@ export function buildIntentRevisionLineage(input: IntentRevisionLineageInput): I
             : 'merge',
         revisionId,
         parentRevisionId: previousEffective?.id,
-        prohibitedTargets,
+        prohibitedTargets: inheritedProhibitedTargets,
       },
     },
   });
+  const candidateTargets = extractRevisionTargets(orientation, inheritedProhibitedTargets);
+  const committedTargets = new Set(committedEffects
+    .filter(effect => effect.status === 'committed')
+    .map(effect => normalizePathToken(effect.target ?? ''))
+    .filter(Boolean));
+  const candidateTargetKeys = new Set(candidateTargets.map(normalizePathToken));
+  const supersededPendingTargets = replacesPendingScope
+    ? (previous?.semanticContractRevision.pendingTargets ?? []).filter(target => {
+        const key = normalizePathToken(target);
+        return key && !candidateTargetKeys.has(key) && !committedTargets.has(key);
+      })
+    : [];
+  const prohibitedTargets = uniquePaths([
+    ...inheritedProhibitedTargets,
+    ...supersededPendingTargets,
+  ]);
   const targets = extractRevisionTargets(orientation, prohibitedTargets);
   const permissionWidening = isPermissionWidening(previousEffective?.permission.risk, orientation.risk, orientation);
   const blockers = [
@@ -334,10 +349,10 @@ function classifyChangeKinds(
 ): IntentRevisionChangeKind[] {
   const kinds: IntentRevisionChangeKind[] = [];
   if (!hasPrevious) kinds.push('initial');
-  if (CORRECTION_RE.test(prompt)) kinds.push('correction');
-  if (NEGATION_RE.test(prompt) || prohibitedTargets.length > 0) kinds.push('negation');
-  if (SCOPE_REDUCTION_RE.test(prompt)) kinds.push('scope-reduction');
-  if (hasPrevious && STEER_RE.test(prompt)) kinds.push('steer');
+  if (hasIntentRevisionLanguageSignal('correction', prompt)) kinds.push('correction');
+  if (hasIntentRevisionLanguageSignal('negation', prompt) || prohibitedTargets.length > 0) kinds.push('negation');
+  if (hasIntentRevisionLanguageSignal('scopeReduction', prompt)) kinds.push('scope-reduction');
+  if (hasPrevious && hasIntentRevisionLanguageSignal('steer', prompt)) kinds.push('steer');
   if (kinds.length === 0) kinds.push(hasPrevious ? 'steer' : 'initial');
   return [...new Set(kinds)];
 }
@@ -359,8 +374,10 @@ function extractRevisionTargets(
 function extractPositiveScopeTargets(prompt: string): string[] {
   const targets: string[] = [];
   for (const clause of prompt.split(/[，,。；;\n]/)) {
-    if (!SCOPE_REDUCTION_RE.test(clause) && !CORRECTION_RE.test(clause)) continue;
-    if (NEGATION_RE.test(clause) && !/(?:改为|改成|change\s+(?:it\s+)?to)/i.test(clause)) continue;
+    if (!hasIntentRevisionLanguageSignal('scopeReduction', clause)
+      && !hasIntentRevisionLanguageSignal('correction', clause)) continue;
+    if (hasIntentRevisionLanguageSignal('negation', clause)
+      && !hasIntentRevisionLanguageSignal('replacement', clause)) continue;
     for (const target of collectPaths(clause)) {
       targets.push(target);
     }
@@ -371,10 +388,19 @@ function extractPositiveScopeTargets(prompt: string): string[] {
 function extractProhibitedTargets(prompt: string): string[] {
   const targets: string[] = [];
   for (const clause of prompt.split(/[，,。；;\n]/)) {
-    if (!NEGATION_RE.test(clause)) continue;
+    if (!hasIntentRevisionLanguageSignal('negation', clause)) continue;
     for (const target of collectPaths(clause)) {
       targets.push(target);
     }
+  }
+  return uniquePaths(targets);
+}
+
+function extractReauthorizedTargets(prompt: string): string[] {
+  const targets: string[] = [];
+  for (const clause of prompt.split(/[，,。；;\n]/)) {
+    if (!hasIntentRevisionLanguageSignal('reauthorization', clause)) continue;
+    targets.push(...collectPaths(clause));
   }
   return uniquePaths(targets);
 }

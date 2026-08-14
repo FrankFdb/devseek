@@ -5,6 +5,9 @@ import {
   uniqueCodingRefs,
 } from './coding-contract-utils';
 import type { CodingToolExecutionReceipt } from './coding-tool-execution';
+import type { CodingKernelTaskContract } from './coding-task-contract';
+import type { CodingTaskContractSourcePort } from './coding-task-contract-revision';
+import { codingSemanticDigest } from './coding-semantic-digest';
 
 export const CODING_VERIFICATION_PLAN_VERSION = 'devseek.coding-verification-plan/v1' as const;
 export const CODING_VERIFICATION_RECEIPT_VERSION = 'devseek.coding-verification-receipt/v1' as const;
@@ -102,6 +105,7 @@ export interface VerificationServicePort extends VerificationPort {
   bind(input: {
     readonly runId: string;
     readonly acceptance: readonly CodingVerificationCriterion[];
+    readonly taskContractSource?: CodingTaskContractSourcePort;
   }): CodingVerificationSessionPort;
 }
 
@@ -181,8 +185,14 @@ export class CanonicalVerificationService implements VerificationServicePort {
   bind(input: {
     readonly runId: string;
     readonly acceptance: readonly CodingVerificationCriterion[];
+    readonly taskContractSource?: CodingTaskContractSourcePort;
   }): CodingVerificationSessionPort {
-    return new CanonicalVerificationSession(this, input.runId, input.acceptance);
+    return new CanonicalVerificationSession(
+      this,
+      input.runId,
+      input.acceptance,
+      input.taskContractSource,
+    );
   }
 
   async verify<TPayload>(
@@ -207,12 +217,16 @@ export class CanonicalVerificationService implements VerificationServicePort {
 class CanonicalVerificationSession implements CodingVerificationSessionPort {
   readonly runId: string;
   private readonly acceptance: readonly CodingVerificationCriterion[];
-  private readonly settledReceipts = new Map<string, CodingVerificationReceipt>();
+  private readonly settledReceipts = new Map<string, {
+    readonly contractSha256: string;
+    readonly receipt: CodingVerificationReceipt;
+  }>();
 
   constructor(
     private readonly service: VerificationPort,
     runId: string,
     acceptance: readonly CodingVerificationCriterion[],
+    private readonly taskContractSource?: CodingTaskContractSourcePort,
   ) {
     this.runId = normalizedCodingId(runId, 'verification-session-run-id');
     this.acceptance = Object.freeze(acceptance.map(criterion => Object.freeze({
@@ -232,17 +246,45 @@ class CanonicalVerificationSession implements CodingVerificationSessionPort {
     host: CodingVerificationHostPort<TPayload>,
   ): Promise<CodingVerificationOutcome> {
     if (plan.runId !== this.runId) throw new Error('coding-verification:session-run-mismatch');
-    if (canonicalCodingJson(plan.acceptance) !== canonicalCodingJson(this.acceptance)) {
+    const currentAcceptance = this.currentAcceptance();
+    const contractSha256 = this.currentContractSha256(currentAcceptance);
+    if (canonicalCodingJson(plan.acceptance) !== canonicalCodingJson(currentAcceptance)) {
       throw new Error('coding-verification:session-acceptance-mismatch');
     }
     const outcome = await this.service.verify(plan, host);
-    this.settledReceipts.set(outcome.receipt.actionId, outcome.receipt);
+    this.settledReceipts.set(outcome.receipt.actionId, {
+      contractSha256,
+      receipt: outcome.receipt,
+    });
     return outcome;
   }
 
   receipts(): readonly CodingVerificationReceipt[] {
-    return Object.freeze([...this.settledReceipts.values()]);
+    const contractSha256 = this.currentContractSha256(this.currentAcceptance());
+    return Object.freeze([...this.settledReceipts.values()]
+      .filter(value => value.contractSha256 === contractSha256)
+      .map(value => value.receipt));
   }
+
+  private currentAcceptance(): readonly CodingVerificationCriterion[] {
+    return this.taskContractSource
+      ? projectCodingVerificationAcceptance(this.taskContractSource.current())
+      : this.acceptance;
+  }
+
+  private currentContractSha256(acceptance: readonly CodingVerificationCriterion[]): string {
+    return this.taskContractSource
+      ? codingSemanticDigest(this.taskContractSource.current())
+      : codingSemanticDigest(acceptance);
+  }
+}
+
+export function projectCodingVerificationAcceptance(
+  taskContract: CodingKernelTaskContract,
+): readonly CodingVerificationCriterion[] {
+  return Object.freeze(taskContract.acceptance
+    .filter(criterion => criterion.oracle.kind === 'verification')
+    .map(criterion => Object.freeze({ id: criterion.id, statement: criterion.statement })));
 }
 
 export function buildCodingVerificationPlan<TPayload>(

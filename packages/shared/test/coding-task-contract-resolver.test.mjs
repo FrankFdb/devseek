@@ -8,10 +8,14 @@ import {
   resolveCodingKernelTaskContract,
 } from '../dist/index.js';
 
-test('one task-contract resolver keeps all five fixture semantics equal across Surfaces', () => {
+test('one task-contract resolver keeps all fixture semantics equal across Surfaces', () => {
   for (const fixture of CODING_CONFORMANCE_DEVELOPMENT_FIXTURES) {
     const projections = ['vscode', 'cli', 'headless'].map(surface => projectCodingKernelTaskContract(
-      resolveCodingKernelTaskContract({ prompt: fixture.prompt, surface }),
+      resolveCodingKernelTaskContract({
+        prompt: fixture.prompt,
+        surface,
+        ...(fixture.taskContractInput ?? {}),
+      }),
     ));
     for (const projection of projections) {
       assert.deepEqual(

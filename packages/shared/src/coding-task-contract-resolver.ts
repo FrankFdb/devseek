@@ -33,6 +33,9 @@ export interface ResolveCodingKernelTaskContractInput {
   readonly surface: CodingKernelSurface;
   readonly contextFiles?: readonly string[];
   readonly targetPaths?: readonly string[];
+  readonly targetPathsAuthoritative?: boolean;
+  readonly excludedTargetPaths?: readonly string[];
+  readonly strictTargetScope?: boolean;
   readonly modeHint?: CodingTaskMode;
   readonly verificationRequired?: boolean;
   readonly deliverableKinds?: readonly CodingDeliverableKind[];
@@ -58,17 +61,22 @@ export function resolveCodingKernelTaskContract(
   const mode = orientation.mode;
   const mutating = mode === 'change' || mode === 'release';
   const pathIntent = resolveCodingTaskPathIntent({ prompt, targetPaths: input.targetPaths });
-  const declaredTargets = [...pathIntent.mutationFileTargets];
+  const declaredTargets = input.targetPathsAuthoritative
+    ? uniquePaths(input.targetPaths ?? [])
+    : [...pathIntent.mutationFileTargets];
   const deliverableKinds = uniqueDeliverableKinds(input.deliverableKinds ?? []);
   const reportDeliverableRequested = deliverableKinds.includes('report')
     || REPORT_DELIVERABLE_RE.test(prompt);
   const mutationScope = uniquePaths([
     ...declaredTargets,
-    ...pathIntent.mutationDirectoryTargets.map(path => `${path}/**`),
+    ...(input.targetPathsAuthoritative
+      ? []
+      : pathIntent.mutationDirectoryTargets.map(path => `${path}/**`)),
   ]);
   const excludedScope = uniquePaths([
     ...pathIntent.excludedFileTargets,
     ...pathIntent.excludedDirectoryTargets.map(path => `${path}/**`),
+    ...(input.excludedTargetPaths ?? []),
   ]);
   const include = dependencyEffect && mutationScope.length === 0
     ? ['package.json', 'package-lock.json', 'src/**']
@@ -78,7 +86,9 @@ export function resolveCodingKernelTaskContract(
           ...pathIntent.mentionedPaths,
           ...(pathIntent.mentionedPaths.length === 0 ? input.contextFiles ?? [] : []),
         ]);
-  const scopedChange = mutating && SCOPED_CHANGE_RE.test(prompt);
+  const scopedChange = mutating && (
+    input.strictTargetScope === true || SCOPED_CHANGE_RE.test(prompt)
+  );
   const verificationProhibited = VERIFICATION_PROHIBITION_RE.test(prompt);
   const verificationRequired = mutating
     && !verificationProhibited

@@ -1,6 +1,6 @@
 # Codex 与 Claude Code 公开源码对标说明
 
-日期：2026-08-13
+日期：2026-08-14（基于 2026-08-13 本地快照持续复核）
 
 ## 本地留档位置
 
@@ -43,6 +43,8 @@ Codex CLI 的公开 Rust 源码能确认一件关键事实：它不是靠“关�
 | 本地权限策略 | `code/upstream-agent-sources/openai-codex/codex-rs/core/src/exec_policy.rs:726` | 未匹配策略的命令仍要由本地 policy 根据 approval、sandbox、危险命令等因素给出 `Allow`、`Prompt` 或 `Forbidden`。 |
 | sandbox 执行 | `code/upstream-agent-sources/openai-codex/codex-rs/core/src/exec.rs:295`、`:319`、`code/upstream-agent-sources/openai-codex/codex-rs/core/src/tools/runtimes/shell.rs:194` | 实际执行统一进入 sandbox transform 和 `execute_env`，不是由模型直接无约束执行。 |
 | patch 运行时 | `code/upstream-agent-sources/openai-codex/codex-rs/core/src/tools/runtimes/apply_patch.rs:44`、`:140`、`:165` | patch 请求带文件路径、变更集、approval requirement；运行时在 sandbox context 下应用 patch，并返回 committed delta。 |
+| pending input 有序队列 | `code/upstream-agent-sources/openai-codex/codex-rs/core/src/session/input_queue.rs:19-80`、`:268-367` | turn/session scoped queue 保留每次 `UserInput`、response item 和跨 agent message，`split_off(0)` 按已到达顺序取出，不把多次 steer 覆盖成一个关键词状态。 |
+| 同一 turn 持续跟进 | `code/upstream-agent-sources/openai-codex/codex-rs/core/src/session/turn.rs:393-405`、`code/upstream-agent-sources/openai-codex/codex-rs/core/src/tasks/regular.rs:74-90` | 模型/工具处理后仍检查 pending input；有新输入就继续正常主循环，不另建一个与工具上下文脱节的静态意图会话。 |
 | 证据闭环 | `code/upstream-agent-sources/openai-codex/codex-rs/core/src/turn_diff_tracker.rs:47`、`:92`、`:114` | `TurnDiffTracker` 从已提交 patch delta 维护本轮 net diff，并可输出 unified diff；这是“已修改了什么”的本地证据。 |
 | turn 结束证据输出 | `code/upstream-agent-sources/openai-codex/codex-rs/core/src/session/turn.rs:2718`、`:2733` | turn 会等待 in-flight 工具完成，必要时发出 `TurnDiff` 事件。 |
 
@@ -164,6 +166,11 @@ Claude Code 核心 agent loop 仍未在公开仓库中提供，不能逐行确�
 | 动作级权限 | `packages/shared/src/coding-tool-authority.ts` 的 `model-led` strategy 暴露动作能力，但具体 scope、risk、confirmation、safety 仍逐项裁决 | 已实施 |
 | 当前约束投影到文件动作 | `src/app/agent-file-write-policy.ts` 对 model proposal 放弃关键词写授权，仍保留 containment、显式 exclude、protected/sensitive path 和确认 | 已实施 |
 | pending input / steer | `src/agent/write-authority.ts`、`src/intent/intent-revision-lineage.ts` 保存最新修订；`agentic-loop.ts` 在采样前后 drain，纠偏到达后丢弃旧未执行工具提案并重新采样 | 已实施 |
+| 动态 TaskContract owner | `packages/shared/src/coding-task-contract-revision.ts` 保存有序、不可变、幂等的 revision receipt；`coding-kernel.ts` 向运行时暴露同一 revision session | 2.0.22 已实施 |
+| 修订后重算派生契约 | `coding-change-plan-revision.ts` 在 TaskContract hash 变化时重建 ContextGraph、Requirements、Design 和 ChangePlan，工具权限只读取最新 scope | 2.0.22 已实施 |
+| 旧动作/证据失效 | `coding-tool-authority.ts`、`coding-verification.ts`、`coding-verifier-selection.ts` 绑定 TaskContract hash；旧 action、未执行 receipt 和旧验证不能授权或结算新要求 | 2.0.22 已实施 |
+| 结构化最新 scope | `packages/vscode-extension/src/app/coding-kernel-execution.ts`、`coding-kernel-task-contract.ts` 将 steer 投影为权威 target/exclude/strict-scope，不再从纠正句历史片段中复活旧目标 | 2.0.22 已实施 |
+| 可配置的确定性语言证据 | `operational-language-lexicon.ts` 统一持有 correction/negation/reauthorization 等语言组并支持 JSON 动态追加；`intent-revision-lineage.ts` 只消费该边界 | 2.0.22 已实施 |
 | 用户仿真 | `model-led-intent-boundary.test.mjs`、`model-led-user-simulation.test.mjs` 覆盖多语言噪声、直接问答、精确简单请求、真实写入/readback 和中途改目标 | 已实施 |
 
 关键词与多语言配置仍可用于确定性证据提取、显式禁止项和兼容诊断，但不得决定主模型是否运行、是否必须调用工具或是否拥有执行权限。Claude Code 核心未公开，因此后续实现继续以本地 Codex 快照为源码主基线，Claude Code 只作为公开行为和插件层的补充证据。

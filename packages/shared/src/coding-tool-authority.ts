@@ -16,6 +16,7 @@ import {
 } from './coding-design-plan';
 import type { CodingChangePlanRevisionSessionPort } from './coding-change-plan-revision';
 import type { CodingKernelTaskContract } from './coding-task-contract';
+import type { CodingTaskContractSourcePort } from './coding-task-contract-revision';
 import {
   codingWorkspaceTargetMatchesScope,
   projectCodingWorkspaceTargets,
@@ -165,6 +166,7 @@ export interface ToolAuthorityPort {
     readonly surface: CodingConformanceSurface;
     readonly workspaceRoot: string;
     readonly taskContract: CodingKernelTaskContract;
+    readonly taskContractSource?: CodingTaskContractSourcePort;
     readonly changePlan?: CodingChangePlan;
     readonly changePlanRevision?: CodingChangePlanRevisionSessionPort;
     readonly authorityStrategy?: CodingToolAuthorityStrategy;
@@ -288,11 +290,17 @@ export class CanonicalToolAuthorityService implements ToolAuthorityPort {
       workspaceRoot,
       authorityStrategy,
     });
-    const settled = new Map<string, { canonicalRequest: string; authorization: CodingToolAuthorization }>();
+    const settled = new Map<string, {
+      canonicalRequest: string;
+      contractSha256: string;
+      authorization: CodingToolAuthorization;
+    }>();
 
     return Object.freeze({
       sandbox,
       authorize: (candidate: CodingToolAuthorityRequest) => {
+        const currentTaskContract = input.taskContractSource?.current() ?? taskContract;
+        const contractSha256 = codingSemanticDigest(currentTaskContract);
         const request = snapshotAuthorityRequest(candidate);
         const key = request.actionId;
         const canonicalRequest = canonicalCodingJson(request);
@@ -301,10 +309,24 @@ export class CanonicalToolAuthorityService implements ToolAuthorityPort {
           if (existing.canonicalRequest !== canonicalRequest) {
             throw new Error('coding-tool-authority:conflicting-action-identity');
           }
+          if (existing.contractSha256 !== contractSha256) {
+            throw new Error('coding-tool-authority:stale-task-contract-action');
+          }
           return existing.authorization;
         }
 
-        const revision = authorityStrategy === 'contract-bound'
+        const modelLedDecision = authorityStrategy === 'model-led' && input.taskContractSource
+          ? this.permission.decide({
+              taskContract: currentTaskContract,
+              request,
+              sandbox,
+              changePlan: input.changePlanRevision?.currentPlan() ?? input.changePlan,
+              workspaceRoot,
+              authorityStrategy,
+            })
+          : undefined;
+        const revision = modelLedDecision?.decision !== 'deny'
+          && (authorityStrategy === 'contract-bound' || input.taskContractSource !== undefined)
           && request.purpose === 'workspace-mutation'
           && request.effects.includes('workspace-mutation')
           && sandbox.allowedEffects.includes('workspace-mutation')
@@ -316,8 +338,8 @@ export class CanonicalToolAuthorityService implements ToolAuthorityPort {
           : undefined;
         const decision = revision?.status === 'denied'
           ? freezeDecision('deny', revision.reason, revision.evidenceRefs)
-          : this.permission.decide({
-              taskContract,
+          : modelLedDecision ?? this.permission.decide({
+              taskContract: currentTaskContract,
               request,
               sandbox,
               changePlan: input.changePlanRevision?.currentPlan() ?? input.changePlan,
@@ -325,14 +347,21 @@ export class CanonicalToolAuthorityService implements ToolAuthorityPort {
               authorityStrategy,
             });
         const authorization = settleAuthorization(runId, request, decision, sandbox);
-        settled.set(key, { canonicalRequest, authorization });
+        settled.set(key, { canonicalRequest, contractSha256, authorization });
         return authorization;
       },
       verifyReceipt: (candidate: CodingToolAuthorityReceipt, scope: CodingToolAuthorityScope) => {
         const receipt = assertCodingToolAuthorityScope(candidate, scope);
-        const issued = settled.get(receipt.actionId)?.authorization.receipt;
+        const settledAuthorization = settled.get(receipt.actionId);
+        const issued = settledAuthorization?.authorization.receipt;
         if (!issued || canonicalCodingJson(issued) !== canonicalCodingJson(receipt)) {
           throw new Error('coding-tool-authority:receipt-not-issued-by-session');
+        }
+        const currentContractSha256 = codingSemanticDigest(
+          input.taskContractSource?.current() ?? taskContract,
+        );
+        if (settledAuthorization.contractSha256 !== currentContractSha256) {
+          throw new Error('coding-tool-authority:stale-task-contract-receipt');
         }
         return issued;
       },

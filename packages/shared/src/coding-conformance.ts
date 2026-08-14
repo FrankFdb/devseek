@@ -127,6 +127,10 @@ export interface CodingConformanceFixture {
   readonly fixtureId: string;
   readonly title: string;
   readonly prompt: string;
+  readonly taskContractInput?: {
+    readonly modeHint?: CodingTaskMode;
+    readonly verificationRequired?: boolean;
+  };
   readonly requiredSurfaces: readonly CodingConformanceSurface[];
   readonly benchmark: {
     readonly competitors: readonly ['Codex', 'Claude Code'];

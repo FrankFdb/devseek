@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import Module, { createRequire } from 'node:module';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -148,4 +149,28 @@ test('ModelLedIntentBoundary: semantic route selection calls only the local cont
     stage: 'run-chat-model-led-route-selected',
     extra: { localModeHint: 'qa', workflowKind: 'model-agent', toolPolicyMode: 'model-led' },
   }]);
+});
+
+test('ModelLedIntentBoundary: ordered semantic revisions reach the canonical TaskContract owner', () => {
+  const runtimeSource = readFileSync(
+    path.join(rootDir, 'src/app/coding-kernel-execution.ts'),
+    'utf8',
+  );
+  const authoritySource = readFileSync(
+    path.join(rootDir, 'src/agent/write-authority.ts'),
+    'utf8',
+  );
+  const revisionLineageSource = readFileSync(
+    path.join(rootDir, 'src/intent/intent-revision-lineage.ts'),
+    'utf8',
+  );
+
+  assert.match(authoritySource, /onTaskSemanticContractRevision\?\.\(semanticContractRevision\)/u);
+  assert.match(runtimeSource, /kernelRequest\.taskContractRevision\.revise\(/u);
+  assert.match(runtimeSource, /targetPaths:\s*executionAllowed\s*\?\s*revision\.pendingTargets\s*:\s*\[\]/u);
+  assert.match(runtimeSource, /prohibitedTargets:\s*executionAllowed/u);
+  assert.match(runtimeSource, /signals\.includes\('scoped-target-write-boundary'\)/u);
+  assert.match(runtimeSource, /taskContract:\s*kernelRequest\.taskContractRevision\.current\(\)/u);
+  assert.match(revisionLineageSource, /hasIntentRevisionLanguageSignal\('reauthorization'/u);
+  assert.doesNotMatch(revisionLineageSource, /const\s+REAUTHORIZE_RE\s*=/u);
 });

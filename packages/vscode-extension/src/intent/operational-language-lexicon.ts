@@ -10,6 +10,7 @@ export interface OperationalLanguageLexiconConfig {
   version: 'devseek.operational-language-lexicon/v1';
   externalEffect?: Partial<Record<ExternalEffectPatternGroup, readonly OperationalPatternSpec[]>>;
   runProhibition?: Partial<Record<RunProhibitionPatternGroup, readonly OperationalPatternSpec[]>>;
+  intentRevision?: Partial<Record<IntentRevisionPatternGroup, readonly OperationalPatternSpec[]>>;
 }
 
 export type ExternalEffectPatternGroup =
@@ -31,9 +32,18 @@ export type RunProhibitionPatternGroup =
   | 'operationalExecutionTarget'
   | 'phrase';
 
+export type IntentRevisionPatternGroup =
+  | 'correction'
+  | 'scopeReduction'
+  | 'steer'
+  | 'negation'
+  | 'replacement'
+  | 'reauthorization';
+
 export interface CompiledOperationalLanguageLexicon {
   externalEffect: Record<ExternalEffectPatternGroup, RegExp[]>;
   runProhibition: Record<RunProhibitionPatternGroup, RegExp[]>;
+  intentRevision: Record<IntentRevisionPatternGroup, RegExp[]>;
 }
 
 type MutablePatternGroups<T extends string> = Record<T, OperationalPatternSpec[]>;
@@ -92,6 +102,26 @@ export const DEFAULT_OPERATIONAL_LANGUAGE_LEXICON: OperationalLanguageLexiconCon
       pattern('run-prohibition-phrase', String.raw`(?:不要|不用|无需|无须|不需要|不必|不得|不准|不能|禁止|别|勿|请勿)[^，,。；;\n]{0,24}(?:运行|执行|启动|测试)[^，,。；;\n]*|(?:^|[，,。；;\n])\s*(?:不|未)(?:运行|执行|启动|测试)(?:\s|$|[^，,。；;\n]{0,12}(?:网络|命令|脚本|终端|编译|构建|测试|程序|项目|依赖))[^，,。；;\n]*|(?:do\s+not|don't|must\s+not|should\s+not|may\s+not|never|without)[^,.;\n]{0,32}\b(?:run|running|execute|executing|start|starting|test|testing)\b[^,.;\n]*|\bno\s+tests?\b`, GLOBAL_FLAGS)
     ]),
   }),
+  intentRevision: Object.freeze({
+    correction: Object.freeze([
+      pattern('intent-revision-correction', String.raw`(?:更正|纠正|改为|改成|改口|现在(?:改|只)|最终(?:要求|轮)|instead|rather\s+than|change\s+(?:it\s+)?to)`),
+    ]),
+    scopeReduction: Object.freeze([
+      pattern('intent-revision-scope-reduction', String.raw`(?:缩小范围|收缩范围|只(?:改|修改|处理|修复|创建|生成|写)|仅(?:改|修改|处理|修复|创建|生成|写)|only\s+(?:change|modify|fix|touch|write|create))`),
+    ]),
+    steer: Object.freeze([
+      pattern('intent-revision-steer', String.raw`(?:继续|接着|下一步|后续|按这个方向|steer|continue|resume|follow\s+up)`),
+    ]),
+    negation: Object.freeze([
+      pattern('intent-revision-negation', String.raw`(?:不要|不得|禁止|别|不允许|不要碰|不要触碰|无需|无须|不再|no\s+longer|do\s+not|don't|must\s+not|never|without)`),
+    ]),
+    replacement: Object.freeze([
+      pattern('intent-revision-replacement', String.raw`(?:改为|改成|change\s+(?:it\s+)?to)`),
+    ]),
+    reauthorization: Object.freeze([
+      pattern('intent-revision-reauthorization', String.raw`(?:(?:现在|如今|这次)?(?:可以|允许|准许)(?:再)?(?:修改|改动|创建|写入|触碰)|(?:may|can)\s+(?:now\s+)?(?:modify|change|create|write|touch)|allow(?:ed)?\s+(?:us\s+|me\s+)?to\s+(?:modify|change|create|write|touch))`),
+    ]),
+  }),
 });
 
 export function compileOperationalLanguageLexicon(
@@ -101,6 +131,7 @@ export function compileOperationalLanguageLexicon(
   return {
     externalEffect: compilePatternGroups(merged.externalEffect, EXTERNAL_EFFECT_GROUPS),
     runProhibition: compilePatternGroups(merged.runProhibition, RUN_PROHIBITION_GROUPS),
+    intentRevision: compilePatternGroups(merged.intentRevision, INTENT_REVISION_GROUPS),
   };
 }
 
@@ -112,18 +143,23 @@ export function loadOperationalLanguageLexiconConfigFromFile(filePath: string): 
 function mergeOperationalLanguageLexicon(
   base: OperationalLanguageLexiconConfig,
   extensionConfig: OperationalLanguageLexiconConfig | undefined,
-): Required<Pick<OperationalLanguageLexiconConfig, 'externalEffect' | 'runProhibition'>> {
+): Required<Pick<
+  OperationalLanguageLexiconConfig,
+  'externalEffect' | 'runProhibition' | 'intentRevision'
+>> {
   validateOperationalLanguageLexiconConfig(base);
   if (!extensionConfig) {
     return {
       externalEffect: clonePatternGroups(base.externalEffect, EXTERNAL_EFFECT_GROUPS),
       runProhibition: clonePatternGroups(base.runProhibition, RUN_PROHIBITION_GROUPS),
+      intentRevision: clonePatternGroups(base.intentRevision, INTENT_REVISION_GROUPS),
     };
   }
   validateOperationalLanguageLexiconConfig(extensionConfig);
   return {
     externalEffect: mergePatternGroups(base.externalEffect, extensionConfig.externalEffect, EXTERNAL_EFFECT_GROUPS),
     runProhibition: mergePatternGroups(base.runProhibition, extensionConfig.runProhibition, RUN_PROHIBITION_GROUPS),
+    intentRevision: mergePatternGroups(base.intentRevision, extensionConfig.intentRevision, INTENT_REVISION_GROUPS),
   };
 }
 
@@ -137,6 +173,7 @@ function validateOperationalLanguageLexiconConfig(value: unknown): OperationalLa
   }
   validatePatternGroups(config.externalEffect, new Set(EXTERNAL_EFFECT_GROUPS), 'externalEffect');
   validatePatternGroups(config.runProhibition, new Set(RUN_PROHIBITION_GROUPS), 'runProhibition');
+  validatePatternGroups(config.intentRevision, new Set(INTENT_REVISION_GROUPS), 'intentRevision');
   return config;
 }
 
@@ -229,4 +266,13 @@ const RUN_PROHIBITION_GROUPS: readonly RunProhibitionPatternGroup[] = Object.fre
   'domainExecutionSubject',
   'operationalExecutionTarget',
   'phrase',
+]);
+
+const INTENT_REVISION_GROUPS: readonly IntentRevisionPatternGroup[] = Object.freeze([
+  'correction',
+  'scopeReduction',
+  'steer',
+  'negation',
+  'replacement',
+  'reauthorization',
 ]);

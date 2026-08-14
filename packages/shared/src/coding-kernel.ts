@@ -15,6 +15,11 @@ import {
   type CodingKernelTaskContract,
 } from './coding-task-contract';
 import {
+  CanonicalTaskContractRevisionService,
+  type CodingTaskContractRevisionReceipt,
+  type CodingTaskContractRevisionSessionPort,
+} from './coding-task-contract-revision';
+import {
   CanonicalContextGraphService,
   type CodingContextGraph,
   type CodingContextSeed,
@@ -88,6 +93,7 @@ import {
 } from './coding-workspace-mutation';
 import {
   CanonicalVerificationService,
+  projectCodingVerificationAcceptance,
   type CodingVerificationCriterion,
   type CodingVerificationReceipt,
   type CodingVerificationSessionPort,
@@ -222,6 +228,7 @@ export interface CodingKernelExecutionRequest<TRuntimeContext> {
 
 export interface CodingKernelRuntimeRequest<TRuntimeContext>
   extends CodingKernelExecutionRequest<TRuntimeContext> {
+  readonly taskContractRevision: CodingTaskContractRevisionSessionPort;
   readonly contextGraph: CodingContextGraph;
   readonly requirementDecision: CodingRequirementDecision;
   readonly designDecision: CodingDesignDecision;
@@ -278,6 +285,7 @@ export interface CodingKernelExecutionOutput<TResult> {
   readonly settlement: CodingSettlementDecision;
   readonly orientation: CodingOrientationDecision;
   readonly taskContract: CodingKernelTaskContract;
+  readonly taskContractRevisions: readonly CodingTaskContractRevisionReceipt[];
   readonly contextGraph: CodingContextGraph;
   readonly requirementDecision: CodingRequirementDecision;
   readonly designDecision: CodingDesignDecision;
@@ -422,6 +430,7 @@ export class CodingKernelExecutionError extends Error {
 const RUN_LIFECYCLE = new CanonicalRunLifecycleService();
 const SETTLEMENT = new CanonicalSettlementDecisionService();
 const TASK_CONTRACT = new CanonicalTaskContractService();
+const TASK_CONTRACT_REVISION = new CanonicalTaskContractRevisionService();
 const CONTEXT_GRAPH = new CanonicalContextGraphService();
 const MEMORY_POLICY = new CanonicalMemoryPolicyService();
 const CHECKPOINT = new CanonicalCheckpointService();
@@ -476,6 +485,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       ...(request.steeringSource ? { steeringSource: request.steeringSource } : {}),
     });
     const taskContract = TASK_CONTRACT.snapshot(request.taskContract);
+    const taskContractRevision = TASK_CONTRACT_REVISION.bind({ taskContract });
     const environmentRuntime = KERNEL_ENVIRONMENT.prepare({
       runId: request.runId,
       mode: taskContract.mode,
@@ -507,6 +517,8 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       requirements: requirementDecision,
       design: designDecision,
       plan: changePlan,
+      contextSeed: request.contextSeed,
+      taskContractSource: taskContractRevision,
     });
     const memoryPolicy = MEMORY_POLICY.selectContext({
       candidates: request.memoryCandidates ?? [],
@@ -544,6 +556,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       surface: request.surface,
       workspaceRoot: request.workspaceRoot,
       taskContract,
+      taskContractSource: taskContractRevision,
       changePlanRevision,
       ...(request.toolAuthorityStrategy
         ? { authorityStrategy: request.toolAuthorityStrategy }
@@ -559,17 +572,17 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       environmentRuntime.dirtyWorktree,
       runControl,
     );
-    const verificationAcceptance = Object.freeze(taskContract.acceptance
-      .filter(criterion => criterion.oracle.kind === 'verification')
-      .map(criterion => Object.freeze({ id: criterion.id, statement: criterion.statement })));
+    const verificationAcceptance = projectCodingVerificationAcceptance(taskContract);
     const verification = VERIFICATION.bind({
       runId: request.runId,
       acceptance: verificationAcceptance,
+      taskContractSource: taskContractRevision,
     });
     const verifierSelection = VERIFIER_SELECTION.bind({
       runId: request.runId,
       workspaceRoot: request.workspaceRoot,
       taskContract,
+      taskContractSource: taskContractRevision,
       orientation: contextGraph.orientation,
     });
     const buildOrchestration = BUILD_ORCHESTRATION.bind({ runId: request.runId });
@@ -650,6 +663,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
     const runtimeRequest = Object.freeze({
       ...request,
       taskContract,
+      taskContractRevision,
       contextGraph,
       requirementDecision,
       designDecision,
@@ -686,7 +700,9 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       releaseGate,
       ciDeployObserve,
       rollback,
-      verificationAcceptance,
+      get verificationAcceptance() {
+        return projectCodingVerificationAcceptance(taskContractRevision.current());
+      },
       verification,
       ...(resume ? { resume } : {}),
       ...(resumeIdempotency ? { resumeIdempotency } : {}),
@@ -698,6 +714,12 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         throw new Error('coding-kernel-execution:missing-runtime-output');
       }
       const completionEvidence = assertRuntimeCompletionEvidence(runtimeOutput.completionEvidence);
+      if (taskContractRevision.revisions().length > 0) {
+        changePlanRevision.reconcile({ actionId: 'kernel-task-contract-settlement' });
+      }
+      const settledTaskContract = taskContractRevision.current();
+      const settledContextGraph = changePlanRevision.currentContextGraph();
+      const settledRequirementDecision = changePlanRevision.currentRequirements();
       const settledDesignDecision = changePlanRevision.currentDesign();
       const settledChangePlan = changePlanRevision.currentPlan();
       const finalDecisionSequence = nextKernelDecisionSequence(
@@ -721,7 +743,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         verifications: verification.receipts(),
         evidenceRefs: codeChange.evidenceRefs,
       });
-      const releaseRequested = taskContract.mode === 'release'
+      const releaseRequested = settledTaskContract.mode === 'release'
         || completionEvidence.delivery?.release?.requested === true;
       const independentReviewRequired = releaseRequested
         || completionEvidence.independentReviewRequired === true;
@@ -845,7 +867,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         rollback: rollbackDecision,
       });
       const structuralAcceptanceEvidence = STRUCTURAL_ACCEPTANCE.project({
-        taskContract,
+        taskContract: settledTaskContract,
         mutations: workspaceMutations.receipts(),
       });
       const cancellationRequested = runControl.cancellationRequested();
@@ -853,8 +875,8 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         runId: request.runId,
         decisionId: 'kernel-completion',
         idempotencyKey: `${request.runId}:kernel-completion`,
-        acceptance: taskContract.acceptance,
-        verificationRequired: codingTaskContractRequiresVerification(taskContract),
+        acceptance: settledTaskContract.acceptance,
+        verificationRequired: codingTaskContractRequiresVerification(settledTaskContract),
         reviewRequired: completionReviewRequired,
         ...(cancellationRequested ? { requestedTerminalStatus: 'cancelled' as const } : {}),
         toolExecutions: toolExecution.receipts(),
@@ -894,6 +916,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
           ...gate.evidenceRefs,
           ...deployment.evidenceRefs,
           ...rollbackDecision.evidenceRefs,
+          ...taskContractRevision.revisions().flatMap(revision => revision.evidenceRefs),
         ],
       });
       lifecycle.settle(completion.status);
@@ -911,10 +934,11 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         status: settlement.status,
         lifecycle: lifecycleSnapshot,
         settlement,
-        orientation: taskContract.orientation,
-        taskContract,
-        contextGraph,
-        requirementDecision,
+        orientation: settledTaskContract.orientation,
+        taskContract: settledTaskContract,
+        taskContractRevisions: taskContractRevision.revisions(),
+        contextGraph: settledContextGraph,
+        requirementDecision: settledRequirementDecision,
         designDecision: settledDesignDecision,
         changePlan: settledChangePlan,
         designDecisionHistory: changePlanRevision.designHistory(),

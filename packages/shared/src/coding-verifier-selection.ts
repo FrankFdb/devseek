@@ -4,12 +4,14 @@ import {
   snapshotCodingValue,
   uniqueCodingRefs,
 } from './coding-contract-utils';
+import { codingSemanticDigest } from './coding-semantic-digest';
 import type { EngineeringOrientationDecision } from './coding-engineering-orientation';
 import {
   snapshotCodingKernelTaskContract,
   type CodingKernelTaskContract,
   type CodingTaskAcceptanceCriterion,
 } from './coding-task-contract';
+import type { CodingTaskContractSourcePort } from './coding-task-contract-revision';
 
 export const CODING_VERIFIER_SELECTION_VERSION = 'devseek.coding-verifier-selection/v1' as const;
 
@@ -117,6 +119,7 @@ export interface VerifierSelectionServicePort {
     readonly runId: string;
     readonly workspaceRoot: string;
     readonly taskContract: CodingKernelTaskContract;
+    readonly taskContractSource?: CodingTaskContractSourcePort;
     readonly orientation: EngineeringOrientationDecision;
   }): VerifierSelectionPort;
 }
@@ -125,6 +128,7 @@ interface BoundVerifierSelectionContext {
   readonly runId: string;
   readonly workspaceRoot: string;
   readonly taskContract: CodingKernelTaskContract;
+  readonly taskContractSource?: CodingTaskContractSourcePort;
   readonly orientation: EngineeringOrientationDecision;
 }
 
@@ -134,12 +138,14 @@ export class CanonicalVerifierSelectionService implements VerifierSelectionServi
     readonly runId: string;
     readonly workspaceRoot: string;
     readonly taskContract: CodingKernelTaskContract;
+    readonly taskContractSource?: CodingTaskContractSourcePort;
     readonly orientation: EngineeringOrientationDecision;
   }): VerifierSelectionPort {
     return new CanonicalVerifierSelectionSession({
       runId: normalizedCodingId(input.runId, 'verifier-selection-run-id'),
       workspaceRoot: normalizeSelectionPath(input.workspaceRoot, 'workspace-root'),
       taskContract: snapshotCodingKernelTaskContract(input.taskContract),
+      ...(input.taskContractSource ? { taskContractSource: input.taskContractSource } : {}),
       orientation: snapshotCodingValue(
         input.orientation,
         'verifier-selection-orientation',
@@ -158,7 +164,11 @@ class CanonicalVerifierSelectionSession implements VerifierSelectionPort {
 
   select(input: SelectCodingVerifierInput): CodingVerifierSelectionDecision {
     const snapshot = snapshotSelectionInput(input, this.context.workspaceRoot);
-    const canonicalInput = canonicalCodingJson(snapshot);
+    const taskContract = this.context.taskContractSource?.current() ?? this.context.taskContract;
+    const canonicalInput = canonicalCodingJson({
+      input: snapshot,
+      taskContractSha256: codingSemanticDigest(taskContract),
+    });
     const existing = this.settled.get(snapshot.actionId);
     if (existing) {
       if (existing.canonicalInput !== canonicalInput) {
@@ -167,7 +177,7 @@ class CanonicalVerifierSelectionSession implements VerifierSelectionPort {
       return existing.decision;
     }
 
-    const decision = selectVerifierPlan(this.context, snapshot);
+    const decision = selectVerifierPlan(this.context, taskContract, snapshot);
     this.settled.set(snapshot.actionId, { canonicalInput, decision });
     return decision;
   }
@@ -179,9 +189,10 @@ class CanonicalVerifierSelectionSession implements VerifierSelectionPort {
 
 function selectVerifierPlan(
   context: BoundVerifierSelectionContext,
+  taskContract: CodingKernelTaskContract,
   input: SelectCodingVerifierInput,
 ): CodingVerifierSelectionDecision {
-  const criteria = context.taskContract.acceptance.filter(criterion => criterion.oracle.kind === 'verification');
+  const criteria = taskContract.acceptance.filter(criterion => criterion.oracle.kind === 'verification');
   const selections = criteria.map(criterion => selectCandidate(criterion, input.scopePaths, input.candidates));
   const unavailable = selections.filter(selection => !selection.candidate);
   const acceptance: CodingVerifierAcceptanceSelection[] = selections.map(({ criterion, candidate }) => Object.freeze({
