@@ -398,6 +398,29 @@ test('TaskSemanticContract v3: plan-only repair wording cannot request source mu
   assert.ok(!contract.completion.doneIff.some(item => item.kind === 'code-written'));
 });
 
+test('TaskSemanticContract v3: proposal-only patch and diff requests stay read-only', () => {
+  for (const prompt of [
+    'Please propose a patch for src/login.ts, but do not modify files.',
+    '请给出 src/login.ts 的修改 diff，但不要实际改文件。',
+    'Draft the changes needed in src/api.ts only; do not apply them yet.',
+    '只给我一个 unified diff，先不要修改 workspace。',
+    'Show me what you would change in src/cache.ts. Do not write anything.',
+  ]) {
+    const contract = buildTaskSemanticContract(prompt);
+
+    assert.equal(contract.kind, 'read-only', prompt);
+    assert.equal(contract.mutation.requested, false, prompt);
+    assert.equal(contract.mutation.prohibited, true, prompt);
+    assert.equal(contract.mutation.sourceChange, false, prompt);
+    assert.equal(contract.mutation.fileArtifact, false, prompt);
+    assert.deepEqual(contract.mutation.targets, [], prompt);
+    assert.equal(contract.validation.runRequested, false, prompt);
+    assert.equal(contract.validation.testRequested, false, prompt);
+    assert.equal(contract.validation.compileRequested, false, prompt);
+    assert.ok(!contract.completion.doneIff.some(item => item.kind === 'code-written'), prompt);
+  }
+});
+
 test('TaskSemanticContract v3: source-scoped no-change still permits a docs artifact', () => {
   const contract = buildTaskSemanticContract(
     'Create a CHANGELOG entry in docs/changelog.md summarizing this release, but do not modify source.',

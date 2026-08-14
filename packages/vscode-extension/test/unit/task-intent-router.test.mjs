@@ -690,6 +690,57 @@ test('TaskIntentRouter: accepted semantic read-only proposal narrows fix wording
   assert.ok(route.signals.includes('semantic-proposal:narrowed-no-mutation'));
 });
 
+test('TaskIntentRouter: proposal-only patch and diff requests cannot enter code-change routing', () => {
+  for (const prompt of [
+    'Please propose a patch for src/login.ts, but do not modify files.',
+    '请给出 src/login.ts 的修改 diff，但不要实际改文件。',
+    'Draft the changes needed in src/api.ts only; do not apply them yet.',
+    '只给我一个 unified diff，先不要修改 workspace。',
+    'Show me what you would change in src/cache.ts. Do not write anything.',
+  ]) {
+    const route = routeTaskIntent(prompt);
+
+    assert.equal(route.family, 'read-only-advisory', prompt);
+    assert.equal(route.chatKind, 'chat', prompt);
+    assert.equal(route.agentTaskShape, 'read-only-analysis', prompt);
+    assert.equal(route.semanticContract.kind, 'read-only', prompt);
+    assert.equal(route.mutation.requested, false, prompt);
+    assert.equal(route.mutation.prohibited, true, prompt);
+    assert.equal(route.mutation.sourceChange, false, prompt);
+    assert.equal(route.validation.commandEvidenceRequired, false, prompt);
+    assert.equal(route.allowedToolKinds.includes('edit'), false, prompt);
+    assert.equal(route.allowedToolKinds.includes('terminal'), false, prompt);
+    assert.equal(route.blockers.includes('explicit-no-change'), true, prompt);
+    assert.ok(route.signals.includes('read-only-route'), prompt);
+  }
+});
+
+test('TaskIntentRouter: local proposal-only boundary constrains semantic edit proposal', () => {
+  const route = routeTaskIntent('Draft the changes needed in src/api.ts only; do not apply them yet.', {
+    semanticIntent: semanticIntent({
+      mode: 'edit',
+      taskKind: 'existing-project-edit',
+      mutation: 'modify-source',
+      targetPaths: ['src/api.ts'],
+      requiresWorkspace: true,
+      requiresTerminal: true,
+      reason: 'model over-read draft wording as executable source work',
+    }),
+  });
+
+  assert.equal(route.family, 'read-only-advisory');
+  assert.equal(route.chatKind, 'chat');
+  assert.notEqual(route.mode, 'edit');
+  assert.equal(route.mutation.requested, false);
+  assert.equal(route.mutation.prohibited, true);
+  assert.equal(route.semanticContract.mutation.sourceChange, false);
+  assert.equal(route.validation.commandEvidenceRequired, false);
+  assert.equal(route.allowedToolKinds.includes('edit'), false);
+  assert.equal(route.allowedToolKinds.includes('terminal'), false);
+  assert.equal(route.blockers.includes('explicit-no-change'), true);
+  assert.ok(route.signals.includes('semantic-intent-constrained'));
+});
+
 test('TaskIntentRouter: workspace-bound semantic answer proposal uses read-only route', () => {
   const route = routeTaskIntent('Can you answer from the repo?', {
     semanticIntent: semanticIntent({

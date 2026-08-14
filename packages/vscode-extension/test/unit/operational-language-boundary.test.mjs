@@ -63,11 +63,13 @@ test('OperationalLanguageBoundary: domain execution rules are not host run prohi
 
 test('OperationalLanguageBoundary: explicit host validation prohibitions remain effective', () => {
   assert.equal(hasOperationalRunProhibition('不要运行或测试。'), true);
+  assert.equal(hasOperationalRunProhibition('不运行网络，不安装依赖。'), true);
   assert.equal(hasOperationalRunProhibition('Do not run the test.sh script.'), true);
   assert.equal(hasOperationalRunProhibition('Verify src/login.ts without running commands.'), true);
   const stripped = stripOperationalRunProhibitionPhrases('Verify src/login.ts without running commands.');
   assert.match(stripped, /Verify src\/login\.ts/);
   assert.doesNotMatch(stripped, /running commands/);
+  assert.doesNotMatch(stripOperationalRunProhibitionPhrases('不运行网络，不安装依赖。'), /不运行网络/);
 });
 
 test('OperationalLanguageBoundary: lexicon config can add multilingual external-effect evidence dynamically', () => {

@@ -80,7 +80,7 @@ export const DEFAULT_OPERATIONAL_LANGUAGE_LEXICON: OperationalLanguageLexiconCon
       pattern('run-prohibition-weak', String.raw`(?:不|未)(?:运行|执行|启动|测试)|\bnot\s+(?:run|executed?|started?|tested?)\b`)
     ]),
     directWeak: Object.freeze([
-      pattern('run-prohibition-direct-weak', String.raw`^(?:但|并且|同时|然后)?\s*(?:不|未)(?:运行|执行|启动|测试)(?:\s|$)`)
+      pattern('run-prohibition-direct-weak', String.raw`^(?:但|并且|同时|然后)?\s*(?:不|未)(?:运行|执行|启动|测试)(?:\s|$|[^，,。；;\n]{0,12}(?:网络|命令|脚本|终端|编译|构建|测试|程序|项目|依赖))`)
     ]),
     domainExecutionSubject: Object.freeze([
       pattern('run-prohibition-domain-subject', String.raw`(?:事件|订阅|处理器|回调|消息|发布|\b(?:event|subscription|subscriber|handler|callback|message|publish)\b)`)
@@ -89,7 +89,7 @@ export const DEFAULT_OPERATIONAL_LANGUAGE_LEXICON: OperationalLanguageLexiconCon
       pattern('run-prohibition-operational-target', String.raw`(?:命令|脚本|终端|编译|构建|测试套件|程序|项目|test\.sh|ctest|pytest|npm\s+test|pnpm\s+test|yarn\s+test|\b(?:command|script|terminal|compile|build|test\s+suite|program|project)\b)`)
     ]),
     phrase: Object.freeze([
-      pattern('run-prohibition-phrase', String.raw`(?:不要|不用|无需|无须|不需要|不必|不得|不准|不能|禁止|别|勿|请勿)[^，,。；;\n]{0,24}(?:运行|执行|启动|测试)[^，,。；;\n]*|(?:do\s+not|don't|must\s+not|should\s+not|may\s+not|never|without)[^,.;\n]{0,32}\b(?:run|running|execute|executing|start|starting|test|testing)\b[^,.;\n]*|\bno\s+tests?\b`, GLOBAL_FLAGS)
+      pattern('run-prohibition-phrase', String.raw`(?:不要|不用|无需|无须|不需要|不必|不得|不准|不能|禁止|别|勿|请勿)[^，,。；;\n]{0,24}(?:运行|执行|启动|测试)[^，,。；;\n]*|(?:^|[，,。；;\n])\s*(?:不|未)(?:运行|执行|启动|测试)(?:\s|$|[^，,。；;\n]{0,12}(?:网络|命令|脚本|终端|编译|构建|测试|程序|项目|依赖))[^，,。；;\n]*|(?:do\s+not|don't|must\s+not|should\s+not|may\s+not|never|without)[^,.;\n]{0,32}\b(?:run|running|execute|executing|start|starting|test|testing)\b[^,.;\n]*|\bno\s+tests?\b`, GLOBAL_FLAGS)
     ]),
   }),
 });

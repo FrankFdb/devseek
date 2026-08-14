@@ -34,6 +34,7 @@ const TARGETED_TEST_CASE_COVERAGE = Object.freeze({
     'semantic-source-proposal-route-consistency',
     'semantic-no-run-validation-boundary-consistency',
     'semantic-operation-prohibition-arbitration',
+    'proposal-only-patch-readonly-boundary',
     'semantic-readonly-proposal-route-consistency',
     'semantic-workspace-answer-route-consistency',
     'semantic-code-review-proposal-route-consistency',
@@ -165,6 +166,12 @@ const CASE_DESIGN_DIMENSIONS = Object.freeze([
     user_need: 'Users cancel a prior coding task and expect the newest read-only instruction to revoke inherited edits.',
     suites: ['cancellation-replacement-product'],
     cases: ['cancel-plan-source-change', 'cancel-review-instead'],
+  },
+  {
+    id: 'proposal_only_patch_boundary',
+    user_need: 'Users ask for a patch, diff, or draft while explicitly withholding permission to apply workspace changes.',
+    suites: ['targeted-local-contracts'],
+    cases: ['proposal-only-patch-readonly-boundary'],
   },
   {
     id: 'semantic_proposal_arbitration',

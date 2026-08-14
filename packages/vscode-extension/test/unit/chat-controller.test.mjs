@@ -618,6 +618,43 @@ test('ChatRouteController: explicit no-change boundary cannot be escalated by se
   assert.equal(decision.intent.semanticContract.mutation.sourceChange, false);
 });
 
+test('ChatRouteController: proposal-only patch requests stay read-only despite semantic edit intent', () => {
+  const controller = new ChatRouteController();
+  const prompt = 'Draft the changes needed in src/api.ts only; do not apply them yet.';
+  const decision = controller.decide({
+    userDisplay: prompt,
+    prompt,
+    files: ['/workspace/src/api.ts'],
+    agentEnabled: true,
+    semanticIntent: {
+      version: 'devseek.semantic-intent/v1',
+      source: 'test',
+      mode: 'edit',
+      taskKind: 'existing-project-edit',
+      confidence: 0.96,
+      mutation: 'modify-source',
+      targetPaths: ['/workspace/src/api.ts'],
+      requiresWorkspace: true,
+      requiresTerminal: true,
+      requiresExternalEffect: false,
+      requiresClarification: false,
+      reason: '模型误把草案请求当成可应用源码修改',
+    },
+  });
+
+  assert.notEqual(decision.intent.mode, 'edit');
+  assert.equal(decision.workflow.kind, 'inspect-agent');
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('terminal'), false);
+  assert.equal(decision.intent.blockers.includes('explicit-no-change'), true);
+  assert.ok(decision.intent.signals.includes('semantic-intent-constrained'));
+  assert.equal(decision.intent.semanticContract.mutation.requested, false);
+  assert.equal(decision.intent.semanticContract.mutation.prohibited, true);
+  assert.equal(decision.intent.semanticContract.mutation.sourceChange, false);
+  assert.equal(decision.intent.semanticContract.validation.runRequested, false);
+  assert.equal(decision.intent.semanticContract.validation.testRequested, false);
+});
+
 test('ChatRouteController: explicit source edit cannot be erased by semantic read-only intent', () => {
   const controller = new ChatRouteController();
   const prompt = '请修改 src/main.ts，把标题改成英文';

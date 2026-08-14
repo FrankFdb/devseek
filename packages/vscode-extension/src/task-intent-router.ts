@@ -93,8 +93,13 @@ export function routeTaskSemanticContract(semanticContract: TaskSemanticContract
     : parseSimpleFileWriteRequest(prompt);
   const family = resolveTaskIntentFamily(classification, semanticContract, simpleFile);
   const safetyRefusal = family === 'safety-refusal';
+  const readOnlyChatFamily = isReadOnlyChatFamily(family);
+  const constrainedNoMutationFamily = readOnlyChatFamily || safetyRefusal;
   const agentTaskShape = resolveAgentTaskShape(family, semanticContract);
-  const chatKind = isCodeChangeRoute(family, classification.mode) ? 'code-change' : 'chat';
+  const chatKind = !readOnlyChatFamily && isCodeChangeRoute(family, classification.mode) ? 'code-change' : 'chat';
+  const allowedToolKinds = constrainedNoMutationFamily
+    ? constrainReadOnlyToolKinds(classification.allowedToolKinds)
+    : classification.allowedToolKinds;
   const effectiveMutation: TaskIntentRoute['mutation'] = safetyRefusal
     ? {
       requested: false,
@@ -151,7 +156,7 @@ export function routeTaskSemanticContract(semanticContract: TaskSemanticContract
     ]),
     reason: `${family}:${classification.reason}`,
     requiresConfirmation: classification.requiresConfirmation,
-    allowedToolKinds: [...classification.allowedToolKinds],
+    allowedToolKinds: [...allowedToolKinds],
   };
 }
 
@@ -238,6 +243,19 @@ function isCodeChangeRoute(family: TaskIntentFamily, mode: ExecutionMode): boole
     || family === 'terminal-validation'
     || family === 'destructive'
     || family === 'general-edit';
+}
+
+function isReadOnlyChatFamily(family: TaskIntentFamily): boolean {
+  return family === 'read-only-advisory'
+    || family === 'review';
+}
+
+function constrainReadOnlyToolKinds(toolKinds: readonly ToolKind[]): ToolKind[] {
+  return toolKinds.filter(kind => kind !== 'edit'
+    && kind !== 'terminal'
+    && kind !== 'vscode'
+    && kind !== 'vscode-command'
+    && kind !== 'mcp');
 }
 
 function buildRouteMetaSignals(semanticContract: TaskSemanticContract): string[] {
