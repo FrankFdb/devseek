@@ -8,6 +8,7 @@ import {
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import type { TaskSemanticProjectInstructionInput } from './task-semantic-contract-service';
 import { hasIntentRevisionLanguageSignal } from './operational-language-boundary';
+import { routeTaskSemanticContract } from '../task-intent-router';
 
 export type IntentRevisionChangeKind =
   | 'initial'
@@ -236,6 +237,79 @@ export function buildIntentRevisionLineage(input: IntentRevisionLineageInput): I
     semanticContractRevision,
     blockers: [...new Set(blockers)],
     evidence,
+    allowedToExecute,
+  };
+}
+
+/**
+ * Rebinds the active user revision to a model-authored semantic proposal. This
+ * does not create a user revision: it preserves the user lineage while making
+ * the arbitrated model interpretation visible to execution and later steers.
+ */
+export function rebindIntentRevisionLineageSemanticContract(
+  previous: IntentRevisionLineage,
+  semanticContract: TaskSemanticContract,
+  proposalSequence: number,
+): IntentRevisionLineage {
+  const priorRevision = previous.effectiveRevision;
+  const orientation = buildOrientationDecision({
+    prompt: priorRevision.prompt,
+    route: routeTaskSemanticContract(semanticContract),
+  });
+  const permissionWidening = isPermissionWidening(
+    priorRevision.permission.risk,
+    orientation.risk,
+    orientation,
+  );
+  const blockers = [...new Set([
+    ...orientation.blockers,
+    ...(permissionWidening && orientation.requiresConfirmation
+      ? ['lineage-permission-widening-requires-confirmation']
+      : []),
+  ])];
+  const revision: IntentRevision = {
+    ...priorRevision,
+    status: resolveRevisionStatus(orientation, blockers),
+    orientation,
+    scope: {
+      targets: uniquePaths([
+        ...semanticContract.mutation.targets,
+        ...semanticContract.taskContract.deliverableTargets,
+      ]).filter(target => !previous.semanticContractRevision.prohibitedTargets.some(
+        prohibited => normalizePathToken(prohibited) === normalizePathToken(target)
+      )),
+      prohibitedTargets: [...previous.semanticContractRevision.prohibitedTargets],
+    },
+    permission: {
+      risk: orientation.risk,
+      widening: permissionWidening,
+      requiresConfirmation: orientation.requiresConfirmation,
+    },
+    blockers,
+  };
+  const allowedToExecute = revision.status === 'active';
+  const semanticContractRevision = buildIntentSemanticContractRevision({
+    revision,
+    semanticContract,
+    committedEffects: previous.committedEffects,
+    preservedCommittedEffectIds: previous.preservedCommittedEffectIds,
+    rewrittenCommittedEffectIds: previous.rewrittenCommittedEffectIds,
+    blockers,
+    allowedToExecute,
+  });
+  const proposalRevisionId = `${priorRevision.id}:model-${proposalSequence}`;
+  const reboundSemanticRevision: IntentSemanticContractRevision = {
+    ...semanticContractRevision,
+    revisionId: proposalRevisionId,
+    parentRevisionId: previous.semanticContractRevision.revisionId,
+  };
+  const revisions = previous.revisions.map(item => item.id === priorRevision.id ? revision : item);
+  return {
+    ...previous,
+    revisions,
+    effectiveRevision: revision,
+    semanticContractRevision: reboundSemanticRevision,
+    blockers,
     allowedToExecute,
   };
 }

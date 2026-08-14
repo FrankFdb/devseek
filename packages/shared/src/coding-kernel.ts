@@ -741,6 +741,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         toolExecutions: toolExecution.receipts(),
         mutations: workspaceMutations.receipts(),
         verifications: verification.receipts(),
+        verificationRequired: codingTaskContractRequiresVerification(settledTaskContract),
         evidenceRefs: codeChange.evidenceRefs,
       });
       const releaseRequested = settledTaskContract.mode === 'release'

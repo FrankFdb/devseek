@@ -50,6 +50,23 @@ test('controlled VSIX harness exposes a machine-readable suite case catalog', as
       'cancel-review-instead',
     ],
   );
+  assert.deepEqual(
+    catalog.suites['independent-user-diversity-product'].map(entry => entry.id),
+    [
+      'diverse-novice-typo-create',
+      'diverse-asr-readonly-review',
+      'diverse-mixed-language-plan',
+      'diverse-contradictory-clarify',
+      'diverse-typo-existing-fix',
+      'diverse-no-run-artifact',
+      'diverse-verify-only',
+      'diverse-symptom-repair',
+      'diverse-effect-denied',
+      'diverse-unsafe-colloquial',
+    ],
+  );
+  assert.equal(catalog.suites['independent-user-diversity-product'][0].user_profile, 'novice');
+  assert.equal(catalog.suites['independent-user-diversity-product'][6].intent_class, 'terminal-validation-only');
   assert.ok(catalog.suites['coding-conformance-product'].some(entry =>
     entry.id === 'conformance-verify-repair-reverify'
   ));
@@ -150,7 +167,24 @@ test('top-agent user simulation runner plans targeted checks before broad contro
   assert.ok(report.case_design_review.selected_cases.includes('model-led-inflight-latest-target'));
   assert.equal(report.plan.steps[0].id, 'targeted-local-contracts');
   assert.equal(report.plan.steps[0].kind, 'targeted-local-contract');
+  for (const requiredTest of [
+    'packages/shared/test/coding-task-contract-resolver.test.mjs',
+    'packages/shared/test/coding-task-contract-revision.test.mjs',
+    'packages/shared/test/coding-code-change.test.mjs',
+    'packages/vscode-extension/test/unit/coding-kernel-task-contract.test.mjs',
+    'packages/vscode-extension/test/unit/coding-kernel-execution.test.mjs',
+    'packages/vscode-extension/test/unit/coding-completion-adapter.test.mjs',
+  ]) {
+    assert.ok(report.plan.steps[0].command.includes(requiredTest), `missing default targeted test ${requiredTest}`);
+  }
   assert.deepEqual(report.plan.steps[0].case_ids, [
+    'task-contract-run-only-verification',
+    'task-contract-no-run-override',
+    'task-contract-multilingual-scope-boundary',
+    'task-contract-revision-idempotency',
+    'task-contract-structured-latest-scope',
+    'task-contract-stale-authority-invalidation',
+    'model-led-latest-steer-authority-settlement',
     'operational-lexicon-config-dynamic-loading',
     'operational-lexicon-multilingual-extension',
     'model-led-diverse-input-main-model',
@@ -159,9 +193,17 @@ test('top-agent user simulation runner plans targeted checks before broad contro
     'model-led-exact-simple-main-model',
     'model-led-noisy-question-no-tools',
     'model-led-inflight-latest-target',
+    'model-proposal-typo-create-arbitration',
+    'model-proposal-mixed-plan-no-command',
+    'model-proposal-terminal-only-boundary',
+    'model-proposal-no-run-boundary',
+    'model-proposal-destructive-confirmation',
     'in-flight-user-steer-contract-revision',
     'in-flight-committed-effect-preservation',
     'queued-steer-ordered-contract-revisions',
+    'plan-projection-rejects-stale-mutation',
+    'model-revised-edit-projection',
+    'run-only-response-verification-evidence-split',
     'semantic-source-proposal-route-consistency',
     'semantic-no-run-validation-boundary-consistency',
     'semantic-operation-prohibition-arbitration',
@@ -189,6 +231,7 @@ test('top-agent user simulation runner plans targeted checks before broad contro
     'scope-replacement-product',
     'cancellation-replacement-product',
     'agent-fit-product',
+    'independent-user-diversity-product',
     'coding-conformance-product',
     'r2-07f-connector-security',
   ]);
@@ -485,7 +528,7 @@ test('top-agent user simulation runner renders markdown from existing evidence w
     assert.match(markdown, /--controlled-suites realistic-product/);
     assert.match(markdown, /focused-regression-only-not-release-acceptance/);
     assert.match(markdown, /Selected case count: `2`/);
-    assert.match(markdown, /Required acceptance case count: `55`/);
+    assert.match(markdown, /Required acceptance case count: `65`/);
     assert.match(markdown, /Execution evidence missing:/);
     assert.match(markdown, /realistic-product:driver-cases-missing/);
     assert.match(markdown, /realistic-product:driver-case-missing:realistic-python-log-json-followup/);
@@ -640,6 +683,18 @@ test('top-agent user simulation runner rejects acceptance reports without per-ca
         'agent-fit-multifile-with-test',
         'agent-fit-markdown-report-anchors',
         'agent-fit-openai-tool-calls-wrapper',
+      ],
+      'independent-user-diversity-product': [
+        'diverse-novice-typo-create',
+        'diverse-asr-readonly-review',
+        'diverse-mixed-language-plan',
+        'diverse-contradictory-clarify',
+        'diverse-typo-existing-fix',
+        'diverse-no-run-artifact',
+        'diverse-verify-only',
+        'diverse-symptom-repair',
+        'diverse-effect-denied',
+        'diverse-unsafe-colloquial',
       ],
       'coding-conformance-product': [
         'conformance-create-and-verify',

@@ -127,6 +127,7 @@ test('I19-INT-01 user journey: tool mutation and verification form one causal ch
     toolExecutions: [tool()],
     mutations: [mutation()],
     verifications: [verification()],
+    verificationRequired: true,
     evidenceRefs: [],
   });
 
@@ -152,9 +153,34 @@ test('I19-INT-02 user journey: direct mutation bypass cannot authorize completio
     toolExecutions: [],
     mutations,
     verifications: [verification()],
+    verificationRequired: true,
     evidenceRefs: [],
   });
 
   assert.equal(decision.status, 'failed');
   assert.deepEqual(decision.bypassedMutationActionIds, ['write-1']);
+});
+
+test('I19-INT-03 user journey: readback-only artifact does not invent a verification requirement', () => {
+  const artifactMutation = mutation({ paths: ['notes/ready.txt'] });
+  const codeChange = new CanonicalCodeChangeService().bind({ runId: 'run-change' }).assess({
+    sequence: 3,
+    actionId: 'code-change-final',
+    plan: changePlan('notes/ready.txt'),
+    mutations: [artifactMutation],
+    evidenceRefs: [],
+  });
+  const decision = new CanonicalIntegrationConformanceService().bind({ runId: 'run-change' }).assess({
+    sequence: 4,
+    actionId: 'integration-final',
+    codeChange,
+    toolExecutions: [tool()],
+    mutations: [artifactMutation],
+    verifications: [],
+    verificationRequired: false,
+    evidenceRefs: [],
+  });
+
+  assert.equal(decision.status, 'conformant');
+  assert.deepEqual(decision.unverifiedPaths, []);
 });

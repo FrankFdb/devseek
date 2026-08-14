@@ -55,6 +55,30 @@ test('global file-write revocation still blocks report artifact creation', () =>
   assert.equal(authority.writeRevoked, true);
 });
 
+test('model source proposal remains executable under a no-dependency boundary', () => {
+  const prompt = '请实现 tools/log_summary.py 并用 python 自测；不要引入依赖，不要改其他文件。';
+  const authority = createAuthority(prompt);
+
+  authority.applyModelSemanticProposal({
+    version: 'devseek.semantic-intent/v1',
+    mode: 'edit',
+    taskKind: 'standalone-program',
+    mutation: 'create-file',
+    targetPaths: ['tools/log_summary.py'],
+    requiresWorkspace: true,
+    requiresTerminal: true,
+    requiresExternalEffect: false,
+    requiresClarification: false,
+    confidence: 0.99,
+    reason: 'model proposed a source deliverable with verification',
+  });
+
+  assert.equal(authority.semanticContract.intent.context.externalEffect, 'none');
+  assert.equal(authority.semanticContractRevision.allowedToExecute, true);
+  assert.deepEqual(authority.semanticContractRevision.prohibitedTargets, []);
+  assert.deepEqual(authority.semanticContractRevision.pendingTargets, ['tools/log_summary.py']);
+});
+
 test('in-flight global write revocation overrides a report-only artifact contract', () => {
   const steers = ['不要创建任何文件。'];
   const authority = createAuthority(
@@ -181,4 +205,54 @@ test('in-flight correction preserves committed effects and replans only uncommit
   assert.ok(revision.pendingTargets.includes('src/cache.ts'));
   assert.ok(revision.prohibitedTargets.includes('src/auth.ts'));
   assert.match(messages[0].content, /sealedCommittedEffects: effect-auth-write/);
+});
+
+test('model tool semantics revise the active contract without creating a user turn', () => {
+  const revisions = [];
+  const authority = createAuthority(
+    '帮我见个 notes/ready.txt，里头就一行 READY，弄完再看眼写对没，别碰别的。',
+    [],
+    {},
+    { onTaskSemanticContractRevision: revision => revisions.push(revision) },
+  );
+
+  const changed = authority.applyModelSemanticProposal({
+    version: 'devseek.semantic-intent/v1',
+    source: 'provider',
+    mode: 'edit',
+    taskKind: 'file-artifact',
+    confidence: 0.98,
+    mutation: 'create-file',
+    targetPaths: ['notes/ready.txt'],
+    requiresWorkspace: true,
+    requiresTerminal: false,
+    requiresExternalEffect: false,
+    requiresClarification: false,
+    reason: 'normalized create_file proposal',
+  });
+
+  assert.equal(changed, true);
+  assert.equal(revisions.length, 1);
+  assert.equal(revisions[0].revisionId, 'rev-1:model-1');
+  assert.equal(revisions[0].parentRevisionId, 'rev-1');
+  assert.equal(authority.semanticContract.intent.mode, 'edit');
+  assert.equal(authority.semanticContract.mutation.requested, true);
+  assert.deepEqual(authority.semanticContract.mutation.targets, ['notes/ready.txt']);
+  assert.equal(authority.writeRevoked, false);
+});
+
+test('write authority preserves dynamic callback getters from the canonical Kernel', () => {
+  let acceptance = [{ id: 'initial', statement: 'Initial contract' }];
+  const callbacks = {
+    get canonicalVerificationAcceptance() { return acceptance; },
+  };
+  const authority = createWriteAuthority('inspect the workspace', callbacks);
+
+  assert.deepEqual(authority.callbacks.canonicalVerificationAcceptance, acceptance);
+  acceptance = [{ id: 'verified', statement: 'Revised contract verification' }];
+  assert.deepEqual(authority.callbacks.canonicalVerificationAcceptance, acceptance);
+  assert.equal(
+    typeof Object.getOwnPropertyDescriptor(authority.callbacks, 'canonicalVerificationAcceptance')?.get,
+    'function',
+  );
 });

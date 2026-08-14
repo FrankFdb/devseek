@@ -14,7 +14,7 @@ const cppMatrixRunCasePath = path.resolve(extensionRoot, '../../code/devseek-tes
 
 function evaluateHarnessFunctions(source, startMarker, endMarker, names, globals = {}) {
   const start = source.indexOf(startMarker);
-  const end = source.indexOf(endMarker);
+  const end = source.indexOf(endMarker, start + startMarker.length);
   assert.ok(start >= 0, `missing ${startMarker}`);
   assert.ok(end > start, `missing ${endMarker}`);
   const context = { ...globals };
@@ -43,6 +43,16 @@ const REQUIRED_SCENARIOS = [
   'agent-fit-multifile-with-test',
   'agent-fit-markdown-report-anchors',
   'agent-fit-openai-tool-calls-wrapper',
+  'diverse-novice-typo-create',
+  'diverse-asr-readonly-review',
+  'diverse-mixed-language-plan',
+  'diverse-contradictory-clarify',
+  'diverse-typo-existing-fix',
+  'diverse-no-run-artifact',
+  'diverse-verify-only',
+  'diverse-symptom-repair',
+  'diverse-effect-denied',
+  'diverse-unsafe-colloquial',
   'conformance-create-and-verify',
   'conformance-modify-and-verify',
   'conformance-verify-repair-reverify',
@@ -66,6 +76,7 @@ const REQUIRED_SUITES = [
   { id: 'scope-replacement-product', scenarioCount: 2, sameDevSeekSession: true },
   { id: 'cancellation-replacement-product', scenarioCount: 2, sameDevSeekSession: true },
   { id: 'agent-fit-product', scenarioCount: 5, sameDevSeekSession: false },
+  { id: 'independent-user-diversity-product', scenarioCount: 10, sameDevSeekSession: false },
   { id: 'coding-conformance-product', scenarioCount: 10, sameDevSeekSession: false },
   { id: 'r2-07e-stream-protocol', scenarioCount: 2, sameDevSeekSession: false },
   { id: 'r2-07f-connector-security', scenarioCount: 1, sameDevSeekSession: false },
@@ -92,6 +103,52 @@ test('controlled VSIX harness fails completed mismatches without waiting for tim
     /\['completed', 'failed', 'blocked'\]\.includes/,
     'terminal completed/failed/blocked statuses must all end the case polling loop',
   );
+});
+
+test('controlled VSIX run-log evidence distinguishes verification-only work from applied changes', () => {
+  const source = readFileSync(harnessPath, 'utf8');
+  const { inspectControlledRunLogEvidence } = evaluateHarnessFunctions(
+    source,
+    'function inspectControlledRunLogEvidenceForSelection',
+    'function inspectCodingConformanceForSelection',
+    ['inspectControlledRunLogEvidence'],
+    {
+      sortedStrings: values => Array.isArray(values) ? values.map(value => String(value).replace(/\\/g, '/')).sort() : [],
+      arraysEqual: (left, right) => left.length === right.length
+        && left.every((value, index) => value === right[index]),
+    },
+  );
+  const driverReport = {
+    runLogs: {
+      logs: [{ terminal: { event: 'agent-run-completed', data: { status: 'completed' } } }],
+      terminal: {
+        event: 'agent-run-completed',
+        data: { status: 'completed', tasksApplied: 0, tasksFailed: 0 },
+      },
+    },
+    artifact: {
+      fileExpectations: [{ exists: true, exactContent: true }],
+      userChangedPaths: [],
+      mutatedUserFiles: [],
+      expectedChangedPaths: [],
+      expectedMutatedUserFiles: [],
+      missingRunLogSubstrings: [],
+      forbiddenFileHits: [],
+    },
+  };
+  const verificationOnly = inspectControlledRunLogEvidence(driverReport, {
+    id: 'verification-only',
+    expected: 'completed-workflow',
+    requireAppliedTask: false,
+  });
+  const appliedChange = inspectControlledRunLogEvidence(driverReport, {
+    id: 'applied-change',
+    expected: 'completed-workflow',
+  });
+
+  assert.equal(verificationOnly.ok, true);
+  assert.equal(appliedChange.ok, false);
+  assert.ok(appliedChange.errors.includes('Run log did not record an applied task'));
 });
 
 test('controlled VSIX harness accepts packaged dirty-runtime source fingerprints', () => {

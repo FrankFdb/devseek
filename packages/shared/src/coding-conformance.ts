@@ -1,3 +1,8 @@
+import {
+  codingWorkspaceTargetMatchesScope,
+  normalizeCodingWorkspacePath,
+} from './coding-workspace-scope';
+
 export const CODING_CONFORMANCE_SCHEMA_VERSION = 'devseek.coding-conformance/v1';
 
 export const CODING_CONFORMANCE_PREPARATION = Object.freeze({
@@ -235,8 +240,11 @@ export function compareCodingConformanceProjection(
     if (actual[dimension] === undefined) {
       continue;
     }
-    if (canonicalJson(projectSemanticDimension(expected, dimension))
-      !== canonicalJson(projectSemanticDimension(actual, dimension))) {
+    const semanticallyConformant = dimension === 'taskContract'
+      ? taskContractSemanticallyConforms(expected.taskContract, actual.taskContract)
+      : canonicalJson(projectSemanticDimension(expected, dimension))
+        === canonicalJson(projectSemanticDimension(actual, dimension));
+    if (!semanticallyConformant) {
       violations.push({ surface, dimension, code: 'semantic-mismatch' });
     }
   }
@@ -247,6 +255,57 @@ export function compareCodingConformanceProjection(
     violations.push({ surface, dimension: 'observation', code: 'fixture-id-mismatch' });
   }
   return uniqueViolations(violations);
+}
+
+/**
+ * A settled model proposal may narrow an abstract task contract with concrete
+ * workspace evidence. It may not change the goal or widen an existing scope.
+ */
+function taskContractSemanticallyConforms(
+  expected: CodingTaskContractProjection,
+  actual: CodingTaskContractProjection | undefined,
+): boolean {
+  if (!actual) return false;
+  if (expected.goal !== actual.goal || expected.mode !== actual.mode) return false;
+  if (canonicalJson(expected.constraints) !== canonicalJson(actual.constraints)) return false;
+  if (canonicalJson(expected.acceptance) !== canonicalJson(actual.acceptance)) return false;
+  if ((expected.provenanceRefs.length > 0) !== (actual.provenanceRefs.length > 0)) return false;
+  if (!scopeSemanticallyNarrows(expected.scope, actual.scope)) return false;
+  return deliverablesSemanticallyNarrow(expected.deliverables, actual.deliverables, actual.scope.include);
+}
+
+function scopeSemanticallyNarrows(
+  expected: CodingTaskContractProjection['scope'],
+  actual: CodingTaskContractProjection['scope'],
+): boolean {
+  if (expected.include.length > 0) {
+    if (actual.include.length === 0) return false;
+    const targetOutsideScope = actual.include.some(target => !expected.include.some(scope => (
+      codingWorkspaceTargetMatchesScope(target, scope)
+    )));
+    if (targetOutsideScope) return false;
+  }
+  const actualExcludes = new Set(actual.exclude.map(normalizeCodingWorkspacePath));
+  return expected.exclude.every(path => actualExcludes.has(normalizeCodingWorkspacePath(path)));
+}
+
+function deliverablesSemanticallyNarrow(
+  expected: CodingTaskContractProjection['deliverables'],
+  actual: CodingTaskContractProjection['deliverables'],
+  actualScope: readonly string[],
+): boolean {
+  if (expected.length !== actual.length) return false;
+  const actualById = new Map(actual.map(deliverable => [deliverable.id, deliverable]));
+  return expected.every(deliverable => {
+    const candidate = actualById.get(deliverable.id);
+    if (!candidate || candidate.kind !== deliverable.kind) return false;
+    if (deliverable.path) {
+      return normalizeCodingWorkspacePath(candidate.path ?? '')
+        === normalizeCodingWorkspacePath(deliverable.path);
+    }
+    if (!candidate.path) return true;
+    return actualScope.some(scope => codingWorkspaceTargetMatchesScope(candidate.path ?? '', scope));
+  });
 }
 
 function projectSemanticDimension(

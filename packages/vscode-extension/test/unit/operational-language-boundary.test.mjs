@@ -41,6 +41,8 @@ test('OperationalLanguageBoundary: real release requests and questions remain ex
   assert.equal(classifyExternalEffectIntent('请发布当前扩展到市场。'), 'requested');
   assert.equal(classifyExternalEffectIntent('如何发布这个 npm 包？'), 'question');
   assert.equal(classifyExternalEffectIntent('不要推送当前分支。'), 'none');
+  assert.equal(classifyExternalEffectIntent('请实现 tools/log_summary.py；不要引入依赖，不要改其他文件。'), 'none');
+  assert.equal(classifyExternalEffectIntent('Create src/app.ts without adding new dependencies.'), 'none');
   assert.equal(classifyExternalEffectIntent('Commit the current changes but do not push.'), 'requested');
   assert.equal(classifyExternalEffectIntent(
     'Update src/api.ts and open a PR? No, do not open a PR or push; just make the code change.',

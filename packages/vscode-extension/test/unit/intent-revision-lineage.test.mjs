@@ -24,6 +24,7 @@ execSync(
 
 const {
   buildIntentRevisionLineage,
+  rebindIntentRevisionLineageSemanticContract,
   replanUncommittedTasksForContractRevision,
 } = createRequire(import.meta.url)(bundlePath);
 
@@ -64,6 +65,28 @@ test('IntentRevisionLineage: scope reduction narrows targets without permission 
   assert.deepEqual(second.effectiveRevision.scope.prohibitedTargets, ['src/auth.ts']);
   assert.equal(second.effectiveRevision.permission.widening, false);
   assert.equal(second.allowedToExecute, true);
+});
+
+test('IntentRevisionLineage: model proposal keeps replacement target and excludes superseded target', () => {
+  const first = buildIntentRevisionLineage({
+    prompt: 'Plan the implementation for src/alpha.js before touching any files.',
+  });
+  const second = buildIntentRevisionLineage({
+    previous: first,
+    prompt: 'Actually change src/beta.js instead; do not touch src/alpha.js. Verify with node and finish.',
+  });
+
+  const rebound = rebindIntentRevisionLineageSemanticContract(
+    second,
+    second.semanticContractRevision.semanticContract,
+    1,
+  );
+
+  assert.deepEqual(rebound.effectiveRevision.scope.targets, ['src/beta.js']);
+  assert.deepEqual(rebound.effectiveRevision.scope.prohibitedTargets, ['src/alpha.js']);
+  assert.deepEqual(rebound.semanticContractRevision.pendingTargets, ['src/beta.js']);
+  assert.equal(rebound.semanticContractRevision.revisionId, `${second.effectiveRevisionId}:model-1`);
+  assert.equal(rebound.allowedToExecute, true);
 });
 
 test('IntentRevisionLineage: correction replaces an obsolete uncommitted prohibition', () => {

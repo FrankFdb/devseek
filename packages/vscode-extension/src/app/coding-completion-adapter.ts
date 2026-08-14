@@ -202,14 +202,13 @@ function buildDirectAcceptanceEvidence(input: {
     }));
   }
   if (input.requiresDirectEvidence) return [...input.explicitEvidence];
-  if (input.verificationRequired || input.resultEvidenceRefs.length === 0) {
-    return [...input.explicitEvidence];
-  }
+  if (input.resultEvidenceRefs.length === 0) return [...input.explicitEvidence];
   const explicitCriterionIds = new Set(input.explicitEvidence.map(result => result.criterionId));
   return [
     ...input.explicitEvidence,
     ...input.acceptance
       .filter(criterion => !explicitCriterionIds.has(criterion.id))
+      .filter(criterion => !input.verificationRequired || criterion.oracle.kind !== 'verification')
       .map(criterion => ({
         criterionId: criterion.id,
         status: 'passed' as const,

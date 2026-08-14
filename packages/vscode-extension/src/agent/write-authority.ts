@@ -1,13 +1,17 @@
 import type { ChatMessage } from '../llm/types';
 import {
   buildIntentRevisionLineage,
+  rebindIntentRevisionLineageSemanticContract,
   type IntentRevisionChangeKind,
   type IntentRevisionEffectReceipt,
   type IntentSemanticContractRevision,
 } from '../intent/intent-revision-lineage';
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import type { TaskSemanticProjectInstructionInput } from '../intent/task-semantic-contract-service';
+import { resolveTaskSemanticContract } from '../intent/task-semantic-contract-service';
+import type { SemanticIntentInterpretation } from '../intent/semantic-intent';
 import type { AgentLoopCallbacks } from './loop-types';
+import { copyAgentLoopCallbacks } from './loop-callbacks';
 import { buildUserSteerMessage, consumeUserSteerTexts, userSteerRevokesWrites } from './user-steer';
 
 export interface WriteAuthority {
@@ -17,6 +21,7 @@ export interface WriteAuthority {
   readonly semanticContract: TaskSemanticContract;
   readonly projectInstructionsText: string;
   readonly writeRevoked: boolean;
+  applyModelSemanticProposal(proposal: SemanticIntentInterpretation): boolean;
   drainAfterProvider(): ChatMessage[];
   takePendingAndDrain(): ChatMessage[];
 }
@@ -100,6 +105,7 @@ export function createWriteAuthority(
     projectInstructions: options.projectInstructions,
   });
   let semanticContractRevision = lineage.semanticContractRevision;
+  let modelProposalSequence = 0;
   let writeRevoked = userSteerRevokesWritesForContract(
     initialPrompt,
     semanticContractRevision.semanticContract,
@@ -132,7 +138,7 @@ export function createWriteAuthority(
     if (texts.length > 0) currentPrompt = texts.at(-1)!;
     return messages;
   };
-  const guardedCallbacks: AgentLoopCallbacks = { ...callbacks };
+  const guardedCallbacks = copyAgentLoopCallbacks(callbacks);
   const resolveFileWriteConstraint = callbacks.onResolveFileWriteConstraint;
   if (resolveFileWriteConstraint) {
     guardedCallbacks.onResolveFileWriteConstraint = async (absPath, context) => {
@@ -162,6 +168,23 @@ export function createWriteAuthority(
       return semanticContractRevision.semanticContract.context.projectInstructions.content;
     },
     get writeRevoked() { return writeRevoked; },
+    applyModelSemanticProposal(proposal) {
+      const current = semanticContractRevision.semanticContract;
+      const next = resolveTaskSemanticContract(currentPrompt, {
+        current,
+        semanticIntent: proposal,
+        projectInstructions: options.projectInstructions,
+      });
+      if (JSON.stringify(next) === JSON.stringify(current)) return false;
+      lineage = rebindIntentRevisionLineageSemanticContract(
+        lineage,
+        next,
+        ++modelProposalSequence,
+      );
+      semanticContractRevision = lineage.semanticContractRevision;
+      callbacks.onTaskSemanticContractRevision?.(semanticContractRevision);
+      return true;
+    },
     drainAfterProvider: drain,
     takePendingAndDrain: () => [...pendingMessages.splice(0), ...drain()],
   };

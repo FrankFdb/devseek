@@ -119,7 +119,9 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
       canonicalBuildOrchestration: kernelRequest.buildOrchestration,
       canonicalRegressionSelection: kernelRequest.regressionSelection,
       canonicalDiagnostics: kernelRequest.diagnostics,
-      canonicalVerificationAcceptance: kernelRequest.verificationAcceptance,
+      get canonicalVerificationAcceptance() {
+        return kernelRequest.verificationAcceptance;
+      },
       canonicalVerification: kernelRequest.verification,
       onUserSteer: () => kernelRequest.runControl.consumeSteering()
         .map(decision => decision.instruction),

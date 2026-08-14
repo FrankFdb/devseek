@@ -38,8 +38,12 @@ export function projectVsCodeCodingKernelTaskContract(
     ...input.contextFiles,
     ...input.taskContract.inputs,
   ].map(file => projectWorkspacePath(file, input.workspaceRoot)));
-  const deliverableKinds = uniqueDeliverableKinds(input.taskContract.deliverables);
-  const sourceChangeRequested = deliverableKinds.includes('source-change');
+  const semanticDeliverableKinds = uniqueDeliverableKinds(input.taskContract.deliverables);
+  const sourceChangeRequested = input.executionMode === 'edit'
+    && semanticDeliverableKinds.includes('source-change');
+  const deliverableKinds = semanticDeliverableKinds.filter(
+    kind => kind !== 'source-change' || sourceChangeRequested,
+  );
   const reportFileRequested = deliverableKinds.includes('report') && deliverableTargets.length > 0;
   const workspaceMutationConfirmed = sourceChangeRequested || reportFileRequested;
   const explicitlyRequiresVerification = input.taskContract.qualityObligations.includes('validation')
@@ -49,10 +53,14 @@ export function projectVsCodeCodingKernelTaskContract(
     sourceChangeRequested,
     reportFileRequested,
     explicitlyRequiresVerification,
-    projectHealthRepairRequested: hasProjectHealthRepairIntent(input.userPrompt),
-    runtimeErrorRepairRequested: hasRuntimeErrorRepairIntent(input.userPrompt),
-    userSymptomRepairRequested: hasUserSymptomRepairIntent(input.userPrompt),
-    validationHealthRepairRequested: hasValidationHealthRepairIntent(input.userPrompt),
+    projectHealthRepairRequested: input.executionMode === 'edit'
+      && hasProjectHealthRepairIntent(input.userPrompt),
+    runtimeErrorRepairRequested: input.executionMode === 'edit'
+      && hasRuntimeErrorRepairIntent(input.userPrompt),
+    userSymptomRepairRequested: input.executionMode === 'edit'
+      && hasUserSymptomRepairIntent(input.userPrompt),
+    validationHealthRepairRequested: input.executionMode === 'edit'
+      && hasValidationHealthRepairIntent(input.userPrompt),
   });
   return resolveCodingKernelTaskContract({
     prompt: input.userPrompt,

@@ -64,6 +64,7 @@ import {
   withTaskTerminalEvidence,
 } from './task-execution-result';
 import type { AgentLoopCallbacks, AgentLoopResult } from './loop-types';
+import { copyAgentLoopCallbacks } from './loop-callbacks';
 import type { AgentRecoveryReason } from './events';
 import type { EvidenceRef } from './tool-executor';
 import { chatWithMessages } from './loop-chat';
@@ -124,6 +125,7 @@ import { createProviderRequirementReviewService } from './provider-requirement-r
 import { tryRunGroundedMarkdownAgenticTask } from './grounded-markdown-agentic-task';
 import { buildAgenticSystemPrompt } from './agentic-system-prompt';
 import { createSemanticExecutionWriteAuthority } from './semantic-execution-context';
+import { projectModelToolSemanticProposal } from './model-tool-semantic-proposal';
 import { createAgenticInitialPromptContext, type AgenticLoopExecutionContext } from './agentic-execution-context';
 import { classifyAgenticManualReviewEvidence } from './terminal-evidence-settlement';
 import { updateRequirementReviewRepairWindow } from './requirement-review-repair-window';
@@ -175,7 +177,7 @@ export async function runAgenticLoop(
   semanticContract?: TaskSemanticContract,
   executionContext: AgenticLoopExecutionContext = {},
 ): Promise<AgentLoopResult> {
-  callbacks = { ...callbacks, executionMode: workflowMode };
+  callbacks = copyAgentLoopCallbacks(callbacks, { executionMode: workflowMode });
   const recoveryContextText = executionContext.recoveryContextText?.trim() ?? '';
   const memoryContextText = executionContext.memoryContextText?.trim() ?? '';
   const writeAuthority = createSemanticExecutionWriteAuthority({
@@ -557,6 +559,13 @@ export async function runAgenticLoop(
       continue;
     }
     if (workflowMode === 'model-led' && tools.some(tool => isAgentWorkToolName(tool.name))) {
+      const modelSemanticProposal = projectModelToolSemanticProposal(
+        tools,
+        writeAuthority.semanticContract,
+      );
+      if (modelSemanticProposal && writeAuthority.applyModelSemanticProposal(modelSemanticProposal)) {
+        refreshPromptRequirements();
+      }
       promptRequiresTools = true;
       if (tools.some(tool => isFileMutationToolName(tool.name))) promptRequiresFileChange = true;
     }
@@ -791,6 +800,11 @@ export async function runAgenticLoop(
     const toolsToExecute = blockedRepeatedToolIndexes.size > 0
       ? tools.filter((_, toolIndex) => !blockedRepeatedToolIndexes.has(toolIndex))
       : tools;
+
+    if (writeAuthority.writeRevoked && hasWriteRevokedToolAttempt(toolsToExecute)) {
+      failedReason = '用户已撤销写入授权，任务已在工具执行前停止。';
+      break;
+    }
 
     const loopRes = await executeFakeToolsForLoop(
       toolsToExecute,
@@ -1030,6 +1044,7 @@ export async function runAgenticLoop(
         }
         loopWarnings.push(reviewFeedback);
       } else {
+        hadTaskComplete = hadTaskComplete || loopRes.taskComplete;
         if (loopRes.completeSummary !== undefined) completeSummary = loopRes.completeSummary ?? '';
         break;
       }

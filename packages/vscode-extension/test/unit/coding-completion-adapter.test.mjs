@@ -333,6 +333,68 @@ test('manual review and read-only response evidence remain explicit', () => {
   assert.equal(evidencedReview.acceptanceEvidence[0].status, 'passed');
 });
 
+test('run-only completion grounds the response while verifier authority settles verification', () => {
+  const taskContract = buildCodingKernelTaskContract({
+    goal: 'Run the health check and report the result without modifying files.',
+    mode: 'review',
+    deliverables: [
+      { id: 'response', kind: 'report' },
+      { id: 'verification-result', kind: 'verification-result' },
+    ],
+    constraints: ['no-workspace-mutation', 'verification-before-completion'],
+    acceptance: [
+      {
+        id: 'grounded-response',
+        statement: 'Report the observed result.',
+        deliverableIds: ['response'],
+        oracle: {
+          kind: 'response-evidence',
+          verifier: 'grounded-response-review',
+          scope: ['response'],
+          evidenceKinds: ['response-evidence'],
+        },
+        externalBoundaryRefs: [],
+      },
+      {
+        id: 'verified',
+        statement: 'The health check passes.',
+        deliverableIds: ['verification-result'],
+        oracle: {
+          kind: 'verification',
+          verifier: 'project-verification',
+          scope: ['workspace'],
+          evidenceKinds: ['verification-receipt'],
+        },
+        externalBoundaryRefs: [],
+      },
+    ],
+    provenanceRefs: ['vscode-test'],
+  });
+  const evidence = new VsCodeCompletionEvidenceAdapter().project({
+    runId: 'vscode-run-only',
+    taskContract,
+    result: {
+      tasksTotal: 1,
+      tasksApplied: 0,
+      tasksFailed: 0,
+      changedPaths: [],
+      historyText: 'HEALTH_OK',
+      verificationReceipts: [verification({
+        runId: 'vscode-run-only',
+        acceptance: [{
+          criterionId: 'verified',
+          status: 'passed',
+          evidenceRefs: ['terminal:health:exit-0'],
+        }],
+      })],
+    },
+  });
+
+  assert.deepEqual(evidence.acceptanceEvidence.map(item => [item.criterionId, item.status]), [
+    ['grounded-response', 'passed'],
+  ]);
+});
+
 test('policy refusal projects only explicit refusal acceptance evidence', () => {
   const taskContract = buildSecretHarvestingRefusalTaskContract('vscode');
   const baseResult = {

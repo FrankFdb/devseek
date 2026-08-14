@@ -55,7 +55,7 @@ export const DEFAULT_OPERATIONAL_LANGUAGE_LEXICON: OperationalLanguageLexiconCon
   version: 'devseek.operational-language-lexicon/v1',
   externalEffect: Object.freeze({
     unambiguous: Object.freeze([
-      pattern('external-effect-unambiguous', String.raw`(?:上线|部署|安装插件|安装扩展|提交(?:当前)?(?:修改|变更)|推送(?:当前)?(?:分支)|拉取(?:最新)?代码|安装[^，,。；;\n]{0,24}(?:依赖|npm\s*包|软件包|包|库|模块)|(?:新增|添加|引入)[^，,。；;\n]{0,16}(?:依赖|npm\s*包|软件包|包|库|模块)|\bdeploy\b|install\s+extension|\binstall\b[^,.;\n]{0,40}\b(?:packages?|dependenc(?:y|ies)|librar(?:y|ies)|modules?)\b|\binstall\s+@[A-Za-z0-9._/-]+\b|\binstall\s+[A-Za-z0-9][A-Za-z0-9._/-]{1,}\b(?=[,.;\n]|$|\s+(?:and|then|to)\b)|\b(?:add|introduce)\b[^,.;\n]{0,40}\b(?:new\s+)?dependenc(?:y|ies)\b|git\s+(?:commit|push|pull|fetch|merge|rebase)|commit\s+(?:(?:the|this)\s+)?(?:changes?|current|current\s+changes?)|push\s+(?:(?:this|the|current)\s+)?branch|(?:open|create|file|submit)\s+(?:a\s+)?(?:pr|pull\s+request)|npm\s+(?:install|i|add|ci)|pnpm\s+(?:install|i|add)|yarn\s+(?:install|add)|pip\s+install)`),
+      pattern('external-effect-unambiguous', String.raw`(?:上线|部署|安装插件|安装扩展|提交(?:当前)?(?:修改|变更)|推送(?:当前)?(?:分支)|拉取(?:最新)?代码|安装[^，,。；;\n]{0,24}(?:依赖|npm\s*包|软件包|包|库|模块)|(?:新增|添加|引入)[^，,。；;\n]{0,16}(?:依赖|npm\s*包|软件包|包|库|模块)|\bdeploy\b|install\s+extension|\binstall\b[^,.;\n]{0,40}\b(?:packages?|dependenc(?:y|ies)|librar(?:y|ies)|modules?)\b|\binstall\s+@[A-Za-z0-9._/-]+\b|\binstall\s+[A-Za-z0-9][A-Za-z0-9._/-]{1,}\b(?=[,.;\n]|$|\s+(?:and|then|to)\b)|\b(?:add(?:ing)?|introduc(?:e|ing))\b[^,.;\n]{0,40}\b(?:new\s+)?dependenc(?:y|ies)\b|git\s+(?:commit|push|pull|fetch|merge|rebase)|commit\s+(?:(?:the|this)\s+)?(?:changes?|current|current\s+changes?)|push\s+(?:(?:this|the|current)\s+)?branch|(?:open|create|file|submit)\s+(?:a\s+)?(?:pr|pull\s+request)|npm\s+(?:install|i|add|ci)|pnpm\s+(?:install|i|add)|yarn\s+(?:install|add)|pip\s+install)`),
     ]),
     ambiguousRelease: Object.freeze([
       pattern('external-effect-ambiguous-release', String.raw`(?:发布|(?:^|[\s，,。；;:：])(?:release|publish)\b)`),
@@ -73,18 +73,18 @@ export const DEFAULT_OPERATIONAL_LANGUAGE_LEXICON: OperationalLanguageLexiconCon
       pattern('external-effect-question', String.raw`(?:如何|怎么|怎样|为什么|什么是|介绍|说明|方案|计划|\bhow\s+to\b|\bwhat\s+is\b|\bwhy\b|\bplan\b|\bdesign\b|\bapproach\b)`)
     ]),
     negated: Object.freeze([
-      pattern('external-effect-negated', String.raw`(?:不要|不得|禁止|不允许|无需|无须|不需要|别|勿|请勿)[^，,。；;\n]{0,28}(?:发布|上线|部署|安装|提交|推送|拉取|创建\s*(?:PR|pr)|提(?:交)?\s*(?:PR|pr))|(?:do\s+not|don't|must\s+not|should\s+not|never|without)[^,.;\n]{0,36}(?:release|deploy|publish|install|commit|push|pull|fetch|merge|rebase|open\s+(?:a\s+)?(?:pr|pull\s+request)|create\s+(?:a\s+)?(?:pr|pull\s+request)|file\s+(?:a\s+)?(?:pr|pull\s+request)|submit\s+(?:a\s+)?(?:pr|pull\s+request))`)
+      pattern('external-effect-negated', String.raw`(?:不要|不得|禁止|不允许|无需|无须|不需要|别|勿|请勿)[^，,。；;\n]{0,28}(?:发布|上线|部署|安装|提交|推送|拉取|创建\s*(?:PR|pr)|提(?:交)?\s*(?:PR|pr)|(?:新增|添加|引入)[^，,。；;\n]{0,12}(?:依赖|npm\s*包|软件包|包|库|模块))|(?:do\s+not|don't|must\s+not|should\s+not|never|without)[^,.;\n]{0,36}(?:release|deploy|publish|install|commit|push|pull|fetch|merge|rebase|open\s+(?:a\s+)?(?:pr|pull\s+request)|create\s+(?:a\s+)?(?:pr|pull\s+request)|file\s+(?:a\s+)?(?:pr|pull\s+request)|submit\s+(?:a\s+)?(?:pr|pull\s+request)|(?:add(?:ing)?|introduc(?:e|ing))[^,.;\n]{0,16}(?:new\s+)?dependenc(?:y|ies))`)
     ]),
     bareReleaseImperative: Object.freeze([
       pattern('external-effect-bare-release-imperative', String.raw`^(?:请|现在|立即|帮我|麻烦)?\s*(?:发布|release|publish)\s*(?:吧)?$`)
     ]),
     negatedPhrase: Object.freeze([
-      pattern('external-effect-negated-phrase', String.raw`(?:不要|不得|禁止|不允许|无需|无须|不需要|别|勿|请勿)[^，,。；;\n]{0,28}(?:发布|上线|部署|安装|提交|推送|拉取|创建\s*(?:PR|pr)|提(?:交)?\s*(?:PR|pr))|(?:do\s+not|don't|must\s+not|should\s+not|never|without)[^,.;\n]{0,36}(?:release|deploy|publish|install|commit|push|pull|fetch|merge|rebase|open\s+(?:a\s+)?(?:pr|pull\s+request)|create\s+(?:a\s+)?(?:pr|pull\s+request)|file\s+(?:a\s+)?(?:pr|pull\s+request)|submit\s+(?:a\s+)?(?:pr|pull\s+request))`, GLOBAL_FLAGS)
+      pattern('external-effect-negated-phrase', String.raw`(?:不要|不得|禁止|不允许|无需|无须|不需要|别|勿|请勿)[^，,。；;\n]{0,28}(?:发布|上线|部署|安装|提交|推送|拉取|创建\s*(?:PR|pr)|提(?:交)?\s*(?:PR|pr)|(?:新增|添加|引入)[^，,。；;\n]{0,12}(?:依赖|npm\s*包|软件包|包|库|模块))|(?:do\s+not|don't|must\s+not|should\s+not|never|without)[^,.;\n]{0,36}(?:release|deploy|publish|install|commit|push|pull|fetch|merge|rebase|open\s+(?:a\s+)?(?:pr|pull\s+request)|create\s+(?:a\s+)?(?:pr|pull\s+request)|file\s+(?:a\s+)?(?:pr|pull\s+request)|submit\s+(?:a\s+)?(?:pr|pull\s+request)|(?:add(?:ing)?|introduc(?:e|ing))[^,.;\n]{0,16}(?:new\s+)?dependenc(?:y|ies))`, GLOBAL_FLAGS)
     ]),
   }),
   runProhibition: Object.freeze({
     strong: Object.freeze([
-      pattern('run-prohibition-strong', String.raw`(?:不要|不用|无需|无须|不需要|不必|不得|不准|不能|禁止|别|勿|请勿)[^，,。；;\n]{0,24}(?:运行|执行|启动|测试)|(?:do\s+not|don't|must\s+not|should\s+not|may\s+not|never|without)[^,.;\n]{0,32}\b(?:run|running|execute|executing|start|starting|test|testing)\b|\bno\s+tests?\b`)
+      pattern('run-prohibition-strong', String.raw`(?:不要|不用|无需|无须|不需要|不必|不得|不准|不能|禁止|别|勿|请勿)[^，,。；;\n]{0,24}(?:运行|执行|启动|测试|\b(?:run|running|execute|executing|start|starting|test|testing)\b)|(?:do\s+not|don't|must\s+not|should\s+not|may\s+not|never|without)[^,.;\n]{0,32}(?:\b(?:run|running|execute|executing|start|starting|test|testing)\b|运行|执行|启动|测试)|\bno\s+tests?\b`)
     ]),
     weak: Object.freeze([
       pattern('run-prohibition-weak', String.raw`(?:不|未)(?:运行|执行|启动|测试)|\bnot\s+(?:run|executed?|started?|tested?)\b`)
@@ -99,7 +99,7 @@ export const DEFAULT_OPERATIONAL_LANGUAGE_LEXICON: OperationalLanguageLexiconCon
       pattern('run-prohibition-operational-target', String.raw`(?:命令|脚本|终端|编译|构建|测试套件|程序|项目|test\.sh|ctest|pytest|npm\s+test|pnpm\s+test|yarn\s+test|\b(?:command|script|terminal|compile|build|test\s+suite|program|project)\b)`)
     ]),
     phrase: Object.freeze([
-      pattern('run-prohibition-phrase', String.raw`(?:不要|不用|无需|无须|不需要|不必|不得|不准|不能|禁止|别|勿|请勿)[^，,。；;\n]{0,24}(?:运行|执行|启动|测试)[^，,。；;\n]*|(?:^|[，,。；;\n])\s*(?:不|未)(?:运行|执行|启动|测试)(?:\s|$|[^，,。；;\n]{0,12}(?:网络|命令|脚本|终端|编译|构建|测试|程序|项目|依赖))[^，,。；;\n]*|(?:do\s+not|don't|must\s+not|should\s+not|may\s+not|never|without)[^,.;\n]{0,32}\b(?:run|running|execute|executing|start|starting|test|testing)\b[^,.;\n]*|\bno\s+tests?\b`, GLOBAL_FLAGS)
+      pattern('run-prohibition-phrase', String.raw`(?:不要|不用|无需|无须|不需要|不必|不得|不准|不能|禁止|别|勿|请勿)[^，,。；;\n]{0,24}(?:运行|执行|启动|测试|\b(?:run|running|execute|executing|start|starting|test|testing)\b)[^，,。；;\n]*|(?:^|[，,。；;\n])\s*(?:不|未)(?:运行|执行|启动|测试)(?:\s|$|[^，,。；;\n]{0,12}(?:网络|命令|脚本|终端|编译|构建|测试|程序|项目|依赖))[^，,。；;\n]*|(?:do\s+not|don't|must\s+not|should\s+not|may\s+not|never|without)[^,.;\n]{0,32}(?:\b(?:run|running|execute|executing|start|starting|test|testing)\b|运行|执行|启动|测试)[^,.;\n]*|\bno\s+tests?\b`, GLOBAL_FLAGS)
     ]),
   }),
   intentRevision: Object.freeze({

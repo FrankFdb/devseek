@@ -10,6 +10,9 @@ const args = process.argv.slice(2);
 
 const SCHEMA_VERSION = 'devseek.top-agent-user-simulation-runner/v1';
 const DEFAULT_TARGETED_TESTS = Object.freeze([
+  'packages/shared/test/coding-task-contract-resolver.test.mjs',
+  'packages/shared/test/coding-task-contract-revision.test.mjs',
+  'packages/shared/test/coding-code-change.test.mjs',
   'packages/vscode-extension/test/unit/provider-authored-transcript-recovery.test.mjs',
   'packages/vscode-extension/test/unit/provider-output-integrity.test.mjs',
   'packages/vscode-extension/test/unit/agent-tool-loop-terminal-guard.test.mjs',
@@ -18,7 +21,11 @@ const DEFAULT_TARGETED_TESTS = Object.freeze([
   'packages/vscode-extension/test/unit/operational-language-boundary.test.mjs',
   'packages/vscode-extension/test/unit/model-led-intent-boundary.test.mjs',
   'packages/vscode-extension/test/unit/model-led-user-simulation.test.mjs',
+  'packages/vscode-extension/test/unit/model-tool-semantic-proposal.test.mjs',
   'packages/vscode-extension/test/unit/write-authority.test.mjs',
+  'packages/vscode-extension/test/unit/coding-kernel-task-contract.test.mjs',
+  'packages/vscode-extension/test/unit/coding-kernel-execution.test.mjs',
+  'packages/vscode-extension/test/unit/coding-completion-adapter.test.mjs',
   'packages/vscode-extension/test/unit/task-intent-router.test.mjs',
   'packages/vscode-extension/test/unit/semantic-intent-routing-matrix.test.mjs',
   'packages/vscode-extension/test/unit/controlled-vsix-scenario-contract.test.mjs',
@@ -28,11 +35,17 @@ const INTENT_TARGETED_TESTS = Object.freeze([
   'packages/vscode-extension/test/unit/operational-language-boundary.test.mjs',
   'packages/vscode-extension/test/unit/model-led-intent-boundary.test.mjs',
   'packages/vscode-extension/test/unit/model-led-user-simulation.test.mjs',
+  'packages/vscode-extension/test/unit/model-tool-semantic-proposal.test.mjs',
   'packages/vscode-extension/test/unit/write-authority.test.mjs',
   'packages/vscode-extension/test/unit/task-intent-router.test.mjs',
   'packages/vscode-extension/test/unit/semantic-intent-routing-matrix.test.mjs',
 ]);
 const TARGETED_TEST_CASE_COVERAGE = Object.freeze({
+  'packages/shared/test/coding-task-contract-resolver.test.mjs': Object.freeze([
+    'task-contract-run-only-verification',
+    'task-contract-no-run-override',
+    'task-contract-multilingual-scope-boundary',
+  ]),
   'packages/shared/test/coding-task-contract-revision.test.mjs': Object.freeze([
     'task-contract-revision-idempotency',
     'task-contract-structured-latest-scope',
@@ -48,6 +61,20 @@ const TARGETED_TEST_CASE_COVERAGE = Object.freeze({
     'model-led-exact-simple-main-model',
     'model-led-noisy-question-no-tools',
     'model-led-inflight-latest-target',
+  ]),
+  'packages/vscode-extension/test/unit/model-tool-semantic-proposal.test.mjs': Object.freeze([
+    'model-proposal-typo-create-arbitration',
+    'model-proposal-mixed-plan-no-command',
+    'model-proposal-terminal-only-boundary',
+    'model-proposal-no-run-boundary',
+    'model-proposal-destructive-confirmation',
+  ]),
+  'packages/vscode-extension/test/unit/coding-kernel-task-contract.test.mjs': Object.freeze([
+    'plan-projection-rejects-stale-mutation',
+    'model-revised-edit-projection',
+  ]),
+  'packages/vscode-extension/test/unit/coding-completion-adapter.test.mjs': Object.freeze([
+    'run-only-response-verification-evidence-split',
   ]),
   'packages/vscode-extension/test/unit/operational-language-boundary.test.mjs': Object.freeze([
     'operational-lexicon-config-dynamic-loading',
@@ -85,6 +112,7 @@ const DEFAULT_CONTROLLED_SUITES = Object.freeze([
   'scope-replacement-product',
   'cancellation-replacement-product',
   'agent-fit-product',
+  'independent-user-diversity-product',
   'coding-conformance-product',
   'r2-07f-connector-security',
 ]);
@@ -101,6 +129,7 @@ const ACCEPTANCE_CONTROLLED_SUITES = Object.freeze([
   'scope-replacement-product',
   'cancellation-replacement-product',
   'agent-fit-product',
+  'independent-user-diversity-product',
   'coding-conformance-product',
   'r2-07f-connector-security',
 ]);
@@ -203,6 +232,36 @@ const CASE_DESIGN_DIMENSIONS = Object.freeze([
       'model-led-noisy-action-real-write',
       'model-led-noisy-question-no-tools',
     ],
+  },
+  {
+    id: 'independent_user_expression_diversity',
+    user_need: 'Novice, voice-input, bilingual, rushed, and uncertain users express the same operational needs without canonical formatting.',
+    suites: ['independent-user-diversity-product'],
+    cases: [
+      'diverse-novice-typo-create',
+      'diverse-asr-readonly-review',
+      'diverse-mixed-language-plan',
+      'diverse-contradictory-clarify',
+      'diverse-typo-existing-fix',
+    ],
+  },
+  {
+    id: 'independent_action_boundary_accuracy',
+    user_need: 'Users distinguish create-without-terminal from terminal-only-without-repair, and the executed tool trace must preserve that boundary.',
+    suites: ['independent-user-diversity-product'],
+    cases: ['diverse-no-run-artifact', 'diverse-verify-only'],
+  },
+  {
+    id: 'independent_symptom_to_verified_repair',
+    user_need: 'A support-oriented user can describe a symptom without a stack trace and receive a diagnosed, repaired, and reverified result.',
+    suites: ['independent-user-diversity-product'],
+    cases: ['diverse-symptom-repair'],
+  },
+  {
+    id: 'independent_authority_and_policy_boundary',
+    user_need: 'Colloquial pressure cannot bypass external-effect approval or unsafe-request refusal boundaries.',
+    suites: ['independent-user-diversity-product'],
+    cases: ['diverse-effect-denied', 'diverse-unsafe-colloquial'],
   },
   {
     id: 'prior_task_approval_continuation',
@@ -717,6 +776,7 @@ function controlledSuitePurpose(suite) {
     'scope-replacement-product': 'Same-session correction: replace the earlier target and execute only the latest requested scope.',
     'cancellation-replacement-product': 'Same-session cancellation: withdraw the planned mutation and replace it with a read-only review.',
     'agent-fit-product': 'Codex-aligned agent fit: clarify ambiguous asks, keep reviews read-only, handle multi-file tested edits, and verify Markdown anchors.',
+    'independent-user-diversity-product': 'Independent user diversity: noisy, ASR-like, mixed-language, conflicting, bounded-action, symptom-repair, permission, and safety journeys with TaskContract and tool-trace oracles.',
     'coding-conformance-product': 'Core programming lifecycle: create/modify/verify-repair plus permission denial and policy refusal.',
     'r2-07f-connector-security': 'Connector evidence replay: redacted read-only evidence must not mutate workspace.',
     'journey-core': 'General user journey smoke: normal, exception, boundary, C++ create, JS fix, latest requirement wins.',
@@ -750,6 +810,7 @@ function controlledSuiteTimeoutMs(suite) {
   if (suite === 'realistic-product') return 270_000;
   if (suite === 'prior-task-continuation-product') return 240_000;
   if (suite === 'agent-fit-product') return 270_000;
+  if (suite === 'independent-user-diversity-product') return 420_000;
   return 210_000;
 }
 

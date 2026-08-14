@@ -174,6 +174,37 @@ test('projection comparison treats Surface-local identities as evidence refs, no
   assert.deepEqual(violations, []);
 });
 
+test('projection comparison accepts evidence-backed scope narrowing and rejects target drift', () => {
+  const implicitRepair = findFixture('implicit-ci-health-repair');
+  const narrowed = structuredClone(implicitRepair.expected);
+  narrowed.taskContract.scope.include = ['src/parser.js'];
+  narrowed.taskContract.deliverables.find(deliverable => deliverable.id === 'source-change').path = 'src/parser.js';
+  assert.deepEqual(compareCodingConformanceProjection(implicitRepair.expected, narrowed, 'vscode'), []);
+
+  const denied = findFixture('permission-denied-no-effect');
+  const safelyConstrained = structuredClone(denied.expected);
+  safelyConstrained.taskContract.scope.exclude = [...safelyConstrained.taskContract.scope.include];
+  assert.deepEqual(compareCodingConformanceProjection(denied.expected, safelyConstrained, 'vscode'), []);
+
+  const scoped = findFixture('create-and-verify');
+  const drifted = structuredClone(scoped.expected);
+  drifted.taskContract.scope.include = ['src/unrelated.py'];
+  drifted.taskContract.deliverables.find(deliverable => deliverable.id === 'source-change').path = 'src/unrelated.py';
+  const violations = compareCodingConformanceProjection(scoped.expected, drifted, 'vscode');
+  assert.ok(violations.some(violation => violation.dimension === 'taskContract'));
+});
+
+test('projection comparison rejects removal of an established exclusion', () => {
+  const fixture = findFixture('modify-and-verify');
+  const expected = structuredClone(fixture.expected);
+  expected.taskContract.scope.exclude = ['src/secret.js'];
+  const widened = structuredClone(expected);
+  widened.taskContract.scope.exclude = [];
+
+  const violations = compareCodingConformanceProjection(expected, widened, 'vscode');
+  assert.ok(violations.some(violation => violation.dimension === 'taskContract'));
+});
+
 test('projection comparison ignores auxiliary host validation but still rejects extra visible work', () => {
   const fixture = findFixture('verify-repair-reverify');
   const withHostValidation = structuredClone(fixture.expected);

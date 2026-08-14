@@ -174,3 +174,29 @@ Claude Code 核心 agent loop 仍未在公开仓库中提供，不能逐行确�
 | 用户仿真 | `model-led-intent-boundary.test.mjs`、`model-led-user-simulation.test.mjs` 覆盖多语言噪声、直接问答、精确简单请求、真实写入/readback 和中途改目标 | 已实施 |
 
 关键词与多语言配置仍可用于确定性证据提取、显式禁止项和兼容诊断，但不得决定主模型是否运行、是否必须调用工具或是否拥有执行权限。Claude Code 核心未公开，因此后续实现继续以本地 Codex 快照为源码主基线，Claude Code 只作为公开行为和插件层的补充证据。
+
+## 2026-08-14 过程处理复核与最终映射
+
+本轮进一步审计了“模型理解以后，任务到底怎样执行和修订”，而不只比较意图入口。固定 Codex commit 仍为 `fe614a6304ef804be74a622e482fdd75977abcba`。
+
+### 可逐行确认的 Codex 过程
+
+1. `codex-rs/core/src/session/turn.rs:273-336` 在 turn-scoped loop 中 drain pending input；每个 step 捕获一次 context，使模型上下文、advertised tools 和后续 tool call 使用一致视图。
+2. `codex-rs/core/src/tools/router.rs:153-205` 把模型 `FunctionCall`、`CustomToolCall` 和客户端 tool search 规范化成 `ToolCall`，模型提出的具体 payload 是执行边界输入。
+3. `codex-rs/core/src/tools/registry.rs:474-658` 校验 tool/payload，执行 pre-tool hooks，允许阻断或更新 input，再交给 handler；失败通过 `RespondToModel` 回到模型，而不是在独立分类器里终止任务。
+4. `codex-rs/core/src/tools/handlers/apply_patch.rs:275-322` 从 patch 中的真实文件路径计算 filesystem permission；权限不是由 prompt 中出现某个名词预先决定。
+5. `codex-rs/core/src/exec_policy.rs:726-799` 按实际 command、危险性、approval policy、sandbox backend 和 filesystem policy 推导 allow/prompt/forbidden。
+
+### 对 DevSeek 2.0.23 的直接约束
+
+- 模型工具调用先规范化为 `ModelToolSemanticProposal`，本地 contract arbiter 再按实际 action、target 和 effect 判定。
+- 负面限制不能被反向当成正向请求。例如“不要引入依赖”保留为禁止证据，但不能生成 external-effect authorization blocker，也不能阻止模型明确提出的工作区源码动作。
+- 抽象 TaskContract 可以被工具证据安全收窄到实际目标；conformance 必须接受这种收窄，但仍拒绝目标漂移、删除既有 exclusion 或放宽 authority。
+- pending user steer、模型 semantic proposal、Kernel TaskContract、requirements、plan、authority 和 completion 必须通过动态 source 读取同一当前 revision，不能在 loop 初始化时快照后失联。
+- 普通响应证据、workspace mutation receipt、terminal verification 和 refusal/no-effect evidence 由各自 owner 结算，模型文字不能代替 verifier。
+
+### 最终验证
+
+`2.0.23` exact-VSIX 全面独立仿真选择 83 个 case，10 个产品套件共 44 个流程 case 全部执行通过；覆盖维度 33/33，执行证据缺失 0。Shared 全量 336/336 通过。详细证据见 `INDEPENDENT-USER-SIMULATION-ACCEPTANCE-20260814.md`。
+
+这足以确认 DevSeek 在本轮定义的本地可观察过程上实现了 Codex-style 主循环责任划分；它不提供 Claude Code 未公开内部实现的源码证明，也不替代真实 Provider 和发布资格验证。

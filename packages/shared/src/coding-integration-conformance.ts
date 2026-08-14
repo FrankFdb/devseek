@@ -22,6 +22,8 @@ export interface AssessCodingIntegrationInput {
   readonly toolExecutions: readonly CodingToolExecutionReceipt<unknown>[];
   readonly mutations: readonly CodingWorkspaceMutationReceipt<unknown>[];
   readonly verifications: readonly CodingVerificationReceipt[];
+  /** Final TaskContract decides whether a mutation must be linked to verification. */
+  readonly verificationRequired: boolean;
   readonly evidenceRefs: readonly string[];
 }
 
@@ -101,11 +103,15 @@ function assessIntegration(
     ...input.mutations.filter(receipt => receipt.status === 'indeterminate').map(receipt => receipt.actionId),
     ...mutatingTools.filter(receipt => receipt.status === 'indeterminate').map(receipt => receipt.actionId),
   ]);
-  const verificationScopes = uniqueCodingRefs(input.verifications.flatMap(receipt => receipt.scopePaths))
-    .map(normalizeCodingWorkspacePath);
-  const unverifiedPaths = input.codeChange.changedPaths.filter(path => (
-    !verificationScopes.some(scope => codingWorkspaceTargetMatchesScope(path, scope))
-  ));
+  const verificationScopes = input.verificationRequired
+    ? uniqueCodingRefs(input.verifications.flatMap(receipt => receipt.scopePaths))
+      .map(normalizeCodingWorkspacePath)
+    : [];
+  const unverifiedPaths = input.verificationRequired
+    ? input.codeChange.changedPaths.filter(path => (
+        !verificationScopes.some(scope => codingWorkspaceTargetMatchesScope(path, scope))
+      ))
+    : [];
   let status: CodingIntegrationConformanceDecision['status'];
   if (input.codeChange.status === 'not-applicable') status = 'not-applicable';
   else if (input.codeChange.status === 'indeterminate' || indeterminateActionIds.length > 0) {
@@ -176,6 +182,7 @@ function snapshotIntegrationInput(
     verifications: Object.freeze(input.verifications.map(receipt => (
       snapshotCodingValue(receipt, 'integration-verification-receipt') as CodingVerificationReceipt
     ))),
+    verificationRequired: input.verificationRequired === true,
     evidenceRefs: Object.freeze(uniqueCodingRefs(input.evidenceRefs)),
   });
 }

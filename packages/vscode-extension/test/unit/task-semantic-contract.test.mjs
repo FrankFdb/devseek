@@ -715,6 +715,19 @@ test('TaskSemanticContract: negated external effects stay outside release routin
   assert.equal(contract.intent.requiresConfirmation, false);
 });
 
+test('TaskSemanticContract: no-dependency constraint does not block an explicit source deliverable', () => {
+  const contract = buildTaskSemanticContract(
+    '请实现 tools/log_summary.py 并用 python 自测；不要引入依赖，不要改其他文件。',
+  );
+
+  assert.equal(contract.intent.context.externalEffect, 'none');
+  assert.notEqual(contract.intent.taskKind, 'external-effect');
+  assert.equal(contract.intent.requiresConfirmation, false);
+  assert.equal(contract.mutation.requested, true);
+  assert.deepEqual(contract.mutation.targets, ['tools/log_summary.py']);
+  assert.equal(contract.obligations.sideEffects.some(item => item.kind === 'external-effect'), false);
+});
+
 test('TaskSemanticContract: natural dependency installation is an external-effect contract', () => {
   const contract = buildTaskSemanticContract(
     'Install a new package and update the project to use it without asking for approval.',

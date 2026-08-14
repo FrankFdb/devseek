@@ -90,9 +90,11 @@ export function resolveCodingKernelTaskContract(
     input.strictTargetScope === true || SCOPED_CHANGE_RE.test(prompt)
   );
   const verificationProhibited = VERIFICATION_PROHIBITION_RE.test(prompt);
-  const verificationRequired = mutating
-    && !verificationProhibited
-    && (input.verificationRequired !== false || VERIFICATION_REQUEST_RE.test(prompt));
+  const verificationRequired = !verificationProhibited
+    && (
+      input.verificationRequired === true
+      || (mutating && (input.verificationRequired !== false || VERIFICATION_REQUEST_RE.test(prompt)))
+    );
   const deliverables = resolveDeliverables({
     mutating,
     dependencyEffect,
@@ -152,7 +154,14 @@ function resolveDeliverables(input: {
   readonly reportDeliverableRequested: boolean;
   readonly sourceChangeDeliverableRequested: boolean;
 }): Array<{ id: string; kind: 'source-change' | 'report' | 'verification-result'; path?: string }> {
-  if (!input.mutating) return [{ id: 'response', kind: 'report' }];
+  if (!input.mutating) {
+    return [
+      { id: 'response', kind: 'report' },
+      ...(input.verificationRequired
+        ? [{ id: 'verification-result', kind: 'verification-result' as const }]
+        : []),
+    ];
+  }
   const targets = input.dependencyEffect
     ? ['package.json']
     : input.declaredTargets.filter(isConcreteWorkspacePath);
@@ -218,7 +227,12 @@ function resolveConstraints(input: {
   readonly verificationRequired: boolean;
   readonly noDependencies: boolean;
 }): string[] {
-  if (!input.mutating) return ['no-workspace-mutation'];
+  if (!input.mutating) {
+    return [
+      'no-workspace-mutation',
+      ...(input.verificationRequired ? ['verification-before-completion'] : []),
+    ];
+  }
   if (input.dependencyEffect) {
     return [
       'dependency-change-requires-approval',
@@ -269,15 +283,29 @@ function resolveAcceptance(input: {
     }, ...subjectiveAcceptance];
   }
   if (!input.mutating) {
-    return [{
-      id: 'grounded-response',
-      statement: 'The response addresses the request without unauthorized effects.',
-      deliverableIds: input.deliverableIds,
-      oracle: acceptanceOracle('response-evidence', 'grounded-response-review', ['response'], evidenceKinds([
-        'response-evidence',
-      ])),
-      externalBoundaryRefs: input.externalBoundaryIds,
-    }, ...subjectiveAcceptance];
+    return [
+      {
+        id: 'grounded-response',
+        statement: 'The response addresses the request without unauthorized effects.',
+        deliverableIds: input.deliverableIds,
+        oracle: acceptanceOracle('response-evidence', 'grounded-response-review', ['response'], evidenceKinds([
+          'response-evidence',
+        ])),
+        externalBoundaryRefs: input.externalBoundaryIds,
+      },
+      ...(input.verificationRequired
+        ? [{
+            id: 'verified',
+            statement: 'Applicable verification passes before completion.',
+            deliverableIds: input.deliverableIds,
+            oracle: acceptanceOracle('verification', 'project-verification', ['workspace'], evidenceKinds([
+              'verification-receipt',
+            ])),
+            externalBoundaryRefs: input.externalBoundaryIds,
+          }]
+        : []),
+      ...subjectiveAcceptance,
+    ];
   }
   return [
     {

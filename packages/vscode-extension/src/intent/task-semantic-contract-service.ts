@@ -280,7 +280,20 @@ function isSemanticProposalConstrainedByLocalBoundary(
   if (contract.kind === 'destructive' || candidate.taskKind === 'destructive' || candidate.mutation === 'delete') {
     return true;
   }
-  return contract.mutation.prohibited && semanticProposalRequestsWorkspaceMutation(candidate);
+  if (!contract.mutation.prohibited || !semanticProposalRequestsWorkspaceMutation(candidate)) {
+    return false;
+  }
+  return !isScopedOtherFileProposalWithinKnownInputs(contract, candidate);
+}
+
+function isScopedOtherFileProposalWithinKnownInputs(
+  contract: TaskSemanticContract,
+  candidate: SemanticIntentInterpretation,
+): boolean {
+  if (!contract.signals.includes('scoped-other-file-prohibition')) return false;
+  if (candidate.targetPaths.length === 0 || contract.taskContract.inputs.length === 0) return false;
+  const inputs = new Set(contract.taskContract.inputs.map(normalizePathToken));
+  return candidate.targetPaths.every(target => inputs.has(normalizePathToken(target)));
 }
 
 function semanticProposalRequestsExternalEffect(candidate: SemanticIntentInterpretation): boolean {
@@ -662,6 +675,12 @@ function clearNarrowedNoMutationSignals(signals: readonly string[]): string[] {
 
 function canSemanticNoMutationNarrowLocalContract(contract: TaskSemanticContract): boolean {
   if (contract.kind === 'destructive') return false;
+  if (contract.mutation.prohibited
+    || contract.intent.mode === 'inspect'
+    || contract.intent.mode === 'plan'
+    || contract.intent.mode === 'qa') {
+    return true;
+  }
   if (contract.mutation.fileArtifact || contract.taskContract.deliverableTargets.length > 0) return false;
   const strongWriteSignals = new Set([
     'explicit-source-file-target',

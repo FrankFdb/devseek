@@ -83,6 +83,11 @@ test('canonical Kernel sends VS Code work through its runtime adapter', async ()
   assert.equal(calls[0].callbacks.traceRunId, output.runId);
   assert.equal(typeof calls[0].callbacks.canonicalToolAuthority.authorize, 'function');
   assert.equal(typeof calls[0].callbacks.canonicalExternalEffects.execute, 'function');
+  assert.equal(
+    typeof Object.getOwnPropertyDescriptor(calls[0].callbacks, 'canonicalVerificationAcceptance')?.get,
+    'function',
+    'verification acceptance must remain bound to the current revised TaskContract',
+  );
 });
 
 test('canonical Kernel observes actual workspace apply lifecycle without replaying mutation evidence', async () => {

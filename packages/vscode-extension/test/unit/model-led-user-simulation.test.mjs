@@ -7,6 +7,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -235,6 +236,31 @@ test('ModelLedUserSimulation: a noisy explanatory question completes without for
     assert.equal(simulation.harness.changes.length, 0);
     assert.equal(simulation.harness.todos.length, 0);
     assert.equal(simulation.result.tasksApplied, 0);
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
+test('ModelLedUserSimulation: one read tool plus task_complete settles without a synthetic todo', async () => {
+  const prompt = '只读取 health.txt 并告诉我结果，不要修改其他文件。';
+  let calls = 0;
+  const simulation = await runSimulation(prompt, async () => {
+    calls += 1;
+    const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'health.txt');
+    writeFileSync(target, 'HEALTHY\n');
+    return {
+      text: '读取现有健康状态并直接结算。',
+      tools: [
+        { name: 'read_file', input: { path: target } },
+        { name: 'task_complete', input: { summary: 'health.txt 的内容为 HEALTHY；未修改文件。' } },
+      ],
+    };
+  });
+  try {
+    assert.equal(calls, 1, simulation.result.historyText);
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+    assert.equal(simulation.harness.todos.length, 0);
+    assert.deepEqual(simulation.result.changedPaths, []);
   } finally {
     rmSync(simulation.root, { recursive: true, force: true });
   }

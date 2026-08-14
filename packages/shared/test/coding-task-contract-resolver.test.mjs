@@ -53,6 +53,41 @@ test('task-contract mode resolution preserves read-only questions and explicit c
   ]);
 });
 
+test('explicit run-only verification keeps the workspace read-only and requires terminal evidence', () => {
+  const contract = resolveCodingKernelTaskContract({
+    prompt: '只跑一下 health 检查，把结果告诉我；不要改文件，失败也不要修。',
+    surface: 'vscode',
+    modeHint: 'review',
+    verificationRequired: true,
+  });
+
+  assert.equal(contract.mode, 'review');
+  assert.deepEqual(contract.deliverables.map(deliverable => deliverable.kind), [
+    'report',
+    'verification-result',
+  ]);
+  assert.deepEqual(contract.acceptance.map(criterion => criterion.id), [
+    'grounded-response',
+    'verified',
+  ]);
+  assert.equal(contract.constraints.includes('no-workspace-mutation'), true);
+  assert.equal(contract.constraints.includes('verification-before-completion'), true);
+  assert.equal(contract.nonGoals.includes('workspace-mutation'), true);
+});
+
+test('an explicit no-run boundary overrides a stale run-only verification proposal', () => {
+  const contract = resolveCodingKernelTaskContract({
+    prompt: 'Review src/health.js only. Do not run, test, or modify anything.',
+    surface: 'vscode',
+    modeHint: 'review',
+    verificationRequired: true,
+  });
+
+  assert.deepEqual(contract.deliverables.map(deliverable => deliverable.kind), ['report']);
+  assert.deepEqual(contract.acceptance.map(criterion => criterion.id), ['grounded-response']);
+  assert.equal(contract.constraints.includes('verification-before-completion'), false);
+});
+
 test('terminal effect classification is command-owned and conservative for package operations', () => {
   assert.deepEqual(classifyCodingTerminalEffects('node --test test/value.test.js'), ['process']);
   assert.deepEqual(classifyCodingTerminalEffects('./test.sh 2>&1'), ['process']);
