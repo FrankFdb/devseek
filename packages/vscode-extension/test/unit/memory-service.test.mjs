@@ -329,6 +329,81 @@ test('MemoryService: omits prompt memory when strict context has no project anch
   });
 });
 
+test('MemoryService: strict retrieval never injects an unrelated repository summary into a new topic', () => {
+  withTempWorkspace((workspace) => {
+    const service = new MemoryService({ workspaceRoot: workspace });
+    service.appendAgentMemory('UAV flight control uses src/uav/telemetry.ts and the MAVLink bridge.');
+    writeFileSync(service.getLocation().summaryPath, [
+      '# DevSeek Memory Summary',
+      '',
+      'Historical context only. Current user input, project rules, permissions, and live tool evidence override this summary.',
+      '',
+      '- UAV flight control uses src/uav/telemetry.ts and the MAVLink bridge.',
+      '',
+    ].join('\n'), 'utf8');
+
+    const context = service.retrievePromptContext({
+      query: '说明gpu cpu',
+      requireContextMatch: true,
+    });
+    const candidates = service.retrieveCodingMemoryCandidates({
+      query: '说明gpu cpu',
+      requireContextMatch: true,
+    });
+
+    assert.equal(context, null);
+    assert.deepEqual(candidates, []);
+  });
+});
+
+test('MemoryService: strict retrieval includes matched records but excludes the global mixed-topic summary', () => {
+  withTempWorkspace((workspace) => {
+    const service = new MemoryService({ workspaceRoot: workspace });
+    service.appendAgentMemory('src/bridge.ts uses npm run test:bridge for focused verification.');
+    service.appendAgentMemory('UAV flight control uses src/uav/telemetry.ts and MAVLink.');
+    writeFileSync(service.getLocation().summaryPath, [
+      '# DevSeek Memory Summary',
+      '',
+      '- src/bridge.ts uses npm run test:bridge for focused verification.',
+      '- UAV flight control uses src/uav/telemetry.ts and MAVLink.',
+      '',
+    ].join('\n'), 'utf8');
+
+    const context = service.retrievePromptContext({
+      query: '检查 src/bridge.ts 应该运行哪个聚焦测试',
+      relatedPaths: [path.join(workspace, 'src/bridge.ts')],
+      requireContextMatch: true,
+    });
+    const candidates = service.retrieveCodingMemoryCandidates({
+      query: '检查 src/bridge.ts 应该运行哪个聚焦测试',
+      relatedPaths: [path.join(workspace, 'src/bridge.ts')],
+      requireContextMatch: true,
+    });
+
+    assert.match(context, /npm run test:bridge/);
+    assert.doesNotMatch(context, /UAV|MAVLink/);
+    assert.ok(candidates.some(candidate => candidate.content.includes('npm run test:bridge')));
+    assert.ok(candidates.every(candidate => !candidate.content.includes('UAV')));
+  });
+});
+
+test('MemoryService: placeholder summaries are never projected as prompt context', () => {
+  withTempWorkspace((workspace) => {
+    const service = new MemoryService({ workspaceRoot: workspace });
+    write(workspace, path.relative(workspace, service.getLocation().summaryPath), [
+      '# DevSeek Memory Summary',
+      '',
+      'Historical context only. Current user input, project rules, permissions, and live tool evidence override this summary.',
+      '',
+      'No consolidated memory is available yet.',
+      '',
+    ].join('\n'));
+
+    assert.equal(service.retrievePromptContext(), null);
+    assert.deepEqual(service.retrieveCodingMemoryCandidates(), []);
+  });
+});
+
 test('MemoryService: ignores injected session history while choosing memory anchors', () => {
   withTempWorkspace((workspace) => {
     write(workspace, '.devseek/memory.md', [

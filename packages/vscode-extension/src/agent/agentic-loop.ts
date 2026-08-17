@@ -78,6 +78,7 @@ import {
   getAgenticBlockingTerminalFailure,
   getAgenticBlockingDeniedToolExecution,
 } from './agentic-execution-evidence';
+import { ProviderWaitFeedback } from './provider-wait-feedback';
 import {
   analyzeTerminalEvidence,
   describeAgentToolActivity,
@@ -518,11 +519,15 @@ export async function runAgenticLoop(
       callbacks.onToolActivity?.('label', '重建模型会话并从任务事实恢复');
     }
     forceProviderNewSessionNextTurn = false;
+    const providerWaitFeedback = new ProviderWaitFeedback(callbacks.onToolActivity, roundCount);
     try {
       const providerTurn = await chatWithMessages(
         messages,
         mode,
-        roundStreamDelta,  // stream delta for early todo detection
+        delta => {
+          providerWaitFeedback.observeOutput();
+          roundStreamDelta(delta);
+        },
         callbacks.signal,
         useFreshProviderSession,
         callbacks.traceRunId, callbacks.traceWorkspaceRoot, callbacks.traceEvidenceParticipantToken, callbacks.onTraceEvidenceError,
@@ -532,6 +537,7 @@ export async function runAgenticLoop(
           { workspaceRoot },
         ),
       );
+      providerWaitFeedback.complete();
       text = providerTurn.text;
       tools = providerTurn.tools;
     } catch (error) {
@@ -551,6 +557,8 @@ export async function runAgenticLoop(
         continue;
       }
       throw error;
+    } finally {
+      providerWaitFeedback.stop();
     }
 
     const postProviderSteerMessages = writeAuthority.drainAfterProvider();

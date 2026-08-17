@@ -11,7 +11,11 @@ import {
 } from '@devseek-netai/shared';
 import type { ExecutionMode } from '../intent/intent-types';
 import type { TaskSemanticContract } from '../task-semantic-contract';
-import type { AgentLoopCallbacks, AgentLoopResult } from '../agent/loop-types';
+import type {
+  AgentLoopCallbacks,
+  AgentLoopResult,
+  DeferredAgentTerminalPresentation,
+} from '../agent/loop-types';
 import { observeWorkspaceMutationTransaction } from '../workspace/workspace-mutation-observer';
 import {
   getPendingKernelRecoveryTasks,
@@ -22,6 +26,9 @@ import { VsCodeCompletionEvidenceAdapter } from './coding-completion-adapter';
 import { projectAgentTaskCheckpointEffect } from './coding-checkpoint-effect';
 import type { VsCodeRecoveryFallback } from './coding-kernel-recovery-delivery';
 import { projectVsCodeCodingKernelTaskContract } from './coding-kernel-task-contract';
+import {
+  AgentTerminalPresentationBuffer,
+} from './agent-terminal-presentation';
 
 export { deliverVsCodeRecoverySettlement } from './coding-kernel-recovery-delivery';
 
@@ -73,6 +80,7 @@ export interface CodingKernelLoopPorts {
 export interface VsCodeCodingKernelRuntimeResult {
   readonly agentResult: AgentLoopResult;
   readonly recoveryFallback?: VsCodeRecoveryFallback;
+  readonly terminalPresentation: DeferredAgentTerminalPresentation;
 }
 
 export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
@@ -101,10 +109,14 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
     const completedUnitBase = request.recovery?.kind === 'checkpoint-resume'
       ? request.recovery.checkpoint.completedUnitCount
       : 0;
+    const terminalPresentation = new AgentTerminalPresentationBuffer(request.callbacks);
     const originalCheckpoint = request.callbacks.onTaskCheckpoint;
     const originalTaskSemanticContractRevision = request.callbacks.onTaskSemanticContractRevision;
     const callbacks: AgentLoopCallbacks = {
       ...request.callbacks,
+      onDelta: terminalPresentation.onDelta,
+      onAgentStatus: terminalPresentation.onAgentStatus,
+      onTodoUpdate: terminalPresentation.onTodoUpdate,
       traceRunId: request.callbacks.traceRunId ?? kernelRequest.runId,
       canonicalProviderEvents: kernelRequest.providerEvents,
       canonicalToolDispatch: kernelRequest.toolDispatch,
@@ -160,6 +172,10 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
         onTaskCheckpoint: async (firstUnfinishedIndex, remainingTasks, reason) => {
           if (firstUnfinishedIndex === null || reason === 'paused' || reason === 'completed') {
             terminalCheckpointEmitted = true;
+          }
+          if (firstUnfinishedIndex === null && reason === 'completed') {
+            terminalPresentation.captureCompletedCheckpoint();
+            return;
           }
           const checkpoint = firstUnfinishedIndex !== null && remainingTasks.length > 0
             ? kernelRequest.checkpoint.create({
@@ -248,6 +264,7 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
     return {
       result: {
         agentResult: result,
+        terminalPresentation: terminalPresentation.snapshot(),
         ...(recoveryFallback ? { recoveryFallback } : {}),
       },
       completionEvidence,

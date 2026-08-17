@@ -32,7 +32,7 @@ import {
   getCommandHints,
 } from './agent-learner';
 import { getAgentTaskDisplayTarget, type AgentTask } from './agent-task-decomposer';
-import type { AgentLoopResult } from './agent/loop-types';
+import type { AgentLoopCallbacks, AgentLoopResult } from './agent/loop-types';
 import { createAgentHostToolCallbacks } from './agent/agent-host-tools';
 import { getTaskWorkspaceRootFsPath, resolveWorkspaceFileUri } from './workspace-roots';
 import { createVscodeMcpManager, initializeWorkspaceMcp, renderMcpStatusText } from './mcp/vscode-mcp-runtime';
@@ -44,6 +44,8 @@ import { runClosedLoopRepair } from './app/closed-loop-repair-runner';
 import { runLocalExecutionChatIfPossible } from './local-execution-chat-runner';
 import { TerminalPermissionCoordinator } from './app/terminal-permission-coordinator';
 import { ChatRouteController } from './app/chat-controller';
+import { deliverSettledAgentTerminalPresentation } from './app/agent-terminal-presentation';
+import { presentAgentExecutionError } from './app/agent-error-presentation';
 import { decideAgentTurnRoute } from './app/agent-turn-routing-service';
 import { resolveSemanticRouteDecision } from './app/semantic-route-service';
 import { ChatSessionTurnService } from './app/chat-session-turn-service';
@@ -657,6 +659,7 @@ async function runActiveChat(
             progressDetail: agDisplayProfile.planCompletedDetail,
           });
         }
+        let agentCallbacks: AgentLoopCallbacks | undefined;
         const agResult = loopResult = await agentKernelService.executeCanonicalTask({
           userPrompt: prompt,
           semanticContract: agentKernelRun.semanticContract,
@@ -664,7 +667,7 @@ async function runActiveChat(
           workspaceRoot: agWsRoot,
           providerType: getActiveProviderType(),
           mode,
-          callbacks: {
+          callbacks: agentCallbacks = {
             executionMode: workflow.toolPolicyMode,
             traceRunId: agentTraceRunId,
             traceWorkspaceRoot: agentTraceWorkspaceRoot,
@@ -786,6 +789,14 @@ async function runActiveChat(
         agentChangedPathScope.add(agResult.changedPaths);
         const agRunChangedPaths = agentChangedPathScope.commit();
         const agSettlement = agentKernelRun.settleAgentLoopResult(agResult, agRunChangedPaths);
+        if (agentCallbacks) {
+          await deliverSettledAgentTerminalPresentation({
+            presentation: agResult.terminalPresentation,
+            status: agSettlement.status,
+            reasonCodes: agResult.completionDecision?.reasonCodes,
+            callbacks: agentCallbacks,
+          });
+        }
         const agDurablyCompleted = agSettlement.completed;
         if (agSettlement.refused) agentPresenter.postSettlementRefusal();
         const agChangedDetails = agRunChangedPaths.length > 0
@@ -889,9 +900,14 @@ async function runActiveChat(
           });
           agentHistoryText = agentHistoryText || recoveryDisplay.historyText;
         } else {
-          postAgent({ type: 'agentStatus', phase: 'error', state: 'failed', title: `Agent 执行出错：${msg}` });
-          postWebviewMessage(webview, { type: 'error', text: msg, loginRequired: msg === 'LOGIN_REQUIRED' });
-          agentHistoryText = agentHistoryText || `[Agent 执行出错] ${msg.slice(0, 200)}`;
+          const errorPresentation = presentAgentExecutionError(e);
+          postAgent({ type: 'agentStatus', phase: 'error', state: 'failed', title: errorPresentation.title });
+          postWebviewMessage(webview, {
+            type: 'error',
+            text: errorPresentation.text,
+            loginRequired: msg === 'LOGIN_REQUIRED',
+          });
+          agentHistoryText = agentHistoryText || errorPresentation.historyText;
         }
         saveAgentSessionState({
           lastUserPrompt: userDisplay,

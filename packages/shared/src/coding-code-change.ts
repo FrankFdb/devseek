@@ -5,6 +5,9 @@ import {
   uniqueCodingRefs,
 } from './coding-contract-utils';
 import type { CodingChangePlan } from './coding-design-plan';
+import type { CodingToolExecutionReceipt } from './coding-tool-execution';
+import { codingAdverseWorkspaceMutationWasRecovered } from './coding-tool-effect-settlement';
+import type { CodingVerificationReceipt } from './coding-verification';
 import type { CodingWorkspaceMutationReceipt } from './coding-workspace-mutation';
 import {
   codingWorkspaceTargetMatchesScope,
@@ -17,7 +20,9 @@ export interface AssessCodingCodeChangeInput {
   readonly sequence: number;
   readonly actionId: string;
   readonly plan: CodingChangePlan;
+  readonly toolExecutions: readonly CodingToolExecutionReceipt<unknown>[];
   readonly mutations: readonly CodingWorkspaceMutationReceipt<unknown>[];
+  readonly verifications: readonly CodingVerificationReceipt[];
   readonly evidenceRefs: readonly string[];
 }
 
@@ -91,7 +96,15 @@ function assessCodeChange(runId: string, input: AssessCodingCodeChangeInput): Co
     !changedPaths.some(path => codingWorkspaceTargetMatchesScope(path, target))
   ));
   const indeterminate = input.mutations.filter(receipt => receipt.status === 'indeterminate');
-  const failed = input.mutations.filter(receipt => receipt.status === 'failed');
+  const failed = input.mutations.filter(receipt => (
+    receipt.status === 'failed'
+      && !codingAdverseWorkspaceMutationWasRecovered(
+        receipt,
+        input.toolExecutions,
+        input.mutations,
+        input.verifications,
+      )
+  ));
   const missingReadback = input.mutations.filter(receipt => (
     receipt.status === 'committed' && (!receipt.readbackRef || receipt.evidenceRefs.length === 0)
   ));
@@ -147,8 +160,14 @@ function snapshotCodeChangeInput(
     sequence: input.sequence,
     actionId: normalizedCodingId(input.actionId, 'code-change-action-id'),
     plan: snapshotCodingValue(input.plan, 'code-change-plan') as CodingChangePlan,
+    toolExecutions: Object.freeze(input.toolExecutions.map(receipt => (
+      snapshotCodingValue(receipt, 'code-change-tool-execution') as CodingToolExecutionReceipt<unknown>
+    ))),
     mutations: Object.freeze(input.mutations.map(receipt => (
       snapshotCodingValue(receipt, 'code-change-mutation') as CodingWorkspaceMutationReceipt<unknown>
+    ))),
+    verifications: Object.freeze(input.verifications.map(receipt => (
+      snapshotCodingValue(receipt, 'code-change-verification') as CodingVerificationReceipt
     ))),
     evidenceRefs: Object.freeze(uniqueCodingRefs(input.evidenceRefs)),
   });

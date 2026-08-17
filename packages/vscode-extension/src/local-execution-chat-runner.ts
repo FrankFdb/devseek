@@ -35,6 +35,7 @@ import { extendRepairRoundBudget, normalizeRepairRoundBudget } from '@devseek-ne
 import type { AgentKernelService } from './app/agent-kernel-service';
 import { createLocalValidationKernelRecovery } from './app/coding-kernel-recovery';
 import type { LLMProviderType } from './llm/types';
+import { deliverSettledAgentTodoPresentation } from './app/agent-terminal-presentation';
 
 export interface LocalExecutionRouteChatOptions {
   prompt: string;
@@ -425,33 +426,34 @@ async function runAgentRepairRound(
   const repairContextFiles = repairTasks
     .map(task => task.absPath)
     .filter((absPath): absPath is string => Boolean(absPath));
+  const repairCallbacks = buildLocalExecutionAgentCallbacks({
+    webview: input.webview,
+    workflowReporter: input.workflowReporter,
+    workspaceRoot: repairWsRoot,
+    defaultWorkdir: localPlan.cwd,
+    toolPolicy: input.toolPolicy,
+    terminalPermissionCoordinator: input.terminalPermissionCoordinator,
+    traceRunId: input.traceRunId,
+    traceEvidenceParticipantToken: input.traceEvidenceParticipantToken,
+    onTraceEvidenceError: input.onTraceEvidenceError,
+    consumeAgentSteer: input.consumeAgentSteer,
+    confirmTerminal: input.requestTerminalConfirmation,
+    registerAppliedChange: input.registerAppliedChange,
+    registerToMemory: input.registerToMemory,
+    sessionRecentFiles: input.sessionRecentFiles,
+    repairFiles: repairTasks.map((task) => task.absPath).filter((absPath): absPath is string => Boolean(absPath)),
+    mcpToolRefs: input.mcpToolRefs,
+    onPrepareMcpToolCall: input.onPrepareMcpToolCall,
+    signal: input.signal,
+    displayPresenter: repairDisplayPresenter,
+  });
   const repairLoop = await input.agentKernelService.executeCanonicalTask({
     userPrompt: repairPromptWithHint,
     contextFiles: repairContextFiles,
     mode: input.mode,
     workspaceRoot: repairWsRoot,
     providerType: input.providerType,
-    callbacks: buildLocalExecutionAgentCallbacks({
-      webview: input.webview,
-      workflowReporter: input.workflowReporter,
-      workspaceRoot: repairWsRoot,
-      defaultWorkdir: localPlan.cwd,
-      toolPolicy: input.toolPolicy,
-      terminalPermissionCoordinator: input.terminalPermissionCoordinator,
-      traceRunId: input.traceRunId,
-      traceEvidenceParticipantToken: input.traceEvidenceParticipantToken,
-      onTraceEvidenceError: input.onTraceEvidenceError,
-      consumeAgentSteer: input.consumeAgentSteer,
-      confirmTerminal: input.requestTerminalConfirmation,
-      registerAppliedChange: input.registerAppliedChange,
-      registerToMemory: input.registerToMemory,
-      sessionRecentFiles: input.sessionRecentFiles,
-      repairFiles: repairTasks.map((task) => task.absPath).filter((absPath): absPath is string => Boolean(absPath)),
-      mcpToolRefs: input.mcpToolRefs,
-      onPrepareMcpToolCall: input.onPrepareMcpToolCall,
-      signal: input.signal,
-      displayPresenter: repairDisplayPresenter,
-    }),
+    callbacks: repairCallbacks,
     workflowMode: input.toolPolicy.mode,
     memoryRelatedPaths: repairContextFiles,
     recovery: createLocalValidationKernelRecovery({
@@ -459,6 +461,14 @@ async function runAgentRepairRound(
       attempt: round,
       failedCommand: localPlan.command,
     }),
+  });
+  const repairStatus = repairLoop.completionDecision?.status
+    ?? (repairLoop.tasksFailed > 0 ? 'failed' : 'completed');
+  await deliverSettledAgentTodoPresentation({
+    presentation: repairLoop.terminalPresentation,
+    status: repairStatus,
+    reasonCodes: repairLoop.completionDecision?.reasonCodes,
+    callbacks: repairCallbacks,
   });
 
   if (repairLoop.changedPaths.length > 0) {
@@ -472,6 +482,17 @@ async function runAgentRepairRound(
         nodePath.isAbsolute(pathValue) ? pathValue : nodePath.join(repairWsRoot, pathValue),
       ))
       .filter((rel): rel is string => Boolean(rel)));
+  }
+
+  if (repairStatus !== 'completed') {
+    await input.workflowReporter({
+      phase: 'repair',
+      state: 'failed',
+      title: 'Agent 修复未通过证据结算',
+      detail: '已保留本轮文件和验证证据，外层任务不会继续投射成功状态。',
+    });
+    input.webview.postMessage({ type: 'endResponse' });
+    return false;
   }
 
   if (repairLoop.tasksApplied === 0 && repairLoop.tasksFailed > 0) {

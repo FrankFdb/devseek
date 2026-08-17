@@ -19,6 +19,7 @@ import {
 import type { CodingToolExecutionReceipt } from './coding-tool-execution';
 import type { CodingVerificationReceipt } from './coding-verification';
 import type { CodingWorkspaceMutationReceipt } from './coding-workspace-mutation';
+import { codingAdverseWorkspaceMutationWasRecovered } from './coding-tool-effect-settlement';
 
 export interface SettledCodingConformanceRun {
   readonly fixtureId: string;
@@ -49,7 +50,7 @@ export function projectSettledCodingConformanceRun(
       ...(receipt.effectStarted === undefined ? {} : { effectStarted: receipt.effectStarted }),
       evidenceRefs: receipt.evidenceRefs,
     })),
-    changeReceipts: input.changeReceipts.map(projectChangeReceipt),
+    changeReceipts: projectEffectiveChangeReceipts(input),
     verifications: input.verifications.map(receipt => ({
       sequence: receipt.sequence,
       actionId: receipt.actionId,
@@ -65,6 +66,30 @@ export function projectSettledCodingConformanceRun(
       evidenceRefs: input.completion.evidenceRefs,
     },
   }, 'coding-conformance-projection') as CodingConformanceProjection;
+}
+
+function projectEffectiveChangeReceipts(
+  input: SettledCodingConformanceRun,
+): CodingChangeReceiptProjection[] {
+  const projected: CodingChangeReceiptProjection[] = [];
+  for (const receipt of input.changeReceipts) {
+    if (receipt.status === 'failed') {
+      const recovered = codingAdverseWorkspaceMutationWasRecovered(
+        receipt,
+        input.toolExecutions,
+        input.changeReceipts,
+        input.verifications,
+      );
+      if (input.completion.status === 'completed' && !recovered) {
+        throw new Error('coding-conformance-projection:completed-with-unrecovered-failed-mutation');
+      }
+      // A failed mutation is a proven no-change attempt. Its failed tool receipt
+      // remains in the audit projection; only actual commits or rollbacks belong here.
+      continue;
+    }
+    projected.push(projectChangeReceipt(receipt));
+  }
+  return projected;
 }
 
 export function bindSettledCodingConformanceObservation(input: {

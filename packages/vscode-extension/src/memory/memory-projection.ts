@@ -5,6 +5,22 @@ import type { RepositoryMemoryLocation } from './repository-memory-location';
 import type { MemoryRecord } from './types';
 
 const SUMMARY_MAX_CHARS = 8_000;
+const EMPTY_SUMMARY_LINES = new Set([
+  'Historical context only. Current user input, project rules, permissions, and live tool evidence override this summary.',
+  'No consolidated memory is available yet.',
+]);
+
+/** Returns only summaries that contain durable facts beyond the projection wrapper. */
+export function isSubstantiveMemorySummary(summary: string): boolean {
+  return String(summary || '')
+    .split(/\r?\n/u)
+    .map(line => line.trim())
+    .some(line => (
+      Boolean(line)
+      && line !== '# DevSeek Memory Summary'
+      && !EMPTY_SUMMARY_LINES.has(line)
+    ));
+}
 
 export class MemoryProjectionWriter {
   constructor(private readonly location: RepositoryMemoryLocation) {}

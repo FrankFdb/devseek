@@ -296,6 +296,7 @@ test('ModelLedUserSimulation: concise concept answers settle across natural user
     const simulation = await runSimulation(scenario.prompt, async messages => {
       calls += 1;
       assert.match(messages[0].content, /普通 assistant message 就是有效交付/u);
+      assert.match(messages[0].content, /会话、工作区、记忆检索、路由和工具可用性是内部执行上下文/u);
       return { text: scenario.answer, tools: [] };
     });
     try {
@@ -336,7 +337,11 @@ test('ModelLedUserSimulation: an elliptical follow-up resolves its referent from
     assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
     assert.equal(simulation.result.tasksApplied, 0);
     assert.deepEqual(simulation.result.changedPaths, []);
-    assert.equal(simulation.harness.activities.length, 0);
+    assert.equal(
+      simulation.harness.activities.filter(activity => activity.kind !== 'label').length,
+      0,
+      'a conversational follow-up may report provider wait progress but must not execute tools',
+    );
   } finally {
     rmSync(simulation.root, { recursive: true, force: true });
   }

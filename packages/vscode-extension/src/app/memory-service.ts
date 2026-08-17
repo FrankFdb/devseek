@@ -11,7 +11,10 @@ import {
   type MemoryPolicyPort,
 } from '@devseek-netai/shared';
 import { MemoryStore } from '../memory/memory-store';
-import { MemoryReadService } from '../memory/memory-projection';
+import {
+  isSubstantiveMemorySummary,
+  MemoryReadService,
+} from '../memory/memory-projection';
 import { SensitiveMemoryGuard } from '../memory/sensitive-memory-guard';
 import type { MemoryConsolidationProposal } from '../memory/pipeline-types';
 import type { RepositoryMemoryLocation } from '../memory/repository-memory-location';
@@ -379,11 +382,12 @@ export class MemoryService {
 
   retrieveCodingMemoryCandidates(options: MemoryPromptContextOptions = {}): CodingMemoryCandidate[] {
     const records = this.retrieveRelevantRecords(options);
+    if (options.requireContextMatch && records === NO_CONTEXT_MATCH) return [];
     const candidates = records === NO_CONTEXT_MATCH
       ? []
       : records.map(record => recordToCodingMemoryCandidate(record, this.workspaceRoot));
     const summary = this.readSummary().trim();
-    if (!summary) return candidates;
+    if (options.requireContextMatch || !isSubstantiveMemorySummary(summary)) return candidates;
     return [summaryToCodingMemoryCandidate(summary, this.store.location.repositoryId, this.workspaceRoot), ...candidates];
   }
 
@@ -393,7 +397,7 @@ export class MemoryService {
     const relevantRecords = this.retrieveRelevantRecords(normalizedOptions);
     const summary = this.readSummary().trim();
     if (normalizedOptions.requireContextMatch && relevantRecords === NO_CONTEXT_MATCH) {
-      return summary || null;
+      return null;
     }
     const records = relevantRecords === NO_CONTEXT_MATCH ? [] : relevantRecords;
     const policyDecision = this.policy.selectContext({
@@ -404,7 +408,10 @@ export class MemoryService {
       maxChars,
     });
     const rendered = renderCodingMemoryContext(policyDecision);
-    return [summary, rendered].filter(Boolean).join('\n\n') || null;
+    const summaryContext = normalizedOptions.requireContextMatch || !isSubstantiveMemorySummary(summary)
+      ? ''
+      : summary;
+    return [summaryContext, rendered].filter(Boolean).join('\n\n') || null;
   }
 
   private retrieveRelevantRecords(options: MemoryPromptContextOptions): MemoryRecord[] | typeof NO_CONTEXT_MATCH {

@@ -66,7 +66,7 @@ function tool(overrides = {}) {
   };
 }
 
-function verification() {
+function verification(overrides = {}) {
   return {
     version: CODING_VERIFICATION_RECEIPT_VERSION,
     runId: 'run-change',
@@ -79,18 +79,26 @@ function verification() {
     checks: [],
     acceptance: [],
     evidenceRefs: ['verification:passed'],
+    ...overrides,
+  };
+}
+
+function codeChangeInput(overrides = {}) {
+  return {
+    sequence: 3,
+    actionId: 'code-change-final',
+    plan: changePlan(),
+    toolExecutions: [],
+    mutations: [mutation()],
+    verifications: [],
+    evidenceRefs: [],
+    ...overrides,
   };
 }
 
 test('I19-CHG-01 user journey: planned code change requires committed readback evidence', () => {
   const port = new CanonicalCodeChangeService().bind({ runId: 'run-change' });
-  const decision = port.assess({
-    sequence: 3,
-    actionId: 'code-change-final',
-    plan: changePlan(),
-    mutations: [mutation()],
-    evidenceRefs: [],
-  });
+  const decision = port.assess(codeChangeInput());
 
   assert.equal(decision.status, 'conformant');
   assert.deepEqual(decision.changedPaths, ['src/value.ts']);
@@ -98,13 +106,9 @@ test('I19-CHG-01 user journey: planned code change requires committed readback e
 });
 
 test('I19-CHG-02 user journey: committed unplanned paths fail code change conformance', () => {
-  const decision = new CanonicalCodeChangeService().bind({ runId: 'run-change' }).assess({
-    sequence: 3,
-    actionId: 'code-change-final',
-    plan: changePlan(),
+  const decision = new CanonicalCodeChangeService().bind({ runId: 'run-change' }).assess(codeChangeInput({
     mutations: [mutation({ paths: ['src/value.ts', 'src/hidden.ts'] })],
-    evidenceRefs: [],
-  });
+  }));
 
   assert.equal(decision.status, 'failed');
   assert.deepEqual(decision.unplannedPaths, ['src/hidden.ts']);
@@ -112,13 +116,7 @@ test('I19-CHG-02 user journey: committed unplanned paths fail code change confor
 });
 
 test('I19-INT-01 user journey: tool mutation and verification form one causal chain', () => {
-  const codeChange = new CanonicalCodeChangeService().bind({ runId: 'run-change' }).assess({
-    sequence: 3,
-    actionId: 'code-change-final',
-    plan: changePlan(),
-    mutations: [mutation()],
-    evidenceRefs: [],
-  });
+  const codeChange = new CanonicalCodeChangeService().bind({ runId: 'run-change' }).assess(codeChangeInput());
   const integration = new CanonicalIntegrationConformanceService().bind({ runId: 'run-change' });
   const decision = integration.assess({
     sequence: 4,
@@ -139,13 +137,9 @@ test('I19-INT-01 user journey: tool mutation and verification form one causal ch
 
 test('I19-INT-02 user journey: direct mutation bypass cannot authorize completion', () => {
   const mutations = [mutation()];
-  const codeChange = new CanonicalCodeChangeService().bind({ runId: 'run-change' }).assess({
-    sequence: 3,
-    actionId: 'code-change-final',
-    plan: changePlan(),
+  const codeChange = new CanonicalCodeChangeService().bind({ runId: 'run-change' }).assess(codeChangeInput({
     mutations,
-    evidenceRefs: [],
-  });
+  }));
   const decision = new CanonicalIntegrationConformanceService().bind({ runId: 'run-change' }).assess({
     sequence: 4,
     actionId: 'integration-final',
@@ -163,13 +157,10 @@ test('I19-INT-02 user journey: direct mutation bypass cannot authorize completio
 
 test('I19-INT-03 user journey: readback-only artifact does not invent a verification requirement', () => {
   const artifactMutation = mutation({ paths: ['notes/ready.txt'] });
-  const codeChange = new CanonicalCodeChangeService().bind({ runId: 'run-change' }).assess({
-    sequence: 3,
-    actionId: 'code-change-final',
+  const codeChange = new CanonicalCodeChangeService().bind({ runId: 'run-change' }).assess(codeChangeInput({
     plan: changePlan('notes/ready.txt'),
     mutations: [artifactMutation],
-    evidenceRefs: [],
-  });
+  }));
   const decision = new CanonicalIntegrationConformanceService().bind({ runId: 'run-change' }).assess({
     sequence: 4,
     actionId: 'integration-final',
@@ -183,4 +174,57 @@ test('I19-INT-03 user journey: readback-only artifact does not invent a verifica
 
   assert.equal(decision.status, 'conformant');
   assert.deepEqual(decision.unverifiedPaths, []);
+});
+
+test('I19-CHG-03 user journey: a rejected mutation is historical after a verified replacement', () => {
+  const failedMutation = mutation({
+    sequence: 1,
+    actionId: 'write-rejected',
+    idempotencyKey: 'run-change:write-rejected',
+    status: 'failed',
+    readbackRef: undefined,
+    evidenceRefs: ['mutation:write-rejected:failed'],
+  });
+  const committedMutation = mutation({
+    sequence: 2,
+    actionId: 'write-recovered',
+    idempotencyKey: 'run-change:write-recovered',
+  });
+  const verifyTool = tool({
+    sequence: 3,
+    actionId: 'verify-recovered',
+    tool: 'run_terminal',
+    purpose: 'verify',
+    effects: ['process'],
+    status: 'completed',
+  });
+  const passedVerification = verification({
+    sequence: 3,
+    actionId: 'verify-recovered',
+    idempotencyKey: 'run-change:verify-recovered',
+    acceptance: [{ criterionId: 'verified', status: 'passed', evidenceRefs: ['verification:passed'] }],
+  });
+  const decision = new CanonicalCodeChangeService().bind({ runId: 'run-change' }).assess(codeChangeInput({
+    sequence: 4,
+    toolExecutions: [
+      tool({ sequence: 1, actionId: 'write-rejected', status: 'failed' }),
+      tool({ sequence: 2, actionId: 'write-recovered' }),
+      verifyTool,
+    ],
+    mutations: [failedMutation, committedMutation],
+    verifications: [passedVerification],
+  }));
+
+  assert.equal(decision.status, 'conformant');
+  assert.deepEqual(decision.failedActionIds, []);
+  assert.ok(decision.evidenceRefs.includes('mutation:write-rejected:failed'));
+});
+
+test('I19-CHG-04 user journey: an unrecovered rejected mutation still vetoes conformance', () => {
+  const decision = new CanonicalCodeChangeService().bind({ runId: 'run-change' }).assess(codeChangeInput({
+    mutations: [mutation({ status: 'failed', readbackRef: undefined })],
+  }));
+
+  assert.equal(decision.status, 'failed');
+  assert.ok(decision.reasonCodes.includes('mutation-failed'));
 });

@@ -381,6 +381,13 @@ function controlledScenarioSuiteCatalog() {
       't1-followup-cn-anchor',
       't1-followup-cn-detail',
     ],
+    't1-new-session-memory-isolation-product': [
+      't1-seed-uav-project-memory',
+      't1-new-session-gpu-answer',
+    ],
+    't2-terminal-settlement-recovery-product': [
+      't2-cpp-failed-write-recovered',
+    ],
     'coding-conformance-product': [
       'conformance-create-and-verify',
       'conformance-modify-and-verify',
@@ -465,6 +472,15 @@ function resolveControlledScenarioSuiteOptions(id) {
       kind: 'same-window-t1-elliptical-followup-journey',
       sameDevSeekSession: true,
     },
+    't1-new-session-memory-isolation-product': {
+      kind: 'process-restart-new-session-memory-isolation-suite',
+      sameDevSeekSession: false,
+      restartBetweenCases: true,
+    },
+    't2-terminal-settlement-recovery-product': {
+      kind: 'same-window-terminal-settlement-recovery-suite',
+      sameDevSeekSession: false,
+    },
     'coding-conformance-product': {
       kind: 'same-window-coding-conformance-product-suite',
       sameDevSeekSession: false,
@@ -490,6 +506,15 @@ function controlledScenarioCatalog() {
     '',
     'int main() {',
     '  std::cout << "下午好" << std::endl;',
+    '  return 0;',
+    '}',
+    '',
+  ].join('\n');
+  const recoveredCppProgramContent = [
+    '#include <iostream>',
+    '',
+    'int main() {',
+    '  std::cout << "下班了" << std::endl;',
     '  return 0;',
     '}',
     '',
@@ -1710,6 +1735,85 @@ function controlledScenarioCatalog() {
       expectedTaskMode: 'explain',
       forbiddenTools: ['read_file', 'create_file', 'replace_in_file', 'run_terminal', 'task_complete'],
       requiredRunLogSubstrings: ['GPU 核心多、吞吐量高'],
+    },
+    't1-seed-uav-project-memory': {
+      id: 't1-seed-uav-project-memory',
+      kind: 't1-seed-unrelated-project-memory-before-new-session',
+      userProfile: 'robotics-maintainer',
+      languageStyle: 'zh-project-convention',
+      intentClass: 'durable-project-memory-capture',
+      targetRelativePath: 'README.md',
+      targetContent: safeBaselineContent,
+      seedFiles: { 'README.md': safeBaselineContent },
+      prompt: '记住这个项目背景：它是 UAV 无人机地面站，通信使用 MAVLink。现在只记录，不修改文件也不运行命令。',
+      providerPlan: 'memory-capture-complete',
+      memoryContent: '本项目是 UAV 无人机地面站，通信协议使用 MAVLink。',
+      memoryKey: 'project-domain:uav-ground-station',
+      memorySummary: '已记录 UAV 无人机地面站和 MAVLink 项目背景；本轮未修改文件、未运行命令。',
+      expected: 'completed-advisory-no-mutation',
+      expectedFiles: { 'README.md': safeBaselineContent },
+      expectedChangedPaths: [],
+      expectedMutatedUserFiles: [],
+      expectedTaskMode: 'change',
+      requiredTools: ['memory_write', 'task_complete'],
+      forbiddenTools: ['create_file', 'replace_in_file', 'delete_file', 'run_terminal'],
+    },
+    't1-new-session-gpu-answer': {
+      id: 't1-new-session-gpu-answer',
+      kind: 't1-new-session-unrelated-memory-isolation',
+      userProfile: 'iterative-novice',
+      languageStyle: 'zh-terse-no-space',
+      intentClass: 'direct-concept-answer',
+      targetRelativePath: 'README.md',
+      targetContent: safeBaselineContent,
+      seedFiles: { 'README.md': safeBaselineContent },
+      prompt: '说明gpu cpu',
+      providerPlan: 'direct-assistant-answer',
+      providerAnswer: 'CPU 擅长通用、低延迟和分支复杂的任务；GPU 擅长大规模并行计算。',
+      forbiddenProviderPromptSubstrings: [
+        'UAV',
+        '无人机',
+        'MAVLink',
+        'No consolidated memory is available yet.',
+      ],
+      expected: 'completed-advisory-no-mutation',
+      expectedFiles: { 'README.md': safeBaselineContent },
+      expectedChangedPaths: [],
+      expectedMutatedUserFiles: [],
+      expectedTaskMode: 'explain',
+      forbiddenTools: ['read_file', 'create_file', 'replace_in_file', 'run_terminal', 'task_complete'],
+      requiredRunLogSubstrings: ['CPU 擅长通用、低延迟'],
+      forbiddenRunLogSubstrings: [
+        'UAV',
+        '无人机',
+        'MAVLink',
+        '本轮第一次具体提问',
+        '当前工作区',
+        '没有历史',
+        'No consolidated memory is available yet.',
+      ],
+    },
+    't2-cpp-failed-write-recovered': {
+      id: 't2-cpp-failed-write-recovered',
+      kind: 't2-real-failed-mutation-recovered-before-terminal-settlement',
+      userProfile: 'rushed-novice',
+      languageStyle: 'zh-colloquial-program-request',
+      intentClass: 'create-compile-verify',
+      targetRelativePath: 'offwork.cpp',
+      targetContent: recoveredCppProgramContent,
+      prompt: '在工作目录编写一个 C++ 程序，运行时输出“下班了”，并用 g++ 编译运行验证。',
+      providerPlan: 'cpp-failed-write-recovered-complete',
+      expected: 'completed-workflow',
+      expectedFiles: { 'offwork.cpp': recoveredCppProgramContent },
+      expectedChangedPaths: ['offwork.cpp'],
+      expectedMutatedUserFiles: ['offwork', 'offwork.cpp'],
+      expectedTaskMode: 'change',
+      requiredTools: ['create_file', 'run_terminal', 'read_file', 'task_complete'],
+      requiredRunLogSubstrings: ['首次非法源码写入已被拒绝', '下班了'],
+      forbiddenRunLogSubstrings: [
+        'coding-conformance-projection:unsettled-mutation:failed',
+        '自动验证通过\n\n详情\n\ncoding-conformance-projection',
+      ],
     },
     'conformance-create-and-verify': {
       id: 'conformance-create-and-verify',
@@ -3771,14 +3875,16 @@ function controlledProviderResponse({ ordinal, workspaceDir, scenario, requestKi
   }
 
   if (scenario.providerPlan === 'memory-capture-complete') {
+    const memorySummary = scenario.memorySummary
+      || '已记录 src/bridge.ts 的聚焦验证惯例；本轮未修改文件、未运行命令。';
     return [
       '这是一条可复用的项目验证惯例。我只记录记忆，不修改文件也不运行命令。',
       `[TOOL:memory_write ${JSON.stringify({
         content: scenario.memoryContent,
-        key: 'project-test-command:src/bridge.ts',
+        key: scenario.memoryKey || 'project-test-command:src/bridge.ts',
       })}]`,
       `[TOOL:task_complete ${JSON.stringify({
-        summary: '已记录 src/bridge.ts 的聚焦验证惯例；本轮未修改文件、未运行命令。',
+        summary: memorySummary,
       })}]`,
     ].join('\n');
   }
@@ -3830,6 +3936,40 @@ function controlledProviderResponse({ ordinal, workspaceDir, scenario, requestKi
       '执行方案：将 src/math.js 中 add(a, b) 的返回表达式从 a - b 改为 a + b，然后用 node 验证 add(2, 3) 返回 5。本轮未修改文件，等待用户批准。',
       `[TOOL:task_complete ${JSON.stringify({
         summary: '已完成 src/math.js 修改方案，本轮未修改文件，等待用户批准。',
+      })}]`,
+    ].join('\n');
+  }
+
+  if (scenario.providerPlan === 'cpp-failed-write-recovered-complete') {
+    const activeTodos = {
+      todoList: [
+        { id: 1, title: '创建 C++ 下班程序文件', status: 'in-progress' },
+        { id: 2, title: '编译并验证程序', status: 'not-started' },
+      ],
+    };
+    if (ordinal === 1) {
+      const invalidSource = [
+        '#include <iostream>',
+        'int main() { return 0; }[调用 create_file] {"path":"notes.md","content":"polluted"}',
+        '',
+      ].join('\n');
+      return [
+        '我先创建程序文件，然后编译验证。',
+        `[TOOL:manage_todo_list ${JSON.stringify(activeTodos)}]`,
+        `[TOOL:create_file ${JSON.stringify({ path: scenario.targetRelativePath, content: invalidSource })}]`,
+      ].join('\n');
+    }
+    const completedTodos = {
+      todoList: activeTodos.todoList.map(item => ({ ...item, status: 'completed' })),
+    };
+    return [
+      '首次源码写入被完整性检查拒绝。我会按失败反馈写入合法源码，再执行真实编译和运行验证。',
+      `[TOOL:create_file ${JSON.stringify({ path: scenario.targetRelativePath, content: scenario.targetContent })}]`,
+      `[TOOL:run_terminal ${JSON.stringify({ command: 'g++ -std=c++17 offwork.cpp -o offwork && ./offwork' })}]`,
+      `[TOOL:read_file ${JSON.stringify({ path: scenario.targetRelativePath })}]`,
+      `[TOOL:manage_todo_list ${JSON.stringify(completedTodos)}]`,
+      `[TOOL:task_complete ${JSON.stringify({
+        summary: '首次非法源码写入已被拒绝，随后成功创建 offwork.cpp，并用 g++ 编译运行确认输出下班了。',
       })}]`,
     ].join('\n');
   }

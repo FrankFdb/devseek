@@ -101,6 +101,43 @@ test('settled projection owner rejects mutation uncertainty instead of hiding it
   );
 });
 
+test('settled projection accepts a failed no-change attempt recovered by a later verified mutation', () => {
+  const run = recoveredMutationRun();
+
+  const projection = projectSettledCodingConformanceRun(run);
+
+  assert.deepEqual(projection.changeReceipts.map(receipt => receipt.actionId), ['replacement-write']);
+  assert.deepEqual(projection.toolExecutions.map(receipt => receipt.status), ['failed', 'completed', 'completed']);
+  assert.equal(projection.completion.status, 'completed');
+  assert.deepEqual(validateCodingConformanceProjection(projection, 'vscode'), []);
+});
+
+test('settled projection rejects completed status when a failed mutation has no verified replacement', () => {
+  const run = recoveredMutationRun();
+  run.changeReceipts = run.changeReceipts.slice(0, 1);
+  run.toolExecutions = run.toolExecutions.slice(0, 1);
+  run.verifications = [];
+
+  assert.throws(
+    () => projectSettledCodingConformanceRun(run),
+    /completed-with-unrecovered-failed-mutation/,
+  );
+});
+
+test('settled projection represents a terminal failed no-change attempt through its tool receipt', () => {
+  const run = recoveredMutationRun();
+  run.changeReceipts = run.changeReceipts.slice(0, 1);
+  run.toolExecutions = run.toolExecutions.slice(0, 1);
+  run.verifications = [];
+  run.completion = { ...run.completion, status: 'failed' };
+
+  const projection = projectSettledCodingConformanceRun(run);
+
+  assert.deepEqual(projection.changeReceipts, []);
+  assert.equal(projection.toolExecutions[0].status, 'failed');
+  assert.equal(projection.completion.status, 'failed');
+});
+
 test('public projection validation fails closed on incomplete and malformed runtime evidence', () => {
   const fixture = findFixture('create-and-verify');
   const incomplete = structuredClone(fixture.expected);
@@ -568,6 +605,80 @@ function settledRun(fixture) {
     evidenceRefs: fixture.expected.completion.evidenceRefs,
   };
   return { fixtureId: fixture.fixtureId, taskContract, toolExecutions, changeReceipts, verifications, completion };
+}
+
+function recoveredMutationRun() {
+  const run = settledRun(findFixture('create-and-verify'));
+  const runId = run.fixtureId;
+  run.toolExecutions = [
+    toolReceipt(runId, 1, 'invalid-write', 'create_file', ['workspace-mutation'], 'failed'),
+    toolReceipt(runId, 2, 'replacement-write', 'create_file', ['workspace-mutation'], 'completed'),
+    toolReceipt(runId, 3, 'compile-check', 'run_terminal', ['process'], 'completed', 'verify'),
+  ];
+  run.changeReceipts = [
+    {
+      version: CODING_WORKSPACE_MUTATION_RECEIPT_VERSION,
+      runId,
+      sequence: 1,
+      actionId: 'invalid-write',
+      idempotencyKey: `${runId}:invalid-write`,
+      status: 'failed',
+      paths: ['tools/log_summary.py'],
+      errorCode: 'workspace-proposal-invalid',
+      evidenceRefs: ['mutation:invalid-write:no-change'],
+    },
+    {
+      version: CODING_WORKSPACE_MUTATION_RECEIPT_VERSION,
+      runId,
+      sequence: 2,
+      actionId: 'replacement-write',
+      idempotencyKey: `${runId}:replacement-write`,
+      status: 'committed',
+      paths: ['tools/log_summary.py'],
+      baselineRef: 'baseline:tools/log_summary.py:absent',
+      readbackRef: 'readback:tools/log_summary.py:replacement',
+      evidenceRefs: ['mutation:replacement-write'],
+    },
+  ];
+  run.verifications = [{
+    version: CODING_VERIFICATION_RECEIPT_VERSION,
+    runId,
+    sequence: 3,
+    actionId: 'compile-check',
+    idempotencyKey: `${runId}:compile-check`,
+    verifier: 'python-behavior',
+    status: 'passed',
+    scopePaths: ['tools/log_summary.py'],
+    checks: [],
+    acceptance: [{
+      criterionId: 'verified',
+      status: 'passed',
+      evidenceRefs: ['verification:replacement-pass'],
+    }],
+    evidenceRefs: ['verification:replacement-pass'],
+  }];
+  return run;
+}
+
+function toolReceipt(runId, sequence, actionId, tool, effects, status, purpose) {
+  return {
+    version: CODING_TOOL_RECEIPT_VERSION,
+    runId,
+    sequence,
+    actionId,
+    tool,
+    effects,
+    ...(purpose ? { purpose } : {}),
+    permission: {
+      decision: 'allow',
+      status: 'authorized',
+      reason: 'settled-conformance-recovery-fixture',
+      evidenceRefs: [`authority:${actionId}`],
+    },
+    status,
+    ...(status === 'failed' ? { effectStarted: false } : {}),
+    evidenceRefs: [`tool:${actionId}`],
+  };
 }
 
 function executableAcceptance(fixture) {

@@ -731,7 +731,9 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         sequence: finalDecisionSequence,
         actionId: 'kernel-code-change',
         plan: settledChangePlan,
+        toolExecutions: toolExecution.receipts(),
         mutations: workspaceMutations.receipts(),
+        verifications: verification.receipts(),
         evidenceRefs: completionEvidence.evidenceRefs,
       });
       const integration = integrationConformance.assess({

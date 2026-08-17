@@ -212,11 +212,20 @@ test('T5 simulated user: typo-rich Chinese preference is semantically consolidat
     assert.match(index, /rollout_ids: run-typo-preference/u);
     assert.ok(existsSync(path.join(restarted.getLocation().rolloutsRoot, 'run-typo-preference.md')));
 
-    const promptCandidates = restarted.retrieveCodingMemoryCandidates({
+    const ambiguousCandidates = restarted.retrieveCodingMemoryCandidates({
       query: '还是按之前的包管理器测一下',
       requireContextMatch: true,
     });
-    assert.equal(promptCandidates[0].sourceRef, 'memory_summary.md');
+    assert.deepEqual(
+      ambiguousCandidates,
+      [],
+      'an ambiguous reference must not inject the repository-wide summary into a new turn',
+    );
+    const promptCandidates = restarted.retrieveCodingMemoryCandidates({
+      query: '用 pnpm test 验证',
+      requireContextMatch: true,
+    });
+    assert.equal(promptCandidates[0].sourceRef, userTurnEvidenceRef('run-typo-preference'));
     assert.match(promptCandidates[0].content, /pnpm test/u);
     assert.match(restarted.readMemoryDetail('MEMORY.md', 1, 40), /user-stated/u);
     assert.ok(restarted.searchMemory('pnpm test').some(match => match.path === 'MEMORY.md'));

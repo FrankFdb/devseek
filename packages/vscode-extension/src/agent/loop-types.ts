@@ -255,6 +255,13 @@ export interface AgentLoopCallbacks {
   autopilot?: boolean;
 }
 
+export interface DeferredAgentTerminalPresentation {
+  readonly status?: AgentStatusMessage;
+  readonly answerDelta?: string;
+  readonly todos?: readonly TodoItem[];
+  readonly completedCheckpointRequested: boolean;
+}
+
 /** Top-level loop compositions must bind one explicit tool-policy mode. */
 export type ExecutionScopedAgentLoopCallbacks = AgentLoopCallbacks & {
   executionMode: ExecutionMode;
@@ -292,4 +299,6 @@ export interface AgentLoopResult {
   completionDecision?: CodingCompletionDecision;
   /** Complete settled projection emitted by the canonical VS Code product route. */
   codingConformance?: CodingConformanceProjection;
+  /** Model-loop terminal claims deferred until the product run settles. */
+  terminalPresentation?: DeferredAgentTerminalPresentation;
 }
