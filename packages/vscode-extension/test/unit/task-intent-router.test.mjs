@@ -25,6 +25,14 @@ execSync(
 
 const { routeTaskIntent } = createRequire(import.meta.url)(bundlePath);
 
+test('TaskIntentRouter: semantic chat kind stays independent from model-led workflow protocol', () => {
+  const chatRoute = routeTaskIntent('解释 gpu cpu');
+  const editRoute = routeTaskIntent('创建 result.txt，内容为 OK。');
+
+  assert.equal(chatRoute.chatKind, 'chat');
+  assert.equal(editRoute.chatKind, 'code-change');
+});
+
 test('TaskIntentRouter: explicit path plus exact content is deterministic simple-file work', () => {
   const route = routeTaskIntent(
     '请在当前工作区创建 controlled-sim.txt，文件内容必须精确包含一行 CONTROLLED_SIM_OK。完成写入和读回验证后结束任务，不要修改其他用户文件。',

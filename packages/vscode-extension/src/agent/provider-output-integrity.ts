@@ -1,4 +1,3 @@
-import { hasReadOnlyAnswerEvidence } from './completion-evidence';
 import { hasIncompleteFakeToolCallProtocol, parseFakeToolCalls } from './fake-tool-parser';
 import { isolateModelToolRequestText } from './model-tool-protocol-adapter';
 import {
@@ -15,6 +14,7 @@ import {
 export type ProviderOutputIntegrityKind =
   | 'complete_answer'
   | 'tool_call'
+  // Persisted diagnostic compatibility; current classification never emits it.
   | 'short_intent'
   | 'truncated'
   | 'error_page'
@@ -31,9 +31,6 @@ export interface ProviderOutputIntegrity {
 }
 
 const TRUNCATED_RE = /(?:RESPONSE_CORRUPTED|TRUNCATED|stream.*(?:closed|ended)|ERR_STREAM_PREMATURE_CLOSE|finish_reason["']?\s*:\s*["']?length)/i;
-const SHORT_INTENT_RE = /(?:我(?:来|将|会|再|先|继续)|让我|现在我|接下来|下一步|I(?:'ll| will| need to)|let me|next I).{0,100}(?:查看|读取|搜索|检查|分析|了解|打开|确认|生成|输出|整理|形成|look|read|search|inspect|check|analy[sz]e|generate|produce|write)/i;
-const CONCRETE_CONCLUSION_RE = /(?:结论|依据|原因|问题|风险|建议|对策|方案|任务拆解|验证结果|已完成|修改了|创建了|summary|conclusion|evidence|recommendation|implemented|changed)/i;
-
 export function classifyProviderOutputIntegrity(text: string | undefined): ProviderOutputIntegrity {
   const raw = normalizeStructuredToolEnvelope(String(text ?? ''));
   const trimmed = raw.trim();
@@ -76,16 +73,10 @@ export function classifyProviderOutputIntegrity(text: string | undefined): Provi
     return buildProviderIntegrity('error_page', 0, false, 'provider returned an error page');
   }
 
-  const hasAnswerEvidence = hasReadOnlyAnswerEvidence(trimmed) || looksLikeConcreteAnswer(trimmed);
-  if (looksLikeShortIntent(trimmed, hasAnswerEvidence)) {
-    return buildProviderIntegrity('short_intent', 0, false, 'provider emitted intent text without a tool call or answer');
-  }
-
-  if (hasAnswerEvidence) {
-    return buildProviderIntegrity('complete_answer', 0, true, 'provider response contains answer evidence');
-  }
-
-  return buildProviderIntegrity('incomplete_answer', 0, false, 'provider response lacks answer evidence');
+  // Codex turn protocol: a structurally valid assistant message is itself a
+  // terminal delivery. Semantic adequacy belongs to the model prompt/evals;
+  // local settlement must not depend on language, answer length, or keywords.
+  return buildProviderIntegrity('complete_answer', 0, true, 'provider returned a complete assistant message');
 }
 
 export function isProviderOutputFatal(kind: ProviderOutputIntegrityKind): boolean {
@@ -131,17 +122,6 @@ function buildProviderIntegrity(
 function countProviderToolCalls(text: string): number {
   const isolated = isolateModelToolRequestText(text).text;
   return parseFakeToolCalls(isolated).length;
-}
-
-function looksLikeShortIntent(text: string, hasAnswerEvidence: boolean): boolean {
-  if (hasAnswerEvidence) return false;
-  if (text.length <= 160 && SHORT_INTENT_RE.test(text)) return true;
-  return text.length <= 80 && !CONCRETE_CONCLUSION_RE.test(text);
-}
-
-function looksLikeConcreteAnswer(text: string): boolean {
-  if (text.length < 120) return false;
-  return CONCRETE_CONCLUSION_RE.test(text);
 }
 
 function looksLikeTruncatedToolProtocol(text: string, toolCallCount = countProviderToolCalls(text)): boolean {

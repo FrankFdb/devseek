@@ -17,9 +17,33 @@ execSync(
 
 const req = createRequire(import.meta.url);
 const {
+  resolveAgentRuntimeTaskAction,
   settleAgentRuntimeState,
   runtimeStateCanDeliver,
 } = req(bundlePath);
+
+test('agent runtime state machine: runtime action follows observed effects, not a route prediction alone', () => {
+  assert.equal(resolveAgentRuntimeTaskAction({
+    routeChatKind: 'code-change',
+    taskComplete: false,
+    toolReceipts: [],
+  }), 'respond');
+  assert.equal(resolveAgentRuntimeTaskAction({
+    routeChatKind: 'code-change',
+    taskComplete: false,
+    toolReceipts: [{ purpose: 'observe', status: 'completed', effectStarted: true }],
+  }), 'respond');
+  assert.equal(resolveAgentRuntimeTaskAction({
+    routeChatKind: 'chat',
+    taskComplete: false,
+    toolReceipts: [{ purpose: 'workspace-mutation', status: 'completed', effectStarted: true }],
+  }), 'edit');
+  assert.equal(resolveAgentRuntimeTaskAction({
+    routeChatKind: 'code-change',
+    taskComplete: true,
+    toolReceipts: [],
+  }), 'edit');
+});
 
 test('agent runtime state machine: tool request without execution cannot deliver', () => {
   const settlement = settleAgentRuntimeState({
@@ -33,7 +57,7 @@ test('agent runtime state machine: tool request without execution cannot deliver
   assert.equal(runtimeStateCanDeliver(settlement), false);
 });
 
-test('agent runtime state machine: read-only short intent after evidence still needs context', () => {
+test('agent runtime state machine: a structurally complete read-only assistant message delivers', () => {
   const settlement = settleAgentRuntimeState({
     taskAction: 'analyze',
     providerText: '现在让我再查看几个关键文件来完整了解原实现的设计。',
@@ -43,8 +67,8 @@ test('agent runtime state machine: read-only short intent after evidence still n
     readEvidenceCount: 4,
   });
 
-  assert.equal(settlement.state, 'evidence_collected');
-  assert.equal(runtimeStateCanDeliver(settlement), false);
+  assert.equal(settlement.state, 'delivered');
+  assert.equal(runtimeStateCanDeliver(settlement), true);
 });
 
 test('agent runtime state machine: read-only conclusion reaches delivered', () => {
@@ -55,6 +79,18 @@ test('agent runtime state machine: read-only conclusion reaches delivered', () =
 
   assert.equal(settlement.state, 'delivered');
   assert.equal(runtimeStateCanDeliver(settlement), true);
+});
+
+test('agent runtime state machine: concise multilingual answers deliver without format keywords', () => {
+  for (const providerText of [
+    'CPU 擅长通用计算，GPU 擅长并行计算。',
+    'CPU is general-purpose; GPU is parallel-oriented.',
+    'CPU は汎用、GPU は並列処理向けです。',
+  ]) {
+    const settlement = settleAgentRuntimeState({ taskAction: 'respond', providerText });
+    assert.equal(settlement.state, 'delivered', providerText);
+    assert.equal(runtimeStateCanDeliver(settlement), true, providerText);
+  }
 });
 
 test('agent runtime state machine: read-only task_complete with executed evidence can deliver', () => {

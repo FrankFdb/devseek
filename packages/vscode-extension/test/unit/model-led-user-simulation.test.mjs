@@ -236,6 +236,59 @@ test('ModelLedUserSimulation: a noisy explanatory question completes without for
     assert.equal(simulation.harness.changes.length, 0);
     assert.equal(simulation.harness.todos.length, 0);
     assert.equal(simulation.result.tasksApplied, 0);
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
+test('ModelLedUserSimulation: concise concept answers settle across natural user phrasings', async () => {
+  const cases = [
+    {
+      prompt: '解释gpu cpu',
+      answer: 'CPU 擅长通用计算，GPU 擅长同时处理大量相似计算。',
+    },
+    {
+      prompt: '讲下 gpu 和 cpu 有啥取别',
+      answer: 'CPU 更通用，GPU 的大量核心更适合并行任务。',
+    },
+    {
+      prompt: "What's CPU vs GPU? Keep it short.",
+      answer: 'CPU is general-purpose; GPU is optimized for parallel workloads.',
+    },
+  ];
+
+  for (const scenario of cases) {
+    let calls = 0;
+    const simulation = await runSimulation(scenario.prompt, async messages => {
+      calls += 1;
+      assert.match(messages[0].content, /普通 assistant message 就是有效交付/u);
+      return { text: scenario.answer, tools: [] };
+    });
+    try {
+      assert.equal(calls, 1, simulation.result.historyText);
+      assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+      assert.equal(simulation.result.tasksApplied, 0);
+      assert.deepEqual(simulation.result.changedPaths, []);
+      assert.equal(simulation.harness.todos.length, 0);
+    } finally {
+      rmSync(simulation.root, { recursive: true, force: true });
+    }
+  }
+});
+
+test('ModelLedUserSimulation: an effect completion claim still needs a real effect receipt', async () => {
+  const prompt = '创建 result.txt，内容为 EFFECT_REQUIRED。';
+  const simulation = await runSimulation(prompt, async () => ({
+    text: '已创建 result.txt。',
+    tools: [
+      { name: 'task_complete', input: { summary: '已创建 result.txt。' } },
+    ],
+  }));
+  try {
+    assert.equal(simulation.result.tasksFailed, 1, simulation.result.historyText);
+    assert.equal(existsSync(path.join(simulation.root, 'result.txt')), false);
+    assert.match(simulation.result.failedReason ?? '', /可交付|完成信号|证据/u);
   } finally {
     rmSync(simulation.root, { recursive: true, force: true });
   }

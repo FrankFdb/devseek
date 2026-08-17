@@ -311,7 +311,7 @@ test('completion evidence: focused C++ implementation is not expanded by generat
   }
 });
 
-test('completion evidence: tool-intent prose is not a delivered read-only answer', () => {
+test('completion evidence: read-only delivery is structural rather than language-formatted', () => {
   const interrupted = [
     '我来分析新旧需求差异，并给出实现对策建议。首先让我查看相关文件。',
     '',
@@ -322,14 +322,14 @@ test('completion evidence: tool-intent prose is not a delivered read-only answer
     '```',
   ].join('\n');
 
-  assert.equal(hasReadOnlyAnswerEvidence(interrupted), false);
+  assert.equal(hasReadOnlyAnswerEvidence(interrupted), true);
   assert.equal(
     hasReadOnlyAnswerEvidence('现在我已经完整查看了新需求文档、旧实现代码和旧设计文档。接下来将生成分析报告。'),
-    false,
+    true,
   );
   assert.equal(
     hasReadOnlyAnswerEvidence('现在我已经收集了足够的信息，让我分析新需求与现有实现的差异，并给出实现对策建议。'),
-    false,
+    true,
   );
   assert.equal(hasReadOnlyAnswerEvidence('结论：新需求需要以状态机重构维保提醒，并把主控任务拆成阈值、状态、事件上报三类。'), true);
 });

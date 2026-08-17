@@ -1,7 +1,8 @@
 import type { AgentTaskAction } from '../agent-task-decomposer';
-import { routeTaskIntent } from '../task-intent-router';
+import { routeTaskIntent, routeTaskSemanticContract } from '../task-intent-router';
+import type { TaskSemanticContract } from '../task-semantic-contract';
 
-export type AgentRunDisplayKind = 'workspace-explore' | 'simple-file' | 'safe-response';
+export type AgentRunDisplayKind = 'model-led' | 'direct-response' | 'workspace-explore' | 'simple-file' | 'safe-response';
 
 export interface AgentRunDisplayProfile {
   kind: AgentRunDisplayKind;
@@ -11,21 +12,30 @@ export interface AgentRunDisplayProfile {
   planCompletedDetail: string;
   initialTaskAction: AgentTaskAction;
   initialTaskLabel?: string;
+  emitPlanningStatus: boolean;
   suppressToolPlanning: boolean;
 }
 
 const DEFAULT_FREE_EXPLORE_PROFILE: AgentRunDisplayProfile = {
-  kind: 'workspace-explore',
-  planStartedTitle: '正在理解任务和项目边界',
-  planStartedDetail: '正在识别任务类型、输出要求和需要优先验证的项目锚点。',
-  planCompletedTitle: '已确定软件工程执行路线',
-  planCompletedDetail: [
-    '1. 确认需求、输出目录和任务边界',
-    '2. 收集原项目代码、通信链路和接口证据',
-    '3. 基于证据设计并生成必要成果物',
-    '4. 运行验证并汇总交付结果',
-  ].join('\n'),
+  kind: 'model-led',
+  planStartedTitle: '正在理解当前请求',
+  planStartedDetail: '正在结合本轮要求与当前会话上下文确定下一步。',
+  planCompletedTitle: '已确认当前任务边界',
+  planCompletedDetail: '后续步骤将依据当前请求和实际结果推进。',
   initialTaskAction: 'explore',
+  emitPlanningStatus: true,
+  suppressToolPlanning: false,
+};
+
+const DIRECT_RESPONSE_PROFILE: AgentRunDisplayProfile = {
+  kind: 'direct-response',
+  planStartedTitle: '',
+  planStartedDetail: '',
+  planCompletedTitle: '',
+  planCompletedDetail: '',
+  initialTaskAction: 'respond',
+  initialTaskLabel: '直接回答',
+  emitPlanningStatus: false,
   suppressToolPlanning: false,
 };
 
@@ -41,6 +51,7 @@ const STANDALONE_PROGRAM_PROFILE: AgentRunDisplayProfile = {
     '4. 汇总文件路径和验证结果',
   ].join('\n'),
   initialTaskAction: 'explore',
+  emitPlanningStatus: true,
   suppressToolPlanning: false,
 };
 
@@ -57,6 +68,7 @@ function buildSimpleFileProfile(path: string): AgentRunDisplayProfile {
     ].join('\n'),
     initialTaskAction: 'create',
     initialTaskLabel: path,
+    emitPlanningStatus: true,
     suppressToolPlanning: false,
   };
 }
@@ -74,14 +86,23 @@ const SAFE_RESPONSE_PROFILE: AgentRunDisplayProfile = {
   ].join('\n'),
   initialTaskAction: 'respond',
   initialTaskLabel: '安全响应',
+  emitPlanningStatus: true,
   suppressToolPlanning: true,
 };
 
-export function buildAgentRunDisplayProfile(prompt: string): AgentRunDisplayProfile {
+export function buildAgentRunDisplayProfile(
+  prompt: string,
+  semanticContract?: TaskSemanticContract,
+): AgentRunDisplayProfile {
   if (isLiteralToolProtocolPrompt(prompt)) {
     return SAFE_RESPONSE_PROFILE;
   }
-  const route = routeTaskIntent(prompt);
+  const route = semanticContract
+    ? routeTaskSemanticContract(semanticContract)
+    : routeTaskIntent(prompt);
+  if (route.family === 'smalltalk' || route.family === 'qa') {
+    return DIRECT_RESPONSE_PROFILE;
+  }
   if (route.family === 'simple-file' && route.simpleFile) {
     return buildSimpleFileProfile(route.simpleFile.path);
   }

@@ -150,11 +150,13 @@ const DEFAULT_CONTROLLED_SUITES = Object.freeze([
   't4-permission-write-boundary',
   't5-memory-restart',
   't5-medium-program-session-restart',
+  't1-direct-answer-product',
   'independent-user-diversity-product',
   'coding-conformance-product',
   'r2-07f-connector-security',
 ]);
 const INTENT_CONTROLLED_SUITES = Object.freeze([
+  't1-direct-answer-product',
   'prior-task-continuation-product',
   'scope-replacement-product',
   'cancellation-replacement-product',
@@ -171,6 +173,7 @@ const ACCEPTANCE_CONTROLLED_SUITES = Object.freeze([
   't4-permission-write-boundary',
   't5-memory-restart',
   't5-medium-program-session-restart',
+  't1-direct-answer-product',
   'independent-user-diversity-product',
   'coding-conformance-product',
   'r2-07f-connector-security',
@@ -336,6 +339,17 @@ const CASE_DESIGN_DIMENSIONS = Object.freeze([
       'model-led-diverse-input-main-model',
       'model-led-exact-simple-main-model',
       'model-led-noisy-question-no-tools',
+    ],
+  },
+  {
+    id: 'direct_assistant_message_settlement',
+    user_need: 'Users expect concise concept answers in natural language without forced workspace investigation or conclusion keywords.',
+    suites: ['t1-direct-answer-product'],
+    cases: [
+      't1-direct-cn-concept',
+      't1-direct-cn-typo-colloquial',
+      't1-direct-en-concept',
+      't1-direct-ja-concept',
     ],
   },
   {

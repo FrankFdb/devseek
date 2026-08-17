@@ -94,6 +94,15 @@ test('controlled VSIX harness exposes a machine-readable suite case catalog', as
       'diverse-unsafe-colloquial',
     ],
   );
+  assert.deepEqual(
+    catalog.suites['t1-direct-answer-product'].map(entry => entry.id),
+    [
+      't1-direct-cn-concept',
+      't1-direct-cn-typo-colloquial',
+      't1-direct-en-concept',
+      't1-direct-ja-concept',
+    ],
+  );
   assert.equal(catalog.suites['independent-user-diversity-product'][0].user_profile, 'novice');
   assert.equal(catalog.suites['independent-user-diversity-product'][6].intent_class, 'terminal-validation-only');
   assert.ok(catalog.suites['coding-conformance-product'].some(entry =>
@@ -298,6 +307,7 @@ test('top-agent user simulation runner plans targeted checks before broad contro
     't4-permission-write-boundary',
     't5-memory-restart',
     't5-medium-program-session-restart',
+    't1-direct-answer-product',
     'independent-user-diversity-product',
     'coding-conformance-product',
     'r2-07f-connector-security',
@@ -337,6 +347,7 @@ test('top-agent user simulation runner keeps intent regression separate from gen
     assert.equal(report.ok, true, JSON.stringify(report.errors, null, 2));
     assert.equal(report.plan.coverage_profile, 'intent-recognition-regression');
     assert.deepEqual(controlledSuites, [
+      't1-direct-answer-product',
       'prior-task-continuation-product',
       'scope-replacement-product',
       'cancellation-replacement-product',
@@ -599,7 +610,7 @@ test('top-agent user simulation runner renders markdown from existing evidence w
     assert.match(markdown, /--controlled-suites realistic-product/);
     assert.match(markdown, /focused-regression-only-not-release-acceptance/);
     assert.match(markdown, /Selected case count: `2`/);
-    assert.match(markdown, /Required acceptance case count: `94`/);
+    assert.match(markdown, /Required acceptance case count: `98`/);
     assert.match(markdown, /Execution evidence missing:/);
     assert.match(markdown, /realistic-product:driver-cases-missing/);
     assert.match(markdown, /realistic-product:driver-case-missing:realistic-python-log-json-followup/);
@@ -774,6 +785,12 @@ test('top-agent user simulation runner rejects acceptance reports without per-ca
         't5-medium-program-isolated-session',
         't5-medium-program-return-primary',
         't5-medium-program-restart-primary',
+      ],
+      't1-direct-answer-product': [
+        't1-direct-cn-concept',
+        't1-direct-cn-typo-colloquial',
+        't1-direct-en-concept',
+        't1-direct-ja-concept',
       ],
       'independent-user-diversity-product': [
         'diverse-novice-typo-create',

@@ -124,6 +124,29 @@ test('ModelLedIntentBoundary: the main prompt owns typo recovery and action sele
   assert.doesNotMatch(prompt, /当前是简单文件写入/u);
 });
 
+test('ModelLedIntentBoundary: a resolved chat contract shapes delivery without becoming tool authority', () => {
+  const prompt = buildAgenticSystemPrompt(
+    '解释 gpu cpu',
+    '/workspace',
+    [],
+    undefined,
+    undefined,
+    undefined,
+    'model-led',
+    {
+      family: 'qa',
+      chatKind: 'chat',
+      agentTaskShape: 'general',
+      quality: { formalProjectRequired: false },
+    },
+  );
+
+  assert.match(prompt, /普通 assistant message 就是有效交付/u);
+  assert.match(prompt, /不要求固定格式、长度或结论关键词/u);
+  assert.match(prompt, /只有答案依赖当前工作区/u);
+  assert.doesNotMatch(prompt, /结论需包含：证据/u);
+});
+
 test('ModelLedIntentBoundary: semantic route selection calls only the local controller', async () => {
   const expected = { intent: { mode: 'qa' }, workflow: { kind: 'model-agent' }, toolPolicy: { mode: 'model-led' } };
   const progress = [];

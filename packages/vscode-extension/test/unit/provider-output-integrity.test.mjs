@@ -428,25 +428,41 @@ test('provider output integrity: keeps malformed but recoverable write JSON in t
   assert.equal(result.toolCallCount, 1);
 });
 
-test('provider output integrity: rejects short no-tool intent', () => {
+test('provider output integrity: accepts a structurally complete assistant message without keyword arbitration', () => {
   const result = classifyProviderOutputIntegrity('现在让我再查看几个关键文件来完整了解原实现的设计。');
 
-  assert.equal(result.kind, 'short_intent');
-  assert.equal(result.okForSettlement, false);
+  assert.equal(result.kind, 'complete_answer');
+  assert.equal(result.okForSettlement, true);
 });
 
-test('provider output integrity: rejects short report-generation intent after reads', () => {
+test('provider output integrity: does not infer turn state from Chinese procedural wording', () => {
   const result = classifyProviderOutputIntegrity('现在我已经完整查看了新需求文档、旧实现代码和旧设计文档。接下来将生成分析报告。');
 
-  assert.equal(result.kind, 'short_intent');
-  assert.equal(result.okForSettlement, false);
+  assert.equal(result.kind, 'complete_answer');
+  assert.equal(result.okForSettlement, true);
 });
 
-test('provider output integrity: rejects short enough-information transition before analysis', () => {
+test('provider output integrity: does not require conclusion markers or a minimum answer length', () => {
   const result = classifyProviderOutputIntegrity('现在我已经收集了足够的信息，让我分析新需求与现有实现的差异，并给出实现对策建议。');
 
-  assert.equal(result.kind, 'short_intent');
-  assert.equal(result.okForSettlement, false);
+  assert.equal(result.kind, 'complete_answer');
+  assert.equal(result.okForSettlement, true);
+});
+
+test('provider output integrity: accepts concise multilingual and typo-tolerant answers', () => {
+  const answers = [
+    'CPU 擅长通用计算，GPU 擅长大规模并行计算。',
+    'CPU handles general workloads; GPU excels at parallel workloads.',
+    'CPU は汎用処理向け、GPU は並列処理向けです。',
+    'CPU是通用处里器，GPU更适合并行运算。',
+  ];
+
+  for (const answer of answers) {
+    const result = classifyProviderOutputIntegrity(answer);
+    assert.equal(result.kind, 'complete_answer', answer);
+    assert.equal(result.okForSettlement, true, answer);
+    assert.equal(result.hasAnswerEvidence, true, answer);
+  }
 });
 
 test('provider output integrity: classifies provider failure surfaces', () => {

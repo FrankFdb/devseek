@@ -44,13 +44,41 @@ export interface AgentRuntimeSettlement {
   providerOutput: ProviderOutputIntegrity;
 }
 
+export interface AgentRuntimeActionObservation {
+  routeChatKind: 'chat' | 'code-change';
+  taskComplete: boolean;
+  toolReceipts: readonly {
+    purpose: string;
+    status: string;
+    effectStarted?: boolean;
+  }[];
+}
+
+export function resolveAgentRuntimeTaskAction(
+  observation: AgentRuntimeActionObservation,
+): 'respond' | 'edit' {
+  const effectStarted = observation.toolReceipts.some(receipt => (
+    (receipt.purpose === 'workspace-mutation' || receipt.purpose === 'external-effect')
+      && receipt.status !== 'denied'
+      && receipt.status !== 'failed'
+      && receipt.effectStarted !== false
+  ));
+  return effectStarted || (observation.taskComplete && observation.routeChatKind === 'code-change')
+    ? 'edit'
+    : 'respond';
+}
+
 export function settleAgentRuntimeState(input: AgentRuntimeStateInput): AgentRuntimeSettlement {
   const providerOutput = classifyProviderOutputIntegrity(input.roundText || input.providerText || '');
   const toolRequests = input.toolRequests ?? providerOutput.toolCallCount;
   const toolExecutions = input.toolExecutions ?? 0;
   const evidenceCount = countEvidence(input);
+  const readOnlyRuntimeAction = isReadOnlyRuntimeAction(input.taskAction);
   const hasDeliverySignal = Boolean(
-    input.taskComplete || input.allTodosCompleted || providerOutput.okForSettlement || input.validationPassed,
+    input.taskComplete
+      || input.allTodosCompleted
+      || input.validationPassed
+      || (readOnlyRuntimeAction && providerOutput.okForSettlement),
   );
 
   if (input.failedReason) {

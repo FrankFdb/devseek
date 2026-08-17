@@ -2824,6 +2824,8 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   assertContains(recovery, "action: 'respond'", 'response corruption fallback must use a local safe response task');
   assertContains(runDisplay, 'function isLiteralToolProtocolPrompt', 'literal protocol display detection must live in a display classifier');
   assertContains(runDisplay, "initialTaskAction: 'respond'", 'literal protocol display must start as a safe response, not exploration');
+  assertContains(runDisplay, "kind: 'direct-response'", 'direct assistant answers must not project a fake engineering plan');
+  assertContains(extension, 'agDisplayProfile.emitPlanningStatus', 'VS Code must honor the semantic display projection');
   assertContains(loopTypes, 'runDisplayAction?: AgentTask', 'agent loop must treat initial display action as display-only metadata');
   assertContains(agenticLoop, "callbacks.runDisplayAction || 'explore'", 'agentic loop must project safe display actions without creating fake work');
   assertContains(agenticLoop, '!literalToolProtocolPrompt', 'literal protocol prompts must not infer fallback file/tool todos');

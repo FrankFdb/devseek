@@ -101,6 +101,7 @@ import {
 } from './task-state-machine';
 import { tryRunSimpleFileTask } from './simple-file-task';
 import {
+  resolveAgentRuntimeTaskAction,
   runtimeStateCanDeliver,
   settleAgentRuntimeState,
 } from './agent-runtime-state-machine';
@@ -1146,7 +1147,11 @@ export async function runAgenticLoop(
   const finalSummaryFactFailures = completeSummary
     ? getUnsupportedSummaryFileClaims(completeSummary, allWrittenFiles, workspaceRoot)
     : lastSummaryFactFailures;
-  const runtimeTaskAction = workflowMode === 'inspect' || workflowMode === 'plan' ? 'analyze' : 'edit';
+  const runtimeTaskAction = resolveAgentRuntimeTaskAction({
+    routeChatKind: currentTaskIntent.chatKind,
+    taskComplete: hadTaskComplete,
+    toolReceipts: allToolExecutionReceipts,
+  });
   const validationFailedReason = latestAutoQualityGate && latestAutoQualityGate.status !== 'pass'
     ? latestAutoQualityGate.summary
     : undefined;
@@ -1179,11 +1184,11 @@ export async function runAgenticLoop(
     && finalRuntimeSettlement.providerOutput.toolCallCount > 0) {
     failedReason = 'Provider 返回了工具调用，但本轮没有执行到任何工具；任务未完成。';
   } else if (!failedReason
-    && runtimeTaskAction === 'analyze'
+    && runtimeTaskAction === 'respond'
     && !runtimeStateCanDeliver(finalRuntimeSettlement)) {
     failedReason = describeProviderOutputIntegrity(finalRuntimeSettlement.providerOutput.kind);
   } else if (!failedReason
-    && runtimeTaskAction !== 'analyze'
+    && runtimeTaskAction !== 'respond'
     && !runtimeStateCanDeliver(finalRuntimeSettlement)) {
     failedReason = finalRuntimeSettlement.failedReason
       || `任务已有执行证据，但缺少完成信号、通过验证或可交付总结：${describeProviderOutputIntegrity(finalRuntimeSettlement.providerOutput.kind)}`;

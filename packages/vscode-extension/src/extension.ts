@@ -601,7 +601,7 @@ async function runActiveChat(
           currentFilePaths: effectiveFiles,
           newSession,
         }).contextText;
-        const agDisplayProfile = buildAgentRunDisplayProfile(prompt);
+        const agDisplayProfile = buildAgentRunDisplayProfile(prompt, agentSemanticContract);
         const contextFiles = [...new Set([
           ...effectiveFiles,
           ...(kernelRecovery ? getKernelRecoveryContextFiles(kernelRecovery, agWsRoot) : []),
@@ -626,7 +626,7 @@ async function runActiveChat(
             progressTitle: '恢复任务上下文',
             progressDetail: `已完成 ${kernelRecovery.startFromIndex} 个，继续剩余 ${remaining} 个。`,
           });
-        } else {
+        } else if (agDisplayProfile.emitPlanningStatus) {
           // Free-explore mode has no Architect decomposition phase, but the UI still
           // needs a visible beginning before the model's first tool call arrives.
           postAgent({

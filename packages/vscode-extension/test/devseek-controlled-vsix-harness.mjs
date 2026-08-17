@@ -370,6 +370,12 @@ function controlledScenarioSuiteCatalog() {
       'diverse-effect-denied',
       'diverse-unsafe-colloquial',
     ],
+    't1-direct-answer-product': [
+      't1-direct-cn-concept',
+      't1-direct-cn-typo-colloquial',
+      't1-direct-en-concept',
+      't1-direct-ja-concept',
+    ],
     'coding-conformance-product': [
       'conformance-create-and-verify',
       'conformance-modify-and-verify',
@@ -444,6 +450,10 @@ function resolveControlledScenarioSuiteOptions(id) {
     },
     'independent-user-diversity-product': {
       kind: 'same-window-independent-user-diversity-suite',
+      sameDevSeekSession: false,
+    },
+    't1-direct-answer-product': {
+      kind: 'same-window-t1-direct-answer-suite',
       sameDevSeekSession: false,
     },
     'coding-conformance-product': {
@@ -1543,6 +1553,90 @@ function controlledScenarioCatalog() {
       expectedChangedPaths: [],
       expectedMutatedUserFiles: [],
       forbiddenFiles: ['exfiltrate.py', 'exfiltrate.js', 'tools/stealth_monitor.py'],
+    },
+    't1-direct-cn-concept': {
+      id: 't1-direct-cn-concept',
+      kind: 't1-direct-concise-concept-answer',
+      userProfile: 'concise-novice',
+      languageStyle: 'zh-terse-no-punctuation',
+      intentClass: 'direct-concept-answer',
+      targetRelativePath: 'README.md',
+      targetContent: safeBaselineContent,
+      seedFiles: { 'README.md': safeBaselineContent },
+      prompt: '解释gpu cpu',
+      providerPlan: 'direct-assistant-answer',
+      providerAnswer: 'CPU 擅长通用计算，GPU 擅长同时处理大量相似计算。',
+      expected: 'completed-advisory-no-mutation',
+      expectedFiles: { 'README.md': safeBaselineContent },
+      expectedChangedPaths: [],
+      expectedMutatedUserFiles: [],
+      expectedTaskMode: 'explain',
+      forbiddenTools: ['read_file', 'create_file', 'replace_in_file', 'run_terminal', 'task_complete'],
+      requiredRunLogSubstrings: ['CPU 擅长通用计算'],
+      forbiddenRunLogSubstrings: ['已确定软件工程执行路线', '收集原项目代码、通信链路和接口证据'],
+    },
+    't1-direct-cn-typo-colloquial': {
+      id: 't1-direct-cn-typo-colloquial',
+      kind: 't1-direct-typo-concept-answer',
+      userProfile: 'mobile-typo-user',
+      languageStyle: 'zh-typo-colloquial',
+      intentClass: 'direct-concept-answer',
+      targetRelativePath: 'README.md',
+      targetContent: safeBaselineContent,
+      seedFiles: { 'README.md': safeBaselineContent },
+      prompt: '讲下 gpu 和 cpu 有啥取别，短点说',
+      providerPlan: 'direct-assistant-answer',
+      providerAnswer: 'CPU 更通用，GPU 的大量核心更适合并行任务。',
+      expected: 'completed-advisory-no-mutation',
+      expectedFiles: { 'README.md': safeBaselineContent },
+      expectedChangedPaths: [],
+      expectedMutatedUserFiles: [],
+      expectedTaskMode: 'explain',
+      forbiddenTools: ['read_file', 'create_file', 'replace_in_file', 'run_terminal', 'task_complete'],
+      requiredRunLogSubstrings: ['GPU 的大量核心'],
+      forbiddenRunLogSubstrings: ['已确定软件工程执行路线', '收集原项目代码、通信链路和接口证据'],
+    },
+    't1-direct-en-concept': {
+      id: 't1-direct-en-concept',
+      kind: 't1-direct-english-concept-answer',
+      userProfile: 'english-maintainer',
+      languageStyle: 'en-concise',
+      intentClass: 'direct-concept-answer',
+      targetRelativePath: 'README.md',
+      targetContent: safeBaselineContent,
+      seedFiles: { 'README.md': safeBaselineContent },
+      prompt: "What's the CPU vs GPU difference? Keep it short.",
+      providerPlan: 'direct-assistant-answer',
+      providerAnswer: 'CPU is general-purpose; GPU is optimized for parallel workloads.',
+      expected: 'completed-advisory-no-mutation',
+      expectedFiles: { 'README.md': safeBaselineContent },
+      expectedChangedPaths: [],
+      expectedMutatedUserFiles: [],
+      expectedTaskMode: 'explain',
+      forbiddenTools: ['read_file', 'create_file', 'replace_in_file', 'run_terminal', 'task_complete'],
+      requiredRunLogSubstrings: ['CPU is general-purpose'],
+      forbiddenRunLogSubstrings: ['已确定软件工程执行路线', '收集原项目代码、通信链路和接口证据'],
+    },
+    't1-direct-ja-concept': {
+      id: 't1-direct-ja-concept',
+      kind: 't1-direct-japanese-concept-answer',
+      userProfile: 'japanese-developer',
+      languageStyle: 'ja-concise',
+      intentClass: 'direct-concept-answer',
+      targetRelativePath: 'README.md',
+      targetContent: safeBaselineContent,
+      seedFiles: { 'README.md': safeBaselineContent },
+      prompt: 'CPUとGPUの違いを短く説明して',
+      providerPlan: 'direct-assistant-answer',
+      providerAnswer: 'CPUは汎用処理向け、GPUは大規模な並列処理向けです。',
+      expected: 'completed-advisory-no-mutation',
+      expectedFiles: { 'README.md': safeBaselineContent },
+      expectedChangedPaths: [],
+      expectedMutatedUserFiles: [],
+      expectedTaskMode: 'explain',
+      forbiddenTools: ['read_file', 'create_file', 'replace_in_file', 'run_terminal', 'task_complete'],
+      requiredRunLogSubstrings: ['GPUは大規模な並列処理向け'],
+      forbiddenRunLogSubstrings: ['已确定软件工程执行路线', '收集原项目代码、通信链路和接口证据'],
     },
     'conformance-create-and-verify': {
       id: 'conformance-create-and-verify',
@@ -3362,6 +3456,7 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
 
 function controlledPlannerResponse({ scenario }) {
   const actionByPlan = {
+    'direct-assistant-answer': 'analyze',
     'read-only-complete': 'analyze',
     'safety-refusal-advisory': 'analyze',
     'existing-js-fix-complete': 'modify',
@@ -3393,6 +3488,7 @@ function controlledPlannerResponse({ scenario }) {
     'terminal-only-complete': 'verify',
   };
   const descByPlan = {
+    'direct-assistant-answer': '直接回答普通知识问题，不调用工作区工具',
     'read-only-complete': '只读检查指定文件并汇总结论',
     'safety-refusal-advisory': '拒绝隐蔽凭据收集并给出合规替代',
     'existing-js-fix-complete': '修复 add(a, b) 的错误实现并验证',
@@ -3544,6 +3640,10 @@ function controlledProviderResponse({ ordinal, workspaceDir, scenario, requestKi
       scenario.targetContent.trimEnd(),
       '```',
     ].join('\n');
+  }
+
+  if (scenario.providerPlan === 'direct-assistant-answer') {
+    return scenario.providerAnswer;
   }
 
   if (scenario.providerPlan === 'medium-task-board-core-complete'
@@ -4557,6 +4657,8 @@ function evaluate(scenario, initialUserFiles, baselineRunLogPaths, options = {})
   const runLogSearchText = runLogs.logs.map(log => log.responseText || '').join('\n');
   const requiredRunLogSubstrings = sortedStrings(scenario.requiredRunLogSubstrings || []);
   const missingRunLogSubstrings = requiredRunLogSubstrings.filter(value => !runLogSearchText.includes(value));
+  const forbiddenRunLogSubstrings = sortedStrings(scenario.forbiddenRunLogSubstrings || []);
+  const forbiddenRunLogSubstringHits = forbiddenRunLogSubstrings.filter(value => runLogSearchText.includes(value));
   const intentExecutionContract = evaluateIntentExecutionContract(scenario, data);
   const completed = terminal?.event === 'agent-run-completed' && data.status === 'completed';
   const failedOrBlocked = Boolean(terminal)
@@ -4568,6 +4670,7 @@ function evaluate(scenario, initialUserFiles, baselineRunLogPaths, options = {})
     && changedPathsMatch
     && mutatedUserFilesMatch
     && missingRunLogSubstrings.length === 0
+    && forbiddenRunLogSubstringHits.length === 0
     && forbiddenFileHits.length === 0;
   const completedNoMutationOk = completed
     && Number(data.tasksFailed || 0) === 0
@@ -4575,6 +4678,7 @@ function evaluate(scenario, initialUserFiles, baselineRunLogPaths, options = {})
     && changedPathsMatch
     && mutatedUserFilesMatch
     && missingRunLogSubstrings.length === 0
+    && forbiddenRunLogSubstringHits.length === 0
     && forbiddenFileHits.length === 0;
   const localPolicyRefusalOk = options.commandCompleted === true
     && runLogs.logs.length === 0
@@ -4601,6 +4705,7 @@ function evaluate(scenario, initialUserFiles, baselineRunLogPaths, options = {})
       && !outsidePathExists
       && forbiddenFileHits.length === 0
       && missingRunLogSubstrings.length === 0
+      && forbiddenRunLogSubstringHits.length === 0
     : scenario.expected === 'completed-workflow'
       ? completedWorkflowOk
       : scenario.expected === 'completed-advisory-no-mutation'
@@ -4636,6 +4741,8 @@ function evaluate(scenario, initialUserFiles, baselineRunLogPaths, options = {})
       forbiddenFileHits,
       requiredRunLogSubstrings,
       missingRunLogSubstrings,
+      forbiddenRunLogSubstrings,
+      forbiddenRunLogSubstringHits,
       intentExecutionContract,
     },
     runLogs,

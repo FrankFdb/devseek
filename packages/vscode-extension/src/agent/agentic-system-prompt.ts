@@ -18,7 +18,7 @@ export function buildAgenticSystemPrompt(
   resolvedTaskIntent?: TaskIntentRoute,
 ): string {
   const modelLed = workflowMode === 'model-led';
-  const taskIntent = modelLed ? undefined : (resolvedTaskIntent ?? routeTaskIntent(userPrompt));
+  const taskIntent = resolvedTaskIntent ?? (modelLed ? undefined : routeTaskIntent(userPrompt));
   const rulesSection = projectRulesText ? `\n${wrapRulesAsContext(projectRulesText)}\n` : '';
   const memSection = projectMemoryText ? `\n${wrapMemoryAsContext(projectMemoryText)}\n` : '';
   const filesSection = contextFiles.length > 0
@@ -52,6 +52,10 @@ export function buildAgenticSystemPrompt(
     : `- 第一轮必须先输出 1-2 句面向用户的自然语言：说明你理解了什么、将如何处理；不要使用固定模板，不要只输出工具调用
 - 开始前先用 manage_todo_list 列出所有子任务（Copilot 规划阶段）
 - 每个子任务开始时标为 in-progress，完成时标为 completed`;
+
+  const finalDeliveryRule = taskIntent?.chatKind === 'chat'
+    ? '- 普通知识问答直接给出回答；只有使用了工作区事实时才引用相应文件或工具证据，不要求固定格式、长度或结论关键词'
+    : '- 对真实执行结果给出可复核证据，例如文件路径、实际修改和验证结果';
 
   return `你是一个拥有完整工具访问权限的编程智能体，运行在 VS Code 中。
 
@@ -113,8 +117,8 @@ ${turnBehavior}
 - 一轮内可输出多个 [TOOL:...] 块（并行调用）
 - 工具结果会在下一轮作为上下文提供给你
 - 信息足够时，停止工具调用，直接给出结论
-- 结论需包含：证据（文件路径/行号/具体数值）
-- 使用简体中文`.trim();
+${finalDeliveryRule}
+- 默认使用用户当前消息的主要语言；用户指定语言时遵从用户要求，多语言混输时保持技术术语准确且表达自然`.trim();
 }
 
 function projectSafeMcpInputShape(

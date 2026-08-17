@@ -36,15 +36,27 @@ test('agent run display: literal tool protocol samples use safe response copy', 
 test('agent run display: ordinary workspace requests keep explore copy', () => {
   const profile = buildAgentRunDisplayProfile('分析 docs 目录里的发布说明，找出需要补充的验证证据。');
 
-  assert.equal(profile.kind, 'workspace-explore');
-  assert.equal(profile.planStartedTitle, '正在理解任务和项目边界');
-  assert.equal(profile.planCompletedTitle, '已确定软件工程执行路线');
-  assert.match(profile.planStartedDetail, /任务类型、输出要求和需要优先验证的项目锚点/);
-  assert.match(profile.planCompletedDetail, /收集原项目代码、通信链路和接口证据/);
-  assert.match(profile.planCompletedDetail, /基于证据设计并生成必要成果物/);
-  assert.match(profile.planCompletedDetail, /运行验证并汇总交付结果/);
+  assert.equal(profile.kind, 'model-led');
+  assert.equal(profile.planStartedTitle, '正在理解当前请求');
+  assert.equal(profile.planCompletedTitle, '已确认当前任务边界');
+  assert.doesNotMatch(profile.planCompletedDetail, /通信链路|接口证据|生成必要成果物|运行验证/);
   assert.equal(profile.initialTaskAction, 'explore');
+  assert.equal(profile.emitPlanningStatus, true);
   assert.equal(profile.suppressToolPlanning, false);
+});
+
+test('agent run display: direct concept answers do not project a fake engineering plan', () => {
+  for (const prompt of [
+    '解释gpu cpu',
+    '讲下 gpu 和 cpu 有啥取别，短点说',
+    "What's the CPU vs GPU difference? Keep it short.",
+    'CPUとGPUの違いを短く説明して',
+  ]) {
+    const profile = buildAgentRunDisplayProfile(prompt);
+    assert.equal(profile.kind, 'direct-response', prompt);
+    assert.equal(profile.initialTaskAction, 'respond', prompt);
+    assert.equal(profile.emitPlanningStatus, false, prompt);
+  }
 });
 
 test('agent run display: simple file requests use direct write and readback copy', () => {

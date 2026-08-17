@@ -96,10 +96,6 @@ const COMMAND_EVIDENCE_RE = /(?:编译|运行|执行|测试|验证|调试|compil
 const RUN_EVIDENCE_RE = /(?:运行|执行|run|execute)/i;
 const TEST_EVIDENCE_RE = /(?:测试|run\s+tests?|execute\s+tests?|npm\s+test|pnpm\s+test|yarn\s+test|bun\s+test|unit\s+tests?|pytest|go\s+test|cargo\s+test)/i;
 const RUNTIME_VALIDATION_RE = /(?:启动|看结果|输出效果|运行效果)/i;
-const READ_ONLY_TOOL_INTENT_RE = /(?:我(?:来|会|将|先|需要|已经)|让我|首先|先|接下来|下一步|现在我|需要).{0,140}(?:查看|读取|检查|搜索|列出|调用|使用|打开|浏览|生成|输出|整理|形成|收集|了解|分析|给出).{0,100}(?:文件|目录|代码|文档|结构|相关|信息|工具|报告|结论|分析|建议|差异|对策|tool|read_file|list_dir|grep_search)/i;
-const READ_ONLY_DELIVERY_STRUCTURE_RE = /(?:^|\n)\s*(?:#{1,6}\s+|[-*]\s+|\d+[.、]\s+|(?:结论|建议|对策|任务|差异|风险|主控|实现方案|分析结果)\s*[:：])/i;
-const READ_ONLY_ANSWER_MARKER_RE = /(?:结论|依据|原因|问题|风险|建议|对策|方案|任务|任务拆解|差异|主控|实现方案|分析结果|不存在|未找到|无法读取|summary|conclusion|evidence|recommendation|risk|not\s+found|does\s+not\s+exist)/i;
-const READ_ONLY_TRANSITION_RE = /(?:我(?:已经|已)|现在我(?:已经|已)?|目前(?:已经|已)?|现在).{0,80}(?:收集|读取|查看|了解|掌握).{0,100}(?:让我|接下来|下一步|将|继续|准备).{0,60}(?:分析|给出|生成|输出|整理|形成|撰写)/i;
 const SUMMARY_FILE_CLAIM_RE = /(?:^|[^\w/.-])((?:[\w.-]+\/)*[\w.-]+(?:\.(?:cpp|cxx|cc|c|hpp|hxx|hh|h|tsx|jsx|mjs|cjs|ts|js|py|java|go|rs|cs|php|rb|swift|kts|kt|scala|html|scss|sass|css|svelte|vue|bash|zsh|sh|json|ya?ml|md|txt|cmake)|\/CMakeLists\.txt|CMakeLists\.txt))/gi;
 const SUMMARY_QUOTED_FILE_CLAIM_RE = /[《「“"'`]([^《》「」“”"'`\n\r]{1,180}\.(?:cpp|cxx|cc|c|hpp|hxx|hh|h|tsx|jsx|mjs|cjs|ts|js|py|java|go|rs|cs|php|rb|swift|kts|kt|scala|html|scss|sass|css|svelte|vue|bash|zsh|sh|json|ya?ml|md|txt|cmake))[》」”"'`]/gi;
 const SUMMARY_FILE_CLAIM_POSITIVE_RE = /(?:创建|新建|生成|添加|新增|编写|实现|更新|修改|改造|重构|写入|保存|输出|产出|交付|导出|落地|复制|拷贝|重命名|改名|移动|迁移|替换|create|created|add|added|generate|generated|write|wrote|save|saved|output|produce|produced|deliver|delivered|export|exported|implement|implemented|update|updated|modify|modified|refactor|refactored|copy|copied|duplicate|duplicated|rename|renamed|move|moved|replace|replaced)/i;
@@ -538,22 +534,7 @@ export function requiresFileContentReadEvidence(text: string, semanticContract?:
 export function hasReadOnlyAnswerEvidence(raw: string | undefined): boolean {
   const original = String(raw || '').trim();
   if (!original) return false;
-  const visibleText = stripToolCallBlocks(original).trim();
-  if (!visibleText) return false;
-  const compact = visibleText.replace(/\s+/g, ' ').trim();
-  if (READ_ONLY_TRANSITION_RE.test(compact)) return false;
-  if (isToolIntentOnlyReadOnlyText(compact)) return false;
-  if (READ_ONLY_DELIVERY_STRUCTURE_RE.test(visibleText)) return true;
-  if (compact.length < 120) {
-    return /[:：]/.test(compact) && READ_ONLY_ANSWER_MARKER_RE.test(compact);
-  }
-  return READ_ONLY_ANSWER_MARKER_RE.test(compact);
-}
-
-function isToolIntentOnlyReadOnlyText(text: string): boolean {
-  if (!text || text.length > 220) return false;
-  if (READ_ONLY_DELIVERY_STRUCTURE_RE.test(text)) return false;
-  return READ_ONLY_TOOL_INTENT_RE.test(text);
+  return stripToolCallBlocks(original).trim().length > 0;
 }
 
 export function isReadOnlyTerminalEvidenceCommand(command: string): boolean {

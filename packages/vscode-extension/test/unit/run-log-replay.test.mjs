@@ -1529,7 +1529,7 @@ test('run log replay does not let stale GUI timeout evidence override final comp
   }
 });
 
-test('run log replay detects read-only false completion when provider tools were not executed', () => {
+test('run log replay detects unexecuted provider tools without judging assistant prose format', () => {
   const { dir, logPath } = writeLog([
     {
       ts: '2026-07-06T03:03:23.000Z',
@@ -1624,13 +1624,13 @@ test('run log replay detects read-only false completion when provider tools were
     const kinds = new Set(report.issues.map(issue => issue.kind));
 
     assert.equal(kinds.has('provider-tool-request-not-executed'), true);
-    assert.equal(kinds.has('read-only-completed-without-answer-evidence'), true);
+    assert.equal(kinds.has('read-only-completed-without-answer-evidence'), false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test('run log replay detects no-tool read-only intent after tool results and optimistic completion', () => {
+test('run log replay keeps state-order failures without reclassifying assistant wording', () => {
   const { dir, logPath } = writeLog([
     {
       ts: '2026-07-06T05:14:35.000Z',
@@ -1744,8 +1744,8 @@ test('run log replay detects no-tool read-only intent after tool results and opt
     const report = replayRunLog(logPath);
     const kinds = new Set(report.issues.map(issue => issue.kind));
 
-    assert.equal(kinds.has('provider-short-intent'), true);
-    assert.equal(kinds.has('read-only-no-tool-intent-after-tools'), true);
+    assert.equal(kinds.has('provider-short-intent'), false);
+    assert.equal(kinds.has('read-only-no-tool-intent-after-tools'), false);
     assert.equal(kinds.has('optimistic-completion-before-failure'), true);
   } finally {
     rmSync(dir, { recursive: true, force: true });

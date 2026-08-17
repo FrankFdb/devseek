@@ -7,7 +7,7 @@ export const FUNCTION_LINE_LIMIT = 100;
 export const COMPLEX_FUNCTION_LINE_LIMIT = 300;
 
 export interface EngineeringGuidelinesPromptOptions {
-  taskIntent?: Pick<TaskIntentRoute, 'family' | 'agentTaskShape' | 'quality'>;
+  taskIntent?: Pick<TaskIntentRoute, 'family' | 'chatKind' | 'agentTaskShape' | 'quality'>;
 }
 
 export function buildEngineeringGuidelinesPrompt(
@@ -18,6 +18,16 @@ export function buildEngineeringGuidelinesPrompt(
     ? '- 任务计划要优先拆分到职责清晰的小文件/模块；不要默认把所有实现塞进一个文件。'
     : '- 生成或修改代码时优先新增小型领域服务、纯函数和清晰模块边界；不要把新逻辑继续堆进大入口文件。';
   const family = options.taskIntent?.family;
+
+  if (options.taskIntent?.chatKind === 'chat') {
+    return [
+      '【问答与只读交付约束】',
+      '- 普通知识、概念解释、简短澄清和闲聊直接回答；普通 assistant message 就是有效交付，不需要 task_complete、任务清单或工具调用。',
+      '- 只有答案依赖当前工作区、文件、日志或实时执行结果时才调用必要的只读工具，并依据真实结果回答。',
+      '- 不要把普通问答升级成项目调查、架构设计或源码修改；不要强迫简短回答包含文件路径、行号、固定标题或结论关键词。',
+      '- 用户要求 review 或工作区分析时保持只读；发现可改进点只作为分析结论，除非用户随后明确授权修改。',
+    ].join('\n');
+  }
 
   if (family === 'simple-file') {
     return [
