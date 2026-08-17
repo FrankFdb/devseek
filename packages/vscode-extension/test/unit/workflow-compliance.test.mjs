@@ -3171,6 +3171,37 @@ test('Architecture: ARCH-16 duplicate judgment domains have explicit owners', ()
   assertContains(simpleFileTask, "from './task-state-machine'", 'simple file task runner must use the task state machine boundary');
 });
 
+test('T1 visible delivery: model-led intent cannot be replaced by a local progress prediction', () => {
+  const extension = src('src/extension.ts');
+  const presenter = src('src/ui/agent-turn-presenter.ts');
+  const protocol = src('src/ui/webview-protocol.ts');
+  const webview = webviewRuntime();
+
+  assertContains(
+    extension,
+    "workflow.toolPolicyMode === 'model-led'",
+    'model-led runs must select their own presentation contract',
+  );
+  assertContains(
+    extension,
+    "workflow.toolPolicyMode !== 'model-led' && agDisplayProfile.emitPlanningStatus",
+    'local task-family plans must not become visible model-led intent',
+  );
+  assertContains(
+    presenter,
+    "this.presentation !== 'progress' && !this.hasConcreteToolActivity",
+    'model-led status projection must stay hidden until a concrete tool action exists',
+  );
+  assertContains(
+    presenter,
+    "if (kind !== 'label') this.hasConcreteToolActivity = true",
+    'progress promotion must require real tool activity rather than a synthetic label',
+  );
+  assertContains(protocol, "'progress' | 'direct-response' | 'model-led'", 'Webview protocol must make model-led delivery explicit');
+  assertContains(webview, "msg.agentPresentation === 'model-led'", 'model-led assistant messages must not wait for a synthetic plan event');
+  assertContains(webview, "msg.agentPresentation !== 'model-led'", 'model-led assistant bubbles must remain visible without a progress card');
+});
+
 test('Architecture: ARCH-17 agent runs are created through RunContext', () => {
   const extension = src('src/extension.ts');
   const appIndex = src('src/app/index.ts');

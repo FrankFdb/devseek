@@ -328,9 +328,10 @@ export async function runAgenticLoop(
   // whether the agent ends up analyzing or creating files.
   const _shortPrompt = userPrompt.trim().replace(/\n+/g, ' ');
   const _agentLabel = _shortPrompt.length > 38 ? _shortPrompt.slice(0, 36) + '…' : _shortPrompt;
-  const initialDisplayAction = workflowMode === 'model-led'
+  const requestedDisplayAction = callbacks.runDisplayAction || 'explore';
+  const initialDisplayAction = workflowMode === 'model-led' && requestedDisplayAction !== 'respond'
     ? 'explore'
-    : callbacks.runDisplayAction || 'explore';
+    : requestedDisplayAction;
   const initialDisplayTarget = callbacks.runDisplayTarget || '';
   const emitAgenticCorrectionStatus = async (
     title: string,

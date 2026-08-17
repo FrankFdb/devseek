@@ -128,7 +128,16 @@ async function runSimulation(prompt, provider, options = {}) {
   if (options.onUserSteer) harness.callbacks.onUserSteer = options.onUserSteer;
   if (options.runDisplayAction) harness.callbacks.runDisplayAction = options.runDisplayAction;
   try {
-    const result = await runAgenticLoop(prompt, [], root, 'fast', harness.callbacks, '', 'model-led', []);
+    const result = await runAgenticLoop(
+      prompt,
+      [],
+      root,
+      'fast',
+      harness.callbacks,
+      options.sessionContextText || '',
+      'model-led',
+      [],
+    );
     return { root, harness, result };
   } catch (error) {
     rmSync(root, { recursive: true, force: true });
@@ -256,6 +265,30 @@ test('ModelLedUserSimulation: concise concept answers settle across natural user
       prompt: "What's CPU vs GPU? Keep it short.",
       answer: 'CPU is general-purpose; GPU is optimized for parallel workloads.',
     },
+    {
+      prompt: 'CPUとGPUの違いを短く説明して',
+      answer: 'CPUは汎用処理向け、GPUは大規模な並列処理向けです。',
+    },
+    {
+      prompt: '把这句话总结成五个字：今天测试全部通过',
+      answer: '测试全通过',
+    },
+    {
+      prompt: '把 hello world 翻译成中文',
+      answer: '你好，世界。',
+    },
+    {
+      prompt: '解释这段代码，不要改文件：const total = a + b',
+      answer: '这段代码把 a 与 b 相加，并把结果赋给 total。',
+    },
+    {
+      prompt: '1+1?',
+      answer: '2',
+    },
+    {
+      prompt: '帮我弄一下',
+      answer: '你希望我处理哪个文件或问题？',
+    },
   ];
 
   for (const scenario of cases) {
@@ -274,6 +307,38 @@ test('ModelLedUserSimulation: concise concept answers settle across natural user
     } finally {
       rmSync(simulation.root, { recursive: true, force: true });
     }
+  }
+});
+
+test('ModelLedUserSimulation: an elliptical follow-up resolves its referent from the same-session turn', async () => {
+  const prompt = '再详细说明他们的差异';
+  const firstAnswer = 'CPU 擅长通用、低延迟任务；GPU 擅长同时处理大量相似计算。';
+  const sessionContextText = [
+    '[用户]',
+    '说明gpu cpu',
+    '[助手]',
+    firstAnswer,
+  ].join('\n');
+  let calls = 0;
+  const simulation = await runSimulation(prompt, async messages => {
+    calls += 1;
+    assert.match(messages[0].content, /【同一会话上下文】/u);
+    assert.match(messages[0].content, /说明gpu cpu/u);
+    assert.match(messages[0].content, /CPU 擅长通用、低延迟任务/u);
+    assert.match(messages[0].content, /【当前用户消息】\n再详细说明他们的差异/u);
+    return {
+      text: 'CPU 核心较少但单核强、延迟低，适合操作系统和分支复杂的通用任务；GPU 核心多、吞吐量高，适合图形渲染、矩阵运算和模型训练。',
+      tools: [],
+    };
+  }, { sessionContextText });
+  try {
+    assert.equal(calls, 1, simulation.result.historyText);
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+    assert.equal(simulation.result.tasksApplied, 0);
+    assert.deepEqual(simulation.result.changedPaths, []);
+    assert.equal(simulation.harness.activities.length, 0);
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
   }
 });
 

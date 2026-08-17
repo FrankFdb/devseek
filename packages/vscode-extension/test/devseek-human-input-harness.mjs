@@ -25,6 +25,7 @@ import { chromium } from 'playwright';
 const args = new Set(process.argv.slice(2));
 const realBridge = args.has('--real-bridge') || process.env.DEVSEEK_HUMAN_INPUT_REAL_BRIDGE === '1';
 const realAgentSteer = args.has('--real-agent-steer') || process.env.DEVSEEK_HUMAN_INPUT_REAL_AGENT_STEER === '1';
+const directAnswerUi = args.has('--direct-answer-ui') || process.env.DEVSEEK_HUMAN_INPUT_DIRECT_ANSWER_UI === '1';
 const headedBridge = args.has('--headed') || process.env.DEVSEEK_HUMAN_INPUT_HEADED === '1';
 const relogin = args.has('--relogin') || process.env.DEVSEEK_HUMAN_INPUT_RELOGIN === '1';
 const promptArgIndex = process.argv.indexOf('--prompt');
@@ -34,7 +35,9 @@ const prompt = promptArgIndex >= 0 && process.argv[promptArgIndex + 1]
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../../..');
-const mediaDir = path.join(repoRoot, 'packages/vscode-extension/media');
+const mediaDir = process.env.DEVSEEK_HUMAN_INPUT_MEDIA_DIR
+  ? path.resolve(process.env.DEVSEEK_HUMAN_INPUT_MEDIA_DIR)
+  : path.join(repoRoot, 'packages/vscode-extension/media');
 const markedPath = path.join(mediaDir, 'marked.umd.js');
 const serverPath = path.join(repoRoot, 'packages/bridge/dist/server.js');
 const cookiesPath = path.join(os.homedir(), '.devseek-netai/cookies.json');
@@ -394,6 +397,191 @@ async function assertProviderPromptIsolation(page) {
   await page.evaluate(() => { document.getElementById('messages').innerHTML = ''; });
 }
 
+async function runDirectAnswerUiFlow(page) {
+  const cases = [
+    {
+      id: 'screenshot-cn-explain',
+      prompt: '说明gpu cpu',
+      answer: 'CPU 擅长通用、低延迟任务；GPU 擅长同时处理大量相似计算。',
+    },
+    {
+      id: 'cn-terse-no-space',
+      prompt: '解释gpu cpu',
+      answer: 'CPU 更通用，GPU 更适合大规模并行计算。',
+    },
+    {
+      id: 'cn-mobile-typo',
+      prompt: '讲下 gpu 和 cpu 有啥取别，短点说',
+      answer: 'CPU 核心少而灵活，GPU 核心多，适合并行任务。',
+    },
+    {
+      id: 'english-concise',
+      prompt: "What's the CPU vs GPU difference? Keep it short.",
+      answer: 'CPU is general-purpose; GPU is optimized for parallel workloads.',
+    },
+    {
+      id: 'japanese-concise',
+      prompt: 'CPUとGPUの違いを短く説明して',
+      answer: 'CPUは汎用処理向け、GPUは大規模な並列処理向けです。',
+    },
+    {
+      id: 'mixed-language',
+      prompt: 'GPU 和 CPU difference, one sentence',
+      answer: 'CPU 面向通用串行任务，GPU 面向大规模并行任务。',
+    },
+    {
+      id: 'short-scalar-answer',
+      prompt: '1+1?',
+      answer: '2',
+    },
+    {
+      id: 'inline-summary-keyword-collision',
+      prompt: '把这句话总结成五个字：今天测试全部通过',
+      answer: '测试全通过',
+    },
+    {
+      id: 'translation-no-workspace',
+      prompt: '把 hello world 翻译成中文',
+      answer: '你好，世界。',
+    },
+    {
+      id: 'inline-code-explanation',
+      prompt: '解释这段代码，不要改文件：const total = a + b',
+      answer: '这段代码把 a 与 b 相加，并把结果赋给 total。',
+    },
+    {
+      id: 'quoted-command-explanation',
+      prompt: '"npm test" 是什么意思？只解释，不要运行',
+      answer: '`npm test` 通常用于运行项目配置的测试脚本。',
+      visibleAnswer: 'npm test 通常用于运行项目配置的测试脚本。',
+    },
+    {
+      id: 'smalltalk',
+      prompt: '你好',
+      answer: '你好。',
+    },
+    {
+      id: 'clarification-question',
+      prompt: '帮我弄一下',
+      answer: '你希望我处理哪个文件或问题？',
+    },
+  ];
+  const reports = [];
+
+  for (const scenario of cases) {
+    await dispatch(page, { type: 'clearHistory' });
+    await dispatch(page, { type: 'userMessage', text: scenario.prompt, prompt: scenario.prompt });
+    await dispatch(page, {
+      type: 'startResponse',
+      agentMode: true,
+      agentPresentation: 'model-led',
+      expectGeneratedArtifacts: false,
+      prompt: scenario.prompt,
+    });
+    await dispatch(page, { type: 'delta', text: '\x00ASUM\x00' + scenario.answer });
+    await dispatch(page, { type: 'endResponse' });
+    await page.waitForTimeout(40);
+
+    const report = await page.evaluate(() => ({
+      assistantTexts: [...document.querySelectorAll('.assistant-bubble')]
+        .map((element) => element.textContent.replace(/\s+/g, ' ').trim())
+        .filter(Boolean),
+      workingContainers: document.querySelectorAll('.aut-container').length,
+      analyzingIndicators: document.querySelectorAll('#agent-analyzing-indicator').length,
+      visibleText: (document.getElementById('messages')?.textContent || '').replace(/\s+/g, ' ').trim(),
+    }));
+    const deliveredAnswer = report.assistantTexts[report.assistantTexts.length - 1] || '';
+    assert(deliveredAnswer === (scenario.visibleAnswer || scenario.answer), `${scenario.id}: 最终可见回答不精确：${JSON.stringify(report.assistantTexts)}`);
+    assert(report.workingContainers === 0, `${scenario.id}: 直接回答错误显示了 ${report.workingContainers} 个执行卡片`);
+    assert(report.analyzingIndicators === 0, `${scenario.id}: 直接回答仍显示“正在分析”占位符`);
+    assert(!/正在调查[:：]|当前重点[:：]直接回答|任务已完成/.test(report.visibleText), `${scenario.id}: 用户可见区域包含伪流程或兜底文本：${report.visibleText}`);
+    reports.push({ id: scenario.id, answer: deliveredAnswer });
+  }
+
+  await dispatch(page, { type: 'clearHistory' });
+  const followupTurns = [
+    {
+      prompt: '说明gpu cpu',
+      answer: 'CPU 擅长通用、低延迟任务；GPU 擅长同时处理大量相似计算。',
+    },
+    {
+      prompt: '再详细说明他们的差异',
+      answer: 'CPU 核心较少但单核强、延迟低；GPU 核心多、吞吐量高，更适合大规模并行计算。',
+    },
+  ];
+  for (const turn of followupTurns) {
+    await dispatch(page, { type: 'userMessage', text: turn.prompt, prompt: turn.prompt });
+    await dispatch(page, {
+      type: 'startResponse',
+      agentMode: true,
+      agentPresentation: 'model-led',
+      expectGeneratedArtifacts: false,
+      prompt: turn.prompt,
+    });
+    await dispatch(page, { type: 'delta', text: '\x00ASUM\x00' + turn.answer });
+    await dispatch(page, { type: 'endResponse' });
+  }
+  await page.waitForTimeout(80);
+  const followupDelivery = await page.evaluate(() => ({
+    assistantTexts: [...document.querySelectorAll('.assistant-bubble')]
+      .map((element) => element.textContent.replace(/\s+/g, ' ').trim())
+      .filter(Boolean),
+    workingContainers: document.querySelectorAll('.aut-container').length,
+    analyzingIndicators: document.querySelectorAll('#agent-analyzing-indicator').length,
+  }));
+  assert(
+    JSON.stringify(followupDelivery.assistantTexts) === JSON.stringify(followupTurns.map(turn => turn.answer)),
+    `连续两轮回答没有按顺序可见：${JSON.stringify(followupDelivery.assistantTexts)}`,
+  );
+  assert(followupDelivery.workingContainers === 0, '连续直接问答错误显示执行卡片');
+  assert(followupDelivery.analyzingIndicators === 0, '连续直接问答错误显示分析占位符');
+
+  await dispatch(page, { type: 'clearHistory' });
+  await dispatch(page, { type: 'userMessage', text: '解释当前 README 的用途', prompt: '解释当前 README 的用途' });
+  await dispatch(page, {
+    type: 'startResponse',
+    agentMode: true,
+    agentPresentation: 'model-led',
+    expectGeneratedArtifacts: false,
+    prompt: '解释当前 README 的用途',
+  });
+  await dispatch(page, { type: 'agentToolActivity', activityKind: 'read', activityLabel: 'README.md' });
+  await dispatch(page, {
+    type: 'agentStatus',
+    phase: 'done',
+    state: 'completed',
+    taskAction: 'explore',
+    title: '已读取 README.md',
+  });
+  await dispatch(page, { type: 'delta', text: '\x00ASUM\x00README 说明了项目用途和本地运行方式。' });
+  await dispatch(page, { type: 'endResponse' });
+  await page.waitForTimeout(200);
+
+  const promoted = await page.evaluate(() => ({
+    containers: document.querySelectorAll('.aut-container').length,
+    doneContainers: document.querySelectorAll('.aut-container[data-done]').length,
+    assistantTexts: [...document.querySelectorAll('.assistant-bubble')]
+      .map((element) => element.textContent.replace(/\s+/g, ' ').trim())
+      .filter(Boolean),
+    visibleText: (document.getElementById('messages')?.textContent || '').replace(/\s+/g, ' ').trim(),
+  }));
+  assert(promoted.containers >= 1, '真实工具调用没有把直接交付动态升级为执行进度');
+  assert(promoted.doneContainers >= 1, '动态升级后的执行进度没有完成收口');
+  assert(promoted.assistantTexts.includes('README 说明了项目用途和本地运行方式。'), `动态升级后没有交付最终回答：${JSON.stringify(promoted.assistantTexts)}`);
+  assert(!promoted.visibleText.includes('正在调查：直接回答'), `动态升级错误复用了任务类型标签：${promoted.visibleText}`);
+
+  const screenshotPath = path.join(tmpRoot, 'direct-answer-visible-ui.png');
+  await page.screenshot({ path: screenshotPath, fullPage: true });
+  console.log(JSON.stringify({
+    ok: true,
+    mode: 'direct-answer-visible-ui',
+    cases: reports,
+    followupDelivery,
+    dynamicToolPromotion: promoted,
+    screenshotPath,
+  }, null, 2));
+}
+
 async function runRealBridgeFlow(page, promptText) {
   let bridge;
   const timings = { startedAt: Date.now(), firstDeltaMs: null, finishedMs: null };
@@ -717,6 +905,11 @@ async function main() {
     });
     await page.goto(pathToFileURL(htmlPath).href);
     await assertProviderPromptIsolation(page);
+
+    if (directAnswerUi) {
+      await runDirectAnswerUiFlow(page);
+      return;
+    }
 
     await page.fill('#input', prompt);
     await page.click('#send-btn');

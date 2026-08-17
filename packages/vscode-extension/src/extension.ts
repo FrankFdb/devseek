@@ -573,8 +573,16 @@ async function runActiveChat(
     const agentSemanticContract = agentKernelRun.semanticContract;
     if (!activeRun.bindAgentKernelRun(agentKernelRun)) return;
     const agentRunContext = agentKernelRun.runContext;
+    const agDisplayProfile = buildAgentRunDisplayProfile(prompt, agentSemanticContract);
     const agentPresenter = new AgentTurnPresenter(webview, pendingEditCoordinator, agentRunContext);
-    agentPresenter.beginResponse({ prompt, sessionContinuationNote, autoDiscoveredNote });
+    agentPresenter.beginResponse({
+      prompt,
+      sessionContinuationNote,
+      autoDiscoveredNote,
+      presentation: workflow.toolPolicyMode === 'model-led'
+        ? 'model-led'
+        : agDisplayProfile.kind === 'direct-response' ? 'direct-response' : 'progress',
+    });
     const { postStatus: postAgent, postToolActivity: postAgentToolActivity } = agentPresenter;
     workflowRunContext = agentRunContext;
     const agentTraceRunId = agentRunContext.runId;
@@ -601,7 +609,6 @@ async function runActiveChat(
           currentFilePaths: effectiveFiles,
           newSession,
         }).contextText;
-        const agDisplayProfile = buildAgentRunDisplayProfile(prompt, agentSemanticContract);
         const contextFiles = [...new Set([
           ...effectiveFiles,
           ...(kernelRecovery ? getKernelRecoveryContextFiles(kernelRecovery, agWsRoot) : []),
@@ -626,7 +633,7 @@ async function runActiveChat(
             progressTitle: '恢复任务上下文',
             progressDetail: `已完成 ${kernelRecovery.startFromIndex} 个，继续剩余 ${remaining} 个。`,
           });
-        } else if (agDisplayProfile.emitPlanningStatus) {
+        } else if (workflow.toolPolicyMode !== 'model-led' && agDisplayProfile.emitPlanningStatus) {
           // Free-explore mode has no Architect decomposition phase, but the UI still
           // needs a visible beginning before the model's first tool call arrives.
           postAgent({

@@ -98,8 +98,16 @@ export interface WebviewInboundMessage {
   id?: string;
 }
 
+export type AgentPresentationMode = 'progress' | 'direct-response' | 'model-led';
+
 export type WebviewOutboundMessage =
-  | { type: 'startResponse'; prompt?: string; expectGeneratedArtifacts?: boolean; agentMode?: boolean }
+  | {
+      type: 'startResponse';
+      prompt?: string;
+      expectGeneratedArtifacts?: boolean;
+      agentMode?: boolean;
+      agentPresentation?: AgentPresentationMode;
+    }
   | { type: 'delta'; text: string }
   | { type: 'resetResponse'; text: string }
   | { type: 'endResponse' }

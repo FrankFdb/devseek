@@ -53,16 +53,18 @@ export function buildAgenticSystemPrompt(
 - 开始前先用 manage_todo_list 列出所有子任务（Copilot 规划阶段）
 - 每个子任务开始时标为 in-progress，完成时标为 completed`;
 
-  const finalDeliveryRule = taskIntent?.chatKind === 'chat'
-    ? '- 普通知识问答直接给出回答；只有使用了工作区事实时才引用相应文件或工具证据，不要求固定格式、长度或结论关键词'
-    : '- 对真实执行结果给出可复核证据，例如文件路径、实际修改和验证结果';
+  const finalDeliveryRule = modelLed
+    ? '- 直接问答按用户需要自然交付，不要求固定格式、长度或结论关键词；真实执行任务则给出可复核的文件、效果和验证证据'
+    : taskIntent?.chatKind === 'chat'
+      ? '- 普通知识问答直接给出回答；只有使用了工作区事实时才引用相应文件或工具证据，不要求固定格式、长度或结论关键词'
+      : '- 对真实执行结果给出可复核证据，例如文件路径、实际修改和验证结果';
 
   return `你是一个拥有完整工具访问权限的编程智能体，运行在 VS Code 中。
 
 【工作区根目录】${workspaceRoot}
 ${rulesSection}${memSection}${filesSection}${workflowModeSection}
   ${modelLed ? '' : buildTaskShapeGuidancePrompt(userPrompt)}
-  ${buildEngineeringGuidelinesPrompt('agent', taskIntent ? { taskIntent } : {})}
+  ${buildEngineeringGuidelinesPrompt('agent', { ...(taskIntent ? { taskIntent } : {}), modelLed })}
 
 【可用工具】
 

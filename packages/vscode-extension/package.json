@@ -2,7 +2,7 @@
   "name": "devseek-netai",
   "displayName": "DevSeek",
   "description": "DevSeek — AI-powered coding agent with local compilation, multi-round repair, and universal learning",
-  "version": "2.0.25",
+  "version": "2.0.26",
   "publisher": "devseek-netai",
   "repository": {
     "type": "git",
@@ -479,6 +479,7 @@
     "vscode:prepublish": "npm run compile",
     "test": "node test/run-all.mjs",
     "test:human-input": "node test/devseek-human-input-harness.mjs",
+    "test:direct-answer-ui": "node test/devseek-human-input-harness.mjs --direct-answer-ui",
     "test:intent-natural-ui": "node test/devseek-intent-natural-ui-harness.mjs",
     "test:dsml-webview": "node test/devseek-dsml-webview-harness.mjs",
     "test:deepseek-web-e2e": "node test/devseek-human-input-harness.mjs --real-bridge",

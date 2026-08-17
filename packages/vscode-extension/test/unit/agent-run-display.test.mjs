@@ -55,8 +55,18 @@ test('agent run display: direct concept answers do not project a fake engineerin
     const profile = buildAgentRunDisplayProfile(prompt);
     assert.equal(profile.kind, 'direct-response', prompt);
     assert.equal(profile.initialTaskAction, 'respond', prompt);
+    assert.equal(profile.initialTaskLabel, undefined, prompt);
     assert.equal(profile.emitPlanningStatus, false, prompt);
   }
+});
+
+test('agent run display: screenshot wording stays a direct response without a synthetic task label', () => {
+  const profile = buildAgentRunDisplayProfile('说明gpu cpu');
+
+  assert.equal(profile.kind, 'direct-response');
+  assert.equal(profile.initialTaskAction, 'respond');
+  assert.equal(profile.initialTaskLabel, undefined);
+  assert.equal(profile.emitPlanningStatus, false);
 });
 
 test('agent run display: simple file requests use direct write and readback copy', () => {

@@ -97,11 +97,16 @@ test('controlled VSIX harness exposes a machine-readable suite case catalog', as
   assert.deepEqual(
     catalog.suites['t1-direct-answer-product'].map(entry => entry.id),
     [
+      't1-direct-cn-screenshot-explain',
       't1-direct-cn-concept',
       't1-direct-cn-typo-colloquial',
       't1-direct-en-concept',
       't1-direct-ja-concept',
     ],
+  );
+  assert.deepEqual(
+    catalog.suites['t1-direct-followup-product'].map(entry => entry.id),
+    ['t1-followup-cn-anchor', 't1-followup-cn-detail'],
   );
   assert.equal(catalog.suites['independent-user-diversity-product'][0].user_profile, 'novice');
   assert.equal(catalog.suites['independent-user-diversity-product'][6].intent_class, 'terminal-validation-only');
@@ -192,6 +197,13 @@ test('top-agent user simulation runner plans targeted checks before broad contro
   assert.ok(report.case_design_review.required_acceptance_cases.includes('model-led-exact-simple-main-model'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('model-led-noisy-question-no-tools'));
   assert.ok(report.case_design_review.required_acceptance_cases.includes('model-led-inflight-latest-target'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('model-led-visible-answer-matrix'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('model-led-no-synthetic-investigation'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('model-led-tool-activity-promotion'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('model-led-visible-delivery-mutation-sensitivity'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('model-led-elliptical-followup-context'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('model-led-visible-followup-delivery'));
+  assert.ok(report.case_design_review.required_acceptance_cases.includes('t1-followup-cn-detail'));
   assert.ok(report.case_design_review.selected_cases.includes('operational-lexicon-config-dynamic-loading'));
   assert.ok(report.case_design_review.selected_cases.includes('operational-lexicon-multilingual-extension'));
   assert.ok(report.case_design_review.selected_cases.includes('in-flight-user-steer-contract-revision'));
@@ -211,6 +223,13 @@ test('top-agent user simulation runner plans targeted checks before broad contro
   assert.ok(report.case_design_review.selected_cases.includes('model-led-diverse-input-main-model'));
   assert.ok(report.case_design_review.selected_cases.includes('model-led-noisy-action-real-write'));
   assert.ok(report.case_design_review.selected_cases.includes('model-led-inflight-latest-target'));
+  assert.ok(report.case_design_review.selected_cases.includes('model-led-visible-answer-matrix'));
+  assert.ok(report.case_design_review.selected_cases.includes('model-led-no-synthetic-investigation'));
+  assert.ok(report.case_design_review.selected_cases.includes('model-led-tool-activity-promotion'));
+  assert.ok(report.case_design_review.selected_cases.includes('model-led-visible-delivery-mutation-sensitivity'));
+  assert.ok(report.case_design_review.selected_cases.includes('model-led-elliptical-followup-context'));
+  assert.ok(report.case_design_review.selected_cases.includes('model-led-visible-followup-delivery'));
+  assert.ok(report.case_design_review.selected_cases.includes('t1-followup-cn-detail'));
   assert.equal(report.plan.steps[0].id, 'targeted-local-contracts');
   assert.equal(report.plan.steps[0].kind, 'targeted-local-contract');
   for (const requiredTest of [
@@ -223,6 +242,7 @@ test('top-agent user simulation runner plans targeted checks before broad contro
     'packages/vscode-extension/test/unit/coding-completion-adapter.test.mjs',
     'packages/vscode-extension/test/unit/terminal-command-policy.test.mjs',
     'packages/vscode-extension/test/unit/memory-pipeline.test.mjs',
+    'packages/vscode-extension/test/unit/direct-answer-visible-ui.test.mjs',
   ]) {
     assert.ok(report.plan.steps[0].command.includes(requiredTest), `missing default targeted test ${requiredTest}`);
   }
@@ -245,6 +265,12 @@ test('top-agent user simulation runner plans targeted checks before broad contro
     'model-led-exact-simple-main-model',
     'model-led-noisy-question-no-tools',
     'model-led-inflight-latest-target',
+    'model-led-elliptical-followup-context',
+    'model-led-visible-answer-matrix',
+    'model-led-no-synthetic-investigation',
+    'model-led-tool-activity-promotion',
+    'model-led-visible-delivery-mutation-sensitivity',
+    'model-led-visible-followup-delivery',
     'model-proposal-typo-create-arbitration',
     'model-proposal-mixed-plan-no-command',
     'model-proposal-terminal-only-boundary',
@@ -308,6 +334,7 @@ test('top-agent user simulation runner plans targeted checks before broad contro
     't5-memory-restart',
     't5-medium-program-session-restart',
     't1-direct-answer-product',
+    't1-direct-followup-product',
     'independent-user-diversity-product',
     'coding-conformance-product',
     'r2-07f-connector-security',
@@ -348,6 +375,7 @@ test('top-agent user simulation runner keeps intent regression separate from gen
     assert.equal(report.plan.coverage_profile, 'intent-recognition-regression');
     assert.deepEqual(controlledSuites, [
       't1-direct-answer-product',
+      't1-direct-followup-product',
       'prior-task-continuation-product',
       'scope-replacement-product',
       'cancellation-replacement-product',
@@ -610,7 +638,7 @@ test('top-agent user simulation runner renders markdown from existing evidence w
     assert.match(markdown, /--controlled-suites realistic-product/);
     assert.match(markdown, /focused-regression-only-not-release-acceptance/);
     assert.match(markdown, /Selected case count: `2`/);
-    assert.match(markdown, /Required acceptance case count: `98`/);
+    assert.match(markdown, /Required acceptance case count: `107`/);
     assert.match(markdown, /Execution evidence missing:/);
     assert.match(markdown, /realistic-product:driver-cases-missing/);
     assert.match(markdown, /realistic-product:driver-case-missing:realistic-python-log-json-followup/);
@@ -787,10 +815,15 @@ test('top-agent user simulation runner rejects acceptance reports without per-ca
         't5-medium-program-restart-primary',
       ],
       't1-direct-answer-product': [
+        't1-direct-cn-screenshot-explain',
         't1-direct-cn-concept',
         't1-direct-cn-typo-colloquial',
         't1-direct-en-concept',
         't1-direct-ja-concept',
+      ],
+      't1-direct-followup-product': [
+        't1-followup-cn-anchor',
+        't1-followup-cn-detail',
       ],
       'independent-user-diversity-product': [
         'diverse-novice-typo-create',
@@ -827,6 +860,12 @@ test('top-agent user simulation runner rejects acceptance reports without per-ca
       'model-led-exact-simple-main-model',
       'model-led-noisy-question-no-tools',
       'model-led-inflight-latest-target',
+      'model-led-elliptical-followup-context',
+      'model-led-visible-answer-matrix',
+      'model-led-no-synthetic-investigation',
+      'model-led-tool-activity-promotion',
+      'model-led-visible-delivery-mutation-sensitivity',
+      'model-led-visible-followup-delivery',
       'in-flight-user-steer-contract-revision',
       'in-flight-committed-effect-preservation',
       'semantic-source-proposal-route-consistency',

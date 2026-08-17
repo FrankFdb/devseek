@@ -34,7 +34,6 @@ const DIRECT_RESPONSE_PROFILE: AgentRunDisplayProfile = {
   planCompletedTitle: '',
   planCompletedDetail: '',
   initialTaskAction: 'respond',
-  initialTaskLabel: '直接回答',
   emitPlanningStatus: false,
   suppressToolPlanning: false,
 };

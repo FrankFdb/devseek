@@ -4620,7 +4620,6 @@ window.addEventListener('message', function(event) {
     pendingTokenUsage = null;  // reset per-response usage counter
     clearStreamRenderTimer();
     clearAnalysisRenderTimer();
-    agentPlanDone = false;
     resetWorkingArea({ immediate: true });
     // P5: set isAgentMode synchronously from message property to eliminate the
     // race condition where isAgentMode was only set later when the first
@@ -4628,6 +4627,8 @@ window.addEventListener('message', function(event) {
     // IMPORTANT: must be set AFTER resetWorkingArea() because resetWorkingArea()
     // resets isAgentMode = false, which would undo this assignment if done before.
     isAgentMode = msg.agentMode === true;
+    agentPlanDone = msg.agentPresentation === 'direct-response'
+      || msg.agentPresentation === 'model-led';
     // Issue-1: Only show working area for agent mode or artifact-generating requests.
     // For simple chat (agentMode=false, no generateArtifacts), the working area
     // is redundant — the response appears directly in the bubble.
@@ -4644,7 +4645,11 @@ window.addEventListener('message', function(event) {
     currentBubble = addAssistantBubble();
     // Agent mode: detach prose bubble from DOM so it appears BELOW the thinking box,
     // not above it. Will be reinserted after agentExecContainer is appended.
-    if (isAgentMode && currentBubble && currentBubble.parentElement) {
+    if (isAgentMode
+        && msg.agentPresentation !== 'direct-response'
+        && msg.agentPresentation !== 'model-led'
+        && currentBubble
+        && currentBubble.parentElement) {
       agentDeferredBubbleTurn = currentBubble.parentElement;
       agentDeferredBubbleTurn.remove();
       // Show a minimal "analyzing" placeholder so user knows work is in progress
