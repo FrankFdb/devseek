@@ -13,6 +13,8 @@
     "grep_search",
     "list_dir",
     "manage_todo_list",
+    "memory_read",
+    "memory_search",
     "memory_write",
     "read_file",
     "replace_file",

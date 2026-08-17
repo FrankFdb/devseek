@@ -518,10 +518,10 @@ function normalizeTaskContractForSemanticContract(
 
   const verificationContract = {
     ...taskContract.verificationContract,
-    requireSourceClaimGrounding: input.mutation.sourceChange
+    requireSourceClaimGrounding: input.mutation.fileArtifact
       ? taskContract.verificationContract.requireSourceClaimGrounding
       : false,
-    requiredSourcePaths: input.mutation.sourceChange
+    requiredSourcePaths: input.mutation.sourceChange || input.mutation.fileArtifact
       ? [...taskContract.verificationContract.requiredSourcePaths]
       : [],
     requireArtifactReadback: input.mutation.fileArtifact
@@ -542,9 +542,13 @@ function normalizeTaskContractForSemanticContract(
     ...taskContract,
     deliverableTargets: input.mutation.requested ? [...taskContract.deliverableTargets] : [],
     deliverables,
-    qualityObligations: taskContract.qualityObligations.filter(obligation => (
-      input.mutation.sourceChange || !['source-evidence', 'modification-plan'].includes(obligation)
-    )),
+    qualityObligations: taskContract.qualityObligations.filter(obligation => {
+      if (obligation === 'source-evidence') {
+        return input.mutation.sourceChange || verificationContract.requireSourceClaimGrounding;
+      }
+      if (obligation === 'modification-plan') return input.mutation.sourceChange;
+      return true;
+    }),
     verificationContract,
   };
 }

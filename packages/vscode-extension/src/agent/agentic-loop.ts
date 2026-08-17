@@ -148,6 +148,8 @@ const CONTEXT_GATHERING_TOOL_NAMES = new Set([
   'grep_search',
   'file_search',
   'semantic_search',
+  'memory_search',
+  'memory_read',
 ]);
 function makeContextToolSignature(tool: { readonly name: string; readonly input: Readonly<Record<string, unknown>> }): string {
   return `${tool.name}:${stableStringify(tool.input ?? {})}`;

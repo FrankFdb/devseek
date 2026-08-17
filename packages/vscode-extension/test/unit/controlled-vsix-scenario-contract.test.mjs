@@ -49,6 +49,8 @@ const REQUIRED_SCENARIOS = [
   't4-source-readonly-report-artifact',
   't4-outside-workspace-write-denied',
   't4-dangerous-shell-denied',
+  't5-capture-project-memory',
+  't5-restart-use-project-memory',
   'diverse-novice-typo-create',
   'diverse-asr-readonly-review',
   'diverse-mixed-language-plan',
@@ -84,6 +86,7 @@ const REQUIRED_SUITES = [
   { id: 'agent-fit-product', scenarioCount: 5, sameDevSeekSession: false },
   { id: 't3-deepseek-web-compat', scenarioCount: 2, sameDevSeekSession: false },
   { id: 't4-permission-write-boundary', scenarioCount: 4, sameDevSeekSession: false },
+  { id: 't5-memory-restart', scenarioCount: 2, sameDevSeekSession: true },
   { id: 'independent-user-diversity-product', scenarioCount: 10, sameDevSeekSession: false },
   { id: 'coding-conformance-product', scenarioCount: 10, sameDevSeekSession: false },
   { id: 'r2-07e-stream-protocol', scenarioCount: 2, sameDevSeekSession: false },
@@ -173,8 +176,18 @@ test('controlled VSIX harness resets independent scenario seed files before each
   const source = readFileSync(harnessPath, 'utf8');
 
   assert.match(source, /function writeScenarioSeedFiles\(workspaceDir, scenario\)/, 'scenario seed reset must have one explicit helper');
-  assert.match(source, /if \(!sameDevSeekSession \|\| caseIndex === 1\)/, 'independent suites must refresh seed files per case');
+  assert.match(source, /!resumeExistingSession && \(!sameDevSeekSession \|\| caseIndex === 1\)/, 'independent suites must refresh seed files per case while restart continuations preserve them');
   assert.match(source, /writeScenarioSeedFiles\(workspaceDir, activeScenario\)/, 'runScenario must reset the active case before collecting its baseline');
+});
+
+test('controlled VSIX T5 suite proves memory across a real process restart', () => {
+  const source = readFileSync(harnessPath, 'utf8');
+
+  assert.match(source, /restartBetweenCases:\s*true/, 'T5 must request a VS Code process restart between cases');
+  assert.match(source, /function runControlledDriverSelection\(/, 'restart orchestration must have one suite-level owner');
+  assert.match(source, /resumeExistingSession:\s*index > 0/, 'later processes must resume the persisted DevSeek session');
+  assert.match(source, /error_code:\s*'MEMORY_CONTEXT_MISSING'/, 'the Provider must fail when persisted memory is absent from model context');
+  assert.match(source, /processRestartCount/, 'the driver report must expose restart evidence');
 });
 
 test('controlled VSIX fake bridge advertises the connector status contract', () => {

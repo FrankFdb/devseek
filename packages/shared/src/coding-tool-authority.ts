@@ -35,6 +35,7 @@ const ALL_CODING_TOOL_EFFECTS: readonly CodingToolEffect[] = Object.freeze([
   'read',
   'process',
   'network',
+  'local-state',
   'workspace-mutation',
   'git',
   'release',
@@ -568,8 +569,8 @@ function validatePurpose(request: CodingToolAuthorityRequest): string | undefine
       return request.effects.length === 1 && request.effects[0] === 'workspace-mutation'
         ? undefined : 'workspace-purpose-has-invalid-effect';
     case 'external-effect':
-      return request.effects.some(effect => ['process', 'network', 'git', 'release'].includes(effect))
-        && request.effects.every(effect => ['process', 'network', 'git', 'release'].includes(effect))
+      return request.effects.some(effect => ['process', 'network', 'local-state', 'git', 'release'].includes(effect))
+        && request.effects.every(effect => ['process', 'network', 'local-state', 'git', 'release'].includes(effect))
         ? undefined : 'external-purpose-has-invalid-effect';
   }
 }
@@ -609,8 +610,8 @@ function allowedEffectsForMode(mode: CodingTaskMode): readonly CodingToolEffect[
   switch (mode) {
     case 'explain': return Object.freeze(['read', 'network']);
     case 'review': return Object.freeze(['read', 'process', 'network']);
-    case 'change': return Object.freeze(['read', 'process', 'network', 'workspace-mutation']);
-    case 'release': return Object.freeze(['read', 'process', 'network', 'workspace-mutation', 'git', 'release']);
+    case 'change': return Object.freeze(['read', 'process', 'network', 'local-state', 'workspace-mutation']);
+    case 'release': return Object.freeze(['read', 'process', 'network', 'local-state', 'workspace-mutation', 'git', 'release']);
   }
 }
 
@@ -630,7 +631,7 @@ function validateModelLedTargetScope(
 }
 
 function uniqueEffects(effects: readonly CodingToolEffect[]): readonly CodingToolEffect[] {
-  const valid = new Set<CodingToolEffect>(['read', 'process', 'network', 'workspace-mutation', 'git', 'release']);
+  const valid = new Set<CodingToolEffect>(['read', 'process', 'network', 'local-state', 'workspace-mutation', 'git', 'release']);
   if (!Array.isArray(effects) || effects.length === 0 || effects.some(effect => !valid.has(effect))) {
     throw new Error('coding-tool-authority:invalid-effects');
   }

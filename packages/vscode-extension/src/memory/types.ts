@@ -4,6 +4,7 @@ export type MemoryStatus = 'pending' | 'active' | 'disabled' | 'expired' | 'revo
 
 export type MemoryLifecycleAction =
   | 'write'
+  | 'context-use'
   | 'dedupe-update'
   | 'conflict-supersede'
   | 'secret-redacted'
@@ -29,6 +30,18 @@ export type MemoryType =
   | 'verified-experience'
   | 'command-success'
   | 'session-summary';
+
+export type MemoryEpistemicStatus = 'user-stated' | 'tool-verified' | 'inferred' | 'uncertain';
+
+export type MemoryOutcome = 'success' | 'partial' | 'uncertain' | 'failure';
+
+export type MemoryFunctionalStage =
+  | 'analysis'
+  | 'reproduction'
+  | 'implementation'
+  | 'verification'
+  | 'recovery'
+  | 'workflow';
 
 export type MemorySourceKind =
   | 'user'
@@ -57,6 +70,7 @@ export interface MemoryProvenance {
 
 export interface MemoryRecord {
   id: string;
+  repositoryId?: string;
   type: MemoryType;
   scope: MemoryScope;
   classification: MemoryClassification;
@@ -68,7 +82,19 @@ export interface MemoryRecord {
   createdAt: number;
   updatedAt: number;
   ttl?: number;
+  usageCount?: number;
   lastUsedAt?: number;
+  observedAt?: number;
+  validFrom?: number;
+  validTo?: number;
+  lastVerifiedAt?: number;
+  epistemicStatus?: MemoryEpistemicStatus;
+  outcome?: MemoryOutcome;
+  functionalStage?: MemoryFunctionalStage;
+  rolloutIds?: string[];
+  evidenceRefs?: string[];
+  supersedes?: string[];
+  conflictsWith?: string[];
   status: MemoryStatus;
   tags: string[];
 }
@@ -86,6 +112,8 @@ export interface MemoryManagementEntry {
   approvalState: MemoryApprovalState;
   trusted: boolean;
   contentPreview: string;
+  usageCount: number;
+  lastUsedAt?: number;
   lifecycleReceiptCount: number;
   accessibleLabel: string;
 }
@@ -130,6 +158,18 @@ export interface MemoryWriteProposal {
   tags?: string[];
   ttl?: number;
   requiresUserApproval: boolean;
+  repositoryId?: string;
+  observedAt?: number;
+  validFrom?: number;
+  validTo?: number;
+  lastVerifiedAt?: number;
+  epistemicStatus?: MemoryEpistemicStatus;
+  outcome?: MemoryOutcome;
+  functionalStage?: MemoryFunctionalStage;
+  rolloutIds?: string[];
+  evidenceRefs?: string[];
+  supersedes?: string[];
+  conflictsWith?: string[];
 }
 
 export interface MemoryWriteResult {

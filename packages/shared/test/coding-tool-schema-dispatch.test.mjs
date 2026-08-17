@@ -38,6 +38,7 @@ test('CanonicalToolSchemaRegistry owns canonical names, descriptors, and model v
   assert.equal(getCodingToolDescriptor('run_terminal').requiresTerminal, true);
   assert.equal(getCodingToolDescriptor('run_terminal').completionImpact, 'required');
   assert.equal(getCodingToolDescriptor('memory_write').completionImpact, 'advisory');
+  assert.deepEqual(getCodingToolDescriptor('memory_write').effects, ['local-state']);
   assert.equal(getCodingToolDescriptor('mcp__repo__search').kind, 'mcp');
   assert.equal(isFileWriteToolName('search_replace'), true);
   assert.equal(isFileWriteToolName('run_terminal'), false);

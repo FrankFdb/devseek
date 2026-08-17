@@ -160,23 +160,17 @@ test('ToolLoop work-tool classifier keeps meta tools separate from real work', (
   assert.equal(isAgentWorkToolName('run_terminal'), true);
 });
 
-test('R3-05A ToolLoop memory_write blocks unconfirmed persistence before the host runs', async () => {
-  let proposal;
+test('R3-05A ToolLoop memory_write blocks persistence when the evidence-aware host is absent', async () => {
   const result = await executeFakeToolsForLoop(
     [{ name: 'memory_write', input: { content: '本仓库默认使用 npm test 做回归验证。' } }],
     {
-      onMemoryWrite: async (nextProposal) => {
-        proposal = nextProposal;
-        throw new Error('持久记忆写入需要用户审批');
-      },
       onAgentStatus: async () => {},
     },
     '/tmp/project',
     { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: '/tmp/project' },
   );
 
-  assert.equal(proposal, undefined);
-  assert.match(result.feedbackForAI, /external-effect-requires-confirmation/);
+  assert.match(result.feedbackForAI, /missing-tool-host:memory_write/);
   assert.deepEqual(
     result.toolExecutionReceipts?.map(receipt => ({
       tool: receipt.tool,
@@ -184,8 +178,52 @@ test('R3-05A ToolLoop memory_write blocks unconfirmed persistence before the hos
       effects: receipt.effects,
       status: receipt.status,
     })),
-    [{ tool: 'memory_write', purpose: 'external-effect', effects: ['process'], status: 'denied' }],
+    [{ tool: 'memory_write', purpose: 'external-effect', effects: ['local-state'], status: 'denied' }],
   );
+});
+
+test('R3-05A ToolLoop memory_write executes only through a confirmed evidence-aware host', async () => {
+  let proposal;
+  let executed = false;
+  const result = await executeFakeToolsForLoop(
+    [{ name: 'memory_write', input: { content: '本仓库默认使用 npm test 做回归验证。' } }],
+    {
+      onPrepareMemoryWrite: async nextProposal => {
+        proposal = nextProposal;
+        return {
+          constraint: {
+            decision: 'require-confirmation',
+            reason: 'current-user-confirmed-memory-write',
+            confirmationRef: 'test-memory-confirmation',
+            evidenceRefs: ['test-memory-constraint'],
+          },
+          reconciliationScope: 'process-local',
+          reconcile: async () => ({ status: 'not-started', evidenceRefs: ['test-memory-reconcile'] }),
+          execute: async () => {
+            executed = true;
+            return {
+              status: 'completed',
+              result: JSON.stringify({ id: 'memory-1', status: 'active' }),
+              evidenceRefs: ['test-memory-record-active'],
+            };
+          },
+        };
+      },
+      onAgentStatus: async () => {},
+    },
+    '/tmp/project',
+    { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: '/tmp/project' },
+  );
+
+  assert.equal(proposal?.content, '本仓库默认使用 npm test 做回归验证。');
+  assert.equal(executed, true, JSON.stringify({
+    feedbackForAI: result.feedbackForAI,
+    receipts: result.toolExecutionReceipts,
+  }));
+  assert.match(result.feedbackForAI, /已写入记忆/);
+  assert.match(String(result.toolExecutionReceipts?.[0]?.result), /memory-1/);
+  assert.deepEqual(result.toolExecutionReceipts?.[0]?.effects, ['local-state']);
+  assert.equal(result.toolExecutionReceipts?.[0]?.status, 'completed');
 });
 
 test('ToolLoop fails closed when an execution policy is missing', async () => {
@@ -322,6 +360,8 @@ test('ToolLoop settles every observation and control tool through canonical rece
       { name: 'get_changed_files', input: {} },
       { name: 'fetch_webpage', input: { url: 'https://example.test/docs' } },
       { name: 'vscode_listCodeUsages', input: { symbol: 'Owner' } },
+      { name: 'memory_search', input: { query: 'pnpm test', maxResults: 6 } },
+      { name: 'memory_read', input: { path: 'MEMORY.md', startLine: 1, maxLines: 40 } },
       { name: 'manage_todo_list', input: { todoList: [{ id: 1, title: 'verify', status: 'in-progress' }] } },
       { name: 'task_complete', input: { summary: 'candidate only' } },
     ];
@@ -334,6 +374,8 @@ test('ToolLoop settles every observation and control tool through canonical rece
       onGetChangedFiles: async () => 'changes',
       onFetchWebpage: async () => 'webpage',
       onListCodeUsages: async () => 'usages',
+      onMemorySearch: async () => 'MEMORY.md:10: pnpm test',
+      onMemoryRead: async () => '1: # Memory',
       onAgentStatus: async () => {},
     }, projectRoot, { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: projectRoot });
 

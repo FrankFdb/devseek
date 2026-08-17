@@ -301,7 +301,7 @@ test('CanonicalCompletionDecisionService keeps unapproved advisory memory comple
     actionId: 'memory-unapproved-1',
     tool: 'memory_write',
     purpose: 'external-effect',
-    effects: ['process'],
+    effects: ['local-state'],
     status: 'denied',
     permission: {
       decision: 'require-confirmation',

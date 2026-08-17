@@ -5,6 +5,7 @@ import {
   FileSystemCodingOperationJournal,
   createCodingKernelEnvironmentSync,
   createProductRunEvidenceId,
+  type CodingKernelExecutionOutput,
 } from '@devseek-netai/shared';
 import { runAgenticLoop } from './agent/agentic-loop';
 import {
@@ -15,6 +16,14 @@ import { projectVsCodeCodingKernelTaskContract } from './app/coding-kernel-task-
 import { projectVsCodeCodingContextSeed } from './app/coding-kernel-context-seed';
 import { retainVsCodeCodingRunLifecycle } from './app/coding-run-evidence-retention';
 import { MemoryService } from './app/memory-service';
+import {
+  createProviderMemoryModel,
+  MemoryPipelineService,
+  scheduleMemoryPipelineWork,
+} from './app/memory-pipeline-service';
+import type { MemoryRolloutEvidence } from './memory/pipeline-types';
+import type { MemoryOutcome } from './memory/types';
+import { getActiveProvider } from './llm/provider-router';
 import { deliverVsCodeRecoverySettlement } from './app/coding-kernel-recovery-delivery';
 import { projectVsCodeCodingKernelOutput } from './app/vscode-coding-kernel-output';
 
@@ -53,9 +62,10 @@ export const productCodingKernelExecutor: CodingKernelExecutionPort = {
         onError: request.callbacks.onTraceEvidenceError,
       })
     );
+    const observedSteering: string[] = [];
     try {
-      const memoryCandidates = new MemoryService({ workspaceRoot: request.workspaceRoot })
-        .retrieveCodingMemoryCandidates({
+      const memoryService = new MemoryService({ workspaceRoot: request.workspaceRoot });
+      const memoryCandidates = memoryService.retrieveCodingMemoryCandidates({
           query: request.userPrompt,
           relatedPaths: [...request.contextFiles, ...(request.memoryRelatedPaths ?? [])],
           requireContextMatch: true,
@@ -100,11 +110,23 @@ export const productCodingKernelExecutor: CodingKernelExecutionPort = {
         signal: request.callbacks.signal,
         ...(request.callbacks.onUserSteer ? {
           steeringSource: {
-            drain: () => request.callbacks.onUserSteer?.() ?? [],
+            drain: () => {
+              const steering = request.callbacks.onUserSteer?.() ?? [];
+              observedSteering.push(...steering);
+              return steering;
+            },
           },
         } : {}),
       });
+      memoryService.recordContextUse(output.memoryPolicy, runId);
       retainLifecycle(output.lifecycle);
+      enqueueMemoryLearning(
+        output,
+        request.workspaceRoot,
+        request.userPrompt,
+        observedSteering,
+        request.callbacks.onTraceEvidenceError,
+      );
       const productOutput = projectVsCodeCodingKernelOutput(output);
       const fallback = output.result.recoveryFallback;
       await deliverVsCodeRecoverySettlement({
@@ -119,3 +141,70 @@ export const productCodingKernelExecutor: CodingKernelExecutionPort = {
     }
   },
 };
+
+function enqueueMemoryLearning(
+  output: CodingKernelExecutionOutput<import('./app/coding-kernel-execution').VsCodeCodingKernelRuntimeResult>,
+  workspaceRoot: string,
+  userPrompt: string,
+  steering: readonly string[],
+  onError?: (error: unknown) => void,
+): void {
+  try {
+    const provider = getActiveProvider();
+    const pipeline = new MemoryPipelineService({
+      workspaceRoot,
+      model: createProviderMemoryModel(provider),
+      onError,
+    });
+    pipeline.enqueue(buildRolloutEvidence(output, workspaceRoot, userPrompt, steering));
+    scheduleMemoryPipelineWork(signal => pipeline.processPending(signal), onError);
+  } catch (error) {
+    onError?.(error);
+  }
+}
+
+function buildRolloutEvidence(
+  output: CodingKernelExecutionOutput<import('./app/coding-kernel-execution').VsCodeCodingKernelRuntimeResult>,
+  workspaceRoot: string,
+  userPrompt: string,
+  steering: readonly string[],
+): MemoryRolloutEvidence {
+  const location = new MemoryService({ workspaceRoot }).getLocation();
+  const result = output.result.agentResult;
+  return {
+    rolloutId: output.runId,
+    repositoryId: location.repositoryId,
+    workspaceRoot,
+    capturedAt: Date.now(),
+    userTurns: [userPrompt, ...steering],
+    assistantSummary: result.historyText ?? result.analysisText,
+    status: memoryOutcome(output.status),
+    taskKind: output.taskContract.mode,
+    changedPaths: result.changedPaths,
+    toolEvidence: output.toolExecutionReceipts.map(receipt => [
+      `tool=${receipt.tool}`,
+      `status=${receipt.status}`,
+      `effects=${receipt.effects.join(',')}`,
+      `evidence=${receipt.evidenceRefs.join(',')}`,
+    ].join(' ')),
+    verificationEvidence: output.verificationReceipts.map(receipt => [
+      `verifier=${receipt.verifier}`,
+      `status=${receipt.status}`,
+      `scope=${receipt.scopePaths.join(',')}`,
+      `evidence=${receipt.evidenceRefs.join(',')}`,
+    ].join(' ')),
+    evidenceRefs: [...new Set([
+      `rollout:${output.runId}`,
+      ...output.evidenceRefs,
+      ...output.toolExecutionReceipts.flatMap(receipt => receipt.evidenceRefs),
+      ...output.verificationReceipts.flatMap(receipt => receipt.evidenceRefs),
+    ])],
+  };
+}
+
+function memoryOutcome(status: CodingKernelExecutionOutput<unknown>['status']): MemoryOutcome {
+  if (status === 'completed') return 'success';
+  if (status === 'failed') return 'failure';
+  if (status === 'blocked') return 'partial';
+  return 'uncertain';
+}

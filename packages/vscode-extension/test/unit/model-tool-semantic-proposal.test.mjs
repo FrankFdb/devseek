@@ -111,6 +111,24 @@ test('Model tool semantic proposal: explicit no-run remains a local hard boundar
   assert.equal(route.semanticContract.validation.runRequested, false);
 });
 
+test('Model tool semantic proposal: explicit memory capture corrects a lexical command false positive without requesting execution', () => {
+  const prompt = '记一下这个项目的习惯：处理 src/bridge.ts 后，用 npm run test:bridge 做聚焦验证；现在只记录，不改文件也不运行。';
+  const initial = routeTaskIntent(prompt).semanticContract;
+  const semanticIntent = projectModelToolSemanticProposal([
+    tool('memory_write', 'memory', 'external-effect'),
+  ], initial);
+  const route = routeTaskIntent(prompt, { current: initial, semanticIntent });
+
+  assert.equal(semanticIntent.taskKind, 'external-effect');
+  assert.equal(route.mode, 'inspect');
+  assert.equal(route.mutation.requested, false);
+  assert.equal(route.validation.commandEvidenceRequired, false);
+  assert.equal(route.semanticContract.validation.runRequested, false);
+  assert.equal(route.semanticContract.validation.testRequested, false);
+  assert.equal(route.semanticContract.taskContract.deliverables.includes('verification-result'), false);
+  assert.ok(route.signals.includes('semantic-proposal-accepted'));
+});
+
 test('Model tool semantic proposal: destructive action remains confirmation-gated', () => {
   const prompt = '看看 build/cache.json 现在是什么情况。';
   const initial = routeTaskIntent(prompt).semanticContract;
@@ -135,7 +153,11 @@ function tool(name, kind, purpose, targetPaths = []) {
     kind,
     risk: kind === 'terminal' ? 'high' : 'medium',
     purpose,
-    effects: purpose === 'workspace-mutation' ? ['workspace-mutation'] : [],
+    effects: purpose === 'workspace-mutation'
+      ? ['workspace-mutation']
+      : purpose === 'external-effect'
+        ? ['local-state']
+        : [],
     protectedPath: false,
     targetPaths,
     executable: true,

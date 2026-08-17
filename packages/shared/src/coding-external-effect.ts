@@ -702,7 +702,7 @@ function snapshotSha256(value: string, label: string): string {
 }
 
 function uniqueExternalEffects(effects: readonly CodingToolEffect[]): readonly CodingToolEffect[] {
-  const valid = new Set<CodingToolEffect>(['read', 'process', 'network', 'git', 'release']);
+  const valid = new Set<CodingToolEffect>(['read', 'process', 'network', 'local-state', 'git', 'release']);
   if (!Array.isArray(effects) || effects.length === 0 || effects.some(effect => !valid.has(effect))) {
     throw new Error('coding-external-effect:invalid-effects');
   }

@@ -46,6 +46,10 @@ test('controlled VSIX harness exposes a machine-readable suite case catalog', as
     ],
   );
   assert.deepEqual(
+    catalog.suites['t5-memory-restart'].map(entry => entry.id),
+    ['t5-capture-project-memory', 't5-restart-use-project-memory'],
+  );
+  assert.deepEqual(
     catalog.suites['prior-task-continuation-product'].map(entry => entry.id),
     [
       'prior-plan-source-change',
@@ -200,6 +204,7 @@ test('top-agent user simulation runner plans targeted checks before broad contro
     'packages/vscode-extension/test/unit/coding-kernel-execution.test.mjs',
     'packages/vscode-extension/test/unit/coding-completion-adapter.test.mjs',
     'packages/vscode-extension/test/unit/terminal-command-policy.test.mjs',
+    'packages/vscode-extension/test/unit/memory-pipeline.test.mjs',
   ]) {
     assert.ok(report.plan.steps[0].command.includes(requiredTest), `missing default targeted test ${requiredTest}`);
   }
@@ -250,6 +255,16 @@ test('top-agent user simulation runner plans targeted checks before broad contro
     'terminal-symlink-read-boundary',
     'terminal-symlink-workdir-boundary',
     'terminal-dynamic-path-fail-closed',
+    't5-semantic-typo-consolidation',
+    't5-no-output-low-signal',
+    't5-external-injection-isolation',
+    't5-secret-redaction-retry',
+    't5-newer-correction-supersedes',
+    't5-unverified-success-rejected',
+    't5-bounded-progressive-read',
+    't5-worktree-share-repo-isolation',
+    't5-background-failure-isolation',
+    't5-foreground-priority-isolation',
   ]);
 
   const controlledSuites = report.plan.steps
@@ -265,6 +280,7 @@ test('top-agent user simulation runner plans targeted checks before broad contro
     'agent-fit-product',
     't3-deepseek-web-compat',
     't4-permission-write-boundary',
+    't5-memory-restart',
     'independent-user-diversity-product',
     'coding-conformance-product',
     'r2-07f-connector-security',
@@ -566,7 +582,7 @@ test('top-agent user simulation runner renders markdown from existing evidence w
     assert.match(markdown, /--controlled-suites realistic-product/);
     assert.match(markdown, /focused-regression-only-not-release-acceptance/);
     assert.match(markdown, /Selected case count: `2`/);
-    assert.match(markdown, /Required acceptance case count: `71`/);
+    assert.match(markdown, /Required acceptance case count: `83`/);
     assert.match(markdown, /Execution evidence missing:/);
     assert.match(markdown, /realistic-product:driver-cases-missing/);
     assert.match(markdown, /realistic-product:driver-case-missing:realistic-python-log-json-followup/);
@@ -732,6 +748,10 @@ test('top-agent user simulation runner rejects acceptance reports without per-ca
         't4-outside-workspace-write-denied',
         't4-dangerous-shell-denied',
       ],
+      't5-memory-restart': [
+        't5-capture-project-memory',
+        't5-restart-use-project-memory',
+      ],
       'independent-user-diversity-product': [
         'diverse-novice-typo-create',
         'diverse-asr-readonly-review',
@@ -783,6 +803,16 @@ test('top-agent user simulation runner rejects acceptance reports without per-ca
       'semantic-external-effect-confirmation-consistency',
       'semantic-destructive-proposal-confirmation-consistency',
       'external-semantic-intent-routing-matrix',
+      't5-semantic-typo-consolidation',
+      't5-no-output-low-signal',
+      't5-external-injection-isolation',
+      't5-secret-redaction-retry',
+      't5-newer-correction-supersedes',
+      't5-unverified-success-rejected',
+      't5-bounded-progressive-read',
+      't5-worktree-share-repo-isolation',
+      't5-background-failure-isolation',
+      't5-foreground-priority-isolation',
     ];
     const targetedStep = {
       id: 'targeted-local-contracts',

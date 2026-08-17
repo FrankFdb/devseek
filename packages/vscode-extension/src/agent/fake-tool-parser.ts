@@ -357,7 +357,10 @@ function primaryScalarInputKeyForTool(name: string): string | undefined {
     case 'grep_search':
       return 'pattern';
     case 'semantic_search':
+    case 'memory_search':
       return 'query';
+    case 'memory_read':
+      return 'path';
     case 'run_terminal':
       return 'command';
     case 'fetch_webpage':

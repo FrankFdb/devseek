@@ -7,10 +7,14 @@ import {
   codingMemoryWriteRequiresApproval,
   renderCodingMemoryContext,
   type CodingMemoryCandidate,
+  type CodingMemoryContextDecision,
   type MemoryPolicyPort,
 } from '@devseek-netai/shared';
 import { MemoryStore } from '../memory/memory-store';
+import { MemoryReadService } from '../memory/memory-projection';
 import { SensitiveMemoryGuard } from '../memory/sensitive-memory-guard';
+import type { MemoryConsolidationProposal } from '../memory/pipeline-types';
+import type { RepositoryMemoryLocation } from '../memory/repository-memory-location';
 import type {
   MemoryClassification,
   MemoryLifecycleAction,
@@ -39,6 +43,7 @@ const NO_CONTEXT_MATCH = Symbol('no-context-match');
 
 export interface MemoryServiceDeps {
   workspaceRoot: string;
+  memoryHome?: string;
   store?: MemoryStore;
   guard?: SensitiveMemoryGuard;
   policy?: MemoryPolicyPort;
@@ -73,13 +78,15 @@ export class MemoryService {
   private readonly workspaceRoot: string;
   private readonly now: () => number;
   private readonly policy: MemoryPolicyPort;
+  private readonly reader: MemoryReadService;
 
   constructor(deps: MemoryServiceDeps) {
     this.workspaceRoot = deps.workspaceRoot;
-    this.store = deps.store ?? new MemoryStore(deps.workspaceRoot);
+    this.store = deps.store ?? new MemoryStore(deps.workspaceRoot, { memoryHome: deps.memoryHome });
     this.guard = deps.guard ?? new SensitiveMemoryGuard();
     this.now = deps.now ?? Date.now;
     this.policy = deps.policy ?? new CanonicalMemoryPolicyService();
+    this.reader = new MemoryReadService(this.store.location);
   }
 
   retrieve(query: MemoryQuery = {}): MemoryRecord[] {
@@ -112,6 +119,18 @@ export class MemoryService {
       tags: input.tags,
       ttl: input.ttl,
       requiresUserApproval: input.requiresUserApproval,
+      repositoryId: input.repositoryId,
+      observedAt: input.observedAt,
+      validFrom: input.validFrom,
+      validTo: input.validTo,
+      lastVerifiedAt: input.lastVerifiedAt,
+      epistemicStatus: input.epistemicStatus,
+      outcome: input.outcome,
+      functionalStage: input.functionalStage,
+      rolloutIds: input.rolloutIds,
+      evidenceRefs: input.evidenceRefs,
+      supersedes: input.supersedes,
+      conflictsWith: input.conflictsWith,
     });
   }
 
@@ -164,6 +183,19 @@ export class MemoryService {
       createdAt: now,
       updatedAt: now,
       ...(normalized.ttl ? { ttl: normalized.ttl } : {}),
+      usageCount: 0,
+      repositoryId: normalized.repositoryId ?? this.store.location.repositoryId,
+      observedAt: normalized.observedAt ?? now,
+      ...(normalized.validFrom === undefined ? {} : { validFrom: normalized.validFrom }),
+      ...(normalized.validTo === undefined ? {} : { validTo: normalized.validTo }),
+      ...(normalized.lastVerifiedAt === undefined ? {} : { lastVerifiedAt: normalized.lastVerifiedAt }),
+      epistemicStatus: normalized.epistemicStatus ?? 'uncertain',
+      outcome: normalized.outcome ?? 'uncertain',
+      functionalStage: normalized.functionalStage ?? 'workflow',
+      rolloutIds: normalized.rolloutIds ?? [],
+      evidenceRefs: normalized.evidenceRefs ?? [],
+      supersedes: normalized.supersedes ?? [],
+      conflictsWith: normalized.conflictsWith ?? [],
       status: 'active',
       tags: normalized.tags ?? [],
     };
@@ -171,8 +203,7 @@ export class MemoryService {
     if (deduped) return deduped;
 
     const superseded = this.supersedeConflictingMemoryRecords(records, record, normalized.reason, now);
-    this.store.writeAll([...superseded.records, record]);
-    this.appendLifecycleReceipts([
+    this.store.commit([...superseded.records, record], [
       ...superseded.receipts,
       this.createLifecycleReceipt({
         action: 'write',
@@ -198,6 +229,61 @@ export class MemoryService {
     }));
   }
 
+  acceptConsolidationProposal(
+    proposal: MemoryConsolidationProposal,
+    rolloutIds: readonly string[],
+  ): MemoryRecord | undefined {
+    const candidate = proposal.candidate;
+    if (candidate.sourceAuthority === 'external') return undefined;
+    if (candidate.sourceAuthority === 'assistant'
+      && candidate.epistemicStatus !== 'tool-verified') return undefined;
+    const source: MemorySource = candidate.sourceAuthority === 'user'
+      ? { kind: 'user', ref: candidate.evidenceRefs[0] }
+      : { kind: 'task-history', ref: candidate.evidenceRefs[0] };
+    const write = this.proposeWrite({
+      type: candidate.type,
+      scope: candidate.scope,
+      classification: candidate.classification,
+      content: candidate.content,
+      source,
+      reason: proposal.reason,
+      tags: [...candidate.tags, `stage:${candidate.functionalStage}`],
+      requiresUserApproval: false,
+      repositoryId: this.store.location.repositoryId,
+      observedAt: this.now(),
+      validFrom: candidate.validFrom,
+      validTo: candidate.validTo,
+      lastVerifiedAt: candidate.epistemicStatus === 'tool-verified' ? this.now() : undefined,
+      epistemicStatus: candidate.epistemicStatus,
+      outcome: candidate.outcome,
+      functionalStage: candidate.functionalStage,
+      rolloutIds: [...new Set(rolloutIds)],
+      evidenceRefs: [...candidate.evidenceRefs],
+      supersedes: [...proposal.supersedes],
+    });
+    const record = this.acceptWriteProposal(write);
+    for (const previousId of proposal.supersedes) {
+      if (previousId !== record.id) this.disable(previousId, `consolidated-by:${record.id}`);
+    }
+    return record;
+  }
+
+  getLocation(): RepositoryMemoryLocation {
+    return this.store.location;
+  }
+
+  readSummary(): string {
+    return this.reader.readSummary();
+  }
+
+  searchMemory(query: string, maxResults = 8): Array<{ path: string; line: number; text: string }> {
+    return this.reader.search(query, maxResults);
+  }
+
+  readMemoryDetail(relativePath: string, startLine = 1, maxLines = 120): string {
+    return this.reader.read(relativePath, startLine, maxLines);
+  }
+
   disable(id: string, reason = 'manual-disable'): MemoryLifecycleResult {
     return this.transitionMemoryRecordStatus(id, 'disabled', 'disable', reason);
   }
@@ -212,7 +298,6 @@ export class MemoryService {
     const records = this.readNormalizedMemoryRecords();
     const target = records.find((record) => record.id === id);
     if (!target) return { changed: false };
-    this.store.writeAll(records.filter((record) => record.id !== id));
     const receipt = this.createLifecycleReceipt({
       action: 'delete',
       recordId: target.id,
@@ -222,7 +307,7 @@ export class MemoryService {
       contentHash: hashText(target.content),
       recordSnapshotHash: hashMemoryRecordSnapshot(target),
     });
-    this.appendLifecycleReceipts([receipt]);
+    this.store.commit(records.filter((record) => record.id !== id), [receipt]);
     return { changed: true, receipt };
   }
 
@@ -262,18 +347,54 @@ export class MemoryService {
     return this.store.readLifecycleReceipts();
   }
 
+  recordContextUse(decision: CodingMemoryContextDecision, runId: string): MemoryLifecycleReceipt[] {
+    renderCodingMemoryContext(decision);
+    const selectedIds = new Set(decision.selected.map((entry) => entry.memoryId));
+    if (selectedIds.size === 0) return [];
+    const now = this.now();
+    const receipts: MemoryLifecycleReceipt[] = [];
+    const records = this.readNormalizedMemoryRecords();
+    const next = records.map((record) => {
+      if (!selectedIds.has(record.id) || record.status !== 'active') return record;
+      const updated: MemoryRecord = {
+        ...record,
+        usageCount: (record.usageCount ?? 0) + 1,
+        lastUsedAt: now,
+      };
+      receipts.push(this.createLifecycleReceipt({
+        action: 'context-use',
+        recordId: record.id,
+        statusBefore: record.status,
+        statusAfter: record.status,
+        reason: `coding-run:${String(runId || 'unknown')}`,
+        at: now,
+        contentHash: hashText(record.content),
+        recordSnapshotHash: hashMemoryRecordSnapshot(updated),
+      }));
+      return updated;
+    });
+    if (receipts.length > 0) this.store.commit(next, receipts);
+    return receipts;
+  }
+
   retrieveCodingMemoryCandidates(options: MemoryPromptContextOptions = {}): CodingMemoryCandidate[] {
     const records = this.retrieveRelevantRecords(options);
-    return records === NO_CONTEXT_MATCH
+    const candidates = records === NO_CONTEXT_MATCH
       ? []
       : records.map(record => recordToCodingMemoryCandidate(record, this.workspaceRoot));
+    const summary = this.readSummary().trim();
+    if (!summary) return candidates;
+    return [summaryToCodingMemoryCandidate(summary, this.store.location.repositoryId, this.workspaceRoot), ...candidates];
   }
 
   retrievePromptContext(options: MemoryPromptContextOptions | number = {}): string | null {
     const normalizedOptions = typeof options === 'number' ? { maxChars: options } : options;
     const maxChars = normalizedOptions.maxChars ?? DEFAULT_CONTEXT_CHARS;
     const relevantRecords = this.retrieveRelevantRecords(normalizedOptions);
-    if (normalizedOptions.requireContextMatch && relevantRecords === NO_CONTEXT_MATCH) return null;
+    const summary = this.readSummary().trim();
+    if (normalizedOptions.requireContextMatch && relevantRecords === NO_CONTEXT_MATCH) {
+      return summary || null;
+    }
     const records = relevantRecords === NO_CONTEXT_MATCH ? [] : relevantRecords;
     const policyDecision = this.policy.selectContext({
       candidates: records.map(record => recordToCodingMemoryCandidate(record, this.workspaceRoot)),
@@ -282,7 +403,8 @@ export class MemoryService {
       maxEntries: DEFAULT_MEMORY_LIMIT,
       maxChars,
     });
-    return renderCodingMemoryContext(policyDecision) || null;
+    const rendered = renderCodingMemoryContext(policyDecision);
+    return [summary, rendered].filter(Boolean).join('\n\n') || null;
   }
 
   private retrieveRelevantRecords(options: MemoryPromptContextOptions): MemoryRecord[] | typeof NO_CONTEXT_MATCH {
@@ -293,12 +415,13 @@ export class MemoryService {
       relatedPaths: options.relatedPaths ?? [],
     });
     const hasAnchors = hasContextAnchors(anchors);
-    if (options.requireContextMatch && !hasAnchors) return NO_CONTEXT_MATCH;
-    return filterByContextAnchors(
+    if (!hasAnchors) return NO_CONTEXT_MATCH;
+    const matched = filterByContextAnchors(
       this.retrieve({ limit: DEFAULT_MEMORY_LIMIT }),
       anchors,
       (record) => `${record.content}\n${record.tags.join(' ')}`,
     );
+    return matched.length > 0 ? matched : NO_CONTEXT_MATCH;
   }
 
   ensureLegacyMemoryFile(): string {
@@ -327,10 +450,6 @@ export class MemoryService {
       id: `mem_life_${input.at}_${hashText(stableKey).slice(0, 10)}`,
       ...input,
     };
-  }
-
-  private appendLifecycleReceipts(receipts: MemoryLifecycleReceipt[]): void {
-    for (const receipt of receipts) this.store.appendLifecycleReceipt(receipt);
   }
 
   private readNormalizedMemoryRecords(): MemoryRecord[] {
@@ -389,6 +508,8 @@ export class MemoryService {
       approvalState,
       trusted,
       contentPreview,
+      usageCount: record.usageCount ?? 0,
+      ...(record.lastUsedAt === undefined ? {} : { lastUsedAt: record.lastUsedAt }),
       lifecycleReceiptCount,
       accessibleLabel,
     };
@@ -421,8 +542,7 @@ export class MemoryService {
       return sanitized;
     });
     if (receipts.length === 0) return;
-    this.store.writeAll(next);
-    this.appendLifecycleReceipts(receipts);
+    this.store.commit(next, receipts);
   }
 
   private invalidateLegacyImportedMemoryRecords(now = this.now()): void {
@@ -449,8 +569,7 @@ export class MemoryService {
       return revoked;
     });
     if (receipts.length === 0) return;
-    this.store.writeAll(next);
-    this.appendLifecycleReceipts(receipts);
+    this.store.commit(next, receipts);
   }
 
   private refreshExpiredMemoryRecords(now = this.now()): void {
@@ -472,8 +591,7 @@ export class MemoryService {
       return expired;
     });
     if (receipts.length === 0) return;
-    this.store.writeAll(next);
-    this.appendLifecycleReceipts(receipts);
+    this.store.commit(next, receipts);
   }
 
   private dedupeMemoryRecord(
@@ -500,11 +618,21 @@ export class MemoryService {
       updatedAt: now,
       ...(incoming.ttl ? { ttl: incoming.ttl } : {}),
       tags: mergeMemoryTags(existing.tags, incoming.tags),
+      observedAt: Math.max(existing.observedAt ?? 0, incoming.observedAt ?? 0) || now,
+      ...(incoming.validFrom === undefined ? {} : { validFrom: incoming.validFrom }),
+      ...(incoming.validTo === undefined ? {} : { validTo: incoming.validTo }),
+      ...(incoming.lastVerifiedAt === undefined ? {} : { lastVerifiedAt: incoming.lastVerifiedAt }),
+      epistemicStatus: incoming.epistemicStatus ?? existing.epistemicStatus,
+      outcome: incoming.outcome ?? existing.outcome,
+      functionalStage: incoming.functionalStage ?? existing.functionalStage,
+      rolloutIds: mergeMemoryTags(existing.rolloutIds ?? [], incoming.rolloutIds ?? []),
+      evidenceRefs: mergeMemoryTags(existing.evidenceRefs ?? [], incoming.evidenceRefs ?? []),
+      supersedes: mergeMemoryTags(existing.supersedes ?? [], incoming.supersedes ?? []),
+      conflictsWith: mergeMemoryTags(existing.conflictsWith ?? [], incoming.conflictsWith ?? []),
     };
     const next = records.slice();
     next[index] = updated;
-    this.store.writeAll(next);
-    this.appendLifecycleReceipts([this.createLifecycleReceipt({
+    this.store.commit(next, [this.createLifecycleReceipt({
       action: 'dedupe-update',
       recordId: existing.id,
       statusBefore: existing.status,
@@ -568,7 +696,6 @@ export class MemoryService {
     const updated: MemoryRecord = { ...target, status, updatedAt: now };
     const next = records.slice();
     next[index] = updated;
-    this.store.writeAll(next);
     const receipt = this.createLifecycleReceipt({
       action,
       recordId: id,
@@ -579,7 +706,7 @@ export class MemoryService {
       contentHash: hashText(target.content),
       recordSnapshotHash: hashMemoryRecordSnapshot(target),
     });
-    this.appendLifecycleReceipts([receipt]);
+    this.store.commit(next, [receipt]);
     return { changed: true, receipt };
   }
 }
@@ -625,13 +752,25 @@ function normalizeMemoryWriteProposal(
     type: classified.type,
     scope: classified.scope,
     classification: classified.classification,
-    content: String(input.content ?? '').trim().slice(0, 1000),
+    content: String(input.content ?? '').trim().slice(0, 2000),
     source,
     provenance,
     reason: input.reason ?? 'Memory write proposal',
     tags: input.tags ?? ['agent'],
     ttl: sanitizeMemoryTtl(input.ttl),
     requiresUserApproval: approvalRequired,
+    repositoryId: typeof input.repositoryId === 'string' ? input.repositoryId.trim() : undefined,
+    observedAt: sanitizeMemoryTimestamp(input.observedAt),
+    validFrom: sanitizeMemoryTimestamp(input.validFrom),
+    validTo: sanitizeMemoryTimestamp(input.validTo),
+    lastVerifiedAt: sanitizeMemoryTimestamp(input.lastVerifiedAt),
+    epistemicStatus: input.epistemicStatus,
+    outcome: input.outcome,
+    functionalStage: input.functionalStage,
+    rolloutIds: sanitizeMemoryStrings(input.rolloutIds),
+    evidenceRefs: sanitizeMemoryStrings(input.evidenceRefs),
+    supersedes: sanitizeMemoryStrings(input.supersedes),
+    conflictsWith: sanitizeMemoryStrings(input.conflictsWith),
   };
 }
 
@@ -700,7 +839,31 @@ function recordToCodingMemoryCandidate(
     workspaceRoot,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
+    usageCount: record.usageCount ?? 0,
+    ...(record.lastUsedAt === undefined ? {} : { lastUsedAt: record.lastUsedAt }),
     ...(record.ttl ? { expiresAt: record.createdAt + record.ttl } : {}),
+  };
+}
+
+function summaryToCodingMemoryCandidate(
+  content: string,
+  repositoryId: string,
+  workspaceRoot: string,
+): CodingMemoryCandidate {
+  return {
+    memoryId: `memory-summary:${repositoryId.slice(0, 16)}`,
+    content,
+    scope: 'repository',
+    classification: 'task',
+    sourceKind: 'task-history',
+    sourceRef: 'memory_summary.md',
+    status: 'active',
+    approvalState: 'not-required',
+    externalContent: false,
+    trusted: true,
+    workspaceRoot,
+    createdAt: 0,
+    updatedAt: 0,
   };
 }
 
@@ -728,12 +891,19 @@ function normalizeStoredMemoryRecord(record: MemoryRecord): MemoryRecord {
       requiresApproval,
     ),
     requiresUserApproval: requiresApproval,
+    usageCount: sanitizeMemoryUsageCount(record.usageCount),
+    ...(Number.isSafeInteger(record.lastUsedAt) && Number(record.lastUsedAt) >= 0
+      ? { lastUsedAt: Number(record.lastUsedAt) }
+      : {}),
   };
   const ttl = sanitizeMemoryTtl(record.ttl);
   if (ttl === undefined) {
     delete (normalized as Partial<MemoryRecord>).ttl;
   } else {
     normalized.ttl = ttl;
+  }
+  if (!Number.isSafeInteger(record.lastUsedAt) || Number(record.lastUsedAt) < 0) {
+    delete (normalized as Partial<MemoryRecord>).lastUsedAt;
   }
   return normalized;
 }
@@ -803,6 +973,23 @@ function sanitizeMemoryTtl(value: unknown): number | undefined {
   const ttl = Number(value);
   if (!Number.isFinite(ttl) || ttl <= 0) return undefined;
   return Math.floor(ttl);
+}
+
+function sanitizeMemoryUsageCount(value: unknown): number {
+  return Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : 0;
+}
+
+function sanitizeMemoryTimestamp(value: unknown): number | undefined {
+  return Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : undefined;
+}
+
+function sanitizeMemoryStrings(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value
+    .filter((entry): entry is string => typeof entry === 'string')
+    .map(entry => entry.trim().slice(0, 500))
+    .filter(Boolean))]
+    .slice(0, 100);
 }
 
 function hashText(text: string): string {

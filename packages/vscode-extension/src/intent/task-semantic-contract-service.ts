@@ -310,8 +310,7 @@ function semanticProposalRequestsTerminalValidation(candidate: SemanticIntentInt
 function semanticProposalRequestsWorkspaceMutation(candidate: SemanticIntentInterpretation): boolean {
   return candidate.mutation === 'create-file'
     || candidate.mutation === 'modify-source'
-    || candidate.mutation === 'delete'
-    || candidate.mutation === 'external-effect';
+    || candidate.mutation === 'delete';
 }
 
 function projectAcceptedSemanticProposal(
@@ -584,15 +583,19 @@ function projectExternalEffectSemanticProposal(
 ): TaskSemanticContract {
   const narrowed = canSemanticNoMutationNarrowLocalContract(contract);
   const baseTaskContract = narrowed
-    ? clearMutationTaskContract(contract.taskContract, { keepVerificationResult: true })
+    ? clearMutationTaskContract(contract.taskContract, {
+      keepVerificationResult: candidate.requiresTerminal,
+    })
     : contract.taskContract;
-  const validation = {
-    ...contract.validation,
-    requested: contract.validation.requested || candidate.requiresTerminal,
-    runRequested: contract.validation.runProhibited
-      ? false
-      : contract.validation.runRequested || candidate.requiresTerminal,
-  };
+  const validation = narrowed && !candidate.requiresTerminal
+    ? clearRuntimeValidation(contract.validation)
+    : {
+      ...contract.validation,
+      requested: contract.validation.requested || candidate.requiresTerminal,
+      runRequested: contract.validation.runProhibited
+        ? false
+        : contract.validation.runRequested || candidate.requiresTerminal,
+    };
   return {
     ...contract,
     kind: narrowed ? 'general' : contract.kind,

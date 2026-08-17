@@ -44,6 +44,10 @@ export function getAgentToolActivity(tool: AgentToolActivityInput): AgentToolAct
       return { kind: 'web', label: text(input, 'url') };
     case 'memory_write':
       return { kind: 'memory', label: text(input, 'content', 'text').slice(0, 80) || 'memory proposal' };
+    case 'memory_search':
+      return { kind: 'memory', label: text(input, 'query').slice(0, 80) || 'memory search' };
+    case 'memory_read':
+      return { kind: 'memory', label: text(input, 'path').slice(0, 80) || 'memory detail' };
     case 'run_vscode_command':
       return { kind: 'vscode-command', label: text(input, 'command') || tool.name };
     case 'manage_todo_list':

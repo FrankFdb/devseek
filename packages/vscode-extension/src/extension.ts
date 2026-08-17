@@ -50,6 +50,15 @@ import { ChatSessionTurnService } from './app/chat-session-turn-service';
 import { migrateLegacyDeepseekConfiguration } from './app/config-migration-service';
 import { buildLocalAttachmentContextPrompt } from './app/local-attachment-context';
 import { MemoryService } from './app/memory-service';
+import {
+  beginMemoryForegroundRun,
+  createProviderMemoryModel,
+  endMemoryForegroundRun,
+  flushMemoryPipelineWork,
+  MemoryPipelineService,
+  scheduleMemoryPipelineWork,
+} from './app/memory-pipeline-service';
+import { configureMemoryStorageHome } from './memory/repository-memory-location';
 import { AgentKernelService } from './app/agent-kernel-service';
 import { getKernelRecoveryContextFiles } from './app/coding-kernel-recovery';
 import { projectCodingKernelCheckpointResume } from './app/coding-kernel-route-decision';
@@ -61,6 +70,7 @@ import { guardNonAgentResponse } from './app/non-agent-response-guard';
 import type { AgentChatRequest } from './app/agent-protocol';
 import { createAgentApplicationBridgeAdapter, EvidenceAwareChatRouter } from './app/evidence-aware-chat-router';
 import { createEvidenceAwareMcpToolCallFactory } from './app/evidence-aware-mcp-tool-call';
+import { createEvidenceAwareMemoryWriteFactory } from './app/evidence-aware-memory-write';
 import { recordApplyWorkflowEvidence } from './app/workflow-run-evidence-adapter';
 import { tryPublishProjectInitTurn } from './app/project-init-service';
 import { tryBuildReadOnlyInspectionResult } from './app/read-only-inspection-service';
@@ -262,10 +272,12 @@ async function runChat(
     reason: 'superseded-by-new-run',
     source: 'run-chat-start',
   });
+  await beginMemoryForegroundRun();
   try {
     await runActiveChat(activeRun, webview, userDisplay, prompt, newSession, mode, files, forceNoAgent, resumeFromIndex, resumeTasks, images, intentConfirmed, suppressUserMessage, resumeCheckpoint);
   } finally {
     activeRun.finish();
+    endMemoryForegroundRun();
   }
 }
 
@@ -680,8 +692,22 @@ async function runActiveChat(
             onTodoUpdate: (items) => { webview.postMessage({ type: 'todoUpdate', items }); },
             onUserSteer: consumeAgentSteer,
             onTaskComplete: (_summary) => { /* phase:done handled inside runAgenticLoop */ },
-            onMemoryWrite: async (proposal) => {
-              if (agWsRoot) new MemoryService({ workspaceRoot: agWsRoot }).acceptWriteProposal(proposal);
+            onPrepareMemoryWrite: agWsRoot
+              ? createEvidenceAwareMemoryWriteFactory({
+                requestConfirmation: label => terminalPermissionCoordinator.requestInlineConfirmation(webview, label),
+              })(agentRunContext, agWsRoot, intentConfirmed)
+              : undefined,
+            onMemorySearch: async (query, maxResults) => {
+              if (!agWsRoot) return 'No workspace memory is available.';
+              const matches = new MemoryService({ workspaceRoot: agWsRoot }).searchMemory(query, maxResults);
+              return matches.length > 0
+                ? matches.map(match => `${match.path}:${match.line}: ${match.text}`).join('\n')
+                : 'No relevant memory index entries were found.';
+            },
+            onMemoryRead: async (path, startLine, maxLines) => {
+              if (!agWsRoot) return 'No workspace memory is available.';
+              return new MemoryService({ workspaceRoot: agWsRoot })
+                .readMemoryDetail(path, startLine, maxLines);
             },
             onResolveFileWriteConstraint: (absPath: string, context?: AgentFileWriteContext) => resolveAgentFileWriteConstraint({
               webview,
@@ -1566,6 +1592,7 @@ function initOrRestoreSession(): void {
 // ----------------------------------------------------------------
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   extContext = context;
+  configureMemoryStorageHome(nodePath.join(context.globalStorageUri.fsPath, 'memories'));
   sessionService = new SessionService(context.workspaceState);
   agentCheckpointService = new ScopedTaskCheckpointService<AgentTask>({
     storage: context.workspaceState,
@@ -1665,6 +1692,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // ── Session memory: restore previous session on startup ────────────
   initOrRestoreSession();
+  const activeWorkspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (activeWorkspaceRoot) {
+    const startupMemoryPipeline = new MemoryPipelineService({
+      workspaceRoot: activeWorkspaceRoot,
+      model: createProviderMemoryModel(getActiveProvider()),
+    });
+    scheduleMemoryPipelineWork(signal => startupMemoryPipeline.processPending(signal));
+  }
 }
 
-export function deactivate(): void { /* bridge 生命周期由用户管理 */ }
+export async function deactivate(): Promise<void> {
+  await flushMemoryPipelineWork();
+  await sessionService?.flush();
+}

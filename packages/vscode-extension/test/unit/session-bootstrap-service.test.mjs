@@ -40,7 +40,7 @@ function createStore() {
   };
 }
 
-test('Session bootstrap: restores the valid active session after a simulated restart', () => {
+test('Session bootstrap: restores the valid active session after a simulated restart', async () => {
   const store = createStore();
   const beforeRestart = new SessionService(store);
   beforeRestart.saveSessionMeta({ id: 'session-a', title: 'Refactor', createdAt: 1 });
@@ -48,6 +48,7 @@ test('Session bootstrap: restores the valid active session after a simulated res
   beforeRestart.saveSessionHistory('session-a', [{ role: 'user', content: 'continue' }]);
   beforeRestart.saveSessionFiles('session-a', { service: '/workspace/src/service.ts' });
   beforeRestart.saveSessionAnalysisText('session-a', 'The service boundary is ready.');
+  await beforeRestart.flush();
 
   const afterRestart = new SessionService(store);
   const bootstrap = buildSessionBootstrapState({ sessionService: afterRestart });
@@ -64,11 +65,12 @@ test('Session bootstrap: restores the valid active session after a simulated res
   ]);
 });
 
-test('Session bootstrap: replaces a stale active id with an empty session', () => {
+test('Session bootstrap: replaces a stale active id with an empty session', async () => {
   const store = createStore();
   const beforeRestart = new SessionService(store);
   beforeRestart.setActiveSessionId('deleted-session');
   beforeRestart.saveSessionFiles('deleted-session', { stale: '/workspace/stale.ts' });
+  await beforeRestart.flush();
 
   const afterRestart = new SessionService(store);
   const bootstrap = buildSessionBootstrapState({ sessionService: afterRestart });

@@ -15,7 +15,7 @@ export interface ProductMutationAuthorizationDecision {
 }
 
 export interface ProductMutationRequest<T> {
-  kind: 'vscode-command' | 'pending-edit-undo' | 'pending-edit-resolution' | 'mcp-tool';
+  kind: 'vscode-command' | 'pending-edit-undo' | 'pending-edit-resolution' | 'mcp-tool' | 'memory-write';
   label: string;
   authorize: () => ProductMutationAuthorizationDecision | Promise<ProductMutationAuthorizationDecision>;
   invoke: () => T | Promise<T>;

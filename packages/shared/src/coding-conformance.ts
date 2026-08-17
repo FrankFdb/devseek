@@ -35,7 +35,14 @@ export type CodingTerminalStatus = 'completed' | 'failed' | 'blocked' | 'cancell
 export type CodingReceiptStatus = 'completed' | 'failed' | 'denied';
 export type CodingVerificationStatus = 'passed' | 'failed' | 'blocked' | 'not-run';
 export type CodingAcceptanceStatus = 'passed' | 'failed' | 'blocked' | 'not-applicable';
-export type CodingToolEffect = 'read' | 'process' | 'network' | 'workspace-mutation' | 'git' | 'release';
+export type CodingToolEffect =
+  | 'read'
+  | 'process'
+  | 'network'
+  | 'local-state'
+  | 'workspace-mutation'
+  | 'git'
+  | 'release';
 export type CodingDeliverableKind = 'source-change' | 'report' | 'verification-result';
 export type CodingConformanceEvidenceClass =
   | 'fixture-self-test'

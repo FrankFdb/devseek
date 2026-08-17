@@ -30,6 +30,9 @@ const DEFAULT_TARGETED_TESTS = Object.freeze([
   'packages/vscode-extension/test/unit/task-intent-router.test.mjs',
   'packages/vscode-extension/test/unit/semantic-intent-routing-matrix.test.mjs',
   'packages/vscode-extension/test/unit/terminal-command-policy.test.mjs',
+  'packages/vscode-extension/test/unit/memory-pipeline.test.mjs',
+  'packages/vscode-extension/test/unit/memory-service.test.mjs',
+  'packages/vscode-extension/test/unit/session-service.test.mjs',
   'packages/vscode-extension/test/unit/controlled-vsix-scenario-contract.test.mjs',
 ]);
 const INTENT_TARGETED_TESTS = Object.freeze([
@@ -115,6 +118,18 @@ const TARGETED_TEST_CASE_COVERAGE = Object.freeze({
     'terminal-symlink-workdir-boundary',
     'terminal-dynamic-path-fail-closed',
   ]),
+  'packages/vscode-extension/test/unit/memory-pipeline.test.mjs': Object.freeze([
+    't5-semantic-typo-consolidation',
+    't5-no-output-low-signal',
+    't5-external-injection-isolation',
+    't5-secret-redaction-retry',
+    't5-newer-correction-supersedes',
+    't5-unverified-success-rejected',
+    't5-bounded-progressive-read',
+    't5-worktree-share-repo-isolation',
+    't5-background-failure-isolation',
+    't5-foreground-priority-isolation',
+  ]),
 });
 const DEFAULT_CONTROLLED_SUITES = Object.freeze([
   'r2-07e-stream-protocol',
@@ -126,6 +141,7 @@ const DEFAULT_CONTROLLED_SUITES = Object.freeze([
   'agent-fit-product',
   't3-deepseek-web-compat',
   't4-permission-write-boundary',
+  't5-memory-restart',
   'independent-user-diversity-product',
   'coding-conformance-product',
   'r2-07f-connector-security',
@@ -145,6 +161,7 @@ const ACCEPTANCE_CONTROLLED_SUITES = Object.freeze([
   'agent-fit-product',
   't3-deepseek-web-compat',
   't4-permission-write-boundary',
+  't5-memory-restart',
   'independent-user-diversity-product',
   'coding-conformance-product',
   'r2-07f-connector-security',
@@ -173,6 +190,36 @@ const CASE_DESIGN_DIMENSIONS = Object.freeze([
     user_need: 'Users expect workspace escapes and dangerous shell effects to fail closed without changing protected files.',
     suites: ['t4-permission-write-boundary'],
     cases: ['t4-outside-workspace-write-denied', 't4-dangerous-shell-denied'],
+  },
+  {
+    id: 'durable_memory_process_restart',
+    user_need: 'Users expect stable project knowledge to survive a real editor restart while current instructions remain authoritative.',
+    suites: ['t5-memory-restart'],
+    cases: ['t5-capture-project-memory', 't5-restart-use-project-memory'],
+  },
+  {
+    id: 'semantic_memory_diverse_input',
+    user_need: 'Users express durable preferences with colloquial language, typos, and homophones, while one-off chat must not become memory.',
+    suites: ['targeted-local-contracts'],
+    cases: ['t5-semantic-typo-consolidation', 't5-no-output-low-signal'],
+  },
+  {
+    id: 'memory_trust_and_secret_boundary',
+    user_need: 'External content, unverified success claims, and secrets must not become trusted long-term context.',
+    suites: ['targeted-local-contracts'],
+    cases: ['t5-external-injection-isolation', 't5-secret-redaction-retry', 't5-unverified-success-rejected'],
+  },
+  {
+    id: 'memory_correction_and_progressive_recall',
+    user_need: 'Newer user corrections must supersede stale guidance, and detail recall must remain bounded and auditable.',
+    suites: ['targeted-local-contracts'],
+    cases: ['t5-newer-correction-supersedes', 't5-bounded-progressive-read'],
+  },
+  {
+    id: 'memory_repository_and_failure_isolation',
+    user_need: 'Worktrees should share repository knowledge, unrelated repositories must remain isolated, and memory maintenance must never fail the completed task.',
+    suites: ['targeted-local-contracts'],
+    cases: ['t5-worktree-share-repo-isolation', 't5-background-failure-isolation', 't5-foreground-priority-isolation'],
   },
   {
     id: 'read_only_boundary',

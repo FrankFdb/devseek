@@ -154,24 +154,41 @@ test('Phase 0: domain modules do not import legacy entry points or UI internals'
   assert.deepEqual(violations, []);
 });
 
-test('Phase 2: memory boundary exposes schema, store, and guard only', () => {
+test('Phase 2/T5: memory boundary separates schema, persistence, semantics, and projections', () => {
   const memoryFiles = readdirSync(path.join(root, 'src/memory')).filter(name => name.endsWith('.ts')).sort();
-  assert.deepEqual(memoryFiles, ['index.ts', 'memory-store.ts', 'sensitive-memory-guard.ts', 'types.ts']);
+  assert.deepEqual(memoryFiles, [
+    'index.ts',
+    'memory-pipeline-store.ts',
+    'memory-projection.ts',
+    'memory-semantic-model.ts',
+    'memory-store.ts',
+    'pipeline-types.ts',
+    'repository-memory-location.ts',
+    'sensitive-memory-guard.ts',
+    'types.ts',
+  ]);
 
   const types = read('src/memory/types.ts');
   for (const field of ['id', 'type', 'scope', 'content', 'source', 'confidence', 'createdAt', 'updatedAt', 'ttl', 'lastUsedAt', 'status', 'tags']) {
     assert.match(types, new RegExp(`\\b${field}\\b`), `MemoryRecord includes ${field}`);
   }
+  assert.match(read('src/memory/memory-pipeline-store.ts'), /claimStage1/, 'pipeline store owns leased Phase 1 claims');
+  assert.match(read('src/memory/memory-semantic-model.ts'), /MemorySemanticExtractor/, 'semantic model owns extraction');
+  assert.match(read('src/memory/memory-projection.ts'), /MemoryReadService/, 'projection boundary owns bounded recall');
+  assert.match(read('src/memory/repository-memory-location.ts'), /resolveRepositoryMemoryLocation/, 'location owner isolates repository memory');
 });
 
-test('Phase 2: agent tool loop memory_write uses structured proposals only', () => {
+test('Phase 2: agent tool loop memory_write uses structured evidence-aware proposals only', () => {
   const toolLoop = read('src/agent/tool-loop.ts');
   const loopTypes = read('src/agent/loop-types.ts');
+  const evidenceAwareMemoryWrite = read('src/app/evidence-aware-memory-write.ts');
   assert.doesNotMatch(toolLoop, /\.devseek\/memory\.md|memory\.md/, 'tool-loop must not mention legacy memory file paths');
   assert.doesNotMatch(toolLoop, /appendFileSync|writeFileSync|mkdirSync/, 'tool-loop must not persist memory directly');
-  assert.match(loopTypes, /onMemoryWrite\?: \(proposal: MemoryWriteProposal\)/, 'agent callback protocol emits structured memory proposals');
+  assert.match(loopTypes, /onPrepareMemoryWrite\?: \(\s*proposal: MemoryWriteProposal/, 'agent callback protocol emits prepared structured memory proposals');
   assert.match(toolLoop, /const proposal = \{[\s\S]*?type: 'verified-experience' as const/, 'tool-loop creates a typed memory proposal');
-  assert.match(toolLoop, /callbacks\.onMemoryWrite!\(proposal\)/, 'tool-loop sends the structured proposal through the canonical callback host');
+  assert.match(toolLoop, /callbacks\.onPrepareMemoryWrite\(proposal\)/, 'tool-loop sends the structured proposal through the canonical prepared host');
+  assert.match(evidenceAwareMemoryWrite, /ProductMutationCoordinator/, 'memory writes must use the shared mutation evidence boundary');
+  assert.match(evidenceAwareMemoryWrite, /verified-postcondition/, 'memory writes must prove their persisted postcondition');
 });
 
 test('Phase 7: task recovery services are split from composition roots', () => {

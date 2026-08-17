@@ -347,6 +347,18 @@ function makeCallbacks() {
         checkpoints.push({ completedUpToIndex, remainingTasks, reason });
       },
       onToolActivity(kind, label) { activities.push({ kind, label }); },
+      async onReadFile(filePath, workDir, range) {
+        const workspaceRoot = fakeWorkspace.workspaceFolders[0]?.uri.fsPath ?? process.cwd();
+        const absolutePath = path.isAbsolute(filePath)
+          ? filePath
+          : path.resolve(workDir || workspaceRoot, filePath);
+        const content = readFileSync(absolutePath, 'utf8');
+        if (!range?.startLine && !range?.endLine) return content;
+        const lines = content.split('\n');
+        const start = Math.max(1, range.startLine ?? 1);
+        const end = Math.min(lines.length, range.endLine ?? lines.length);
+        return lines.slice(start - 1, end).join('\n');
+      },
       onResolveFileWriteConstraint: async () => ALLOW_FILE_WRITE,
     },
   };

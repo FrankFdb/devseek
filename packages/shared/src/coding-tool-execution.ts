@@ -604,6 +604,7 @@ function uniqueEffects(effects: readonly CodingToolEffect[]): readonly CodingToo
     'read',
     'process',
     'network',
+    'local-state',
     'workspace-mutation',
     'git',
     'release',

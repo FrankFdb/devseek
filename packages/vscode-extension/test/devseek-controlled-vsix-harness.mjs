@@ -139,22 +139,7 @@ try {
     scenarios: selectedScenarios,
     suiteOptions: selectedSuiteOptions,
   });
-  writeDriverExtension({
-    driverDir,
-    driverReportPath,
-    progressPath,
-    workspaceDir,
-    extensionsDir,
-    expectedExtensionPath: installed.extensionPath,
-    expectedIdentity,
-    scenarios: selectedScenarios,
-    timeoutMs,
-    port: fakeBridge.port,
-    keepWindow,
-    suiteOptions: selectedSuiteOptions,
-  });
-
-  const driverReport = await runVsCodeDriver({
+  const driverReport = await runControlledDriverSelection({
     driverDir,
     driverReportPath,
     progressPath,
@@ -164,6 +149,12 @@ try {
     xdgRuntimeDir,
     vscodeLogPath,
     keepWindow,
+    expectedExtensionPath: installed.extensionPath,
+    expectedIdentity,
+    scenarios: selectedScenarios,
+    timeoutMs,
+    port: fakeBridge.port,
+    suiteOptions: selectedSuiteOptions,
   });
   const deterministicFastPath = driverReport?.ok === true && fakeBridge.state.chatRequests.length === 0;
   const allScenariosAllowFastPath = selectedScenarios.every(candidate =>
@@ -347,6 +338,10 @@ function controlledScenarioSuiteCatalog() {
       't4-outside-workspace-write-denied',
       't4-dangerous-shell-denied',
     ],
+    't5-memory-restart': [
+      't5-capture-project-memory',
+      't5-restart-use-project-memory',
+    ],
     'independent-user-diversity-product': [
       'diverse-novice-typo-create',
       'diverse-asr-readonly-review',
@@ -418,6 +413,11 @@ function resolveControlledScenarioSuiteOptions(id) {
     't4-permission-write-boundary': {
       kind: 'same-window-permission-write-boundary-suite',
       sameDevSeekSession: false,
+    },
+    't5-memory-restart': {
+      kind: 'process-restart-memory-continuation-suite',
+      sameDevSeekSession: true,
+      restartBetweenCases: true,
     },
     'independent-user-diversity-product': {
       kind: 'same-window-independent-user-diversity-suite',
@@ -1283,6 +1283,50 @@ function controlledScenarioCatalog() {
       requiredTools: ['run_terminal'],
       forbiddenTools: ['create_file', 'replace_in_file', 'delete_file'],
       requiredRunLogSubstrings: ['authority-policy:', 'vscode-tool-constraint:'],
+    },
+    't5-capture-project-memory': {
+      id: 't5-capture-project-memory',
+      kind: 't5-model-memory-capture-before-process-restart',
+      userProfile: 'bilingual-maintainer',
+      languageStyle: 'zh-en-project-convention',
+      intentClass: 'durable-project-memory-capture',
+      targetRelativePath: 'src/bridge.ts',
+      targetContent: 'export const bridgeReady = true;\n',
+      seedFiles: { 'src/bridge.ts': 'export const bridgeReady = true;\n' },
+      prompt: '记一下这个项目的习惯：处理 src/bridge.ts 后，用 npm run test:bridge 做聚焦验证；现在只记录，不改文件也不运行。',
+      providerPlan: 'memory-capture-complete',
+      memoryContent: 'src/bridge.ts 的聚焦验证命令是 npm run test:bridge；执行前仍需按当前任务重新确认。',
+      expected: 'completed-advisory-no-mutation',
+      expectedFiles: { 'src/bridge.ts': 'export const bridgeReady = true;\n' },
+      expectedChangedPaths: [],
+      expectedMutatedUserFiles: [],
+      expectedTaskMode: 'change',
+      requiredTools: ['memory_write', 'task_complete'],
+      forbiddenTools: ['create_file', 'replace_in_file', 'delete_file', 'run_terminal'],
+    },
+    't5-restart-use-project-memory': {
+      id: 't5-restart-use-project-memory',
+      kind: 't5-process-restart-memory-read-with-current-turn-precedence',
+      userProfile: 'rushed-maintainer',
+      languageStyle: 'zh-colloquial-short-followup',
+      intentClass: 'restart-memory-guided-advice',
+      targetRelativePath: 'src/bridge.ts',
+      targetContent: 'export const bridgeReady = true;\n',
+      seedFiles: { 'src/bridge.ts': 'export const bridgeReady = true;\n' },
+      prompt: 'VS Code 重开了。继续看 src/bridge.ts，这次该用哪个聚焦测试？只告诉我建议，别运行也别改文件。',
+      providerPlan: 'memory-guided-advisory',
+      requiredProviderPromptSubstrings: [
+        'npm run test:bridge',
+        'current user turn and current project instructions override memory',
+      ],
+      expected: 'completed-advisory-no-mutation',
+      expectedFiles: { 'src/bridge.ts': 'export const bridgeReady = true;\n' },
+      expectedChangedPaths: [],
+      expectedMutatedUserFiles: [],
+      expectedTaskMode: 'review',
+      requiredTools: ['task_complete'],
+      forbiddenTools: ['memory_write', 'create_file', 'replace_in_file', 'delete_file', 'run_terminal'],
+      requiredRunLogSubstrings: ['npm run test:bridge'],
     },
     'diverse-novice-typo-create': {
       id: 'diverse-novice-typo-create',
@@ -3073,6 +3117,29 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
             reason: promptContract.reason,
           });
         }
+        const missingMemoryContext = scenarioBinding.requestKind === 'agent-execution'
+          ? (activeScenario.requiredProviderPromptSubstrings || [])
+            .filter(required => !promptText.includes(required))
+          : [];
+        if (missingMemoryContext.length > 0) {
+          state.rejectedRequests.push(requestRecord);
+          const reason = `Provider prompt is missing persisted memory context: ${JSON.stringify(missingMemoryContext)}`;
+          state.errors.push(reason);
+          evidence.record('provider.failed', {
+            provider: 'controlled-fixture',
+            layer: 'deterministic-fake-provider',
+            error_code: 'MEMORY_CONTEXT_MISSING',
+            prompt_contract_version: promptContract.contractVersion,
+            prompt_contract_bound: true,
+            missing_context_count: missingMemoryContext.length,
+          });
+          return sendJson(response, 422, {
+            error: 'MEMORY_CONTEXT_MISSING',
+            ordinal,
+            bound: true,
+            reason,
+          });
+        }
         if (activeScenario.providerPlan === 'provider-error') {
           state.providerInvocationCount += 1;
           evidence.record('provider.failed', {
@@ -3205,6 +3272,8 @@ function controlledPlannerResponse({ scenario }) {
     't4-source-readonly-report-complete': 'create',
     't4-outside-write-attempt': 'create',
     't4-dangerous-shell-attempt': 'modify',
+    'memory-capture-complete': 'analyze',
+    'memory-guided-advisory': 'analyze',
     'provider-error': 'create',
     'stream-corrupting-python-cli-complete': 'create',
     'conformance-parser-repair': 'modify',
@@ -3231,6 +3300,8 @@ function controlledPlannerResponse({ scenario }) {
     't4-source-readonly-report-complete': '只读源码并生成限定目录内的审计报告',
     't4-outside-write-attempt': '尝试工作区外写入并由本地权限边界拒绝',
     't4-dangerous-shell-attempt': '尝试危险 shell 命令并由本地权限边界拒绝',
+    'memory-capture-complete': '提取高价值项目惯例并持久化，不执行工作区副作用',
+    'memory-guided-advisory': '结合重启后恢复的项目记忆给出建议，并服从当前用户约束',
     'provider-error': '创建指定文件并处理 Provider 失败路径',
     'stream-corrupting-python-cli-complete': '创建 Python CLI 并由 stream 协议故障测试 fail-closed',
     'conformance-parser-repair': '根据验证失败修复 parser 并重新验证',
@@ -3341,6 +3412,28 @@ function controlledProviderResponse({ ordinal, workspaceDir, scenario, requestKi
       `\`\`\`${language}`,
       scenario.targetContent.trimEnd(),
       '```',
+    ].join('\n');
+  }
+
+  if (scenario.providerPlan === 'memory-capture-complete') {
+    return [
+      '这是一条可复用的项目验证惯例。我只记录记忆，不修改文件也不运行命令。',
+      `[TOOL:memory_write ${JSON.stringify({
+        content: scenario.memoryContent,
+        key: 'project-test-command:src/bridge.ts',
+      })}]`,
+      `[TOOL:task_complete ${JSON.stringify({
+        summary: '已记录 src/bridge.ts 的聚焦验证惯例；本轮未修改文件、未运行命令。',
+      })}]`,
+    ].join('\n');
+  }
+
+  if (scenario.providerPlan === 'memory-guided-advisory') {
+    return [
+      '根据恢复的项目历史记忆，建议重新确认后运行 npm run test:bridge。当前用户只允许建议，因此本轮不执行命令也不修改文件。',
+      `[TOOL:task_complete ${JSON.stringify({
+        summary: '建议对 src/bridge.ts 使用 npm run test:bridge 做聚焦验证；这是历史项目惯例，执行前应按当前任务确认。本轮未运行、未修改文件。',
+      })}]`,
     ].join('\n');
   }
 
@@ -3984,6 +4077,7 @@ const timeoutMs = __TIMEOUT_MS__;
 const port = __PORT__;
 const keepWindow = __KEEP_WINDOW__;
 const sameDevSeekSession = __SAME_DEVSEEK_SESSION__;
+const resumeExistingSession = __RESUME_EXISTING_SESSION__;
 
 function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function normalize(value) { return path.resolve(value).replace(/\\/g, '/'); }
@@ -4355,13 +4449,13 @@ async function runScenario(activeScenario, caseIndex, totalCases) {
   let initialUserFiles = {};
   try {
     progress('case-started', { scenario: activeScenario.id, caseIndex, totalCases });
-    if (!sameDevSeekSession || caseIndex === 1) {
+    if (!resumeExistingSession && (!sameDevSeekSession || caseIndex === 1)) {
       writeScenarioSeedFiles(workspaceDir, activeScenario);
     }
     baselineRunLogPaths = collectRunLogs().logs.map(log => log.path);
     initialUserFiles = collectUserFiles();
     let commandError = '';
-    const newSession = sameDevSeekSession ? caseIndex === 1 : true;
+    const newSession = resumeExistingSession ? false : sameDevSeekSession ? caseIndex === 1 : true;
     caseReport.newSession = newSession;
     await updateConfig('autopilotMode', activeScenario.autopilotMode !== false);
     void vscode.commands.executeCommand(caseReport.commandName, activeScenario.prompt, activeScenario.prompt, newSession, 'fast')
@@ -4481,8 +4575,71 @@ module.exports = { activate };
     .replace('__TIMEOUT_MS__', JSON.stringify(driverTimeoutMs))
     .replace('__PORT__', JSON.stringify(port))
     .replace('__KEEP_WINDOW__', JSON.stringify(keepWindow))
-    .replace('__SAME_DEVSEEK_SESSION__', JSON.stringify(suiteOptions?.sameDevSeekSession === true));
+    .replace('__SAME_DEVSEEK_SESSION__', JSON.stringify(suiteOptions?.sameDevSeekSession === true))
+    .replace('__RESUME_EXISTING_SESSION__', JSON.stringify(suiteOptions?.resumeExistingSession === true));
   fs.writeFileSync(path.join(driverDir, 'extension.js'), source, 'utf8');
+}
+
+async function runControlledDriverSelection(options) {
+  const { scenarios, suiteOptions, driverReportPath, progressPath } = options;
+  if (suiteOptions?.restartBetweenCases !== true) {
+    writeDriverExtension(options);
+    return runVsCodeDriver(options);
+  }
+  if (options.keepWindow) {
+    throw new Error('Process-restart controlled suites cannot run with --keep-window');
+  }
+
+  const phaseReports = [];
+  for (let index = 0; index < scenarios.length; index += 1) {
+    const phase = index + 1;
+    const phaseReportPath = path.join(path.dirname(driverReportPath), `driver-report-phase-${phase}.json`);
+    const phaseProgressPath = path.join(path.dirname(progressPath), `driver-progress-phase-${phase}.jsonl`);
+    const phaseOptions = {
+      ...options,
+      driverReportPath: phaseReportPath,
+      progressPath: phaseProgressPath,
+      scenarios: [scenarios[index]],
+      suiteOptions: {
+        ...suiteOptions,
+        resumeExistingSession: index > 0,
+      },
+    };
+    writeDriverExtension(phaseOptions);
+    const phaseReport = await runVsCodeDriver(phaseOptions);
+    phaseReports.push({ phase, scenario: scenarios[index].id, report: phaseReport });
+    if (phaseReport?.ok !== true) break;
+  }
+
+  const cases = phaseReports.flatMap(entry => Array.isArray(entry.report?.cases) ? entry.report.cases : []);
+  const lastReport = phaseReports.at(-1)?.report || {};
+  const errors = phaseReports.flatMap(entry => (entry.report?.errors || [])
+    .map(error => `[restart-phase-${entry.phase}:${entry.scenario}] ${error}`));
+  if (phaseReports.length !== scenarios.length) {
+    errors.push(`Process-restart suite stopped after ${phaseReports.length}/${scenarios.length} phases`);
+  }
+  const merged = {
+    ...lastReport,
+    ok: phaseReports.length === scenarios.length
+      && phaseReports.every(entry => entry.report?.ok === true)
+      && cases.length === scenarios.length,
+    sameWindowMultiSession: false,
+    sameDevSeekSession: suiteOptions?.sameDevSeekSession === true,
+    processRestartCount: Math.max(0, phaseReports.length - 1),
+    caseCount: scenarios.length,
+    cases,
+    commandInjected: phaseReports.some(entry => entry.report?.commandInjected === true),
+    commandCompleted: phaseReports.every(entry => entry.report?.commandCompleted === true),
+    errors,
+    processPhases: phaseReports.map(entry => ({
+      phase: entry.phase,
+      scenario: entry.scenario,
+      ok: entry.report?.ok === true,
+      identity: entry.report?.identity || null,
+    })),
+  };
+  fs.writeFileSync(driverReportPath, JSON.stringify(merged, null, 2), 'utf8');
+  return merged;
 }
 
 async function runVsCodeDriver(options) {

@@ -63,6 +63,8 @@ function hasEvidenceAwareToolAuthority(kind: ToolKind, callbacks: AgentLoopCallb
     case 'vscode':
     case 'vscode-command':
       return typeof callbacks.onPrepareVscodeCommand === 'function';
+    case 'memory':
+      return typeof callbacks.onPrepareMemoryWrite === 'function';
     case 'mcp':
       return typeof callbacks.onPrepareMcpToolCall === 'function';
     default:
@@ -762,7 +764,48 @@ export async function executeFakeToolsForLoop(
           parts.push(`[semantic_search: "${query}"] 错误: ${msg}`);
         }
       }
-    } else if (tool.name === 'memory_write' && callbacks.onMemoryWrite) {
+    } else if (tool.name === 'memory_search' && callbacks.onMemorySearch) {
+      const query = typeof tool.input.query === 'string' ? tool.input.query.trim() : '';
+      if (query) {
+        markToolCall();
+        const maxResults = optionalLineNumber(tool.input, 'maxResults');
+        const execution = await canonicalTools.observe(
+          toolPlan,
+          canonicalContext,
+          () => callbacks.onMemorySearch!(query, maxResults),
+          result => readEvidenceRecorder.recordObservation('search', `memory:${query}`, result, 'MEMORY.md'),
+        );
+        if (execution.receipt.status === 'completed' && typeof execution.receipt.result === 'string') {
+          callbacks.onToolActivity?.('memory', query);
+          parts.push(`[memory_search: ${query}]\n${execution.receipt.result}`);
+        } else {
+          const msg = execution.error ?? codingToolExecutionFailureReason(execution.receipt);
+          recordToolFailure(tool.name, 'tool-host', 'MEMORY.md', msg);
+          parts.push(`[memory_search: ${query}] 错误: ${msg}`);
+        }
+      }
+    } else if (tool.name === 'memory_read' && callbacks.onMemoryRead) {
+      const memoryPath = typeof tool.input.path === 'string' ? tool.input.path.trim() : '';
+      if (memoryPath) {
+        markToolCall();
+        const startLine = optionalLineNumber(tool.input, 'startLine');
+        const maxLines = optionalLineNumber(tool.input, 'maxLines');
+        const execution = await canonicalTools.observe(
+          toolPlan,
+          canonicalContext,
+          () => callbacks.onMemoryRead!(memoryPath, startLine, maxLines),
+          result => readEvidenceRecorder.recordObservation('search', `memory-read:${memoryPath}`, result, memoryPath),
+        );
+        if (execution.receipt.status === 'completed' && typeof execution.receipt.result === 'string') {
+          callbacks.onToolActivity?.('memory', memoryPath);
+          parts.push(`[memory_read: ${memoryPath}]\n${execution.receipt.result}`);
+        } else {
+          const msg = execution.error ?? codingToolExecutionFailureReason(execution.receipt);
+          recordToolFailure(tool.name, 'tool-host', memoryPath, msg);
+          parts.push(`[memory_read: ${memoryPath}] 错误: ${msg}`);
+        }
+      }
+    } else if (tool.name === 'memory_write' && callbacks.onPrepareMemoryWrite) {
       const content = typeof (tool.input as Record<string, unknown>)?.content === 'string'
         ? (tool.input as Record<string, string>).content.slice(0, 500)
         : '';
@@ -777,21 +820,20 @@ export async function executeFakeToolsForLoop(
           tags: ['agent'],
           requiresUserApproval: true,
         };
-        const execution = await canonicalTools.observe(
+        const prepared = await callbacks.onPrepareMemoryWrite(proposal);
+        const execution = await canonicalTools.settle(
           toolPlan,
           canonicalContext,
-          async () => {
-            await callbacks.onMemoryWrite!(proposal);
-            return proposal;
-          },
-          settledProposal => readEvidenceRecorder.recordObservation(
-            'memory',
-            'memory_write',
-            JSON.stringify(settledProposal),
-            workspaceRoot,
-          ),
+          prepared,
+          prepared.constraint,
         );
         if (execution.receipt.status === 'completed') {
+          evidenceRefs.push(readEvidenceRecorder.recordObservation(
+            'memory',
+            'memory_write',
+            String(execution.receipt.result ?? ''),
+            workspaceRoot,
+          ));
           parts.push(`[memory_write] 已写入记忆：${content.slice(0, 80)}`);
           callbacks.onToolActivity?.('memory', `记忆已保存: ${content.slice(0, 60)}`);
         } else {

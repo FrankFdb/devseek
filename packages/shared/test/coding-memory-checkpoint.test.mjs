@@ -128,6 +128,8 @@ test('memory prompt projection consumes the sealed decision and rejects content 
   assert.match(context, new RegExp(`decision=${decision.decisionSha256}`, 'u'));
   assert.match(context, /"effectiveAuthority":"memory"/u);
   assert.match(context, /"content":"The test command is npm test\."/u);
+  assert.match(context, /current user turn and current project instructions override memory/u);
+  assert.match(context, /verify drift-prone memory/u);
   assert.throws(
     () => renderCodingMemoryContext({
       ...decision,
@@ -139,6 +141,38 @@ test('memory prompt projection consumes the sealed decision and rejects content 
     () => renderCodingMemoryContext({ ...decision, selected: [null] }),
     /coding-memory-policy:invalid-context-entry/u,
   );
+});
+
+test('T5 memory policy accepts bounded task-history extraction and ranks proven reuse', () => {
+  const policy = new CanonicalMemoryPolicyService();
+  const extracted = memory({
+    memoryId: 'extracted',
+    scope: 'task',
+    classification: 'task',
+    sourceKind: 'task-history',
+    approvalState: 'not-required',
+    trusted: true,
+  });
+
+  const write = policy.assessWrite({
+    workspaceRoot: '/repo',
+    now: 300,
+    candidate: { ...extracted, status: 'pending' },
+  });
+  assert.equal(write.allowed, true);
+  assert.equal(write.requiresApproval, false);
+
+  const decision = policy.selectContext({
+    workspaceRoot: '/repo',
+    now: 500,
+    maxEntries: 2,
+    candidates: [
+      extracted,
+      memory({ memoryId: 'unused', content: 'Unused workflow.', usageCount: 0, updatedAt: 400 }),
+      memory({ memoryId: 'reused', content: 'Reused workflow.', usageCount: 3, lastUsedAt: 350 }),
+    ],
+  });
+  assert.deepEqual(decision.selected.map(entry => entry.memoryId), ['reused', 'unused']);
 });
 
 test('checkpoint seals task, context, pending work, and restore revalidation facts', () => {

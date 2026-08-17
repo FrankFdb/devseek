@@ -200,3 +200,42 @@ Claude Code 核心 agent loop 仍未在公开仓库中提供，不能逐行确�
 `2.0.23` exact-VSIX 全面独立仿真选择 83 个 case，10 个产品套件共 44 个流程 case 全部执行通过；覆盖维度 33/33，执行证据缺失 0。Shared 全量 336/336 通过。详细证据见 `INDEPENDENT-USER-SIMULATION-ACCEPTANCE-20260814.md`。
 
 这足以确认 DevSeek 在本轮定义的本地可观察过程上实现了 Codex-style 主循环责任划分；它不提供 Claude Code 未公开内部实现的源码证明，也不替代真实 Provider 和发布资格验证。
+
+## 2026-08-17 T5 记忆与重启源码对标
+
+### 固定基线
+
+- OpenAI Codex：`code/upstream-agent-sources/openai-codex` @ `fe614a6304ef804be74a622e482fdd75977abcba`，作为主要产品级源码依据。
+- Claude Code 公开仓库：`code/upstream-agent-sources/anthropic-claude-code` @ `be90077c6a353f292fa612d97173865a9ab21b83`。公开仓库不含可审计的核心 agent loop/auto-memory 内核，因此只使用公开代码边界、官方文档和可观察行为。
+
+### Codex 可逐行确认的记忆责任
+
+| 责任 | Codex 源码 | DevSeek 对标实现 |
+|---|---|---|
+| 写入总流程 | `codex-rs/memories/README.md`、`write/src/start.rs` | 用户任务后异步启动；根任务/有效仓库才 enqueue；后台失败不回滚用户任务 |
+| 有界 Phase 1 | `write/src/phase1.rs`、`templates/memories/stage_one_system.md` | `memory-pipeline-store.ts` 租约、重试/no-output；`memory-semantic-model.ts` 严格模型提取、secret/外部内容边界 |
+| 串行 Phase 2 | `write/src/phase2.rs`、`templates/memories/consolidation.md` | 单 consolidation lease、watermark、模型建议后由 `MemoryService` 本地仲裁、确定性投影 |
+| 渐进读取 | `ext/memories/src/extension.rs`、`src/prompts.rs`、`templates/memories/read_path.md` | 小摘要常驻、索引搜索、1-2 个明细按需读取，路径和行数有界 |
+| 显式 ad-hoc note | `ext/memories/src/tools/ad_hoc_note.rs`、`src/local/ad_hoc_note.rs` | `memory_write` 不在自治提示中；用户显式要求时经确认、prepared authority、evidence 和 readback 写入 |
+| 引用与使用 | `memories/read/src/usage.rs`、`citations.rs`、`state/src/runtime/memories.rs` | 召回候选携带 rollout/evidence ref；实际上下文使用更新计数、时间和生命周期回执 |
+| 会话续接分离 | `core/src/session/session.rs` | `SessionService` write-through/flush 精确保存 session state；长期记忆不重建丢失历史 |
+
+### 责任映射结论
+
+DevSeek 对标的是 Codex 的责任和行为合同，不复制 Rust/SQLite 形状：
+
+1. 原始 turn、steering、工具和验证 receipt 先形成不可变 rollout 输入。
+2. 模型只拥有语义提取和整合建议权；本地代码拥有 secret、来源、作用域、冲突、TTL、权限和落盘权。
+3. auto-memory 放在机器本地，以 Git common dir 识别仓库；不污染 workspace，不接受项目内容重定向存储。
+4. `memory_write` 是 `local-state` 外部效果，不是 terminal/process；每个具体写入仍需当前确认、canonical authority、external-effect settlement 和写后证据。
+5. 历史命令、路径和偏好都是低权限上下文。当前用户输入、当前规则、沙箱、工具权限和现场证据始终优先。
+
+### 补充证据与边界
+
+- Claude Code 官方 memory 文档确认机器本地 auto memory、`MEMORY.md` 索引、主题文件按需加载及受限启动加载；不据此推断其闭源内部队列或权限实现。
+- CoALA、Generative Agents、MemGPT、LongMemEval、LOCOMO、Mem2Act 和 SWE-bench-Live 只补充工作/情景/语义/程序分层、时间与冲突、渐进上下文、拒答、行动应用和时间漂移测试。
+- 详细架构和研究出处见 `T5-MEMORY-CODEX-ALIGNMENT-ARCHITECTURE-IMPLEMENTATION-20260817.md`；可复现决策方法见 `MEMORY-ENGINEERING-DECISION-RATIONALE-20260817.md`。
+
+### 验收结论
+
+T5 focused exact-VSIX 两进程重启和默认全面矩阵均通过。全面 run `20260817-t5-memory-acceptance` 执行 107 个 selected case、13 个 controlled suites；83 个 required acceptance case 全覆盖，missing dimensions 和 execution evidence missing 均为 0。该证据证明本地 T3 可观察行为，不宣称 Claude Code 闭源实现等价，也不替代 C14 发布资格。

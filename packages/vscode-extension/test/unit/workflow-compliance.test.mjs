@@ -166,11 +166,11 @@ test('§3 Tools: task_complete handler present', () => {
   assertContains(code, 'task_complete', '§3 task complete tool');
 });
 
-test('§3 Tools: memory_write handler present', () => {
+test('§3 Tools: memory_write remains an explicit ad hoc path and is not advertised for autonomous writes', () => {
   const registry = repoSrc('packages/shared/src/coding-tool-schema.ts');
   const prompt = src('src/agent/agentic-system-prompt.ts');
   assertContains(registry, 'memory_write', '§3 memory write tool registry');
-  assertContains(prompt, 'memory_write', '§3 memory write tool prompt');
+  assertDoesNotContain(prompt, 'memory_write', '§3 autonomous model prompt must not advertise direct persistent writes');
 });
 
 test('§3 Tools: run_terminal handler present', () => {
@@ -2914,6 +2914,7 @@ test('R3-05A: MemoryService owns scope, provenance, and persistent-write approva
   assertContains(memoryService, 'classifyCodingMemoryWrite', 'MemoryService must delegate classification to the shared policy owner');
   assertContains(toolLoop, 'requiresUserApproval: true', 'tool-loop memory_write proposals must be approval-required before persistence');
   assertDoesNotContain(toolLoop, 'requiresUserApproval: false', 'tool-loop must not declare provider memory writes as pre-approved');
+  assertContains(toolLoop, 'onPrepareMemoryWrite', 'tool-loop must dispatch memory writes through a prepared evidence-aware host');
   assertContains(memoryTests, 'R3-05A MemoryService', 'R3-05A must have MemoryService failure-first oracle coverage');
   assertContains(toolLoopTests, 'R3-05A ToolLoop memory_write', 'R3-05A must have tool-loop simulated-user oracle coverage');
 });
@@ -2932,7 +2933,8 @@ test('R3-05B: MemoryService owns memory conflict, TTL, revocation, and deletion 
   assertContains(memoryTypes, "'revoked'", 'memory status must represent revoked records before deletion');
   assertContains(memoryStore, 'lifecycleReceipts', 'MemoryStore must preserve lifecycle receipts in the structured document');
   assertContains(memoryStore, 'readLifecycleReceipts', 'MemoryStore must read lifecycle receipts');
-  assertContains(memoryStore, 'appendLifecycleReceipt', 'MemoryStore must append lifecycle receipts without dropping records');
+  assertContains(memoryStore, 'commit(records: MemoryRecord[], receipts:', 'MemoryStore must atomically commit records with lifecycle receipts');
+  assertContains(memoryStore, '[...document.lifecycleReceipts, ...receipts]', 'MemoryStore commits must preserve prior lifecycle receipts');
   assertContains(memoryService, 'refreshExpiredMemoryRecords', 'MemoryService must be the unique TTL expiry owner');
   assertContains(memoryService, 'dedupeMemoryRecord', 'MemoryService must be the unique dedupe owner');
   assertContains(memoryService, 'supersedeConflictingMemoryRecords', 'MemoryService must be the unique conflict owner');
@@ -2963,6 +2965,49 @@ test('R3-05C: MemoryService owns memory secret redaction and legacy import inval
   assertContains(memoryService, 'legacy memory is untrusted', 'MemoryService must document the legacy trust downgrade');
   assertContains(memoryTests, 'I10-MEM-03 user journey: legacy markdown never enters prompt context automatically', 'I10 must prove legacy markdown cannot enter prompt context automatically');
   assertContains(memoryTests, 'R3-05C MemoryService: structured legacy imports are invalidated and cannot leak secrets', 'R3-05C must cover structured legacy invalidation');
+});
+
+test('T5: Codex-aligned memory keeps semantic extraction, local arbitration, and bounded recall separate', () => {
+  const executor = src('src/product-coding-kernel-executor.ts');
+  const extension = src('src/extension.ts');
+  const pipeline = src('src/app/memory-pipeline-service.ts');
+  const queue = src('src/memory/memory-pipeline-store.ts');
+  const semanticModel = src('src/memory/memory-semantic-model.ts');
+  const projection = src('src/memory/memory-projection.ts');
+  const location = src('src/memory/repository-memory-location.ts');
+  const memoryService = src('src/app/memory-service.ts');
+  const prompt = src('src/agent/agentic-system-prompt.ts');
+  const toolLoop = src('src/agent/tool-loop.ts');
+  const tests = src('test/unit/memory-pipeline.test.mjs');
+
+  assertContains(executor, 'buildRolloutEvidence', 'terminal execution must capture immutable rollout evidence');
+  assertContains(executor, 'scheduleMemoryPipelineWork', 'memory maintenance must run outside task completion');
+  assertContains(pipeline, 'MemorySemanticExtractor', 'Phase 1 must be model-semantic extraction');
+  assertContains(pipeline, 'MemorySemanticConsolidator', 'Phase 2 must be model-semantic consolidation');
+  assertContains(pipeline, 'sanitizeRolloutEvidence', 'secrets must be redacted before either model phase');
+  assertContains(queue, 'claimStage1', 'Phase 1 jobs must use leased claims');
+  assertContains(queue, "status: output ? 'succeeded' : 'no-output'", 'low-signal rollouts must have an explicit no-output state');
+  assertContains(queue, 'retryDelay', 'failed memory work must remain retryable');
+  assertContains(semanticModel, 'Do not cluster solely by keyword', 'semantic consolidation must not become keyword authority');
+  assertContains(semanticModel, 'always-loaded summary is generated locally', 'model output must not directly author the always-loaded summary');
+  assertContains(memoryService, "candidate.sourceAuthority === 'external'", 'local arbitration must reject external candidates');
+  assertContains(memoryService, "candidate.sourceAuthority === 'assistant'", 'local arbitration must gate assistant claims');
+  assertContains(projection, 'immutable-rollout-conflict', 'rollout evidence projections must be immutable');
+  assertContains(projection, 'resolveScopedReadPath', 'memory detail reads must use a bounded path owner');
+  assertContains(location, "identitySource: 'git-common-dir' | 'workspace-root'", 'repository memory must share across worktrees without cross-repository mixing');
+  assertContains(extension, 'context.globalStorageUri.fsPath', 'durable memory must remain machine-local instead of dirtying the repository');
+  assertContains(extension, 'beginMemoryForegroundRun', 'foreground user work must preempt background memory processing');
+  assertContains(extension, 'endMemoryForegroundRun', 'memory processing may resume only after the foreground run settles');
+  assertContains(extension, 'flushMemoryPipelineWork', 'extension shutdown must settle background memory work');
+  assertContains(prompt, 'memory_search', 'the model must receive progressive memory search capability');
+  assertContains(prompt, 'memory_read', 'the model must receive bounded memory detail capability');
+  assertContains(toolLoop, "tool.name === 'memory_search'", 'memory search must settle through the canonical tool loop');
+  assertContains(toolLoop, "tool.name === 'memory_read'", 'memory detail reads must settle through the canonical tool loop');
+  assertContains(tests, 'typo-rich Chinese preference', 'T5 must simulate typo-rich user input');
+  assertContains(tests, 'external prompt injection', 'T5 must prove external prompt injection isolation');
+  assertContains(tests, 'newer correction supersedes', 'T5 must prove current user corrections outrank stale memory');
+  assertContains(tests, 'background failure is reported without rejecting', 'T5 must prove memory maintenance cannot fail the user task');
+  assertContains(tests, 'foreground user work cancels active memory processing', 'T5 must prove foreground Provider work has priority');
 });
 
 test('Architecture: Phase 10 application service owns Provider chat routing protocol', () => {

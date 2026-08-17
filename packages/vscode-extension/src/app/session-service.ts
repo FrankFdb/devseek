@@ -31,6 +31,9 @@ export interface PersistedSessionState<TAgentState = unknown> {
 
 export class SessionService {
   private readonly agentStateCache = new Map<string, unknown>();
+  private readonly writeThroughCache = new Map<string, unknown>();
+  private writeQueue: Promise<void> = Promise.resolve();
+  private writeError: unknown;
 
   constructor(
     private readonly store: SessionKeyValueStore,
@@ -42,21 +45,21 @@ export class SessionService {
   }
 
   getActiveSessionId(): string {
-    return this.store.get<string>(ACTIVE_SESSION_KEY, '') ?? '';
+    return this.read<string>(ACTIVE_SESSION_KEY, '') ?? '';
   }
 
   setActiveSessionId(id: string): void {
-    void this.store.update(ACTIVE_SESSION_KEY, id);
+    this.enqueueUpdate(ACTIVE_SESSION_KEY, id);
   }
 
   getSessions(): SessionMeta[] {
-    return this.store.get<SessionMeta[]>(SESSIONS_KEY, []) ?? [];
+    return this.read<SessionMeta[]>(SESSIONS_KEY, []) ?? [];
   }
 
   saveSessionMeta(meta: SessionMeta): void {
     const sessions = this.getSessions().filter(s => s.id !== meta.id);
     sessions.unshift(meta);
-    void this.store.update(SESSIONS_KEY, sessions.slice(0, this.maxSessions));
+    this.enqueueUpdate(SESSIONS_KEY, sessions.slice(0, this.maxSessions));
   }
 
   updateSessionMeta(id: string, patch: Partial<SessionMeta>): void {
@@ -64,23 +67,23 @@ export class SessionService {
     const idx = sessions.findIndex(s => s.id === id);
     if (idx < 0) return;
     sessions[idx] = { ...sessions[idx], ...patch };
-    void this.store.update(SESSIONS_KEY, sessions);
+    this.enqueueUpdate(SESSIONS_KEY, sessions);
   }
 
   loadSessionState<TAgentState = unknown>(id: string): PersistedSessionState<TAgentState> {
     if (!id) return { history: [], files: {}, summary: '', analysisText: '' };
     return {
-      history: cloneChatHistory(this.store.get<ChatMessage[]>(this.sessionStateKey(id, 'history'), []) ?? []),
-      files: { ...(this.store.get<Record<string, string>>(this.sessionStateKey(id, 'files'), {}) ?? {}) },
-      summary: this.store.get<string>(this.sessionStateKey(id, 'summary'), '') ?? '',
-      analysisText: this.store.get<string>(this.sessionStateKey(id, 'analysisText'), '') ?? '',
+      history: cloneChatHistory(this.read<ChatMessage[]>(this.sessionStateKey(id, 'history'), []) ?? []),
+      files: { ...(this.read<Record<string, string>>(this.sessionStateKey(id, 'files'), {}) ?? {}) },
+      summary: this.read<string>(this.sessionStateKey(id, 'summary'), '') ?? '',
+      analysisText: this.read<string>(this.sessionStateKey(id, 'analysisText'), '') ?? '',
       agentState: this.getSessionAgentState<TAgentState>(id),
     };
   }
 
   getSessionSummary(id: string): string {
     if (!id) return '';
-    return this.store.get<string>(this.sessionStateKey(id, 'summary'), '') ?? '';
+    return this.read<string>(this.sessionStateKey(id, 'summary'), '') ?? '';
   }
 
   getSessionAgentState<TAgentState>(id: string): TAgentState | undefined {
@@ -88,7 +91,7 @@ export class SessionService {
     if (this.agentStateCache.has(id)) {
       return clonePersistedValue(this.agentStateCache.get(id) as TAgentState | undefined);
     }
-    return clonePersistedValue(this.store.get<TAgentState>(this.sessionStateKey(id, 'agentState')));
+    return clonePersistedValue(this.read<TAgentState>(this.sessionStateKey(id, 'agentState')));
   }
 
   saveSessionHistory(id: string, history: readonly ChatMessage[]): void {
@@ -118,19 +121,47 @@ export class SessionService {
     if (!id) return;
     this.agentStateCache.set(id, undefined);
     const sessions = this.getSessions().filter(s => s.id !== id);
-    void this.store.update(SESSIONS_KEY, sessions);
+    this.enqueueUpdate(SESSIONS_KEY, sessions);
     for (const suffix of SESSION_STATE_SUFFIXES) {
-      void this.store.update(this.sessionStateKey(id, suffix), undefined);
+      this.enqueueUpdate(this.sessionStateKey(id, suffix), undefined);
+    }
+  }
+
+  async flush(): Promise<void> {
+    await this.writeQueue;
+    if (this.writeError !== undefined) {
+      const failure = new Error('session-service:persist-failed') as Error & { cause?: unknown };
+      failure.cause = this.writeError;
+      throw failure;
     }
   }
 
   private updateSessionState(id: string, suffix: SessionStateSuffix, value: unknown): void {
     if (!id) return;
-    void this.store.update(this.sessionStateKey(id, suffix), value);
+    this.enqueueUpdate(this.sessionStateKey(id, suffix), value);
   }
 
   private sessionStateKey(id: string, suffix: SessionStateSuffix): string {
     return `deepseek.session.${id}.${suffix}`;
+  }
+
+  private read<T>(key: string, defaultValue?: T): T | undefined {
+    if (this.writeThroughCache.has(key)) {
+      return clonePersistedValue(this.writeThroughCache.get(key) as T | undefined) ?? defaultValue;
+    }
+    return clonePersistedValue(this.store.get<T>(key, defaultValue));
+  }
+
+  private enqueueUpdate(key: string, value: unknown): void {
+    const snapshot = clonePersistedValue(value);
+    this.writeThroughCache.set(key, snapshot);
+    this.writeQueue = this.writeQueue
+      .then(async () => {
+        await this.store.update(key, clonePersistedValue(snapshot));
+      })
+      .catch((error: unknown) => {
+        this.writeError ??= error;
+      });
   }
 }
 

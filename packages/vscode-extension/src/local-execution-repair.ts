@@ -329,9 +329,15 @@ export function buildLocalExecutionAgentCallbacks(deps: LocalExecutionRepairCall
         confirmResult.allow ? confirmResult.confirmationRef : undefined,
       );
     },
-    onMemoryWrite: async (proposal) => {
-      new MemoryService({ workspaceRoot }).acceptWriteProposal(proposal);
+    onMemorySearch: async (query, maxResults) => {
+      const matches = new MemoryService({ workspaceRoot }).searchMemory(query, maxResults);
+      return matches.length > 0
+        ? matches.map(match => `${match.path}:${match.line}: ${match.text}`).join('\n')
+        : 'No relevant memory index entries were found.';
     },
+    onMemoryRead: async (path, startLine, maxLines) => (
+      new MemoryService({ workspaceRoot }).readMemoryDetail(path, startLine, maxLines)
+    ),
     mcpToolRefs,
     onPrepareMcpToolCall,
     signal,

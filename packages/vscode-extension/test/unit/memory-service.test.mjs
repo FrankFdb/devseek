@@ -24,12 +24,17 @@ execSync(
 
 const req = createRequire(import.meta.url);
 const { MemoryService } = req(bundlePath);
+const { CanonicalMemoryPolicyService } = req('@devseek-netai/shared');
 
 function withTempWorkspace(fn) {
   const dir = mkdtempSync(path.join(tmpdir(), 'devseek-memory-'));
+  const previousMemoryHome = process.env.DEVSEEK_MEMORY_HOME;
+  process.env.DEVSEEK_MEMORY_HOME = path.join(dir, '.test-user-memory');
   try {
     return fn(dir);
   } finally {
+    if (previousMemoryHome === undefined) delete process.env.DEVSEEK_MEMORY_HOME;
+    else process.env.DEVSEEK_MEMORY_HOME = previousMemoryHome;
     rmSync(dir, { recursive: true, force: true });
   }
 }
@@ -41,8 +46,8 @@ function write(root, relPath, content) {
   return absPath;
 }
 
-function readStructuredMemory(root) {
-  return JSON.parse(readFileSync(path.join(root, '.devseek/memory.json'), 'utf8'));
+function readStructuredMemory(service) {
+  return JSON.parse(readFileSync(service.getLocation().statePath, 'utf8'));
 }
 
 test('MemoryService: writes structured memory with schema, scope, and active status', () => {
@@ -77,7 +82,67 @@ test('MemoryService: writes structured memory with schema, scope, and active sta
     const records = service.retrieve({ types: ['verified-experience'] });
     assert.equal(records.length, 1);
     assert.equal(records[0].content, '本仓库默认使用 npm test 做回归验证。');
-    assert.equal(readStructuredMemory(workspace).records.length, 1);
+    const persisted = readStructuredMemory(service);
+    assert.equal(persisted.version, 3);
+    assert.equal(persisted.revision, 1);
+    assert.equal(persisted.records.length, 1);
+    assert.equal(persisted.lifecycleReceipts.length, 1);
+  });
+});
+
+test('T5 MemoryService: model task history persists without authority elevation and records use after restart', () => {
+  withTempWorkspace((workspace) => {
+    let now = 1_000;
+    const service = new MemoryService({ workspaceRoot: workspace, now: () => now });
+    const proposal = service.proposeWrite({
+      content: 'src/bridge.ts 的恢复验证使用 npm run test:bridge，并以真实退出码为准。',
+      source: { kind: 'task-history', ref: 'run:bridge-repair' },
+      reason: 'Model-proposed durable task history',
+      tags: ['model-extraction', 'path:src/bridge.ts'],
+    });
+
+    assert.equal(proposal.scope, 'repository');
+    assert.equal(proposal.classification, 'workspace');
+    assert.equal(proposal.requiresUserApproval, false);
+    assert.equal(proposal.provenance.approvalState, 'not-required');
+    const record = service.acceptWriteProposal(proposal);
+    assert.equal(record.provenance.sourceKind, 'task-history');
+
+    const candidates = service.retrieveCodingMemoryCandidates({
+      query: '继续检查 src/bridge.ts 的恢复逻辑',
+      relatedPaths: ['src/bridge.ts'],
+      requireContextMatch: true,
+    });
+    const decision = new CanonicalMemoryPolicyService().selectContext({
+      candidates,
+      workspaceRoot: workspace,
+      now,
+    });
+    now = 2_000;
+    const receipts = service.recordContextUse(decision, 'run:restart-validation');
+    assert.equal(receipts.length, 1);
+    assert.equal(receipts[0].action, 'context-use');
+
+    const restarted = new MemoryService({ workspaceRoot: workspace, now: () => now });
+    const restored = restarted.retrieve()[0];
+    assert.equal(restored.id, record.id);
+    assert.equal(restored.usageCount, 1);
+    assert.equal(restored.lastUsedAt, 2_000);
+    const persisted = readStructuredMemory(service);
+    assert.equal(persisted.revision, 2);
+    assert.deepEqual(persisted.lifecycleReceipts.map(receipt => receipt.action), ['write', 'context-use']);
+  });
+});
+
+test('T5 MemoryService: malformed durable memory fails closed without overwriting evidence', () => {
+  withTempWorkspace((workspace) => {
+    const service = new MemoryService({ workspaceRoot: workspace });
+    const original = '{"version":3,"records":[';
+    mkdirSync(path.dirname(service.getLocation().statePath), { recursive: true });
+    writeFileSync(service.getLocation().statePath, original, 'utf8');
+
+    assert.throws(() => service.retrieve(), /memory-store:invalid-document/u);
+    assert.equal(readFileSync(service.getLocation().statePath, 'utf8'), original);
   });
 });
 

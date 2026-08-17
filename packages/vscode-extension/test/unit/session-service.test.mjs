@@ -120,7 +120,7 @@ test('SessionService: round-trips isolated persisted state', () => {
   assert.deepEqual(service.getSessionAgentState('a'), { changedPaths: ['src/service.ts'], completed: false });
 });
 
-test('SessionService: agent state has read-your-writes semantics before async persistence', () => {
+test('SessionService: agent state has read-your-writes semantics before async persistence', async () => {
   const store = createDeferredStore();
   const service = new SessionService(store);
   const agentState = {
@@ -145,7 +145,9 @@ test('SessionService: agent state has read-your-writes semantics before async pe
   loaded.changedPaths.push('wrong.ts');
   assert.deepEqual(service.getSessionAgentState('a').changedPaths, ['src/service.ts']);
 
+  await Promise.resolve();
   store.flush();
+  await service.flush();
   assert.deepEqual(store.data.get('deepseek.session.a.agentState'), {
     semanticContract: { goal: 'implement the approved plan', mode: 'code' },
     changedPaths: ['src/service.ts'],
@@ -177,7 +179,7 @@ test('SessionService: keeps state isolated between sessions', () => {
   assert.deepEqual(service.loadSessionState('b').files, { b: '/workspace/b.ts' });
 });
 
-test('SessionService: delete removes meta and every persisted state field', () => {
+test('SessionService: delete removes meta and every persisted state field', async () => {
   const store = createStore();
   const service = new SessionService(store);
   service.saveSessionMeta({ id: 'a', title: 'A', createdAt: 1 });
@@ -187,10 +189,35 @@ test('SessionService: delete removes meta and every persisted state field', () =
   service.saveSessionAnalysisText('a', 'analysis');
   service.saveSessionAgentState('a', { completed: true });
   service.deleteSession('a');
+  await service.flush();
   assert.deepEqual(service.getSessions(), []);
   for (const suffix of ['history', 'files', 'summary', 'analysisText', 'agentState']) {
     assert.equal(store.data.has(`deepseek.session.a.${suffix}`), false, `${suffix} must be removed`);
   }
+});
+
+test('T5 SessionService: flush preserves ordered state for a restarted service', async () => {
+  const store = createStore();
+  const running = new SessionService(store);
+
+  running.setActiveSessionId('restart-session');
+  running.saveSessionMeta({ id: 'restart-session', title: 'Bridge repair', createdAt: 10 });
+  running.saveSessionHistory('restart-session', [{ role: 'user', content: '继续修复 bridge' }]);
+  running.saveSessionAgentState('restart-session', {
+    taskId: 'task-bridge',
+    status: 'paused',
+    pendingTodos: ['重新运行验证'],
+  });
+  await running.flush();
+
+  const restarted = new SessionService(store);
+  assert.equal(restarted.getActiveSessionId(), 'restart-session');
+  assert.deepEqual(restarted.getSessions().map(session => session.id), ['restart-session']);
+  assert.deepEqual(restarted.loadSessionState('restart-session').agentState, {
+    taskId: 'task-bridge',
+    status: 'paused',
+    pendingTodos: ['重新运行验证'],
+  });
 });
 
 test('SessionService: ignores empty session ids', () => {

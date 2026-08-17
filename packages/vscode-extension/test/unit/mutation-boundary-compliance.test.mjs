@@ -99,6 +99,8 @@ test('Mutation guard: workspace writes in audited flows route through the writer
     .sort();
   assert.deepEqual(directOwners, [
     'src/bridge-client.ts',
+    'src/memory/memory-pipeline-store.ts',
+    'src/memory/memory-projection.ts',
     'src/memory/memory-store.ts',
     'src/ui/real-plugin-harness.ts',
     'src/workspace/coding-workspace-batch-mutation-adapter.ts',
@@ -299,7 +301,7 @@ test('Mutation guard: tool planning consumes policy before every execution branc
   assert.match(toolLoop, /toolPlan\.permission\?\.action === 'deny'/);
   assert.match(toolLoop, /toolPlan\.permission\?\.action === 'requireConfirm'/);
   assert.match(toolLoop, /hasEvidenceAwareToolAuthority\(toolPlan\.kind, callbacks\)/);
-  assert.match(agenticLoop, /callbacks = \{ \.\.\.callbacks, executionMode: workflowMode \}/);
+  assert.match(agenticLoop, /callbacks = copyAgentLoopCallbacks\(callbacks, \{ executionMode: workflowMode \}\)/);
   assert.doesNotMatch(writeAuthority, /if \(!callbacks\.onResolveFileWriteConstraint\) return true/);
   assert.match(source('src/extension.ts'), /agentKernelService\.executeCanonicalTask\(\{[\s\S]*?callbacks:\s*\{[\s\S]*?executionMode:\s*workflow\.toolPolicyMode/);
 });

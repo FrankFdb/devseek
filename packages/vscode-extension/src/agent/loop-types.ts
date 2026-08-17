@@ -111,7 +111,14 @@ export interface AgentLoopCallbacks {
    * Returns true to signal the loop should stop.
    */
   onTaskComplete?: (summary: string) => void | Promise<void>;
-  onMemoryWrite?: (proposal: MemoryWriteProposal) => Promise<void>;
+  /** Prepares an approval-backed, evidence-bearing machine-local memory mutation. */
+  onPrepareMemoryWrite?: (
+    proposal: MemoryWriteProposal,
+  ) => Promise<AgentPreparedToolExecution<string>>;
+  /** Searches only the machine-local, repository-scoped memory projection. */
+  onMemorySearch?: (query: string, maxResults?: number) => Promise<string>;
+  /** Reads one bounded memory index or rollout path; never reads arbitrary files. */
+  onMemoryRead?: (path: string, startLine?: number, maxLines?: number) => Promise<string>;
   /**
    * P3-5: AI called an MCP tool (mcp__server__tool) — route to McpManager.
    * Return the tool's text output so it can be injected back into the conversation.
