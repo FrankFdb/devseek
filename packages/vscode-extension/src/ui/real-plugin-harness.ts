@@ -4,6 +4,12 @@ import * as vscode from 'vscode';
 import type { DeepSeekViewProvider } from './deepseek-view-provider';
 
 type HarnessViewProvider = Pick<DeepSeekViewProvider, 'focus' | 'webview' | 'submitHarnessChatMessage'>;
+type HarnessSessionMeta = { readonly id: string; readonly title: string };
+type HarnessSessionControls = {
+  readonly getActiveSessionId: () => string;
+  readonly getSessions: () => readonly HarnessSessionMeta[];
+  readonly loadSession: (webview: vscode.Webview, sessionId: string) => Promise<void>;
+};
 type HarnessRunChat = (
   webview: vscode.Webview,
   userDisplay: string,
@@ -22,6 +28,7 @@ export function registerRealPluginDeepSeekHarnessCommand(
   context: vscode.ExtensionContext,
   viewProvider: HarnessViewProvider,
   runChat: HarnessRunChat,
+  sessionControls?: HarnessSessionControls,
 ): void {
   if (process.env.DEVSEEK_REAL_PLUGIN_DEEPSEEK !== '1') return;
 
@@ -61,6 +68,38 @@ export function registerRealPluginDeepSeekHarnessCommand(
       recordRealPluginHarnessProgress('extension-command-submit-chat-completed', { route: 'webview-message' });
     },
   ));
+
+  if (sessionControls) {
+    context.subscriptions.push(vscode.commands.registerCommand(
+      '_devseek.harnessSessionSnapshot',
+      () => snapshotHarnessSessions(sessionControls),
+    ));
+    context.subscriptions.push(vscode.commands.registerCommand(
+      '_devseek.harnessLoadSession',
+      async (sessionId: string) => {
+        const requestedId = String(sessionId || '').trim();
+        if (!requestedId || !sessionControls.getSessions().some(session => session.id === requestedId)) {
+          throw new Error('DevSeek harness cannot load an unknown session');
+        }
+        viewProvider.focus();
+        const webview = await waitForHarnessWebview(() => viewProvider.webview, 30_000);
+        if (!webview) throw new Error('DevSeek harness could not resolve the chat webview within 30s');
+        await sessionControls.loadSession(webview, requestedId);
+        recordRealPluginHarnessProgress('extension-command-session-loaded', { sessionId: requestedId });
+        return snapshotHarnessSessions(sessionControls);
+      },
+    ));
+  }
+}
+
+function snapshotHarnessSessions(sessionControls: HarnessSessionControls): {
+  activeSessionId: string;
+  sessions: readonly HarnessSessionMeta[];
+} {
+  return {
+    activeSessionId: sessionControls.getActiveSessionId(),
+    sessions: sessionControls.getSessions().map(session => ({ id: session.id, title: session.title })),
+  };
 }
 
 export function recordRealPluginHarnessProgress(stage: string, extra?: Record<string, unknown>): void {

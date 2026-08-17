@@ -147,3 +147,24 @@ Codex 的两阶段设计解决了三个最危险的问题：主任务与学习�
 6. 最终全面矩阵继续覆盖 T1-T4，防止记忆改动破坏多语言语义、实时 steering、工作区写入边界、DeepSeek 返回兼容和连接器证据。
 
 这份文档记录的是可复现的工程推理方法、证据和取舍，不包含或冒充模型私有隐藏思维链。后续 DevSeek 专题可复用同样模板：固定上游基线、区分源码事实/官方文档/推断、建立责任映射、定义不变量、实现失败关闭、先 focused 再 comprehensive、最后把反例写回设计记录。
+
+## 11. 2.0.24 纵向仿真的根因准则
+
+中型程序四轮旅程再次证明：仿真 case 是系统探针，不是实现目标。发现失败时使用下面的固定判断链：
+
+1. 先确定事实在哪一段丢失：原始用户输入、session 投影、模型提案、本地 authority、工具执行、验证或终态。
+2. 找到该事实的唯一 semantic owner，并检查 sibling 入口是否存在同类问题。
+3. 修 owner 的行为合同；删除通用层对具体 case、prompt、provider plan 的了解。
+4. 用近邻负例证明边界仍在：新 session 不继承、显式文件 scope 仍收窄、后台 run 不成为前台终态、父仓库文件不污染嵌套 workspace。
+5. 聚焦重放原失败旅程，再运行完整 T1-T5 矩阵，防止局部正确造成旧能力回退。
+
+本轮具体应用：
+
+- session 返回失败归入 projection policy，修复省略式 continuation 的有界历史/working-set 保留，没有增加项目关键词。
+- background terminal 污染归入 run identity，后台 memory inference 获得独立 run context、operation 和 settlement。
+- review 证据不足归入 scenario evidence ownership，领域场景声明 source inventory 和 evidence facts，通用桥只校验结构。
+- 嵌套 workspace 脏状态归入 Git observer，以 workspace cwd/pathspec 和路径投影修复整个类别。
+- 模型证据提权归入 memory evidence authority，以 catalog descriptor 验证来源、认知状态和结果，字符串 ref 不再足够。
+- 跨 rollout 内建引用碰撞归入 memory evidence identity；所有 intrinsic ref 由一个 owner 加 rollout 命名空间，v1 pending 与 succeeded Stage1 output 在加载边界共同迁移。
+
+最终证据为 shared `341/341`、extension `182/182 suites`，聚焦 r5 四轮中型项目通过，以及全面 run `20260817-t1-t5-memory-session-complete-2.0.24-final` 的 15/15 steps、63 targeted、56 controlled executions（55 unique controlled）、118 selected、94 required、43/43 dimensions 和零缺失执行证据。这仍是本地 T3 可观察行为结论，不替代真实 Provider 与 C14 外部资格。

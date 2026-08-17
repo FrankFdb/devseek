@@ -214,18 +214,20 @@ Claude Code 核心 agent loop 仍未在公开仓库中提供，不能逐行确�
 |---|---|---|
 | 写入总流程 | `codex-rs/memories/README.md`、`write/src/start.rs` | 用户任务后异步启动；根任务/有效仓库才 enqueue；后台失败不回滚用户任务 |
 | 有界 Phase 1 | `write/src/phase1.rs`、`templates/memories/stage_one_system.md` | `memory-pipeline-store.ts` 租约、重试/no-output；`memory-semantic-model.ts` 严格模型提取、secret/外部内容边界 |
+| Detached memory runtime | `write/src/runtime.rs` | `createProviderMemoryModel` 为每次后台推理建立独立 `DevSeekRunContext`、operation id、provider evidence 和 settlement，不复用已结算前台 run |
 | 串行 Phase 2 | `write/src/phase2.rs`、`templates/memories/consolidation.md` | 单 consolidation lease、watermark、模型建议后由 `MemoryService` 本地仲裁、确定性投影 |
 | 渐进读取 | `ext/memories/src/extension.rs`、`src/prompts.rs`、`templates/memories/read_path.md` | 小摘要常驻、索引搜索、1-2 个明细按需读取，路径和行数有界 |
 | 显式 ad-hoc note | `ext/memories/src/tools/ad_hoc_note.rs`、`src/local/ad_hoc_note.rs` | `memory_write` 不在自治提示中；用户显式要求时经确认、prepared authority、evidence 和 readback 写入 |
 | 引用与使用 | `memories/read/src/usage.rs`、`citations.rs`、`state/src/runtime/memories.rs` | 召回候选携带 rollout/evidence ref；实际上下文使用更新计数、时间和生命周期回执 |
 | 会话续接分离 | `core/src/session/session.rs` | `SessionService` write-through/flush 精确保存 session state；长期记忆不重建丢失历史 |
+| Git 状态工作目录 | `git-utils/src/status.rs`、`status_tests.rs` | Codex 把 repo root 作为共享请求 key，同时从任务 cwd 执行 status。DevSeek 依此责任区分，用 workspace cwd 和 `-- .` 限定嵌套工作区，再把 repo-relative 路径投影回 workspace |
 
 ### 责任映射结论
 
 DevSeek 对标的是 Codex 的责任和行为合同，不复制 Rust/SQLite 形状：
 
-1. 原始 turn、steering、工具和验证 receipt 先形成不可变 rollout 输入。
-2. 模型只拥有语义提取和整合建议权；本地代码拥有 secret、来源、作用域、冲突、TTL、权限和落盘权。
+1. 原始 turn、steering、工具和验证 receipt 先形成不可变 rollout 输入，并投影为带 source authority、epistemic status 与 outcome 的 evidence catalog。
+2. 模型只拥有语义提取和整合建议权；候选不能把 assistant、外部或失败证据自报为 `tool-verified success`；本地代码拥有证据等级、secret、来源、作用域、冲突、TTL、权限和落盘权。
 3. auto-memory 放在机器本地，以 Git common dir 识别仓库；不污染 workspace，不接受项目内容重定向存储。
 4. `memory_write` 是 `local-state` 外部效果，不是 terminal/process；每个具体写入仍需当前确认、canonical authority、external-effect settlement 和写后证据。
 5. 历史命令、路径和偏好都是低权限上下文。当前用户输入、当前规则、沙箱、工具权限和现场证据始终优先。
@@ -238,4 +240,4 @@ DevSeek 对标的是 Codex 的责任和行为合同，不复制 Rust/SQLite 形�
 
 ### 验收结论
 
-T5 focused exact-VSIX 两进程重启和默认全面矩阵均通过。全面 run `20260817-t5-memory-acceptance` 执行 107 个 selected case、13 个 controlled suites；83 个 required acceptance case 全覆盖，missing dimensions 和 execution evidence missing 均为 0。该证据证明本地 T3 可观察行为，不宣称 Claude Code 闭源实现等价，也不替代 C14 发布资格。
+T5 focused exact-VSIX 两进程重启、T1-T5 中型项目跨 session/重启和默认全面矩阵均通过。最终全面 run `20260817-t1-t5-memory-session-complete-2.0.24-final` 执行 63 个 targeted case、14 个 controlled suites 的 56 次真实流程（55 个唯一 controlled case id），合并为 118 selected；94 个 required acceptance case、43 个设计维度全覆盖，missing suites/dimensions 和 execution evidence missing 均为 0。该证据证明本地 T3 可观察行为，不宣称 Claude Code 闭源实现等价，也不替代 C14 发布资格。

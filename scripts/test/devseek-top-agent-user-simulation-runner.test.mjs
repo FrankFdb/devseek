@@ -50,6 +50,15 @@ test('controlled VSIX harness exposes a machine-readable suite case catalog', as
     ['t5-capture-project-memory', 't5-restart-use-project-memory'],
   );
   assert.deepEqual(
+    catalog.suites['t5-medium-program-session-restart'].map(entry => entry.id),
+    [
+      't5-medium-program-core',
+      't5-medium-program-isolated-session',
+      't5-medium-program-return-primary',
+      't5-medium-program-restart-primary',
+    ],
+  );
+  assert.deepEqual(
     catalog.suites['prior-task-continuation-product'].map(entry => entry.id),
     [
       'prior-plan-source-change',
@@ -256,11 +265,18 @@ test('top-agent user simulation runner plans targeted checks before broad contro
     'terminal-symlink-workdir-boundary',
     'terminal-dynamic-path-fail-closed',
     't5-semantic-typo-consolidation',
+    't5-production-receipt-authority',
     't5-no-output-low-signal',
     't5-external-injection-isolation',
     't5-secret-redaction-retry',
     't5-newer-correction-supersedes',
     't5-unverified-success-rejected',
+    't5-model-evidence-upgrade-rejected',
+    't5-network-authority-rejected',
+    't5-retry-budget-exhausted',
+    't5-v1-restart-migration',
+    't5-intrinsic-evidence-rollout-namespace',
+    't5-v1-succeeded-output-migration',
     't5-bounded-progressive-read',
     't5-worktree-share-repo-isolation',
     't5-background-failure-isolation',
@@ -281,6 +297,7 @@ test('top-agent user simulation runner plans targeted checks before broad contro
     't3-deepseek-web-compat',
     't4-permission-write-boundary',
     't5-memory-restart',
+    't5-medium-program-session-restart',
     'independent-user-diversity-product',
     'coding-conformance-product',
     'r2-07f-connector-security',
@@ -582,7 +599,7 @@ test('top-agent user simulation runner renders markdown from existing evidence w
     assert.match(markdown, /--controlled-suites realistic-product/);
     assert.match(markdown, /focused-regression-only-not-release-acceptance/);
     assert.match(markdown, /Selected case count: `2`/);
-    assert.match(markdown, /Required acceptance case count: `83`/);
+    assert.match(markdown, /Required acceptance case count: `94`/);
     assert.match(markdown, /Execution evidence missing:/);
     assert.match(markdown, /realistic-product:driver-cases-missing/);
     assert.match(markdown, /realistic-product:driver-case-missing:realistic-python-log-json-followup/);
@@ -752,6 +769,12 @@ test('top-agent user simulation runner rejects acceptance reports without per-ca
         't5-capture-project-memory',
         't5-restart-use-project-memory',
       ],
+      't5-medium-program-session-restart': [
+        't5-medium-program-core',
+        't5-medium-program-isolated-session',
+        't5-medium-program-return-primary',
+        't5-medium-program-restart-primary',
+      ],
       'independent-user-diversity-product': [
         'diverse-novice-typo-create',
         'diverse-asr-readonly-review',
@@ -804,11 +827,18 @@ test('top-agent user simulation runner rejects acceptance reports without per-ca
       'semantic-destructive-proposal-confirmation-consistency',
       'external-semantic-intent-routing-matrix',
       't5-semantic-typo-consolidation',
+      't5-production-receipt-authority',
       't5-no-output-low-signal',
       't5-external-injection-isolation',
       't5-secret-redaction-retry',
       't5-newer-correction-supersedes',
       't5-unverified-success-rejected',
+      't5-model-evidence-upgrade-rejected',
+      't5-network-authority-rejected',
+      't5-retry-budget-exhausted',
+      't5-v1-restart-migration',
+      't5-intrinsic-evidence-rollout-namespace',
+      't5-v1-succeeded-output-migration',
       't5-bounded-progressive-read',
       't5-worktree-share-repo-isolation',
       't5-background-failure-isolation',

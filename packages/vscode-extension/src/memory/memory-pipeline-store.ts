@@ -9,6 +9,10 @@ import {
   type MemoryStage1Output,
 } from './pipeline-types';
 import {
+  canonicalMemoryEvidenceRef,
+  normalizeMemoryRolloutEvidence,
+} from './memory-evidence';
+import {
   resolveRepositoryMemoryLocation,
   type RepositoryMemoryLocation,
   type RepositoryMemoryLocationOptions,
@@ -16,7 +20,9 @@ import {
 
 const DEFAULT_LEASE_MS = 5 * 60_000;
 const MAX_RETRY_DELAY_MS = 6 * 60 * 60_000;
+const MAX_STAGE1_ATTEMPTS = 3;
 const MAX_JOBS = 512;
+const LEGACY_MEMORY_PIPELINE_VERSION = 'devseek.memory-pipeline/v1';
 
 export interface MemoryPipelineStoreOptions extends RepositoryMemoryLocationOptions {
   location?: RepositoryMemoryLocation;
@@ -97,7 +103,7 @@ export class MemoryPipelineStore {
   failStage1(jobId: string, workerId: string, error: unknown, now = Date.now()): MemoryStage1Job {
     return this.transitionLeasedJob(jobId, workerId, now, job => ({
       ...job,
-      status: 'failed',
+      status: job.attemptCount >= MAX_STAGE1_ATTEMPTS ? 'exhausted' : 'failed',
       updatedAt: now,
       leaseOwner: undefined,
       leaseExpiresAt: undefined,
@@ -228,14 +234,21 @@ export class MemoryPipelineStore {
       throw new Error(`memory-pipeline:symlink-rejected:${filePath}`);
     }
     try {
-      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as Partial<MemoryPipelineDocument>;
-      if (parsed.version !== MEMORY_PIPELINE_VERSION || !Array.isArray(parsed.jobs)) {
+      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as Partial<MemoryPipelineDocument> & {
+        version?: unknown;
+        jobs?: unknown[];
+      };
+      if ((parsed.version !== MEMORY_PIPELINE_VERSION && parsed.version !== LEGACY_MEMORY_PIPELINE_VERSION)
+        || !Array.isArray(parsed.jobs)) {
         throw new Error('unsupported-document');
       }
+      const jobs = parsed.jobs
+        .map(normalizePersistedJob)
+        .filter((job): job is MemoryStage1Job => Boolean(job));
       return {
         version: MEMORY_PIPELINE_VERSION,
         revision: normalizeCount(parsed.revision),
-        jobs: parsed.jobs.filter(isPlausibleJob),
+        jobs,
         consolidation: {
           lastSelectedJobIds: Array.isArray(parsed.consolidation?.lastSelectedJobIds)
             ? parsed.consolidation.lastSelectedJobIds.filter(value => typeof value === 'string')
@@ -281,19 +294,23 @@ function snapshotEvidence(evidence: MemoryRolloutEvidence): MemoryRolloutEvidenc
   if (!evidence.rolloutId.trim() || !evidence.repositoryId.trim()) {
     throw new Error('memory-pipeline:invalid-rollout-evidence');
   }
+  const normalized = normalizeMemoryRolloutEvidence(evidence);
   return Object.freeze({
-    ...evidence,
-    userTurns: Object.freeze(evidence.userTurns.map(value => String(value))),
-    changedPaths: Object.freeze(evidence.changedPaths.map(value => String(value))),
-    toolEvidence: Object.freeze(evidence.toolEvidence.map(value => String(value))),
-    verificationEvidence: Object.freeze(evidence.verificationEvidence.map(value => String(value))),
-    evidenceRefs: Object.freeze(evidence.evidenceRefs.map(value => String(value))),
+    ...normalized,
+    userTurns: Object.freeze(normalized.userTurns.map(value => String(value))),
+    changedPaths: Object.freeze(normalized.changedPaths.map(value => String(value))),
+    toolEvidence: Object.freeze(normalized.toolEvidence.map(value => String(value))),
+    verificationEvidence: Object.freeze(normalized.verificationEvidence.map(value => String(value))),
+    evidenceRefs: Object.freeze(normalized.evidenceRefs.map(value => String(value))),
+    evidenceCatalog: Object.freeze(normalized.evidenceCatalog.map(descriptor => Object.freeze({ ...descriptor }))),
   });
 }
 
 function isStage1Claimable(job: MemoryStage1Job, now: number): boolean {
   if (job.status === 'pending') return job.nextAttemptAt <= now;
-  if (job.status === 'failed') return job.nextAttemptAt <= now;
+  if (job.status === 'failed') {
+    return job.attemptCount < MAX_STAGE1_ATTEMPTS && job.nextAttemptAt <= now;
+  }
   return job.status === 'leased' && (job.leaseExpiresAt ?? 0) <= now;
 }
 
@@ -306,7 +323,11 @@ function assertConsolidationLease(document: MemoryPipelineDocument, workerId: st
 
 function pruneJobs(jobs: readonly MemoryStage1Job[], now: number): MemoryStage1Job[] {
   return [...jobs]
-    .filter(job => !job.consolidatedAt || now - job.consolidatedAt < 30 * 24 * 60 * 60_000)
+    .filter(job => {
+      const terminalAt = job.consolidatedAt
+        ?? (job.status === 'exhausted' || job.status === 'no-output' ? job.updatedAt : undefined);
+      return !terminalAt || now - terminalAt < 30 * 24 * 60 * 60_000;
+    })
     .sort((left, right) => left.createdAt - right.createdAt)
     .slice(-MAX_JOBS);
 }
@@ -323,6 +344,52 @@ function isPlausibleJob(value: unknown): value is MemoryStage1Job {
   if (!value || typeof value !== 'object') return false;
   const job = value as Partial<MemoryStage1Job>;
   return Boolean(job.id && job.rolloutId && job.status && job.evidence);
+}
+
+function normalizePersistedJob(value: unknown): MemoryStage1Job | undefined {
+  if (!isPlausibleJob(value)) return undefined;
+  const status = normalizeJobStatus(value.status, normalizeCount(value.attemptCount));
+  const evidence = snapshotEvidence(value.evidence);
+  return {
+    ...value,
+    status,
+    attemptCount: normalizeCount(value.attemptCount),
+    createdAt: normalizeTimestamp(value.createdAt),
+    updatedAt: normalizeTimestamp(value.updatedAt),
+    nextAttemptAt: normalizeTimestamp(value.nextAttemptAt),
+    evidence,
+    ...(value.output ? { output: normalizePersistedStage1Output(value.output, evidence) } : {}),
+  };
+}
+
+function normalizePersistedStage1Output(
+  output: MemoryStage1Output,
+  evidence: MemoryRolloutEvidence,
+): MemoryStage1Output {
+  return {
+    ...output,
+    candidates: output.candidates.map(candidate => ({
+      ...candidate,
+      evidenceRefs: [...new Set(candidate.evidenceRefs.map(ref => (
+        canonicalMemoryEvidenceRef(evidence, ref)
+      )))],
+    })),
+  };
+}
+
+function normalizeJobStatus(value: unknown, attemptCount: number): MemoryStage1Job['status'] {
+  if (value === 'failed' && attemptCount >= MAX_STAGE1_ATTEMPTS) return 'exhausted';
+  if (value === 'pending'
+    || value === 'leased'
+    || value === 'succeeded'
+    || value === 'no-output'
+    || value === 'failed'
+    || value === 'exhausted') return value;
+  throw new Error('memory-pipeline:invalid-job-status');
+}
+
+function normalizeTimestamp(value: unknown): number {
+  return Number.isFinite(value) && Number(value) >= 0 ? Number(value) : 0;
 }
 
 function truncateError(error: unknown): string {

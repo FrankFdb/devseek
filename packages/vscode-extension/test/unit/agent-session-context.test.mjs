@@ -218,6 +218,44 @@ test('Agent session projection: independent new work cannot inherit stale task c
   }
 });
 
+test('Agent session projection: explicit return preserves prior context when the new constraint uses different words', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-agent-session-return-'));
+  try {
+    const storePath = path.join(root, 'src', 'task-store.js');
+    const servicePath = path.join(root, 'src', 'task-service.js');
+    mkdirSync(path.dirname(storePath), { recursive: true });
+    writeFileSync(storePath, 'module.exports = { TaskStore: class TaskStore {} };\n');
+    writeFileSync(servicePath, 'module.exports = { TaskService: class TaskService {} };\n');
+
+    const projection = projectSessionContinuationFromState({
+      workspaceRoot: root,
+      currentPrompt: '回到刚才那个主任务，第二断补可注入输出和汇总，旧 API 保留。',
+      newSession: false,
+      intent: { mode: 'edit', signals: [] },
+      state: {
+        lastUserPrompt: '实现任务板核心，标记 SESSION_PRIMARY_TASK_BOARD_20260817。',
+        lastSummary: '核心 store 和 service 已实现并通过测试。',
+        changedPaths: ['src/task-store.js', 'src/task-service.js'],
+        completed: true,
+        savedAt: Date.now(),
+      },
+      lastAgentChangedPaths: ['src/task-store.js', 'src/task-service.js'],
+      recentFilePaths: [storePath, servicePath],
+      history: [
+        { role: 'user', content: '实现任务板核心，标记 SESSION_PRIMARY_TASK_BOARD_20260817。' },
+        { role: 'assistant', content: '核心 store 和 service 已实现并通过测试。' },
+      ],
+    });
+
+    assert.equal(projection.mode, 'context-and-files');
+    assert.deepEqual(projection.restoreFiles, [servicePath, storePath]);
+    assert.match(projection.contextText, /SESSION_PRIMARY_TASK_BOARD_20260817/);
+    assert.match(projection.contextText, /src\/task-service\.js/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('Agent session projection: run follow-up restores files without stale task prose', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-agent-session-projection-run-'));
   try {

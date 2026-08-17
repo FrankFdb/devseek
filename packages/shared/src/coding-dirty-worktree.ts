@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, type ExecFileSyncOptionsWithStringEncoding } from 'node:child_process';
 import * as nodePath from 'node:path';
 
 import { codingSemanticDigest } from './coding-semantic-digest';
@@ -103,24 +103,34 @@ export class CanonicalDirtyWorktreePolicyService implements DirtyWorktreePolicyP
 export function observeGitWorktreeSync(options: GitWorktreeObservationOptions): CodingWorktreeSnapshot {
   const workspaceRoot = nodePath.resolve(options.workspaceRoot);
   const execute = options.execute ?? execFileSync;
+  const commandOptions: ExecFileSyncOptionsWithStringEncoding = {
+    encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  };
   try {
+    const workspacePrefix = String(execute('git', [
+      '-C',
+      workspaceRoot,
+      'rev-parse',
+      '--show-prefix',
+    ], commandOptions) || '').trim();
     const output = execute('git', [
       '-C',
       workspaceRoot,
       'status',
       '--porcelain=v1',
       '-z',
+      '--no-renames',
       '--untracked-files=all',
       '--ignored=no',
-    ], {
-      encoding: 'utf8',
-      maxBuffer: 16 * 1024 * 1024,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+      '--',
+      '.',
+    ], commandOptions);
     return createCodingWorktreeSnapshot({
       workspaceRoot,
       repositoryState: 'git',
-      entries: parseGitPorcelainV1Z(String(output || '')),
+      entries: projectGitEntriesToWorkspace(parseGitPorcelainV1Z(String(output || '')), workspacePrefix),
     });
   } catch (error) {
     const status = typeof (error as { status?: unknown })?.status === 'number'
@@ -135,6 +145,32 @@ export function observeGitWorktreeSync(options: GitWorktreeObservationOptions): 
       reason: notGit ? 'workspace-not-git-managed' : 'git-status-observation-failed',
     });
   }
+}
+
+function projectGitEntriesToWorkspace(
+  entries: readonly CodingWorktreeEntry[],
+  rawPrefix: string,
+): readonly CodingWorktreeEntry[] {
+  const prefix = rawPrefix.trim().replace(/\\/gu, '/').replace(/^\.\//u, '').replace(/\/+$/u, '');
+  if (!prefix) return entries;
+  if (prefix.startsWith('/') || prefix.split('/').includes('..')) {
+    throw new Error('coding-dirty-worktree:unsafe-workspace-prefix');
+  }
+  const withSlash = `${prefix}/`;
+  return Object.freeze(entries.map(entry => {
+    if (!entry.path.startsWith(withSlash)) {
+      throw new Error('coding-dirty-worktree:status-path-outside-workspace');
+    }
+    const projectedPath = entry.path.slice(withSlash.length);
+    const projectedSourcePath = entry.sourcePath?.startsWith(withSlash)
+      ? entry.sourcePath.slice(withSlash.length)
+      : undefined;
+    return snapshotWorktreeEntry({
+      path: projectedPath,
+      status: entry.status,
+      ...(projectedSourcePath ? { sourcePath: projectedSourcePath } : {}),
+    });
+  }));
 }
 
 export function createCleanCodingWorktreeSnapshot(workspaceRoot: string): CodingWorktreeSnapshot {

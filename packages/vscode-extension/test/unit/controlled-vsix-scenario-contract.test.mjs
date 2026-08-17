@@ -9,6 +9,7 @@ import vm from 'node:vm';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const extensionRoot = path.resolve(__dirname, '../..');
 const harnessPath = path.join(extensionRoot, 'test/devseek-controlled-vsix-harness.mjs');
+const mediumProgramJourneyPath = path.join(extensionRoot, 'test/harness/controlled-medium-program-journey.mjs');
 const realPluginHarnessPath = path.join(extensionRoot, 'test/devseek-real-plugin-deepseek-harness.mjs');
 const cppMatrixRunCasePath = path.resolve(extensionRoot, '../../code/devseek-tests/cpp-user-matrix/run-case.mjs');
 
@@ -51,6 +52,10 @@ const REQUIRED_SCENARIOS = [
   't4-dangerous-shell-denied',
   't5-capture-project-memory',
   't5-restart-use-project-memory',
+  't5-medium-program-core',
+  't5-medium-program-isolated-session',
+  't5-medium-program-return-primary',
+  't5-medium-program-restart-primary',
   'diverse-novice-typo-create',
   'diverse-asr-readonly-review',
   'diverse-mixed-language-plan',
@@ -87,6 +92,7 @@ const REQUIRED_SUITES = [
   { id: 't3-deepseek-web-compat', scenarioCount: 2, sameDevSeekSession: false },
   { id: 't4-permission-write-boundary', scenarioCount: 4, sameDevSeekSession: false },
   { id: 't5-memory-restart', scenarioCount: 2, sameDevSeekSession: true },
+  { id: 't5-medium-program-session-restart', scenarioCount: 4, sameDevSeekSession: false },
   { id: 'independent-user-diversity-product', scenarioCount: 10, sameDevSeekSession: false },
   { id: 'coding-conformance-product', scenarioCount: 10, sameDevSeekSession: false },
   { id: 'r2-07e-stream-protocol', scenarioCount: 2, sameDevSeekSession: false },
@@ -176,7 +182,7 @@ test('controlled VSIX harness resets independent scenario seed files before each
   const source = readFileSync(harnessPath, 'utf8');
 
   assert.match(source, /function writeScenarioSeedFiles\(workspaceDir, scenario\)/, 'scenario seed reset must have one explicit helper');
-  assert.match(source, /!resumeExistingSession && \(!sameDevSeekSession \|\| caseIndex === 1\)/, 'independent suites must refresh seed files per case while restart continuations preserve them');
+  assert.match(source, /!preserveWorkspaceAcrossCases\s*&& !resumeExistingSession/, 'independent suites must refresh seed files while longitudinal journeys preserve them');
   assert.match(source, /writeScenarioSeedFiles\(workspaceDir, activeScenario\)/, 'runScenario must reset the active case before collecting its baseline');
 });
 
@@ -186,8 +192,40 @@ test('controlled VSIX T5 suite proves memory across a real process restart', () 
   assert.match(source, /restartBetweenCases:\s*true/, 'T5 must request a VS Code process restart between cases');
   assert.match(source, /function runControlledDriverSelection\(/, 'restart orchestration must have one suite-level owner');
   assert.match(source, /resumeExistingSession:\s*index > 0/, 'later processes must resume the persisted DevSeek session');
+  assert.match(source, /terminal\?\.source !== 'vscode-extension\.memory-pipeline'/, 'background memory runs must not replace the foreground user-run terminal');
   assert.match(source, /error_code:\s*'MEMORY_CONTEXT_MISSING'/, 'the Provider must fail when persisted memory is absent from model context');
   assert.match(source, /processRestartCount/, 'the driver report must expose restart evidence');
+});
+
+test('controlled VSIX T1-T5 medium journey switches sessions, returns, restarts, and retains the program artifact', () => {
+  const harnessSource = readFileSync(harnessPath, 'utf8');
+  const journeySource = readFileSync(mediumProgramJourneyPath, 'utf8');
+  const source = `${harnessSource}\n${journeySource}`;
+  const productHarness = readFileSync(path.join(extensionRoot, 'src/ui/real-plugin-harness.ts'), 'utf8');
+
+  assert.match(source, /t5-medium-program-session-restart/, 'the longitudinal suite must be registered');
+  assert.match(harnessSource, /controlledMediumProgramScenarioCatalog/, 'the generic driver must delegate the domain journey catalog');
+  assert.match(source, /restartBeforeCases:\s*\[4\]/, 'the editor must restart after returning to the primary session');
+  assert.match(source, /sessionDirective:\s*\{ mode: 'resume', alias: 'primary' \}/, 'follow-up turns must explicitly return to the original session');
+  assert.match(source, /independentReviewPaths/, 'multi-file review must declare source scope instead of assuming the primary artifact is reviewable source');
+  assert.match(journeySource, /independentReviewEvidenceFacts/, 'the domain journey must own its independent-review evidence contract');
+  assert.match(harnessSource, /controlledDeclaredReviewEvidence\(scenario\)/, 'the generic bridge must consume declared review evidence through one boundary');
+  const declaredEvidenceOwner = evaluateHarnessFunctions(
+    harnessSource,
+    'function controlledReviewEvidence(',
+    'function controlledOpenAiToolCallsResponse(',
+    ['controlledReviewEvidence', 'controlledDeclaredReviewEvidence'],
+  );
+  assert.doesNotMatch(
+    String(declaredEvidenceOwner.controlledReviewEvidence),
+    /medium-task-board-(?:cli|persistence)-complete/,
+    'the generic review evidence owner must not branch on medium-journey case identities',
+  );
+  assert.match(source, /forbiddenProviderPromptSubstrings/, 'the unrelated session must reject leaked primary-session context');
+  assert.match(source, /retainWorkspace:\s*true/, 'the generated medium program must remain under the run evidence tree');
+  assert.match(source, /TASK_PERSISTENCE_TESTS_PASSED/, 'the final process must execute persistence verification');
+  assert.match(productHarness, /_devseek\.harnessSessionSnapshot/, 'the test port must expose session identity without bypassing product storage');
+  assert.match(productHarness, /_devseek\.harnessLoadSession/, 'the test port must load through the product session callback');
 });
 
 test('controlled VSIX fake bridge advertises the connector status contract', () => {
@@ -198,6 +236,16 @@ test('controlled VSIX fake bridge advertises the connector status contract', () 
   assert.match(source, /DEEPSEEK_WEB_CONNECTOR_CAPABILITIES/, 'controlled bridge must reuse the shared connector capability set');
   assert.match(source, /loggedInLikely:\s*true/, 'controlled status must satisfy bridge health negotiation');
   assert.match(source, /connector:\s*controlledDeepSeekWebConnectorAdvertisement\(0\)/, 'controlled status must expose connector advertisement');
+});
+
+test('controlled VSIX bridge keeps user scenarios, internal memory inference, and transport separate', () => {
+  const source = readFileSync(harnessPath, 'utf8');
+
+  assert.match(source, /bindControlledInternalModelPrompt/, 'internal model prompts must use their own exact contract binder');
+  assert.match(source, /internalModelRequests:\s*\[\]/, 'internal model requests must not affect user-turn prompt correlation');
+  assert.match(source, /state\.internalModelRequests\.length \+ 1/, 'internal model ordinals must have an independent request stream');
+  assert.match(source, /function sendControlledProviderResponse\(/, 'SSE and JSON delivery must have one transport owner');
+  assert.match(source, /controlledInternalModelResponse/, 'memory inference must use the dedicated deterministic fixture');
 });
 
 test('VS Code window harnesses preserve injected test environment variables', () => {

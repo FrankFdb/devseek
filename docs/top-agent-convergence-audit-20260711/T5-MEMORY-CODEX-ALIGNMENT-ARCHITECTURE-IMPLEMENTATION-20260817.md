@@ -26,6 +26,7 @@
 | 启动资格 | `codex-rs/memories/write/src/start.rs` | 临时会话、子智能体、功能关闭或无数据库时不启动 |
 | Phase 1 | `codex-rs/memories/write/src/phase1.rs` | 有界领取、租约、并发、重试/退避、成功/无输出/失败三态 |
 | Phase 1 语义契约 | `codex-rs/memories/write/templates/memories/stage_one_system.md` | 原始回合不可变；用户纠正和工具证据优先；低信号输出空结果；外部内容不是指令；secret 脱敏 |
+| 独立模型运行时 | `codex-rs/memories/write/src/runtime.rs` | memory inference 建立自己的模型 client/session source，不借用前台用户 turn 的运行身份 |
 | Phase 2 | `codex-rs/memories/write/src/phase2.rs` | 全局锁、有界输入、基线快照、差异提交、隔离的整合智能体、心跳和恢复 |
 | 整合契约 | `codex-rs/memories/write/templates/memories/consolidation.md` | `memory_summary.md` 常驻、`MEMORY.md` 索引、明细/skills 按需；保留来源、冲突、时效和任务边界 |
 | 读取注入 | `codex-rs/ext/memories/src/extension.rs`、`src/prompts.rs` | 只注入截断后的摘要和读取策略；专用工具按配置启用 |
@@ -33,6 +34,7 @@
 | 显式更新 | `codex-rs/ext/memories/src/tools/ad_hoc_note.rs`、`src/local/ad_hoc_note.rs` | 只有用户明确要求时写一个受限 ad-hoc note；不直接编辑整合结果 |
 | 使用回执 | `codex-rs/memories/read/src/usage.rs`、`citations.rs`，`codex-rs/state/src/runtime/memories.rs` | 从受限读取与引用中识别使用，事务更新使用次数/时间，并用于选择和遗忘 |
 | 会话续接 | `codex-rs/core/src/session/session.rs` | 恢复原线程历史、标识和 rollout；与选择性长期记忆是两套机制 |
+| Git 状态作用域 | `codex-rs/git-utils/src/status.rs`、`status_tests.rs` | repo root 用于共享状态请求身份，实际 status 从任务 cwd 执行；工作目录与仓库根是不同责任 |
 
 ### 2.2 Claude Code 官方确认与源码边界
 
@@ -172,7 +174,7 @@ flowchart TD
 - `usageCount/lastUsedAt`
 - secret 脱敏与生命周期回执
 
-Phase 1 job 至少包含 `pending/leased/succeeded/no-output/failed`、租约、尝试次数、下次重试时间、不可变输入摘要和输出哈希。模型输出不是写权限，只是待仲裁建议。
+Phase 1 job 至少包含 `pending/leased/succeeded/no-output/failed/exhausted`、租约、尝试次数、下次重试时间、不可变输入摘要和输出哈希。模型输出不是写权限，只是待仲裁建议；有限重试耗尽后进入稳定终态，不能被每次启动无限重放。
 
 ## 7. 存储与迁移
 
@@ -214,10 +216,12 @@ Phase 1 job 至少包含 `pending/leased/succeeded/no-output/failed`、租约、
 | 机器本地仓库身份 | `src/memory/repository-memory-location.ts`：使用 Git common dir 形成仓库 ID，同仓库 worktree 共享、不同仓库隔离；VS Code 使用 `globalStorageUri` |
 | 持久状态 | `src/memory/memory-store.ts`：v3 schema、原子 rename、进程锁/过期锁、失败关闭、旧状态低信任迁移、生命周期回执 |
 | 两阶段队列 | `src/memory/memory-pipeline-store.ts`：幂等 enqueue、Phase 1 租约/重试/no-output、Phase 2 单租约、watermark 与清理 |
-| 模型语义 | `src/memory/memory-semantic-model.ts`：Phase 1 严格提取和 Phase 2 整合 schema；原始证据、来源和 evidence ref 必须保留 |
+| 证据采集 | `src/memory/memory-rollout-evidence.ts`：从真实 tool、verification 和 run receipt 形成结构化 descriptor，不从 assistant 文本推断验证等级 |
+| 证据权限 | `src/memory/memory-evidence.ts`：统一规范化 evidence catalog，校验 ref、source authority、epistemic status 和 outcome 的一致性 |
+| 模型语义 | `src/memory/memory-semantic-model.ts`：Phase 1 严格提取和 Phase 2 整合 schema；模型候选只能引用 catalog 中真实存在且 authority 匹配的证据 |
 | 本地仲裁 | `src/app/memory-service.ts`、`packages/shared/src/coding-memory-policy.ts`：secret、来源、外部提权、作用域、时效、冲突、使用回执和生命周期统一裁决 |
 | 渐进读取 | `src/memory/memory-projection.ts`：确定性小摘要、索引、不可变 rollout、受限 search/read；模型自由摘要不能直接进入投影 |
-| 后台编排 | `src/app/memory-pipeline-service.ts`：用户任务后异步处理；前台任务可取消后台 Provider；后台失败不改变已完成用户任务 |
+| 后台编排 | `src/app/memory-pipeline-service.ts`：用户任务后异步处理；每次模型推理使用独立 run context、operation id 和 settlement；后台失败不改变或回调已完成用户任务 |
 | 显式 ad-hoc 写入 | `src/app/evidence-aware-memory-write.ts`：只经确认后的 prepared host 写入，使用 ProductMutation evidence 和独立 active readback |
 | 主循环接入 | `src/product-coding-kernel-executor.ts`、`src/extension.ts`：终态收集原始输入、steering、工具/验证 receipt；启动处理 pending job；deactivate flush |
 | 会话恢复 | `src/app/session-service.ts`：write-through 与 flush，继续保持精确 session state，不以长期记忆重建历史 |
@@ -226,7 +230,7 @@ Phase 1 job 至少包含 `pending/leased/succeeded/no-output/failed`、租约、
 
 ### 10.2 迁移和删除
 
-1. 活动存储从 workspace 内旧 JSON 迁到机器本地、仓库隔离的 v3 状态；旧文件只读导入且降低信任，不删除用户原文件。
+1. 活动存储从 workspace 内旧 JSON 迁到机器本地、仓库隔离的 v3 状态；pipeline document 从 v1 显式迁移为 v2 evidence catalog，旧文件只读导入且降低信任，不删除用户原文件。
 2. 删除 tool loop 和 local repair 中的直接持久化回调，不保留第二个写入 owner。
 3. 长期记忆读取使用 `memory_search` / `memory_read` 受限接口；不允许任意路径读取，也不把全文无界塞进 prompt。
 4. 关键词和多语言词表只保留为确定性限制或提示。带错字、同音字、口语和命令文本的用户输入由主模型语义提案纠正；本地合同不再因文本出现 `npm run` 就强制执行。
@@ -237,14 +241,25 @@ Phase 1 job 至少包含 `pending/leased/succeeded/no-output/failed`、租约、
 
 第二次仿真已成功跨进程保存和恢复记忆，唯一失败是测试预期了不存在于 `CodingTaskMode` 的 `advise`。共享契约只允许 `explain | review | change | release`，该只读建议任务正确规范化为 `review`，因此修正 oracle 为公开合同值，没有改变产品执行行为。
 
+2.0.24 的纵向中型项目继续用失败反证边界，而不是修 prompt：
+
+1. 返回原 session 时缺少旧任务标记，根因是 lexical relevance 把使用不同词汇的省略式 follow-up 从旧历史中筛掉。统一 session projection 现在把“明确继续且没有显式新文件作用域”视为强 session 信号，保留有界历史和 working set；显式文件、新 session 和独立任务仍保持收窄/隔离。
+2. 后台 memory terminal 被测试当成前台 terminal，根因是运行观察没有按 source identity 区分 detached work。memory Provider 现在拥有独立 `DevSeekRunContext`、run/operation id 和终态；前台选择器显式排除 `vscode-extension.memory-pipeline`。
+3. 中型 review 先错误要求 primary artifact `package.json` 出现在 source snapshot，后又用通用文本无法证明优先级筛选与原子写入。场景现在声明真实 source inventory 和结构化 review evidence facts，通用桥只消费契约，不再按中型 provider plan 分支。
+4. 最终代码审计发现 `user:turn:N` 和 `assistant:summary` 只在 rollout 内唯一，多 rollout 进入 Phase 2 时可能发生 evidence ref 碰撞。内建引用现在统一由 `memory-evidence.ts` 生成 `rollout:<id>:...` 命名空间；v1 加载同时迁移 pending evidence 和已成功 Stage1 output 的 candidate refs，避免升级后的历史输出绕过规范化。
+4. retained workspace 嵌套在父 Git 仓库时，父级同名脏文件污染 dirty-worktree 判定。observer 现在从 workspace cwd 运行、用 pathspec 限定并投影路径；修正覆盖所有嵌套 workspace，而不是只放行测试目录。
+
+这些失败分别归属 session projection、run identity、review evidence ownership、worktree observation 和 memory evidence identity。没有向产品语义层增加中型项目标记、关键词或 case id。
+
 ### 10.4 验收证据
 
-- shared 全量：`340/340 PASS`。
-- extension 全量：`181/181 suites PASS`。
+- shared 全量：`341/341 PASS`。
+- extension 全量：`182/182 suites PASS`。
 - T5 聚焦 exact-VSIX：`20260817-t5-memory-focused-r3` PASS；显式写入后关闭扩展宿主，重启后恢复 `npm run test:bridge`，当前轮只读约束覆盖历史记忆。
-- 全面独立用户仿真：`20260817-t5-memory-acceptance` PASS；14 个步骤、13 个 controlled suites、107 个 selected case，required acceptance case 为 83，缺失套件、缺失维度和执行证据均为 0。
-- 报告：`docs/testing/devseek-20260817-t5-memory-acceptance.md`。
-- 验收 VSIX：`devseek-netai-latest.vsix`，候选 SHA-256 `2318193fbf8c4ff5b4a7ebf72d43d14d73235e3261ae7ea1f1d2d35cc68cbe56`。
+- T1-T5 中型项目聚焦：`20260817-t1-t5-medium-program-2.0.24-focused-r5` PASS；四轮用户输入、无关 session 隔离、返回原 session、一次真实进程重启和最终项目 readback 全部通过。
+- 全面独立用户仿真：`20260817-t1-t5-memory-session-complete-2.0.24-final` PASS；15 个步骤、14 个 controlled suites、63 个 targeted case 与 56 次真实流程执行（55 个唯一 controlled case id），合并为 118 selected；94 个 required acceptance case、43 个设计维度全覆盖，缺失套件、维度和执行证据均为 0。
+- 报告：`docs/testing/devseek-20260817-t1-t5-memory-session-complete-2.0.24-final.md`。
+- 验收 VSIX：`devseek-netai-2.0.24-debug.20260817.t160305.ga7b2a60.vsix`，SHA-256 `191e9d50214e320c33587ffebc0c94c32692f36358974681cfae4c19b944e99c`。
 
 这些结果证明本轮定义的本地可观察产品行为，不等于真实 Provider、受保护 RC、sealed holdout 或 C14 发布资格。
 

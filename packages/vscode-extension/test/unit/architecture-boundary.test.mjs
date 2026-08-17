@@ -110,7 +110,14 @@ test('Phase 0: domain roots expose explicit public boundaries', () => {
       './webview-protocol',
     ],
     'src/memory/index.ts': [
+      './memory-evidence',
+      './memory-pipeline-store',
+      './memory-projection',
+      './memory-rollout-evidence',
+      './memory-semantic-model',
       './memory-store',
+      './pipeline-types',
+      './repository-memory-location',
       './sensitive-memory-guard',
       './types',
     ],
@@ -158,8 +165,10 @@ test('Phase 2/T5: memory boundary separates schema, persistence, semantics, and 
   const memoryFiles = readdirSync(path.join(root, 'src/memory')).filter(name => name.endsWith('.ts')).sort();
   assert.deepEqual(memoryFiles, [
     'index.ts',
+    'memory-evidence.ts',
     'memory-pipeline-store.ts',
     'memory-projection.ts',
+    'memory-rollout-evidence.ts',
     'memory-semantic-model.ts',
     'memory-store.ts',
     'pipeline-types.ts',
@@ -173,6 +182,7 @@ test('Phase 2/T5: memory boundary separates schema, persistence, semantics, and 
     assert.match(types, new RegExp(`\\b${field}\\b`), `MemoryRecord includes ${field}`);
   }
   assert.match(read('src/memory/memory-pipeline-store.ts'), /claimStage1/, 'pipeline store owns leased Phase 1 claims');
+  assert.match(read('src/memory/memory-evidence.ts'), /assertMemoryCandidateEvidence/, 'evidence owner arbitrates model provenance claims');
   assert.match(read('src/memory/memory-semantic-model.ts'), /MemorySemanticExtractor/, 'semantic model owns extraction');
   assert.match(read('src/memory/memory-projection.ts'), /MemoryReadService/, 'projection boundary owns bounded recall');
   assert.match(read('src/memory/repository-memory-location.ts'), /resolveRepositoryMemoryLocation/, 'location owner isolates repository memory');

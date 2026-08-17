@@ -1,8 +1,10 @@
 import type { ChatMessage } from '../llm/types';
+import { assertMemoryCandidateEvidence } from './memory-evidence';
 import type { MemoryRecord } from './types';
 import type {
   MemoryConsolidationOutput,
   MemoryConsolidationProposal,
+  MemoryEvidenceDescriptor,
   MemoryExtractionCandidate,
   MemoryRolloutEvidence,
   MemoryStage1Job,
@@ -90,7 +92,7 @@ export function parseStage1Output(
     throw new Error('memory-extraction:too-many-candidates');
   }
   const candidates = candidatesValue.map((candidate, index) => (
-    parseExtractionCandidate(candidate, evidence.evidenceRefs, `stage1-candidate-${index + 1}`)
+    parseExtractionCandidate(candidate, evidence.evidenceCatalog, `stage1-candidate-${index + 1}`)
   ));
   if (!rolloutSummary && !rawMemory && candidates.length === 0) return undefined;
   if (!rolloutSummary || !rawMemory) throw new Error('memory-extraction:incomplete-nonempty-output');
@@ -106,24 +108,21 @@ export function parseConsolidationOutput(
   if (proposalsValue.length > MAX_CONSOLIDATION_PROPOSALS) {
     throw new Error('memory-consolidation:too-many-proposals');
   }
-  const evidenceRefs = new Set(jobs.flatMap(job => [
-    `rollout:${job.rolloutId}`,
-    ...job.evidence.evidenceRefs,
-  ]));
+  const evidenceCatalog = jobs.flatMap(job => job.evidence.evidenceCatalog);
   const proposals = proposalsValue.map((proposal, index) => (
-    parseConsolidationProposal(proposal, evidenceRefs, `consolidation-proposal-${index + 1}`)
+    parseConsolidationProposal(proposal, evidenceCatalog, `consolidation-proposal-${index + 1}`)
   ));
   return { proposals };
 }
 
 function parseConsolidationProposal(
   value: unknown,
-  allowedEvidenceRefs: ReadonlySet<string>,
+  evidenceCatalog: readonly MemoryEvidenceDescriptor[],
   label: string,
 ): MemoryConsolidationProposal {
   const object = requireObject(value, label);
   const operation = enumValue(object.operation, ['upsert', 'supersede'] as const, `${label}-operation`);
-  const candidate = parseExtractionCandidate(object.candidate, [...allowedEvidenceRefs], `${label}-candidate`);
+  const candidate = parseExtractionCandidate(object.candidate, evidenceCatalog, `${label}-candidate`);
   const supersedes = stringArray(object.supersedes, 20, 200)
     .filter(id => /^mem_[a-zA-Z0-9_-]+$/u.test(id));
   if (operation === 'supersede' && supersedes.length === 0) {
@@ -139,15 +138,15 @@ function parseConsolidationProposal(
 
 function parseExtractionCandidate(
   value: unknown,
-  allowedEvidenceRefs: readonly string[],
+  evidenceCatalog: readonly MemoryEvidenceDescriptor[],
   label: string,
 ): MemoryExtractionCandidate {
   const object = requireObject(value, label);
-  const allowedRefs = new Set(allowedEvidenceRefs);
+  const allowedRefs = new Set(evidenceCatalog.map(descriptor => descriptor.ref));
   const evidenceRefs = stringArray(object.evidence_refs, 20, 500)
-    .filter(ref => allowedRefs.has(ref) || ref.startsWith('rollout:'));
+    .filter(ref => allowedRefs.has(ref));
   if (evidenceRefs.length === 0) throw new Error(`memory-extraction:${label}-missing-evidence`);
-  return {
+  const candidate: MemoryExtractionCandidate = {
     content: requiredText(object.content, MAX_CONTENT_CHARS, `${label}-content`),
     type: enumValue(object.type, [
       'project-rule',
@@ -189,6 +188,8 @@ function parseExtractionCandidate(
     tags: stringArray(object.tags, 20, 100),
     ...optionalTimestampRange(object.valid_from, object.valid_to, label),
   };
+  assertMemoryCandidateEvidence(candidate, evidenceCatalog, label);
+  return candidate;
 }
 
 function stage1SystemPrompt(): string {

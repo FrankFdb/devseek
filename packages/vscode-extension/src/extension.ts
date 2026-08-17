@@ -1688,7 +1688,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       );
     },
   });
-  registerRealPluginDeepSeekHarnessCommand(context, viewProvider, runChat);
+  registerRealPluginDeepSeekHarnessCommand(context, viewProvider, runChat, {
+    getActiveSessionId: () => activeSessionId,
+    getSessions,
+    loadSession: loadSessionIntoWebview,
+  });
 
   // ── Session memory: restore previous session on startup ────────────
   initOrRestoreSession();
@@ -1696,7 +1700,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   if (activeWorkspaceRoot) {
     const startupMemoryPipeline = new MemoryPipelineService({
       workspaceRoot: activeWorkspaceRoot,
-      model: createProviderMemoryModel(getActiveProvider()),
+      model: createProviderMemoryModel(getActiveProvider(), activeWorkspaceRoot),
     });
     scheduleMemoryPipelineWork(signal => startupMemoryPipeline.processPending(signal));
   }

@@ -21,7 +21,7 @@ import {
   MemoryPipelineService,
   scheduleMemoryPipelineWork,
 } from './app/memory-pipeline-service';
-import type { MemoryRolloutEvidence } from './memory/pipeline-types';
+import { createMemoryRolloutEvidence } from './memory/memory-rollout-evidence';
 import type { MemoryOutcome } from './memory/types';
 import { getActiveProvider } from './llm/provider-router';
 import { deliverVsCodeRecoverySettlement } from './app/coding-kernel-recovery-delivery';
@@ -125,7 +125,6 @@ export const productCodingKernelExecutor: CodingKernelExecutionPort = {
         request.workspaceRoot,
         request.userPrompt,
         observedSteering,
-        request.callbacks.onTraceEvidenceError,
       );
       const productOutput = projectVsCodeCodingKernelOutput(output);
       const fallback = output.result.recoveryFallback;
@@ -147,59 +146,32 @@ function enqueueMemoryLearning(
   workspaceRoot: string,
   userPrompt: string,
   steering: readonly string[],
-  onError?: (error: unknown) => void,
 ): void {
   try {
     const provider = getActiveProvider();
     const pipeline = new MemoryPipelineService({
       workspaceRoot,
-      model: createProviderMemoryModel(provider),
-      onError,
+      model: createProviderMemoryModel(provider, workspaceRoot),
     });
-    pipeline.enqueue(buildRolloutEvidence(output, workspaceRoot, userPrompt, steering));
-    scheduleMemoryPipelineWork(signal => pipeline.processPending(signal), onError);
-  } catch (error) {
-    onError?.(error);
+    const location = new MemoryService({ workspaceRoot }).getLocation();
+    pipeline.enqueue(createMemoryRolloutEvidence({
+      rolloutId: output.runId,
+      repositoryId: location.repositoryId,
+      workspaceRoot,
+      capturedAt: Date.now(),
+      userTurns: [userPrompt, ...steering],
+      assistantSummary: output.result.agentResult.historyText ?? output.result.agentResult.analysisText,
+      status: memoryOutcome(output.status),
+      taskKind: output.taskContract.mode,
+      changedPaths: output.result.agentResult.changedPaths,
+      toolReceipts: output.toolExecutionReceipts,
+      verificationReceipts: output.verificationReceipts,
+      runEvidenceRefs: output.evidenceRefs,
+    }));
+    scheduleMemoryPipelineWork(signal => pipeline.processPending(signal));
+  } catch {
+    // The durable memory queue is best-effort and must not reopen the settled foreground run.
   }
-}
-
-function buildRolloutEvidence(
-  output: CodingKernelExecutionOutput<import('./app/coding-kernel-execution').VsCodeCodingKernelRuntimeResult>,
-  workspaceRoot: string,
-  userPrompt: string,
-  steering: readonly string[],
-): MemoryRolloutEvidence {
-  const location = new MemoryService({ workspaceRoot }).getLocation();
-  const result = output.result.agentResult;
-  return {
-    rolloutId: output.runId,
-    repositoryId: location.repositoryId,
-    workspaceRoot,
-    capturedAt: Date.now(),
-    userTurns: [userPrompt, ...steering],
-    assistantSummary: result.historyText ?? result.analysisText,
-    status: memoryOutcome(output.status),
-    taskKind: output.taskContract.mode,
-    changedPaths: result.changedPaths,
-    toolEvidence: output.toolExecutionReceipts.map(receipt => [
-      `tool=${receipt.tool}`,
-      `status=${receipt.status}`,
-      `effects=${receipt.effects.join(',')}`,
-      `evidence=${receipt.evidenceRefs.join(',')}`,
-    ].join(' ')),
-    verificationEvidence: output.verificationReceipts.map(receipt => [
-      `verifier=${receipt.verifier}`,
-      `status=${receipt.status}`,
-      `scope=${receipt.scopePaths.join(',')}`,
-      `evidence=${receipt.evidenceRefs.join(',')}`,
-    ].join(' ')),
-    evidenceRefs: [...new Set([
-      `rollout:${output.runId}`,
-      ...output.evidenceRefs,
-      ...output.toolExecutionReceipts.flatMap(receipt => receipt.evidenceRefs),
-      ...output.verificationReceipts.flatMap(receipt => receipt.evidenceRefs),
-    ])],
-  };
 }
 
 function memoryOutcome(status: CodingKernelExecutionOutput<unknown>['status']): MemoryOutcome {

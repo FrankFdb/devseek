@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import type { LLMProvider } from '../llm/types';
 import { MemoryPipelineStore } from '../memory/memory-pipeline-store';
 import { MemoryProjectionWriter } from '../memory/memory-projection';
+import { normalizeMemoryRolloutEvidence } from '../memory/memory-evidence';
 import {
   MemorySemanticConsolidator,
   MemorySemanticExtractor,
@@ -9,7 +10,10 @@ import {
 } from '../memory/memory-semantic-model';
 import { SensitiveMemoryGuard } from '../memory/sensitive-memory-guard';
 import type { MemoryRolloutEvidence, MemoryStage1Job } from '../memory/pipeline-types';
+import { settleRunContextDirect } from './agent-run-settlement';
 import { MemoryService } from './memory-service';
+import { invokeProviderWithRunEvidence } from './provider-run-evidence';
+import { createDevSeekRunContext } from './run-context';
 
 export interface MemoryPipelineServiceDeps {
   workspaceRoot: string;
@@ -49,7 +53,8 @@ export class MemoryPipelineService {
     if (evidence.repositoryId !== this.memory.getLocation().repositoryId) {
       throw new Error('memory-pipeline:repository-mismatch');
     }
-    this.queue.enqueue(evidence, this.now());
+    const normalized = normalizeMemoryRolloutEvidence(evidence);
+    this.queue.enqueue(sanitizeRolloutEvidence(normalized, this.guard), this.now());
   }
 
   async processPending(signal?: AbortSignal): Promise<void> {
@@ -83,8 +88,7 @@ export class MemoryPipelineService {
 
   private async processStage1Job(job: MemoryStage1Job, signal?: AbortSignal): Promise<void> {
     try {
-      const sanitized = sanitizeRolloutEvidence(job.evidence, this.guard);
-      const output = await this.extractor.extract(sanitized, signal);
+      const output = await this.extractor.extract(job.evidence, signal);
       this.queue.completeStage1(job.id, this.workerId, output, this.now());
     } catch (error) {
       this.queue.failStage1(job.id, this.workerId, error, this.now());
@@ -175,16 +179,72 @@ export async function flushMemoryPipelineWork(): Promise<void> {
   await memoryBackgroundWork.flush();
 }
 
-export function createProviderMemoryModel(provider: LLMProvider): MemoryModelPort {
+export function createProviderMemoryModel(
+  provider: LLMProvider,
+  workspaceRoot: string,
+): MemoryModelPort {
   return {
-    chat: input => provider.chat({
-      messages: input.messages,
-      stream: false,
-      mode: 'r1',
-      newSession: true,
-      timeoutMs: input.timeoutMs,
-      signal: input.signal,
-    }),
+    async chat(input) {
+      const runContext = createDevSeekRunContext({
+        workspaceRoot,
+        source: 'vscode-extension.memory-pipeline',
+        userPrompt: 'Run one detached memory semantic inference over persisted rollout evidence.',
+        sessionId: 'memory-pipeline',
+        mode: 'r1',
+      });
+      const traceOperationId = randomUUID();
+      const evidencePrompt = input.messages.map(message => (
+        `${message.role}: ${typeof message.content === 'string' ? message.content : '[structured-content]'}`
+      )).join('\n\n');
+      const request = {
+        prompt: evidencePrompt,
+        stream: false,
+        mode: 'r1' as const,
+        newSession: true,
+        timeoutMs: input.timeoutMs,
+        signal: input.signal,
+        traceRunId: runContext.runId,
+        traceWorkspaceRoot: runContext.workspaceRoot,
+        traceOperationId,
+        traceEvidenceParticipantToken: runContext.evidenceParticipantToken,
+        onTraceEvidenceError: (error: unknown) => runContext.reportEvidenceIssue(error),
+      };
+      let response: string;
+      try {
+        response = await invokeProviderWithRunEvidence({
+          request,
+          providerType: provider.type,
+          invoke: () => provider.chat({
+            messages: input.messages,
+            stream: false,
+            mode: 'r1',
+            newSession: true,
+            timeoutMs: input.timeoutMs,
+            signal: input.signal,
+            traceRunId: runContext.runId,
+            traceWorkspaceRoot: runContext.workspaceRoot,
+            traceOperationId,
+            ...(provider.type === 'bridge' ? {
+              evidenceCapability: {
+                role: 'participant' as const,
+                token: runContext.evidenceParticipantToken,
+              },
+            } : {}),
+          }),
+          onEvidenceError: error => runContext.reportEvidenceIssue(error),
+        });
+      } catch (error) {
+        settleRunContextDirect(runContext, 'failed', { reason: 'memory-model-inference-failed' });
+        throw error;
+      }
+      const settlement = settleRunContextDirect(runContext, 'completed', {
+        reason: 'memory-model-inference-completed',
+      });
+      if (!settlement.completed) {
+        throw new Error('memory-model-inference-settlement-failed');
+      }
+      return response;
+    },
   };
 }
 
@@ -201,5 +261,9 @@ function sanitizeRolloutEvidence(
     toolEvidence: evidence.toolEvidence.map(redact),
     verificationEvidence: evidence.verificationEvidence.map(redact),
     evidenceRefs: evidence.evidenceRefs.map(redact),
+    evidenceCatalog: evidence.evidenceCatalog.map(descriptor => ({
+      ...descriptor,
+      ref: redact(descriptor.ref),
+    })),
   };
 }

@@ -2972,6 +2972,8 @@ test('T5: Codex-aligned memory keeps semantic extraction, local arbitration, and
   const extension = src('src/extension.ts');
   const pipeline = src('src/app/memory-pipeline-service.ts');
   const queue = src('src/memory/memory-pipeline-store.ts');
+  const evidence = src('src/memory/memory-evidence.ts');
+  const rolloutEvidence = src('src/memory/memory-rollout-evidence.ts');
   const semanticModel = src('src/memory/memory-semantic-model.ts');
   const projection = src('src/memory/memory-projection.ts');
   const location = src('src/memory/repository-memory-location.ts');
@@ -2980,7 +2982,9 @@ test('T5: Codex-aligned memory keeps semantic extraction, local arbitration, and
   const toolLoop = src('src/agent/tool-loop.ts');
   const tests = src('test/unit/memory-pipeline.test.mjs');
 
-  assertContains(executor, 'buildRolloutEvidence', 'terminal execution must capture immutable rollout evidence');
+  assertContains(executor, 'createMemoryRolloutEvidence', 'terminal execution must capture immutable rollout evidence');
+  assertContains(rolloutEvidence, "receipt.effects.includes('network')", 'network receipts must remain external memory evidence');
+  assertContains(evidence, 'assertMemoryCandidateEvidence', 'local code must arbitrate model evidence authority claims');
   assertContains(executor, 'scheduleMemoryPipelineWork', 'memory maintenance must run outside task completion');
   assertContains(pipeline, 'MemorySemanticExtractor', 'Phase 1 must be model-semantic extraction');
   assertContains(pipeline, 'MemorySemanticConsolidator', 'Phase 2 must be model-semantic consolidation');
@@ -2988,6 +2992,7 @@ test('T5: Codex-aligned memory keeps semantic extraction, local arbitration, and
   assertContains(queue, 'claimStage1', 'Phase 1 jobs must use leased claims');
   assertContains(queue, "status: output ? 'succeeded' : 'no-output'", 'low-signal rollouts must have an explicit no-output state');
   assertContains(queue, 'retryDelay', 'failed memory work must remain retryable');
+  assertContains(queue, "'exhausted'", 'failed memory work must stop after a bounded retry budget');
   assertContains(semanticModel, 'Do not cluster solely by keyword', 'semantic consolidation must not become keyword authority');
   assertContains(semanticModel, 'always-loaded summary is generated locally', 'model output must not directly author the always-loaded summary');
   assertContains(memoryService, "candidate.sourceAuthority === 'external'", 'local arbitration must reject external candidates');
@@ -3008,6 +3013,8 @@ test('T5: Codex-aligned memory keeps semantic extraction, local arbitration, and
   assertContains(tests, 'newer correction supersedes', 'T5 must prove current user corrections outrank stale memory');
   assertContains(tests, 'background failure is reported without rejecting', 'T5 must prove memory maintenance cannot fail the user task');
   assertContains(tests, 'foreground user work cancels active memory processing', 'T5 must prove foreground Provider work has priority');
+  assertContains(tests, 'upgrades assistant narration to tool-verified fact', 'T5 must reject model-authored evidence elevation');
+  assertContains(tests, 'upgrades v1 pending evidence', 'T5 must prove restart-safe pipeline schema migration');
 });
 
 test('Architecture: Phase 10 application service owns Provider chat routing protocol', () => {

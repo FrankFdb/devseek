@@ -37,6 +37,8 @@ devseek_governance:
 | C8～C10 实施到交付 | `completed` | 15/15：code change、integration、verification/diagnosis/repair、independent review、artifact/Git/release/rollback 均 fail closed |
 | C11 协作与长任务 | `completed` | 6/6 活跃能力已接线：checkpoint、resume idempotency、cancel、steer、user collaboration、Surface accessibility；background automation 保持 deferred |
 | C12 上下文、记忆与证据 | `completed` | 3/3：memory policy、run evidence retention、context compaction 已接线 |
+| T1～T5 专题收敛 | `completed` | `2.0.24` 全面 run 15/15 steps；63 个 targeted case、14 个 controlled suite 的 56 次用户流程（55 unique controlled），共 118 selected、94 required、43/43 设计维度，执行证据缺失 0 |
+| T6 卡顿与资源回收 | `pending_scope` | 按用户要求停在 T5；只有用户明确继续后，才审计 VS Code 窗口、浏览器、Bridge、后台 memory Provider、日志关联与跨进程回收 |
 | C13 扩展边界 | `completed` | 唯一活跃项 MCP 已使用官方稳定 SDK；server launch 建立会话信任，只读封闭调用直接执行，高风险调用精确确认且 receipt 不可重放；其余未启用生态保持 conditional/experimental |
 | 用户仿真 | `completed` | I10～I23 共 72 个增量案例绑定唯一 fixture 与自动化证据；I21/I22/I23 分别覆盖 connector/environment、run collaboration、MCP authority；原始结果只保留在被 Git 忽略的 `code/devseek-tests/` |
 | C14 正式顶级资格 | `blocked_external` | Gate 0=`NOT_PASSED`，6 个外部 authority blocker、7 个 exact claims 尚未满足；RC、真实 Provider wave 与 sealed holdout 不得本地伪造 |
@@ -59,10 +61,11 @@ devseek_governance:
 | 顺序 | 任务 | 状态 | 完成条件 |
 | ---: | --- | --- | --- |
 | 1 | 关闭当前本地候选 | `completed` | 全量 shared/Bridge/CLI/Headless/Extension 测试、Phase 0～12、架构与生成物门禁全部通过；VSIX 已安装；无残留测试进程；产品、候选身份、文档归档和测试边界均已独立提交 |
-| 2 | 建立 Gate 0 外部资格设施 | `blocked_external` | 独立受保护 profile/aggregator、签名身份、WORM retention、trusted time/anchor 与 7 个 exact claims 全部由授权主体提供并经机器复算 |
-| 3 | 执行一次 headed DeepSeek 真实用户路径 | `blocked_external` | 第 2 项完成后，按已有条件授权保留 VS Code 窗口和 DeepSeek 页面；绑定当前冻结候选与真实 Provider evidence，不复用旧回执 |
-| 4 | 执行 C14 RC 与 sealed holdout | `blocked_external` | 冻结 profile、runner、候选和 coverage；RC 与全新 disjoint holdout 均满足门槛，失败不得补跑覆盖 |
-| 5 | 激活可选产品能力 | `pending_scope` | 仅当产品明确声明相应能力时，为单个 capability 建立 owner、权限、失败恢复、产品入口和独立验收后再提升状态 |
+| 2 | T6 卡顿与资源回收 | `pending_scope` | 用户明确继续后，按与 T1 相同原则完成 Codex 源码责任对标、模块化修正、真实进程/窗口资源仿真和无残留证据；当前不得自动开始 |
+| 3 | 建立 Gate 0 外部资格设施 | `blocked_external` | 独立受保护 profile/aggregator、签名身份、WORM retention、trusted time/anchor 与 7 个 exact claims 全部由授权主体提供并经机器复算 |
+| 4 | 执行一次 headed DeepSeek 真实用户路径 | `blocked_external` | 第 3 项完成后，按已有条件授权保留 VS Code 窗口和 DeepSeek 页面；绑定当前冻结候选与真实 Provider evidence，不复用旧回执 |
+| 5 | 执行 C14 RC 与 sealed holdout | `blocked_external` | 冻结 profile、runner、候选和 coverage；RC 与全新 disjoint holdout 均满足门槛，失败不得补跑覆盖 |
+| 6 | 激活可选产品能力 | `pending_scope` | 仅当产品明确声明相应能力时，为单个 capability 建立 owner、权限、失败恢复、产品入口和独立验收后再提升状态 |
 
 ## 完成口径
 

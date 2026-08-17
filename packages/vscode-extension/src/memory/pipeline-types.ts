@@ -7,9 +7,31 @@ import type {
   MemoryType,
 } from './types';
 
-export const MEMORY_PIPELINE_VERSION = 'devseek.memory-pipeline/v1' as const;
+export const MEMORY_PIPELINE_VERSION = 'devseek.memory-pipeline/v2' as const;
 
-export type MemoryStage1JobStatus = 'pending' | 'leased' | 'succeeded' | 'no-output' | 'failed';
+export type MemoryStage1JobStatus =
+  | 'pending'
+  | 'leased'
+  | 'succeeded'
+  | 'no-output'
+  | 'failed'
+  | 'exhausted';
+
+export type MemoryEvidenceKind =
+  | 'rollout'
+  | 'user-turn'
+  | 'assistant-summary'
+  | 'tool-execution'
+  | 'verification'
+  | 'run-evidence';
+
+export interface MemoryEvidenceDescriptor {
+  readonly ref: string;
+  readonly kind: MemoryEvidenceKind;
+  readonly sourceAuthority: 'user' | 'tool' | 'assistant' | 'external';
+  readonly epistemicStatus: MemoryEpistemicStatus;
+  readonly outcome: MemoryOutcome;
+}
 
 export interface MemoryRolloutEvidence {
   readonly rolloutId: string;
@@ -24,6 +46,7 @@ export interface MemoryRolloutEvidence {
   readonly toolEvidence: readonly string[];
   readonly verificationEvidence: readonly string[];
   readonly evidenceRefs: readonly string[];
+  readonly evidenceCatalog: readonly MemoryEvidenceDescriptor[];
 }
 
 export interface MemoryExtractionCandidate {

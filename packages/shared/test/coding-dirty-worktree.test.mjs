@@ -1,10 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import {
   CanonicalDirtyWorktreePolicyService,
   CanonicalWorkspaceMutationTransaction,
   buildCodingWorkspaceMutationPlan,
   createCodingWorktreeSnapshot,
+  observeGitWorktreeSync,
   parseGitPorcelainV1Z,
 } from '../dist/index.js';
 
@@ -123,4 +128,28 @@ test('DirtyWorktreePolicyPort fails closed when observation is unavailable but s
   }).authorize({ actionId: 'write', paths: ['src/value.ts'] });
   assert.equal(notGit.decision, 'allow');
   assert.equal(notGit.reason, 'not-git');
+});
+
+test('nested workspace observation excludes same-named dirty files from the parent repository', () => {
+  const repository = mkdtempSync(path.join(tmpdir(), 'devseek-dirty-worktree-'));
+  const workspace = path.join(repository, 'code', 'simulation');
+  try {
+    execFileSync('git', ['init', '-q', repository]);
+    mkdirSync(workspace, { recursive: true });
+    writeFileSync(path.join(repository, 'package.json'), '{"private":true}\n', 'utf8');
+    writeFileSync(path.join(workspace, 'local.txt'), 'workspace change\n', 'utf8');
+
+    const snapshot = observeGitWorktreeSync({ workspaceRoot: workspace });
+
+    assert.equal(snapshot.repositoryState, 'git');
+    assert.deepEqual(snapshot.entries, [{ path: 'local.txt', status: 'untracked' }]);
+    const decision = new CanonicalDirtyWorktreePolicyService().bind({
+      runId: 'nested-workspace-run',
+      snapshot,
+    }).authorize({ actionId: 'create-package', paths: ['package.json'] });
+    assert.equal(decision.decision, 'allow');
+    assert.equal(decision.reason, 'disjoint-user-changes');
+  } finally {
+    rmSync(repository, { recursive: true, force: true });
+  }
 });

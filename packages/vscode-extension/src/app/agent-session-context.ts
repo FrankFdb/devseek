@@ -10,6 +10,7 @@ import {
   type ContextAnchorSet,
 } from './context-relevance';
 import {
+  isLikelySessionContinuation,
   shouldInjectSessionContinuationForIntent,
   shouldRestoreSessionFiles,
   type SessionContinuationIntent,
@@ -63,7 +64,12 @@ export function resolveSessionContinuationFilesFromState(input: ResolveSessionCo
     if (rel && isRestorableSessionPath(rel, input.workspaceRoot)) candidates.push(rel);
   }
 
-  const scopedCandidates = hasContextAnchors(primaryAnchors)
+  const preserveSessionWorkingSet = isUnscopedExplicitContinuation(
+    input.prompt,
+    input.intent,
+    input.currentFilePaths,
+  );
+  const scopedCandidates = !preserveSessionWorkingSet && hasContextAnchors(primaryAnchors)
     ? filterByContextAnchors([...new Set(candidates)], primaryAnchors, pathValue => pathValue)
     : [...new Set(candidates)];
 
@@ -104,6 +110,7 @@ export interface BuildAgenticSessionContextInput {
   recentFilePaths: Iterable<string>;
   currentFilePaths?: Iterable<string>;
   history: readonly ChatMessage[];
+  preserveSessionContext?: boolean;
 }
 
 export function buildAgenticSessionContextFromState(input: BuildAgenticSessionContextInput): string {
@@ -123,7 +130,7 @@ export function buildAgenticSessionContextFromState(input: BuildAgenticSessionCo
     fallbackPaths: primaryRelatedPaths.length > 0 ? primaryRelatedPaths : recentFileList,
     state: input.state,
   });
-  const shouldFilter = hasContextAnchors(anchors);
+  const shouldFilter = !input.preserveSessionContext && hasContextAnchors(anchors);
   const historySource = shouldFilter
     ? filterByContextAnchors(input.history, anchors, message => chatMessageText(message))
     : [...input.history];
@@ -136,14 +143,18 @@ export function buildAgenticSessionContextFromState(input: BuildAgenticSessionCo
       return `- ${role}: ${content.replace(/\s+/g, ' ').slice(0, 700)}`;
     });
 
-  const recentFiles = filterByContextAnchors(recentFileList, anchors, abs => relPathFromWorkspace(input.workspaceRoot, abs) ?? abs)
+  const relevantRecentFiles = shouldFilter
+    ? filterByContextAnchors(recentFileList, anchors, abs => relPathFromWorkspace(input.workspaceRoot, abs) ?? abs)
+    : recentFileList;
+  const recentFiles = relevantRecentFiles
     .filter(Boolean)
     .map(abs => relPathFromWorkspace(input.workspaceRoot, abs) ?? abs)
     .filter(pathValue => pathValue && !pathValue.startsWith('..'))
     .slice(0, 12);
 
   const stateRelevant = input.state
-    && (!shouldFilter
+    && (input.preserveSessionContext
+      || !shouldFilter
       || textMatchesContextAnchors(input.state.lastSummary, anchors)
       || input.state.changedPaths
         .filter(pathValue => isRestorableSessionPath(pathValue, input.workspaceRoot))
@@ -163,16 +174,19 @@ export function buildAgenticSessionContextFromState(input: BuildAgenticSessionCo
       const changedPaths = input.state.changedPaths.filter(pathValue => isRestorableSessionPath(pathValue, input.workspaceRoot));
       if (changedPaths.length > 0) {
         lines.push('- 涉及文件：');
-        lines.push(...filterByContextAnchors(changedPaths, anchors, pathValue => pathValue).slice(0, 12).map(pathValue => `  - ${pathValue}`));
+        const relevantChangedPaths = shouldFilter
+          ? filterByContextAnchors(changedPaths, anchors, pathValue => pathValue)
+          : changedPaths;
+        lines.push(...relevantChangedPaths.slice(0, 12).map(pathValue => `  - ${pathValue}`));
       }
     }
   }
   if (input.lastAgentChangedPaths.length > 0) {
-    const changedPaths = filterByContextAnchors(
-      input.lastAgentChangedPaths.filter(pathValue => isRestorableSessionPath(pathValue, input.workspaceRoot)),
-      anchors,
-      pathValue => pathValue,
-    ).slice(0, 10);
+    const restorableChangedPaths = input.lastAgentChangedPaths
+      .filter(pathValue => isRestorableSessionPath(pathValue, input.workspaceRoot));
+    const changedPaths = (shouldFilter
+      ? filterByContextAnchors(restorableChangedPaths, anchors, pathValue => pathValue)
+      : restorableChangedPaths).slice(0, 10);
     if (changedPaths.length > 0) {
       lines.push('上一轮 Agent 涉及/修改的文件：');
       lines.push(...changedPaths.map(pathValue => `- ${pathValue}`));
@@ -229,6 +243,11 @@ export function projectSessionContinuationFromState(
     ...input,
     recentFilePaths,
     currentFilePaths,
+    preserveSessionContext: isUnscopedExplicitContinuation(
+      input.currentPrompt,
+      input.intent,
+      currentFilePaths,
+    ),
   });
   const contextText = shouldInjectSessionContinuationForIntent(
     input.currentPrompt,
@@ -241,6 +260,16 @@ export function projectSessionContinuationFromState(
     restoreFiles,
     contextText,
   };
+}
+
+function isUnscopedExplicitContinuation(
+  prompt: string,
+  intent?: SessionContinuationIntent,
+  currentFilePaths?: Iterable<string>,
+): boolean {
+  if (!isLikelySessionContinuation(prompt)) return false;
+  if (intent?.signals?.includes('explicit-file-path')) return false;
+  return [...(currentFilePaths ?? [])].length === 0;
 }
 
 const CONTINUATION_CONTROL_TOKENS = new Set([

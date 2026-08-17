@@ -24,6 +24,11 @@ import {
   normalizeVsixSourceFingerprint,
   sameVsixSourceFingerprint,
 } from '../../../scripts/lib/devseek-vsix-source-identity.mjs';
+import {
+  bindControlledInternalModelPrompt,
+  controlledInternalModelResponse,
+} from './harness/controlled-internal-model-fixture.mjs';
+import { controlledMediumProgramScenarioCatalog } from './harness/controlled-medium-program-journey.mjs';
 
 const require = createRequire(import.meta.url);
 const args = process.argv.slice(2);
@@ -106,7 +111,11 @@ try {
   const sourceCompatibility = assertVsixSourceCompatibility(expectedIdentity.devseekBuild);
 
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'devseek-controlled-vsix-'));
-  const workspaceDir = path.join(tmpRoot, 'workspace');
+  const retainedWorkspaceDir = selectedSuiteOptions.retainWorkspace && outputReportPath
+    ? path.join(path.dirname(path.resolve(outputReportPath)), `${scenarioSuiteId}.workspace`)
+    : '';
+  if (retainedWorkspaceDir) fs.rmSync(retainedWorkspaceDir, { recursive: true, force: true });
+  const workspaceDir = retainedWorkspaceDir || path.join(tmpRoot, 'workspace');
   const driverDir = path.join(tmpRoot, 'driver-extension');
   const userDataDir = path.join(tmpRoot, 'user-data');
   const extensionsDir = path.join(tmpRoot, 'extensions');
@@ -229,6 +238,7 @@ try {
       progressPath,
       codeBin,
       promptContractSelfTest,
+      retainedWorkspace: retainedWorkspaceDir || null,
       cleanup: !keepTmp && errors.length === 0 ? 'removed-after-success' : 'retained-for-inspection',
     },
   };
@@ -342,6 +352,12 @@ function controlledScenarioSuiteCatalog() {
       't5-capture-project-memory',
       't5-restart-use-project-memory',
     ],
+    't5-medium-program-session-restart': [
+      't5-medium-program-core',
+      't5-medium-program-isolated-session',
+      't5-medium-program-return-primary',
+      't5-medium-program-restart-primary',
+    ],
     'independent-user-diversity-product': [
       'diverse-novice-typo-create',
       'diverse-asr-readonly-review',
@@ -418,6 +434,13 @@ function resolveControlledScenarioSuiteOptions(id) {
       kind: 'process-restart-memory-continuation-suite',
       sameDevSeekSession: true,
       restartBetweenCases: true,
+    },
+    't5-medium-program-session-restart': {
+      kind: 'medium-program-session-switch-return-restart-suite',
+      sameDevSeekSession: false,
+      preserveWorkspaceAcrossCases: true,
+      restartBeforeCases: [4],
+      retainWorkspace: true,
     },
     'independent-user-diversity-product': {
       kind: 'same-window-independent-user-diversity-suite',
@@ -1328,6 +1351,7 @@ function controlledScenarioCatalog() {
       forbiddenTools: ['memory_write', 'create_file', 'replace_in_file', 'delete_file', 'run_terminal'],
       requiredRunLogSubstrings: ['npm run test:bridge'],
     },
+    ...controlledMediumProgramScenarioCatalog(),
     'diverse-novice-typo-create': {
       id: 'diverse-novice-typo-create',
       kind: 'independent-user-novice-typo-create-readback',
@@ -2215,15 +2239,40 @@ function extractControlledRequirementInventory(promptText) {
     .filter(item => item.id && item.quote);
 }
 
+function extractControlledFinalSourcePaths(promptText) {
+  const text = String(promptText || '');
+  const marker = '[FINAL SOURCE SNAPSHOT]';
+  const start = text.indexOf(marker);
+  if (start < 0) return [];
+  const end = text.indexOf('[REQUIRED OUTPUT SCHEMA]', start);
+  const section = text.slice(start + marker.length, end >= 0 ? end : text.length);
+  return [...section.matchAll(/^---\s+(.+?)\s+---$/gmu)]
+    .map(match => String(match[1] || '').replace(/\\/g, '/').trim())
+    .filter(Boolean);
+}
+
+function finalSourceContainsRelativePath(sourcePaths, relativePath) {
+  const normalized = String(relativePath || '').replace(/\\/g, '/').replace(/^\.\//, '');
+  return normalized.length > 0 && sourcePaths.some(sourcePath => (
+    sourcePath === normalized || sourcePath.endsWith(`/${normalized}`)
+  ));
+}
+
 function bindControlledIndependentReviewPromptContract({
   promptText,
   expectedPrompt,
   expectedTargetRelativePath = '',
+  expectedReviewRelativePaths,
   runId,
   priorRequests,
 }) {
   const text = String(promptText || '');
   const inventory = extractControlledRequirementInventory(text);
+  const finalSourcePaths = extractControlledFinalSourcePaths(text);
+  const expectedSourcePaths = expectedReviewRelativePaths
+    ?? (expectedTargetRelativePath ? [expectedTargetRelativePath] : []);
+  const missingExpectedSourcePaths = expectedSourcePaths
+    .filter(relativePath => !finalSourceContainsRelativePath(finalSourcePaths, relativePath));
   const priorRunBound = priorRequests.some(request => (
     request.runId === runId
     && request.bound === true
@@ -2235,8 +2284,8 @@ function bindControlledIndependentReviewPromptContract({
     ['review has a bound prior agent request in the same run', priorRunBound],
     ['original user requirement remains bound', text.includes(expectedPrompt)],
     ['requirement inventory includes the expected user requirement', inventory.some(item => item.quote === expectedPrompt)],
-    ...(expectedTargetRelativePath
-      ? [['final source snapshot remains scoped to the expected target', text.includes(expectedTargetRelativePath)]]
+    ...(expectedSourcePaths.length > 0
+      ? [['final source snapshot covers the declared review scope', missingExpectedSourcePaths.length === 0]]
       : []),
   ];
   const failed = conditions.find(([, passed]) => !passed);
@@ -2246,7 +2295,7 @@ function bindControlledIndependentReviewPromptContract({
       kind: 'independent-review',
       userPromptLength: expectedPrompt.length,
       userPromptSha256: sha256Text(expectedPrompt),
-      repairTargetRelativePath: expectedTargetRelativePath,
+      reviewRelativePaths: expectedSourcePaths,
     },
     observed: {
       mode: 'independent-review',
@@ -2258,6 +2307,8 @@ function bindControlledIndependentReviewPromptContract({
       runId,
       priorRequestCount: priorRequests.length,
       priorBoundRequestCount: priorRequests.filter(request => request.bound === true).length,
+      finalSourcePaths,
+      missingExpectedSourcePaths,
     },
     bound: !failed,
     reason: failed ? failed[0] : 'Independent review request is bound to the current run and requirement inventory.',
@@ -2534,10 +2585,8 @@ function runPromptContractSelfTest(expectedPrompt) {
     'QualityGate 通过：self-test target validation 已通过。',
     '',
     '[FINAL SOURCE SNAPSHOT]',
-    'target.txt',
-    '```text',
+    '--- /controlled/workspace/target.txt ---',
     'new content',
-    '```',
     '',
     '[REQUIRED OUTPUT SCHEMA]',
     '{"requirement_checks":[],"findings":[]}',
@@ -2891,6 +2940,7 @@ function bindControlledScenarioPrompt({ promptText, runId, scenarios, priorReque
         promptText,
         expectedPrompt: candidate.prompt,
         expectedTargetRelativePath: candidate.targetRelativePath,
+        expectedReviewRelativePaths: candidate.independentReviewPaths,
         runId,
         priorRequests: scenarioPriorRequests,
       });
@@ -3002,12 +3052,64 @@ function controlledDeepSeekWebConnectorAdvertisement(activeRequestCount = 0) {
   };
 }
 
+function sendControlledProviderResponse({
+  response,
+  request,
+  body,
+  operationId,
+  providerText,
+  requestRecord,
+  streamFault = '',
+}) {
+  if (body.stream === false && !String(request.headers.accept || '').includes('text/event-stream')) {
+    return sendJson(response, 200, { content: providerText });
+  }
+
+  response.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache',
+    Connection: 'close',
+  });
+  const frame = fields => ({
+    protocolVersion: 'devseek.deepseek-web-stream/v1',
+    requestId: operationId,
+    ...fields,
+  });
+  const writeFrame = fields => response.write(`data: ${JSON.stringify(frame(fields))}\n\n`);
+  requestRecord.streamFault = streamFault;
+  if (streamFault === 'truncated-before-done') {
+    writeFrame({ sequence: 1, event: 'delta', delta: providerText, done: false });
+    response.end();
+    return;
+  }
+  if (streamFault === 'request-mismatch') {
+    writeFrame({
+      requestId: `${operationId}-wrong-stream`,
+      sequence: 1,
+      event: 'delta',
+      delta: providerText,
+      done: false,
+    });
+    response.end();
+    return;
+  }
+  writeFrame({ sequence: 1, event: 'delta', delta: providerText, done: false });
+  response.end(`data: ${JSON.stringify(frame({
+    sequence: 2,
+    event: 'done',
+    delta: '',
+    done: true,
+  }))}\n\n`);
+}
+
 async function startControlledBridge({ token, workspaceDir, runtimeIdentity, scenarios, promptContractSelfTest }) {
   const { attachBridgeRunEvidence } = require(bridgeEvidencePath);
   const state = {
     chatRequests: [],
+    internalModelRequests: [],
     rejectedRequests: [],
     providerInvocationCount: 0,
+    internalModelInvocationCount: 0,
     statusRequests: 0,
     authFailures: 0,
     promptContractSelfTest,
@@ -3050,14 +3152,18 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
           return sendJson(response, 400, { error: 'WORKSPACE_ROOT_MISMATCH' });
         }
         const promptText = String(body.prompt || '');
-        const scenarioBinding = bindControlledProviderPrompt({
+        const internalBinding = bindControlledInternalModelPrompt(promptText);
+        const scenarioBinding = internalBinding || bindControlledProviderPrompt({
           promptText,
           runId,
           scenarios,
           priorRequests: state.chatRequests,
         });
+        const isInternalModelRequest = internalBinding !== undefined;
         const activeScenario = scenarioBinding.scenario;
-        const ordinal = scenarioBinding.ordinal;
+        const ordinal = isInternalModelRequest
+          ? state.internalModelRequests.length + 1
+          : scenarioBinding.ordinal;
         const promptContract = scenarioBinding.promptContract;
         const evidence = attachBridgeRunEvidence({
           workspaceRoot: traceWorkspaceRoot,
@@ -3067,7 +3173,7 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
         });
         const requestedEvidencePayload = {
           provider: 'controlled-fixture',
-          layer: 'deterministic-fake-provider',
+          layer: isInternalModelRequest ? 'internal-memory-model-fixture' : 'deterministic-fake-provider',
           prompt_length: promptText.length,
           prompt_sha256: sha256Text(promptText),
           prompt_contract_version: promptContract.contractVersion,
@@ -3081,7 +3187,7 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
         const requestRecord = {
           requestKind: scenarioBinding.requestKind,
           ordinal,
-          globalOrdinal: state.chatRequests.length + 1,
+          globalOrdinal: state.chatRequests.length + state.internalModelRequests.length + 1,
           scenarioId: activeScenario?.id || '',
           runId,
           operationId,
@@ -3099,12 +3205,15 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
           reason: promptContract.reason,
           promptContract,
         };
-        state.chatRequests.push(requestRecord);
-        if (!activeScenario || !promptContract.bound) {
+        const requestCollection = isInternalModelRequest
+          ? state.internalModelRequests
+          : state.chatRequests;
+        requestCollection.push(requestRecord);
+        if ((!isInternalModelRequest && !activeScenario) || !promptContract.bound) {
           state.rejectedRequests.push(requestRecord);
           evidence.record('provider.failed', {
             provider: 'controlled-fixture',
-            layer: 'deterministic-fake-provider',
+            layer: isInternalModelRequest ? 'internal-memory-model-fixture' : 'deterministic-fake-provider',
             error_code: 'PROMPT_CONTRACT_MISMATCH',
             prompt_contract_version: promptContract.contractVersion,
             prompt_contract_bound: false,
@@ -3115,6 +3224,26 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
             ordinal,
             bound: false,
             reason: promptContract.reason,
+          });
+        }
+        if (isInternalModelRequest) {
+          state.internalModelInvocationCount += 1;
+          const providerText = controlledInternalModelResponse(scenarioBinding.requestKind);
+          evidence.record('provider.completed', {
+            provider: 'controlled-fixture',
+            layer: 'internal-memory-model-fixture',
+            response_length: providerText.length,
+            prompt_contract_version: promptContract.contractVersion,
+            prompt_contract_bound: true,
+          });
+          requestRecord.responseLength = providerText.length;
+          return sendControlledProviderResponse({
+            response,
+            request,
+            body,
+            operationId,
+            providerText,
+            requestRecord,
           });
         }
         const missingMemoryContext = scenarioBinding.requestKind === 'agent-execution'
@@ -3135,6 +3264,29 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
           });
           return sendJson(response, 422, {
             error: 'MEMORY_CONTEXT_MISSING',
+            ordinal,
+            bound: true,
+            reason,
+          });
+        }
+        const leakedSessionContext = scenarioBinding.requestKind === 'agent-execution'
+          ? (activeScenario.forbiddenProviderPromptSubstrings || [])
+            .filter(forbidden => promptText.includes(forbidden))
+          : [];
+        if (leakedSessionContext.length > 0) {
+          state.rejectedRequests.push(requestRecord);
+          const reason = `Provider prompt leaked context from another session: ${JSON.stringify(leakedSessionContext)}`;
+          state.errors.push(reason);
+          evidence.record('provider.failed', {
+            provider: 'controlled-fixture',
+            layer: 'deterministic-fake-provider',
+            error_code: 'SESSION_CONTEXT_LEAKED',
+            prompt_contract_version: promptContract.contractVersion,
+            prompt_contract_bound: true,
+            leaked_context_count: leakedSessionContext.length,
+          });
+          return sendJson(response, 422, {
+            error: 'SESSION_CONTEXT_LEAKED',
             ordinal,
             bound: true,
             reason,
@@ -3178,57 +3330,15 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
         }
         evidence.record('provider.completed', completedEvidencePayload);
         requestRecord.responseLength = providerText.length;
-        if (body.stream !== false || String(request.headers.accept || '').includes('text/event-stream')) {
-          response.writeHead(200, {
-            'Content-Type': 'text/event-stream; charset=utf-8',
-            'Cache-Control': 'no-cache',
-            Connection: 'close',
-          });
-          const frame = (fields) => ({
-            protocolVersion: 'devseek.deepseek-web-stream/v1',
-            requestId: operationId,
-            ...fields,
-          });
-          const writeFrame = (fields) => {
-            response.write(`data: ${JSON.stringify(frame(fields))}\n\n`);
-          };
-          requestRecord.streamFault = activeScenario.streamFault || '';
-          if (activeScenario.streamFault === 'truncated-before-done') {
-            writeFrame({
-              sequence: 1,
-              event: 'delta',
-              delta: providerText,
-              done: false,
-            });
-            response.end();
-            return;
-          }
-          if (activeScenario.streamFault === 'request-mismatch') {
-            writeFrame({
-              requestId: `${operationId}-wrong-stream`,
-              sequence: 1,
-              event: 'delta',
-              delta: providerText,
-              done: false,
-            });
-            response.end();
-            return;
-          }
-          writeFrame({
-            sequence: 1,
-            event: 'delta',
-            delta: providerText,
-            done: false,
-          });
-          response.end(`data: ${JSON.stringify(frame({
-            sequence: 2,
-            event: 'done',
-            delta: '',
-            done: true,
-          }))}\n\n`);
-          return;
-        }
-        return sendJson(response, 200, { content: providerText });
+        return sendControlledProviderResponse({
+          response,
+          request,
+          body,
+          operationId,
+          providerText,
+          requestRecord,
+          streamFault: activeScenario.streamFault || '',
+        });
       }
       if (url.pathname === '/index/file') return sendJson(response, 404, { error: 'NOT_INDEXED' });
       if (['/cancel', '/preattach', '/shutdown', '/relogin'].includes(url.pathname)) {
@@ -3274,6 +3384,9 @@ function controlledPlannerResponse({ scenario }) {
     't4-dangerous-shell-attempt': 'modify',
     'memory-capture-complete': 'analyze',
     'memory-guided-advisory': 'analyze',
+    'medium-task-board-core-complete': 'create',
+    'medium-task-board-cli-complete': 'modify',
+    'medium-task-board-persistence-complete': 'modify',
     'provider-error': 'create',
     'stream-corrupting-python-cli-complete': 'create',
     'conformance-parser-repair': 'modify',
@@ -3302,6 +3415,9 @@ function controlledPlannerResponse({ scenario }) {
     't4-dangerous-shell-attempt': '尝试危险 shell 命令并由本地权限边界拒绝',
     'memory-capture-complete': '提取高价值项目惯例并持久化，不执行工作区副作用',
     'memory-guided-advisory': '结合重启后恢复的项目记忆给出建议，并服从当前用户约束',
+    'medium-task-board-core-complete': '建立任务板核心分层并运行第一阶段测试',
+    'medium-task-board-cli-complete': '返回原 session 后扩展 CLI、报告和筛选并回归测试',
+    'medium-task-board-persistence-complete': '进程重启后增加原子 JSON 持久化并验证服务重启恢复',
     'provider-error': '创建指定文件并处理 Provider 失败路径',
     'stream-corrupting-python-cli-complete': '创建 Python CLI 并由 stream 协议故障测试 fail-closed',
     'conformance-parser-repair': '根据验证失败修复 parser 并重新验证',
@@ -3343,6 +3459,8 @@ function controlledIndependentReviewResponse({ promptText, scenario }) {
 
 function controlledReviewEvidence(requirementQuote, scenario) {
   const quote = String(requirementQuote || '');
+  const declaredEvidence = controlledDeclaredReviewEvidence(scenario);
+  if (declaredEvidence) return declaredEvidence;
   if (scenario.providerPlan === 'cpp-program-compile-run-complete') {
     return `${scenario.targetRelativePath}:1-6 defines main(), prints 下午好 on the requested execution path, and the validation fact says g++ -std=c++17 -fsyntax-only ${scenario.targetRelativePath} exit-0.`;
   }
@@ -3354,6 +3472,19 @@ function controlledReviewEvidence(requirementQuote, scenario) {
     ].join(' ');
   }
   return `${scenario.targetRelativePath}:1 final source snapshot and the validation fact cover the requested execution path.`;
+}
+
+function controlledDeclaredReviewEvidence(scenario) {
+  const facts = scenario.independentReviewEvidenceFacts;
+  if (facts === undefined) return '';
+  if (!Array.isArray(facts) || facts.length === 0) {
+    throw new Error(`Scenario ${scenario.id} independentReviewEvidenceFacts must be a non-empty array`);
+  }
+  const normalized = facts.map(fact => String(fact || '').trim());
+  if (normalized.some(fact => !fact)) {
+    throw new Error(`Scenario ${scenario.id} independentReviewEvidenceFacts contains an empty fact`);
+  }
+  return normalized.join(' ');
 }
 
 function controlledOpenAiToolCallsResponse(intro, calls) {
@@ -3412,6 +3543,57 @@ function controlledProviderResponse({ ordinal, workspaceDir, scenario, requestKi
       `\`\`\`${language}`,
       scenario.targetContent.trimEnd(),
       '```',
+    ].join('\n');
+  }
+
+  if (scenario.providerPlan === 'medium-task-board-core-complete'
+    || scenario.providerPlan === 'medium-task-board-cli-complete'
+    || scenario.providerPlan === 'medium-task-board-persistence-complete') {
+    const phaseLabel = scenario.providerPlan === 'medium-task-board-core-complete'
+      ? '核心分层'
+      : scenario.providerPlan === 'medium-task-board-cli-complete'
+        ? 'CLI、报告和筛选扩展'
+        : '原子 JSON 持久化';
+    const successMarker = scenario.providerPlan === 'medium-task-board-core-complete'
+      ? 'TASK_CORE_TESTS_PASSED'
+      : scenario.providerPlan === 'medium-task-board-cli-complete'
+        ? 'TASK_CLI_TESTS_PASSED'
+        : 'TASK_PERSISTENCE_TESTS_PASSED';
+    const activeTodos = {
+      todoList: [
+        { id: 1, title: `实现${phaseLabel}`, status: 'in-progress' },
+        { id: 2, title: '运行完整 npm test', status: 'not-started' },
+      ],
+    };
+    const completedTodos = {
+      todoList: activeTodos.todoList.map(item => ({ ...item, status: 'completed' })),
+    };
+    const calls = [{ name: 'manage_todo_list', input: activeTodos }];
+    for (const [filePath, replacement] of Object.entries(scenario.replaceFiles || {})) {
+      calls.push({ name: 'read_file', input: { path: filePath } });
+      calls.push({
+        name: 'replace_in_file',
+        input: { path: filePath, old_str: replacement.from, new_str: replacement.to },
+      });
+    }
+    for (const [filePath, content] of Object.entries(scenario.createFiles || {})) {
+      calls.push({ name: 'create_file', input: { path: filePath, content } });
+    }
+    calls.push({ name: 'run_terminal', input: { command: 'npm test' } });
+    calls.push({ name: 'manage_todo_list', input: completedTodos });
+    calls.push({
+      name: 'task_complete',
+      input: { summary: `已完成${phaseLabel}，npm test 输出 ${successMarker}。` },
+    });
+    if (scenario.providerPlan === 'medium-task-board-cli-complete') {
+      return controlledMarkdownJsonToolListResponse(
+        '我已回到原 session。下面用 DeepSeek 常见的 Markdown JSON 工具列表完成第二阶段并回归测试。',
+        calls,
+      );
+    }
+    return [
+      `我会在当前 workspace 内完成${phaseLabel}，保持已实现功能并以 npm test 作为完成证据。`,
+      ...calls.map(call => `[TOOL:${call.name} ${JSON.stringify(call.input)}]`),
     ].join('\n');
   }
 
@@ -4078,6 +4260,8 @@ const port = __PORT__;
 const keepWindow = __KEEP_WINDOW__;
 const sameDevSeekSession = __SAME_DEVSEEK_SESSION__;
 const resumeExistingSession = __RESUME_EXISTING_SESSION__;
+const preserveWorkspaceAcrossCases = __PRESERVE_WORKSPACE_ACROSS_CASES__;
+const sessionAliasPath = __SESSION_ALIAS_PATH__;
 
 function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function normalize(value) { return path.resolve(value).replace(/\\/g, '/'); }
@@ -4091,7 +4275,8 @@ function progress(stage, extra = {}) {
 function parseJsonLine(line) { try { return JSON.parse(line); } catch { return null; } }
 function isProductRunTerminalEvent(terminal) {
   const data = terminal && typeof terminal === 'object' ? terminal.data || {} : {};
-  return data.mutationKind !== 'pending-edit-resolution'
+  return terminal?.source !== 'vscode-extension.memory-pipeline'
+    && data.mutationKind !== 'pending-edit-resolution'
     && data.mutationKind !== 'pending-edit-undo';
 }
 function selectProductRunTerminalLog(logs) {
@@ -4143,6 +4328,7 @@ function collectRunLogs(excludePaths = []) {
         terminal: terminalEvent ? {
           event: terminalEvent.event,
           runId: terminalEvent.runId || '',
+          source: terminalEvent.source || '',
           data: terminalEvent.data || {},
         } : null,
       };
@@ -4161,6 +4347,37 @@ async function waitForCommand(command, waitMs) {
 }
 async function updateConfig(key, value) {
   await vscode.workspace.getConfiguration('devseek').update(key, value, vscode.ConfigurationTarget.Workspace);
+}
+function readSessionAliases() {
+  if (!fs.existsSync(sessionAliasPath)) return {};
+  try { return JSON.parse(fs.readFileSync(sessionAliasPath, 'utf8')); }
+  catch { return {}; }
+}
+function writeSessionAliases(aliases) {
+  fs.writeFileSync(sessionAliasPath, JSON.stringify(aliases, null, 2), 'utf8');
+}
+async function sessionSnapshot() {
+  return vscode.commands.executeCommand('_devseek.harnessSessionSnapshot');
+}
+async function prepareScenarioSession(activeScenario) {
+  const directive = activeScenario.sessionDirective || null;
+  if (!directive || directive.mode !== 'resume') return { directive, newSession: directive?.mode === 'new' };
+  const aliases = readSessionAliases();
+  const sessionId = aliases[directive.alias];
+  if (!sessionId) throw new Error('Missing persisted session alias: ' + directive.alias);
+  const snapshot = await vscode.commands.executeCommand('_devseek.harnessLoadSession', sessionId);
+  if (snapshot?.activeSessionId !== sessionId) throw new Error('Loaded session did not become active: ' + directive.alias);
+  return { directive, newSession: false, loadedSessionId: sessionId, snapshot };
+}
+async function rememberScenarioSession(activeScenario) {
+  const alias = activeScenario.sessionDirective?.rememberAs;
+  if (!alias) return null;
+  const snapshot = await sessionSnapshot();
+  if (!snapshot?.activeSessionId) throw new Error('Cannot remember an empty active session');
+  const aliases = readSessionAliases();
+  aliases[alias] = snapshot.activeSessionId;
+  writeSessionAliases(aliases);
+  return { alias, sessionId: snapshot.activeSessionId, snapshot };
 }
 function writeSeedFiles(rootDir, seedFiles = {}) {
   for (const [relativePath, content] of Object.entries(seedFiles || {})) {
@@ -4440,6 +4657,7 @@ async function runScenario(activeScenario, caseIndex, totalCases) {
     commandInjected: false,
     commandCompleted: false,
     newSession: null,
+    sessionTransition: null,
     identity: null,
     artifact: null,
     runLogs: { logs: [], terminal: null },
@@ -4449,14 +4667,20 @@ async function runScenario(activeScenario, caseIndex, totalCases) {
   let initialUserFiles = {};
   try {
     progress('case-started', { scenario: activeScenario.id, caseIndex, totalCases });
-    if (!resumeExistingSession && (!sameDevSeekSession || caseIndex === 1)) {
+    if (!preserveWorkspaceAcrossCases
+      && !resumeExistingSession
+      && (!sameDevSeekSession || caseIndex === 1)) {
       writeScenarioSeedFiles(workspaceDir, activeScenario);
     }
     baselineRunLogPaths = collectRunLogs().logs.map(log => log.path);
     initialUserFiles = collectUserFiles();
     let commandError = '';
-    const newSession = resumeExistingSession ? false : sameDevSeekSession ? caseIndex === 1 : true;
+    const preparedSession = await prepareScenarioSession(activeScenario);
+    const newSession = activeScenario.sessionDirective
+      ? preparedSession.newSession === true
+      : resumeExistingSession ? false : sameDevSeekSession ? caseIndex === 1 : true;
     caseReport.newSession = newSession;
+    caseReport.sessionTransition = preparedSession;
     await updateConfig('autopilotMode', activeScenario.autopilotMode !== false);
     void vscode.commands.executeCommand(caseReport.commandName, activeScenario.prompt, activeScenario.prompt, newSession, 'fast')
       .then(() => { caseReport.commandCompleted = true; progress('case-command-completed', { scenario: activeScenario.id }); })
@@ -4489,6 +4713,10 @@ async function runScenario(activeScenario, caseIndex, totalCases) {
     }
     if (!caseReport.ok) {
       caseReport.errors.push('Exact-VSIX run did not satisfy the expected controlled case outcome: ' + activeScenario.id);
+    }
+    if (caseReport.commandCompleted) {
+      const remembered = await rememberScenarioSession(activeScenario);
+      if (remembered) caseReport.sessionTransition = { ...caseReport.sessionTransition, remembered };
     }
   } catch (error) {
     caseReport.errors.push(String(error?.stack || error?.message || error));
@@ -4537,6 +4765,10 @@ async function activate() {
     await vscode.commands.executeCommand('workbench.view.extension.devseek-sidebar').catch(() => {});
     await vscode.commands.executeCommand('devseek.openChat').catch(() => {});
     if (!await waitForCommand(report.commandName, 60000)) throw new Error('DevSeek controlled inbound command was not registered within 60s');
+    if (scenarios.some(candidate => candidate.sessionDirective)
+      && !await waitForCommand('_devseek.harnessSessionSnapshot', 30_000)) {
+      throw new Error('DevSeek controlled session commands were not registered within 30s');
+    }
     await delay(750);
     for (let index = 0; index < scenarios.length; index += 1) {
       const caseReport = await runScenario(scenarios[index], index + 1, scenarios.length);
@@ -4576,13 +4808,16 @@ module.exports = { activate };
     .replace('__PORT__', JSON.stringify(port))
     .replace('__KEEP_WINDOW__', JSON.stringify(keepWindow))
     .replace('__SAME_DEVSEEK_SESSION__', JSON.stringify(suiteOptions?.sameDevSeekSession === true))
-    .replace('__RESUME_EXISTING_SESSION__', JSON.stringify(suiteOptions?.resumeExistingSession === true));
+    .replace('__RESUME_EXISTING_SESSION__', JSON.stringify(suiteOptions?.resumeExistingSession === true))
+    .replace('__PRESERVE_WORKSPACE_ACROSS_CASES__', JSON.stringify(suiteOptions?.preserveWorkspaceAcrossCases === true))
+    .replace('__SESSION_ALIAS_PATH__', JSON.stringify(path.join(driverDir, 'session-aliases.json')));
   fs.writeFileSync(path.join(driverDir, 'extension.js'), source, 'utf8');
 }
 
 async function runControlledDriverSelection(options) {
   const { scenarios, suiteOptions, driverReportPath, progressPath } = options;
-  if (suiteOptions?.restartBetweenCases !== true) {
+  const restartGroups = partitionRestartGroups(scenarios, suiteOptions);
+  if (restartGroups.length === 1) {
     writeDriverExtension(options);
     return runVsCodeDriver(options);
   }
@@ -4591,15 +4826,16 @@ async function runControlledDriverSelection(options) {
   }
 
   const phaseReports = [];
-  for (let index = 0; index < scenarios.length; index += 1) {
+  for (let index = 0; index < restartGroups.length; index += 1) {
     const phase = index + 1;
+    const phaseScenarios = restartGroups[index];
     const phaseReportPath = path.join(path.dirname(driverReportPath), `driver-report-phase-${phase}.json`);
     const phaseProgressPath = path.join(path.dirname(progressPath), `driver-progress-phase-${phase}.jsonl`);
     const phaseOptions = {
       ...options,
       driverReportPath: phaseReportPath,
       progressPath: phaseProgressPath,
-      scenarios: [scenarios[index]],
+      scenarios: phaseScenarios,
       suiteOptions: {
         ...suiteOptions,
         resumeExistingSession: index > 0,
@@ -4607,23 +4843,23 @@ async function runControlledDriverSelection(options) {
     };
     writeDriverExtension(phaseOptions);
     const phaseReport = await runVsCodeDriver(phaseOptions);
-    phaseReports.push({ phase, scenario: scenarios[index].id, report: phaseReport });
+    phaseReports.push({ phase, scenarios: phaseScenarios.map(candidate => candidate.id), report: phaseReport });
     if (phaseReport?.ok !== true) break;
   }
 
   const cases = phaseReports.flatMap(entry => Array.isArray(entry.report?.cases) ? entry.report.cases : []);
   const lastReport = phaseReports.at(-1)?.report || {};
   const errors = phaseReports.flatMap(entry => (entry.report?.errors || [])
-    .map(error => `[restart-phase-${entry.phase}:${entry.scenario}] ${error}`));
-  if (phaseReports.length !== scenarios.length) {
-    errors.push(`Process-restart suite stopped after ${phaseReports.length}/${scenarios.length} phases`);
+      .map(error => `[restart-phase-${entry.phase}:${entry.scenarios.join(',')}] ${error}`));
+  if (phaseReports.length !== restartGroups.length) {
+    errors.push(`Process-restart suite stopped after ${phaseReports.length}/${restartGroups.length} phases`);
   }
   const merged = {
     ...lastReport,
-    ok: phaseReports.length === scenarios.length
+    ok: phaseReports.length === restartGroups.length
       && phaseReports.every(entry => entry.report?.ok === true)
       && cases.length === scenarios.length,
-    sameWindowMultiSession: false,
+    sameWindowMultiSession: phaseReports.some(entry => entry.report?.sameWindowMultiSession === true),
     sameDevSeekSession: suiteOptions?.sameDevSeekSession === true,
     processRestartCount: Math.max(0, phaseReports.length - 1),
     caseCount: scenarios.length,
@@ -4633,13 +4869,31 @@ async function runControlledDriverSelection(options) {
     errors,
     processPhases: phaseReports.map(entry => ({
       phase: entry.phase,
-      scenario: entry.scenario,
+      scenarios: entry.scenarios,
       ok: entry.report?.ok === true,
       identity: entry.report?.identity || null,
     })),
   };
   fs.writeFileSync(driverReportPath, JSON.stringify(merged, null, 2), 'utf8');
   return merged;
+}
+
+function partitionRestartGroups(scenarios, suiteOptions) {
+  if (suiteOptions?.restartBetweenCases === true) return scenarios.map(scenario => [scenario]);
+  const restartBeforeCases = new Set(suiteOptions?.restartBeforeCases || []);
+  if (restartBeforeCases.size === 0) return [scenarios];
+  const groups = [];
+  let current = [];
+  scenarios.forEach((scenario, index) => {
+    const caseNumber = index + 1;
+    if (restartBeforeCases.has(caseNumber) && current.length > 0) {
+      groups.push(current);
+      current = [];
+    }
+    current.push(scenario);
+  });
+  if (current.length > 0) groups.push(current);
+  return groups;
 }
 
 async function runVsCodeDriver(options) {
@@ -4739,8 +4993,12 @@ function waitForChildExit(child, waitMs) {
 function summarizeControlledBridge(state, { providerExpected = true, scenarios = [] } = {}) {
   const errors = [...state.errors];
   const acceptedRequestCount = state.chatRequests.filter(request => request.bound === true).length;
+  const acceptedInternalModelRequestCount = state.internalModelRequests
+    .filter(request => request.bound === true).length;
   const allRequestsBound = state.chatRequests.length > 0
     && state.chatRequests.every(request => request.bound === true && request.promptContract?.bound === true);
+  const allInternalModelRequestsBound = state.internalModelRequests
+    .every(request => request.bound === true && request.promptContract?.bound === true);
   const unexpectedProviderScenarios = scenarios
     .filter(scenario => scenario.providerExpected === false)
     .filter(scenario => state.chatRequests.some(request => request.scenarioId === scenario.id))
@@ -4749,6 +5007,18 @@ function summarizeControlledBridge(state, { providerExpected = true, scenarios =
   if (!state.promptContractSelfTest?.ok) errors.push('Controlled prompt-contract negative self-test did not pass');
   if (unexpectedProviderScenarios.length > 0) {
     errors.push(`Local policy refusal called the Provider: ${JSON.stringify(unexpectedProviderScenarios)}`);
+  }
+  if (state.internalModelRequests.some(request => !request.runId || !request.operationId)) {
+    errors.push('At least one internal model request lacked run/operation correlation');
+  }
+  if (!allInternalModelRequestsBound) {
+    errors.push('Not every internal model request is bound to an exact memory phase contract');
+  }
+  if (state.internalModelInvocationCount !== acceptedInternalModelRequestCount) {
+    errors.push(
+      `Internal model invocation count ${state.internalModelInvocationCount} does not match `
+      + `${acceptedInternalModelRequestCount} bound request(s)`,
+    );
   }
   if (providerExpected) {
     if (state.chatRequests.length < 1) errors.push('Controlled Bridge received no /chat request');
@@ -4779,9 +5049,12 @@ function summarizeControlledBridge(state, { providerExpected = true, scenarios =
     statusRequests: state.statusRequests,
     authFailures: state.authFailures,
     chatRequestCount: state.chatRequests.length,
+    internalModelRequestCount: state.internalModelRequests.length,
     acceptedRequestCount,
+    acceptedInternalModelRequestCount,
     rejectedRequestCount: state.rejectedRequests.length,
     providerInvocationCount: state.providerInvocationCount,
+    internalModelInvocationCount: state.internalModelInvocationCount,
     unexpectedProviderScenarios,
     rejectedRequests: state.rejectedRequests,
     promptContract: {
@@ -4792,6 +5065,7 @@ function summarizeControlledBridge(state, { providerExpected = true, scenarios =
       bound: providerExpected ? allRequestsBound : state.promptContractSelfTest?.ok === true,
     },
     chatRequests: state.chatRequests,
+    internalModelRequests: state.internalModelRequests,
     errors,
   };
 }
@@ -4837,7 +5111,8 @@ function inspectControlledRunLogEvidenceForSelection(driverReport, scenarios) {
 
 function isProductRunTerminalEvent(terminal) {
   const data = terminal && typeof terminal === 'object' ? terminal.data || {} : {};
-  return data.mutationKind !== 'pending-edit-resolution'
+  return terminal?.source !== 'vscode-extension.memory-pipeline'
+    && data.mutationKind !== 'pending-edit-resolution'
     && data.mutationKind !== 'pending-edit-undo';
 }
 

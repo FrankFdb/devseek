@@ -120,11 +120,18 @@ const TARGETED_TEST_CASE_COVERAGE = Object.freeze({
   ]),
   'packages/vscode-extension/test/unit/memory-pipeline.test.mjs': Object.freeze([
     't5-semantic-typo-consolidation',
+    't5-production-receipt-authority',
     't5-no-output-low-signal',
     't5-external-injection-isolation',
     't5-secret-redaction-retry',
     't5-newer-correction-supersedes',
     't5-unverified-success-rejected',
+    't5-model-evidence-upgrade-rejected',
+    't5-network-authority-rejected',
+    't5-retry-budget-exhausted',
+    't5-v1-restart-migration',
+    't5-intrinsic-evidence-rollout-namespace',
+    't5-v1-succeeded-output-migration',
     't5-bounded-progressive-read',
     't5-worktree-share-repo-isolation',
     't5-background-failure-isolation',
@@ -142,6 +149,7 @@ const DEFAULT_CONTROLLED_SUITES = Object.freeze([
   't3-deepseek-web-compat',
   't4-permission-write-boundary',
   't5-memory-restart',
+  't5-medium-program-session-restart',
   'independent-user-diversity-product',
   'coding-conformance-product',
   'r2-07f-connector-security',
@@ -162,6 +170,7 @@ const ACCEPTANCE_CONTROLLED_SUITES = Object.freeze([
   't3-deepseek-web-compat',
   't4-permission-write-boundary',
   't5-memory-restart',
+  't5-medium-program-session-restart',
   'independent-user-diversity-product',
   'coding-conformance-product',
   'r2-07f-connector-security',
@@ -198,6 +207,17 @@ const CASE_DESIGN_DIMENSIONS = Object.freeze([
     cases: ['t5-capture-project-memory', 't5-restart-use-project-memory'],
   },
   {
+    id: 'medium_program_session_switch_return_and_restart',
+    user_need: 'Users expect a multi-file task to survive an unrelated session switch, return to the original session, and continue after a real editor restart without context leakage or repeated work.',
+    suites: ['t5-medium-program-session-restart'],
+    cases: [
+      't5-medium-program-core',
+      't5-medium-program-isolated-session',
+      't5-medium-program-return-primary',
+      't5-medium-program-restart-primary',
+    ],
+  },
+  {
     id: 'semantic_memory_diverse_input',
     user_need: 'Users express durable preferences with colloquial language, typos, and homophones, while one-off chat must not become memory.',
     suites: ['targeted-local-contracts'],
@@ -220,6 +240,20 @@ const CASE_DESIGN_DIMENSIONS = Object.freeze([
     user_need: 'Worktrees should share repository knowledge, unrelated repositories must remain isolated, and memory maintenance must never fail the completed task.',
     suites: ['targeted-local-contracts'],
     cases: ['t5-worktree-share-repo-isolation', 't5-background-failure-isolation', 't5-foreground-priority-isolation'],
+  },
+  {
+    id: 'memory_evidence_authority_and_pipeline_recovery',
+    user_need: 'Model memory proposals must not invent evidence authority, and queued learning must recover across retries and schema upgrades without unbounded provider calls.',
+    suites: ['targeted-local-contracts'],
+    cases: [
+      't5-production-receipt-authority',
+      't5-model-evidence-upgrade-rejected',
+      't5-network-authority-rejected',
+      't5-retry-budget-exhausted',
+      't5-v1-restart-migration',
+      't5-intrinsic-evidence-rollout-namespace',
+      't5-v1-succeeded-output-migration',
+    ],
   },
   {
     id: 'read_only_boundary',
@@ -861,6 +895,7 @@ function controlledSuitePurpose(suite) {
     'coding-conformance-product': 'Core programming lifecycle: create/modify/verify-repair plus permission denial and policy refusal.',
     'r2-07f-connector-security': 'Connector evidence replay: redacted read-only evidence must not mutate workspace.',
     'journey-core': 'General user journey smoke: normal, exception, boundary, C++ create, JS fix, latest requirement wins.',
+    't5-medium-program-session-restart': 'T1-T5 longitudinal journey: build a medium multi-file program, isolate an unrelated session, return to the original task, restart VS Code, continue implementation, and rerun real tests.',
   };
   return purposes[suite] || `Controlled VSIX user simulation suite ${suite}.`;
 }
