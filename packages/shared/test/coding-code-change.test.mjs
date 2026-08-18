@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   CODING_CHANGE_PLAN_VERSION,
+  CODING_TOOL_AUTHORITY_RECEIPT_VERSION,
   CODING_TOOL_RECEIPT_VERSION,
   CODING_VERIFICATION_RECEIPT_VERSION,
   CODING_WORKSPACE_MUTATION_RECEIPT_VERSION,
@@ -63,6 +64,25 @@ function tool(overrides = {}) {
     permission: { decision: 'allow' },
     status: 'completed',
     evidenceRefs: ['tool:write-1:completed'],
+    ...overrides,
+  };
+}
+
+function authorityReceipt(overrides = {}) {
+  return {
+    version: CODING_TOOL_AUTHORITY_RECEIPT_VERSION,
+    runId: 'run-change',
+    actionId: 'write-1',
+    tool: 'replace_file',
+    purpose: 'workspace-mutation',
+    effects: ['workspace-mutation'],
+    inputSha256: 'a'.repeat(64),
+    requestSha256: 'b'.repeat(64),
+    sandboxPolicySha256: 'c'.repeat(64),
+    decision: 'allow',
+    status: 'authorized',
+    reason: 'task-contract-change-allows-workspace-mutation',
+    evidenceRefs: ['authority:write-1:authorized'],
     ...overrides,
   };
 }
@@ -156,6 +176,7 @@ test('I19-INT-01 user journey: tool mutation and verification form one causal ch
     sequence: 4,
     actionId: 'integration-final',
     codeChange,
+    toolAuthorityReceipts: [authorityReceipt()],
     toolExecutions: [tool()],
     mutations: [mutation()],
     verifications: [verification()],
@@ -166,7 +187,31 @@ test('I19-INT-01 user journey: tool mutation and verification form one causal ch
   assert.equal(decision.status, 'conformant');
   assert.deepEqual(decision.bypassedMutationActionIds, []);
   assert.deepEqual(decision.orphanMutationToolActionIds, []);
+  assert.deepEqual(decision.unexecutedAuthorizedActionIds, []);
   assert.deepEqual(decision.unverifiedPaths, []);
+});
+
+test('I19-INT-04 user journey: authorization cannot substitute for terminal execution evidence', () => {
+  const plan = { ...changePlan(), requiredTargets: [] };
+  const codeChange = new CanonicalCodeChangeService().bind({ runId: 'run-change' }).assess(codeChangeInput({
+    plan,
+    mutations: [],
+  }));
+  const decision = new CanonicalIntegrationConformanceService().bind({ runId: 'run-change' }).assess({
+    sequence: 4,
+    actionId: 'integration-final',
+    codeChange,
+    toolAuthorityReceipts: [authorityReceipt()],
+    toolExecutions: [],
+    mutations: [],
+    verifications: [],
+    verificationRequired: false,
+    evidenceRefs: [],
+  });
+
+  assert.equal(decision.status, 'incomplete');
+  assert.deepEqual(decision.unexecutedAuthorizedActionIds, ['write-1']);
+  assert.ok(decision.reasonCodes.includes('authorized-tool-not-executed'));
 });
 
 test('I19-INT-02 user journey: direct mutation bypass cannot authorize completion', () => {
@@ -178,6 +223,7 @@ test('I19-INT-02 user journey: direct mutation bypass cannot authorize completio
     sequence: 4,
     actionId: 'integration-final',
     codeChange,
+    toolAuthorityReceipts: [],
     toolExecutions: [],
     mutations,
     verifications: [verification()],
@@ -199,6 +245,7 @@ test('I19-INT-03 user journey: readback-only artifact does not invent a verifica
     sequence: 4,
     actionId: 'integration-final',
     codeChange,
+    toolAuthorityReceipts: [authorityReceipt()],
     toolExecutions: [tool()],
     mutations: [artifactMutation],
     verifications: [],

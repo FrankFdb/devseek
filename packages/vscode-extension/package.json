@@ -2,7 +2,7 @@
   "name": "devseek-netai",
   "displayName": "DevSeek",
   "description": "DevSeek — AI-powered coding agent with local compilation, multi-round repair, and universal learning",
-  "version": "2.0.29",
+  "version": "2.0.30",
   "publisher": "devseek-netai",
   "repository": {
     "type": "git",
@@ -475,6 +475,7 @@
   },
   "scripts": {
     "compile": "node ../../scripts/generate-webview-tool-manifest.mjs && npx esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
+    "typecheck": "tsc --noEmit -p tsconfig.json --pretty false",
     "watch": "node ../../scripts/generate-webview-tool-manifest.mjs && npx esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
     "vscode:prepublish": "npm run compile",
     "test": "node test/run-all.mjs",

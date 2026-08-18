@@ -43,6 +43,7 @@ export function projectModelToolSemanticProposal(
       targetPaths: targets,
       requiresWorkspace: true,
       requiresTerminal: terminal,
+      requiresExternalEffect: false,
       reason: 'model proposed a destructive workspace action',
     });
   }
@@ -73,6 +74,7 @@ export function projectModelToolSemanticProposal(
       targetPaths: mutationTargets,
       requiresWorkspace: true,
       requiresTerminal: terminal,
+      requiresExternalEffect: false,
       reason: 'model proposed a workspace mutation through normalized tools',
     });
   }
@@ -85,6 +87,7 @@ export function projectModelToolSemanticProposal(
       targetPaths: targets,
       requiresWorkspace: true,
       requiresTerminal: true,
+      requiresExternalEffect: false,
       reason: 'model proposed terminal validation without a workspace mutation',
     });
   }
@@ -94,13 +97,14 @@ export function projectModelToolSemanticProposal(
     mode: current.intent.mode === 'plan' ? 'plan' : 'inspect',
     taskKind: current.intent.mode === 'plan'
       ? 'planning'
-      : current.taskContract.taskShapes.includes('review')
+      : current.taskContract.taskShapes.includes('inspection')
         ? 'code-review'
         : 'read-only-analysis',
     mutation: 'none',
     targetPaths: targets,
     requiresWorkspace: true,
     requiresTerminal: false,
+    requiresExternalEffect: false,
     reason: 'model proposed observation within a locally non-mutating task',
   });
 }
@@ -131,7 +135,6 @@ function proposal(
     source: 'provider',
     confidence: 0.98,
     requiresClarification: false,
-    requiresExternalEffect: false,
     ...input,
   };
 }

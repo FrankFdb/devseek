@@ -150,6 +150,17 @@ test('CapturedProcessRegistry terminates a complete shell process group', async 
   }
 });
 
+test('CapturedProcessRegistry retains ownership until the child close lifecycle event', () => {
+  const registry = new CapturedProcessRegistry();
+  const child = new FakeChild();
+  registry.register(child);
+  assert.equal(registry.size, 1);
+  child.emit('exit', 0, null);
+  assert.equal(registry.size, 1);
+  child.emit('close', 0, null);
+  assert.equal(registry.size, 0);
+});
+
 test('captured terminal command follows the owning chat AbortSignal and reaps descendants', async () => {
   if (process.platform === 'win32') return;
   const controller = new AbortController();

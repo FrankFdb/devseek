@@ -1,6 +1,6 @@
 {
   "name": "devseek-netai",
-  "version": "2.0.29",
+  "version": "2.0.30",
   "private": true,
   "workspaces": [
     "packages/shared",
@@ -21,11 +21,12 @@
     "headless:build": "npm run shared:build && npm run build --workspace=packages/headless",
     "headless:typecheck": "npm run shared:build && npm run typecheck --workspace=packages/headless",
     "headless:test": "npm run headless:build && npm run test --workspace=packages/headless",
+    "extension:typecheck": "npm run typecheck --workspace=packages/vscode-extension",
     "extension:package": "npm run extension:package:debug",
-    "extension:package:debug": "npm run shared:build && npm run compile --workspace=packages/vscode-extension && DEVSEEK_BUILD_CHANNEL=debug node scripts/package-vsix.mjs",
-    "extension:package:release": "npm run shared:build && npm run compile --workspace=packages/vscode-extension && DEVSEEK_BUILD_CHANNEL=release node scripts/package-vsix.mjs",
+    "extension:package:debug": "npm run shared:build && npm run extension:typecheck && npm run compile --workspace=packages/vscode-extension && DEVSEEK_BUILD_CHANNEL=debug node scripts/package-vsix.mjs",
+    "extension:package:release": "npm run shared:build && npm run extension:typecheck && npm run compile --workspace=packages/vscode-extension && DEVSEEK_BUILD_CHANNEL=release node scripts/package-vsix.mjs",
     "verify": "bash scripts/verify-bridge.sh",
-    "verify:phase10": "npm run shared:build && npm run shared:test && npm run bridge:build && npm run test --workspace=packages/bridge && npm run cli:typecheck && npm run cli:build && npm run cli:test && npm run headless:typecheck && npm run headless:test && npm run compile --workspace=packages/vscode-extension",
+    "verify:phase10": "npm run shared:build && npm run shared:test && npm run bridge:build && npm run test --workspace=packages/bridge && npm run cli:typecheck && npm run cli:build && npm run cli:test && npm run headless:typecheck && npm run headless:test && npm run extension:typecheck && npm run compile --workspace=packages/vscode-extension",
     "verify:phase11": "npm run shared:build && npm run shared:test",
     "verify:phase12": "npm run shared:build && npm run shared:test && npm run cli:typecheck && npm run cli:build && npm run cli:test && npm run headless:typecheck && npm run headless:test",
     "verify:phase0-12": "node scripts/devseek-phase0-12-verify.mjs",

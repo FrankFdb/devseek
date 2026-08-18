@@ -1052,8 +1052,13 @@ test('Agentic loop: repeated terminal failures enter root-cause recovery before 
   assertContains(recovery, 'create_file / write_file 或 SEARCH/REPLACE', 'recovery prompt must require a repair action');
   assert.match(
     code,
-    /blockedRepeatedToolIndexes[\s\S]*?toolsToExecute[\s\S]*?executeFakeToolsForLoop\(\s*toolsToExecute,/,
-    'runAgenticLoop must filter repeated blocking tools before executing tools',
+    /blockedRepeatedToolIndexes[\s\S]*?toolsToExecute[\s\S]*?executeScheduledToolLoop\(\s*toolsToExecute,/,
+    'runAgenticLoop must filter repeated blocking tools before scheduling tools',
+  );
+  assert.match(
+    code,
+    /executeScheduledToolLoop\([\s\S]*?batch\s*=>\s*executeFakeToolsForLoop\(\s*batch,/,
+    'the scheduler must preserve ToolLoop as the canonical execution owner',
   );
   assertContains(code, 'isContextGatheringToolName', 'agent loop must delegate context-tool classification');
   assertContains(convergence, 'CONTEXT_GATHERING_TOOL_NAMES', 'context gathering repeats must share the same no-progress guard');

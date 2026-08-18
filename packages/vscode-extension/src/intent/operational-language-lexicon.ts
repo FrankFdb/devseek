@@ -178,7 +178,7 @@ function validateOperationalLanguageLexiconConfig(value: unknown): OperationalLa
 }
 
 function validatePatternGroups<T extends string>(
-  groups: Partial<Record<T, OperationalPatternSpec[]>> | undefined,
+  groups: Partial<Record<T, readonly OperationalPatternSpec[]>> | undefined,
   allowedGroups: Set<string>,
   owner: string,
 ): void {
@@ -209,7 +209,7 @@ function validatePatternSpec(spec: unknown, owner: string): asserts spec is Oper
 }
 
 function compilePatternGroups<T extends string>(
-  groups: Partial<Record<T, OperationalPatternSpec[]>> | undefined,
+  groups: Partial<Record<T, readonly OperationalPatternSpec[]>> | undefined,
   orderedGroups: readonly T[],
 ): Record<T, RegExp[]> {
   const compiled = {} as Record<T, RegExp[]>;

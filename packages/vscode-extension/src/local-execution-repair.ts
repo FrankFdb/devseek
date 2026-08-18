@@ -20,18 +20,13 @@ import {
   type AgentFileWriteContext,
 } from './app/agent-file-write-policy';
 import type { TerminalPermissionCoordinator } from './app/terminal-permission-coordinator';
-import { listCppBuildOutputDirNames } from './cpp-build-layout';
+import { WorkspaceGrepSearchService } from './workspace/grep-search-service';
+import { buildWorkspaceSearchExcludeGlob } from './workspace/generated-path-policy';
 import { isFileProtected } from './protected-files';
 import { postWebviewMessage } from './ui/webview-event-adapter';
 
 const LOCAL_REPAIR_SOURCE_FILE_RE = /(?:^|\/)(?:Makefile|CMakeLists\.txt)$|\.(cpp|c|h|hpp|cc|cxx|ts|tsx|js|jsx|mjs|py|rs|go|java|cs|rb|php|swift|kt|scala|dart|lua|r)$/i;
-const LOCAL_REPAIR_SEARCH_EXCLUDE_GLOB = `**/{${[
-  'node_modules',
-  'backups',
-  'dist',
-  '.git',
-  ...listCppBuildOutputDirNames(),
-].join(',')}}/**`;
+const LOCAL_REPAIR_SEARCH_EXCLUDE_GLOB = buildWorkspaceSearchExcludeGlob();
 
 export interface LocalExecutionRepairCallbacksDeps {
   webview: vscode.Webview;
@@ -246,21 +241,15 @@ export function buildLocalExecutionAgentCallbacks(deps: LocalExecutionRepairCall
       if (!resolved) throw new Error(`找不到文件：${filePath}`);
       return fs.readFileSync(resolved, 'utf8').slice(0, 8000);
     },
-    onGrepSearch: async (pattern, path, _isRegexp, workDir) => {
-      const baseDir = path
-        ? (nodePath.isAbsolute(path) ? path : nodePath.join(workDir ?? defaultWorkdir, path))
-        : (workDir ?? defaultWorkdir);
-      const searchDir = nodePath.resolve(baseDir);
-      if (!isPathInsideRoot(searchDir, workspaceRoot)) {
-        throw new Error('grep_search: path outside workspace');
-      }
+    onGrepSearch: async (pattern, path, _isRegexp, workDir, options) => {
       const { runCommand } = await import('./tools/terminal');
-      const includes = ['ts','tsx','js','jsx','cpp','c','h','hpp','py','java','go','rs','cs','json','md','txt']
-        .map(ext => `--include='*.${ext}'`)
-        .join(' ');
-      const cmd = `grep -r -n -E ${shellArg(pattern.slice(0, 200))} ${includes} ${shellArg(searchDir)} 2>/dev/null | head -80`;
-      const result = await runCommand({ command: cmd, timeoutMs: 15000 });
-      return result.stdout || '（无匹配结果）';
+      return new WorkspaceGrepSearchService(workspaceRoot, runCommand).search({
+        pattern,
+        path,
+        workDir: workDir ?? defaultWorkdir,
+        includePattern: options?.includePattern,
+        fileTypes: options?.fileTypes,
+      });
     },
     onListDir: async (dirPath) => {
       const target = nodePath.isAbsolute(dirPath)
@@ -349,8 +338,4 @@ function isPathInsideRoot(absPath: string, root: string): boolean {
   if (!absPath || !root) return false;
   const rel = nodePath.relative(nodePath.resolve(root), nodePath.resolve(absPath));
   return rel === '' || (!!rel && !rel.startsWith('..') && !nodePath.isAbsolute(rel));
-}
-
-function shellArg(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
 }

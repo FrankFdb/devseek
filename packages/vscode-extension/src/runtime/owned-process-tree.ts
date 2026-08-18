@@ -3,9 +3,11 @@ export interface OwnedChildProcess {
   readonly exitCode: number | null;
   readonly signalCode: NodeJS.Signals | null;
   kill(signal?: NodeJS.Signals): boolean;
-  once(event: 'exit' | 'error', listener: () => void): this;
-  removeListener(event: 'exit' | 'error', listener: () => void): this;
+  once(event: OwnedChildProcessLifecycleEvent, listener: () => void): this;
+  removeListener(event: OwnedChildProcessLifecycleEvent, listener: () => void): this;
 }
+
+export type OwnedChildProcessLifecycleEvent = 'close' | 'exit' | 'error';
 
 export interface OwnedProcessTreeEffects {
   readonly platform: NodeJS.Platform;

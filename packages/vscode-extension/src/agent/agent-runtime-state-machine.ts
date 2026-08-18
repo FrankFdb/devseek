@@ -1,4 +1,5 @@
 import type { EvidenceRef } from './tool-executor';
+import type { AgentTaskAction } from '../agent-task-decomposer';
 import {
   classifyProviderOutputIntegrity,
   describeProviderOutputIntegrity,
@@ -16,7 +17,7 @@ export type AgentRuntimeState =
   | 'failed';
 
 export interface AgentRuntimeStateInput {
-  taskAction: string;
+  taskAction: AgentTaskAction;
   taskTitle?: string;
   providerText?: string;
   roundText?: string;
@@ -56,7 +57,7 @@ export interface AgentRuntimeActionObservation {
 
 export function resolveAgentRuntimeTaskAction(
   observation: AgentRuntimeActionObservation,
-): 'respond' | 'edit' {
+): Extract<AgentTaskAction, 'respond' | 'modify'> {
   const effectStarted = observation.toolReceipts.some(receipt => (
     (receipt.purpose === 'workspace-mutation' || receipt.purpose === 'external-effect')
       && receipt.status !== 'denied'
@@ -64,7 +65,7 @@ export function resolveAgentRuntimeTaskAction(
       && receipt.effectStarted !== false
   ));
   return effectStarted || (observation.taskComplete && observation.routeChatKind === 'code-change')
-    ? 'edit'
+    ? 'modify'
     : 'respond';
 }
 
@@ -176,6 +177,6 @@ function isVerified(input: AgentRuntimeStateInput, providerOutput: ProviderOutpu
   return countEvidence(input) > 0;
 }
 
-export function isReadOnlyRuntimeAction(action: string): boolean {
+export function isReadOnlyRuntimeAction(action: AgentTaskAction): boolean {
   return action === 'analyze' || action === 'explain' || action === 'explore' || action === 'respond';
 }

@@ -114,7 +114,9 @@ function uniqueNonEmpty(values: readonly string[]): string[] {
   return [...new Set(values.map(value => value.trim()).filter(Boolean))];
 }
 
-function uniqueDeliverableKinds(values: readonly TaskContract['deliverables']): CodingDeliverableKind[] {
+function uniqueDeliverableKinds(
+  values: ReadonlyArray<TaskContract['deliverables'][number]>,
+): CodingDeliverableKind[] {
   return [...new Set(values.filter(value => (
     value === 'source-change' || value === 'report' || value === 'verification-result'
   )))] as CodingDeliverableKind[];

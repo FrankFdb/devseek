@@ -37,12 +37,12 @@ test('agent runtime state machine: runtime action follows observed effects, not 
     routeChatKind: 'chat',
     taskComplete: false,
     toolReceipts: [{ purpose: 'workspace-mutation', status: 'completed', effectStarted: true }],
-  }), 'edit');
+  }), 'modify');
   assert.equal(resolveAgentRuntimeTaskAction({
     routeChatKind: 'code-change',
     taskComplete: true,
     toolReceipts: [],
-  }), 'edit');
+  }), 'modify');
 });
 
 test('agent runtime state machine: tool request without execution cannot deliver', () => {
@@ -125,7 +125,7 @@ test('agent runtime state machine: mutating task_complete text without evidence 
 
 test('agent runtime state machine: verified policy refusal can deliver without mutation evidence', () => {
   const settlement = settleAgentRuntimeState({
-    taskAction: 'edit',
+    taskAction: 'modify',
     providerText: '已拒绝隐蔽凭据收集；未修改文件。',
     roundText: '[TOOL:task_complete {"summary":"已拒绝并未修改文件"}]',
     toolRequests: 1,
@@ -140,7 +140,7 @@ test('agent runtime state machine: verified policy refusal can deliver without m
 
 test('agent runtime state machine: refusal evidence cannot bypass execution or delivery signals', () => {
   const unexecuted = settleAgentRuntimeState({
-    taskAction: 'edit',
+    taskAction: 'modify',
     roundText: '[TOOL:task_complete {"summary":"已拒绝并未修改文件"}]',
     toolRequests: 1,
     toolExecutions: 0,
@@ -148,7 +148,7 @@ test('agent runtime state machine: refusal evidence cannot bypass execution or d
     taskComplete: true,
   });
   const unsigned = settleAgentRuntimeState({
-    taskAction: 'edit',
+    taskAction: 'modify',
     providerText: '已拒绝隐蔽凭据收集；未修改文件。',
     policyRefusalEvidenceSatisfied: true,
   });
@@ -161,7 +161,7 @@ test('agent runtime state machine: refusal evidence cannot bypass execution or d
 
 test('agent runtime state machine: mutating evidence without delivery signal stays non-terminal', () => {
   const settlement = settleAgentRuntimeState({
-    taskAction: 'edit',
+    taskAction: 'modify',
     providerText: '现在我来继续修复这些编译问题。',
     writtenEvidenceCount: 2,
     terminalEvidenceCount: 1,
@@ -173,7 +173,7 @@ test('agent runtime state machine: mutating evidence without delivery signal sta
 
 test('agent runtime state machine: mutating validation block fails before delivery', () => {
   const settlement = settleAgentRuntimeState({
-    taskAction: 'edit',
+    taskAction: 'modify',
     providerText: '已写入源码。',
     writtenEvidenceCount: 2,
     validationFailedReason: 'QualityGate 阻塞：C/C++ 依赖闭包未满足。',

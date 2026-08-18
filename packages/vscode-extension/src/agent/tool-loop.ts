@@ -792,7 +792,7 @@ export async function executeFakeToolsForLoop(
           parts.push(`[memory_write] 已写入记忆：${content.slice(0, 80)}`);
           callbacks.onToolActivity?.('memory', `记忆已保存: ${content.slice(0, 60)}`);
         } else {
-          const reason = execution.error ?? codingToolExecutionFailureReason(execution.receipt);
+          const reason = codingToolExecutionFailureReason(execution.receipt);
           recordToolFailure(tool.name, 'tool-host', undefined, reason);
           parts.push(`[memory_write] 失败：${reason}`);
         }

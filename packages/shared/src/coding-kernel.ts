@@ -740,6 +740,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         sequence: finalDecisionSequence + 1,
         actionId: 'kernel-integration-conformance',
         codeChange,
+        toolAuthorityReceipts: toolAuthority.authorizations().map(item => item.receipt),
         toolExecutions: toolExecution.receipts(),
         mutations: workspaceMutations.receipts(),
         verifications: verification.receipts(),

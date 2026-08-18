@@ -1,4 +1,5 @@
 import * as nodePath from 'path';
+import { listWorkspaceSearchExcludedDirNames } from './generated-path-policy';
 
 export type GrepCommandRunner = (args: { command: string; timeoutMs?: number }) => Promise<{ stdout?: string }>;
 
@@ -26,6 +27,7 @@ export class WorkspaceGrepSearchService {
       'grep -r -n -E',
       `'${shellSingleQuote(pattern).slice(0, 200)}'`,
       includes,
+      buildGrepExcludes(),
       `'${shellSingleQuote(searchDir)}'`,
       '2>/dev/null | head -60',
     ].filter(Boolean).join(' ');
@@ -34,19 +36,26 @@ export class WorkspaceGrepSearchService {
   }
 
   private resolveSearchDir(path?: string, workDir?: string): string {
+    const workspaceRoot = nodePath.resolve(this.workspaceRoot);
+    const baseDir = workDir ? nodePath.resolve(workDir) : workspaceRoot;
+    if (!isInsideOrSame(baseDir, workspaceRoot)) throw new Error('grep_search: workdir outside workspace');
+
     let rawDir: string;
     if (path) {
-      rawDir = nodePath.isAbsolute(path) ? path : nodePath.join(this.workspaceRoot, path);
-    } else if (workDir) {
-      rawDir = workDir;
+      rawDir = nodePath.isAbsolute(path) ? path : nodePath.join(baseDir, path);
     } else {
-      rawDir = this.workspaceRoot;
+      rawDir = baseDir;
     }
     const searchDir = nodePath.resolve(rawDir);
-    const workspaceRoot = nodePath.resolve(this.workspaceRoot);
     if (!isInsideOrSame(searchDir, workspaceRoot)) throw new Error('grep_search: path outside workspace');
     return searchDir;
   }
+}
+
+function buildGrepExcludes(): string {
+  return listWorkspaceSearchExcludedDirNames()
+    .map(name => `--exclude-dir='${shellSingleQuote(name)}'`)
+    .join(' ');
 }
 
 function buildGrepIncludes(includePattern?: string): string {

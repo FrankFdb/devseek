@@ -125,6 +125,7 @@ import { createProviderRequirementReviewService } from './provider-requirement-r
 import { tryRunGroundedMarkdownAgenticTask } from './grounded-markdown-agentic-task';
 import { buildAgenticSystemPrompt } from './agentic-system-prompt';
 import { projectModelToolSemanticProposal } from './model-tool-semantic-proposal';
+import { executeScheduledToolLoop } from './tool-loop-scheduler';
 import { createSemanticExecutionWriteAuthority } from './semantic-execution-context';
 import { createAgenticInitialPromptContext, type AgenticLoopExecutionContext } from './agentic-execution-context';
 import { classifyAgenticManualReviewEvidence } from './terminal-evidence-settlement';
@@ -209,7 +210,7 @@ export async function runAgenticLoop(
     if (workflowMode === 'model-led') {
       return { currentTaskIntent, promptRequiresFileChange: false, promptRequiresTools: false };
     }
-    const promptIsReadOnly = workflowMode !== 'model-led' && (
+    const promptIsReadOnly = (
       currentTaskIntent.family === 'read-only-advisory'
       || currentTaskIntent.family === 'review'
       || currentTaskIntent.family === 'safety-refusal'
@@ -804,22 +805,25 @@ export async function runAgenticLoop(
       break;
     }
 
-    const loopRes = await executeFakeToolsForLoop(
+    const loopRes = await executeScheduledToolLoop(
       toolsToExecute,
-      writeAuthority.callbacks,
-      workspaceRoot,
-      {
-        currentTaskIndex: Number.MAX_SAFE_INTEGER,
-        taskTotal: 1,
-        deferDoneStatus: true,
-        requireWorkBeforeComplete: missingBeforeTools.length > 0,
-        userPrompt: writeAuthority.currentPrompt,
+      batch => executeFakeToolsForLoop(
+        batch,
+        writeAuthority.callbacks,
         workspaceRoot,
-        requireReadBeforeOverwrite: true,
-        readEvidencePaths: [...allReadEvidencePaths],
-        verificationScopeFiles: allWrittenFiles,
-        suppressedTools,
-      },
+        {
+          currentTaskIndex: Number.MAX_SAFE_INTEGER,
+          taskTotal: 1,
+          deferDoneStatus: true,
+          requireWorkBeforeComplete: missingBeforeTools.length > 0,
+          userPrompt: writeAuthority.currentPrompt,
+          workspaceRoot,
+          requireReadBeforeOverwrite: true,
+          readEvidencePaths: [...allReadEvidencePaths],
+          verificationScopeFiles: allWrittenFiles,
+          suppressedTools,
+        },
+      ),
     );
     if (writeAuthority.writeRevoked && hasWriteRevokedToolAttempt(toolsToExecute)) { failedReason = '用户实时补充已撤销写入授权，任务已停止。'; break; }
     if (loopRes.toolCallsMade) {

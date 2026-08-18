@@ -1,18 +1,5 @@
 import * as nodePath from 'path';
-import { isCppBuildArtifactDirName } from '../cpp-build-layout';
-
-const INTERNAL_OR_GENERATED_DIRS = new Set([
-  '.devseek',
-  '.git',
-  '.cache',
-  '.vscode',
-  'node_modules',
-  'dist',
-  'out',
-  'coverage',
-  'tmp',
-  'temp',
-]);
+import { isWorkspaceInternalOrGeneratedDirName } from './generated-path-policy';
 
 export function sanitizeWorkspaceContextAnchorPath(
   absPath: string | undefined,
@@ -32,8 +19,7 @@ export function isWorkspaceInternalOrGeneratedPath(
     if (!rel || rel.startsWith('..') || nodePath.isAbsolute(rel)) continue;
     const segments = rel.split('/').filter(Boolean);
     return segments.some((segment) => {
-      const lower = segment.toLowerCase();
-      return INTERNAL_OR_GENERATED_DIRS.has(lower) || isCppBuildArtifactDirName(segment);
+      return isWorkspaceInternalOrGeneratedDirName(segment);
     });
   }
   return false;

@@ -82,6 +82,19 @@ test('Model tool semantic proposal: mixed-language plan stays non-mutating', () 
   assert.equal(route.semanticContract.validation.runRequested, false);
 });
 
+test('Model tool semantic proposal: inspection tools preserve code-review semantics', () => {
+  const prompt = 'Review src/queue.ts for correctness. Read only; do not modify or run commands.';
+  const initial = routeTaskIntent(prompt).semanticContract;
+  const semanticIntent = projectModelToolSemanticProposal([
+    tool('read_file', 'read', 'observe', ['src/queue.ts']),
+  ], initial);
+
+  assert.ok(initial.taskContract.taskShapes.includes('inspection'));
+  assert.equal(semanticIntent.taskKind, 'code-review');
+  assert.equal(semanticIntent.mutation, 'none');
+  assert.equal(semanticIntent.requiresExternalEffect, false);
+});
+
 test('Model tool semantic proposal: terminal verification cannot imply mutation', () => {
   const prompt = '只跑一下 health 检查，把结果告诉我；不要改文件，失败也不要修。';
   const initial = routeTaskIntent(prompt).semanticContract;
@@ -118,6 +131,7 @@ test('Model tool semantic proposal: memory capture does not request command exec
   const route = routeTaskIntent(prompt, { current: initial, semanticIntent });
 
   assert.equal(semanticIntent.taskKind, 'external-effect');
+  assert.equal(semanticIntent.requiresExternalEffect, true);
   assert.equal(route.mode, 'inspect');
   assert.equal(route.mutation.requested, false);
   assert.equal(route.validation.commandEvidenceRequired, false);

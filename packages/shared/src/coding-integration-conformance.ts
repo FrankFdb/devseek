@@ -5,6 +5,7 @@ import {
   uniqueCodingRefs,
 } from './coding-contract-utils';
 import type { CodingCodeChangeDecision } from './coding-code-change';
+import type { CodingToolAuthorityReceipt } from './coding-tool-authority';
 import type { CodingToolExecutionReceipt } from './coding-tool-execution';
 import type { CodingVerificationReceipt } from './coding-verification';
 import type { CodingWorkspaceMutationReceipt } from './coding-workspace-mutation';
@@ -19,6 +20,7 @@ export interface AssessCodingIntegrationInput {
   readonly sequence: number;
   readonly actionId: string;
   readonly codeChange: CodingCodeChangeDecision;
+  readonly toolAuthorityReceipts: readonly CodingToolAuthorityReceipt[];
   readonly toolExecutions: readonly CodingToolExecutionReceipt<unknown>[];
   readonly mutations: readonly CodingWorkspaceMutationReceipt<unknown>[];
   readonly verifications: readonly CodingVerificationReceipt[];
@@ -35,6 +37,7 @@ export interface CodingIntegrationConformanceDecision {
   readonly status: 'conformant' | 'not-applicable' | 'incomplete' | 'failed' | 'indeterminate';
   readonly bypassedMutationActionIds: readonly string[];
   readonly orphanMutationToolActionIds: readonly string[];
+  readonly unexecutedAuthorizedActionIds: readonly string[];
   readonly indeterminateActionIds: readonly string[];
   readonly unverifiedPaths: readonly string[];
   readonly reasonCodes: readonly string[];
@@ -99,6 +102,10 @@ function assessIntegration(
   const orphanMutationToolActionIds = completedMutatingTools
     .filter(tool => !committed.some(receipt => receipt.actionId === tool.actionId))
     .map(receipt => receipt.actionId);
+  const executedActionIds = new Set(input.toolExecutions.map(receipt => receipt.actionId));
+  const unexecutedAuthorizedActionIds = input.toolAuthorityReceipts
+    .filter(receipt => receipt.status === 'authorized' && !executedActionIds.has(receipt.actionId))
+    .map(receipt => receipt.actionId);
   const indeterminateActionIds = uniqueCodingRefs([
     ...input.mutations.filter(receipt => receipt.status === 'indeterminate').map(receipt => receipt.actionId),
     ...mutatingTools.filter(receipt => receipt.status === 'indeterminate').map(receipt => receipt.actionId),
@@ -113,13 +120,16 @@ function assessIntegration(
       ))
     : [];
   let status: CodingIntegrationConformanceDecision['status'];
-  if (input.codeChange.status === 'not-applicable') status = 'not-applicable';
-  else if (input.codeChange.status === 'indeterminate' || indeterminateActionIds.length > 0) {
+  if (input.codeChange.status === 'indeterminate' || indeterminateActionIds.length > 0) {
     status = 'indeterminate';
   } else if (input.codeChange.status === 'failed'
     || bypassedMutationActionIds.length > 0
     || orphanMutationToolActionIds.length > 0) {
     status = 'failed';
+  } else if (unexecutedAuthorizedActionIds.length > 0) {
+    status = 'incomplete';
+  } else if (input.codeChange.status === 'not-applicable') {
+    status = 'not-applicable';
   } else if (input.codeChange.status !== 'conformant' || unverifiedPaths.length > 0) {
     status = 'incomplete';
   } else {
@@ -133,6 +143,7 @@ function assessIntegration(
           ...(input.codeChange.status !== 'conformant' ? [`code-change:${input.codeChange.status}`] : []),
           ...(bypassedMutationActionIds.length > 0 ? ['workspace-mutation-bypassed-tool-execution'] : []),
           ...(orphanMutationToolActionIds.length > 0 ? ['mutating-tool-missing-transaction-receipt'] : []),
+          ...(unexecutedAuthorizedActionIds.length > 0 ? ['authorized-tool-not-executed'] : []),
           ...(indeterminateActionIds.length > 0 ? ['integration-action-indeterminate'] : []),
           ...(unverifiedPaths.length > 0 ? ['changed-path-unverified'] : []),
         ]);
@@ -144,12 +155,14 @@ function assessIntegration(
     status,
     bypassedMutationActionIds: Object.freeze(uniqueCodingRefs(bypassedMutationActionIds)),
     orphanMutationToolActionIds: Object.freeze(uniqueCodingRefs(orphanMutationToolActionIds)),
+    unexecutedAuthorizedActionIds: Object.freeze(uniqueCodingRefs(unexecutedAuthorizedActionIds)),
     indeterminateActionIds: Object.freeze(indeterminateActionIds),
     unverifiedPaths: Object.freeze(uniqueCodingRefs(unverifiedPaths)),
     reasonCodes: Object.freeze(reasonCodes),
     evidenceRefs: Object.freeze(uniqueCodingRefs([
       ...input.evidenceRefs,
       ...input.codeChange.evidenceRefs,
+      ...input.toolAuthorityReceipts.flatMap(receipt => receipt.evidenceRefs),
       ...input.toolExecutions.flatMap(receipt => receipt.evidenceRefs),
       ...input.mutations.flatMap(receipt => receipt.evidenceRefs),
       ...input.verifications.flatMap(receipt => receipt.evidenceRefs),
@@ -164,6 +177,7 @@ function snapshotIntegrationInput(
   if (!Number.isSafeInteger(input.sequence) || input.sequence < 0) integrationFailure('invalid-sequence');
   if (input.codeChange.runId !== runId) integrationFailure('code-change-run-mismatch');
   const runBound = [
+    ...input.toolAuthorityReceipts,
     ...input.toolExecutions,
     ...input.mutations,
     ...input.verifications,
@@ -173,6 +187,9 @@ function snapshotIntegrationInput(
     sequence: input.sequence,
     actionId: normalizedCodingId(input.actionId, 'integration-action-id'),
     codeChange: snapshotCodingValue(input.codeChange, 'integration-code-change') as CodingCodeChangeDecision,
+    toolAuthorityReceipts: Object.freeze(input.toolAuthorityReceipts.map(receipt => (
+      snapshotCodingValue(receipt, 'integration-tool-authority') as CodingToolAuthorityReceipt
+    ))),
     toolExecutions: Object.freeze(input.toolExecutions.map(receipt => (
       snapshotCodingValue(receipt, 'integration-tool-receipt') as CodingToolExecutionReceipt<unknown>
     ))),

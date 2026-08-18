@@ -1,4 +1,5 @@
 import type { CodingContextCompactionSessionPort } from '@devseek-netai/shared';
+import type { AgentTaskAction } from '../agent-task-decomposer';
 import type { ChatMessage } from '../llm/types';
 import type { AgentLoopCallbacks } from './loop-types';
 import type { TerminalEvidence, WrittenFileEvidence } from './completion-evidence';
@@ -32,7 +33,7 @@ export interface AgenticProviderRecoveryBoundaryInput {
   readonly round: number;
   readonly evidenceRefs: readonly EvidenceRef[];
   readonly taskFile: string;
-  readonly taskAction: string;
+  readonly taskAction: AgentTaskAction;
   readonly callbacks: Pick<AgentLoopCallbacks, 'signal' | 'onToolActivity' | 'onAgentStatus'>;
 }
 

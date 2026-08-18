@@ -204,8 +204,12 @@ test('I12-AUT-03 user journey: approved tool input cannot be substituted before 
     });
 
     assert.equal(output.status, 'blocked');
-    assert.equal(output.codeChangeDecisions[0].status, 'incomplete');
+    assert.equal(output.codeChangeDecisions[0].status, 'not-applicable');
     assert.equal(output.integrationConformanceDecisions[0].status, 'incomplete');
+    assert.deepEqual(
+      output.integrationConformanceDecisions[0].unexecutedAuthorizedActionIds,
+      ['approved-write-input'],
+    );
     assert.equal(output.result.hostCalls, 0);
     assert.equal(output.result.inputSha256.length, 64);
     assert.equal(hostCalls, 0);
