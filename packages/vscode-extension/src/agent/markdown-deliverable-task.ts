@@ -565,7 +565,11 @@ export async function tryExecuteMarkdownDeliverableTask(
           };
         }
         try {
-          await callbacks.onAppliedChange({ path: relPath, ...committed.result });
+          await callbacks.onAppliedChange({
+            path: relPath,
+            ...committed.result,
+            commitToken: committed.commitToken,
+          });
         } catch (error) {
           readbackFailureReason = error instanceof Error ? error.message : String(error);
           throw error;

@@ -244,7 +244,11 @@ export class ToolLoopFileWriter {
         reporter.feedback(`[${toolName}: ${rawPath}] 未发生内容变化，未计入本轮修改证据：${normalized.path}`);
         return false;
       }
-      await callbacks.onAppliedChange({ path: absPath, ...writeResult });
+      await callbacks.onAppliedChange({
+        path: absPath,
+        ...writeResult,
+        commitToken: committedEdit.commitToken,
+      });
       const newLines = writeResult.newContent.split('\n').length;
       const oldLines = writeResult.oldContent ? writeResult.oldContent.split('\n').length : 0;
       reporter.written({

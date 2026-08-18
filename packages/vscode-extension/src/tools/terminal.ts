@@ -128,7 +128,11 @@ export function runCommand(opts: TerminalRunOptions): Promise<TerminalRunResult>
   // extension host runs with a minimal PATH that lacks /usr/bin or /bin.
   const shellBin = process.platform === 'win32' ? 'cmd.exe'
     : (['/bin/bash', '/usr/bin/bash', '/usr/local/bin/bash'].find(p => require('fs').existsSync(p)) ?? 'bash');
-  const shellArgs = process.platform === 'win32' ? ['/c', command] : ['-c', command];
+  const shellArgs = process.platform === 'win32'
+    ? ['/c', command]
+    : opts.executionProfile === 'validation'
+      ? ['-o', 'pipefail', '-c', command]
+      : ['-c', command];
 
   return new Promise((resolve) => {
     let stdout = '';

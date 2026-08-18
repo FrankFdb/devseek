@@ -90,6 +90,26 @@ test('failed canonical validation cannot be presented as green todos or successf
   assert.doesNotMatch(deltaEvent.text, /required-verification-failed/);
 });
 
+test('a visible validation failure immediately invalidates an all-green todo snapshot', async () => {
+  const recorder = createRecorder();
+  const buffer = new AgentTerminalPresentationBuffer(recorder.callbacks);
+  await buffer.onTodoUpdate([
+    { id: 1, title: '创建 C++ 程序', status: 'completed' },
+    { id: 2, title: '编译并验证程序', status: 'completed' },
+  ]);
+
+  await buffer.onAgentStatus({
+    type: 'agentStatus',
+    phase: 'validate',
+    state: 'failed',
+    title: '自动验证失败',
+  });
+
+  assert.deepEqual(recorder.events.map(event => event.kind), ['status', 'todo']);
+  assert.equal(recorder.events[1].items.some(item => item.status === 'failed'), true);
+  assert.equal(recorder.events[1].items.every(item => item.__agentState === true), true);
+});
+
 test('nested repair settles its todos without claiming the outer task is complete', async () => {
   const recorder = createRecorder();
   await deliverSettledAgentTodoPresentation({

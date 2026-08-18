@@ -175,6 +175,13 @@ export function createWriteAuthority(
         semanticIntent: proposal,
         projectInstructions: options.projectInstructions,
       });
+      // A model-proposed destructive action is evidence for the action arbiter,
+      // not permission to replace the user's active task contract. The concrete
+      // tool call still reaches local approval and sandbox enforcement.
+      if (current.kind !== 'destructive'
+        && next.signals.includes('semantic-destructive-fail-closed')) {
+        return false;
+      }
       if (JSON.stringify(next) === JSON.stringify(current)) return false;
       lineage = rebindIntentRevisionLineageSemanticContract(
         lineage,

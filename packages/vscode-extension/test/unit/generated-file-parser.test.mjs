@@ -119,6 +119,17 @@ test('parseGeneratedArtifacts: raw tool transcript inside a code block is not fi
   assert.ok(!artifacts.some((a) => a.path === 'person.cpp'));
 });
 
+test('parseGeneratedArtifacts: paired XML read tool transcript is not source content', () => {
+  const text = `code/main.cpp
+\`\`\`
+<read_file>
+<path>/workspace/code/shape_manager/main.cpp</path>
+</read_file>
+\`\`\``;
+
+  assert.deepEqual(parseGeneratedArtifacts(text), []);
+});
+
 test('parseGeneratedArtifacts: fenced XML tool calls cannot inherit a nearby file path', () => {
   const text = [
     '先检查 test.sh 和项目文件。',

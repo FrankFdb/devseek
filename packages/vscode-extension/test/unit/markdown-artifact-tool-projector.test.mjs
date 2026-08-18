@@ -46,12 +46,12 @@ function recordingDispatch(records) {
   };
 }
 
-test('Markdown artifact projection is limited to canonical read-write tasks without file tools', () => {
+test('Markdown artifact projection is limited to canonical read-write tasks without normalized tools', () => {
   assert.equal(shouldProjectMarkdownFileArtifacts({
     taskRequiresTools: true,
     workspaceAccess: 'read-write',
     tools: [{ name: 'read_file' }],
-  }), true);
+  }), false);
   assert.equal(shouldProjectMarkdownFileArtifacts({
     taskRequiresTools: true,
     workspaceAccess: 'read-only',
@@ -62,6 +62,30 @@ test('Markdown artifact projection is limited to canonical read-write tasks with
     workspaceAccess: 'read-write',
     tools: [{ name: 'replace_in_file' }],
   }), false);
+});
+
+test('Markdown artifact projector never turns a nested read tool transcript into source', () => {
+  const records = [];
+  const text = [
+    '```',
+    '<read_file>',
+    '<path>/workspace/code/shape_manager/main.cpp</path>',
+    '</read_file>',
+    '```',
+  ].join('\n');
+
+  assert.equal(shouldProjectMarkdownFileArtifacts({
+    taskRequiresTools: true,
+    workspaceAccess: 'read-write',
+    tools: [{ name: 'read_file' }],
+  }), false);
+  assert.deepEqual(projectMarkdownFileArtifactToolsForLoop({
+    text,
+    userPrompt: '在 code 目录编写一个 C++ 程序。',
+    workspaceRoot: '/workspace',
+    dispatch: recordingDispatch(records),
+  }), []);
+  assert.deepEqual(records, []);
 });
 
 test('Markdown artifact projector emits an internal write_file call without touching the workspace', () => {

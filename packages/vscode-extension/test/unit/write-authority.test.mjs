@@ -241,6 +241,53 @@ test('model tool semantics revise the active contract without creating a user tu
   assert.equal(authority.writeRevoked, false);
 });
 
+test('a model delete proposal cannot revoke the user-authorized repair scope', () => {
+  const revisions = [];
+  const authority = createAuthority(
+    '在 code 目录编写一个 C++ 程序，编译验证后交付。',
+    [],
+    {},
+    { onTaskSemanticContractRevision: revision => revisions.push(revision) },
+  );
+
+  assert.equal(authority.applyModelSemanticProposal({
+    version: 'devseek.semantic-intent/v1',
+    source: 'provider',
+    mode: 'edit',
+    taskKind: 'standalone-program',
+    confidence: 0.99,
+    mutation: 'create-file',
+    targetPaths: ['code/movie_countdown.cpp'],
+    requiresWorkspace: true,
+    requiresTerminal: true,
+    requiresExternalEffect: false,
+    requiresClarification: false,
+    reason: 'create requested source',
+  }), true);
+  const revisionCountBeforeDelete = revisions.length;
+
+  assert.equal(authority.applyModelSemanticProposal({
+    version: 'devseek.semantic-intent/v1',
+    source: 'provider',
+    mode: 'destructive',
+    taskKind: 'destructive',
+    confidence: 0.99,
+    mutation: 'delete',
+    targetPaths: ['code/main.cpp'],
+    requiresWorkspace: true,
+    requiresTerminal: false,
+    requiresExternalEffect: false,
+    requiresClarification: false,
+    reason: 'cleanup proposal must be action-arbitrated',
+  }), false);
+
+  assert.equal(revisions.length, revisionCountBeforeDelete);
+  assert.equal(authority.semanticContractRevision.allowedToExecute, true);
+  assert.deepEqual(authority.semanticContractRevision.pendingTargets, ['code/movie_countdown.cpp']);
+  assert.deepEqual(authority.semanticContractRevision.prohibitedTargets, []);
+  assert.notEqual(authority.semanticContract.kind, 'destructive');
+});
+
 test('write authority preserves dynamic callback getters from the canonical Kernel', () => {
   let acceptance = [{ id: 'initial', statement: 'Initial contract' }];
   const callbacks = {

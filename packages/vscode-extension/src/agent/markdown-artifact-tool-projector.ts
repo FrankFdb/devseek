@@ -38,7 +38,7 @@ export function shouldProjectMarkdownFileArtifacts(
 ): boolean {
   return input.taskRequiresTools
     && input.workspaceAccess === 'read-write'
-    && !input.tools.some(tool => isFileMutationToolName(tool.name));
+    && input.tools.length === 0;
 }
 
 /** Converts legacy Markdown file output into normal tool calls; it never writes the workspace. */

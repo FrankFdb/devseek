@@ -42,7 +42,7 @@ export interface PendingEditRecord {
   oldContent: string;
   newContent: string;
   hunks: PendingEditHunk[];
-  sourceCommitToken?: WorkspaceTextFileCommitToken;
+  sourceCommitToken: WorkspaceTextFileCommitToken;
   createdAt: number;
 }
 
@@ -52,6 +52,22 @@ interface PendingActionNotice {
   path?: string;
   detail: string;
   queueTotal?: number;
+}
+
+interface PendingActionState {
+  action: 'keep' | 'undo';
+  scope: 'file' | 'hunk' | 'all';
+  status: 'started' | 'completed' | 'failed';
+  path?: string;
+  detail?: string;
+  queueTotal: number;
+}
+
+interface PendingActionFeedbackInput {
+  action: PendingActionState['action'];
+  scope: PendingActionState['scope'];
+  path?: string;
+  successNotice?: Omit<PendingActionNotice, 'queueTotal'>;
 }
 
 export interface PendingEditCoordinatorOptions {
@@ -87,12 +103,15 @@ export class PendingEditCoordinator {
     );
     this.diffDecoManager.setResolveCallback(async (editId, hunkId, action) => {
       const wv = this.options.getActiveWebview();
-      if (action === 'keep') {
+      if (wv && action === 'keep') {
+        await this.keepHunkWithNotice(wv, editId, undefined, hunkId);
+      } else if (wv) {
+        await this.undoHunkWithNotice(wv, editId, undefined, hunkId);
+      } else if (action === 'keep') {
         await this.keepHunk(editId, undefined, hunkId);
       } else {
         await this.undoHunk(editId, undefined, hunkId);
       }
-      if (wv) this.post(wv);
     });
 
     this.keepUndoStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 999);
@@ -168,7 +187,7 @@ export class PendingEditCoordinator {
       existing.existed = existing.existed || change.existed;
       existing.newContent = change.newContent;
       existing.hunks = computePendingHunks(existing.id, existing.oldContent, change.newContent);
-      existing.sourceCommitToken = change.commitToken ?? existing.sourceCommitToken;
+      existing.sourceCommitToken = change.commitToken;
       existing.createdAt = Date.now();
       this.pendingEdits.set(existing.id, existing);
       recordToShow = existing;
@@ -207,92 +226,90 @@ export class PendingEditCoordinator {
 
   async keepHunkWithNotice(webview: vscode.Webview, editId?: string, path?: string, hunkId?: string): Promise<void> {
     const { record, hunk } = this.resolveHunk(editId, path, hunkId);
-    await this.keepHunk(editId, path, hunkId);
-    this.post(webview);
-    if (record && hunk) {
-      this.postNotice(webview, {
+    await this.runPendingActionWithFeedback(webview, {
+      action: 'keep',
+      scope: 'hunk',
+      path: record?.path,
+      successNotice: record && hunk ? {
         action: 'keep',
         scope: 'hunk',
         path: record.path,
         detail: `已保留 ${record.path} 的${hunk.title}。`,
-        queueTotal: this.pendingEdits.size,
-      });
-    }
+      } : undefined,
+    }, () => this.keepHunk(editId, path, hunkId));
   }
 
   async undoHunkWithNotice(webview: vscode.Webview, editId?: string, path?: string, hunkId?: string): Promise<void> {
     const { record, hunk } = this.resolveHunk(editId, path, hunkId);
-    await this.undoHunk(editId, path, hunkId);
-    this.post(webview);
-    if (record && hunk) {
-      this.postNotice(webview, {
+    await this.runPendingActionWithFeedback(webview, {
+      action: 'undo',
+      scope: 'hunk',
+      path: record?.path,
+      successNotice: record && hunk ? {
         action: 'undo',
         scope: 'hunk',
         path: record.path,
         detail: `已撤销 ${record.path} 的${hunk.title}。`,
-        queueTotal: this.pendingEdits.size,
-      });
-    }
+      } : undefined,
+    }, () => this.undoHunk(editId, path, hunkId));
   }
 
   async keepEditWithNotice(webview: vscode.Webview, editId?: string, path?: string): Promise<void> {
     const record = this.resolveRecord(editId, path);
-    await this.keepEdit(editId, path);
-    this.post(webview);
-    if (record) {
-      this.postNotice(webview, {
+    await this.runPendingActionWithFeedback(webview, {
+      action: 'keep',
+      scope: 'file',
+      path: record?.path,
+      successNotice: record ? {
         action: 'keep',
         scope: 'file',
         path: record.path,
         detail: `修改已保留：${record.path}。`,
-        queueTotal: this.pendingEdits.size,
-      });
-    }
+      } : undefined,
+    }, () => this.keepEdit(editId, path));
   }
 
   async undoEditWithNotice(webview: vscode.Webview, editId?: string, path?: string): Promise<void> {
     const record = this.resolveRecord(editId, path);
-    await this.undoEdit(editId, path);
-    this.post(webview);
-    if (record) {
-      this.postNotice(webview, {
+    await this.runPendingActionWithFeedback(webview, {
+      action: 'undo',
+      scope: 'file',
+      path: record?.path,
+      successNotice: record ? {
         action: 'undo',
         scope: 'file',
         path: record.path,
         detail: record.existed ? `已撤销 ${record.path}，文件已恢复到修改前状态。` : `已撤销 ${record.path}，新建文件已删除。`,
-        queueTotal: this.pendingEdits.size,
-      });
-    }
+      } : undefined,
+    }, () => this.undoEdit(editId, path));
   }
 
   async keepAllWithNotice(webview: vscode.Webview): Promise<void> {
     this.cancelAutoAccept();
     const count = this.pendingEdits.size;
-    await this.keepAll();
-    this.post(webview);
-    if (count > 0) {
-      this.postNotice(webview, {
+    await this.runPendingActionWithFeedback(webview, {
+      action: 'keep',
+      scope: 'all',
+      successNotice: count > 0 ? {
         action: 'keep',
         scope: 'all',
         detail: `修改已保留：${count} 个文件。`,
-        queueTotal: this.pendingEdits.size,
-      });
-    }
+      } : undefined,
+    }, () => this.keepAll());
   }
 
   async undoAllWithNotice(webview: vscode.Webview): Promise<void> {
     this.cancelAutoAccept();
     const count = this.pendingEdits.size;
-    await this.undoAll();
-    this.post(webview);
-    if (count > 0) {
-      this.postNotice(webview, {
+    await this.runPendingActionWithFeedback(webview, {
+      action: 'undo',
+      scope: 'all',
+      successNotice: count > 0 ? {
         action: 'undo',
         scope: 'all',
         detail: `已撤销全部修改（${count} 个文件）。`,
-        queueTotal: this.pendingEdits.size,
-      });
-    }
+      } : undefined,
+    }, () => this.undoAll());
   }
 
   handleAgentAutopilot(webview: vscode.Webview, result: AgentLoopResult): boolean {
@@ -405,17 +422,58 @@ export class PendingEditCoordinator {
 
   private async acceptAll(webview: vscode.Webview, detail: string): Promise<void> {
     if (this.pendingEdits.size === 0) return;
-    try {
-      await this.keepAll();
-      this.post(webview);
-      this.postNotice(webview, {
+    await this.runPendingActionWithFeedback(webview, {
+      action: 'keep',
+      scope: 'all',
+      successNotice: {
         action: 'keep',
         scope: 'all',
         detail,
-        queueTotal: 0,
+      },
+    }, () => this.keepAll());
+  }
+
+  private async runPendingActionWithFeedback(
+    webview: vscode.Webview,
+    input: PendingActionFeedbackInput,
+    operation: () => Promise<void>,
+  ): Promise<void> {
+    this.postActionState(webview, {
+      action: input.action,
+      scope: input.scope,
+      status: 'started',
+      path: input.path,
+      queueTotal: this.pendingEdits.size,
+    });
+    try {
+      await operation();
+      this.post(webview);
+      this.postActionState(webview, {
+        action: input.action,
+        scope: input.scope,
+        status: 'completed',
+        path: input.path,
+        queueTotal: this.pendingEdits.size,
       });
+      if (input.successNotice) {
+        this.postNotice(webview, {
+          ...input.successNotice,
+          queueTotal: this.pendingEdits.size,
+        });
+      }
     } catch (error) {
-      vscode.window.showErrorMessage(`DeepSeek: 保留修改失败，证据未完成：${error instanceof Error ? error.message : String(error)}`);
+      const reason = error instanceof Error ? error.message : String(error);
+      const detail = `${input.action === 'keep' ? '保留' : '撤销'}修改失败：${reason}`;
+      this.post(webview);
+      this.postActionState(webview, {
+        action: input.action,
+        scope: input.scope,
+        status: 'failed',
+        path: input.path,
+        detail,
+        queueTotal: this.pendingEdits.size,
+      });
+      void vscode.window.showErrorMessage(`DevSeek: ${detail}`);
     }
   }
 
@@ -775,6 +833,10 @@ export class PendingEditCoordinator {
 
   private postNotice(webview: vscode.Webview, notice: PendingActionNotice): void {
     webview.postMessage({ type: 'pendingActionNotice', ...notice });
+  }
+
+  private postActionState(webview: vscode.Webview, state: PendingActionState): void {
+    webview.postMessage({ type: 'pendingActionState', ...state });
   }
 
   private postAutoAcceptBlockedNotice(webview: vscode.Webview, notice: string): void {

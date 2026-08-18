@@ -226,7 +226,11 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
     });
   }
   const writeResult = committedEdit.result;
-  await input.callbacks.onAppliedChange({ path: resolved.absPath, ...writeResult });
+  await input.callbacks.onAppliedChange({
+    path: resolved.absPath,
+    ...writeResult,
+    commitToken: committedEdit.commitToken,
+  });
 
   const persistedContent = writeResult.newContent;
   const newLines = persistedContent.split('\n').length;

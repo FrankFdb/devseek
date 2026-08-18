@@ -855,7 +855,8 @@ export class TerminalPermissionCoordinator {
         visible: false,
         allowRisky: confirmedByUser || remembered,
         manualReviewOnLongRunning,
-        executionProfile: input.executionProfile,
+        executionProfile: input.executionProfile
+          ?? (terminalDecision.risk === 'validation' ? 'validation' : undefined),
       });
     } catch (error) {
       try {

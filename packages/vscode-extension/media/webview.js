@@ -79,6 +79,7 @@ let workingSessionSummary = '';
 let pendingEdits = [];
 let pendingHunkExpandState = {};
 let pendingEditsListExpanded = false; // 文件列表默认折叠，点击摘要行展开
+let pendingEditActionState = null;
 let fileChangesListExpanded = false; // 完成态文件列表默认折叠，避免占用输入区上方空间
 let completionSummaryEmitted = false;
 let completionSummaryHasQueue = false;
@@ -3823,6 +3824,9 @@ function injectPendingEditsStyles() {
     '.pe-summary-delta { font-weight:400; opacity:.78; margin-left:6px; }',
     '.pe-actions { display:flex; flex-wrap:nowrap; gap:5px; flex-shrink:0; }',
     '.pe-btn { font-size:10px; padding:2px 8px; border:none; border-radius:4px; cursor:pointer; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); white-space:nowrap; }',
+    '.pe-btn:disabled { cursor:wait; opacity:.62; }',
+    '.pe-action-state { padding:5px 10px; border-top:1px solid rgba(127,127,127,.12); font-size:11px; color:var(--vscode-descriptionForeground); }',
+    '.pe-action-state.state-failed { color:var(--vscode-errorForeground); }',
     '.pe-btn:hover { background: var(--vscode-button-secondaryHoverBackground); }',
     '.pe-btn.pe-btn-accent { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }',
     '.pe-btn.pe-btn-accent:hover { background: var(--vscode-button-hoverBackground); }',
@@ -3872,6 +3876,7 @@ function renderPendingEdits() {
     editsEl.innerHTML = '';
     pendingHunkExpandState = {};
     pendingEditsListExpanded = false;
+    pendingEditActionState = null;
     syncGeneratedPanelsVisibility();
     return;
   }
@@ -3890,6 +3895,15 @@ function renderPendingEdits() {
     totalRemoved += (item.removed || 0);
   });
   var fileCount = pendingEdits.length;
+  var actionBusy = pendingEditActionState && pendingEditActionState.status === 'started';
+  var actionStateHtml = '';
+  if (pendingEditActionState && pendingEditActionState.status !== 'completed') {
+    var actionStateDetail = pendingEditActionState.detail
+      || (pendingEditActionState.action === 'undo' ? '正在撤销修改...' : '正在保留修改...');
+    actionStateHtml = '<div class="pe-action-state'
+      + (pendingEditActionState.status === 'failed' ? ' state-failed' : '')
+      + '">' + escapeHtml(actionStateDetail) + '</div>';
+  }
   var globalDeltaHtml = '<span class="pe-summary-delta">+'
     + totalAdded + '&nbsp;<span class="pe-removed">-' + totalRemoved + '</span></span>';
 
@@ -3941,13 +3955,15 @@ function renderPendingEdits() {
     + '</span>'
     + '</button>'
     + '<div class="pe-actions">'
-    + '<button class="pe-btn pe-btn-accent" data-pe-keep-all="1">全部保留</button>'
-    + '<button class="pe-btn" data-pe-undo-all="1">全部撤销</button>'
+    + '<button class="pe-btn pe-btn-accent" data-pe-keep-all="1"' + (actionBusy ? ' disabled' : '') + '>'
+    + (actionBusy && pendingEditActionState.action === 'keep' ? '保留中...' : '全部保留') + '</button>'
+    + '<button class="pe-btn" data-pe-undo-all="1"' + (actionBusy ? ' disabled' : '') + '>'
+    + (actionBusy && pendingEditActionState.action === 'undo' ? '撤销中...' : '全部撤销') + '</button>'
     + '</div>'
     + '</div>';
 
   editsEl.classList.add('show');
-  editsEl.innerHTML = '<div class="pe-card">' + summaryHtml + fileListHtml
+  editsEl.innerHTML = '<div class="pe-card">' + summaryHtml + actionStateHtml + fileListHtml
     + (fileCount > 0 ? '<div class="pe-editor-hint">点击文件在编辑器中查看差异；逐个修改点在编辑区处理。</div>' : '')
     + '</div>';
 
@@ -3990,12 +4006,16 @@ function renderPendingEdits() {
   var keepAllBtn = editsEl.querySelector('[data-pe-keep-all]');
   if (keepAllBtn) {
     keepAllBtn.addEventListener('click', function() {
+      pendingEditActionState = { action: 'keep', scope: 'all', status: 'started' };
+      renderPendingEdits();
       vscode.postMessage({ type: 'keepAllPendingEdits' });
     });
   }
   var undoAllBtn = editsEl.querySelector('[data-pe-undo-all]');
   if (undoAllBtn) {
     undoAllBtn.addEventListener('click', function() {
+      pendingEditActionState = { action: 'undo', scope: 'all', status: 'started' };
+      renderPendingEdits();
       vscode.postMessage({ type: 'undoAllPendingEdits' });
     });
   }
@@ -5145,6 +5165,9 @@ window.addEventListener('message', function(event) {
       if (!isAgentMode) resetWorkingArea();
       if (!isGenerating) addQueueReadySummaryCard();
     }
+    renderPendingEdits();
+  } else if (msg.type === 'pendingActionState') {
+    pendingEditActionState = msg.status === 'completed' ? null : msg;
     renderPendingEdits();
   } else if (msg.type === 'pendingActionNotice') {
     addPendingActionNoticeCard(msg);

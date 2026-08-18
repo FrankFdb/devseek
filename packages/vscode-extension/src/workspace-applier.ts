@@ -79,7 +79,7 @@ export interface AppliedChangeRecord {
   existed: boolean;
   oldContent: string;
   newContent: string;
-  commitToken?: WorkspaceTextFileCommitToken;
+  commitToken: WorkspaceTextFileCommitToken;
 }
 
 type ApplyWorkflowReporter = (status: ApplyWorkflowStatus) => void | Thenable<void>;
@@ -593,12 +593,16 @@ async function reportAppliedChanges(
 ): Promise<void> {
   if (!onAppliedChange) return;
   for (const [index, change] of prepared.entries()) {
+    const commitToken = commitTokens[index];
+    if (!commitToken) {
+      throw new Error(`Applied change is missing its workspace commit token: ${change.relPath}`);
+    }
     await onAppliedChange({
       path: change.relPath,
       existed: change.exists,
       oldContent: change.oldContent,
       newContent: change.newContent,
-      ...(commitTokens[index] ? { commitToken: commitTokens[index] } : {}),
+      commitToken,
     });
   }
 }

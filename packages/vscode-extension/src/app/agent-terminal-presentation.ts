@@ -32,6 +32,11 @@ export class AgentTerminalPresentationBuffer {
       return;
     }
     await this.downstream.onAgentStatus(status);
+    if (status.phase === 'validate' && status.state === 'failed' && this.latestTodos?.length) {
+      this.latestTodos = settleValidationFailureTodos(this.latestTodos)
+        .map(item => ({ ...item, __agentState: true }));
+      await this.downstream.onTodoUpdate?.(cloneTodos(this.latestTodos));
+    }
   };
 
   readonly onTodoUpdate = async (items: TodoItem[]): Promise<void> => {

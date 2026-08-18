@@ -1110,6 +1110,36 @@ test('Terminal evidence: successful execution records authorized, started and co
   assert.equal(owner.settleAndSeal({ status: 'completed', idempotencyKey: 'settlement:completed' }).head.sealed, true);
 });
 
+test('Terminal evidence: validation pipelines preserve an upstream compiler failure', async t => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-terminal-pipefail-'));
+  t.after(() => rmSync(workspaceRoot, { recursive: true, force: true }));
+  const runId = 'terminal-validation-pipefail';
+  const { owner, participantToken } = openRun(workspaceRoot, runId);
+  const evidenceErrors = [];
+
+  const result = await new TerminalPermissionCoordinator().runCommandWithPermissionDetailed(inputFor({
+    workspaceRoot,
+    runId,
+    participantToken,
+    command: "g++ -std=c++17 missing-source.cpp -o missing-source 2>&1 | head -1",
+    policy: allowTerminalPolicy,
+    evidenceErrors,
+    policyPreauthorized: true,
+  }));
+
+  assert.equal(result.outcome, 'failed');
+  assert.notEqual(result.exitCode, 0);
+  assert.match(result.output, /missing-source\.cpp|no such file|not found/i);
+  assertOneExactLifecycle(sideEffectEvents(owner), [
+    'side_effect.requested',
+    'side_effect.authorized',
+    'side_effect.started',
+    'side_effect.failed',
+  ]);
+  assert.deepEqual(evidenceErrors, []);
+  assert.equal(owner.settleAndSeal({ status: 'failed', idempotencyKey: 'settlement:failed' }).head.sealed, true);
+});
+
 test('Terminal evidence: execution exception is indeterminate, preserves the exception and vetoes completion', async t => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-terminal-evidence-'));
   t.after(() => rmSync(workspaceRoot, { recursive: true, force: true }));

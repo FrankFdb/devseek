@@ -48,6 +48,11 @@ export function looksLikeRawToolCallText(content: string): boolean {
   if (/^<tool_calls?>[\s\S]*<\/tool_calls?>$/i.test(trimmed)) return true;
   const xmlTool = trimmed.match(/^<([A-Za-z_]\w*)>\s*(?:\{|\[)/);
   if (xmlTool && getCodingToolDescriptor(xmlTool[1])) return true;
+  const pairedXmlTool = trimmed.match(/^<([A-Za-z_]\w*)>([\s\S]*)<\/\1>$/);
+  if (pairedXmlTool && getCodingToolDescriptor(pairedXmlTool[1])) {
+    const body = pairedXmlTool[2].trim();
+    if (/^(?:\{|\[|<[A-Za-z_]\w*>)/.test(body)) return true;
+  }
   if (/^[*_]{0,3}(?:Calling|Call|调用)(?:[ \t]*[:：]?[ \t]*tool\b|[ \t]+tool\b)?[ \t]*[:：]?[ \t]*[*_]{0,3}[ \t]*\[?`?[A-Za-z_]\w*`?\]?/i.test(trimmed)
     && /"path"\s*:|"filePath"\s*:|"content"\s*:/.test(trimmed)) return true;
   return false;

@@ -962,6 +962,7 @@ export async function executeFakeToolsForLoop(
           existed: true,
           oldContent,
           newContent: '',
+          commitToken: deleteResult.commitToken,
         });
         writtenFiles.push({
           path: absPath,

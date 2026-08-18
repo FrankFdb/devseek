@@ -1155,12 +1155,17 @@ test('ToolLoop delete_file records applied change from the delete transaction ev
     );
 
     assert.equal(existsSync(filePath), false);
-    assert.deepEqual(applied, [{
+    assert.equal(applied.length, 1);
+    const [{ commitToken, ...appliedChange }] = applied;
+    assert.deepEqual(appliedChange, {
       path: filePath,
       existed: true,
       oldContent: originalContent,
       newContent: '',
-    }]);
+    });
+    assert.equal(commitToken.absPath, filePath);
+    assert.equal(commitToken.before.snapshot.existed, true);
+    assert.equal(commitToken.after.snapshot.existed, false);
     assert.equal(result.writtenFiles?.[0]?.action, 'delete');
     assert.equal(result.changeReceipts?.[0]?.status, 'committed');
     assert.match(result.changeReceipts?.[0]?.readbackRef, /^vscode-delete-readback:/);
