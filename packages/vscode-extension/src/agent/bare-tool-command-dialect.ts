@@ -1,11 +1,7 @@
-import type { ModelToolProtocolDialect } from './model-tool-protocol-adapter';
-
-export interface BareToolCommandDialectAdapter<TTool> {
-  isRegisteredName(name: string): boolean;
-  normalizeName(name: string): string;
-  normalizeInput(name: string, input: Record<string, unknown>): Record<string, unknown>;
-  createTool(name: string, input: Record<string, unknown>): TTool;
-}
+import type {
+  ModelToolProtocolAdapter,
+  ModelToolProtocolDialect,
+} from './model-tool-protocol-adapter';
 
 const EXECUTABLE_BARE_TOOL_NAMES = new Set(['read_file', 'list_dir']);
 const PROTOCOL_ONLY_BARE_TOOL_NAMES = new Set([
@@ -21,7 +17,7 @@ const PROTOCOL_ONLY_BARE_TOOL_NAMES = new Set([
 ]);
 
 export function createBareToolCommandDialect<TTool>(
-  adapter: BareToolCommandDialectAdapter<TTool>,
+  adapter: ModelToolProtocolAdapter<TTool>,
 ): ModelToolProtocolDialect<TTool> {
   return {
     name: 'bare-tool-command',
@@ -33,7 +29,7 @@ export function createBareToolCommandDialect<TTool>(
 
 function parseBareToolCommandCalls<TTool>(
   text: string,
-  adapter: BareToolCommandDialectAdapter<TTool>,
+  adapter: ModelToolProtocolAdapter<TTool>,
 ): TTool[] {
   const tools: Array<{ index: number; tool: TTool }> = [];
   for (const line of findBareToolCommandLines(text, adapter)) {
@@ -50,14 +46,14 @@ function parseBareToolCommandCalls<TTool>(
 
 function findBareToolCommandStart<TTool>(
   text: string,
-  adapter: BareToolCommandDialectAdapter<TTool>,
+  adapter: ModelToolProtocolAdapter<TTool>,
 ): number {
   return findBareToolCommandLines(text, adapter)[0]?.index ?? -1;
 }
 
 function stripBareToolCommandLines<TTool>(
   text: string,
-  adapter: BareToolCommandDialectAdapter<TTool>,
+  adapter: ModelToolProtocolAdapter<TTool>,
 ): string {
   const lines = findBareToolCommandLines(text, adapter);
   if (lines.length === 0) return text;
@@ -79,7 +75,7 @@ interface BareToolCommandLine {
 
 function findBareToolCommandLines<TTool>(
   text: string,
-  adapter: BareToolCommandDialectAdapter<TTool>,
+  adapter: ModelToolProtocolAdapter<TTool>,
 ): BareToolCommandLine[] {
   const commands: BareToolCommandLine[] = [];
   let offset = 0;
@@ -112,7 +108,7 @@ function findBareToolCommandLines<TTool>(
 
 function parseBareToolCommandLine<TTool>(
   rawLine: string,
-  adapter: BareToolCommandDialectAdapter<TTool>,
+  adapter: ModelToolProtocolAdapter<TTool>,
 ): { leadingWhitespace: number; name: string; rawArguments: string } | null {
   const match = /^(\s*)([A-Za-z_][\w:-]*)(?:\s+(.+?))?\s*$/.exec(rawLine);
   if (!match) return null;

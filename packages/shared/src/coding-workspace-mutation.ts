@@ -10,7 +10,10 @@ import {
   type CodingOperationJournalRecord,
 } from './coding-operation-journal';
 import { codingSemanticDigest } from './coding-semantic-digest';
-import type { DirtyWorktreePolicySessionPort } from './coding-dirty-worktree';
+import type {
+  CodingDirtyWorktreeOverlapProtection,
+  DirtyWorktreePolicySessionPort,
+} from './coding-dirty-worktree';
 import type { CodingEffectGuardPort } from './coding-run-control';
 
 export const CODING_WORKSPACE_MUTATION_PLAN_VERSION = 'devseek.coding-workspace-mutation-plan/v1' as const;
@@ -35,6 +38,7 @@ export interface CodingWorkspaceMutationPlan<TPayload> {
   readonly actionId: string;
   readonly idempotencyKey: string;
   readonly paths: readonly string[];
+  readonly overlapProtection?: CodingDirtyWorktreeOverlapProtection;
   readonly payload: TPayload;
   readonly evidenceRefs: readonly string[];
 }
@@ -45,6 +49,7 @@ export interface BuildCodingWorkspaceMutationPlanInput<TPayload> {
   readonly actionId: string;
   readonly idempotencyKey: string;
   readonly paths: readonly string[];
+  readonly overlapProtection?: CodingDirtyWorktreeOverlapProtection;
   readonly payload: TPayload;
   readonly evidenceRefs: readonly string[];
 }
@@ -245,6 +250,7 @@ export class CanonicalWorkspaceMutationTransaction implements WorkspaceMutationT
     const dirtyWorktreeDecision = this.dirtyWorktree?.authorize({
       actionId: plan.actionId,
       paths: plan.paths,
+      overlapProtection: plan.overlapProtection,
     });
     if (dirtyWorktreeDecision?.decision === 'deny') {
       return {
@@ -690,9 +696,17 @@ function snapshotMutationPlan<TPayload>(
     actionId: normalizedCodingId(plan.actionId, 'mutation-action-id'),
     idempotencyKey: normalizedCodingId(plan.idempotencyKey, 'mutation-idempotency-key'),
     paths,
+    ...(plan.overlapProtection ? { overlapProtection: normalizeOverlapProtection(plan.overlapProtection) } : {}),
     payload: snapshotCodingValue(plan.payload, 'mutation-payload') as TPayload,
     evidenceRefs: Object.freeze(evidenceRefs),
   });
+}
+
+function normalizeOverlapProtection(
+  value: CodingDirtyWorktreeOverlapProtection,
+): CodingDirtyWorktreeOverlapProtection {
+  if (value === 'none' || value === 'optimistic-baseline') return value;
+  throw new Error('coding-workspace-mutation:invalid-overlap-protection');
 }
 
 function snapshotBaseline<TBaseline>(baseline: CodingWorkspaceBaseline<TBaseline>): CodingWorkspaceBaseline<TBaseline> {

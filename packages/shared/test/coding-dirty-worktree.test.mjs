@@ -13,13 +13,14 @@ import {
   parseGitPorcelainV1Z,
 } from '../dist/index.js';
 
-function mutationPlan(paths = ['src/value.ts']) {
+function mutationPlan(paths = ['src/value.ts'], overlapProtection) {
   return buildCodingWorkspaceMutationPlan({
     runId: 'dirty-worktree-run',
     sequence: 1,
     actionId: 'write-value',
     idempotencyKey: 'dirty-worktree-run:write-value',
     paths,
+    ...(overlapProtection ? { overlapProtection } : {}),
     payload: { value: 2 },
     evidenceRefs: ['proposal:write-value'],
   });
@@ -57,13 +58,65 @@ test('I21-DTY-01 user journey: dirty worktree policy preserves disjoint changes 
   assert.equal(direct.reason, 'overlapping-user-changes');
   assert.deepEqual(direct.conflictingEntries.map(entry => entry.path), ['src/user.ts']);
 
-  const directory = session.authorize({ actionId: 'replace-src', paths: ['src'] });
+  const protectedDirect = session.authorize({
+    actionId: 'write-user-from-baseline',
+    paths: ['src/user.ts'],
+    overlapProtection: 'optimistic-baseline',
+  });
+  assert.equal(protectedDirect.decision, 'allow');
+  assert.equal(protectedDirect.reason, 'baseline-protected-user-changes');
+
+  const directory = session.authorize({
+    actionId: 'replace-src',
+    paths: ['src'],
+    overlapProtection: 'optimistic-baseline',
+  });
   assert.equal(directory.decision, 'deny');
   assert.deepEqual(directory.conflictingEntries.map(entry => entry.path), [
     'src/new-name.ts',
     'src/user.ts',
   ]);
-  assert.equal(session.decisions().length, 3);
+  assert.equal(session.decisions().length, 4);
+});
+
+test('optimistic baseline protection lets an exact dirty file reach the guarded host', async () => {
+  const snapshot = createCodingWorktreeSnapshot({
+    workspaceRoot: '/repo',
+    repositoryState: 'git',
+    entries: [{ path: 'src/value.ts', status: 'modified' }],
+  });
+  const policy = new CanonicalDirtyWorktreePolicyService().bind({
+    runId: 'dirty-worktree-run',
+    snapshot,
+  });
+  const calls = [];
+  const host = {
+    async captureBaseline() {
+      calls.push('baseline');
+      return { baselineRef: 'baseline', state: { value: 1 }, evidenceRefs: ['baseline'] };
+    },
+    async apply() {
+      calls.push('apply');
+      return {
+        status: 'applied',
+        applied: { state: { value: 2 }, result: { value: 2 }, evidenceRefs: ['apply'] },
+      };
+    },
+    async readback() {
+      calls.push('readback');
+      return { matches: true, readbackRef: 'readback', evidenceRefs: ['readback'] };
+    },
+    async rollback() {
+      calls.push('rollback');
+      return { rolledBack: true, evidenceRefs: ['rollback'] };
+    },
+  };
+  const outcome = await new CanonicalWorkspaceMutationTransaction(undefined, undefined, policy)
+    .execute(mutationPlan(['src/value.ts'], 'optimistic-baseline'), host);
+
+  assert.equal(outcome.receipt.status, 'committed');
+  assert.deepEqual(calls, ['baseline', 'apply', 'readback']);
+  assert.equal(policy.decisions()[0].reason, 'baseline-protected-user-changes');
 });
 
 test('workspace mutation transaction rejects dirty overlap before baseline or host effects', async () => {

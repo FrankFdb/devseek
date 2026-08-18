@@ -37,6 +37,7 @@ import {
   type TaskSemanticObligations,
 } from './intent/task-semantic-obligations';
 import { parseSimpleFileWriteRequest } from './agent/simple-file-intent';
+import { isNamedWriteObjectProhibition } from './intent/write-prohibition-scope';
 
 export type TaskSemanticScope = 'none' | 'standalone' | 'existing-project' | 'unknown';
 
@@ -187,12 +188,22 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     taskContract.inputs.some(target => clauseMentionsTaskPath(clause, target))
       && !baseRequestedMutationTargets.some(target => clauseMentionsTaskPath(clause, target))
   ));
+  const positiveIntentText = actionIntentText
+    .replace(NO_WRITE_CLAUSE_RE, ' ')
+    .replace(EXISTING_IMPLEMENTATION_CONTEXT_RE, ' ')
+    .replace(ADVISORY_ACTION_CONTEXT_RE, ' ');
+  const hasPositiveMutationContext = WRITE_ACTION_RE.test(positiveIntentText)
+    || CODE_DELIVERY_RE.test(prompt);
+  const hasScopedNamedObjectProhibition = writeProhibitionClauses.some(clause => (
+    isNamedWriteObjectProhibition(clause, hasPositiveMutationContext)
+  ));
   const hasUnscopedNoWrite = writeProhibitionClauses.some(clause => !(
     OTHER_FILE_SCOPE_RE.test(clause)
       || FORMAL_SOURCE_SCOPE_RE.test(clause)
       || HISTORICAL_REQUIREMENT_SCOPE_RE.test(clause)
       || VERSION_CONTROL_SCOPE_RE.test(clause)
       || NARROW_WRITE_OBJECT_SCOPE_RE.test(clause)
+      || isNamedWriteObjectProhibition(clause, hasPositiveMutationContext)
       || taskContract.inputs.some(target => clauseMentionsTaskPath(clause, target))
   ));
   const hasScopedTargetWriteBoundary = baseRequestedMutationTargets.length > 0
@@ -202,11 +213,8 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
       hasScopedOtherFileProhibition
       || hasScopedHistoricalRequirementProhibition
       || hasScopedDifferentTargetProhibition
+      || hasScopedNamedObjectProhibition
     );
-  const positiveIntentText = actionIntentText
-    .replace(NO_WRITE_CLAUSE_RE, ' ')
-    .replace(EXISTING_IMPLEMENTATION_CONTEXT_RE, ' ')
-    .replace(ADVISORY_ACTION_CONTEXT_RE, ' ');
   const positiveWriteAction = !artifactPathQuery && (
     WRITE_ACTION_RE.test(positiveIntentText)
     || DERIVED_ARTIFACT_OUTPUT_RE.test(positiveIntentText)
@@ -379,6 +387,7 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     hasScopedTargetWriteBoundary ? 'scoped-target-write-boundary' : '',
     hasScopedVersionControlProhibition ? 'scoped-version-control-prohibition' : '',
     hasScopedWriteObjectProhibition ? 'scoped-write-object-prohibition' : '',
+    hasScopedNamedObjectProhibition ? 'scoped-named-object-prohibition' : '',
     hasScopedPathProhibition ? 'scoped-path-prohibition' : '',
     formalProjectRequired ? 'formal-project-quality-required' : '',
     validationHealthRepairRequested ? 'conditional-repair-on-failure' : '',

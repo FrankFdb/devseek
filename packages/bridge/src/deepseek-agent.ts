@@ -1,5 +1,4 @@
 import { chromium, Browser, BrowserContext, Page, ElementHandle } from 'playwright';
-import * as fs from 'fs';
 import * as nodePath from 'path';
 import {
   summarizeTraceText,
@@ -18,6 +17,7 @@ import {
   mergeContinuedAssistantText,
   waitAndClickContinueGenerationButton,
 } from './continue-generation';
+import { buildInlineFileContext } from './inline-file-context';
 
 const STREAM_POLL_INTERVAL_MS = 80;
 const STOP_DISAPPEARED_STABLE_TICKS = 5;
@@ -1619,6 +1619,10 @@ export class DeepSeekAgent {
   }
 
   async close(): Promise<void> {
+    this.cancelRequested = true;
+    this.currentInterceptCleanup?.();
+    this.currentInterceptCleanup = null;
+    this._preAttachedFiles = [];
     if (this.context) {
       try { await this.context.close(); } catch { /* ignore */ }
       this.context = null;
@@ -1628,6 +1632,7 @@ export class DeepSeekAgent {
       try { await this.browser.close(); } catch { /* ignore */ }
       this.browser = null;
     }
+    this.page = null;
   }
 
   // ----------------------------------------------------------------
@@ -1646,80 +1651,4 @@ export class DeepSeekAgent {
     if (!this.page) throw new Error('Agent not initialized. Call init() first.');
     return this.page;
   }
-}
-
-function buildInlineFileContext(files: readonly string[]): string | undefined {
-  const maxFileBytes = 64 * 1024;
-  const maxTotalChars = 120_000;
-  const sections: string[] = [];
-  let totalChars = 0;
-
-  for (const file of files) {
-    let content: string;
-    try {
-      const stat = fs.statSync(file);
-      if (!stat.isFile()) continue;
-      const bytesToRead = Math.min(stat.size, maxFileBytes);
-      const fd = fs.openSync(file, 'r');
-      try {
-        const buffer = Buffer.alloc(bytesToRead);
-        fs.readSync(fd, buffer, 0, bytesToRead, 0);
-        content = buffer.toString('utf8');
-        if (stat.size > maxFileBytes) {
-          content += `\n...[truncated by DevSeek Bridge: ${stat.size} bytes total]`;
-        }
-      } finally {
-        fs.closeSync(fd);
-      }
-    } catch {
-      continue;
-    }
-
-    const language = languageForFile(file);
-    const section = [
-      `<devseek-file path="${file}">`,
-      `\`\`\`${language}`,
-      content.replace(/\s+$/g, ''),
-      '```',
-      '</devseek-file>',
-    ].join('\n');
-
-    if (totalChars + section.length > maxTotalChars) {
-      sections.push('[DevSeek Bridge omitted additional files because the inline context budget was reached.]');
-      break;
-    }
-    sections.push(section);
-    totalChars += section.length;
-  }
-
-  if (sections.length === 0) return undefined;
-  return [
-    'DevSeek Bridge could not use the DeepSeek Web file-upload control in this session.',
-    'It is inlining the selected workspace files below as read-only context.',
-    'Use these files only as context; return the requested DevSeek file tool call for edits.',
-    '',
-    ...sections,
-  ].join('\n');
-}
-
-function languageForFile(file: string): string {
-  const ext = nodePath.extname(file).toLowerCase();
-  const languages: Record<string, string> = {
-    '.c': 'c',
-    '.cc': 'cpp',
-    '.cpp': 'cpp',
-    '.cxx': 'cpp',
-    '.h': 'cpp',
-    '.hpp': 'cpp',
-    '.js': 'javascript',
-    '.jsx': 'jsx',
-    '.json': 'json',
-    '.mjs': 'javascript',
-    '.py': 'python',
-    '.ts': 'typescript',
-    '.tsx': 'tsx',
-    '.yml': 'yaml',
-    '.yaml': 'yaml',
-  };
-  return languages[ext] ?? '';
 }

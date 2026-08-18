@@ -14,6 +14,12 @@ import {
 } from '@devseek-netai/shared';
 import { DeepSeekAgent, LoginRequiredError } from './deepseek-agent';
 import { RequestQueue } from './queue';
+import { DeepSeekAgentRuntime } from './deepseek-agent-runtime';
+import {
+  BridgeRuntimeLifecycle,
+  watchParentProcess,
+  type BridgeShutdownReason,
+} from './bridge-runtime-lifecycle';
 import { attachBridgeRunEvidence, type BridgeRunEvidence } from './run-evidence';
 import {
   CanonicalDeepSeekWebConnectorExecutionService,
@@ -44,36 +50,18 @@ const agent = new DeepSeekAgent({
   headless: process.env.HEADLESS !== 'false',   // 默认 headless=true，调试时设 HEADLESS=false
   timeoutMs: Number(process.env.REQUEST_TIMEOUT) || 120_000,
 });
+const agentRuntime = new DeepSeekAgentRuntime(agent);
 const queue = new RequestQueue();
 const connector = new CanonicalDeepSeekWebConnectorService();
 const connectorExecution = new CanonicalDeepSeekWebConnectorExecutionService({
-  exclusive: { execute: operation => queue.enqueue(operation) },
+  exclusive: { execute: (operation, requestId) => queue.enqueue(operation, { id: requestId }) },
   classifyError: error => classifyDeepSeekStreamErrorMessage(safeBridgeErrorMessage(error)),
 });
-let agentInitialized = false;
-let agentInitializing = false;
+let runtimeLifecycle: BridgeRuntimeLifecycle | undefined;
 
 async function ensureAgent(): Promise<void> {
-  if (agentInitialized) return;
-  if (agentInitializing) {
-    // 等待初始化完成（简单轮询）
-    const deadline = Date.now() + 120_000;
-    while (agentInitializing && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 500));
-    }
-    if (!agentInitialized) throw new Error('Agent initialization timed out');
-    return;
-  }
-  agentInitializing = true;
-  try {
-    await agent.init();
-    agentInitialized = true;
-  } catch (e) {
-    // LoginRequiredError 重新抛出，其他错误回收状态
-    throw e;
-  } finally {
-    agentInitializing = false;
-  }
+  if (runtimeLifecycle?.isShuttingDown) throw new Error('Bridge is shutting down');
+  await agentRuntime.ensureReady();
 }
 
 // ----------------------------------------------------------------
@@ -81,6 +69,13 @@ async function ensureAgent(): Promise<void> {
 // ----------------------------------------------------------------
 const app = express();
 app.use(express.json({ limit: '50mb' }));
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (runtimeLifecycle?.isShuttingDown && req.path !== '/shutdown') {
+    res.status(503).json({ error: 'BRIDGE_SHUTTING_DOWN' });
+    return;
+  }
+  next();
+});
 
 const WORKSPACE_ROOT = fs.realpathSync(process.env.WORKSPACE_ROOT ?? process.cwd());
 const BRIDGE_TOKEN = loadBridgeToken();
@@ -203,8 +198,7 @@ function safeBridgeErrorMessage(error: unknown): string {
 
 function resetAgentAfterSessionLoss(category: ReturnType<typeof classifyDeepSeekStreamErrorMessage>): void {
   if (category !== 'browser-session-lost' && category !== 'login-required') return;
-  agentInitialized = false;
-  agent.close().catch(() => {});
+  void agentRuntime.invalidate();
 }
 
 function settleConnectorFailure(
@@ -297,7 +291,8 @@ app.post('/cancel', (req: Request, res: Response) => {
     targetRequestId: decision.requestId,
     decision: decision.decision,
   });
-  if (decision.shouldInterruptProvider) agent.cancel();
+  if (decision.requestId) queue.cancel(decision.requestId);
+  if (decision.shouldInterruptProvider) agentRuntime.cancel();
   const body: CancelResponse = {
     ok: decision.decision === 'accepted',
     ...(decision.requestId ? { requestId: decision.requestId } : {}),
@@ -311,27 +306,20 @@ app.post('/cancel', (req: Request, res: Response) => {
 // ----------------------------------------------------------------
 app.post('/shutdown', (_req: Request, res: Response) => {
   res.json({ ok: true });
-  setTimeout(() => process.exit(0), 150);
+  setImmediate(() => { void scheduleBridgeShutdown('http'); });
 });
 
 // ----------------------------------------------------------------
 // POST /relogin — 打开可见浏览器让用户重新登录
 // ----------------------------------------------------------------
 app.post('/relogin', async (_req: Request, res: Response) => {
-  // 设置 agentInitializing=true：登录期间的 /chat 请求会等待，而不是并发 init
-  agentInitialized = false;
-  agentInitializing = true;
   res.json({ ok: true, message: '浏览器已打开，请在浏览器中完成登录后即可继续使用' });
 
-  // 异步登录：完成后 agentInitializing=false，下一次 /chat 会重新 headless init
-  agent.loginWithVisibleBrowser()
+  agentRuntime.loginWithVisibleBrowser()
     .then(() => {
-      agentInitializing = false;
-      agentInitialized = true;  // 浏览器保持开启，直接可用于 chat
       console.log('[bridge] Re-login done. Browser is open and ready (you can minimize the window).');
     })
     .catch((e) => {
-      agentInitializing = false;
       console.error('[bridge] Re-login failed:', safeBridgeErrorMessage(e));
     });
 });
@@ -401,7 +389,8 @@ app.post('/chat', async (req: Request, res: Response) => {
   res.once('close', () => {
     if (res.writableEnded) return;
     const decision = connector.cancel(streamRequestId);
-    if (decision.shouldInterruptProvider) agent.cancel();
+    queue.cancel(streamRequestId);
+    if (decision.shouldInterruptProvider) agentRuntime.cancel();
   });
   const evidence = createRequestEvidence(req, trace);
   trace.info('bridge-server', 'chat-request-start', {
@@ -444,6 +433,15 @@ app.post('/chat', async (req: Request, res: Response) => {
       trace.error('bridge-server', 'chat-request-agent-init-failed', { message: safeMessage });
       res.status(503).json({ error: `Agent init failed: ${safeMessage}` });
     }
+    return;
+  }
+
+  if (connectorSession.snapshot().cancelRequested) {
+    connectorSession.settleCancelled();
+    trace.info('bridge-server', 'chat-request-cancelled-after-initialization', {
+      operationId: streamRequestId,
+    });
+    if (!res.headersSent) res.status(499).json({ error: 'Cancelled by client' });
     return;
   }
 
@@ -707,6 +705,17 @@ const server = app.listen(PORT, '127.0.0.1', () => {
   console.log('[bridge] Browser will open on first /chat request.');
 });
 
+runtimeLifecycle = new BridgeRuntimeLifecycle({
+  queue,
+  connector,
+  agent: agentRuntime,
+  closeServer: () => closeHttpServer(),
+});
+let disposeParentWatch = watchParentProcess({
+  parentPid: Number(process.env.DEVSEEK_BRIDGE_PARENT_PID) || undefined,
+  onParentExit: () => { void scheduleBridgeShutdown('parent-exited'); },
+});
+
 function loadBridgeToken(): string {
   const fromEnv = process.env.DEVSEEK_BRIDGE_TOKEN?.trim();
   if (fromEnv) return fromEnv;
@@ -725,14 +734,51 @@ function loadBridgeToken(): string {
   return token;
 }
 
-// 优雅关闭
-process.on('SIGINT', async () => {
-  console.log('\n[bridge] Shutting down...');
-  await agent.close();
-  server.close(() => process.exit(0));
-});
+function closeHttpServer(): Promise<void> {
+  if (!server.listening) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    server.close(error => { if (error) reject(error); else resolve(); });
+  });
+}
 
-process.on('SIGTERM', async () => {
-  await agent.close();
-  server.close(() => process.exit(0));
+let processShutdown: Promise<void> | undefined;
+
+function scheduleBridgeShutdown(reason: BridgeShutdownReason): Promise<void> {
+  if (processShutdown) return processShutdown;
+  const lifecycle = runtimeLifecycle;
+  if (!lifecycle) return Promise.resolve();
+  disposeParentWatch();
+  console.log(`[bridge] Shutting down (${reason})...`);
+  processShutdown = (async () => {
+    const forceExit = setTimeout(() => {
+      console.error('[bridge] Shutdown deadline exceeded; forcing process exit.');
+      process.exit(1);
+    }, 8_000);
+    try {
+      const report = await lifecycle.shutdown(reason);
+      console.log('[bridge] Shutdown complete:', report);
+      clearTimeout(forceExit);
+      process.exit(reason === 'startup-failure' ? 1 : 0);
+    } catch (error) {
+      console.error('[bridge] Shutdown failed:', safeBridgeErrorMessage(error));
+      clearTimeout(forceExit);
+      process.exit(1);
+    }
+  })();
+  return processShutdown;
+}
+
+function handleShutdownSignal(reason: Extract<BridgeShutdownReason, 'sigint' | 'sigterm'>): void {
+  if (runtimeLifecycle?.isShuttingDown) {
+    process.exit(1);
+    return;
+  }
+  void scheduleBridgeShutdown(reason);
+}
+
+process.on('SIGINT', () => handleShutdownSignal('sigint'));
+process.on('SIGTERM', () => handleShutdownSignal('sigterm'));
+server.on('error', error => {
+  console.error('[bridge] Server error:', safeBridgeErrorMessage(error));
+  void scheduleBridgeShutdown('startup-failure');
 });

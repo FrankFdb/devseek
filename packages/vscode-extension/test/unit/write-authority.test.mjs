@@ -55,23 +55,9 @@ test('global file-write revocation still blocks report artifact creation', () =>
   assert.equal(authority.writeRevoked, true);
 });
 
-test('model source proposal remains executable under a no-dependency boundary', () => {
+test('a no-dependency boundary preserves the user-authorized source target', () => {
   const prompt = '请实现 tools/log_summary.py 并用 python 自测；不要引入依赖，不要改其他文件。';
   const authority = createAuthority(prompt);
-
-  authority.applyModelSemanticProposal({
-    version: 'devseek.semantic-intent/v1',
-    mode: 'edit',
-    taskKind: 'standalone-program',
-    mutation: 'create-file',
-    targetPaths: ['tools/log_summary.py'],
-    requiresWorkspace: true,
-    requiresTerminal: true,
-    requiresExternalEffect: false,
-    requiresClarification: false,
-    confidence: 0.99,
-    reason: 'model proposed a source deliverable with verification',
-  });
 
   assert.equal(authority.semanticContract.intent.context.externalEffect, 'none');
   assert.equal(authority.semanticContractRevision.allowedToExecute, true);
@@ -207,7 +193,7 @@ test('in-flight correction preserves committed effects and replans only uncommit
   assert.match(messages[0].content, /sealedCommittedEffects: effect-auth-write/);
 });
 
-test('model tool semantics revise the active contract without creating a user turn', () => {
+test('provider tool proposals cannot rewrite the user-owned task contract', () => {
   const revisions = [];
   const authority = createAuthority(
     '帮我见个 notes/ready.txt，里头就一行 READY，弄完再看眼写对没，别碰别的。',
@@ -215,6 +201,7 @@ test('model tool semantics revise the active contract without creating a user tu
     {},
     { onTaskSemanticContractRevision: revision => revisions.push(revision) },
   );
+  const initialRevision = authority.semanticContractRevision;
 
   const changed = authority.applyModelSemanticProposal({
     version: 'devseek.semantic-intent/v1',
@@ -232,60 +219,108 @@ test('model tool semantics revise the active contract without creating a user tu
   });
 
   assert.equal(changed, true);
-  assert.equal(revisions.length, 1);
-  assert.equal(revisions[0].revisionId, 'rev-1:model-1');
-  assert.equal(revisions[0].parentRevisionId, 'rev-1');
+  assert.equal(revisions.length, 0);
+  assert.equal(authority.semanticContractRevision, initialRevision);
+  assert.equal(authority.semanticContractRevision.semanticContract.intent.mode, 'inspect');
+  assert.equal(authority.canonicalSemanticContract.intent.mode, 'inspect');
   assert.equal(authority.semanticContract.intent.mode, 'edit');
   assert.equal(authority.semanticContract.mutation.requested, true);
   assert.deepEqual(authority.semanticContract.mutation.targets, ['notes/ready.txt']);
   assert.equal(authority.writeRevoked, false);
 });
 
-test('a model delete proposal cannot revoke the user-authorized repair scope', () => {
+test('provider terminal proposals cannot add user-owned read completion obligations', () => {
+  const authority = createAuthority(
+    '只修改 src/value.cpp，不要改 test.sh，完成后运行 ./test.sh。',
+    [],
+  );
+  const canonicalCompletion = authority.canonicalSemanticContract.completion.doneIff;
+
+  const changed = authority.applyModelSemanticProposal({
+    version: 'devseek.semantic-intent/v1',
+    source: 'provider',
+    mode: 'run',
+    taskKind: 'terminal-validation',
+    confidence: 0.98,
+    mutation: 'run-only',
+    targetPaths: [],
+    requiresWorkspace: true,
+    requiresTerminal: true,
+    requiresExternalEffect: false,
+    requiresClarification: false,
+    reason: 'normalized run_terminal proposal',
+  });
+
+  assert.equal(changed, true);
+  assert.equal(authority.semanticContract.read.requested, true);
+  assert.equal(authority.canonicalSemanticContract.read.requested, false);
+  assert.deepEqual(authority.canonicalSemanticContract.completion.doneIff, canonicalCompletion);
+  assert.equal(
+    authority.canonicalSemanticContract.completion.doneIff.some(item => item.target === 'test.sh'),
+    false,
+  );
+});
+
+test('a provider proposal cannot override an explicit read-only user contract', () => {
   const revisions = [];
   const authority = createAuthority(
-    '在 code 目录编写一个 C++ 程序，编译验证后交付。',
+    '只分析 src/cache.ts 的职责，不要修改文件，也不要运行命令。',
     [],
     {},
     { onTaskSemanticContractRevision: revision => revisions.push(revision) },
   );
 
-  assert.equal(authority.applyModelSemanticProposal({
+  const changed = authority.applyModelSemanticProposal({
     version: 'devseek.semantic-intent/v1',
     source: 'provider',
     mode: 'edit',
-    taskKind: 'standalone-program',
+    taskKind: 'existing-project-edit',
     confidence: 0.99,
-    mutation: 'create-file',
-    targetPaths: ['code/movie_countdown.cpp'],
-    requiresWorkspace: true,
-    requiresTerminal: true,
-    requiresExternalEffect: false,
-    requiresClarification: false,
-    reason: 'create requested source',
-  }), true);
-  const revisionCountBeforeDelete = revisions.length;
-
-  assert.equal(authority.applyModelSemanticProposal({
-    version: 'devseek.semantic-intent/v1',
-    source: 'provider',
-    mode: 'destructive',
-    taskKind: 'destructive',
-    confidence: 0.99,
-    mutation: 'delete',
-    targetPaths: ['code/main.cpp'],
+    mutation: 'modify-source',
+    targetPaths: ['src/cache.ts'],
     requiresWorkspace: true,
     requiresTerminal: false,
     requiresExternalEffect: false,
     requiresClarification: false,
-    reason: 'cleanup proposal must be action-arbitrated',
-  }), false);
+    reason: 'model proposed a prohibited write',
+  });
 
-  assert.equal(revisions.length, revisionCountBeforeDelete);
-  assert.equal(authority.semanticContractRevision.allowedToExecute, true);
-  assert.deepEqual(authority.semanticContractRevision.pendingTargets, ['code/movie_countdown.cpp']);
-  assert.deepEqual(authority.semanticContractRevision.prohibitedTargets, []);
-  assert.notEqual(authority.semanticContract.kind, 'destructive');
+  assert.equal(changed, false);
+  assert.equal(revisions.length, 0);
+  assert.equal(authority.semanticContract.mutation.prohibited, true);
+  assert.deepEqual(authority.semanticContract.mutation.targets, []);
+});
+
+test('a user steer clears the provider semantic overlay and publishes user authority', () => {
+  const steers = ['更正：改为创建 notes/final.txt，只写 FINAL。'];
+  const revisions = [];
+  const authority = createAuthority(
+    '帮我见个 notes/ready.txt，里头就一行 READY。',
+    steers,
+    {},
+    { onTaskSemanticContractRevision: revision => revisions.push(revision) },
+  );
+  authority.applyModelSemanticProposal({
+    version: 'devseek.semantic-intent/v1',
+    source: 'provider',
+    mode: 'edit',
+    taskKind: 'file-artifact',
+    confidence: 0.98,
+    mutation: 'create-file',
+    targetPaths: ['notes/ready.txt'],
+    requiresWorkspace: true,
+    requiresTerminal: false,
+    requiresExternalEffect: false,
+    requiresClarification: false,
+    reason: 'normalized create_file proposal',
+  });
+
+  authority.takePendingAndDrain();
+
+  assert.equal(revisions.length, 1);
+  assert.equal(authority.semanticContract, authority.semanticContractRevision.semanticContract);
+  assert.ok(authority.semanticContract.mutation.targets.includes('notes/final.txt'));
+  assert.equal(authority.semanticContract.mutation.targets.includes('notes/ready.txt'), false);
 });
 
 test('write authority preserves dynamic callback getters from the canonical Kernel', () => {

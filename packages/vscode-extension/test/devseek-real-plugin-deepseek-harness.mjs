@@ -347,6 +347,8 @@ function isProductRunTerminalEvent(terminal) {
   const data = terminal && terminal.data ? terminal.data : {};
   return Boolean(terminal)
     && (terminal.event === 'agent-run-completed' || terminal.event === 'agent-run-failed')
+    && terminal.source !== 'vscode-extension.memory-pipeline'
+    && data.workloadRole !== 'background-maintenance'
     && !isAuxiliaryMutationTerminalEvent(terminal);
 }
 
@@ -358,6 +360,7 @@ function isAuxiliaryMutationTerminalEvent(terminal) {
 
 function productRunLogScore(log) {
   if (!log) return 0;
+  if (log.workloadRole === 'background-maintenance') return 0;
   if (isProductRunTerminalEvent(log.terminal)) return 5;
   if (isAuxiliaryMutationTerminalEvent(log.terminal)) return 0;
   if (log.hasAgentRunStarted && (log.committedMutationCount || log.providerEventCount || log.toolExecutionCount)) return 4;
@@ -2068,6 +2071,10 @@ function collectRunLogs(startedAtMs) {
       .map(parseJsonLine)
       .filter(Boolean);
     const terminal = events.find((event) => event.event === 'agent-run-completed' || event.event === 'agent-run-failed');
+    const started = events.find((event) => event.event === 'agent-run-started');
+    const workloadRole = terminal?.data?.workloadRole
+      || started?.data?.workloadRole
+      || (terminal?.source === 'vscode-extension.memory-pipeline' ? 'background-maintenance' : 'foreground-agent');
     const providerEventCount = events.filter((event) => event.tag === 'provider' || event.phase === 'payload').length;
     const toolExecutionCount = events.filter((event) => event.phase === 'tool-loop'
       && (event.event === 'execute-start' || event.event === 'execute-complete')).length;
@@ -2081,6 +2088,7 @@ function collectRunLogs(startedAtMs) {
       size: stat.size,
       events: events.length,
       lastEvent: events.length ? events[events.length - 1].event : '',
+      workloadRole,
       hasAgentRunStarted: events.some((event) => event.event === 'agent-run-started'),
       hasAgentStatus: events.some((event) => event.event === 'agent-status'),
       providerEventCount,
@@ -2090,7 +2098,7 @@ function collectRunLogs(startedAtMs) {
       inFlightProviderRequests: chatRequestState.inFlight,
       committedMutationCount: mutationPaths.length,
       mutationPaths,
-      terminal: terminal ? { event: terminal.event, data: terminal.data || {} } : null,
+      terminal: terminal ? { event: terminal.event, source: terminal.source || '', data: terminal.data || {} } : null,
       providerFailures: events
         .filter((event) => /failed|corrupt|truncated|LOGIN_REQUIRED|HTTP/i.test(String(event.event) + ' ' + JSON.stringify(event.data || {})))
         .slice(-8)

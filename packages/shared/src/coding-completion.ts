@@ -176,7 +176,7 @@ function deriveCompletionDecision(input: CodingCompletionDecisionInput): CodingC
           input.verifications,
         )
     ));
-  const hasDeniedEffect = input.toolExecutions.some(receipt => (
+  const blockingDeniedEffects = input.toolExecutions.filter(receipt => (
     receipt.status === 'denied'
       && codingAdverseToolExecutionBlocksCompletion(
         receipt,
@@ -185,18 +185,25 @@ function deriveCompletionDecision(input: CodingCompletionDecisionInput): CodingC
         input.verifications,
       )
   ));
+  const hasDeniedEffect = blockingDeniedEffects.length > 0;
   const hasFailedVerification = unresolvedVerifications.some(receipt => receipt.status === 'failed');
   const hasUnverified = unresolvedVerifications.some(receipt => (
     receipt.status === 'unverified' || receipt.status === 'indeterminate'
   ));
   const acceptanceFailed = acceptance.some(item => item.status === 'failed');
   const acceptanceBlocked = acceptance.some(item => item.status === 'blocked');
+  const deniedEffectLeavesContractUnsettled = hasDeniedEffect
+    && !deniedEffectsFollowExecutedVerification(
+      blockingDeniedEffects,
+      input.toolExecutions,
+      unresolvedVerifications,
+    );
 
   if (input.pendingRefs.length > 0) reasonCodes.push('pending-work');
   if (input.adverseEvidenceRefs.length > 0) reasonCodes.push('unresolved-adverse-evidence');
   if (hasIndeterminateEffect) reasonCodes.push('indeterminate-effect');
   if (hasFailedEffect) reasonCodes.push('failed-effect');
-  if (hasDeniedEffect) reasonCodes.push('denied-effect');
+  if (deniedEffectLeavesContractUnsettled) reasonCodes.push('denied-effect');
   if (hasFailedVerification || acceptanceFailed) reasonCodes.push('verification-failed');
   if (hasUnverified || acceptanceBlocked) reasonCodes.push('verification-incomplete');
   if (input.verificationRequired && unresolvedVerifications.length === 0) reasonCodes.push('verification-not-run');
@@ -242,6 +249,28 @@ function deriveCompletionDecision(input: CodingCompletionDecisionInput): CodingC
     residualRisks: input.residualRisks,
     evidenceRefs,
   }, 'completion-decision') as CodingCompletionDecision;
+}
+
+function deniedEffectsFollowExecutedVerification(
+  deniedEffects: readonly CodingToolExecutionReceipt<unknown>[],
+  toolExecutions: readonly CodingToolExecutionReceipt<unknown>[],
+  verifications: readonly CodingVerificationReceipt[],
+): boolean {
+  if (deniedEffects.length === 0) return false;
+  return deniedEffects.every(denied => verifications.some(verification => (
+    verification.runId === denied.runId
+      && verification.sequence < denied.sequence
+      && verification.status === 'passed'
+      && verification.acceptance.length > 0
+      && verification.acceptance.every(result => result.status === 'passed')
+      && toolExecutions.some(tool => (
+        tool.runId === verification.runId
+          && tool.sequence === verification.sequence
+          && tool.actionId === verification.actionId
+          && tool.tool === 'run_terminal'
+          && tool.status === 'completed'
+      ))
+  )));
 }
 
 function projectCompletionAcceptance(

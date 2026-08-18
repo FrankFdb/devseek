@@ -53,6 +53,32 @@ test('task-contract mode resolution preserves read-only questions and explicit c
   ]);
 });
 
+test('Surface semantic arbitration prevents domain nouns from becoming external-effect boundaries', () => {
+  const prompt = [
+    'Complete include/deployment_coordinator.hpp and src/deployment_coordinator.cpp.',
+    'Run ./test.sh after the local implementation is complete.',
+  ].join(' ');
+  const localContract = resolveCodingKernelTaskContract({
+    prompt,
+    surface: 'vscode',
+    modeHint: 'change',
+    externalEffectIntent: 'none',
+  });
+  const externalContract = resolveCodingKernelTaskContract({
+    prompt: 'Deploy the service to production after running ./test.sh.',
+    surface: 'vscode',
+    modeHint: 'release',
+    externalEffectIntent: 'requested',
+  });
+
+  assert.deepEqual(localContract.externalBoundaries, []);
+  assert.equal(localContract.acceptance.some(item => item.id === 'verified'), true);
+  assert.deepEqual(
+    externalContract.externalBoundaries.map(boundary => boundary.id),
+    ['external-deployment'],
+  );
+});
+
 test('explicit run-only verification keeps the workspace read-only and requires terminal evidence', () => {
   const contract = resolveCodingKernelTaskContract({
     prompt: '只跑一下 health 检查，把结果告诉我；不要改文件，失败也不要修。',
@@ -86,6 +112,20 @@ test('an explicit no-run boundary overrides a stale run-only verification propos
   assert.deepEqual(contract.deliverables.map(deliverable => deliverable.kind), ['report']);
   assert.deepEqual(contract.acceptance.map(criterion => criterion.id), ['grounded-response']);
   assert.equal(contract.constraints.includes('verification-before-completion'), false);
+});
+
+test('authoritative Surface verification is not revoked by a scoped test-file write prohibition', () => {
+  const contract = resolveCodingKernelTaskContract({
+    prompt: '只修改 src/value.cpp，不要改测试和 CMake，完成后运行 ./test.sh。',
+    surface: 'vscode',
+    modeHint: 'change',
+    verificationRequired: true,
+    verificationRequirementAuthoritative: true,
+    externalEffectIntent: 'none',
+  });
+
+  assert.equal(contract.constraints.includes('verification-before-completion'), true);
+  assert.equal(contract.acceptance.some(item => item.id === 'verified'), true);
 });
 
 test('terminal effect classification is command-owned and conservative for package operations', () => {
@@ -245,6 +285,38 @@ test('mixed Chinese allow and deny lists bind every path to its nearest action',
   assert.deepEqual(contract.scope.include, ['include/**', 'src/**']);
   assert.deepEqual(contract.scope.exclude, ['CMakeLists.txt', 'test.sh', 'tests/**']);
   assert.equal(contract.constraints.includes('no-other-files'), true);
+  assert.deepEqual(
+    contract.deliverables.filter(item => item.kind === 'source-change'),
+    [{ id: 'source-change', kind: 'source-change' }],
+  );
+});
+
+test('allowed file scope is not projected as one required deliverable per file', () => {
+  const targets = [
+    'include/deployment_coordinator.hpp',
+    'src/deployment_coordinator.cpp',
+    'test.sh',
+  ];
+  const contract = resolveCodingKernelTaskContract({
+    prompt: [
+      '仍然只允许修改 include/deployment_coordinator.hpp 和 src/deployment_coordinator.cpp，',
+      '不能修改 tests、CMake、test.sh 或已有组件。完成后运行 ./test.sh。',
+    ].join(''),
+    surface: 'vscode',
+    modeHint: 'change',
+    targetPaths: targets,
+    targetPathsAuthoritative: false,
+    deliverableKinds: ['source-change', 'verification-result'],
+    verificationRequired: true,
+    verificationRequirementAuthoritative: true,
+  });
+
+  assert.deepEqual(contract.scope.include, targets.slice(0, 2));
+  assert.deepEqual(contract.scope.exclude, ['test.sh']);
+  assert.deepEqual(contract.deliverables, [
+    { id: 'source-change', kind: 'source-change' },
+    { id: 'verification-result', kind: 'verification-result' },
+  ]);
 });
 
 test('Chinese completion requests remain mutating when behavior requirements mention inspection', () => {

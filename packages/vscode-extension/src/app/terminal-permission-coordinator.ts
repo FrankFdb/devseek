@@ -59,6 +59,7 @@ export interface RunTerminalWithPermissionInput {
   reuseTerminal?: boolean;
   timeoutMs?: number;
   executionProfile?: 'interactive' | 'validation';
+  signal?: AbortSignal;
   /** The caller owns explicit recovery evidence for this command attempt. */
   manageRecoveryExternally?: boolean;
   /** Correlates this retry side effect with a previously detected recovery. */
@@ -175,6 +176,7 @@ export interface ValidationCommandAuthorityInput {
   traceRunId: string;
   traceEvidenceParticipantToken: string;
   onTraceEvidenceError?: (error: unknown) => void;
+  signal?: AbortSignal;
 }
 
 export class TerminalPermissionCoordinator {
@@ -857,6 +859,7 @@ export class TerminalPermissionCoordinator {
         manualReviewOnLongRunning,
         executionProfile: input.executionProfile
           ?? (terminalDecision.risk === 'validation' ? 'validation' : undefined),
+        signal: input.signal,
       });
     } catch (error) {
       try {

@@ -144,6 +144,7 @@ export async function runLocalExecutionChatIfPossible(
       timeoutMs: getLocalExecutionTimeoutMs(localPlan),
       manageRecoveryExternally: true,
       recoveryOperationId,
+      signal: input.signal,
     });
     if (!terminalResult.executed) {
       if (recoveryOperationId) {

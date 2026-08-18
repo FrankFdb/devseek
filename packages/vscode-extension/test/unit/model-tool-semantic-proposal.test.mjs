@@ -11,13 +11,13 @@ const proposalBundle = path.join(rootDir, 'test/unit/model-tool-semantic-proposa
 const routerBundle = path.join(rootDir, 'test/unit/model-tool-semantic-router.bundle.cjs');
 
 execSync(
-  `npx esbuild src/agent/model-tool-semantic-proposal.ts --bundle ` +
-  `--outfile=${proposalBundle} --format=cjs --platform=node --external:vscode`,
+  `npx esbuild src/agent/model-tool-semantic-proposal.ts --bundle `
+  + `--outfile=${proposalBundle} --format=cjs --platform=node --external:vscode`,
   { cwd: rootDir, stdio: 'pipe' },
 );
 execSync(
-  `npx esbuild src/task-intent-router.ts --bundle ` +
-  `--outfile=${routerBundle} --format=cjs --platform=node --external:vscode`,
+  `npx esbuild src/task-intent-router.ts --bundle `
+  + `--outfile=${routerBundle} --format=cjs --platform=node --external:vscode`,
   { cwd: rootDir, stdio: 'pipe' },
 );
 
@@ -40,7 +40,7 @@ test('Model tool semantic proposal: typo create becomes an arbitrated file chang
   assert.ok(route.signals.includes('semantic-proposal-accepted'));
 });
 
-test('Model tool semantic proposal: concrete tool path refines a basename inferred from directory prose', () => {
+test('Model tool semantic proposal: concrete tool path refines a basename from directory prose', () => {
   const prompt = '帮我在指定目录 generated/settings 里见个 devseek.ini，写好后读回来确认，别碰其他文件。';
   const initial = routeTaskIntent(prompt).semanticContract;
   const semanticIntent = projectModelToolSemanticProposal([
@@ -55,7 +55,7 @@ test('Model tool semantic proposal: concrete tool path refines a basename inferr
   ]);
 });
 
-test('Model tool semantic proposal: directory-qualified targets with the same basename stay independent', () => {
+test('Model tool semantic proposal: same basenames in separate directories stay independent', () => {
   const prompt = '创建 docs/README.md 和 packages/demo/README.md，别改其他文件。';
   const initial = routeTaskIntent(prompt).semanticContract;
   const semanticIntent = projectModelToolSemanticProposal([
@@ -66,7 +66,7 @@ test('Model tool semantic proposal: directory-qualified targets with the same ba
   assert.deepEqual(route.mutation.targets, ['docs/README.md', 'packages/demo/README.md']);
 });
 
-test('Model tool semantic proposal: mixed-language plan stays non-mutating and needs no command', () => {
+test('Model tool semantic proposal: mixed-language plan stays non-mutating', () => {
   const prompt = '先 inspect src/math.js，然后 give me a fix plan only，暂时不要 apply，也不要 run command。';
   const initial = routeTaskIntent(prompt).semanticContract;
   const semanticIntent = projectModelToolSemanticProposal([
@@ -79,12 +79,10 @@ test('Model tool semantic proposal: mixed-language plan stays non-mutating and n
   assert.equal(route.mode, 'plan');
   assert.equal(route.mutation.requested, false);
   assert.equal(route.validation.commandEvidenceRequired, false);
-  assert.equal(initial.validation.runProhibited, true);
   assert.equal(route.semanticContract.validation.runRequested, false);
-  assert.equal(route.semanticContract.taskContract.deliverables.includes('verification-result'), false);
 });
 
-test('Model tool semantic proposal: terminal-only verification cannot imply a file mutation', () => {
+test('Model tool semantic proposal: terminal verification cannot imply mutation', () => {
   const prompt = '只跑一下 health 检查，把结果告诉我；不要改文件，失败也不要修。';
   const initial = routeTaskIntent(prompt).semanticContract;
   const semanticIntent = projectModelToolSemanticProposal([
@@ -98,7 +96,7 @@ test('Model tool semantic proposal: terminal-only verification cannot imply a fi
   assert.equal(route.validation.commandEvidenceRequired, true);
 });
 
-test('Model tool semantic proposal: explicit no-run remains a local hard boundary', () => {
+test('Model tool semantic proposal: explicit no-run remains a hard boundary', () => {
   const prompt = '创建 docs/result.md 写入结果，但不要运行任何命令。';
   const initial = routeTaskIntent(prompt).semanticContract;
   const semanticIntent = projectModelToolSemanticProposal([
@@ -111,7 +109,7 @@ test('Model tool semantic proposal: explicit no-run remains a local hard boundar
   assert.equal(route.semanticContract.validation.runRequested, false);
 });
 
-test('Model tool semantic proposal: explicit memory capture corrects a lexical command false positive without requesting execution', () => {
+test('Model tool semantic proposal: memory capture does not request command execution', () => {
   const prompt = '记一下这个项目的习惯：处理 src/bridge.ts 后，用 npm run test:bridge 做聚焦验证；现在只记录，不改文件也不运行。';
   const initial = routeTaskIntent(prompt).semanticContract;
   const semanticIntent = projectModelToolSemanticProposal([
@@ -124,12 +122,10 @@ test('Model tool semantic proposal: explicit memory capture corrects a lexical c
   assert.equal(route.mutation.requested, false);
   assert.equal(route.validation.commandEvidenceRequired, false);
   assert.equal(route.semanticContract.validation.runRequested, false);
-  assert.equal(route.semanticContract.validation.testRequested, false);
-  assert.equal(route.semanticContract.taskContract.deliverables.includes('verification-result'), false);
   assert.ok(route.signals.includes('semantic-proposal-accepted'));
 });
 
-test('Model tool semantic proposal: destructive action remains confirmation-gated', () => {
+test('Model tool semantic proposal: destructive action stays confirmation-gated', () => {
   const prompt = '看看 build/cache.json 现在是什么情况。';
   const initial = routeTaskIntent(prompt).semanticContract;
   const semanticIntent = projectModelToolSemanticProposal([

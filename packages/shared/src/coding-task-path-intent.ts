@@ -2,9 +2,10 @@ const WORKSPACE_PATH_TOKEN_RE = /(?:^|[\s("'`:：、])((?:\.{0,2}\/)?[A-Za-z0-9_
 const ROOT_WORKSPACE_FILE_RE = /(?:\.(?:bash|c|cc|cjs|cpp|css|cxx|env|go|h|hh|hpp|html|java|js|json|jsonc|jsx|local|lock|md|mdx|mjs|py|rs|scss|sh|sql|svelte|toml|ts|tsx|txt|vue|xml|ya?ml)|^(?:containerfile|dockerfile|license|makefile))$/iu;
 const ACTION_DIRECTIVE_RE = /\b(?:according\s+to|add|added|based\s+on|compare\s+with|create|created|delete|deleted|edit|edited|fix|generate|generated|implement|implemented|inspect|modify|modified|read|refactor|reference|remove|removed|repair|repaired|review|save|update|updated|using|write|written)\b|创建|新增|添加|删除|编辑|修复|生成|实现|编写|开发|修改|重构|移除|保存|更新|写入|参考|基于|依据|按照|对标|读取|查看|分析/giu;
 const MUTATION_ACTION_RE = /^(?:add|added|create|created|delete|deleted|edit|edited|fix|generate|generated|implement|implemented|modify|modified|refactor|remove|removed|repair|repaired|save|update|updated|write|written|创建|新增|添加|删除|编辑|修复|生成|实现|编写|开发|修改|重构|移除|保存|更新|写入)$/iu;
-const NEGATED_ACTION_PREFIX_RE = /(?:\b(?:do\s+not|don't|must\s+not|should\s+not|may\s+not|never)\s+(?:be\s+)?|(?:不要|不得|禁止|严禁|不可|不允许|勿|别)(?:再)?(?:被)?)\s*$/iu;
-const PASSIVE_NEGATED_ACTION_PREFIX_RE = /(?:\b(?:do\s+not|don't|must\s+not|should\s+not|may\s+not|never)\s+be\s+|(?:不要|不得|禁止|严禁|不可|不允许|勿|别)(?:再)?被)\s*$/iu;
-const LEADING_ACTION_CONTEXT_RE = /^\s*[`'"’”({\[、,，:：-]*\s*(?:(?:and|then)\s+|并(?:且)?|然后)?\s*(?:(?:do\s+not|don't|must\s+not|should\s+not|may\s+not|never)\s+(?:be\s+)?|(?:不要|不得|禁止|严禁|不可|不允许|勿|别)(?:再)?(?:被)?)?\s*$/iu;
+const NEGATED_ACTION_PREFIX_RE = /(?:\b(?:cannot|can't|do\s+not|don't|must\s+not|should\s+not|may\s+not|never)\s+(?:be\s+)?|(?:不能|不要|不得|禁止|严禁|不可|不允许|勿|别)(?:再)?(?:被)?)\s*$/iu;
+const PASSIVE_NEGATED_ACTION_PREFIX_RE = /(?:\b(?:cannot|can't|do\s+not|don't|must\s+not|should\s+not|may\s+not|never)\s+be\s+|(?:不能|不要|不得|禁止|严禁|不可|不允许|勿|别)(?:再)?被)\s*$/iu;
+const LEADING_ACTION_CONTEXT_RE = /^\s*[`'"’”({\[、,，:：-]*\s*(?:(?:and|then)\s+|并(?:且)?|然后)?\s*(?:(?:cannot|can't|do\s+not|don't|must\s+not|should\s+not|may\s+not|never)\s+(?:be\s+)?|(?:不能|不要|不得|禁止|严禁|不可|不允许|勿|别)(?:再)?(?:被)?)?\s*$/iu;
+const ALLOWED_ACTION_PREFIX_RE = /(?:\b(?:only|solely)\s+(?:(?:be\s+)?allowed\s+to\s+)|(?:只|仅)允许(?:被)?)\s*$/iu;
 const FOLLOWING_PATH_RE = /^\s*[`'"“‘({\[]*((?:\.{0,2}\/)?[A-Za-z0-9_.?*/-]+)(?=$|[\s,;:!?，。；：！？、)\]}'"`])/u;
 const DATA_PREFIX_RE = /(?:\b(?:example|input|stdin|url|value)\s+|输入|示例|网址|值)\s*$/iu;
 const DIRECTORY_SUFFIX_RE = /^\s*(?:directory|folder|目录)(?:\b|下|内)/iu;
@@ -15,6 +16,8 @@ export interface CodingTaskPathIntent {
   readonly mentionedPaths: readonly string[];
   readonly mutationFileTargets: readonly string[];
   readonly mutationDirectoryTargets: readonly string[];
+  readonly allowedFileTargets: readonly string[];
+  readonly allowedDirectoryTargets: readonly string[];
   readonly excludedFileTargets: readonly string[];
   readonly excludedDirectoryTargets: readonly string[];
 }
@@ -40,6 +43,8 @@ export class CanonicalTaskPathIntentService implements TaskPathIntentPort {
     const mentionedPaths = mentions.map(mention => mention.path);
     const mutationFileTargets: string[] = [];
     const mutationDirectoryTargets: string[] = [];
+    const allowedFileTargets: string[] = [];
+    const allowedDirectoryTargets: string[] = [];
     const excludedFileTargets: string[] = [];
     const excludedDirectoryTargets: string[] = [];
 
@@ -47,6 +52,8 @@ export class CanonicalTaskPathIntentService implements TaskPathIntentPort {
       const intent = classifyMutationIntent(mention);
       if (intent === 'mutation') {
         (mention.directory ? mutationDirectoryTargets : mutationFileTargets).push(mention.path);
+      } else if (intent === 'allowed') {
+        (mention.directory ? allowedDirectoryTargets : allowedFileTargets).push(mention.path);
       } else if (intent === 'excluded') {
         (mention.directory ? excludedDirectoryTargets : excludedFileTargets).push(mention.path);
       }
@@ -63,6 +70,8 @@ export class CanonicalTaskPathIntentService implements TaskPathIntentPort {
       mentionedPaths: Object.freeze(uniquePaths(mentionedPaths)),
       mutationFileTargets: Object.freeze(uniquePaths(mutationFileTargets)),
       mutationDirectoryTargets: Object.freeze(uniquePaths(mutationDirectoryTargets)),
+      allowedFileTargets: Object.freeze(uniquePaths(allowedFileTargets)),
+      allowedDirectoryTargets: Object.freeze(uniquePaths(allowedDirectoryTargets)),
       excludedFileTargets: Object.freeze(uniquePaths(excludedFileTargets)),
       excludedDirectoryTargets: Object.freeze(uniquePaths(excludedDirectoryTargets)),
     });
@@ -104,20 +113,21 @@ function parsePathMentions(prompt: string): PathMention[] {
   return mentions;
 }
 
-function classifyMutationIntent(mention: PathMention): 'mutation' | 'excluded' | 'none' {
+function classifyMutationIntent(mention: PathMention): 'mutation' | 'allowed' | 'excluded' | 'none' {
   const postfix = resolvePostfixAction(mention.after);
   if (postfix) return postfix;
   return resolvePrecedingAction(mention.before);
 }
 
-function resolvePrecedingAction(before: string): 'mutation' | 'excluded' | 'none' {
+function resolvePrecedingAction(before: string): 'mutation' | 'allowed' | 'excluded' | 'none' {
   let nearest: RegExpMatchArray | undefined;
   for (const match of before.matchAll(ACTION_DIRECTIVE_RE)) nearest = match;
   if (!nearest) return 'none';
   const action = nearest[0] ?? '';
   if (!MUTATION_ACTION_RE.test(action)) return 'none';
   const prefix = before.slice(0, nearest.index ?? 0);
-  return NEGATED_ACTION_PREFIX_RE.test(prefix) ? 'excluded' : 'mutation';
+  if (NEGATED_ACTION_PREFIX_RE.test(prefix)) return 'excluded';
+  return ALLOWED_ACTION_PREFIX_RE.test(prefix) ? 'allowed' : 'mutation';
 }
 
 function resolvePostfixAction(after: string): 'mutation' | 'excluded' | undefined {

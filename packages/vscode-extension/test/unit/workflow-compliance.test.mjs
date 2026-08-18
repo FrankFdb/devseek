@@ -128,13 +128,15 @@ test('§1 Agent loop: repeated blocking tool failures are stateful', () => {
   const code = src('src/agent/agentic-loop.ts');
   const recovery = src('src/agent/tool-failure-recovery.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
+  const toolLoopResult = src('src/agent/tool-loop-result.ts');
   assertContains(code, 'ToolFailureRecoveryLedger', 'agent loop must delegate repeated failure settlement to one ledger');
   assertContains(code, 'toolFailureRecovery.recordRound', 'agent loop must settle failures once per provider round');
   assertContains(recovery, 'DEFAULT_WARN_AFTER_ROUNDS', 'recovery ledger must warn on repeated blocking failures');
   assertContains(recovery, 'DEFAULT_STOP_AFTER_ROUNDS', 'recovery ledger must stop no-progress repeated failures');
   assertContains(recovery, 'current.occurrences > 1', 'same-response duplicate failures must be grouped');
   assertContains(recovery, 'buildRepeatedToolFailureFeedback', 'recovery ledger must tell the model how to change strategy');
-  assertContains(toolLoop, 'toolFailures?: ToolFailureEvidence[]', 'tool loop must return structured blocking failure evidence');
+  assertContains(toolLoop, "from './tool-loop-result'", 'tool loop must delegate its result contract to one owner');
+  assertContains(toolLoopResult, 'toolFailures?: ToolFailureEvidence[]', 'tool loop result must expose structured blocking failure evidence');
 });
 
 test('§1 Agent loop: QualityGate loop detection requires a no-progress state', () => {
@@ -956,19 +958,21 @@ test('§7 Final summary: done refreshes visible prose with files and validation'
 
 test('Agent loop: final written file evidence is coalesced before user-facing accounting', () => {
   const code = src('src/agent/agentic-loop.ts');
-  assertContains(code, 'coalesceWrittenFileEvidence', 'agent loop must use shared written-file evidence coalescing');
+  const settlement = src('src/agent/agentic-final-settlement.ts');
+  assertContains(code, 'settleAgenticLoopFinal', 'agent loop must delegate final evidence projection to one settlement owner');
+  assertContains(settlement, 'coalesceWrittenFileEvidence', 'final settlement must use shared written-file evidence coalescing');
   assert.match(
-    code,
-    /const finalWrittenFiles = coalesceWrittenFileEvidence\(allWrittenFiles,\s*workspaceRoot\)/,
+    settlement,
+    /const finalWrittenFiles = coalesceWrittenFileEvidence\(input\.writtenFiles,\s*workspaceRoot\)/,
     'agentic final state must coalesce repeated writes by path',
   );
   assert.match(
-    code,
+    settlement,
     /editedFiles: finalWrittenFiles/,
     'done status must send coalesced editedFiles to the webview',
   );
   assert.match(
-    code,
+    settlement,
     /修改 \$\{finalWrittenFiles\.length\} 个文件/,
     'visible final summary must count unique changed files',
   );
@@ -1040,6 +1044,7 @@ test('Local execution failures escalate into Agent repair instead of browser upl
 test('Agentic loop: repeated terminal failures enter root-cause recovery before retry', () => {
   const code = src('src/agent/agentic-loop.ts');
   const recovery = src('src/agent/write-guard.ts');
+  const convergence = src('src/agent/context-convergence-feedback.ts');
   assertContains(code, 'getTerminalRecoveryProtocol', 'terminal recovery protocol helper');
   assertContains(recovery, '根因分析', 'recovery prompt must require root-cause analysis');
   assertContains(recovery, '禁止再次执行同一命令直到完成根因修复', 'recovery prompt must block blind retry');
@@ -1050,7 +1055,8 @@ test('Agentic loop: repeated terminal failures enter root-cause recovery before 
     /blockedRepeatedToolIndexes[\s\S]*?toolsToExecute[\s\S]*?executeFakeToolsForLoop\(\s*toolsToExecute,/,
     'runAgenticLoop must filter repeated blocking tools before executing tools',
   );
-  assertContains(code, 'CONTEXT_GATHERING_TOOL_NAMES', 'context gathering repeats must share the same no-progress guard');
+  assertContains(code, 'isContextGatheringToolName', 'agent loop must delegate context-tool classification');
+  assertContains(convergence, 'CONTEXT_GATHERING_TOOL_NAMES', 'context gathering repeats must share the same no-progress guard');
   assertContains(code, 'seenContextToolSignatures', 'context tool repeats must be tracked across rounds');
   assertContains(code, 'consumeContextRefresh', 'failed mutations must permit one fresh read before repeat suppression');
   assertContains(code, 'suppressedTools', 'intentional repeat suppression must be recorded for replay diagnostics');
@@ -1206,14 +1212,16 @@ test('Agentic loop: markdown fallback writes C++ code blocks as real artifacts',
 
 test('Agentic loop: final summary never exposes backend tool transcripts', () => {
   const agenticLoop = src('src/agent/agentic-loop.ts');
-  assertContains(agenticLoop, 'cleanAgentFinalSummaryForUser', 'agent loop must sanitize final summaries');
+  const settlement = src('src/agent/agentic-final-settlement.ts');
+  assertContains(agenticLoop, 'settleAgenticLoopFinal', 'agent loop must delegate final user projection');
+  assertContains(settlement, 'cleanAgentFinalSummaryForUser', 'final settlement must sanitize final summaries');
   assert.match(
-    agenticLoop,
+    settlement,
     /const visibleCompleteSummary = cleanAgentFinalSummaryForUser\(completeSummary\);[\s\S]*?title: cleanAbort \? `已中断/,
     'phase:done title must use sanitized completion summary',
   );
   assert.match(
-    agenticLoop,
+    settlement,
     /visibleCompleteSummary \|\| fileSummary \|\| '任务已完成。'/,
     'ASUM final prose must use sanitized completion summary',
   );
@@ -1529,6 +1537,7 @@ test('Safety refusal: no-mutation delivery has one explicit evidence path', () =
   const safetyIntent = src('src/intent/safety-intent.ts');
   const safetyPolicy = src('../shared/src/coding-safety-policy.ts');
   const agenticLoop = src('src/agent/agentic-loop.ts');
+  const settlement = src('src/agent/agentic-final-settlement.ts');
   const runtimeState = src('src/agent/agent-runtime-state-machine.ts');
   assertContains(safetyIntent, "from '@devseek-netai/shared'", 'VS Code safety intent must delegate to the shared owner');
   assertContains(safetyPolicy, 'export function hasUnsafeSecretHarvestingRefusalEvidence', 'shared safety owner must validate refusal receipts');
@@ -1537,7 +1546,8 @@ test('Safety refusal: no-mutation delivery has one explicit evidence path', () =
   assertContains(safetyPolicy, '(runtime.changedFileCount ?? 0) === 0', 'a refusal receipt must reject file mutations');
   assertContains(agenticLoop, '{ workToolUsed: sawWorkTool, changedFileCount: allWrittenFiles.length }', 'exploratory completion must project real side-effect facts');
   assertContains(agenticLoop, 'policyRefusalEvidenceSatisfied,', 'Agent runtime settlement must receive explicit refusal evidence');
-  assertContains(agenticLoop, 'buildSecretHarvestingRefusalAcceptanceEvidence()', 'canonical completion must receive direct refusal acceptance evidence');
+  assertContains(agenticLoop, 'settleAgenticLoopFinal', 'canonical completion must delegate acceptance evidence settlement');
+  assertContains(settlement, 'buildSecretHarvestingRefusalAcceptanceEvidence()', 'canonical completion must receive direct refusal acceptance evidence');
   assertContains(runtimeState, 'if (input.policyRefusalEvidenceSatisfied && hasDeliverySignal)', 'RuntimeState must own no-mutation refusal delivery');
   assert.match(
     runtimeState,
@@ -1576,12 +1586,13 @@ test('§3 Tool filtering: stripToolCallBlocks function present', () => {
 test('Architecture: webview protocol types exist and the extension has no pre-model intent gate', () => {
   const protocol = src('src/ui/webview-protocol.ts');
   const ext = src('src/extension.ts');
+  const provider = src('src/ui/deepseek-view-provider.ts');
   assertContains(protocol, 'WebviewInboundMessage', 'typed inbound webview protocol must exist');
   assertContains(protocol, 'WebviewOutboundMessage', 'typed outbound webview protocol must exist');
   assertContains(protocol, 'AgentStatusEvent', 'typed agent status event must exist');
   assertContains(protocol, "'planReview'", 'typed outbound webview protocol must include plan review');
-  assertContains(ext, "import type { WebviewInboundMessage }", 'extension must use typed inbound webview message');
-  assertContains(ext, 'type WebviewMessage = WebviewInboundMessage', 'extension WebviewMessage must be protocol alias');
+  assertContains(provider, "import type { WebviewInboundMessage", 'webview provider must use typed inbound messages');
+  assertContains(provider, 'type WebviewMessage = WebviewInboundMessage', 'webview provider message must be the protocol alias');
   assertDoesNotContain(ext, 'buildPreExecutionInteraction(', 'extension must not gate raw user input before the main model');
   assertDoesNotContain(ext, 'run-chat-return-pre-execution-interaction', 'extension must not return from keyword-based pre-execution routing');
   assertContains(webviewRuntime(), "msg.type === 'intentConfirmation' || msg.type === 'planReview'", 'webview must render plan review with confirmation card');
@@ -2709,7 +2720,7 @@ test('Architecture: validated source changes require fresh source review before 
   );
   assertContains(
     agenticLoop,
-    'hostFinalSourceEvidenceReady: normalizedAutoValidation.qualityGate?.status === \'pass\'',
+    'hostFinalSourceEvidenceReady: sourceValidation.currentSourceIsValidated()',
     'validated final source must be eligible for host-captured isolated review instead of provider read_file loops',
   );
   assertContains(
@@ -2972,6 +2983,7 @@ test('R3-05C: MemoryService owns memory secret redaction and legacy import inval
 test('T5: Codex-aligned memory keeps semantic extraction, local arbitration, and bounded recall separate', () => {
   const executor = src('src/product-coding-kernel-executor.ts');
   const extension = src('src/extension.ts');
+  const shutdown = src('src/app/extension-runtime-shutdown.ts');
   const pipeline = src('src/app/memory-pipeline-service.ts');
   const queue = src('src/memory/memory-pipeline-store.ts');
   const evidence = src('src/memory/memory-evidence.ts');
@@ -3005,7 +3017,8 @@ test('T5: Codex-aligned memory keeps semantic extraction, local arbitration, and
   assertContains(extension, 'context.globalStorageUri.fsPath', 'durable memory must remain machine-local instead of dirtying the repository');
   assertContains(extension, 'beginMemoryForegroundRun', 'foreground user work must preempt background memory processing');
   assertContains(extension, 'endMemoryForegroundRun', 'memory processing may resume only after the foreground run settles');
-  assertContains(extension, 'flushMemoryPipelineWork', 'extension shutdown must settle background memory work');
+  assertContains(extension, 'shutdownExtensionRuntime', 'extension shutdown must delegate runtime resource disposal');
+  assertContains(shutdown, 'shutdownMemoryPipelineWork', 'runtime shutdown must cancel background memory work within a deadline');
   assertContains(prompt, 'memory_search', 'the model must receive progressive memory search capability');
   assertContains(prompt, 'memory_read', 'the model must receive bounded memory detail capability');
   assertContains(toolLoop, "tool.name === 'memory_search'", 'memory search must settle through the canonical tool loop');
@@ -3326,7 +3339,12 @@ test('Architecture: R2-02 shared requirement ports own acceptance and external-b
 
 test('Architecture: run traces and bridge lifecycle are build-aware', () => {
   const bridgeClient = src('src/bridge-client.ts');
+  const bridgeProcessOwner = src('src/bridge-process-owner.ts');
+  const ownedProcessTree = src('src/runtime/owned-process-tree.ts');
+  const nodeProcessTreeEffects = src('src/runtime/node-process-tree-effects.ts');
+  const capturedProcessRegistry = src('src/tools/captured-process-registry.ts');
   const bridgeServer = src('../bridge/src/server.ts');
+  const bridgeLifecycle = src('../bridge/src/bridge-runtime-lifecycle.ts');
   const loopTypes = src('src/agent/loop-types.ts');
   const loopChat = src('src/agent/loop-chat.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
@@ -3335,6 +3353,16 @@ test('Architecture: run traces and bridge lifecycle are build-aware', () => {
   assertContains(bridgeClient, 'bridgeStatusMatchesRuntime', 'bridge client must compare running bridge build with extension build');
   assertContains(bridgeClient, 'terminateOnlineBridge', 'bridge client must restart stale bridge processes');
   assertContains(bridgeClient, 'DEVSEEK_BUILD_ID', 'bridge client must pass build id into spawned bridge');
+  assertContains(bridgeClient, 'DEVSEEK_BRIDGE_PARENT_PID', 'bridge client must bind the child to its extension-host owner');
+  assertContains(bridgeClient, 'disposeBridgeRuntime', 'extension shutdown must release its owned bridge');
+  assertContains(bridgeProcessOwner, 'this.processTree.signal', 'bridge owner must delegate complete process-tree termination');
+  assertContains(capturedProcessRegistry, 'this.processTree.signal', 'captured commands must use the same process-tree policy');
+  assertContains(ownedProcessTree, 'this.effects.signalProcessGroup', 'process owner must terminate the root process group');
+  assertContains(ownedProcessTree, 'this.effects.listDescendants', 'process owner must include descendants that created another session');
+  assertContains(nodeProcessTreeEffects, "cp.spawnSync('ps'", 'Node adapter must own process-tree discovery');
+  assertContains(nodeProcessTreeEffects, "cp.spawnSync('taskkill'", 'Node adapter must own Windows tree termination');
+  assertContains(bridgeLifecycle, 'BridgeRuntimeLifecycle', 'one service must coordinate queue, browser, and HTTP shutdown');
+  assertContains(bridgeLifecycle, 'watchParentProcess', 'bridge must detect abrupt extension-host loss');
   assertContains(bridgeServer, 'buildId: process.env.DEVSEEK_BUILD_ID', 'bridge status must expose build id');
   assertContains(bridgeClient, 'TRACE_WORKSPACE_ROOT_HEADER', 'bridge client must forward unified trace workspace root');
   assertContains(bridgeServer, 'TRACE_WORKSPACE_ROOT_HEADER', 'bridge server must honor unified trace workspace root');

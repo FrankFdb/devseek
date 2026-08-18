@@ -111,6 +111,9 @@ export interface CodingChangePlan {
   readonly requirementRevisionId: string;
   readonly designDecisionSha256: string;
   readonly steps: readonly CodingChangePlanStep[];
+  /** Exact deliverable paths that must be changed before the plan is complete. */
+  readonly requiredTargets: readonly string[];
+  /** Workspace paths the model may choose to change while implementing the task. */
   readonly authorizedTargets: readonly string[];
   readonly reasonCodes: readonly string[];
   readonly evidenceRefs: readonly string[];
@@ -267,11 +270,12 @@ export class CanonicalChangePlanService implements ChangePlanPort {
     if (input.design.requirementRevisionId !== input.requirements.revisionId) {
       designFailure('design-requirement-revision-mismatch');
     }
-    const targets = unique([
+    const authorizedTargets = unique([
       ...resolveImplementationTargets(contract),
       ...input.design.impactSet.primary.impacts.map(item => item.target),
     ].map(normalizeCodingWorkspacePath));
-    const mutationSteps = targets.map((target, index) => Object.freeze({
+    const requiredTargets = resolveRequiredImplementationTargets(contract);
+    const mutationSteps = authorizedTargets.map((target, index) => Object.freeze({
       id: `change:${index + 1}`,
       action: 'modify' as const,
       target,
@@ -320,7 +324,7 @@ export class CanonicalChangePlanService implements ChangePlanPort {
         ];
     const reasonCodes = unique([
       ...(input.design.status === 'ready' ? [] : [`design-${input.design.status}`]),
-      ...(contract.mode !== 'explain' && contract.mode !== 'review' && mutationSteps.length === 0
+      ...(contract.mode !== 'explain' && contract.mode !== 'review' && authorizedTargets.length === 0
         ? ['missing-change-target']
         : []),
     ]);
@@ -331,7 +335,8 @@ export class CanonicalChangePlanService implements ChangePlanPort {
       requirementRevisionId: input.requirements.revisionId,
       designDecisionSha256: input.design.decisionSha256,
       steps: Object.freeze(steps),
-      authorizedTargets: Object.freeze(unique(targets)),
+      requiredTargets: Object.freeze(requiredTargets),
+      authorizedTargets: Object.freeze(authorizedTargets),
       reasonCodes: Object.freeze(reasonCodes),
       evidenceRefs: Object.freeze(unique([
         input.requirements.decisionSha256,
@@ -477,11 +482,15 @@ function buildAlternatives(contract: CodingKernelTaskContract): CodingDesignAlte
 }
 
 function resolveImplementationTargets(contract: CodingKernelTaskContract): string[] {
-  const deliverableTargets = contract.deliverables.flatMap(deliverable => (
-    deliverable.kind === 'source-change' && deliverable.path ? [deliverable.path] : []
-  ));
+  const deliverableTargets = resolveRequiredImplementationTargets(contract);
   const scopedTargets = contract.scope.include.filter(path => !path.includes('*') && !path.includes('?'));
   return unique([...deliverableTargets, ...scopedTargets].map(normalizeCodingWorkspacePath));
+}
+
+function resolveRequiredImplementationTargets(contract: CodingKernelTaskContract): string[] {
+  return unique(contract.deliverables.flatMap(deliverable => (
+    deliverable.kind === 'source-change' && deliverable.path ? [deliverable.path] : []
+  )).map(normalizeCodingWorkspacePath));
 }
 
 function defaultRollback(

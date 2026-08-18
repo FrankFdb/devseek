@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import vm from 'node:vm';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
@@ -26,6 +27,14 @@ function readWebviewRuntime() {
 }
 
 const webview = readWebviewRuntime();
+const formattingContext = {};
+vm.runInNewContext(
+  [
+    readFileSync(path.join(rootDir, 'media/webview-agent-todos.js'), 'utf8'),
+    readFileSync(path.join(rootDir, 'media/webview-agent-activity.js'), 'utf8'),
+  ].join('\n'),
+  formattingContext,
+);
 
 test('agent working state: workflow status is snapshot-only during agent mode', () => {
   assert.match(
@@ -82,12 +91,21 @@ test('agent working state: tool activity keeps user-facing stage digest with tas
 test('agent working state: failed final labels use explicit failed todo before finalize', () => {
   assert.match(
     webview,
-    /function findFailedTodoLabel\(\)[\s\S]*?agentToolTodos[\s\S]*?status === 'failed'[\s\S]*?failedTodo\.title/,
+    /function findFailedTodoLabel\(\)[\s\S]*?findFailedAgentTodoLabel\(agentToolTodos\)/,
   );
   assert.match(
     webview,
-    /function buildFinishedLabel\(isFailed, container\)[\s\S]*?if \(isFailed\) \{[\s\S]*?var failedTodoLabel = findFailedTodoLabel\(\);[\s\S]*?return '失败：' \+ failedTodoLabel \+ stepSuffix;/,
+    /function buildFinishedLabel\(isFailed, container\)[\s\S]*?formatFinishedAgentActivityLabel\(\{[\s\S]*?failedTodoLabel: findFailedTodoLabel\(\)/,
   );
+  assert.equal(formattingContext.findFailedAgentTodoLabel([
+    { title: 'inspect', status: 'completed' },
+    { title: 'compile project', status: 'failed' },
+  ]), 'compile project');
+  assert.equal(formattingContext.formatFinishedAgentActivityLabel({
+    isFailed: true,
+    failedTodoLabel: 'compile project',
+    stepCount: 2,
+  }), '失败：compile project · 2 步');
   assert.match(
     webview,
     /var finalFailureTodosSynced = false;[\s\S]*?handleTodoUpdate\(markFirstActiveTodoFailedForFinalState\(agentToolTodos\)\);[\s\S]*?finalizeActiveAgentWorkingContainers\(doneFailed\);/,
@@ -145,8 +163,10 @@ test('agent working state: task labels ignore terminal activity wrappers', () =>
   assert.ok(webview.includes(".replace(/^执行完成\\s*✓?$/, '运行验证完成 ✓')"));
   assert.match(
     webview,
-    /function buildFinishedLabel\(isFailed, container\)[\s\S]*?var containerLabel = sanitizeAgentTaskLabelValue/,
+    /function buildFinishedLabel\(isFailed, container\)[\s\S]*?formatFinishedAgentActivityLabel\(\{/,
   );
+  assert.equal(formattingContext.sanitizeAgentTaskLabelValue('Ran command'), '');
+  assert.equal(formattingContext.sanitizeAgentTaskLabelValue('Failed command'), '');
   assert.match(webview, /var truncated = compactAgentTaskLabel\(labelItem\.title, '', 40\);/);
   assert.match(webview, /agentCurrentTaskLabel = compactAgentTaskLabel\(actionPrefix \+ taskDesc, taskDesc, 40\);/);
 });
@@ -155,8 +175,14 @@ test('agent working state: provider error title overrides generic failed activit
   assert.match(webview, /let agentLastErrorTitle = '';/);
   assert.match(
     webview,
-    /function buildFinishedLabel\(isFailed, container\)[\s\S]*?if \(isFailed\) \{[\s\S]*?if \(agentLastErrorTitle\) return agentLastErrorTitle \+ stepSuffix;/,
+    /function buildFinishedLabel\(isFailed, container\)[\s\S]*?errorTitle: agentLastErrorTitle/,
   );
+  assert.equal(formattingContext.formatFinishedAgentActivityLabel({
+    isFailed: true,
+    errorTitle: 'Provider response timed out',
+    failedTodoLabel: 'compile project',
+    stepCount: 3,
+  }), 'Provider response timed out · 3 步');
   assert.match(
     webview,
     /if \(msg\.phase === 'error'\) agentLastErrorTitle = msg\.title \|\| '本轮失败';[\s\S]*?finalizeActiveAgentWorkingContainers\(doneFailed\);/,

@@ -126,7 +126,7 @@ function buildRepeatedToolFailureFeedback(
 ): string {
   const target = describeToolFailureTarget(failure);
   const strategy = failure.kind === 'replace'
-    ? '当前文件快照已随工具结果返回。请基于最新内容给出精确 old_str/new_str；若结构变化较大，改用 write_file 完整重写，不能复用过期片段。'
+    ? '当前文件快照已随工具结果返回。请重新读取精确行范围，缩小到唯一的最小 old_str/new_str，并使用 fenced CDATA replace_in_file 保留真实换行；不能因参数传输或匹配失败升级为 write_file 整文件覆写。'
     : failure.kind === 'terminal-guard'
       ? 'run_terminal 只用于查询、编译、运行和测试。创建、修改或删除文件必须使用 create_file/write_file/replace_in_file/delete_file。'
       : failure.kind === 'terminal-capability'

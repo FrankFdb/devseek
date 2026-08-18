@@ -65,6 +65,32 @@ test('TaskSemanticContract: scoped other-file prohibition does not erase explici
   assert.ok(contract.signals.includes('file-check-requested'));
 });
 
+test('TaskSemanticContract: medium C++ implementation keeps named exclusions local to their objects', () => {
+  const contract = buildTaskSemanticContract([
+    '我在维护一个大约千行的 C++17 部署运行库，现在请把 deployment_coordinator 的占位实现补完整。',
+    'preview 不能消耗库存、发事件或执行回调；EventBus handler 抛错不能中断部署。',
+    '多次 preview、execute 都应可重复，不能把运行态写回 coordinator。',
+    '只允许修改 include/deployment_coordinator.hpp 和 src/deployment_coordinator.cpp。',
+    '不要改测试、CMake 和已有四个组件。完成后运行 ./test.sh；不要只给代码说明，要实际修改并验证。',
+  ].join('\n'));
+
+  assert.equal(contract.intent.mode, 'edit');
+  assert.equal(contract.intent.context.externalEffect, 'none');
+  assert.equal(contract.kind, 'existing-project-code');
+  assert.equal(contract.mutation.requested, true);
+  assert.equal(contract.mutation.prohibited, false);
+  assert.deepEqual(contract.mutation.targets, [
+    'include/deployment_coordinator.hpp',
+    'src/deployment_coordinator.cpp',
+  ]);
+  assert.equal(contract.validation.runProhibited, false);
+  assert.equal(contract.validation.runRequested, true);
+  assert.equal(contract.validation.testRequested, true);
+  assert.ok(contract.signals.includes('scoped-named-object-prohibition'));
+  assert.ok(contract.completion.doneIff.some(item => item.kind === 'code-written'));
+  assert.ok(contract.completion.doneIff.some(item => item.kind === 'test-passed'));
+});
+
 test('TaskSemanticContract: an inline correction drops superseded historical targets', () => {
   const contract = buildTaskSemanticContract(
     '这是一次多轮需求的最终轮：前面曾说写 INITIAL_REQUIREMENT，但现在改为 FINAL_REQUIREMENT_OK。请只按最新要求创建 journey-result.txt，文件内容必须精确包含一行 FINAL_REQUIREMENT_OK。完成写入和读回验证后结束任务，不要创建旧要求文件。',

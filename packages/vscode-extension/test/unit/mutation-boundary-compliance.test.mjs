@@ -32,7 +32,9 @@ test('Mutation guard: process creation remains confined to named transport/execu
     .sort();
   assert.deepEqual(processOwners, [
     'src/bridge-client.ts',
+    'src/bridge-process-owner.ts',
     'src/execution-outcome-classifier.ts',
+    'src/runtime/node-process-tree-effects.ts',
     'src/tools/terminal.ts',
   ]);
 

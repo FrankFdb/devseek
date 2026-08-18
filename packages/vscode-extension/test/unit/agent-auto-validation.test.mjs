@@ -31,10 +31,40 @@ const { runAgentAutoValidationForWrites } = require(bundlePath);
 
 let runCounter = 0;
 
-function verificationContext(root, scopePaths, statuses = [], activities = [], commandRunner) {
+function verificationContext(
+  root,
+  scopePaths,
+  statuses = [],
+  activities = [],
+  commandRunner,
+  acceptance = [{ id: 'verified', statement: 'Applicable project verification passes.' }],
+) {
   runCounter += 1;
   const runId = `auto-validation-test-${runCounter}`;
-  const acceptance = [{ id: 'verified', statement: 'Applicable project verification passes.' }];
+  const taskAcceptance = acceptance.length > 0
+    ? acceptance.map(criterion => ({
+        ...criterion,
+        deliverableIds: scopePaths.map((_, index) => `source-${index + 1}`),
+        oracle: {
+          kind: 'verification',
+          verifier: 'project-verification',
+          scope: scopePaths,
+          evidenceKinds: ['verification-receipt'],
+        },
+        externalBoundaryRefs: [],
+      }))
+    : [{
+        id: 'workspace-readback',
+        statement: 'Committed source files remain readable.',
+        deliverableIds: scopePaths.map((_, index) => `source-${index + 1}`),
+        oracle: {
+          kind: 'workspace-readback',
+          verifier: 'workspace-readback',
+          scope: scopePaths,
+          evidenceKinds: ['workspace-readback'],
+        },
+        externalBoundaryRefs: [],
+      }];
   const taskContract = buildCodingKernelTaskContract({
     goal: 'Apply and verify the requested workspace change',
     mode: 'change',
@@ -44,17 +74,7 @@ function verificationContext(root, scopePaths, statuses = [], activities = [], c
       kind: 'source-change',
       path: file,
     })),
-    acceptance: [{
-      ...acceptance[0],
-      deliverableIds: scopePaths.map((_, index) => `source-${index + 1}`),
-      oracle: {
-        kind: 'verification',
-        verifier: 'project-verification',
-        scope: scopePaths,
-        evidenceKinds: ['verification-receipt'],
-      },
-      externalBoundaryRefs: [],
-    }],
+    acceptance: taskAcceptance,
     provenanceRefs: ['test:user-request'],
   });
   const orientation = new CanonicalEngineeringOrientationService().orient({
@@ -91,6 +111,29 @@ function verificationContext(root, scopePaths, statuses = [], activities = [], c
     },
   };
 }
+
+test('Agent auto validation preserves an explicitly empty canonical acceptance contract', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-empty-acceptance-'));
+  try {
+    seed(root, 'src/app.js', 'export const value = 1;\n');
+    seed(root, 'package.json', JSON.stringify({ scripts: { test: 'node --test' } }));
+    const context = verificationContext(root, ['src/app.js'], [], [], undefined, []);
+
+    const result = await runAgentAutoValidationForWrites(
+      [written(root, 'src/app.js')],
+      root,
+      '修复 src/app.js 并运行项目测试',
+      context.callbacks,
+    );
+
+    assert.equal(result.verificationReceipt.status, 'unverified');
+    assert.deepEqual(result.verificationReceipt.acceptance, []);
+    assert.equal(result.evidence, undefined);
+    assert.doesNotMatch(result.feedbackForAI ?? '', /session-acceptance-mismatch/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 function written(root, relativePath, action = 'modify') {
   return {

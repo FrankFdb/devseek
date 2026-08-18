@@ -64,7 +64,7 @@ export const DEFAULT_OPERATIONAL_LANGUAGE_LEXICON: OperationalLanguageLexiconCon
       pattern('external-effect-release-target', String.raw`(?:版本|软件包|依赖包|npm\s*包|插件|扩展|应用|服务|网站|镜像|构建产物|制品|代码|当前修改|当前变更|生产环境|注册表|市场|\b(?:version|packages?|plugin|extension|app|service|site|image|artifact|changes?|code|production|registry|marketplace)\b)`),
     ]),
     domainOperation: Object.freeze([
-      pattern('external-effect-domain-operation', String.raw`(?:事件|订阅|处理器|回调|消息|主题|发布快照|\b(?:event|subscription|subscriber|handler|callback|message|topic)\b|\b(?:publish|release)\s*\()`)
+      pattern('external-effect-domain-operation', String.raw`(?:事件|订阅|处理器|回调|消息|主题|发布快照|运行库|部署协调|\b(?:event|subscription|subscriber|handler|callback|message|topic|runtime\s+library|deployment\s+coordinator)\b|\b(?:publish|release)\s*\()`)
     ]),
     domainInstallAction: Object.freeze([
       pattern('external-effect-domain-install-action', String.raw`(?:安装[^，,。；;\n]{0,24}(?:处理器|回调|监听器|中间件)|\binstall\b[^,.;\n]{0,40}\b(?:handler|callback|listener|middleware)\b)`)
@@ -93,7 +93,7 @@ export const DEFAULT_OPERATIONAL_LANGUAGE_LEXICON: OperationalLanguageLexiconCon
       pattern('run-prohibition-direct-weak', String.raw`^(?:但|并且|同时|然后)?\s*(?:不|未)(?:运行|执行|启动|测试)(?:\s|$|[^，,。；;\n]{0,12}(?:网络|命令|脚本|终端|编译|构建|测试|程序|项目|依赖))`)
     ]),
     domainExecutionSubject: Object.freeze([
-      pattern('run-prohibition-domain-subject', String.raw`(?:事件|订阅|处理器|回调|消息|发布|\b(?:event|subscription|subscriber|handler|callback|message|publish)\b)`)
+      pattern('run-prohibition-domain-subject', String.raw`(?:事件|订阅|处理器|回调|消息|发布|运行态|(?:修改|改动|更改|编辑|写入|改)[^，,。；;\n]{0,16}(?:测试|tests?)|\b(?:event|subscription|subscriber|handler|callback|message|publish|runtime\s+state)\b)`)
     ]),
     operationalExecutionTarget: Object.freeze([
       pattern('run-prohibition-operational-target', String.raw`(?:命令|脚本|终端|编译|构建|测试套件|程序|项目|test\.sh|ctest|pytest|npm\s+test|pnpm\s+test|yarn\s+test|\b(?:command|script|terminal|compile|build|test\s+suite|program|project)\b)`)

@@ -2,6 +2,7 @@ import {
   CanonicalContextGraphService,
   CanonicalRequirementDecisionService,
   resolveCodingKernelTaskContract,
+  type CodingKernelTaskContract,
 } from '@devseek-netai/shared';
 import type { QualityGateContractAcceptance } from './quality-gate-service';
 
@@ -9,6 +10,7 @@ export interface CodingRequirementQualityGateInput {
   readonly prompt: string;
   readonly workspaceRoot: string;
   readonly targetPaths?: readonly string[];
+  readonly taskContract?: CodingKernelTaskContract;
 }
 
 /** Projects the shared C4 decision into the VS Code quality-gate vocabulary. */
@@ -16,11 +18,11 @@ export function evaluateCodingRequirementQualityGate(
   input: CodingRequirementQualityGateInput,
 ): QualityGateContractAcceptance {
   try {
-    const taskContract = resolveCodingKernelTaskContract({
-      prompt: input.prompt,
-      surface: 'vscode',
-      targetPaths: input.targetPaths,
-    });
+    const taskContract = input.taskContract ?? resolveCodingKernelTaskContract({
+        prompt: input.prompt,
+        surface: 'vscode',
+        targetPaths: input.targetPaths,
+      });
     const contextGraph = new CanonicalContextGraphService().build({
       workspaceRoot: input.workspaceRoot,
       userPrompt: input.prompt,

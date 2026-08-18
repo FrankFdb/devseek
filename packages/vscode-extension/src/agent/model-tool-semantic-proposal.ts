@@ -11,11 +11,7 @@ const FILE_MUTATION_TOOLS = new Set([
   'delete_file',
 ]);
 
-/**
- * Projects the model's normalized action proposal into semantic intent. Tool
- * calls are the model-led loop's structured statement of what it understood;
- * local contract arbitration remains responsible for permission and safety.
- */
+/** Projects a normalized model action into loop semantics, never authority. */
 export function projectModelToolSemanticProposal(
   tools: readonly CodingToolCall[],
   current: TaskSemanticContract,
@@ -70,12 +66,9 @@ export function projectModelToolSemanticProposal(
     const codeChange = mutationTargets.some(path => CODE_PATH_RE.test(path))
       || current.mutation.sourceChange
       || current.taskContract.deliverables.includes('source-change');
-    const taskKind: SemanticTaskKind = codeChange
-      ? resolveCodeTaskKind(current, mutationTargets)
-      : 'file-artifact';
     return proposal({
       mode: 'edit',
-      taskKind,
+      taskKind: codeChange ? resolveCodeTaskKind(current, mutationTargets) : 'file-artifact',
       mutation: createsOnly ? 'create-file' : 'modify-source',
       targetPaths: mutationTargets,
       requiresWorkspace: true,
@@ -97,14 +90,13 @@ export function projectModelToolSemanticProposal(
   }
 
   if (!observation || !isLocallyNonMutating(current)) return undefined;
-  const taskKind: SemanticTaskKind = current.intent.mode === 'plan'
-    ? 'planning'
-    : current.taskContract.taskShapes.includes('review')
-      ? 'code-review'
-      : 'read-only-analysis';
   return proposal({
     mode: current.intent.mode === 'plan' ? 'plan' : 'inspect',
-    taskKind,
+    taskKind: current.intent.mode === 'plan'
+      ? 'planning'
+      : current.taskContract.taskShapes.includes('review')
+        ? 'code-review'
+        : 'read-only-analysis',
     mutation: 'none',
     targetPaths: targets,
     requiresWorkspace: true,
@@ -124,15 +116,11 @@ function resolveCodeTaskKind(
   current: TaskSemanticContract,
   targets: readonly string[],
 ): SemanticTaskKind {
-  if (current.scope === 'standalone' || current.kind === 'standalone-code') {
-    return 'standalone-program';
-  }
+  if (current.scope === 'standalone' || current.kind === 'standalone-code') return 'standalone-program';
   if (current.scope === 'existing-project' || current.kind === 'existing-project-code') {
     return 'existing-project-edit';
   }
-  return targets.some(path => path.includes('/'))
-    ? 'existing-project-edit'
-    : 'standalone-program';
+  return targets.some(path => path.includes('/')) ? 'existing-project-edit' : 'standalone-program';
 }
 
 function proposal(

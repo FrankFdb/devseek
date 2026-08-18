@@ -53,9 +53,9 @@ export function classifyExternalEffectIntent(text: string): ExternalEffectIntent
       continue;
     }
     if (testAny(activeLexicon.externalEffect.domainInstallAction, positiveClause)) continue;
+    if (testAny(activeLexicon.externalEffect.domainOperation, positiveClause)) continue;
     const unambiguous = testAny(activeLexicon.externalEffect.unambiguous, positiveClause);
     const ambiguousRelease = testAny(activeLexicon.externalEffect.ambiguousRelease, positiveClause)
-      && !testAny(activeLexicon.externalEffect.domainOperation, positiveClause)
       && (testAny(activeLexicon.externalEffect.releaseTarget, positiveClause)
         || testAny(activeLexicon.externalEffect.bareReleaseImperative, positiveClause));
     if (!unambiguous && !ambiguousRelease) continue;

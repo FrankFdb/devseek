@@ -24,10 +24,16 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
 const bundlePath = path.join(rootDir, 'test/unit/completion-evidence.bundle.cjs');
+const semanticBundlePath = path.join(rootDir, 'test/unit/task-semantic-contract.bundle.cjs');
 
 execSync(
   `npx esbuild src/agent/completion-evidence.ts --bundle ` +
   `--outfile=${bundlePath} --format=cjs --platform=node`,
+  { cwd: rootDir, stdio: 'pipe' },
+);
+execSync(
+  `npx esbuild src/task-semantic-contract.ts --bundle ` +
+  `--outfile=${semanticBundlePath} --format=cjs --platform=node`,
   { cwd: rootDir, stdio: 'pipe' },
 );
 
@@ -55,6 +61,7 @@ const {
   requiresReadEvidence,
   requiresRuntimeValidation,
 } = req(bundlePath);
+const { buildTaskSemanticContract } = req(semanticBundlePath);
 
 const prompt = '修复 packages/vscode-extension/src/app/workflow-service.ts 中明显的小问题';
 
@@ -847,6 +854,33 @@ test('completion evidence: read-only file summaries are not write claims', () =>
   assert.deepEqual(getUnsupportedSummaryFileClaims(summary, [], '/workspace'), []);
 });
 
+test('completion evidence: validation scripts mentioned in successful command evidence are not deliverables', () => {
+  const summaries = [
+    '测试结果：./test.sh 通过，1/1 测试 passed，无编译警告。',
+    'run_terminal ./test.sh 返回 exitCode:0，output shows 100% tests passed。',
+    '验证方式：使用工作区已有的 test.sh 脚本，编译和测试均通过。',
+    '本次只修改 src/main.cpp，不碰 test.sh；test.sh 是原有验证工具。',
+    '未创建或修改 test.sh，运行它得到 exitCode=0。',
+  ];
+
+  assert.deepEqual(extractClaimedSummaryFiles(summaries[0]), []);
+  assert.deepEqual(extractClaimedSummaryFiles(summaries[1]), []);
+  assert.deepEqual(extractClaimedSummaryFiles(summaries[2]), []);
+  assert.deepEqual(extractClaimedSummaryFiles(summaries[3]), ['src/main.cpp']);
+  assert.deepEqual(extractClaimedSummaryFiles(summaries[4]), []);
+});
+
+test('completion evidence: actual validation script creation remains a write claim', () => {
+  assert.deepEqual(
+    extractClaimedSummaryFiles('已创建 tests/test.sh，并运行它验证 src/main.cpp。'),
+    ['tests/test.sh'],
+  );
+  assert.deepEqual(
+    extractClaimedSummaryFiles('已输出 verify.sh 作为新的项目验证脚本。'),
+    ['verify.sh'],
+  );
+});
+
 test('completion evidence: based-on source files are not treated as written deliverables', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-source-refs-'));
   try {
@@ -946,6 +980,112 @@ test('completion evidence: canonical verification receipt satisfies code validat
       }),
       [],
     );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('completion evidence: Kernel deliverables override model-proposed per-file artifacts', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-canonical-deliverables-'));
+  try {
+    const header = path.join(root, 'include', 'deployment_coordinator.hpp');
+    const source = path.join(root, 'src', 'deployment_coordinator.cpp');
+    mkdirSync(path.dirname(header), { recursive: true });
+    mkdirSync(path.dirname(source), { recursive: true });
+    writeFileSync(header, '#pragma once\n');
+    writeFileSync(source, 'void publishEvent() {}\n');
+    const userPrompt = [
+      '仍然只允许修改 include/deployment_coordinator.hpp 和 src/deployment_coordinator.cpp，',
+      '不能修改 tests、CMake、test.sh 或已有组件。完成后运行 ./test.sh。',
+    ].join('');
+    const missing = assessMissingCompletionEvidence({
+      userPrompt,
+      todos: [],
+      writtenFiles: [{
+        path: source,
+        basename: 'deployment_coordinator.cpp',
+        linesAdded: 1,
+        linesRemoved: 1,
+        action: 'modify',
+      }],
+      terminalEvidence: [{ command: 'bash test.sh', kind: 'test', ok: true, exitCode: 0 }],
+      readEvidencePaths: [header, source],
+      workspaceRoot: root,
+      verificationReceipts: [passedVerificationReceipt()],
+      canonicalTaskContract: {
+        deliverables: [
+          { id: 'source-change', kind: 'source-change' },
+          { id: 'verification-result', kind: 'verification-result' },
+        ],
+      },
+    });
+
+    assert.equal(missing.some(item => item.includes('include/deployment_coordinator.hpp')), false);
+    assert.equal(missing.some(item => item.includes('test.sh')), false);
+    assert.deepEqual(missing, []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('completion evidence: canonical mutation readback prevents inspect-and-fix from becoming a second read task', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-canonical-mutation-readback-'));
+  try {
+    const source = path.join(root, 'src', 'deployment_coordinator.cpp');
+    mkdirSync(path.dirname(source), { recursive: true });
+    writeFileSync(source, 'void publishEvent() {}\n');
+    const userPrompt = [
+      '请检查统一的事件发布边界并修复 eventFailures 格式，',
+      '只允许修改 src/deployment_coordinator.cpp，完成后运行 ./test.sh。',
+    ].join('');
+    const parsedSemanticContract = buildTaskSemanticContract(userPrompt);
+    const semanticContract = {
+      ...parsedSemanticContract,
+      completion: {
+        doneIff: [
+          ...parsedSemanticContract.completion.doneIff,
+          {
+            id: 'model-proposed-inspection',
+            kind: 'read-evidence',
+            required: true,
+            source: 'derived',
+            target: source,
+          },
+        ],
+      },
+    };
+    assert.equal(requiresReadEvidence(userPrompt, semanticContract), true);
+
+    const missing = assessMissingCompletionEvidence({
+      userPrompt,
+      todos: [],
+      writtenFiles: [{
+        path: source,
+        basename: 'deployment_coordinator.cpp',
+        linesAdded: 1,
+        linesRemoved: 1,
+        action: 'modify',
+      }],
+      terminalEvidence: [{ command: 'bash test.sh', kind: 'test', ok: true, exitCode: 0 }],
+      readEvidencePaths: [],
+      workspaceRoot: root,
+      semanticContract,
+      verificationReceipts: [passedVerificationReceipt()],
+      canonicalTaskContract: {
+        deliverables: [
+          { id: 'source-change', kind: 'source-change' },
+          { id: 'verification-result', kind: 'verification-result' },
+        ],
+        acceptance: [{
+          oracle: {
+            kind: 'workspace-readback',
+            evidenceKinds: ['workspace-mutation-receipt', 'workspace-readback'],
+          },
+        }],
+      },
+    });
+
+    assert.deepEqual(missing, []);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

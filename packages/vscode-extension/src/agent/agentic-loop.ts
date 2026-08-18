@@ -18,13 +18,11 @@ import type { ExecutionMode } from '../intent/intent-types';
 import { routeTaskSemanticContract } from '../task-intent-router';
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import {
-  buildSecretHarvestingRefusalAcceptanceEvidence,
   hasUnsafeSecretHarvestingRefusalEvidence,
 } from '../intent/safety-intent';
 import {
   buildTerminalFailureRepairFeedback,
   assessMissingCompletionEvidence,
-  coalesceWrittenFileEvidence,
   describeBlockingTerminalFailure,
   getUnsupportedSummaryFileClaims,
   requiresCommandEvidence,
@@ -33,7 +31,7 @@ import {
   type TerminalEvidence,
   type WrittenFileEvidence,
 } from './completion-evidence';
-import { buildAgenticHistoryText, buildAgenticQualityGateForHistory, type AgenticHistoryQualityGate } from './agentic-history';
+import type { AgenticHistoryQualityGate } from './agentic-history';
 import { runAgentAutoValidationForWrites } from './auto-validation';
 import { normalizeAgenticAutoValidation } from './agentic-auto-validation-settlement';
 import { buildMissingEvidenceRecoveryInstruction, type TodoItem } from './evidence-recovery';
@@ -107,7 +105,6 @@ import {
   settleAgentRuntimeState,
 } from './agent-runtime-state-machine';
 import { settleProviderFailureFromCompletedEvidence } from './agentic-provider-settlement';
-import { stableStringify } from './stable-stringify';
 import { describeProviderOutputIntegrity } from './provider-output-integrity';
 import {
   parseAgentProviderFailure,
@@ -123,14 +120,21 @@ import {
 import { compactAgenticMessageHistory } from './agentic-context-compaction';
 import { ToolFailureRecoveryLedger } from './tool-failure-recovery';
 import { QualityGateStagnationLedger } from './quality-gate-stagnation';
+import { SourceValidationLedger } from './source-validation-ledger';
 import { createProviderRequirementReviewService } from './provider-requirement-review';
 import { tryRunGroundedMarkdownAgenticTask } from './grounded-markdown-agentic-task';
 import { buildAgenticSystemPrompt } from './agentic-system-prompt';
-import { createSemanticExecutionWriteAuthority } from './semantic-execution-context';
 import { projectModelToolSemanticProposal } from './model-tool-semantic-proposal';
+import { createSemanticExecutionWriteAuthority } from './semantic-execution-context';
 import { createAgenticInitialPromptContext, type AgenticLoopExecutionContext } from './agentic-execution-context';
 import { classifyAgenticManualReviewEvidence } from './terminal-evidence-settlement';
 import { updateRequirementReviewRepairWindow } from './requirement-review-repair-window';
+import { settleAgenticLoopFinal } from './agentic-final-settlement';
+import {
+  buildRepeatedContextToolFeedback,
+  isContextGatheringToolName,
+  makeContextToolSignature,
+} from './context-convergence-feedback';
 const AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS = 3;
 
 // ----------------------------------------------------------------
@@ -144,30 +148,6 @@ const AGENTIC_ROUNDS_AUTOPILOT = 200;
 const AGENTIC_CONTEXT_GATHERING_ROUND_LIMIT_BEFORE_WRITE = 2;
 const AGENTIC_CONTEXT_GATHERING_EVIDENCE_LIMIT_BEFORE_WRITE = 6;
 const AGENTIC_CONTEXT_CONVERGENCE_MAX_WARNINGS = 2;
-const CONTEXT_GATHERING_TOOL_NAMES = new Set([
-  'read_file',
-  'list_dir',
-  'grep_search',
-  'file_search',
-  'semantic_search',
-  'memory_search',
-  'memory_read',
-]);
-function makeContextToolSignature(tool: { readonly name: string; readonly input: Readonly<Record<string, unknown>> }): string {
-  return `${tool.name}:${stableStringify(tool.input ?? {})}`;
-}
-
-function buildRepeatedContextToolFeedback(
-  tool: { readonly name: string; readonly input: Readonly<Record<string, unknown>> },
-  count: number,
-): string {
-  return [
-    `【系统反馈】检测到上下文工具重复 ${count} 次：${tool.name}`,
-    '这批读取/搜索已经执行过，且期间没有新的写盘或验证进展。',
-    '请不要重复读取相同路径或重复相同搜索；下一轮必须基于已有事实进入设计/写入/验证，或换用更精确的新文件范围。',
-  ].join('\n');
-}
-
 /** Canonical agentic loop: a single-phase tool cycle for every new task. */
 export async function runAgenticLoop(
   userPrompt: string,
@@ -267,7 +247,7 @@ export async function runAgenticLoop(
   let sawWorkTool = false;
   const allTerminalEvidence: TerminalEvidence[] = [];
   const allEvidenceRefs: EvidenceRef[] = [];
-  let latestAutoQualityGate: AgenticHistoryQualityGate | undefined;
+  const sourceValidation = new SourceValidationLedger();
   let currentTodos: TodoItem[] = [];
   let initialAgenticTodos: TodoItem[] = [];
   let lastMissingEvidence: string[] = [];
@@ -320,7 +300,8 @@ export async function runAgenticLoop(
     terminalEvidence: allTerminalEvidence,
     readEvidencePaths: [...allReadEvidencePaths],
     workspaceRoot,
-    semanticContract: writeAuthority.semanticContract,
+    semanticContract: writeAuthority.canonicalSemanticContract,
+    canonicalTaskContract: callbacks.canonicalTaskContract,
     verificationReceipts: allVerificationReceipts,
   });
 
@@ -421,7 +402,7 @@ export async function runAgenticLoop(
       callbacks: writeAuthority.callbacks,
       options: {
         verificationAcceptance: callbacks.canonicalVerificationAcceptance
-          ?? projectAgenticVerificationAcceptance(writeAuthority.semanticContract.taskContract),
+          ?? projectAgenticVerificationAcceptance(writeAuthority.canonicalSemanticContract.taskContract),
       },
     });
     if (simpleFileResult) return simpleFileResult;
@@ -546,7 +527,8 @@ export async function runAgenticLoop(
         userPrompt: writeAuthority.currentPrompt, todos: currentTodos, writtenFiles: allWrittenFiles,
         terminalEvidence: allTerminalEvidence, readEvidencePaths: [...allReadEvidencePaths],
         workspaceRoot, completeSummary,
-        semanticContract: writeAuthority.semanticContract,
+        semanticContract: writeAuthority.canonicalSemanticContract,
+        canonicalTaskContract: callbacks.canonicalTaskContract,
       });
       if (providerSettlement.completed) {
         completeSummary = completeSummary || providerSettlement.summary;
@@ -737,7 +719,11 @@ export async function runAgenticLoop(
           `当前仍缺少${missingWithoutTools.join('、')}。DevSeek 不会把目录检查或说明文字结算为完成，下一轮必须补齐真实写盘、读取或验证证据。`,
           '交付证据不足，继续执行',
         );
-        const retryMessage = `【系统反馈】不能停在检查目录或说明阶段。当前缺少${missingWithoutTools.join('、')}。${buildMissingEvidenceRecoveryInstruction(missingWithoutTools)}不要把 memory_write/项目记忆列为用户 todo。`;
+        const retryMessage = `【系统反馈】不能停在检查目录或说明阶段。当前缺少${missingWithoutTools.join('、')}。${buildMissingEvidenceRecoveryInstruction(missingWithoutTools, {
+          mutationExpected: promptRequiresFileChange || writeAuthority.canonicalSemanticContract.mutation.requested,
+          mutationAllowed: !writeAuthority.canonicalSemanticContract.mutation.prohibited
+            && !writeAuthority.writeRevoked,
+        })}不要把 memory_write/项目记忆列为用户 todo。`;
         appendUserFeedback(retryMessage);
         continue;
       }
@@ -789,7 +775,7 @@ export async function runAgenticLoop(
       }
     });
     tools.forEach((tool, toolIndex) => {
-      if (!CONTEXT_GATHERING_TOOL_NAMES.has(tool.name)) return;
+      if (!isContextGatheringToolName(tool.name)) return;
       const sig = makeContextToolSignature(tool);
       const seen = seenContextToolSignatures.get(sig);
       if (seen && seen.lastProgressEpoch === progressEpoch && !hasFileWriteIntentThisRound) {
@@ -890,9 +876,9 @@ export async function runAgenticLoop(
     const roundHasTerminalProgress = (loopRes.terminalCommands?.length ?? 0) > 0
       || (loopRes.terminalEvidence?.length ?? 0) > 0;
     const roundHasOnlyContextGathering = toolsToExecute.length > 0
-      && toolsToExecute.some(tool => CONTEXT_GATHERING_TOOL_NAMES.has(tool.name))
+      && toolsToExecute.some(tool => isContextGatheringToolName(tool.name))
       && toolsToExecute.every(tool => (
-        CONTEXT_GATHERING_TOOL_NAMES.has(tool.name)
+        isContextGatheringToolName(tool.name)
         || tool.name === 'manage_todo_list'
         || tool.name === 'memory_write'
       ))
@@ -911,8 +897,12 @@ export async function runAgenticLoop(
     if (failedReason) {
       break;
     }
+    const pendingAutoValidationWrites = allWrittenFiles.slice(autoValidatedWriteCount);
+    if (pendingAutoValidationWrites.length > 0) {
+      sourceValidation.beginWriteCohort(allWrittenFiles.length);
+    }
     const autoValidation = await runAgentAutoValidationForWrites(
-      allWrittenFiles.slice(autoValidatedWriteCount),
+      pendingAutoValidationWrites,
       workspaceRoot,
       writeAuthority.currentPrompt,
       writeAuthority.callbacks,
@@ -920,7 +910,7 @@ export async function runAgenticLoop(
         qualityWrittenFiles: allWrittenFiles,
         verificationScopeWrittenFiles: allWrittenFiles,
         verificationAcceptance: callbacks.canonicalVerificationAcceptance
-          ?? projectAgenticVerificationAcceptance(writeAuthority.semanticContract.taskContract),
+          ?? projectAgenticVerificationAcceptance(writeAuthority.canonicalSemanticContract.taskContract),
       },
     );
     if (autoValidation.verificationReceipt) allVerificationReceipts.push(autoValidation.verificationReceipt);
@@ -930,7 +920,9 @@ export async function runAgenticLoop(
       userPrompt: writeAuthority.currentPrompt,
       writtenFiles: allWrittenFiles,
     });
-    if (normalizedAutoValidation.qualityGate) latestAutoQualityGate = normalizedAutoValidation.qualityGate;
+    if (pendingAutoValidationWrites.length > 0) {
+      sourceValidation.settleWriteCohort(allWrittenFiles.length, normalizedAutoValidation.qualityGate);
+    }
     if (normalizedAutoValidation.evidence.length) {
       allTerminalEvidence.push(...normalizedAutoValidation.evidence);
     }
@@ -961,7 +953,7 @@ export async function runAgenticLoop(
       }
     }
     for (const tool of toolsToExecute) {
-      if (!CONTEXT_GATHERING_TOOL_NAMES.has(tool.name)) continue;
+      if (!isContextGatheringToolName(tool.name)) continue;
       const sig = makeContextToolSignature(tool);
       const prev = seenContextToolSignatures.get(sig);
       const nextCount = (prev?.count ?? 0) + 1;
@@ -997,7 +989,7 @@ export async function runAgenticLoop(
         currentTodos,
         allWrittenFiles,
         allTerminalEvidence,
-        writeAuthority.semanticContract,
+        writeAuthority.canonicalSemanticContract,
       )
       : undefined;
     const roundSummaryForFactCheck = loopRes.completeSummary !== undefined
@@ -1042,10 +1034,10 @@ export async function runAgenticLoop(
       && summaryFactFailuresAfterTools.length === 0) {
       reviewFeedback = await requirementReview.request({
         sourceChangeRequested: currentTaskIntent.mutation.sourceChange,
-        qualityGate: normalizedAutoValidation.qualityGate,
+        qualityGate: sourceValidation.qualityGateForCurrentSource(),
         writtenFiles: allWrittenFiles,
         roundReadFiles: loopRes.readFiles ?? [],
-        hostFinalSourceEvidenceReady: normalizedAutoValidation.qualityGate?.status === 'pass',
+        hostFinalSourceEvidenceReady: sourceValidation.currentSourceIsValidated(),
       });
       if (reviewFeedback) {
         noToolRounds = 0;
@@ -1123,7 +1115,7 @@ export async function runAgenticLoop(
           currentTodos,
           allWrittenFiles,
           allTerminalEvidence,
-          writeAuthority.semanticContract,
+          writeAuthority.canonicalSemanticContract,
         )
         : undefined;
       if (blockingFailureNow && noToolRounds < 2 && !callbacks.signal?.aborted) {
@@ -1150,7 +1142,7 @@ export async function runAgenticLoop(
       currentTodos,
       allWrittenFiles,
       allTerminalEvidence,
-      writeAuthority.semanticContract,
+      writeAuthority.canonicalSemanticContract,
     )
     : undefined;
   const finalSummaryFactFailures = completeSummary
@@ -1161,6 +1153,7 @@ export async function runAgenticLoop(
     taskComplete: hadTaskComplete,
     toolReceipts: allToolExecutionReceipts,
   });
+  const latestAutoQualityGate = sourceValidation.qualityGateForCurrentSource();
   const validationFailedReason = latestAutoQualityGate && latestAutoQualityGate.status !== 'pass'
     ? latestAutoQualityGate.summary
     : undefined;
@@ -1230,90 +1223,22 @@ export async function runAgenticLoop(
   // accumulated across all rounds and task_complete cannot race endResponse.
   // Use 'failed' state when aborted cleanly (signal fired between iterations rather than
   // during an LLM call) so the Working box shows ✗ instead of misleading green ✓.
-  const cleanAbort = callbacks.signal?.aborted ?? false;
-  const visibleCompleteSummary = cleanAgentFinalSummaryForUser(completeSummary);
-  const finalWrittenFiles = coalesceWrittenFileEvidence(allWrittenFiles, workspaceRoot);
-  const manualReviewTerminal = [...allTerminalEvidence].reverse().find(e => e.reviewRequired);
-  const manualReviewReason = manualReviewTerminal?.detail || (manualReviewTerminal ? '运行效果需要人工确认。' : undefined);
-  await callbacks.onAgentStatus({
-    type: 'agentStatus',
-    phase: 'done',
-    state: cleanAbort || failedReason ? 'failed' : 'completed',
-    title: cleanAbort ? `已中断（${roundCount} 轮）`
-      : failedReason
-        ? failedReason
-        : manualReviewReason
-          ? `已执行，等待人工确认（${roundCount} 轮）`
-          : (visibleCompleteSummary || `完成（${roundCount} 轮）`),
-    ...(manualReviewReason ? { detail: manualReviewReason } : {}),
-    taskTotal: 1,
-    ...(finalWrittenFiles.length > 0 ? { editedFiles: finalWrittenFiles } : {}),
-  });
-
-  // Route final answer to prose bubble.
-  // Always emit — PROSE_CLEAR may have cleared any intermediate task_complete summary
-  // so we must always send the definitive post-loop ASUM. If no summary exists,
-  // emit a minimal completion notice so the user sees the agent finished.
-  {
-    const fileSummary = finalWrittenFiles.length > 0
-      ? `已完成，修改 ${finalWrittenFiles.length} 个文件：${finalWrittenFiles.map(f => `${f.basename} (+${f.linesAdded} -${f.linesRemoved})`).join('、')}。`
-      : '';
-    const finalMsg = failedReason
-      ? `任务没有完成：${failedReason}`
-      : manualReviewReason
-        ? `任务已执行，运行效果需要人工确认：${manualReviewReason}`
-      : (visibleCompleteSummary || fileSummary || '任务已完成。');
-    callbacks.onDelta('\x00ASUM\x00' + finalMsg);
-  }
-
-  if (!(cleanAbort || failedReason)) {
-    await callbacks.onTaskCheckpoint?.(null, [], 'completed');
-  }
-
-  const derivedQualityGate = buildAgenticQualityGateForHistory({
-    failedReason: cleanAbort ? '用户中断。' : failedReason,
-    writtenFiles: finalWrittenFiles,
-    terminalEvidence: allTerminalEvidence,
-  });
-  const historyQualityGate = derivedQualityGate?.status === 'fail'
-    ? derivedQualityGate
-    : manualReviewReason
-      ? derivedQualityGate ?? latestAutoQualityGate
-      : latestAutoQualityGate ?? derivedQualityGate;
-
-  const historyText = buildAgenticHistoryText({
+  return settleAgenticLoopFinal({
     userPrompt,
-    roundCount,
-    completed: !(cleanAbort || failedReason),
-    failedReason: cleanAbort ? '用户中断。' : failedReason,
-    summary: visibleCompleteSummary,
-    todos: currentTodos,
-    writtenFiles: finalWrittenFiles,
-    terminalEvidence: allTerminalEvidence,
-    qualityGate: historyQualityGate,
     workspaceRoot,
-  });
-
-  return {
-    tasksTotal: 1,
-    tasksApplied: finalWrittenFiles.length > 0 ? 1 : 0,
-    tasksFailed: cleanAbort || failedReason ? 1 : 0,
-    changedPaths: [...new Set(finalWrittenFiles.map(f => f.path))],
-    ...(cleanAbort || failedReason ? {
-      failedReason: cleanAbort ? '用户中断。' : failedReason,
-    } : {}),
+    roundCount,
+    failedReason,
+    completeSummary,
+    currentTodos,
+    writtenFiles: allWrittenFiles,
+    terminalEvidence: allTerminalEvidence,
     verificationReceipts: allVerificationReceipts,
     toolExecutionReceipts: allToolExecutionReceipts,
     changeReceipts: allChangeReceipts,
-    ...(policyRefusalEvidenceSatisfied ? {
-      acceptanceEvidence: buildSecretHarvestingRefusalAcceptanceEvidence(),
-    } : {}),
-    ...(manualReviewReason ? {
-      manualReviewRequired: true,
-      manualReviewReason,
-    } : {}),
-    historyText,
-  };
+    latestAutoQualityGate,
+    policyRefusalEvidenceSatisfied,
+    callbacks,
+  });
 }
 
 function projectAgenticVerificationAcceptance(

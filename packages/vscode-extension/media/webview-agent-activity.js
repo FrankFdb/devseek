@@ -111,6 +111,32 @@ function formatFinishedAgentTaskLabel(label) {
     .replace(/^处理 /, '已处理 ');
 }
 
+function formatFinishedAgentActivityLabel(input) {
+  var stepCount = Number(input.stepCount || 0);
+  var stepSuffix = stepCount > 0 ? ' · ' + stepCount + ' 步' : '';
+  var containerLabel = sanitizeAgentTaskLabelValue(input.containerLabel || '');
+  if (input.presentedProgress) {
+    if (input.activitySummary) return (input.isFailed ? '失败：' : '') + input.activitySummary + stepSuffix;
+    return input.isFailed ? '执行明细失败' : '执行明细';
+  }
+  if (input.isFailed) {
+    if (input.errorTitle) return input.errorTitle + stepSuffix;
+    if (input.failedTodoLabel) return '失败：' + input.failedTodoLabel + stepSuffix;
+  }
+  if (containerLabel) return (input.isFailed ? '失败：' : '') + containerLabel + stepSuffix;
+
+  var taskLabel = sanitizeAgentTaskLabelValue(input.currentTaskLabel || '');
+  if (taskLabel) {
+    if (input.isFailed) {
+      return '失败：' + taskLabel.replace(/^(创建|修改|编辑|删除|分析|探索|运行|验证|处理)\s+/, '');
+    }
+    return formatFinishedAgentTaskLabel(taskLabel) + stepSuffix;
+  }
+  if (!input.isFailed && input.todoCount > 0) return '已规划 ' + input.todoCount + ' 个任务' + stepSuffix;
+  if (input.isFailed) return stepCount > 0 ? ('失败 — ' + stepCount + ' 步') : '失败';
+  return stepCount > 0 ? '已完成 ' + stepCount + ' 步' : '已完成';
+}
+
 function formatAgentValidationTitle(title, state) {
   var raw = sanitizeAgentTaskLabelValue(title);
   if (!raw) {

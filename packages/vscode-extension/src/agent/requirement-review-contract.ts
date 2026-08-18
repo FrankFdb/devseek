@@ -1091,8 +1091,10 @@ function hasOrderedTraceEvidence(evidence: string): boolean {
 }
 
 function requiresFailurePathEvidence(quote: string): boolean {
-  return /(?:\breject(?:s|ed|ion)?\b|\binvalid\b|\berror[- ]?(?:handling|path|case|branch|code|status|result|object|input|message)\b|\bfail(?:ure|ed)?[- ]?(?:handling|path|case|branch|code|status|result|object|input|message)\b|\b(?:returns?|raises?|throws?) (?:an? )?(?:error|failure|exception)\b|\bduplicate\b|\balready[- ]used\b|\bnon[- ]finite\b|\bnan\b|<=\s*0|\bnegative\b|\bempty\b|拒绝|非法|无效|重复|已使用|非有限|抛出|异常|错误(?:处理|码|状态|结果|信息|分支|输入)|失败(?:状态|结果|分支))/iu
-    .test(normalizeRequirementText(quote));
+  const text = normalizeRequirementText(quote);
+  const constrainsInput = /(?:\binvalid (?:input|argument|value|id|price|quantity)\b|\bmalformed\b|\bunsupported (?:input|argument|value|format|operation)\b|\bout[- ]of[- ]range\b|\bduplicate\b|\balready[- ]used\b|\bnon[- ]finite\b|\bnan\b|<=\s*0|\bnegative\b|\bempty (?:input|argument|value|id|string)\b|非法(?:输入|参数|值|编号|价格|数量)|无效(?:输入|参数|值|编号|价格|数量)|格式错误|不支持的(?:输入|参数|值|格式|操作)|越界|重复|已使用|非有限|空(?:输入|参数|值|编号|字符串)|负数|非正数)/iu.test(text);
+  const requiresObservableRejection = /(?:\breject(?:s|ed|ion)?\b|\berror[- ]?(?:path|case|branch|code|status|result|object|input|message)\b|\bfail(?:ure|ed)?[- ]?(?:path|case|branch|code|status|result|object|input|message)\b|\b(?:returns?|raises?|throws?) (?:an? )?(?:error|failure|exception)\b|拒绝|抛出|返回(?:错误|失败)|错误(?:码|状态|结果|信息|分支)|失败(?:状态|结果|分支))/iu.test(text);
+  return constrainsInput && requiresObservableRejection;
 }
 
 function hasFailurePathEvidence(evidence: string): boolean {

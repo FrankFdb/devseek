@@ -86,6 +86,7 @@ export class VsCodeWorkspaceMutationAdapter {
       actionId,
       idempotencyKey: `${runId}:${actionId}`,
       paths: [relativePath],
+      overlapProtection: 'optimistic-baseline',
       payload: {
         absPath: input.absPath,
         workspaceRoot: input.workspaceRoot,
@@ -111,6 +112,7 @@ export class VsCodeWorkspaceMutationAdapter {
       actionId,
       idempotencyKey: `${runId}:${actionId}`,
       paths: [relativePath],
+      overlapProtection: 'optimistic-baseline',
       payload: {
         absPath: input.absPath,
         workspaceRoot: input.workspaceRoot,

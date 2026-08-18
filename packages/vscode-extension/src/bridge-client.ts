@@ -15,6 +15,7 @@ import {
 } from '@devseek-netai/shared';
 import { getWorkspaceRootFsPath, resolveWorkspaceFileUri } from './workspace-roots';
 import { isTransientProviderTransportError } from './llm/provider-transport-error';
+import { BridgeProcessOwner } from './bridge-process-owner';
 
 const DEFAULT_PORT = 3721;
 const TOKEN_REL_PATH = nodePath.join('.devseek', 'bridge-token');
@@ -281,7 +282,7 @@ export async function preattachFiles(filePaths: string[]): Promise<void> {
 // ----------------------------------------------------------------
 // Bridge auto-start
 // ----------------------------------------------------------------
-let _bridgeProc: cp.ChildProcess | undefined;
+const bridgeProcessOwner = new BridgeProcessOwner();
 
 function findBridgeRuntime(workspaceRoot: string): { bridgeDir: string; serverJs: string; source: 'bundled' | 'workspace' } | null {
   if (extensionRootFsPath) {
@@ -330,7 +331,11 @@ function logBridgeRuntimeReady(reason: string, expected: DevSeekRuntimeBuildInfo
 
 async function terminateOnlineBridge(): Promise<void> {
   if (!await ping()) return;
-  await shutdownBridge();
+  if (bridgeProcessOwner.hasRunningProcess) {
+    await bridgeProcessOwner.stop(shutdownBridge);
+  } else {
+    await shutdownBridge();
+  }
   if (await ping()) {
     const port = getPort();
     cp.spawnSync('fuser', ['-k', `${port}/tcp`], { stdio: 'ignore' });
@@ -370,18 +375,16 @@ export async function ensureBridgeRunning(forceRestart = false): Promise<boolean
 
   if (!runtime) return false;
 
-  // 如果上一个进程还活着，先结束它
-  if (_bridgeProc && !_bridgeProc.killed) {
-    try { _bridgeProc.kill(); } catch { /* ignore */ }
-  }
+  await bridgeProcessOwner.stop();
 
   // 默认 headless=true；真实 live harness 可通过环境变量打开可见浏览器，便于人工确认网页收发。
   const token = getBridgeToken();
   const bridgeHeadless = process.env.DEVSEEK_BRIDGE_HEADLESS === 'false' ? 'false' : 'true';
   const bridgeLogPath = nodePath.join(wsRoot, '.devseek', 'bridge-process.log');
   fs.mkdirSync(nodePath.dirname(bridgeLogPath), { recursive: true });
-  const logFile = fs.openSync(bridgeLogPath, 'a');
-  _bridgeProc = cp.spawn('node', [runtime.serverJs], {
+  bridgeProcessOwner.start({
+    command: 'node',
+    args: [runtime.serverJs],
     cwd: runtime.bridgeDir,
     env: {
       ...process.env,
@@ -394,13 +397,10 @@ export async function ensureBridgeRunning(forceRestart = false): Promise<boolean
       DEVSEEK_BUILD_CHANNEL: buildInfo.buildChannel || '',
       DEVSEEK_BUILD_ID: buildInfo.buildId || '',
       DEVSEEK_GIT_COMMIT: buildInfo.gitCommit || '',
+      DEVSEEK_BRIDGE_PARENT_PID: String(process.pid),
     },
-    stdio: ['ignore', logFile, logFile],
-    detached: false,
+    logPath: bridgeLogPath,
   });
-
-  _bridgeProc.on('error', () => { _bridgeProc = undefined; });
-  _bridgeProc.on('exit', () => { _bridgeProc = undefined; });
 
   // 等待最多 15 秒，每 600ms 轮询一次
   const deadline = Date.now() + 15000;
@@ -412,7 +412,15 @@ export async function ensureBridgeRunning(forceRestart = false): Promise<boolean
       return true;
     }
   }
+  await bridgeProcessOwner.stop();
   return false;
+}
+
+/** Releases only the Bridge process owned by this extension host. */
+export async function disposeBridgeRuntime(): Promise<void> {
+  connectorContractVerified = false;
+  for (const operationId of activeChatOperationIds) await cancel(operationId);
+  if (bridgeProcessOwner.hasRunningProcess) await bridgeProcessOwner.stop(shutdownBridge);
 }
 
 /**

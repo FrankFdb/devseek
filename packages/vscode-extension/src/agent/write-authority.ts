@@ -1,7 +1,6 @@
 import type { ChatMessage } from '../llm/types';
 import {
   buildIntentRevisionLineage,
-  rebindIntentRevisionLineageSemanticContract,
   type IntentRevisionChangeKind,
   type IntentRevisionEffectReceipt,
   type IntentSemanticContractRevision,
@@ -18,6 +17,9 @@ export interface WriteAuthority {
   readonly callbacks: AgentLoopCallbacks;
   readonly currentPrompt: string;
   readonly semanticContractRevision: IntentSemanticContractRevision;
+  /** User-owned contract used by authority, acceptance, and completion. */
+  readonly canonicalSemanticContract: TaskSemanticContract;
+  /** Loop-only model interpretation; never use it to add completion obligations. */
   readonly semanticContract: TaskSemanticContract;
   readonly projectInstructionsText: string;
   readonly writeRevoked: boolean;
@@ -105,7 +107,7 @@ export function createWriteAuthority(
     projectInstructions: options.projectInstructions,
   });
   let semanticContractRevision = lineage.semanticContractRevision;
-  let modelProposalSequence = 0;
+  let modelSemanticContract: TaskSemanticContract | undefined;
   let writeRevoked = userSteerRevokesWritesForContract(
     initialPrompt,
     semanticContractRevision.semanticContract,
@@ -123,6 +125,7 @@ export function createWriteAuthority(
         projectInstructions: options.projectInstructions,
       });
       semanticContractRevision = lineage.semanticContractRevision;
+      modelSemanticContract = undefined;
       callbacks.onTaskSemanticContractRevision?.(semanticContractRevision);
       writeRevoked = resolveWriteRevocation(
         writeRevoked,
@@ -163,33 +166,29 @@ export function createWriteAuthority(
     callbacks: guardedCallbacks,
     get currentPrompt() { return currentPrompt; },
     get semanticContractRevision() { return semanticContractRevision; },
-    get semanticContract() { return semanticContractRevision.semanticContract; },
+    get canonicalSemanticContract() { return semanticContractRevision.semanticContract; },
+    get semanticContract() { return modelSemanticContract ?? semanticContractRevision.semanticContract; },
     get projectInstructionsText() {
       return semanticContractRevision.semanticContract.context.projectInstructions.content;
     },
     get writeRevoked() { return writeRevoked; },
     applyModelSemanticProposal(proposal) {
-      const current = semanticContractRevision.semanticContract;
+      const current = modelSemanticContract ?? semanticContractRevision.semanticContract;
       const next = resolveTaskSemanticContract(currentPrompt, {
         current,
         semanticIntent: proposal,
         projectInstructions: options.projectInstructions,
       });
-      // A model-proposed destructive action is evidence for the action arbiter,
-      // not permission to replace the user's active task contract. The concrete
-      // tool call still reaches local approval and sandbox enforcement.
       if (current.kind !== 'destructive'
         && next.signals.includes('semantic-destructive-fail-closed')) {
         return false;
       }
+      if (next.signals.includes('semantic-intent-constrained')) return false;
       if (JSON.stringify(next) === JSON.stringify(current)) return false;
-      lineage = rebindIntentRevisionLineageSemanticContract(
-        lineage,
-        next,
-        ++modelProposalSequence,
-      );
-      semanticContractRevision = lineage.semanticContractRevision;
-      callbacks.onTaskSemanticContractRevision?.(semanticContractRevision);
+      // Provider semantics may improve typo or colloquial intent handling for
+      // this loop. Only user input can revise the authority contract consumed
+      // by sandbox and workspace mutation transactions.
+      modelSemanticContract = next;
       return true;
     },
     drainAfterProvider: drain,

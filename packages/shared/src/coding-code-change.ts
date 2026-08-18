@@ -82,15 +82,18 @@ class CanonicalCodeChangeSession implements CodeChangePort {
 }
 
 function assessCodeChange(runId: string, input: AssessCodingCodeChangeInput): CodingCodeChangeDecision {
-  const plannedTargets = uniqueCodingRefs(input.plan.steps
+  const plannedTargets = uniqueCodingRefs((input.plan.requiredTargets ?? input.plan.steps
     .filter(step => step.action === 'modify')
-    .map(step => normalizeCodingWorkspacePath(step.target)));
+    .map(step => step.target))
+    .map(normalizeCodingWorkspacePath));
+  const authorizedTargets = uniqueCodingRefs(input.plan.authorizedTargets
+    .map(normalizeCodingWorkspacePath));
   const changedPaths = uniqueCodingRefs(input.mutations
     .filter(receipt => receipt.status === 'committed')
     .flatMap(receipt => receipt.paths)
     .map(normalizeCodingWorkspacePath));
   const unplannedPaths = changedPaths.filter(path => (
-    !plannedTargets.some(target => codingWorkspaceTargetMatchesScope(path, target))
+    !authorizedTargets.some(target => codingWorkspaceTargetMatchesScope(path, target))
   ));
   const uncoveredTargets = plannedTargets.filter(target => (
     !changedPaths.some(path => codingWorkspaceTargetMatchesScope(path, target))
@@ -109,13 +112,15 @@ function assessCodeChange(runId: string, input: AssessCodingCodeChangeInput): Co
     receipt.status === 'committed' && (!receipt.readbackRef || receipt.evidenceRefs.length === 0)
   ));
   let status: CodingCodeChangeDecision['status'];
-  if (plannedTargets.length === 0) status = 'not-applicable';
-  else if (indeterminate.length > 0) status = 'indeterminate';
+  if (indeterminate.length > 0) status = 'indeterminate';
   else if (failed.length > 0 || missingReadback.length > 0 || unplannedPaths.length > 0) status = 'failed';
+  else if (plannedTargets.length === 0 && changedPaths.length === 0) status = 'not-applicable';
   else if (uncoveredTargets.length > 0) status = 'incomplete';
   else status = 'conformant';
   const reasonCodes = status === 'conformant'
-    ? ['planned-change-committed-and-read-back']
+    ? [plannedTargets.length > 0
+        ? 'required-change-committed-and-read-back'
+        : 'authorized-change-committed-and-read-back']
     : status === 'not-applicable'
       ? ['code-change-not-applicable']
       : uniqueCodingRefs([

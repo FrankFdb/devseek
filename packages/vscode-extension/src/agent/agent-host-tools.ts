@@ -27,6 +27,7 @@ export interface AgentHostToolContext {
   webview: vscode.Webview;
   terminalPermissionCoordinator: TerminalPermissionCoordinator;
   runContext: DevSeekRunContext;
+  signal?: AbortSignal;
 }
 
 function isInternalNetworkHost(host: string): boolean {
@@ -141,7 +142,7 @@ async function listCodeUsages(
 }
 
 export function createAgentHostToolCallbacks(context: AgentHostToolContext): HostToolCallbacks {
-  const { workspaceRoot, webview, terminalPermissionCoordinator, runContext } = context;
+  const { workspaceRoot, webview, terminalPermissionCoordinator, runContext, signal } = context;
   const mutations = new ProductMutationCoordinator(runContext, 'vscode-agent-host');
   const workspaceEditService = new WorkspaceEditService();
   const directoryMutations = new VsCodeWorkspaceDirectoryMutationAdapter(workspaceEditService);
@@ -159,6 +160,7 @@ export function createAgentHostToolCallbacks(context: AgentHostToolContext): Hos
       traceRunId: runContext.runId,
       traceEvidenceParticipantToken: runContext.evidenceParticipantToken,
       onTraceEvidenceError: error => runContext.reportEvidenceIssue(error),
+      signal,
     });
     if (result.outcome !== 'committed') {
       throw new Error(`Read-only host inspection did not complete: ${result.output}`);

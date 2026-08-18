@@ -278,10 +278,17 @@ test('Terminal evidence: static process guard allows only the coordinator and ex
     .map(({ relativePath }) => relativePath)
     .sort();
   assert.deepEqual(directTerminalImports, [
+    'src/app/extension-runtime-shutdown.ts',
     'src/app/terminal-permission-coordinator.ts',
     'src/extension.ts',
     'src/local-execution-repair.ts',
   ]);
+
+  const shutdownSource = sources.find(
+    candidate => candidate.relativePath === 'src/app/extension-runtime-shutdown.ts',
+  )?.source ?? '';
+  assert.match(shutdownSource, /disposeCapturedTerminalProcesses/);
+  assert.doesNotMatch(shutdownSource, /\brunCommand\s*\(/);
 
   for (const relativePath of [
     'src/extension.ts',
@@ -302,7 +309,9 @@ test('Terminal evidence: static process guard allows only the coordinator and ex
     .sort();
   assert.deepEqual(childProcessImports, [
     'src/bridge-client.ts',
+    'src/bridge-process-owner.ts',
     'src/execution-outcome-classifier.ts',
+    'src/runtime/node-process-tree-effects.ts',
     'src/tools/terminal.ts',
   ]);
 });

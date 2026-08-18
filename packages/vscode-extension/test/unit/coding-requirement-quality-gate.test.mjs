@@ -5,6 +5,7 @@ import { rmSync } from 'node:fs';
 import { test, after } from 'node:test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveCodingKernelTaskContract } from '../../../shared/dist/index.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const bundlePath = path.join(root, 'test/unit/coding-requirement-quality-gate.bundle.cjs');
@@ -42,4 +43,24 @@ test('I15-EXT-01 VS Code requirement QualityGate blocks current API claims witho
   assert.equal(result.reason, 'canonical-requirement-exploration-required');
   assert.ok(result.risks.some(reason => reason.includes('external-source-unresolved')));
   assert.match(result.requiredActions[0], /exact source and effect-receipt evidence/u);
+});
+
+test('VS Code requirement QualityGate consumes the canonical contract without reclassifying domain names', () => {
+  const prompt = 'Complete src/deployment_coordinator.cpp and run ./test.sh.';
+  const taskContract = resolveCodingKernelTaskContract({
+    prompt,
+    surface: 'vscode',
+    modeHint: 'change',
+    targetPaths: ['src/deployment_coordinator.cpp'],
+    externalEffectIntent: 'none',
+  });
+  const result = evaluateCodingRequirementQualityGate({
+    prompt,
+    workspaceRoot: '/repo',
+    targetPaths: ['src/deployment_coordinator.cpp'],
+    taskContract,
+  });
+
+  assert.equal(result.status, 'accepted');
+  assert.equal(result.reason, 'canonical-requirement-decision-ready');
 });

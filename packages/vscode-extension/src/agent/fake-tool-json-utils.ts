@@ -1,13 +1,12 @@
-export interface FakeTool {
-  name: string;
-  input: Record<string, unknown>;
-}
+import {
+  decodeLooseJsonString,
+  findJsonArrayEnd,
+  findJsonObjectEnd,
+} from './loose-json-text';
+import type { FakeTool, FakeToolJsonUtilsContext } from './fake-tool-types';
 
-export interface FakeToolJsonUtilsContext {
-  normalizeToolName(name: string): string;
-  jsonObjectToFakeTool(obj: Record<string, unknown>): FakeTool | null;
-  normalizeFakeTool(tool: FakeTool): FakeTool;
-}
+export { decodeLooseJsonString, findJsonArrayEnd, findJsonObjectEnd } from './loose-json-text';
+export type { FakeTool, FakeToolJsonUtilsContext } from './fake-tool-types';
 
 const LOOSE_FILE_WRITE_TOOL_NAMES = new Set(['create_file', 'write_file', 'replace_file']);
 const LOOSE_FILE_WRITE_PATH_KEYS = ['path', 'filePath', 'filepath', 'filename', 'targetPath'];
@@ -37,68 +36,8 @@ const IMPLICIT_TERMINAL_KEYS = new Set([
 const TOOL_ARRAY_WRAPPER_KEYS = ['tool_calls', 'toolCalls', 'tools'];
 const TOOL_SINGLE_WRAPPER_KEYS = ['function_call', 'functionCall', 'tool_call', 'toolCall'];
 
-export function findJsonObjectEnd(text: string, start: number): number {
-  let depth = 0;
-  let inStr = false;
-  for (let j = start; j < text.length; j++) {
-    const ch = text[j];
-    if (inStr) {
-      if (ch === '\\') j++;
-      else if (ch === '"') inStr = false;
-    } else {
-      if (ch === '"') inStr = true;
-      else if (ch === '{') depth++;
-      else if (ch === '}') {
-        depth--;
-        if (depth === 0) return j;
-      }
-    }
-  }
-  return -1;
-}
-
-export function findJsonArrayEnd(text: string, start: number): number {
-  let depth = 0;
-  let inStr = false;
-  for (let j = start; j < text.length; j++) {
-    const ch = text[j];
-    if (inStr) {
-      if (ch === '\\') j++;
-      else if (ch === '"') inStr = false;
-    } else {
-      if (ch === '"') inStr = true;
-      else if (ch === '[') depth++;
-      else if (ch === ']') {
-        depth--;
-        if (depth === 0) return j;
-      }
-    }
-  }
-  return -1;
-}
-
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-export function decodeLooseJsonString(value: string): string {
-  return value.replace(/\\(u[0-9a-fA-F]{4}|["\\/bfnrt])/g, (_match, escaped: string) => {
-    switch (escaped) {
-      case '"': return '"';
-      case '\\': return '\\';
-      case '/': return '/';
-      case 'b': return '\b';
-      case 'f': return '\f';
-      case 'n': return '\n';
-      case 'r': return '\r';
-      case 't': return '\t';
-      default:
-        if (/^u[0-9a-fA-F]{4}$/.test(escaped)) {
-          return String.fromCharCode(Number.parseInt(escaped.slice(1), 16));
-        }
-        return escaped;
-    }
-  });
 }
 
 function parseJsonWithRepairedInvalidEscapes(jsonText: string): Record<string, unknown> | null {
@@ -171,6 +110,7 @@ function findLooseObjectCloseAfterString(text: string, afterStringQuote: number)
   if (/^<\/?\s*(?:TOOL_CALL|TOOL)\s*>/i.test(text.slice(i))) return closeBrace;
   if (text.startsWith('[TOOL:', i) || text.startsWith('```', i)) return closeBrace;
   if (/^(?:Calling|Call|调用)\b/i.test(text.slice(i, i + 20))) return closeBrace;
+  if (/^Action\s*[:：]\s*`?[A-Za-z_]\w*/i.test(text.slice(i, i + 80))) return closeBrace;
   return -1;
 }
 
@@ -409,16 +349,13 @@ export function createFakeToolJsonUtils(context: FakeToolJsonUtilsContext) {
     return { name, input: { path: pathValue } };
   }
 
-  function jsonObjectToDirectFakeTool(obj: Record<string, unknown>): FakeTool | null {
-    return context.jsonObjectToFakeTool(obj) ?? jsonObjectToImplicitArrayFakeTool(obj);
-  }
-
   function jsonArrayToFakeTools(value: unknown): FakeTool[] {
     if (!Array.isArray(value) || value.length === 0) return [];
     const tools: FakeTool[] = [];
     for (const item of value) {
       if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
-      const tool = jsonObjectToDirectFakeTool(item as Record<string, unknown>);
+      const obj = item as Record<string, unknown>;
+      const tool = context.jsonObjectToFakeTool(obj) ?? jsonObjectToImplicitArrayFakeTool(obj);
       if (!tool) return [];
       tools.push(tool);
     }
@@ -443,7 +380,7 @@ export function createFakeToolJsonUtils(context: FakeToolJsonUtilsContext) {
 
     if (!value || typeof value !== 'object') return [];
     const obj = value as Record<string, unknown>;
-    const direct = jsonObjectToDirectFakeTool(obj);
+    const direct = context.jsonObjectToFakeTool(obj);
     if (direct) return [context.normalizeFakeTool(direct)];
 
     for (const key of TOOL_ARRAY_WRAPPER_KEYS) {

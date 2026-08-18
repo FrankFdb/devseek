@@ -109,6 +109,7 @@ class MemoryBackgroundWorkCoordinator {
   private foregroundDepth = 0;
   private forceDrain = false;
   private active?: { controller: AbortController; promise: Promise<void> };
+  private shuttingDown = false;
 
   async beginForeground(): Promise<void> {
     this.foregroundDepth += 1;
@@ -124,6 +125,7 @@ class MemoryBackgroundWorkCoordinator {
   }
 
   schedule(work: MemoryPipelineWork, onError?: (error: unknown) => void): void {
+    if (this.shuttingDown) return;
     this.queue.push({ work, onError });
     this.kick();
   }
@@ -141,6 +143,16 @@ class MemoryBackgroundWorkCoordinator {
     }
   }
 
+  async shutdown(timeoutMs = 3_000): Promise<void> {
+    this.shuttingDown = true;
+    this.forceDrain = false;
+    this.queue.length = 0;
+    const active = this.active;
+    if (!active) return;
+    active.controller.abort(new Error('memory-pipeline:extension-shutdown'));
+    await settleWithin(active.promise, timeoutMs);
+  }
+
   private kick(): void {
     if (this.active || this.queue.length === 0) return;
     if (!this.forceDrain && this.foregroundDepth > 0) return;
@@ -155,6 +167,18 @@ class MemoryBackgroundWorkCoordinator {
         this.kick();
       });
     this.active = { controller, promise };
+  }
+}
+
+async function settleWithin(promise: Promise<unknown>, timeoutMs: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      promise,
+      new Promise<void>(resolve => { timer = setTimeout(resolve, timeoutMs); }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
@@ -179,6 +203,10 @@ export async function flushMemoryPipelineWork(): Promise<void> {
   await memoryBackgroundWork.flush();
 }
 
+export async function shutdownMemoryPipelineWork(timeoutMs = 3_000): Promise<void> {
+  await memoryBackgroundWork.shutdown(timeoutMs);
+}
+
 export function createProviderMemoryModel(
   provider: LLMProvider,
   workspaceRoot: string,
@@ -188,6 +216,7 @@ export function createProviderMemoryModel(
       const runContext = createDevSeekRunContext({
         workspaceRoot,
         source: 'vscode-extension.memory-pipeline',
+        workloadRole: 'background-maintenance',
         userPrompt: 'Run one detached memory semantic inference over persisted rollout evidence.',
         sessionId: 'memory-pipeline',
         mode: 'r1',

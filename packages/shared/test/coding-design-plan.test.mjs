@@ -36,6 +36,7 @@ test('I15-DSN-01 produces an immutable impact, rollback, acceptance, and effect 
   assert.equal(plan.status, 'ready');
   assert.deepEqual(plan.steps.map(step => step.action), ['modify', 'verify']);
   assert.deepEqual(plan.authorizedTargets, [scenario.input.target_path]);
+  assert.deepEqual(plan.requiredTargets, [scenario.input.target_path]);
   assert.equal(Object.isFrozen(plan.steps), true);
   assert.throws(() => plan.steps.push({}), TypeError);
 
@@ -110,6 +111,7 @@ test('change plans authorize the union of deliverable targets and concrete contr
   const plan = new CanonicalChangePlanService().create({ ...fixture, design });
 
   assert.deepEqual(plan.authorizedTargets, ['src/app.py', 'devseek.verify.json']);
+  assert.deepEqual(plan.requiredTargets, ['src/app.py']);
   assert.equal(evaluateCodingChangePlanEffect(plan, {
     effects: ['workspace-mutation'],
     targetPaths: ['devseek.verify.json'],
@@ -118,6 +120,38 @@ test('change plans authorize the union of deliverable targets and concrete contr
     effects: ['workspace-mutation'],
     targetPaths: ['generated/output.js'],
   }).reason, /target-outside-scope/u);
+});
+
+test('concrete allowed scope does not turn a pathless source deliverable into mandatory file edits', () => {
+  const taskContract = buildCodingKernelTaskContract({
+    goal: 'Repair the deployment event behavior in the inspected implementation.',
+    mode: 'change',
+    include: ['include/deployment_coordinator.hpp', 'src/deployment_coordinator.cpp'],
+    deliverables: [{ id: 'source', kind: 'source-change' }],
+    acceptance: [{
+      id: 'verified',
+      statement: 'Focused verification passes.',
+      deliverableIds: ['source'],
+      oracle: {
+        kind: 'verification',
+        verifier: 'focused-test-suite',
+        scope: ['workspace'],
+        evidenceKinds: ['verification-receipt'],
+      },
+      externalBoundaryRefs: [],
+    }],
+    provenanceRefs: ['user:current'],
+  });
+  const fixture = fixtureFor(taskContract);
+  const design = new CanonicalDesignDecisionService().decide(fixture);
+  const plan = new CanonicalChangePlanService().create({ ...fixture, design });
+
+  assert.equal(plan.status, 'ready');
+  assert.deepEqual(plan.requiredTargets, []);
+  assert.deepEqual(plan.authorizedTargets, [
+    'include/deployment_coordinator.hpp',
+    'src/deployment_coordinator.cpp',
+  ]);
 });
 
 test('design decisions reject a requirement from another context graph', () => {

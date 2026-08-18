@@ -83,10 +83,12 @@ test('RunContext: owns one run id and one chronological log file', () => {
     assert.match(started.data.prompt.sha256, /^[a-f0-9]{64}$/);
     assert.equal(JSON.stringify(started.data).includes('修复 shape_manager title'), false);
     assert.equal(started.data.requiresSourceClaimArtifactVerification, false);
+    assert.equal(started.data.workloadRole, 'foreground-agent');
     assert.match(started.data.taskContractFingerprint, /^[a-f0-9]{64}$/);
     assert.equal(entries.some(entry => entry.event === 'tool-fact-recorded'), true);
     const completed = entries.find(entry => entry.event === 'agent-run-completed');
     assert.equal(completed.data.status, 'completed');
+    assert.equal(completed.data.workloadRole, 'foreground-agent');
     assert.equal(completed.data.tasksFailed, 0);
     assert.equal(completed.data.requiresSourceClaimArtifactVerification, false);
     assert.equal(completed.data.taskContractFingerprint, started.data.taskContractFingerprint);

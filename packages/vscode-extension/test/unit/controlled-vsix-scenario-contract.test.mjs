@@ -207,6 +207,7 @@ test('controlled VSIX T5 suite proves memory across a real process restart', () 
   assert.match(source, /function runControlledDriverSelection\(/, 'restart orchestration must have one suite-level owner');
   assert.match(source, /resumeExistingSession:\s*index > 0/, 'later processes must resume the persisted DevSeek session');
   assert.match(source, /terminal\?\.source !== 'vscode-extension\.memory-pipeline'/, 'background memory runs must not replace the foreground user-run terminal');
+  assert.match(source, /data\.workloadRole !== 'background-maintenance'/, 'background work must remain isolated even when its source label changes');
   assert.match(source, /error_code:\s*'MEMORY_CONTEXT_MISSING'/, 'the Provider must fail when persisted memory is absent from model context');
   assert.match(source, /processRestartCount/, 'the driver report must expose restart evidence');
 });
@@ -306,6 +307,7 @@ test('real plugin VSIX harness selects product run terminal instead of pending-e
   assert.match(source, /const selected = selectProductRunLog\(logs\)\?\.absolutePath/, 'real plugin harness replay must reuse the product-run selection helper');
   assert.doesNotMatch(source, /selectProductRunLogForReplay/, 'real plugin harness must not fork replay-only terminal selection');
   assert.match(source, /function productRunLogScore\(log\)/, 'real plugin harness must score product-like logs before replay fallback');
+  assert.match(source, /log\.workloadRole === 'background-maintenance'/, 'real plugin harness must exclude background maintenance logs from product-run scoring');
   assert.match(source, /function isAuxiliaryMutationTerminalEvent/, 'real plugin harness must classify auxiliary mutation run terminals');
   assert.match(source, /mutationKind === 'pending-edit-resolution'/, 'pending-edit resolution runs must not replace the real plugin terminal run');
   assert.match(source, /mutationKind === 'pending-edit-undo'/, 'pending-edit undo runs must not replace the real plugin terminal run');

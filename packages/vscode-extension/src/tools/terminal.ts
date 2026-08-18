@@ -21,6 +21,7 @@ import {
   resolveExecutionCloseError,
 } from '../execution-outcome-classifier';
 import { getWorkspaceRootFsPath } from '../workspace-roots';
+import { CapturedProcessRegistry } from './captured-process-registry';
 
 export interface TerminalRunOptions {
   /** 要执行的 shell 命令 */
@@ -39,6 +40,8 @@ export interface TerminalRunOptions {
   launchObservationMs?: number;
   /** Selects validation-specific timeout evidence without changing process execution. */
   executionProfile?: 'interactive' | 'validation';
+  /** Cancels the complete command process group when the owning chat turn stops. */
+  signal?: AbortSignal;
 }
 
 export interface TerminalRunResult {
@@ -93,6 +96,7 @@ const SERVER_COMMAND_RE = /\b(http\.server|SimpleHTTPServer|livereload|webpack.*
 
 /** sudo needs password — user must authenticate in an interactive terminal first. */
 const SUDO_PASSWORD_RE = /terminal is required to read the password|a password is required|sudo.*password/i;
+const capturedProcesses = new CapturedProcessRegistry();
 
 function patchCommand(cmd: string): string {
   return cmd;
@@ -101,6 +105,11 @@ function patchCommand(cmd: string): string {
 export function runCommand(opts: TerminalRunOptions): Promise<TerminalRunResult> {
   const { timeoutMs = 30000 } = opts;
   const command = patchCommand(opts.command);
+
+  if (opts.signal?.aborted) {
+    const message = '命令未启动：当前任务已取消';
+    return Promise.resolve({ ok: false, exitCode: null, stdout: '', stderr: message, output: message, summary: message });
+  }
 
   // Block long-running server commands — they would always time out (30s) and
   // the exit-1 confuses the AI into retrying.  Return a clear error immediately.
@@ -138,6 +147,7 @@ export function runCommand(opts: TerminalRunOptions): Promise<TerminalRunResult>
     let stdout = '';
     let stderr = '';
     let timedOut = false;
+    let cancelled = false;
     let settled = false;
     let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
     let launchObservationTimer: ReturnType<typeof setTimeout> | undefined;
@@ -147,6 +157,7 @@ export function runCommand(opts: TerminalRunOptions): Promise<TerminalRunResult>
       settled = true;
       if (timeoutTimer) clearTimeout(timeoutTimer);
       if (launchObservationTimer) clearTimeout(launchObservationTimer);
+      opts.signal?.removeEventListener('abort', abortCommand);
       resolve(result);
     };
 
@@ -160,12 +171,21 @@ export function runCommand(opts: TerminalRunOptions): Promise<TerminalRunResult>
         FORCE_COLOR: '0',
         PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
       },
-      timeout: timeoutMs,
+      detached: process.platform !== 'win32',
     });
+    capturedProcesses.register(child);
+
+    const abortCommand = () => {
+      if (settled) return;
+      cancelled = true;
+      capturedProcesses.terminate(child);
+    };
+    opts.signal?.addEventListener('abort', abortCommand, { once: true });
+    if (opts.signal?.aborted) abortCommand();
 
     timeoutTimer = setTimeout(() => {
       timedOut = true;
-      child.kill('SIGTERM');
+      capturedProcesses.terminate(child);
     }, timeoutMs);
 
     child.stdout.on('data', (d: Buffer) => { stdout = appendCapped(stdout, d.toString(), 40_000); });
@@ -208,6 +228,19 @@ export function runCommand(opts: TerminalRunOptions): Promise<TerminalRunResult>
     }
 
     child.on('close', (code) => {
+      if (cancelled) {
+        const output = combinedOutput();
+        const message = `命令已取消${output ? `\n${output}` : ''}`;
+        resolveOnce({
+          ok: false,
+          exitCode: code,
+          stdout: stdout.trim(),
+          stderr: stderr.trim(),
+          output: message,
+          summary: message.slice(0, 1500),
+        });
+        return;
+      }
       const error = resolveExecutionCloseError({
         exitCode: code,
         timeoutSignaled: timedOut,
@@ -252,6 +285,10 @@ export function runCommand(opts: TerminalRunOptions): Promise<TerminalRunResult>
       resolveOnce({ ok: false, exitCode: -1, stdout: '', stderr: msg, output: msg, summary: msg });
     });
   });
+}
+
+export async function disposeCapturedTerminalProcesses(): Promise<void> {
+  await capturedProcesses.dispose();
 }
 
 /**

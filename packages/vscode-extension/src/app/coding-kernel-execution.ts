@@ -131,6 +131,9 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
       canonicalBuildOrchestration: kernelRequest.buildOrchestration,
       canonicalRegressionSelection: kernelRequest.regressionSelection,
       canonicalDiagnostics: kernelRequest.diagnostics,
+      get canonicalTaskContract() {
+        return kernelRequest.taskContractRevision.current();
+      },
       get canonicalVerificationAcceptance() {
         return kernelRequest.verificationAcceptance;
       },
@@ -145,6 +148,7 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
           contextFiles: request.contextFiles,
           workspaceRoot: kernelRequest.workspaceRoot,
           taskContract: revision.semanticContract.taskContract,
+          externalEffectIntent: revision.semanticContract.intent.context.externalEffect,
           targetPaths: executionAllowed ? revision.pendingTargets : [],
           prohibitedTargets: executionAllowed
             ? revision.prohibitedTargets

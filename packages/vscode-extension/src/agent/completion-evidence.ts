@@ -22,7 +22,10 @@ import {
   shouldRequireRuntimeValidationForRoute,
   type TaskIntentRoute,
 } from '../task-intent-router';
-import type { CodingVerificationReceipt } from '@devseek-netai/shared';
+import type {
+  CodingKernelTaskContract,
+  CodingVerificationReceipt,
+} from '@devseek-netai/shared';
 import type { VerificationResult } from './evidence-grounding';
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import { hasTaskSemanticDoneCondition } from '../intent/task-semantic-obligations';
@@ -206,6 +209,33 @@ function summaryClaimIsPositive(sentence: string, tokenStartInSentence: number):
     || SUMMARY_FILE_CLAIM_POSITIVE_RE.test(nearbyAfter);
 }
 
+const SUMMARY_FILE_DIRECT_MUTATION_BEFORE_RE = /(?:创建|新建|生成|添加|新增|编写|实现|更新|修改|改造|重构|写入|保存|输出|产出|交付|导出|落地|复制|拷贝|重命名|改名|移动|迁移|替换|\b(?:create|created|add|added|generate|generated|write|wrote|save|saved|output|produce|produced|deliver|delivered|export|exported|implement|implemented|update|updated|modify|modified|refactor|refactored|copy|copied|duplicate|duplicated|rename|renamed|move|moved|replace|replaced)\b)[^。；;!?！？\n]{0,40}$/i;
+const SUMMARY_FILE_DIRECT_MUTATION_AFTER_RE = /^[^。；;!?！？\n]{0,40}(?:已(?:创建|新建|生成|添加|编写|实现|更新|修改|重构|写入|保存|输出|交付)|被(?:创建|生成|更新|修改|写入|保存|输出)|\b(?:created|added|generated|written|saved|produced|delivered|exported|implemented|updated|modified|refactored|copied|duplicated|renamed|moved|replaced)\b)/i;
+const SUMMARY_FILE_OPERATIONAL_REFERENCE_RE = /(?:测试(?:结果|证据|输出)?|验证(?:方式|脚本|结果|证据)?|运行|执行(?:命令|脚本)?|编译|命令|退出码|run_terminal|read_file|list_dir|exit\s*code|test(?:ed|ing)?|validation|verification|command|compile|passed)/i;
+
+function summaryFileClaimIsNonArtifactReference(
+  sentence: string,
+  tokenStartInSentence: number,
+  tokenEndInSentence: number,
+): boolean {
+  const beforeToken = sentence.slice(Math.max(0, tokenStartInSentence - 100), tokenStartInSentence);
+  const afterToken = sentence.slice(tokenEndInSentence, Math.min(sentence.length, tokenEndInSentence + 120));
+  if (/(?:不碰|不改|不修改|不创建|未创建|未修改|未写入|没有创建|没有修改|不是(?:我|本次)?(?:创建|修改)|原有(?:的)?|已有(?:的)?|工作区已有(?:的)?|\b(?:existing|pre-existing|unchanged|not\s+(?:created|modified|written|changed))\b)[^。；;!?！？\n]{0,48}$/i.test(beforeToken)) {
+    return true;
+  }
+  if (/^[^。；;!?！？\n]{0,64}(?:未创建|未修改|未写入|没有创建|没有修改|不是(?:我|本次)?(?:创建|修改)|原有(?:的)?|已有(?:的)?|\b(?:existing|pre-existing|unchanged|not\s+(?:created|modified|written|changed))\b)/i.test(afterToken)) {
+    return true;
+  }
+  if (!SUMMARY_FILE_OPERATIONAL_REFERENCE_RE.test(sentence)) return false;
+  const previousFile = [...beforeToken.matchAll(new RegExp(SUMMARY_FILE_CLAIM_RE.source, 'gi'))].at(-1);
+  if (previousFile) {
+    const afterPreviousFile = beforeToken.slice((previousFile.index ?? 0) + previousFile[0].length);
+    if (SUMMARY_FILE_OPERATIONAL_REFERENCE_RE.test(afterPreviousFile)) return true;
+  }
+  return !SUMMARY_FILE_DIRECT_MUTATION_BEFORE_RE.test(beforeToken)
+    && !SUMMARY_FILE_DIRECT_MUTATION_AFTER_RE.test(afterToken);
+}
+
 function findLastRegexMatchEnd(pattern: RegExp, text: string): number {
   const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
   const re = new RegExp(pattern.source, flags);
@@ -272,6 +302,7 @@ function collectClaimedSummaryFiles(text: string, pattern: RegExp, claimed: Set<
     const tokenStartInSentence = sentenceStart >= 0 ? tokenStart - sentenceStart : 0;
     const tokenEndInSentence = tokenStartInSentence + token.length;
     if (!summaryClaimIsPositive(sentence, tokenStartInSentence)) continue;
+    if (summaryFileClaimIsNonArtifactReference(sentence, tokenStartInSentence, tokenEndInSentence)) continue;
     if (summaryFileClaimIsSourceReference(sentence, tokenStartInSentence, tokenEndInSentence)) continue;
     if (summaryFileClaimIsTransferSource(sentence, tokenStartInSentence, tokenEndInSentence)) continue;
     claimed.add(rawPath);
@@ -739,6 +770,7 @@ export interface CompletionEvidenceAssessmentInput {
   verificationResults?: VerificationResult[];
   verificationReceipts?: CodingVerificationReceipt[];
   semanticContract?: TaskSemanticContract;
+  canonicalTaskContract?: CodingKernelTaskContract;
 }
 
 export function assessMissingCompletionEvidence(input: CompletionEvidenceAssessmentInput): string[] {
@@ -752,6 +784,7 @@ export function assessMissingCompletionEvidence(input: CompletionEvidenceAssessm
     verificationResults = [],
     verificationReceipts = [],
     semanticContract,
+    canonicalTaskContract,
   } = input;
   const effectiveSemanticContract = semanticContract ?? routeTaskIntent(userPrompt).semanticContract;
   const userIntentText = buildUserIntentEvidenceText(userPrompt);
@@ -790,9 +823,12 @@ export function assessMissingCompletionEvidence(input: CompletionEvidenceAssessm
   }
 
   const needsCodeArtifact = requiresCodeArtifactForEvidence(evidenceIntentText, effectiveSemanticContract);
-  const needsReadEvidence = requiresReadEvidence(userIntentText, effectiveSemanticContract);
+  const canonicalMutationReadback = canonicalMutationReadbackOwnsInspection(canonicalTaskContract);
+  const needsReadEvidence = !canonicalMutationReadback
+    && requiresReadEvidence(userIntentText, effectiveSemanticContract);
   const needsFileContentReadEvidence = requiresFileContentReadEvidence(userIntentText, effectiveSemanticContract);
-  const needsFileCheckEvidence = requiresFileCheckEvidence(userIntentText, effectiveSemanticContract);
+  const needsFileCheckEvidence = !canonicalMutationReadback
+    && requiresFileCheckEvidence(userIntentText, effectiveSemanticContract);
   if (needsCodeArtifact && existingCodeWrites.length === 0) {
     missing.push('代码修改结果');
   } else if (needsFileChange && existingWrittenFiles.length === 0) {
@@ -845,13 +881,21 @@ export function assessMissingCompletionEvidence(input: CompletionEvidenceAssessm
   }
 
   const formalProjectPrompt = userPrompt;
-  const missingDeliverables = existingWrittenFiles.length > 0
-    ? semanticContract
-      ? getMissingSemanticContractDeliverables(semanticContract, existingWrittenFiles, workspaceRoot)
-      : getMissingRequiredDeliverables(userPrompt, existingWrittenFiles, workspaceRoot)
-    : semanticContract
-      ? getMissingSemanticContractDeliverables(semanticContract, existingWrittenFiles, workspaceRoot)
-      : [];
+  const missingDeliverables = canonicalTaskContract
+    ? getMissingDeclaredDeliverableTargets(
+        canonicalTaskContract.deliverables
+          .filter(deliverable => deliverable.kind === 'source-change' || deliverable.kind === 'report')
+          .flatMap(deliverable => deliverable.path ? [deliverable.path] : []),
+        existingWrittenFiles,
+        workspaceRoot,
+      )
+    : existingWrittenFiles.length > 0
+      ? semanticContract
+        ? getMissingSemanticContractDeliverables(semanticContract, existingWrittenFiles, workspaceRoot)
+        : getMissingRequiredDeliverables(userPrompt, existingWrittenFiles, workspaceRoot)
+      : semanticContract
+        ? getMissingSemanticContractDeliverables(semanticContract, existingWrittenFiles, workspaceRoot)
+        : [];
   missing.push(...missingDeliverables.map(deliverable => `指定交付文件：${deliverable.path}`));
   missing.push(...getFormalProjectMarkdownQualityMissingEvidence(
     formalProjectPrompt,
@@ -861,6 +905,21 @@ export function assessMissingCompletionEvidence(input: CompletionEvidenceAssessm
   ));
 
   return missing;
+}
+
+function canonicalMutationReadbackOwnsInspection(
+  contract: CodingKernelTaskContract | undefined,
+): boolean {
+  if (!contract) return false;
+  const mutatingDeliverable = contract.deliverables.some(deliverable => (
+    deliverable.kind === 'source-change' || deliverable.kind === 'report'
+  ));
+  if (!mutatingDeliverable) return false;
+  return contract.acceptance?.some(criterion => (
+    criterion.oracle.kind === 'workspace-readback'
+    && criterion.oracle.evidenceKinds.includes('workspace-mutation-receipt')
+    && criterion.oracle.evidenceKinds.includes('workspace-readback')
+  )) === true;
 }
 
 function getMissingSemanticContractDeliverables(
@@ -873,8 +932,16 @@ function getMissingSemanticContractDeliverables(
       .map(obligation => obligation.target)
       .filter((target): target is string => Boolean(target)),
   )];
+  return getMissingDeclaredDeliverableTargets(targets, writtenFiles, workspaceRoot);
+}
+
+function getMissingDeclaredDeliverableTargets(
+  targets: readonly string[],
+  writtenFiles: readonly WrittenFileEvidence[],
+  workspaceRoot?: string,
+): Array<{ path: string }> {
   const written = writtenFiles.map(file => resolveCompletionEvidencePath(file.path, workspaceRoot));
-  return targets.filter(target => {
+  return [...new Set(targets)].filter(target => {
     const resolvedTarget = resolveCompletionEvidencePath(target, workspaceRoot);
     const matched = written.find(pathValue => pathValue === resolvedTarget || (
       !nodePath.isAbsolute(target) && pathValue.endsWith(`/${target.replace(/\\/g, '/')}`)

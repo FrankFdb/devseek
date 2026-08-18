@@ -38,8 +38,14 @@ export interface ResolveCodingKernelTaskContractInput {
   readonly strictTargetScope?: boolean;
   readonly modeHint?: CodingTaskMode;
   readonly verificationRequired?: boolean;
+  readonly verificationRequirementAuthoritative?: boolean;
   readonly deliverableKinds?: readonly CodingDeliverableKind[];
   readonly confirmedWorkspaceMutation?: boolean;
+  /**
+   * Optional semantic arbitration from a product Surface. When supplied, raw
+   * domain nouns cannot independently create external-effect authority.
+   */
+  readonly externalEffectIntent?: 'none' | 'question' | 'requested';
 }
 
 /** Resolves the product-level coding contract once for every Surface. */
@@ -56,28 +62,46 @@ export function resolveCodingKernelTaskContract(
     return buildSecretHarvestingRefusalTaskContract(input.surface, orientation);
   }
 
-  const dependencyEffect = DEPENDENCY_EFFECT_RE.test(prompt);
-  const networkEffect = dependencyEffect || NETWORK_EFFECT_RE.test(prompt);
+  const externalEffectRelevant = input.externalEffectIntent === undefined
+    || input.externalEffectIntent !== 'none';
+  const dependencyEffect = externalEffectRelevant && DEPENDENCY_EFFECT_RE.test(prompt);
+  const networkEffect = dependencyEffect
+    || (externalEffectRelevant && NETWORK_EFFECT_RE.test(prompt));
   const mode = orientation.mode;
   const mutating = mode === 'change' || mode === 'release';
-  const pathIntent = resolveCodingTaskPathIntent({ prompt, targetPaths: input.targetPaths });
-  const declaredTargets = input.targetPathsAuthoritative
-    ? uniquePaths(input.targetPaths ?? [])
-    : [...pathIntent.mutationFileTargets];
+  const pathIntent = resolveCodingTaskPathIntent({ prompt });
+  const suppliedTargets = uniquePaths(input.targetPaths ?? []);
+  const targetPathsAuthoritative = suppliedTargets.length > 0
+    && input.targetPathsAuthoritative !== false;
   const deliverableKinds = uniqueDeliverableKinds(input.deliverableKinds ?? []);
   const reportDeliverableRequested = deliverableKinds.includes('report')
     || REPORT_DELIVERABLE_RE.test(prompt);
-  const mutationScope = uniquePaths([
-    ...declaredTargets,
-    ...(input.targetPathsAuthoritative
-      ? []
-      : pathIntent.mutationDirectoryTargets.map(path => `${path}/**`)),
-  ]);
   const excludedScope = uniquePaths([
     ...pathIntent.excludedFileTargets,
     ...pathIntent.excludedDirectoryTargets.map(path => `${path}/**`),
     ...(input.excludedTargetPaths ?? []),
   ]);
+  const explicitMutationTargets = pathIntent.mutationFileTargets.filter(
+    path => !workspacePathIsExcluded(path, excludedScope),
+  );
+  const authoritativeScopeOnly = targetPathsAuthoritative
+    && (pathIntent.allowedFileTargets.length > 0 || pathIntent.allowedDirectoryTargets.length > 0);
+  const requiredTargets = uniquePaths([
+    ...explicitMutationTargets,
+    ...(targetPathsAuthoritative && !authoritativeScopeOnly ? suppliedTargets : []),
+  ]).filter(path => !workspacePathIsExcluded(path, excludedScope));
+  const suggestedReportTargets = !targetPathsAuthoritative && reportDeliverableRequested
+    ? suppliedTargets.filter(path => !workspacePathIsExcluded(path, excludedScope))
+    : [];
+  const mutationScope = uniquePaths(targetPathsAuthoritative
+    ? suppliedTargets
+    : [
+        ...explicitMutationTargets,
+        ...pathIntent.mutationDirectoryTargets.map(path => `${path}/**`),
+        ...pathIntent.allowedFileTargets,
+        ...pathIntent.allowedDirectoryTargets.map(path => `${path}/**`),
+        ...suggestedReportTargets,
+      ]).filter(path => !workspacePathIsExcluded(path, excludedScope));
   const include = dependencyEffect && mutationScope.length === 0
     ? ['package.json', 'package-lock.json', 'src/**']
     : mutating
@@ -89,21 +113,32 @@ export function resolveCodingKernelTaskContract(
   const scopedChange = mutating && (
     input.strictTargetScope === true || SCOPED_CHANGE_RE.test(prompt)
   );
-  const verificationProhibited = VERIFICATION_PROHIBITION_RE.test(prompt);
-  const verificationRequired = !verificationProhibited
-    && (
-      input.verificationRequired === true
-      || (mutating && (input.verificationRequired !== false || VERIFICATION_REQUEST_RE.test(prompt)))
-    );
+  const verificationProhibited = input.verificationRequirementAuthoritative !== true
+    && VERIFICATION_PROHIBITION_RE.test(prompt);
+  const verificationRequired = input.verificationRequirementAuthoritative === true
+    ? input.verificationRequired === true
+    : !verificationProhibited
+      && (
+        input.verificationRequired === true
+        || (mutating && (input.verificationRequired !== false || VERIFICATION_REQUEST_RE.test(prompt)))
+      );
   const deliverables = resolveDeliverables({
     mutating,
     dependencyEffect,
     verificationRequired,
-    declaredTargets,
+    declaredTargets: uniquePaths([
+      ...requiredTargets,
+      ...(reportDeliverableRequested ? suggestedReportTargets : []),
+    ]),
     reportDeliverableRequested,
     sourceChangeDeliverableRequested: deliverableKinds.includes('source-change'),
   });
-  const externalBoundaries = resolveExternalBoundaries(prompt, dependencyEffect, networkEffect);
+  const externalBoundaries = resolveExternalBoundaries(
+    prompt,
+    dependencyEffect,
+    networkEffect,
+    input.externalEffectIntent,
+  );
   const acceptance = resolveAcceptance({
     mutating,
     dependencyEffect,
@@ -216,6 +251,18 @@ function buildTargetDeliverables(input: {
       kind: 'source-change' as const,
       path,
     };
+  });
+}
+
+function workspacePathIsExcluded(path: string, excludedScope: readonly string[]): boolean {
+  const normalized = path.replace(/^\.\//u, '').replace(/\/+$/u, '');
+  return excludedScope.some(rawPattern => {
+    const pattern = rawPattern.replace(/^\.\//u, '').replace(/\/+$/u, '');
+    if (pattern.endsWith('/**')) {
+      const directory = pattern.slice(0, -3).replace(/\/+$/u, '');
+      return normalized === directory || normalized.startsWith(`${directory}/`);
+    }
+    return normalized === pattern;
   });
 }
 
@@ -362,6 +409,7 @@ function resolveExternalBoundaries(
   prompt: string,
   dependencyEffect: boolean,
   networkEffect: boolean,
+  externalEffectIntent?: 'none' | 'question' | 'requested',
 ): CodingTaskExternalBoundary[] {
   const boundaries: CodingTaskExternalBoundary[] = [];
   const add = (boundary: CodingTaskExternalBoundary): void => {
@@ -381,7 +429,9 @@ function resolveExternalBoundaries(
   if (LICENSE_BOUNDARY_RE.test(prompt)) {
     add({ id: 'external-license', kind: 'license', subject: 'requested license terms', sourceRef: 'external-source:license' });
   }
-  if (DEPLOYMENT_BOUNDARY_RE.test(prompt)) {
+  const deploymentEffectRelevant = externalEffectIntent === undefined
+    || externalEffectIntent !== 'none';
+  if (deploymentEffectRelevant && DEPLOYMENT_BOUNDARY_RE.test(prompt)) {
     add({ id: 'external-deployment', kind: 'deployment', subject: 'requested deployment target', sourceRef: 'external-source:deployment' });
   }
   return boundaries;

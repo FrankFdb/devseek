@@ -8,10 +8,12 @@ import path from 'node:path';
 import test from 'node:test';
 import { loadUserSimulationCase } from '../../../../scripts/lib/devseek-user-simulation-fixture.mjs';
 import {
+  CanonicalDirtyWorktreePolicyService,
   CanonicalWorkspaceMutationTransaction,
   FileSystemCodingOperationJournal,
   buildCodingWorkspaceMutationPlan,
   codingWorkspaceMutationOperationSha256,
+  createCodingWorktreeSnapshot,
 } from '../../../shared/dist/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -59,6 +61,41 @@ test('VS Code workspace adapter commits and independently reads back exact conte
     assert.equal(outcome.receipt.result.result.newContent, 'export const value = 2;\n');
     assert.equal(readFileSync(target, 'utf8'), 'export const value = 2;\n');
     assert.match(outcome.receipt.readbackRef, /^vscode-text-readback:/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('VS Code workspace adapter safely edits an existing dirty target through its authorized baseline', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-vscode-mutation-dirty-'));
+  const target = path.join(root, 'main.ts');
+  writeFileSync(target, 'export const userValue = 1;\n');
+  try {
+    const edits = new WorkspaceEditService();
+    const policy = new CanonicalDirtyWorktreePolicyService().bind({
+      runId: 'run-dirty-target',
+      snapshot: createCodingWorktreeSnapshot({
+        workspaceRoot: root,
+        repositoryState: 'git',
+        entries: [{ path: 'main.ts', status: 'modified' }],
+      }),
+    });
+    const outcome = await new VsCodeWorkspaceMutationAdapter(edits).executeTextFileWrite({
+      transaction: new CanonicalWorkspaceMutationTransaction(undefined, undefined, policy),
+      runId: 'run-dirty-target',
+      sequence: 1,
+      actionId: 'write-dirty-main',
+      absPath: target,
+      workspaceRoot: root,
+      content: 'export const userValue = 2;\n',
+      applyOptions: { validateSourceSanity: true },
+      baseline: edits.captureTextFileBaseline(target, root),
+      evidenceRefs: ['authority:file-write'],
+    });
+
+    assert.equal(outcome.receipt.status, 'committed');
+    assert.equal(policy.decisions()[0].reason, 'baseline-protected-user-changes');
+    assert.equal(readFileSync(target, 'utf8'), 'export const userValue = 2;\n');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -216,6 +253,7 @@ test('I14-VSC-01 user journey: VS Code restart proves the persisted write withou
       actionId: 'write-restart',
       idempotencyKey: 'run-restart:write-restart',
       paths: [scenario.input.path],
+      overlapProtection: 'optimistic-baseline',
       payload: {
         absPath: target,
         workspaceRoot: root,

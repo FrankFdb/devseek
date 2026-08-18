@@ -7,6 +7,7 @@ import {
 } from '@devseek-netai/shared';
 import type { TaskContract } from '../agent/task-contract';
 import type { ExecutionMode } from '../intent/intent-types';
+import type { ExternalEffectIntent } from '../intent/operational-language-boundary';
 import {
   hasProjectHealthRepairIntent,
   hasRuntimeErrorRepairIntent,
@@ -20,6 +21,7 @@ export interface VsCodeCodingKernelTaskContractInput {
   readonly contextFiles: readonly string[];
   readonly workspaceRoot: string;
   readonly taskContract: TaskContract;
+  readonly externalEffectIntent: ExternalEffectIntent;
   readonly targetPaths?: readonly string[];
   readonly prohibitedTargets?: readonly string[];
   readonly strictTargetScope?: boolean;
@@ -74,6 +76,8 @@ export function projectVsCodeCodingKernelTaskContract(
     deliverableKinds,
     confirmedWorkspaceMutation: workspaceMutationConfirmed,
     verificationRequired,
+    verificationRequirementAuthoritative: verificationRequired !== undefined,
+    externalEffectIntent: input.externalEffectIntent,
   });
 }
 

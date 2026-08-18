@@ -76,6 +76,7 @@ export const productCodingKernelExecutor: CodingKernelExecutionPort = {
         contextFiles: request.contextFiles,
         workspaceRoot: request.workspaceRoot,
         taskContract: request.semanticContract.taskContract,
+        externalEffectIntent: request.semanticContract.intent.context.externalEffect,
       });
       const output = await kernel.execute({
         version: CODING_KERNEL_REQUEST_VERSION,

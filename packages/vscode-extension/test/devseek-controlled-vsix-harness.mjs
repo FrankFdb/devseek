@@ -4589,6 +4589,7 @@ function parseJsonLine(line) { try { return JSON.parse(line); } catch { return n
 function isProductRunTerminalEvent(terminal) {
   const data = terminal && typeof terminal === 'object' ? terminal.data || {} : {};
   return terminal?.source !== 'vscode-extension.memory-pipeline'
+    && data.workloadRole !== 'background-maintenance'
     && data.mutationKind !== 'pending-edit-resolution'
     && data.mutationKind !== 'pending-edit-undo';
 }
@@ -5432,6 +5433,7 @@ function inspectControlledRunLogEvidenceForSelection(driverReport, scenarios) {
 function isProductRunTerminalEvent(terminal) {
   const data = terminal && typeof terminal === 'object' ? terminal.data || {} : {};
   return terminal?.source !== 'vscode-extension.memory-pipeline'
+    && data.workloadRole !== 'background-maintenance'
     && data.mutationKind !== 'pending-edit-resolution'
     && data.mutationKind !== 'pending-edit-undo';
 }

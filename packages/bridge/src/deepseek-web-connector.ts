@@ -64,7 +64,7 @@ export interface DeepSeekWebConnectorPort {
 }
 
 export interface DeepSeekWebConnectorExclusiveExecutionPort {
-  execute<T>(operation: () => Promise<T>): Promise<T>;
+  execute<T>(operation: () => Promise<T>, requestId?: string): Promise<T>;
 }
 
 export interface DeepSeekWebConnectorExecutionOptions {
@@ -109,7 +109,7 @@ export class CanonicalDeepSeekWebConnectorExecutionService {
           await this.sleep(retry.retryAfterMs ?? 0);
         }
       }
-    });
+    }, session.requestId);
   }
 }
 

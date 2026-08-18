@@ -29,6 +29,14 @@ function normalizeModelTodoItems(rawItems) {
   return items;
 }
 
+function findFailedAgentTodoLabel(todos) {
+  var failedTodo = (todos || []).find(function(todo) {
+    return todo && todo.status === 'failed' && todo.title;
+  });
+  if (!failedTodo) return '';
+  return failedTodo.title.length > 52 ? failedTodo.title.slice(0, 50) + '...' : failedTodo.title;
+}
+
 function extractTodoItemsFromParsedToolObject(obj) {
   if (!obj || typeof obj !== 'object') return [];
   if (Array.isArray(obj.todoList)) return normalizeModelTodoItems(obj.todoList);

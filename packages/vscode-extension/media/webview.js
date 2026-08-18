@@ -2185,7 +2185,6 @@ function renderFileChangesWidget(editedFiles) {
  * Example outputs: "Created Car.h", "Analyzed main.cpp (3 steps)", "修改 CMakeLists.txt"
  */
 function buildFinishedLabel(isFailed, container) {
-  // Count tool activity steps for appending step info
   var stepCount = 0;
   if (container) {
     stepCount = container.querySelectorAll('.aut-step:not([data-progress-narration]), .aut-row, .term-output-details, .ran-command-row').length;
@@ -2193,50 +2192,22 @@ function buildFinishedLabel(isFailed, container) {
   if (!stepCount) {
     stepCount = Object.keys(agentActivityCounts).reduce(function(s, k) { return s + agentActivityCounts[k]; }, 0);
   }
-  var stepSuffix = stepCount > 0 ? ' · ' + stepCount + ' 步' : '';
-  var containerLabel = sanitizeAgentTaskLabelValue(container
-    ? (container.getAttribute('data-finished-label') || container.getAttribute('data-running-label') || '')
-    : '');
-  if (container && container.hasAttribute('data-presented-progress')) {
-    var activitySummary = formatAgentActivitySummary(collectAgentContainerActivityCounts(container));
-    if (activitySummary) return (isFailed ? '失败：' : '') + activitySummary + stepSuffix;
-    return isFailed ? '执行明细失败' : '执行明细';
-  }
-  if (isFailed) {
-    if (agentLastErrorTitle) return agentLastErrorTitle + stepSuffix;
-    var failedTodoLabel = findFailedTodoLabel();
-    if (failedTodoLabel) return '失败：' + failedTodoLabel + stepSuffix;
-  }
-  if (containerLabel) {
-    return (isFailed ? '失败：' : '') + containerLabel + stepSuffix;
-  }
-  // Priority 1: Use action-based label from current task (most specific — Copilot style).
-  // Must check this BEFORE todoCount so execute-phase containers get their own label
-  // ("Created foo.cpp") rather than the plan-level todo count fallback.
-  var currentTaskLabel = sanitizeAgentTaskLabelValue(agentCurrentTaskLabel);
-  if (currentTaskLabel) {
-    if (isFailed) {
-      var failFile = currentTaskLabel.replace(/^(创建|修改|编辑|删除|分析|探索|运行|验证|处理)\s+/, '');
-      return '失败：' + failFile;
-    }
-    var doneLabel = formatFinishedAgentTaskLabel(currentTaskLabel);
-    return doneLabel + stepSuffix;
-  }
-  // Priority 2: Plan-only containers — show todo count as meaningful label
   var todoCount = agentToolTodos && agentToolTodos.length ? agentToolTodos.length : agentTodos.length;
-  if (!isFailed && todoCount > 0) {
-    return '已规划 ' + todoCount + ' 个任务' + stepSuffix;
-  }
-  if (isFailed) return stepCount > 0 ? ('失败 — ' + stepCount + ' 步') : '失败';
-  return stepCount > 0
-    ? '已完成 ' + stepCount + ' 步'
-    : '已完成';
+  return formatFinishedAgentActivityLabel({
+    isFailed: isFailed,
+    stepCount: stepCount,
+    containerLabel: container ? (container.getAttribute('data-finished-label') || container.getAttribute('data-running-label') || '') : '',
+    presentedProgress: !!(container && container.hasAttribute('data-presented-progress')),
+    activitySummary: container ? formatAgentActivitySummary(collectAgentContainerActivityCounts(container)) : '',
+    errorTitle: agentLastErrorTitle,
+    failedTodoLabel: findFailedTodoLabel(),
+    currentTaskLabel: agentCurrentTaskLabel,
+    todoCount: todoCount,
+  });
 }
 
 function findFailedTodoLabel() {
-  var failedTodo = (agentToolTodos || []).find(function(t) { return t && t.status === 'failed' && t.title; });
-  if (!failedTodo) return '';
-  return failedTodo.title.length > 52 ? failedTodo.title.slice(0, 50) + '...' : failedTodo.title;
+  return findFailedAgentTodoLabel(agentToolTodos);
 }
 
 function markFirstActiveTodoFailedForFinalState(todos) {

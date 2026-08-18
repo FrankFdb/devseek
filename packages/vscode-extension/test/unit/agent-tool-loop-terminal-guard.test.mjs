@@ -1222,6 +1222,59 @@ test('ToolLoop replace_in_file edits existing workspace file with write evidence
   }
 });
 
+test('ToolLoop replace_in_file tolerates only line-indentation loss from web transport', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-replace-whitespace-tool-'));
+  try {
+    const srcDir = path.join(workspaceRoot, 'src');
+    mkdirSync(srcDir, { recursive: true });
+    const filePath = path.join(srcDir, 'worker.cpp');
+    writeFileSync(filePath, [
+      'void publish() {',
+      '  try {',
+      '    for (const auto& failure : failures) {',
+      '      output.push_back(eventName + ":" + id + ":" + failure);',
+      '    }',
+      '  } catch (...) {',
+      '    output.push_back(eventName + ":" + id + ":handler-exception");',
+      '  }',
+      '}',
+      '',
+    ].join('\n'), 'utf8');
+    const oldStr = [
+      '  try {',
+      'for (const auto& failure : failures) {',
+      'output.push_back(eventName + ":" + id + ":" + failure);',
+      '}',
+      '} catch (...) {',
+      'output.push_back(eventName + ":" + id + ":handler-exception");',
+      '}',
+    ].join('\n');
+    const newStr = oldStr
+      .replace('eventName + ":" + id + ":" + failure', '"event=" + eventName + ";id=" + id + ";failure=" + failure')
+      .replace('eventName + ":" + id + ":handler-exception"', '"event=" + eventName + ";id=" + id + ";failure=handler-exception"');
+
+    const result = await executeFakeToolsForLoop(
+      [{ name: 'replace_in_file', input: { path: 'src/worker.cpp', old_str: oldStr, new_str: newStr } }],
+      {
+        onResolveFileWriteConstraint: async () => ALLOW_FILE_WRITE,
+        onAppliedChange: async () => {},
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      workspaceRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot },
+    );
+
+    assert.equal(result.changeReceipts?.[0]?.status, 'committed');
+    assert.equal(result.toolFailures, undefined);
+    const content = readFileSync(filePath, 'utf8');
+    assert.match(content, /^      output\.push_back\("event="/m);
+    assert.match(content, /^    output\.push_back\("event="/m);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('ToolLoop expands a batch file-write payload into independently settled canonical actions', async () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-batch-write-tool-'));
   try {

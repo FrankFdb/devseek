@@ -56,7 +56,6 @@ import {
   beginMemoryForegroundRun,
   createProviderMemoryModel,
   endMemoryForegroundRun,
-  flushMemoryPipelineWork,
   MemoryPipelineService,
   scheduleMemoryPipelineWork,
 } from './app/memory-pipeline-service';
@@ -76,9 +75,10 @@ import { createEvidenceAwareMemoryWriteFactory } from './app/evidence-aware-memo
 import { recordApplyWorkflowEvidence } from './app/workflow-run-evidence-adapter';
 import { tryPublishProjectInitTurn } from './app/project-init-service';
 import { tryBuildReadOnlyInspectionResult } from './app/read-only-inspection-service';
-import { buildRestoredSessionLlmHistory, buildSessionLoadedPayload, stripSessionContextPrefix } from './app/session-display-service';
+import { buildRestoredSessionLlmHistory, buildSessionLoadedPayload } from './app/session-display-service';
 import { buildSessionBootstrapState } from './app/session-bootstrap-service';
 import { SessionService, type SessionMeta } from './app/session-service';
+import { SessionPersistenceCoordinator } from './app/session-persistence-coordinator';
 import { SessionContinuationProjector } from './app/session-continuation-projector';
 import { RunChangedPathRecorder } from './app/run-changed-path-recorder';
 import {
@@ -101,11 +101,11 @@ import { createAgentFileWriteConstraintResolver } from './ui/agent-file-write-co
 import { postWebviewEvent, postWebviewMessage } from './ui/webview-event-adapter';
 import { AgentTurnPresenter } from './ui/agent-turn-presenter';
 import { DeepSeekViewProvider } from './ui/deepseek-view-provider';
-import type { WebviewInboundMessage } from './ui/webview-protocol';
 import { recordRealPluginHarnessProgress, registerRealPluginDeepSeekHarnessCommand } from './ui/real-plugin-harness';
 import { buildAgentRunDisplayProfile } from './agent/agent-run-display';
 import { discoverFilesFromDirectoryPrompt, relPathFromWorkspace, toContextDisplayLabels } from './app/context-discovery-service';
-import { TaskHistoryUiService } from './app/task-history-ui-service';
+import { handleTaskHistoryWebviewMessage } from './ui/task-history-webview-handler';
+import { shutdownExtensionRuntime } from './app/extension-runtime-shutdown';
 import { registerExtensionCommands } from './ui/extension-command-registration';
 import { FileContextService } from './workspace/file-context-service';
 import { WorkspaceGrepSearchService } from './workspace/grep-search-service';
@@ -122,7 +122,6 @@ import {
 // ----------------------------------------------------------------
 // Types
 // ----------------------------------------------------------------
-type WebviewMessage = WebviewInboundMessage;
 
 // ----------------------------------------------------------------
 // Sidebar chat view state (single-level entry, no launcher page)
@@ -149,6 +148,13 @@ let agentCheckpointService: ScopedTaskCheckpointService<AgentTask>;
 const sessionRecentFiles = new Map<string, string>();
 /** 当前活跃的 session ID */
 let activeSessionId = '';
+const sessionPersistence = new SessionPersistenceCoordinator({
+  getSessionService,
+  getActiveSessionId: () => activeSessionId,
+  getHistory: () => nonBridgeChatHistory,
+  getRecentFiles: () => sessionRecentFiles,
+  routeCompaction: prompt => routeChat({ prompt, mode: 'fast', trackHistory: false }),
+});
 const sessionContinuationProjector = new SessionContinuationProjector({
   getAgentState: () => loadAgentSessionState(),
   getLastAgentChangedPaths: () => lastAgentChangedPaths,
@@ -742,6 +748,7 @@ async function runActiveChat(
                 traceRunId: agentTraceRunId,
                 traceEvidenceParticipantToken: agentRunContext.evidenceParticipantToken,
                 onTraceEvidenceError: error => agentRunContext?.reportEvidenceIssue(error),
+                signal: chatSignal,
               });
             },
             onValidationCommand: terminalPermissionCoordinator.createValidationCommandRunner({
@@ -752,6 +759,7 @@ async function runActiveChat(
               traceRunId: agentTraceRunId,
               traceEvidenceParticipantToken: agentRunContext.evidenceParticipantToken,
               onTraceEvidenceError: error => agentRunContext?.reportEvidenceIssue(error),
+              signal: chatSignal,
             }),
             onReadFile: async (filePath: string, workDir?: string, range?: { startLine?: number; endLine?: number }) => (
               createFileContextService(agWsRoot).readFileForAi(filePath, { workDir, ...range })
@@ -765,6 +773,7 @@ async function runActiveChat(
               webview,
               terminalPermissionCoordinator,
               runContext: agentRunContext,
+              signal: chatSignal,
             }),
             signal: chatSignal,
             onTaskCheckpoint: async (firstUnfinishedIndex, remainingTasks, reason = 'progress', canonicalCheckpoint) => {
@@ -1076,6 +1085,7 @@ async function runActiveChat(
       traceRunId: chatRunContext.runId,
       traceEvidenceParticipantToken: chatRunContext.evidenceParticipantToken,
       onTraceEvidenceError: error => chatRunContext?.reportEvidenceIssue(error),
+      signal: chatSignal,
     });
     chatRunContext.trace.info('routing', 'route-decision', {
       agentEnabled: config.get<boolean>('agentEnabled', true),
@@ -1485,83 +1495,22 @@ function saveSessionMeta(meta: SessionMeta): void {
 }
 
 function saveCurrentSession(): void {
-  if (!activeSessionId) return;
-  if (nonBridgeChatHistory.length === 0) return;
-  const sessionService = getSessionService();
-  if (!sessionService) return;
-  const history = stripSessionContextPrefix(nonBridgeChatHistory).slice(-40);
-  sessionService.saveSessionHistory(activeSessionId, history);
-  const filesMap = Object.fromEntries(sessionRecentFiles);
-  sessionService.saveSessionFiles(activeSessionId, filesMap);
-  // Keep meta stats up-to-date (messageCount, fileCount, changedFiles)
-  const existing = getSessions().find(s => s.id === activeSessionId);
-  if (existing) {
-    const fileValues = Object.values(filesMap) as string[];
-    const changedFiles = [...new Set(fileValues.map(f => nodePath.basename(f)))].slice(0, 8);
-    saveSessionMeta({
-      ...existing,
-      messageCount: nonBridgeChatHistory.filter(m => m.role === 'user').length,
-      fileCount: changedFiles.length,
-      changedFiles,
-    });
-  }
+  sessionPersistence.saveCurrentSession();
 }
 
 function saveCurrentSessionFiles(): void {
-  if (!activeSessionId) return;
-  getSessionService()?.saveSessionFiles(activeSessionId, Object.fromEntries(sessionRecentFiles));
+  sessionPersistence.saveCurrentSessionFiles();
 }
 
 async function compactAndSaveHistory(history: ChatMessage[], sessionId: string): Promise<void> {
-  const sessionService = getSessionService();
-  if (history.length < 4 || !sessionId || !sessionService) return;
-  const histText = history.slice(-30).map(m => `[${m.role}]: ${m.content.slice(0, 600)}`).join('\n');
-  const compactPrompt = `你是一个 AI 编程助手会话摘要生成器。请将下面的对话历史生成一份**结构化 Markdown 摘要**，严格按以下格式输出（不要省略任何章节标题，保持 Markdown 格式）：
-
-## 主要任务
-一句话说明本次对话的核心目标。
-
-## 已完成的工作
-- （用列表列出具体完成的任务，每条20字以内）
-
-## 修改/创建的文件
-- \`相对路径/文件名\` — 一句话描述改动内容
-（路径非常重要，保留完整相对路径）
-
-## 遇到的问题与解决方案
-- （如有，列出关键错误和修复方法；如无可写"无"）
-
-## 当前状态与未完成事项
-- （列出尚未完成的工作，如全部完成写"已全部完成"）
-
----
-对话内容：
-${histText}`;
-  try {
-    const summary = await routeChat({ prompt: compactPrompt, mode: 'fast', trackHistory: false });
-    sessionService.saveSessionSummary(sessionId, summary);
-    // Extract ultra-compact digest (~150 chars) from first meaningful line of summary
-    const lines = summary.split('\n').map(l => l.trim()).filter(l => l);
-    const digestLine = lines.find(l => l.length > 15 && !l.startsWith('#') && !l.startsWith('-') && !l.startsWith('*'));
-    const digest = (digestLine || lines[0] || summary).replace(/[#*`]/g, '').trim().slice(0, 150);
-    // Update SessionMeta with digest
-    getSessionService()?.updateSessionMeta(sessionId, { digest });
-  } catch {
-    // compact failure is non-critical, ignore
-  }
+  await sessionPersistence.compactAndSaveHistory(history, sessionId);
 }
 
 function registerToMemory(absPath: string): void {
   if (!absPath) return;
-  sessionRecentFiles.set(nodePath.basename(absPath).toLowerCase(), absPath);
   const wsFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(absPath));
   const wsRoot = wsFolder?.uri.fsPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  if (wsRoot && absPath.startsWith(wsRoot + nodePath.sep)) {
-    const rel = absPath.slice(wsRoot.length + 1);
-    sessionRecentFiles.set(rel, absPath);
-    sessionRecentFiles.set(nodePath.basename(rel).toLowerCase(), absPath);
-  }
-  saveCurrentSessionFiles();
+  sessionPersistence.registerFile(sessionRecentFiles, absPath, wsRoot);
 }
 
 function deleteSession(id: string): void {
@@ -1585,14 +1534,6 @@ async function loadSessionIntoWebview(wv: vscode.Webview, id: string): Promise<v
   restoreLastAgentPathsFromSession(id);
   const loadedMeta = getSessions().find(session => session.id === id);
   postWebviewMessage(wv, buildSessionLoadedPayload({ id, history: loadedHistory, summary: loadedSummary, meta: loadedMeta }));
-}
-
-async function handleTaskHistoryUiMessage(wv: vscode.Webview, msg: WebviewMessage): Promise<void> {
-  if (!extContext) return;
-  const service = new TaskHistoryUiService(extContext.workspaceState, { workspaceRoot: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd() });
-  for (const response of await service.handle(msg)) {
-    postWebviewMessage(wv, response);
-  }
 }
 
 function initOrRestoreSession(): void {
@@ -1661,7 +1602,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     loadSession: loadSessionIntoWebview,
     deleteSession,
     saveCurrentSession,
-    handleTaskHistoryUiMessage,
+    handleTaskHistoryUiMessage: (webview, message) => (
+      handleTaskHistoryWebviewMessage(context, webview, message)
+    ),
   });
   pendingEditCoordinator.activate(context);
   initAgentLearner(context);
@@ -1730,6 +1673,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 export async function deactivate(): Promise<void> {
-  await flushMemoryPipelineWork();
-  await sessionService?.flush();
+  await shutdownExtensionRuntime({
+    cancelActiveRun: () => activeChatRunCoordinator.cancelActiveRun({
+      reason: 'extension-deactivated',
+      source: 'extension-deactivate',
+    }),
+    flushSession: () => sessionService?.flush() ?? Promise.resolve(),
+  });
 }

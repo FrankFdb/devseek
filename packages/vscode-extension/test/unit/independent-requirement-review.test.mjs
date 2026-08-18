@@ -758,6 +758,30 @@ test('strict review parser requires caller-observable failure evidence for rejec
   assert.equal(verdict('Scenario duplicate id: submit id A, then submit id A again; line 1 returns an empty trades vector and leaves the book unchanged, so rejection is caller-observable.').status, 'indeterminate');
 });
 
+test('strict review parser does not misclassify exception isolation as invalid-input rejection', () => {
+  const source = snapshot('src/deployment_coordinator.cpp', [
+    'void publishEvent(Context& ctx, const std::string& event) {',
+    '  try { ctx.events.publish(event); }',
+    '  catch (...) { ctx.eventFailures.push_back(event); }',
+    '}',
+  ].join('\n'));
+  const prompt = '订阅者异常必须记录到 eventFailures，且不能改变任务状态或阻止后续任务执行。';
+  const verdict = parseIndependentReviewResponse(response({
+    requirement_checks: [{
+      requirement_id: 'R1',
+      requirement_quote: prompt,
+      status: 'satisfied',
+      evidence: 'src/deployment_coordinator.cpp lines 1-4 catches subscriber exceptions, records the event failure, and returns through the shared publish boundary.',
+    }],
+    findings: [],
+    overall_correctness: 'patch is correct',
+    overall_explanation: 'The shared boundary isolates subscriber exceptions.',
+    overall_confidence_score: 0.95,
+  }), [source], prompt);
+
+  assert.equal(verdict.status, 'passed');
+});
+
 test('strict review parser cross-checks rejection claims against final C++ source', () => {
   const source = snapshot('src/order_book.cpp', [
     '#include "order_book.hpp"',

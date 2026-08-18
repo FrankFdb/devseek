@@ -26,6 +26,7 @@ function changePlan(target = 'src/value.ts') {
       acceptanceIds: ['verified'],
       evidenceRequirements: ['workspace-mutation-receipt', 'workspace-readback'],
     }],
+    requiredTargets: [target],
     authorizedTargets: [target],
     reasonCodes: [],
     evidenceRefs: ['plan:evidence'],
@@ -113,6 +114,39 @@ test('I19-CHG-02 user journey: committed unplanned paths fail code change confor
   assert.equal(decision.status, 'failed');
   assert.deepEqual(decision.unplannedPaths, ['src/hidden.ts']);
   assert.ok(decision.reasonCodes.includes('unplanned-path-mutated'));
+});
+
+test('I19-CHG-05 user journey: model-selected authorized file satisfies a pathless source change', () => {
+  const plan = {
+    ...changePlan(),
+    requiredTargets: [],
+    authorizedTargets: ['include/value.hpp', 'src/value.cpp'],
+  };
+  const decision = new CanonicalCodeChangeService().bind({ runId: 'run-change' }).assess(codeChangeInput({
+    plan,
+    mutations: [mutation({ paths: ['src/value.cpp'] })],
+  }));
+
+  assert.equal(decision.status, 'conformant');
+  assert.deepEqual(decision.plannedTargets, []);
+  assert.deepEqual(decision.changedPaths, ['src/value.cpp']);
+  assert.deepEqual(decision.unplannedPaths, []);
+  assert.deepEqual(decision.reasonCodes, ['authorized-change-committed-and-read-back']);
+});
+
+test('I19-CHG-06 user journey: pathless source change still rejects a mutation outside authorized scope', () => {
+  const plan = {
+    ...changePlan(),
+    requiredTargets: [],
+    authorizedTargets: ['src/value.cpp'],
+  };
+  const decision = new CanonicalCodeChangeService().bind({ runId: 'run-change' }).assess(codeChangeInput({
+    plan,
+    mutations: [mutation({ paths: ['src/hidden.cpp'] })],
+  }));
+
+  assert.equal(decision.status, 'failed');
+  assert.deepEqual(decision.unplannedPaths, ['src/hidden.cpp']);
 });
 
 test('I19-INT-01 user journey: tool mutation and verification form one causal chain', () => {

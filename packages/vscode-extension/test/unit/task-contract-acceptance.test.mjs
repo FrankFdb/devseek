@@ -74,7 +74,7 @@ test('product Kernel and Agentic validation delegate acceptance projection to it
   assert.match(kernelProjection, /resolveCodingKernelTaskContract\(\{/);
   assert.match(productExecutor, /executionMode:\s*request\.semanticContract\.intent\.mode/);
   assert.doesNotMatch(productExecutor, /executionMode:\s*request\.workflowMode/);
-  assert.match(agenticLoop, /projectAgenticVerificationAcceptance\(writeAuthority\.semanticContract\.taskContract\)/);
+  assert.match(agenticLoop, /projectAgenticVerificationAcceptance\(writeAuthority\.canonicalSemanticContract\.taskContract\)/);
   assert.match(agenticLoop, /projectTaskContractAcceptance\(taskContract\)/);
   assert.match(
     readFileSync(path.join(rootDir, 'src/agent/task-contract-acceptance.ts'), 'utf8'),

@@ -25,10 +25,30 @@ execSync(
 
 const req = createRequire(import.meta.url);
 const {
+  buildMissingEvidenceRecoveryInstruction,
   inferInitialAgenticTodos,
   markMissingEvidenceTodosIncomplete,
   markValidationFailureTodos,
 } = req(bundlePath);
+
+test('Evidence recovery: a mutating task keeps write authority after required readback', () => {
+  const instruction = buildMissingEvidenceRecoveryInstruction(
+    ['文件读取/检查结果'],
+    { mutationExpected: true, mutationAllowed: true },
+  );
+
+  assert.match(instruction, /当前写入授权仍然有效/);
+  assert.doesNotMatch(instruction, /不要创建、修改或覆盖文件/);
+});
+
+test('Evidence recovery: a read-only task keeps the no-write boundary', () => {
+  const instruction = buildMissingEvidenceRecoveryInstruction(
+    ['文件内容读取结果'],
+    { mutationExpected: false, mutationAllowed: false },
+  );
+
+  assert.match(instruction, /不要创建、修改或覆盖文件/);
+});
 
 test('Evidence recovery: failed local validation marks validation todos failed', () => {
   const todos = [

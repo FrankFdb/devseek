@@ -8,6 +8,7 @@ export const CODING_DIRTY_WORKTREE_DECISION_VERSION = 'devseek.coding-dirty-work
 
 export type CodingWorktreeRepositoryState = 'git' | 'not-git' | 'unavailable';
 export type CodingWorktreeEntryStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'copied' | 'untracked';
+export type CodingDirtyWorktreeOverlapProtection = 'none' | 'optimistic-baseline';
 
 export interface CodingWorktreeEntry {
   readonly path: string;
@@ -28,6 +29,7 @@ export interface CodingWorktreeSnapshot {
 export interface CodingDirtyWorktreeAuthorizationInput {
   readonly actionId: string;
   readonly paths: readonly string[];
+  readonly overlapProtection?: CodingDirtyWorktreeOverlapProtection;
 }
 
 export interface CodingDirtyWorktreeDecision {
@@ -35,8 +37,15 @@ export interface CodingDirtyWorktreeDecision {
   readonly runId: string;
   readonly actionId: string;
   readonly decision: 'allow' | 'deny';
-  readonly reason: 'clean' | 'disjoint-user-changes' | 'not-git' | 'overlapping-user-changes' | 'worktree-unavailable';
+  readonly reason:
+    | 'clean'
+    | 'disjoint-user-changes'
+    | 'not-git'
+    | 'baseline-protected-user-changes'
+    | 'overlapping-user-changes'
+    | 'worktree-unavailable';
   readonly paths: readonly string[];
+  readonly overlapProtection: CodingDirtyWorktreeOverlapProtection;
   readonly conflictingEntries: readonly CodingWorktreeEntry[];
   readonly snapshotSha256: string;
   readonly evidenceRefs: readonly string[];
@@ -67,11 +76,12 @@ export class CanonicalDirtyWorktreePolicyService implements DirtyWorktreePolicyP
       authorize(request: CodingDirtyWorktreeAuthorizationInput) {
         const actionId = requireId(request.actionId, 'action-id');
         const paths = normalizePaths(request.paths);
+        const overlapProtection = normalizeOverlapProtection(request.overlapProtection);
         const conflicts = snapshot.repositoryState === 'git'
           ? snapshot.entries.filter(entry => paths.some(path => pathsOverlap(path, entry.path)
             || (entry.sourcePath ? pathsOverlap(path, entry.sourcePath) : false)))
           : [];
-        const reason = decideReason(snapshot, conflicts);
+        const reason = decideReason(snapshot, conflicts, paths, overlapProtection);
         const evidenceRefs = Object.freeze([
           ...snapshot.evidenceRefs,
           `dirty-worktree:${snapshot.snapshotSha256}:${reason}`,
@@ -85,6 +95,7 @@ export class CanonicalDirtyWorktreePolicyService implements DirtyWorktreePolicyP
             : 'allow' as const,
           reason,
           paths,
+          overlapProtection,
           conflictingEntries: Object.freeze(conflicts.map(snapshotWorktreeEntry)),
           snapshotSha256: snapshot.snapshotSha256,
           evidenceRefs,
@@ -270,11 +281,38 @@ function classifyGitStatus(xy: string): CodingWorktreeEntryStatus {
 function decideReason(
   snapshot: CodingWorktreeSnapshot,
   conflicts: readonly CodingWorktreeEntry[],
+  paths: readonly string[],
+  overlapProtection: CodingDirtyWorktreeOverlapProtection,
 ): CodingDirtyWorktreeDecision['reason'] {
   if (snapshot.repositoryState === 'unavailable') return 'worktree-unavailable';
   if (snapshot.repositoryState === 'not-git') return 'not-git';
-  if (conflicts.length > 0) return 'overlapping-user-changes';
+  if (conflicts.length > 0) {
+    if (overlapProtection === 'optimistic-baseline' && conflictsAreExact(paths, conflicts)) {
+      return 'baseline-protected-user-changes';
+    }
+    return 'overlapping-user-changes';
+  }
   return snapshot.entries.length > 0 ? 'disjoint-user-changes' : 'clean';
+}
+
+function conflictsAreExact(
+  paths: readonly string[],
+  conflicts: readonly CodingWorktreeEntry[],
+): boolean {
+  return paths.every(path => conflicts.every(entry => {
+    const related = [entry.path, entry.sourcePath]
+      .filter((candidate): candidate is string => Boolean(candidate))
+      .filter(candidate => pathsOverlap(path, candidate));
+    return related.every(candidate => candidate === path);
+  }));
+}
+
+function normalizeOverlapProtection(
+  value: CodingDirtyWorktreeOverlapProtection | undefined,
+): CodingDirtyWorktreeOverlapProtection {
+  if (value === undefined || value === 'none') return 'none';
+  if (value === 'optimistic-baseline') return value;
+  throw new Error('coding-dirty-worktree:invalid-overlap-protection');
 }
 
 function normalizePaths(values: readonly string[]): readonly string[] {

@@ -12,15 +12,59 @@ import {
 import { createStructuredToolEnvelopeDialects } from './structured-tool-envelope-dialects';
 import { createLegacyToolCallXmlDialect } from './legacy-tool-call-xml-dialect';
 import { createBareToolCommandDialect } from './bare-tool-command-dialect';
-import { parseLosslessXmlMutationInput } from './lossless-xml-tool-input';
+import {
+  createBareJsonToolCallDialect,
+  createFencedAnonymousJsonToolDialect,
+} from './bare-json-tool-call-dialect';
 import { normalizeFakeTool, normalizeToolInput } from './fake-tool-input-normalizer';
 import { createFakeToolJsonUtils, decodeLooseJsonString, findJsonArrayEnd, findJsonObjectEnd, type FakeTool } from './fake-tool-json-utils';
 import { decodeXmlishText, stripJsonFence } from './tool-protocol-text';
+import {
+  createXmlToolDialects,
+  parseXmlToolParameterBody,
+  primaryScalarInputKeyForTool,
+} from './xml-tool-dialects';
 
 export { findJsonArrayEnd, findJsonObjectEnd };
 export type { FakeTool } from './fake-tool-json-utils';
 
 export const KNOWN_FAKE_TOOL_NAMES = new Set(listAgentToolNames());
+
+function makeRawNamedToolAttemptRegex(flags = 'gi'): RegExp {
+  return new RegExp(String.raw`<\s*TOOL\s+name\s*=\s*(["'])([A-Za-z0-9_]+)\1\s*>\s*\{`, flags);
+}
+
+function findRawNamedToolAttemptStart(text: string): number {
+  const regex = makeRawNamedToolAttemptRegex();
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    const name = normalizeAgentToolName(match[2]);
+    if (KNOWN_FAKE_TOOL_NAMES.has(name) || /^mcp__[A-Za-z0-9_]+$/.test(name)) return match.index;
+  }
+  return -1;
+}
+
+function stripRawNamedToolAttempts(text: string): { text: string; removed: boolean } {
+  const regex = makeRawNamedToolAttemptRegex();
+  let output = '';
+  let cursor = 0;
+  let removed = false;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    const name = normalizeAgentToolName(match[2]);
+    if (!KNOWN_FAKE_TOOL_NAMES.has(name) && !/^mcp__[A-Za-z0-9_]+$/.test(name)) continue;
+    output += text.slice(cursor, match.index).replace(/[ \t]+$/, '');
+    const close = /<\/\s*TOOL\s*>/gi;
+    close.lastIndex = regex.lastIndex;
+    const closeMatch = close.exec(text);
+    cursor = closeMatch ? close.lastIndex : text.length;
+    regex.lastIndex = cursor;
+    removed = true;
+  }
+  if (!removed) return { text, removed: false };
+  output += text.slice(cursor);
+  return { text: output, removed: true };
+}
 
 const SHELL_TRANSCRIPT_NAMES = new Set([
   'bash', 'shell', 'sh', 'zsh', 'console', 'terminal', 'cmd', 'powershell', 'pwsh',
@@ -148,49 +192,8 @@ function makeToolCallEnvelopePairRegex(flags = 'gi'): RegExp {
   );
 }
 
-function makeXmlToolTagRegex(): RegExp {
-  const names = listAgentToolNames(true)
-    .sort((a, b) => b.length - a.length)
-    .map(escapeRegExp)
-    .join('|');
-  return new RegExp(`(?:<|&lt;)\\s*((?:TOOL[:_])?(?:${names}|mcp__[A-Za-z0-9_]+))\\b([^<>]*?)\\/\\s*(?:>|&gt;)`, 'gi');
-}
-
-function makeXmlToolPairRegex(): RegExp {
-  const names = listAgentToolNames(true)
-    .sort((a, b) => b.length - a.length)
-    .map(escapeRegExp)
-    .join('|');
-  return new RegExp(`(?:<|&lt;)\\s*((?:TOOL[:_])?(?:${names}|mcp__[A-Za-z0-9_]+))\\b[^<>]*?(?:>|&gt;)([\\s\\S]*?)(?:<\\/|&lt;\\/)\\s*\\1\\s*(?:>|&gt;)`, 'gi');
-}
-
-function makeXmlToolOpenJsonRegex(): RegExp {
-  const names = listAgentToolNames(true)
-    .sort((a, b) => b.length - a.length)
-    .map(escapeRegExp)
-    .join('|');
-  return new RegExp(`(?:<|&lt;)\\s*((?:TOOL[:_])?(?:${names}|mcp__[A-Za-z0-9_]+))\\b[^<>]*?(?:>|&gt;)\\s*\\{`, 'gi');
-}
-
-function makeXmlToolTagTailRegex(flags = 'i'): RegExp {
-  const names = listAgentToolNames(true)
-    .sort((a, b) => b.length - a.length)
-    .map(escapeRegExp)
-    .join('|');
-  return new RegExp(`(?:<|&lt;)\\s*((?:TOOL[:_])?(?:${names}|mcp__[A-Za-z0-9_]+))\\b[\\s\\S]*$`, flags);
-}
-
 function isRegisteredFakeToolName(name: string): boolean {
   return KNOWN_FAKE_TOOL_NAMES.has(normalizeAgentToolName(name)) || name.startsWith('mcp__');
-}
-
-function normalizeXmlToolTagName(name: string): string {
-  const decoded = decodeXmlishText(name || '').trim();
-  return normalizeAgentToolName(decoded.replace(/^TOOL[:_]/i, ''));
-}
-
-function isRegisteredXmlToolTagName(name: string): boolean {
-  return isRegisteredFakeToolName(normalizeXmlToolTagName(name));
 }
 
 function isShellTranscriptName(name: string): boolean {
@@ -206,6 +209,7 @@ const {
   findToolInputObjectEnd,
   hasUnclosedToolCallEnvelopePrefixBeforeJson,
   jsonArrayToFakeTools,
+  jsonObjectToImplicitArrayFakeTool,
   jsonValueContainsToolPayload,
   jsonValueToFakeTools,
   parseLooseToolInput,
@@ -330,141 +334,6 @@ function parseFunctionStyleToolCalls(text: string): FakeTool[] {
     callRe.lastIndex = extracted.end;
   }
   return tools.map(normalizeFakeTool);
-}
-
-function parseXmlishToolAttributes(rawAttrs: string): Record<string, unknown> {
-  const input: Record<string, unknown> = {};
-  const attrs = decodeXmlishText(rawAttrs);
-  const attrRe = /([A-Za-z_][\w:-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'/>]+))/g;
-  let match: RegExpExecArray | null;
-  while ((match = attrRe.exec(attrs)) !== null) {
-    const key = match[1].trim();
-    if (!key) continue;
-    const rawValue = match[2] ?? match[3] ?? match[4] ?? '';
-    input[key] = parseDsmlParameterValue(rawValue);
-  }
-  return input;
-}
-
-function primaryScalarInputKeyForTool(name: string): string | undefined {
-  switch (normalizeAgentToolName(name)) {
-    case 'read_file':
-    case 'list_dir':
-      return 'path';
-    case 'file_search':
-    case 'search_file':
-      return 'glob';
-    case 'grep_search':
-      return 'pattern';
-    case 'semantic_search':
-    case 'memory_search':
-      return 'query';
-    case 'memory_read':
-      return 'path';
-    case 'run_terminal':
-      return 'command';
-    case 'fetch_webpage':
-      return 'url';
-    case 'memory_write':
-      return 'content';
-    case 'task_complete':
-      return 'summary';
-    default:
-      return undefined;
-  }
-}
-
-function parseXmlToolParameterBody(rawBody: string): Record<string, unknown> {
-  const input: Record<string, unknown> = {};
-  const body = decodeXmlishText(rawBody);
-  const paramRe = /<\s*([A-Za-z_][\w:-]*)\b([^<>]*?)>([\s\S]*?)<\/\s*\1\s*>/g;
-  let match: RegExpExecArray | null;
-  while ((match = paramRe.exec(body)) !== null) {
-    const rawTagName = match[1].trim();
-    const attrs = parseXmlishToolAttributes(match[2] || '');
-    const attrName = typeof attrs.name === 'string' ? attrs.name.trim() : '';
-    const key = /^(?:param|parameter)$/i.test(rawTagName) && attrName
-      ? attrName
-      : rawTagName.replace(/^[^:]+:/, '');
-    if (!key) continue;
-    const attrValue = attrs.value ?? attrs.string ?? attrs.text;
-    const rawValue = attrValue !== undefined ? String(attrValue) : match[3] || '';
-    input[key] = parseDsmlParameterValue(decodeXmlishText(rawValue));
-  }
-  return input;
-}
-
-function parseXmlToolBodyInput(name: string, rawBody: string): Record<string, unknown> {
-  const losslessMutationInput = parseLosslessXmlMutationInput(name, rawBody);
-  if (losslessMutationInput) return losslessMutationInput;
-  const body = stripJsonFence(decodeXmlishText(rawBody));
-  if (!body) return {};
-  try {
-    const parsed = JSON.parse(body) as unknown;
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-  } catch {
-    const looseInput = parseLooseToolInput(name, body);
-    if (looseInput) return looseInput;
-  }
-  const nestedParams = parseXmlToolParameterBody(body);
-  if (Object.keys(nestedParams).length > 0) return nestedParams;
-  const scalarKey = primaryScalarInputKeyForTool(name);
-  if (scalarKey && !/[<>]/.test(body)) return { [scalarKey]: parseDsmlParameterValue(body) };
-  return {};
-}
-
-function hasXmlCloseTagAfterJson(text: string, rawName: string, fromIndex: number): boolean {
-  let i = fromIndex;
-  while (i < text.length && /[ \t\r\n]/.test(text[i])) i++;
-  const name = escapeRegExp(decodeXmlishText(rawName || '').trim());
-  if (!name) return false;
-  return new RegExp(`^(?:<\\/|&lt;\\/)\\s*${name}\\s*(?:>|&gt;)`, 'i').test(text.slice(i));
-}
-
-function parseXmlToolOpenJsonCalls(text: string): Array<{ index: number; tool: FakeTool; end: number }> {
-  const tools: Array<{ index: number; tool: FakeTool; end: number }> = [];
-  const openRe = makeXmlToolOpenJsonRegex();
-  let match: RegExpExecArray | null;
-  while ((match = openRe.exec(text)) !== null) {
-    const rawName = match[1] || '';
-    const name = normalizeXmlToolTagName(rawName);
-    if (!isRegisteredFakeToolName(name)) continue;
-    const jsonStart = match.index + match[0].lastIndexOf('{');
-    const jsonEnd = findToolInputObjectEnd(text, name, jsonStart);
-    if (jsonEnd < 0) continue;
-    if (hasXmlCloseTagAfterJson(text, rawName, jsonEnd + 1)) continue;
-    const jsonText = text.slice(jsonStart, jsonEnd + 1);
-    const input = parseToolArgumentsRecord(name, jsonText);
-    if (!input) continue;
-    tools.push({ index: match.index, tool: { name, input: normalizeToolInput(name, input) }, end: jsonEnd + 1 });
-    openRe.lastIndex = jsonEnd + 1;
-  }
-  return tools;
-}
-
-function parseXmlToolTagCalls(text: string): FakeTool[] {
-  const tools: Array<{ index: number; tool: FakeTool }> = [];
-  const tagRe = makeXmlToolTagRegex();
-  let match: RegExpExecArray | null;
-  while ((match = tagRe.exec(text)) !== null) {
-    const name = normalizeXmlToolTagName(match[1]);
-    if (!isRegisteredFakeToolName(name)) continue;
-    const input = parseXmlishToolAttributes(match[2] || '');
-    tools.push({ index: match.index, tool: { name, input: normalizeToolInput(name, input) } });
-  }
-  const pairRe = makeXmlToolPairRegex();
-  while ((match = pairRe.exec(text)) !== null) {
-    const name = normalizeXmlToolTagName(match[1]);
-    if (!isRegisteredFakeToolName(name)) continue;
-    const input = parseXmlToolBodyInput(name, match[2] || '');
-    tools.push({ index: match.index, tool: { name, input: normalizeToolInput(name, input) } });
-  }
-  for (const item of parseXmlToolOpenJsonCalls(text)) {
-    tools.push({ index: item.index, tool: item.tool });
-  }
-  return tools.sort((a, b) => a.index - b.index).map(item => normalizeFakeTool(item.tool));
 }
 
 function parseToolCallEnvelopeInput(name: string, rawBody: string): Record<string, unknown> | null {
@@ -622,7 +491,7 @@ function parseNamedParameterToolCallEnvelopeBody(rawBody: string): FakeTool | nu
     } else {
       input = parseToolArgumentsRecord(name, parameterBody);
       if (!input && parameterBody.startsWith('<')) {
-        const nested = parseXmlToolParameterBody(parameterBody);
+        const nested = parseXmlToolParameterBody(parameterBody, parseDsmlParameterValue);
         if (Object.keys(nested).length > 0) input = nested;
       }
       if (!input) {
@@ -633,7 +502,7 @@ function parseNamedParameterToolCallEnvelopeBody(rawBody: string): FakeTool | nu
       }
     }
   } else {
-    const nested = parseXmlToolParameterBody(bodyWithoutName);
+    const nested = parseXmlToolParameterBody(bodyWithoutName, parseDsmlParameterValue);
     if (Object.keys(nested).length > 0) input = nested;
   }
 
@@ -719,77 +588,6 @@ function stripToolCallEnvelopeBlocks(text: string): string {
     cursor = toolCallEnvelopeBlockEnd(text, start);
   }
   return out.replace(TOOL_CALL_INCOMPLETE_TAIL_PATTERN, '').trimEnd();
-}
-
-function findNextXmlToolTagStart(text: string, startAt = 0): number {
-  const tagRe = makeXmlToolTagRegex();
-  tagRe.lastIndex = startAt;
-  let completeStart = -1;
-  let match: RegExpExecArray | null;
-  while ((match = tagRe.exec(text)) !== null) {
-    if (isRegisteredXmlToolTagName(match[1])) {
-      completeStart = match.index;
-      break;
-    }
-  }
-  const pairRe = makeXmlToolPairRegex();
-  pairRe.lastIndex = startAt;
-  while ((match = pairRe.exec(text)) !== null) {
-    if (!isRegisteredXmlToolTagName(match[1])) continue;
-    completeStart = completeStart < 0 ? match.index : Math.min(completeStart, match.index);
-    break;
-  }
-  const openJsonRe = makeXmlToolOpenJsonRegex();
-  openJsonRe.lastIndex = startAt;
-  while ((match = openJsonRe.exec(text)) !== null) {
-    if (!isRegisteredXmlToolTagName(match[1])) continue;
-    completeStart = completeStart < 0 ? match.index : Math.min(completeStart, match.index);
-    break;
-  }
-  const tailRe = makeXmlToolTagTailRegex('gi');
-  tailRe.lastIndex = startAt;
-  while ((match = tailRe.exec(text)) !== null) {
-    if (!isRegisteredXmlToolTagName(match[1])) continue;
-    return completeStart < 0 ? match.index : Math.min(completeStart, match.index);
-  }
-  return completeStart;
-}
-
-function stripXmlToolTagBlocks(text: string): string {
-  let out = '';
-  let cursor = 0;
-  const tagRe = makeXmlToolTagRegex();
-  let match: RegExpExecArray | null;
-  while ((match = tagRe.exec(text)) !== null) {
-    if (!isRegisteredXmlToolTagName(match[1])) continue;
-    out += text.slice(cursor, match.index).replace(/[ \t]+$/, '');
-    cursor = tagRe.lastIndex;
-  }
-  let cleaned = out + text.slice(cursor);
-  out = '';
-  cursor = 0;
-  const pairRe = makeXmlToolPairRegex();
-  while ((match = pairRe.exec(cleaned)) !== null) {
-    if (!isRegisteredXmlToolTagName(match[1])) continue;
-    out += cleaned.slice(cursor, match.index).replace(/[ \t]+$/, '');
-    cursor = pairRe.lastIndex;
-  }
-  cleaned = out + cleaned.slice(cursor);
-  cleaned = stripXmlToolOpenJsonBlocks(cleaned);
-  return cleaned.replace(makeXmlToolTagTailRegex(), '').trimEnd();
-}
-
-function stripXmlToolOpenJsonBlocks(text: string): string {
-  const calls = parseXmlToolOpenJsonCalls(text).sort((a, b) => a.index - b.index);
-  if (calls.length === 0) return text;
-  let out = '';
-  let cursor = 0;
-  for (const call of calls) {
-    if (call.index < cursor) continue;
-    out += text.slice(cursor, call.index).replace(/[ \t]+$/, '');
-    cursor = call.end;
-  }
-  return out + text.slice(cursor);
 }
 
 function findNextFunctionStyleToolCallStart(text: string, startAt = 0): number {
@@ -1623,10 +1421,12 @@ function stripReactActionBlocks(text: string): string {
 }
 
 export function findFirstToolCallStart(text: string): number {
-  return findFirstModelToolProtocolStart(
-    isolateModelToolRequestText(text).text,
-    MODEL_TOOL_PROTOCOL_DIALECTS,
-  );
+  const requestText = isolateModelToolRequestText(text).text;
+  const parsedStart = findFirstModelToolProtocolStart(requestText, MODEL_TOOL_PROTOCOL_DIALECTS);
+  const rawStart = findRawNamedToolAttemptStart(requestText);
+  if (parsedStart < 0) return rawStart;
+  if (rawStart < 0) return parsedStart;
+  return Math.min(parsedStart, rawStart);
 }
 
 export function containsFakeToolCallProtocol(text: string): boolean {
@@ -1636,8 +1436,9 @@ export function containsFakeToolCallProtocol(text: string): boolean {
 export function stripToolCallBlocks(text: string): string {
   const { text: requestText } = isolateModelToolRequestText(text);
   const { text: stripped, removed } = stripModelToolProtocolBlocks(requestText, MODEL_TOOL_PROTOCOL_DIALECTS);
-  const cleaned = stripped.replace(/\n{3,}/g, '\n\n').trim();
-  return removed ? cleaned.replace(/[ \t]*\n[ \t]*\n[ \t]*/g, '\n') : cleaned;
+  const raw = stripRawNamedToolAttempts(stripped);
+  const cleaned = raw.text.replace(/\n{3,}/g, '\n\n').trim();
+  return removed || raw.removed ? cleaned.replace(/[ \t]*\n[ \t]*\n[ \t]*/g, '\n') : cleaned;
 }
 
 function shellToken(raw: string): string {
@@ -1776,6 +1577,14 @@ function parseShellTranscriptToolCalls(text: string): FakeTool[] {
   return tools;
 }
 
+const xmlToolDialects = createXmlToolDialects({
+  isRegisteredName: isRegisteredFakeToolName,
+  findInputObjectEnd: findToolInputObjectEnd,
+  parseArguments: parseToolArgumentsRecord,
+  parseLooseInput: parseLooseToolInput,
+  parseScalar: parseDsmlParameterValue,
+});
+
 const MODEL_TOOL_PROTOCOL_DIALECTS: readonly ModelToolProtocolDialect<FakeTool>[] = [
   {
     name: 'bracket-tool',
@@ -1831,12 +1640,17 @@ const MODEL_TOOL_PROTOCOL_DIALECTS: readonly ModelToolProtocolDialect<FakeTool>[
     findStart: findNextFunctionStyleToolCallStart,
     strip: stripFunctionStyleToolCallBlocks,
   },
-  {
-    name: 'xml-tool-tag',
-    parse: parseXmlToolTagCalls,
-    findStart: findNextXmlToolTagStart,
-    strip: stripXmlToolTagBlocks,
-  },
+  ...xmlToolDialects,
+  createBareJsonToolCallDialect<FakeTool>({
+    isRegisteredName: isRegisteredFakeToolName,
+    normalizeName: normalizeAgentToolName,
+    normalizeInput: normalizeToolInput,
+    createTool: (name, input) => ({ name, input }),
+  }),
+  createFencedAnonymousJsonToolDialect({
+    parseImplicit: jsonObjectToImplicitArrayFakeTool,
+    normalize: normalizeFakeTool,
+  }),
   {
     name: 'json-tool-payload',
     parse: parseJsonToolPayloadToolCalls,
@@ -1901,6 +1715,7 @@ function collapseSupersededFullFileWrites(tools: FakeTool[]): FakeTool[] {
 export function hasIncompleteFakeToolCallProtocol(text: string): boolean {
   const requestText = isolateModelToolRequestText(text).text;
   if (structuredToolEnvelopes.hasIncomplete(requestText)) return true;
-  return findFirstModelToolProtocolStart(requestText, MODEL_TOOL_PROTOCOL_DIALECTS) >= 0
+  return (findFirstModelToolProtocolStart(requestText, MODEL_TOOL_PROTOCOL_DIALECTS) >= 0
+      || findRawNamedToolAttemptStart(requestText) >= 0)
     && parseModelToolProtocol(requestText, MODEL_TOOL_PROTOCOL_DIALECTS).length === 0;
 }

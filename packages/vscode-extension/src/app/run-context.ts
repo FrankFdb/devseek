@@ -25,10 +25,12 @@ import { decideSettlementState, type SettlementTerminalStatus } from './settleme
 import { VerificationScopeRegistry } from './verification-scope-registry';
 
 export type RunContextStatus = SettlementTerminalStatus;
+export type RunWorkloadRole = 'foreground-agent' | 'background-maintenance' | 'auxiliary-effect';
 
 export interface DevSeekRunContextOptions {
   workspaceRoot: string;
   source?: string;
+  workloadRole?: RunWorkloadRole;
   userPrompt: string;
   taskContract?: TaskContract;
   semanticContract?: TaskSemanticContract;
@@ -48,6 +50,7 @@ export interface DevSeekRunContext {
   readonly workspaceRoot: string;
   readonly sessionId?: string;
   readonly mode?: string;
+  readonly workloadRole: RunWorkloadRole;
   readonly trace: DevSeekTraceLogger;
   /** Capability shared with in-process and Bridge participants; never persisted in traces. */
   readonly evidenceParticipantToken: string;
@@ -74,6 +77,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
   readonly workspaceRoot: string;
   readonly sessionId?: string;
   readonly mode?: string;
+  readonly workloadRole: RunWorkloadRole;
   readonly trace: DevSeekTraceLogger;
   readonly evidenceParticipantToken = createProductRunEvidenceAuthorityToken();
   private readonly evidenceOwnerToken = createProductRunEvidenceAuthorityToken();
@@ -113,6 +117,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     this.workspaceRoot = options.workspaceRoot;
     this.sessionId = options.sessionId;
     this.mode = options.mode;
+    this.workloadRole = options.workloadRole ?? 'foreground-agent';
     const semanticContract = options.semanticContract ?? resolveTaskSemanticContract(options.userPrompt);
     const taskContract = options.taskContract ?? semanticContract.taskContract;
     this.taskContractFingerprint = fingerprintTaskContract(taskContract);
@@ -140,6 +145,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     this.trace.info('run-context', 'agent-run-started', {
       sessionId: options.sessionId,
       mode: options.mode,
+      workloadRole: this.workloadRole,
       prompt: promptSummary,
       taskContractFingerprint: this.taskContractFingerprint,
       semanticContractFingerprint: this.semanticContractFingerprint,
@@ -412,6 +418,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     this.trace.info('run-context', 'agent-run-completed', {
       ...completionData,
       status: effectiveStatus,
+      workloadRole: this.workloadRole,
       taskContractFingerprint: this.taskContractFingerprint,
       semanticContractFingerprint: this.semanticContractFingerprint,
       requiresSourceClaimArtifactVerification: this.requiresSourceClaimArtifactVerification,
@@ -1170,6 +1177,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
           owner_surface: 'vscode',
           session_id: this.sessionId ?? null,
           mode: this.mode ?? null,
+          workload_role: this.workloadRole,
           ...this.buildIdentity,
         },
       });

@@ -8,6 +8,13 @@ export interface ModelToolProtocolDialect<TTool> {
   strip(text: string): string;
 }
 
+export interface ModelToolProtocolAdapter<TTool> {
+  isRegisteredName(name: string): boolean;
+  normalizeName(name: string): string;
+  normalizeInput(name: string, input: Record<string, unknown>): Record<string, unknown>;
+  createTool(name: string, input: Record<string, unknown>): TTool;
+}
+
 export interface ProtocolStripResult {
   text: string;
   removed: boolean;

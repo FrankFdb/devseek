@@ -46,8 +46,15 @@ import {
 } from './tool-loop-canonical-session';
 import { ToolLoopFileWriter } from './tool-loop-file-writer';
 import { observeSettledTerminalExecution } from './tool-loop-terminal-observation';
+import { resolveTextReplacement } from './text-replacement';
+import type {
+  ToolFailureEvidence,
+  ToolLoopResult,
+  ToolSuppressionEvidence,
+} from './tool-loop-result';
 
 export { analyzeTerminalEvidence } from './tool-loop-terminal-evidence';
+export type { ToolFailureEvidence, ToolLoopResult, ToolSuppressionEvidence } from './tool-loop-result';
 
 const workspaceEditService = new WorkspaceEditService();
 const workspaceMutation = new VsCodeWorkspaceMutationAdapter(workspaceEditService);
@@ -111,58 +118,6 @@ export function describeAgentToolActivity(tool: FakeTool): { kind: string; label
 // structured result data so the agentic mini-loop can feed tool outputs back
 // to the AI in the next LLM round (Copilot/Cursor style).
 // Used by both single-shot analysis paths and the full agentic loop.
-
-export interface ToolLoopResult {
-  taskComplete: boolean;
-  /** Whether any data-fetching tool was called (triggers next AI round). */
-  toolCallsMade: boolean;
-  /** Whether any real work tool ran; todo/memory/task_complete are meta tools. */
-  workToolCallsMade: boolean;
-  /** Combined tool outputs to inject as context for the next AI round. */
-  feedbackForAI: string;
-  /** task_complete.summary value, if the AI called task_complete (may be empty). */
-  completeSummary?: string;
-  /** True when manage_todo_list was called and ALL items have status 'completed'.
-   *  Used in runAgenticLoop to break early without requiring an explicit task_complete call.
-   *  Common for DeepSeek web mode where the AI delivers all tools in one response. */
-  allTodosCompleted?: boolean;
-  /** Last todo state supplied by manage_todo_list in this loop iteration. */
-  todoItems?: TodoItem[];
-  /** Whether task_complete.summary was already routed to the final assistant bubble. */
-  summaryEmitted?: boolean;
-  /** Terminal commands that actually ran during this tool loop iteration. */
-  terminalCommands?: string[];
-  /** Exact outputs from terminal commands whose canonical host execution settled. */
-  terminalOutputs?: Array<{command: string; workdir: string; output: string}>;
-  /** Structured terminal evidence from compile/run/test/read-check commands. */
-  terminalEvidence?: TerminalEvidence[];
-  /** Files written (created or overwritten) during this tool loop iteration. */
-  writtenFiles?: Array<{path: string; basename: string; linesAdded: number; linesRemoved: number; action: string}>;
-  /** Files successfully read through read_file during this tool loop iteration. */
-  readFiles?: string[];
-  /** Unified evidence refs produced from normalized ToolCall plans. */
-  evidenceRefs?: EvidenceRef[];
-  /** Shared workspace mutation receipts produced by structured write tools. */
-  changeReceipts?: CodingWorkspaceMutationReceipt<unknown>[];
-  /** Shared terminal receipts produced by canonical tool execution. */
-  toolExecutionReceipts?: CodingToolExecutionReceipt<unknown>[];
-  /** Verification receipts bound to deterministic terminal validation actions. */
-  verificationReceipts?: CodingVerificationReceipt[];
-  /** Blocking tool failures that should be audited across rounds for no-progress loops. */
-  toolFailures?: ToolFailureEvidence[];
-}
-
-export interface ToolFailureEvidence {
-  tool: string;
-  kind: 'write' | 'replace' | 'terminal-guard' | 'terminal-capability' | 'tool-host';
-  path?: string;
-  reason: string;
-}
-
-export interface ToolSuppressionEvidence {
-  tool: string;
-  reason: 'repeated-terminal-without-progress' | 'repeated-context-without-progress';
-}
 
 function isInternalMemoryTodo(item: TodoItem): boolean {
   return /(?:项目记忆|智能体记忆|记忆体|memory|memory_write|写入记忆|记录.*记忆)/i.test(item.title || '');
@@ -1033,8 +988,11 @@ export async function executeFakeToolsForLoop(
         const oldContent = fs.readFileSync(absPath, 'utf8');
         readFiles.push(absPath);
         readEvidencePaths.add(absPath);
-        if (!oldContent.includes(oldStr)) {
-          const reason = 'old_str 未在当前文件中找到。请重新 read_file 读取最新内容后再精确替换。';
+        const replacement = resolveTextReplacement(oldContent, oldStr, newStr, replaceAll);
+        if (replacement.status !== 'matched') {
+          const reason = replacement.status === 'ambiguous'
+            ? 'old_str 忽略行首空白后匹配到多个位置，无法确定唯一修改点。请缩小到包含唯一上下文的片段。'
+            : 'old_str 未在当前文件中找到。请重新 read_file 读取最新内容后再精确替换。';
           await canonicalTools.fail(toolPlan, canonicalContext, 'replace-search-text-stale');
           recordToolFailure('replace_in_file', 'replace', rawPath, reason);
           const snapshotKey = nodePath.normalize(absPath);
@@ -1045,10 +1003,7 @@ export async function executeFakeToolsForLoop(
           parts.push(`[replace_in_file: ${rawPath}] 错误: ${reason}\n${snapshot}`);
           continue;
         }
-        const nextContent = replaceAll
-          ? oldContent.split(oldStr).join(newStr)
-          : oldContent.slice(0, oldContent.indexOf(oldStr)) + newStr + oldContent.slice(oldContent.indexOf(oldStr) + oldStr.length);
-        await fileWriter.apply(toolPlan, canonicalContext, 'replace_in_file', rawPath, nextContent);
+        await fileWriter.apply(toolPlan, canonicalContext, 'replace_in_file', rawPath, replacement.content);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         await canonicalTools.fail(toolPlan, canonicalContext, 'replace-preflight-failed');

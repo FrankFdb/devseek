@@ -9,6 +9,7 @@ import {
   type WrittenFileEvidence,
 } from './completion-evidence';
 import type { TaskSemanticContract } from '../task-semantic-contract';
+import type { CodingKernelTaskContract } from '@devseek-netai/shared';
 
 export interface ProviderFailureSettlementInput {
   promptRequiresTools: boolean;
@@ -22,6 +23,7 @@ export interface ProviderFailureSettlementInput {
   workspaceRoot?: string;
   completeSummary?: string;
   semanticContract?: TaskSemanticContract;
+  canonicalTaskContract?: CodingKernelTaskContract;
 }
 
 export type ProviderFailureSettlement =
@@ -42,6 +44,7 @@ export function settleProviderFailureFromCompletedEvidence(
     readEvidencePaths: input.readEvidencePaths,
     workspaceRoot: input.workspaceRoot,
     semanticContract: input.semanticContract,
+    canonicalTaskContract: input.canonicalTaskContract,
   });
   const blockingFailure = getBlockingTerminalFailure(
     input.userPrompt,

@@ -24,6 +24,7 @@ test('plan-mode projection cannot turn a stale source-change hint into mutation 
     contextFiles: [],
     workspaceRoot: '/workspace',
     taskContract: semanticTaskContract(['source-change']),
+    externalEffectIntent: 'none',
   });
 
   assert.equal(contract.mode, 'review');
@@ -32,13 +33,14 @@ test('plan-mode projection cannot turn a stale source-change hint into mutation 
   assert.equal(contract.constraints.includes('no-workspace-mutation'), true);
 });
 
-test('a model-revised edit mode projects source mutation and verification normally', () => {
+test('an edit contract projects source mutation and verification normally', () => {
   const contract = projectVsCodeCodingKernelTaskContract({
     userPrompt: 'Fix src/math.js and verify it.',
     executionMode: 'edit',
     contextFiles: [],
     workspaceRoot: '/workspace',
     taskContract: semanticTaskContract(['source-change', 'verification-result']),
+    externalEffectIntent: 'none',
     targetPaths: ['src/math.js'],
   });
 
@@ -46,6 +48,87 @@ test('a model-revised edit mode projects source mutation and verification normal
   assert.deepEqual(contract.deliverables.map(item => item.kind), [
     'source-change',
     'verification-result',
+  ]);
+});
+
+test('explicit medium-task targets remain included and are never projected as exclusions', () => {
+  const targets = [
+    'include/deployment_coordinator.hpp',
+    'src/deployment_coordinator.cpp',
+  ];
+  const contract = projectVsCodeCodingKernelTaskContract({
+    userPrompt: [
+      '请补完整 deployment_coordinator。',
+      '只允许修改 include/deployment_coordinator.hpp 和 src/deployment_coordinator.cpp。',
+      '不要改测试、CMake 和已有组件。完成后运行 ./test.sh。',
+    ].join('\n'),
+    executionMode: 'edit',
+    contextFiles: [],
+    workspaceRoot: '/workspace',
+    taskContract: {
+      ...semanticTaskContract(['source-change', 'verification-result']),
+      inputs: [...targets, './test.sh'],
+      deliverableTargets: targets,
+    },
+    externalEffectIntent: 'none',
+    targetPaths: targets,
+    prohibitedTargets: [],
+    strictTargetScope: true,
+  });
+
+  assert.deepEqual(contract.scope.include, targets);
+  assert.deepEqual(contract.scope.exclude, []);
+  assert.deepEqual(
+    contract.deliverables.filter(item => item.kind === 'source-change'),
+    [{ id: 'source-change', kind: 'source-change' }],
+  );
+  assert.equal(contract.constraints.includes('no-other-files'), true);
+  assert.deepEqual(contract.externalBoundaries, []);
+  assert.equal(contract.acceptance.some(item => item.id === 'verified'), true);
+});
+
+test('model-proposed paths cannot turn allowed files or a prohibited verifier into required artifacts', () => {
+  const targets = [
+    'include/deployment_coordinator.hpp',
+    'src/deployment_coordinator.cpp',
+  ];
+  const contract = projectVsCodeCodingKernelTaskContract({
+    userPrompt: [
+      '仍然只允许修改 include/deployment_coordinator.hpp 和 src/deployment_coordinator.cpp，',
+      '不能修改 tests、CMake、test.sh 或已有组件。完成后运行 ./test.sh。',
+    ].join(''),
+    executionMode: 'edit',
+    contextFiles: [],
+    workspaceRoot: '/workspace',
+    taskContract: {
+      ...semanticTaskContract(['source-change', 'verification-result']),
+      inputs: [...targets, 'test.sh'],
+      deliverableTargets: [...targets, 'test.sh'],
+    },
+    externalEffectIntent: 'none',
+  });
+
+  assert.deepEqual(contract.scope.include, targets);
+  assert.deepEqual(contract.scope.exclude, ['test.sh']);
+  assert.deepEqual(contract.deliverables, [
+    { id: 'source-change', kind: 'source-change' },
+    { id: 'verification-result', kind: 'verification-result' },
+  ]);
+});
+
+test('an explicit external deployment action retains its deployment boundary', () => {
+  const contract = projectVsCodeCodingKernelTaskContract({
+    userPrompt: 'Deploy the service to production after updating src/service.ts.',
+    executionMode: 'edit',
+    contextFiles: [],
+    workspaceRoot: '/workspace',
+    taskContract: semanticTaskContract(['source-change', 'verification-result']),
+    externalEffectIntent: 'requested',
+    targetPaths: ['src/service.ts'],
+  });
+
+  assert.deepEqual(contract.externalBoundaries.map(boundary => boundary.id), [
+    'external-deployment',
   ]);
 });
 

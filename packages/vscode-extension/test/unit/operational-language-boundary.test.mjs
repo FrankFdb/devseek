@@ -35,6 +35,9 @@ test('OperationalLanguageBoundary: domain publish APIs are not release effects',
   assert.equal(classifyExternalEffectIntent(
     '修复事件发布期间订阅变化导致的缺陷。',
   ), 'none');
+  assert.equal(classifyExternalEffectIntent(
+    '我在维护 C++17 部署运行库，EventBus handler 抛错不能中断部署。',
+  ), 'none');
 });
 
 test('OperationalLanguageBoundary: real release requests and questions remain external effects', () => {
@@ -61,6 +64,12 @@ test('OperationalLanguageBoundary: domain execution rules are not host run prohi
   ), false);
   assert.equal(hasOperationalRunProhibition(
     'New handlers must not execute during the current event publish.',
+  ), false);
+  assert.equal(hasOperationalRunProhibition(
+    '多次 execute 都应可重复，不能把运行态写回 coordinator。',
+  ), false);
+  assert.equal(hasOperationalRunProhibition(
+    '只允许修改 coordinator.cpp，不要改测试、CMake 和已有组件。',
   ), false);
 });
 

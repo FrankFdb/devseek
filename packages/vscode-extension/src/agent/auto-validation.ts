@@ -5,6 +5,7 @@ import type {
   CodingVerificationCriterion,
   CodingVerificationReceipt,
   CodingVerificationSessionPort,
+  CodingKernelTaskContract,
   CodingToolAuthoritySessionPort,
   CodingToolExecutionSessionPort,
   DiagnosticPort,
@@ -65,6 +66,7 @@ export interface AgentAutoValidationCallbacks {
   canonicalBuildOrchestration?: BuildOrchestrationPort;
   canonicalRegressionSelection?: RegressionSelectionPort;
   canonicalDiagnostics?: DiagnosticPort;
+  canonicalTaskContract?: CodingKernelTaskContract;
   canonicalVerificationAcceptance?: readonly CodingVerificationCriterion[];
 }
 
@@ -487,6 +489,7 @@ function evaluateCanonicalRequirementQuality(
   userPrompt: string,
   workspaceRoot: string,
   targetPaths: readonly string[],
+  taskContract?: CodingKernelTaskContract,
 ): AgentAutoValidationResult | undefined {
   const promptText = userPrompt.trim();
   if (!promptText) return undefined;
@@ -494,6 +497,7 @@ function evaluateCanonicalRequirementQuality(
     prompt: promptText,
     workspaceRoot,
     targetPaths,
+    taskContract,
   });
   if (acceptance.status === 'accepted') return undefined;
   const status = acceptance.status === 'adverse' ? 'fail' : 'blocked';
@@ -534,13 +538,13 @@ export async function runAgentAutoValidationForWrites(
   );
   if (changedPaths.length === 0) return {};
   const evidenceOperationId = nextAutoValidationOperationId(changedPaths);
-  const suppliedVerificationAcceptance = callbacks.canonicalVerificationAcceptance?.length
-    ? callbacks.canonicalVerificationAcceptance
-    : options.verificationAcceptance?.length
-      ? options.verificationAcceptance
-      : [];
+  const canonicalVerificationAcceptance = callbacks.canonicalVerificationAcceptance;
+  const suppliedVerificationAcceptance = canonicalVerificationAcceptance !== undefined
+    ? canonicalVerificationAcceptance
+    : options.verificationAcceptance ?? [];
   const readbackOnlyScope = isReadbackOnlyValidationScope(changedPaths);
-  const acceptance = suppliedVerificationAcceptance.length > 0
+  const acceptance = canonicalVerificationAcceptance !== undefined
+    || suppliedVerificationAcceptance.length > 0
     ? suppliedVerificationAcceptance
     : DEFAULT_WORKSPACE_VALIDATION_ACCEPTANCE;
   const verificationContext = {
@@ -587,6 +591,7 @@ export async function runAgentAutoValidationForWrites(
       userPrompt,
       workspaceRootFsPath,
       changedPaths,
+      callbacks.canonicalTaskContract,
     );
     const policyQuality = combineAgentQualityResults([formalProjectQuality, artifactQuality, requirementQuality]);
     const policyQualityTitle = formalProjectQuality

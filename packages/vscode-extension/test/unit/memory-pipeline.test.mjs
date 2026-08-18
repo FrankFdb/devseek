@@ -51,6 +51,7 @@ const {
   createProviderMemoryModel,
   endMemoryForegroundRun,
   flushMemoryPipelineWork,
+  shutdownMemoryPipelineWork,
   MemoryPipelineService,
   scheduleMemoryPipelineWork,
 } = req(pipelineBundle);
@@ -158,7 +159,9 @@ test('T5 detached provider inference owns and settles an independent evidence ru
     assert.equal(runLogs.length, 1);
     const events = readFileSync(path.join(workspace, '.devseek', 'runs', runLogs[0]), 'utf8')
       .trim().split(/\n/u).map(line => JSON.parse(line));
+    assert.equal(events.find(event => event.event === 'agent-run-started')?.data?.workloadRole, 'background-maintenance');
     assert.equal(events.find(event => event.event === 'agent-run-completed')?.data?.status, 'completed');
+    assert.equal(events.find(event => event.event === 'agent-run-completed')?.data?.workloadRole, 'background-maintenance');
     assert.equal(events.some(event => event.event === 'evidence-degraded'), false);
   });
 });
@@ -884,4 +887,16 @@ test('T5 foreground user work cancels active memory processing and defers queued
   endMemoryForegroundRun();
   await flushMemoryPipelineWork();
   assert.equal(deferredStarted, true);
+});
+
+test('T6 extension shutdown aborts memory inference and returns within a bounded deadline', async () => {
+  let aborted = false;
+  scheduleMemoryPipelineWork(signal => new Promise(() => {
+    signal.addEventListener('abort', () => { aborted = true; }, { once: true });
+  }));
+  await new Promise(resolve => setImmediate(resolve));
+  const startedAt = Date.now();
+  await shutdownMemoryPipelineWork(25);
+  assert.equal(aborted, true);
+  assert.equal(Date.now() - startedAt < 250, true);
 });

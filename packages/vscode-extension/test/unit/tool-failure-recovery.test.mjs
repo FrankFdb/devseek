@@ -38,6 +38,7 @@ test('ToolFailureRecoveryLedger: duplicate failures in one provider response cou
   assert.equal(result.warnings.length, 1);
   assert.match(result.warnings[0], /本轮同类失败调用 4 次/);
   assert.match(result.warnings[0], /连续失败 1 轮/);
+  assert.match(result.warnings[0], /不能因参数传输或匹配失败升级为 write_file 整文件覆写/);
 });
 
 test('ToolFailureRecoveryLedger: stops only after the same strategy fails across four rounds', () => {

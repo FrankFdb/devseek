@@ -253,6 +253,37 @@ test('CanonicalCompletionDecisionService settles denied process-only readback th
   assert.equal(unrecovered.reasonCodes.includes('denied-effect'), true);
 });
 
+test('CanonicalCompletionDecisionService keeps a denied optional proposal audit-only after acceptance passes', () => {
+  const verifiedTool = completedVerificationTool('host-validation-before-denial', 2);
+  const verified = {
+    ...verification('passed'),
+    sequence: verifiedTool.sequence,
+    actionId: verifiedTool.actionId,
+    idempotencyKey: `completion-run-1:${verifiedTool.actionId}`,
+  };
+  const deniedOptionalCommand = {
+    ...failedVerificationTool('optional-inspection-denied', 3),
+    purpose: 'tool-shell',
+    effects: ['process', 'workspace-mutation'],
+    status: 'denied',
+    permission: {
+      decision: 'deny',
+      status: 'denied',
+      reason: 'unclassified-shell-command',
+      evidenceRefs: ['permission:optional-inspection-denied'],
+    },
+    evidenceRefs: ['permission:optional-inspection-denied'],
+  };
+  const decision = new CanonicalCompletionDecisionService().decide(input({
+    toolExecutions: [verifiedTool, deniedOptionalCommand],
+    verifications: [verified],
+  }));
+
+  assert.equal(decision.status, 'completed');
+  assert.equal(decision.reasonCodes.includes('denied-effect'), false);
+  assert.equal(decision.evidenceRefs.includes('permission:optional-inspection-denied'), true);
+});
+
 test('CanonicalCompletionDecisionService keeps rejected control attempts completion-neutral', () => {
   const deniedControl = {
     version: CODING_TOOL_RECEIPT_VERSION,

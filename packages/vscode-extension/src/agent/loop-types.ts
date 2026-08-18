@@ -14,6 +14,7 @@ import type {
   CodingCompletionAcceptanceDecision,
   CodingCompletionDecision,
   CodingConformanceProjection,
+  CodingKernelTaskContract,
   CodingCheckpoint,
   CodingExternalEffectReconciliation,
   CodingExternalEffectSessionPort,
@@ -85,6 +86,8 @@ export interface AgentLoopCallbacks {
   canonicalBuildOrchestration?: BuildOrchestrationPort;
   canonicalRegressionSelection?: RegressionSelectionPort;
   canonicalDiagnostics?: DiagnosticPort;
+  /** Current versioned Kernel contract; validation consumes it without reclassifying the prompt. */
+  canonicalTaskContract?: CodingKernelTaskContract;
   canonicalVerificationAcceptance?: readonly CodingVerificationCriterion[];
   canonicalVerification?: CodingVerificationSessionPort;
   canonicalProviderEvents?: ProviderEventPort;
