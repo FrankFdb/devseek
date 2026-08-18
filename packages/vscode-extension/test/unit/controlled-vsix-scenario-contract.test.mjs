@@ -118,7 +118,43 @@ test('controlled VSIX harness selects product run terminal instead of pending-ed
 
   assert.match(source, /function isProductRunTerminalEvent\(/, 'controlled VSIX harness must classify product run terminal events');
   assert.match(source, /mutationKind\s*!==\s*'pending-edit-resolution'/, 'pending-edit resolution runs must not replace the case terminal run');
+  assert.doesNotMatch(source, /productTerminalLogs\.at\(-1\) \|\| terminalLogs/, 'background terminal runs must never be a product fallback');
   assert.doesNotMatch(source, /terminalLogs\.at\(-1\)/, 'terminal selection must not blindly use the last terminal log');
+});
+
+test('controlled VSIX response evidence excludes request bodies and background maintenance', () => {
+  const source = readFileSync(harnessPath, 'utf8');
+
+  assert.match(source, /function summarizeRunLogEvent\(/);
+  assert.match(source, /const \{ content: _content, \.\.\.metadata \} = data/);
+  assert.match(source, /function isProductEvidenceLog\(/);
+  assert.match(source, /if \(log\.backgroundMaintenance\) return false/);
+  assert.match(source, /\.filter\(isProductEvidenceLog\)/);
+});
+
+test('controlled VSIX harness enforces exact provider request contracts for T10 risk classes', () => {
+  const source = readFileSync(harnessPath, 'utf8');
+
+  assert.match(source, /existing-js-fix[\s\S]*?expectedProviderRequestKinds:\s*\['agent-execution', 'independent-review'\]/);
+  assert.match(source, /agent-fit-multifile-with-test[\s\S]*?expectedProviderRequestKinds:\s*\['agent-execution'\]/);
+  assert.match(source, /t2-cpp-failed-write-recovered[\s\S]*?expectedProviderRequestKinds:\s*\['agent-execution', 'agent-execution'\]/);
+  assert.match(source, /Provider request contract mismatch for \$\{scenario\.id\}/);
+});
+
+test('controlled VSIX harness observes provider and terminal payloads as independent bounded channels', () => {
+  const source = readFileSync(harnessPath, 'utf8');
+
+  assert.match(source, /function collectPayloadChannel\(/);
+  assert.match(source, /collectPayloadChannel\(events, 'extension\.response\.raw'\)/);
+  assert.match(source, /collectPayloadChannel\(events, 'terminal\.output'\)/);
+  assert.doesNotMatch(source, /\.join\('\\n'\)\s*\.slice\(-20000\)/);
+});
+
+test('realistic JSON follow-up exposes the exact behavior value before asserting it', () => {
+  const source = readFileSync(harnessPath, 'utf8');
+
+  assert.match(source, /python tools\/log_summary\.py \| grep -Fx/);
+  assert.doesNotMatch(source, /python tools\/log_summary\.py \| grep -q '\{\\"ERROR\\": 1/);
 });
 
 test('controlled VSIX harness fails completed mismatches without waiting for timeout', () => {

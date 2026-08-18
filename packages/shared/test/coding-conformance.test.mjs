@@ -216,6 +216,16 @@ test('projection comparison accepts evidence-backed scope narrowing and rejects 
   const narrowed = structuredClone(implicitRepair.expected);
   narrowed.taskContract.scope.include = ['src/parser.js'];
   narrowed.taskContract.deliverables.find(deliverable => deliverable.id === 'source-change').path = 'src/parser.js';
+  narrowed.taskContract.constraints.push('no-other-files');
+  narrowed.taskContract.acceptance.push({
+    id: 'scoped-change',
+    statement: 'Workspace changes remain inside the requested file scope.',
+  });
+  narrowed.completion.acceptance.push({
+    criterionId: 'scoped-change',
+    status: 'passed',
+    evidenceRefs: ['mutation:first-patch'],
+  });
   assert.deepEqual(compareCodingConformanceProjection(implicitRepair.expected, narrowed, 'vscode'), []);
 
   const denied = findFixture('permission-denied-no-effect');

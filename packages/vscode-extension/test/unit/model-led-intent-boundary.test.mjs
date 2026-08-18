@@ -197,3 +197,44 @@ test('ModelLedIntentBoundary: ordered semantic revisions reach the canonical Tas
   assert.match(revisionLineageSource, /hasIntentRevisionLanguageSignal\('reauthorization'/u);
   assert.doesNotMatch(revisionLineageSource, /const\s+REAUTHORIZE_RE\s*=/u);
 });
+
+test('ModelLedIntentBoundary: model interpretation reaches completion only through local action evidence', () => {
+  const loopSource = readFileSync(
+    path.join(rootDir, 'src/agent/agentic-loop.ts'),
+    'utf8',
+  );
+  const authoritySource = readFileSync(
+    path.join(rootDir, 'src/agent/write-authority.ts'),
+    'utf8',
+  );
+  const runtimeSource = readFileSync(
+    path.join(rootDir, 'src/app/coding-kernel-execution.ts'),
+    'utf8',
+  );
+  const reconcilerSource = readFileSync(
+    path.join(rootDir, 'src/app/observed-task-contract-reconciler.ts'),
+    'utf8',
+  );
+  const settlementSource = readFileSync(
+    path.join(rootDir, 'src/agent/model-semantic-settlement.ts'),
+    'utf8',
+  );
+
+  assert.match(authoritySource, /settleModelSemanticProposal\(receipts\)/u);
+  assert.match(authoritySource, /receiptMatchesSemanticProposal/u);
+  assert.match(authoritySource, /settledModelSemanticContract\s*\?\?\s*semanticContractRevision\.semanticContract/u);
+  assert.match(loopSource, /modelSemanticSettlement\.observe\(loopRes\)/u);
+  assert.match(settlementSource, /input\.authority\.settleModelSemanticProposal\(toolReceipts\)/u);
+  assert.match(settlementSource, /onSettledModelSemanticContract\?\.\(/u);
+  assert.ok(
+    loopSource.indexOf('executeScheduledToolLoop(')
+      < loopSource.indexOf('modelSemanticSettlement.observe(loopRes)'),
+    'tool execution must precede semantic settlement',
+  );
+  assert.match(runtimeSource, /reconcileObservedTaskContract\(/u);
+  assert.match(runtimeSource, /kernelRequest\.taskContractRevision\.revise\(candidate\)/u);
+  assert.match(reconcilerSource, /receipt\.status === 'committed'/u);
+  assert.match(reconcilerSource, /allowedTargets/u);
+  assert.match(reconcilerSource, /current\.scope\.exclude/u);
+  assert.doesNotMatch(reconcilerSource, /semanticContract\.mutation\.targets/u);
+});

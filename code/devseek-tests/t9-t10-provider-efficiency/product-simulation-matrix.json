@@ -1,0 +1,91 @@
+{
+  "schema_version": "devseek.t9-t10-product-simulation-matrix/v1",
+  "purpose": "Exercise distinct user-language, steering, safety, lifecycle, transport, implementation, and evidence-settlement risks through one exact installed VSIX.",
+  "suites": [
+    {
+      "id": "independent-user-diversity-product",
+      "case_count": 10,
+      "dimensions": ["typos", "ASR-style input", "mixed language", "ambiguity", "symptom repair", "permissions", "safety", "session isolation"]
+    },
+    {
+      "id": "t1-direct-answer-product",
+      "case_count": 5,
+      "dimensions": ["direct answer", "Chinese", "English", "Japanese", "colloquial typo recovery", "no synthetic work"]
+    },
+    {
+      "id": "t1-direct-followup-product",
+      "case_count": 2,
+      "dimensions": ["elliptical follow-up", "same-session referent", "progressive user detail"]
+    },
+    {
+      "id": "t1-new-session-memory-isolation-product",
+      "case_count": 2,
+      "dimensions": ["new session", "process restart", "unrelated durable memory", "prompt contamination"]
+    },
+    {
+      "id": "t2-terminal-settlement-recovery-product",
+      "case_count": 1,
+      "dimensions": ["failed mutation", "repair", "compile", "terminal settlement", "todo consistency"]
+    },
+    {
+      "id": "prior-task-continuation-product",
+      "case_count": 2,
+      "dimensions": ["plan first", "later approval", "same-session authority transition"]
+    },
+    {
+      "id": "scope-replacement-product",
+      "case_count": 2,
+      "dimensions": ["user correction", "target replacement", "superseded target protection"]
+    },
+    {
+      "id": "cancellation-replacement-product",
+      "case_count": 2,
+      "dimensions": ["cancel prior work", "read-only replacement", "no stale write replay"]
+    },
+    {
+      "id": "realistic-product",
+      "case_count": 4,
+      "dimensions": ["program creation", "follow-up requirement change", "existing code repair", "safety boundary"]
+    },
+    {
+      "id": "agent-fit-product",
+      "case_count": 5,
+      "dimensions": ["clarification", "review", "multi-file implementation", "report artifact", "tool wrapper normalization"]
+    },
+    {
+      "id": "t3-deepseek-web-compat",
+      "case_count": 2,
+      "dimensions": ["malformed provider wrapper", "Markdown JSON tools", "provider normalization"]
+    },
+    {
+      "id": "t4-permission-write-boundary",
+      "case_count": 4,
+      "dimensions": ["bounded write", "read-only source plus report", "outside-workspace denial", "dangerous command denial"]
+    },
+    {
+      "id": "t5-memory-restart",
+      "case_count": 2,
+      "dimensions": ["memory capture", "process restart", "bounded project recall"]
+    },
+    {
+      "id": "t5-medium-program-session-restart",
+      "case_count": 4,
+      "dimensions": ["medium program", "session switch", "return", "process restart", "artifact continuity"]
+    },
+    {
+      "id": "coding-conformance-product",
+      "case_count": 10,
+      "dimensions": ["create", "modify", "verify-repair-reverify", "CI health", "runtime symptom", "permission denial", "policy refusal"]
+    },
+    {
+      "id": "r2-07e-stream-protocol",
+      "case_count": 2,
+      "dimensions": ["truncated stream", "request mismatch", "fail closed", "no mutation"]
+    },
+    {
+      "id": "r2-07f-connector-security",
+      "case_count": 1,
+      "dimensions": ["evidence redaction", "replay", "connector security"]
+    }
+  ]
+}

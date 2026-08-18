@@ -1,6 +1,12 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
-import { ProductRunEvidenceWorkspaceReader, type RunEvidenceEvent } from '@devseek-netai/shared';
+import {
+  collectTransportSupersededProviderFailureKeys,
+  ProductRunEvidenceWorkspaceReader,
+  providerAttemptEvidenceIdentity,
+  providerAttemptEvidenceLifecycleKey,
+  type RunEvidenceEvent,
+} from '@devseek-netai/shared';
 import { hasReadOnlyAnswerEvidence } from '../agent/completion-evidence';
 import { parseFakeToolCalls } from '../agent/fake-tool-parser';
 import { isolateModelToolRequestText } from '../agent/model-tool-protocol-adapter';
@@ -1127,10 +1133,15 @@ function collectProductRunEvidenceSettlementIssues(input: {
 }): void {
   if (input.evidenceEvents.length === 0) return;
   const resolved = collectResolvedEvidenceOperationIds(input.evidenceEvents);
+  const supersededFailureKeys = collectTransportSupersededProviderFailureKeys(input.evidenceEvents);
   const unresolvedProviderFailures = input.evidenceEvents
     .filter(event => event.type === 'provider.failed')
     .map(event => ({ event, operationId: evidenceOperationId(event) }))
-    .filter(item => item.operationId && !resolved.has(item.operationId));
+    .filter(item => {
+      if (!item.operationId || resolved.has(item.operationId)) return false;
+      const identity = providerAttemptEvidenceIdentity(item.event);
+      return !identity || !supersededFailureKeys.has(providerAttemptEvidenceLifecycleKey(identity));
+    });
   if (unresolvedProviderFailures.length === 0) return;
   const evidenceSettledCompleted = input.evidenceEvents.some(event => (
     event.type === 'run.settled'

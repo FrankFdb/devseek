@@ -6,6 +6,7 @@ import type { AgentStatusEvent } from './events';
 import type { TodoItem } from './evidence-recovery';
 import type { ExecutionMode } from '../intent/intent-types';
 import type { IntentSemanticContractRevision } from '../intent/intent-revision-lineage';
+import type { TaskSemanticContract } from '../task-semantic-contract';
 import type { AgentFileWriteContext } from '../app/agent-file-write-policy';
 import type { ArtifactClaim, EvidenceRef, VerificationResult } from './evidence-grounding';
 import type { ValidationCommandRunner } from '../workspace/validation-service';
@@ -51,6 +52,16 @@ export type AgentPreparedTerminalCommand = AgentPreparedToolExecution<string>;
 export interface AgentDirectoryCreationResult {
   readonly message: string;
   readonly changeReceipt: CodingWorkspaceMutationReceipt<unknown>;
+}
+
+/**
+ * A model interpretation becomes completion evidence only after one matching
+ * concrete action has reached a terminal state through the local Kernel.
+ */
+export interface SettledModelSemanticContract {
+  readonly semanticContract: TaskSemanticContract;
+  readonly toolReceipts: readonly CodingToolExecutionReceipt<unknown>[];
+  readonly changeReceipts: readonly CodingWorkspaceMutationReceipt<unknown>[];
 }
 
 export interface AgentLoopCallbacks {
@@ -239,6 +250,8 @@ export interface AgentLoopCallbacks {
   onUserSteer?: () => string[];
   /** Publishes each ordered semantic revision before the next tool can execute. */
   onTaskSemanticContractRevision?: (revision: IntentSemanticContractRevision) => void;
+  /** Publishes evidence-settled model semantics without changing user authority. */
+  onSettledModelSemanticContract?: (settlement: SettledModelSemanticContract) => void;
   /**
    * Display-only classification for the first free-explore Working row.
    * This must not affect tool execution; it only prevents UI from describing

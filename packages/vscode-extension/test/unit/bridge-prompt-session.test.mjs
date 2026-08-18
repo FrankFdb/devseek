@@ -69,6 +69,30 @@ test('BridgePromptSession: first turn sends full prompt, follow-up sends only in
   assert.match(second.prompt, /read_file src\/main\.cpp/);
   assert.doesNotMatch(second.prompt, /工程原则/);
   assert.ok(second.promptChars < second.fullChars / 2);
+  assert.ok(second.promptBytes < second.fullBytes / 2);
+});
+
+test('BridgePromptSession: UTF-8 byte savings enable useful CJK incremental turns', () => {
+  resetBridgePromptSessionCacheForTests();
+  const run = { traceRunId: 'run-cjk-budget', traceWorkspaceRoot: '/repo' };
+  const firstMessages = [{ role: 'user', content: `工程约束：${'必须保留当前行为。'.repeat(90)}` }];
+  const first = prepareBridgePromptForSession({ ...run, newSession: true, messages: firstMessages });
+  const assistantResponse = '[TOOL:read_file {"path":"main.cpp"}]';
+  recordBridgePromptSessionResponse({ ...run, newSession: true, messages: firstMessages }, assistantResponse);
+
+  const second = prepareBridgePromptForSession({
+    ...run,
+    newSession: false,
+    messages: [
+      ...firstMessages,
+      { role: 'assistant', content: assistantResponse },
+      { role: 'user', content: '[工具结果 Round 1]\n读取成功，请继续。' },
+    ],
+  });
+
+  assert.ok(first.fullChars - second.promptChars < 1024, 'fixture must stay below the old character threshold');
+  assert.ok(first.fullBytes - second.promptBytes >= 1024, 'fixture must exceed the UTF-8 transport threshold');
+  assert.equal(second.mode, 'incremental');
 });
 
 test('BridgePromptSession: missing trace key keeps ordinary chat self-contained', () => {

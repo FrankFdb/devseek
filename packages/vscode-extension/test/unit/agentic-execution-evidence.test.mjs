@@ -21,10 +21,50 @@ execSync(
 
 const req = createRequire(import.meta.url);
 const {
+  assessAgenticEvidenceClosure,
   describeAgenticDeniedToolExecution,
   getAgenticBlockingTerminalFailure,
   getAgenticBlockingDeniedToolExecution,
 } = req(bundlePath);
+
+test('agentic evidence closure starts from prompt policy or observed concrete work', () => {
+  const completion = {
+    userPrompt: 'Create src/ready.js and verify it.',
+    todos: [],
+    writtenFiles: [],
+    terminalEvidence: [],
+  };
+  const directAnswer = assessAgenticEvidenceClosure({
+    requiredBeforeExecution: false,
+    workToolObserved: false,
+    completion,
+  });
+  assert.deepEqual(directAnswer, { required: false, missingEvidence: [] });
+
+  const observedWork = assessAgenticEvidenceClosure({
+    requiredBeforeExecution: false,
+    workToolObserved: true,
+    completion,
+  });
+  assert.equal(observedWork.required, true);
+  assert.ok(observedWork.missingEvidence.length > 0);
+});
+
+test('agentic evidence closure preserves a real failed check after model-led work', () => {
+  const failedCheck = { command: 'npm test', kind: 'test', ok: false, exitCode: 1 };
+  const closure = assessAgenticEvidenceClosure({
+    requiredBeforeExecution: false,
+    workToolObserved: true,
+    completion: {
+      userPrompt: 'Repair src/parser.js and verify the behavior.',
+      todos: [],
+      writtenFiles: [],
+      terminalEvidence: [failedCheck],
+    },
+  });
+
+  assert.equal(closure.blockingTerminalFailure, failedCheck);
+});
 
 test('agentic execution evidence settles an authority denial instead of retrying missing work', () => {
   const completed = toolReceipt('completed');

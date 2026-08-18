@@ -1,4 +1,5 @@
 import * as crypto from 'crypto';
+import { utf8ByteLength } from '@devseek-netai/shared';
 import type { ChatMessage, ContentPart } from '../types';
 
 type BridgePromptMode = 'full' | 'incremental';
@@ -16,6 +17,8 @@ export interface PreparedBridgePrompt {
   sessionKey?: string;
   fullChars: number;
   promptChars: number;
+  fullBytes: number;
+  promptBytes: number;
   commonPrefixMessages: number;
   omittedMessages: number;
 }
@@ -27,7 +30,7 @@ interface BridgePromptSessionState {
 
 const MAX_PROMPT_SESSION_COUNT = 32;
 const PROMPT_SESSION_TTL_MS = 30 * 60 * 1000;
-const MIN_INCREMENTAL_SAVINGS_CHARS = 1024;
+const MIN_INCREMENTAL_SAVINGS_BYTES = 1024;
 
 const bridgePromptSessions = new Map<string, BridgePromptSessionState>();
 
@@ -40,6 +43,8 @@ export function prepareBridgePromptForSession(options: BridgePromptSessionOption
     sessionKey,
     fullChars: fullPrompt.length,
     promptChars: fullPrompt.length,
+    fullBytes: utf8ByteLength(fullPrompt),
+    promptBytes: utf8ByteLength(fullPrompt),
     commonPrefixMessages: 0,
     omittedMessages: 0,
   };
@@ -68,7 +73,8 @@ export function prepareBridgePromptForSession(options: BridgePromptSessionOption
     deltaPrompt,
   ].join('\n');
 
-  if (fullPrompt.length - incrementalPrompt.length < MIN_INCREMENTAL_SAVINGS_CHARS) {
+  const incrementalBytes = utf8ByteLength(incrementalPrompt);
+  if (fullResult.fullBytes - incrementalBytes < MIN_INCREMENTAL_SAVINGS_BYTES) {
     return { ...fullResult, commonPrefixMessages };
   }
 
@@ -78,6 +84,8 @@ export function prepareBridgePromptForSession(options: BridgePromptSessionOption
     sessionKey,
     fullChars: fullPrompt.length,
     promptChars: incrementalPrompt.length,
+    fullBytes: fullResult.fullBytes,
+    promptBytes: incrementalBytes,
     commonPrefixMessages,
     omittedMessages: commonPrefixMessages,
   };

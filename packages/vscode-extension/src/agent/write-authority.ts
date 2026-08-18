@@ -1,4 +1,5 @@
 import type { ChatMessage } from '../llm/types';
+import type { CodingToolExecutionReceipt } from '@devseek-netai/shared';
 import {
   buildIntentRevisionLineage,
   type IntentRevisionChangeKind,
@@ -17,15 +18,25 @@ export interface WriteAuthority {
   readonly callbacks: AgentLoopCallbacks;
   readonly currentPrompt: string;
   readonly semanticContractRevision: IntentSemanticContractRevision;
-  /** User-owned contract used by authority, acceptance, and completion. */
+  /** User-owned contract used by action authority and explicit user constraints. */
   readonly canonicalSemanticContract: TaskSemanticContract;
   /** Loop-only model interpretation; never use it to add completion obligations. */
   readonly semanticContract: TaskSemanticContract;
+  /** Evidence-settled model interpretation used for completion, never authority. */
+  readonly completionSemanticContract: TaskSemanticContract;
   readonly projectInstructionsText: string;
   readonly writeRevoked: boolean;
   applyModelSemanticProposal(proposal: SemanticIntentInterpretation): boolean;
+  settleModelSemanticProposal(
+    receipts: readonly CodingToolExecutionReceipt<unknown>[],
+  ): SettledModelSemanticProposal | undefined;
   drainAfterProvider(): ChatMessage[];
   takePendingAndDrain(): ChatMessage[];
+}
+
+export interface SettledModelSemanticProposal {
+  readonly semanticContract: TaskSemanticContract;
+  readonly toolReceipts: readonly CodingToolExecutionReceipt<unknown>[];
 }
 
 export interface WriteAuthorityOptions {
@@ -108,6 +119,8 @@ export function createWriteAuthority(
   });
   let semanticContractRevision = lineage.semanticContractRevision;
   let modelSemanticContract: TaskSemanticContract | undefined;
+  let settledModelSemanticContract: TaskSemanticContract | undefined;
+  let pendingModelSemanticProposal: SemanticIntentInterpretation | undefined;
   let writeRevoked = userSteerRevokesWritesForContract(
     initialPrompt,
     semanticContractRevision.semanticContract,
@@ -126,6 +139,8 @@ export function createWriteAuthority(
       });
       semanticContractRevision = lineage.semanticContractRevision;
       modelSemanticContract = undefined;
+      settledModelSemanticContract = undefined;
+      pendingModelSemanticProposal = undefined;
       callbacks.onTaskSemanticContractRevision?.(semanticContractRevision);
       writeRevoked = resolveWriteRevocation(
         writeRevoked,
@@ -168,6 +183,9 @@ export function createWriteAuthority(
     get semanticContractRevision() { return semanticContractRevision; },
     get canonicalSemanticContract() { return semanticContractRevision.semanticContract; },
     get semanticContract() { return modelSemanticContract ?? semanticContractRevision.semanticContract; },
+    get completionSemanticContract() {
+      return settledModelSemanticContract ?? semanticContractRevision.semanticContract;
+    },
     get projectInstructionsText() {
       return semanticContractRevision.semanticContract.context.projectInstructions.content;
     },
@@ -189,9 +207,44 @@ export function createWriteAuthority(
       // this loop. Only user input can revise the authority contract consumed
       // by sandbox and workspace mutation transactions.
       modelSemanticContract = next;
+      pendingModelSemanticProposal = proposal;
       return true;
+    },
+    settleModelSemanticProposal(receipts) {
+      if (!modelSemanticContract || !pendingModelSemanticProposal) return undefined;
+      const matchingReceipts = receipts.filter(receipt => (
+        receiptMatchesSemanticProposal(receipt, pendingModelSemanticProposal!)
+      ));
+      if (matchingReceipts.length === 0) return undefined;
+      settledModelSemanticContract = modelSemanticContract;
+      pendingModelSemanticProposal = undefined;
+      return {
+        semanticContract: settledModelSemanticContract,
+        toolReceipts: Object.freeze([...matchingReceipts]),
+      };
     },
     drainAfterProvider: drain,
     takePendingAndDrain: () => [...pendingMessages.splice(0), ...drain()],
   };
+}
+
+function receiptMatchesSemanticProposal(
+  receipt: CodingToolExecutionReceipt<unknown>,
+  proposal: SemanticIntentInterpretation,
+): boolean {
+  if (proposal.mutation === 'create-file'
+    || proposal.mutation === 'modify-source'
+    || proposal.mutation === 'delete') {
+    return receipt.purpose === 'workspace-mutation'
+      || receipt.effects.includes('workspace-mutation');
+  }
+  if (proposal.mutation === 'external-effect' || proposal.requiresExternalEffect) {
+    return receipt.purpose === 'external-effect';
+  }
+  if (proposal.mutation === 'run-only' || proposal.requiresTerminal) {
+    return receipt.tool === 'run_terminal' || receipt.effects.includes('process');
+  }
+  return receipt.purpose === 'observe'
+    && receipt.effects.every(effect => effect === 'read')
+    && receipt.status === 'completed';
 }

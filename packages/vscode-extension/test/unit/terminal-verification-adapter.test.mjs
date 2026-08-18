@@ -27,7 +27,10 @@ execFileSync('npx', [
 ], { cwd: extensionRoot, stdio: 'pipe' });
 
 const require = createRequire(import.meta.url);
-const { recordTerminalVerification } = require(bundlePath);
+const {
+  recordNewlyAcceptedTerminalVerifications,
+  recordTerminalVerification,
+} = require(bundlePath);
 
 after(() => rmSync(bundleRoot, { recursive: true, force: true }));
 
@@ -170,4 +173,64 @@ test('terminal verification uses workspace scope for a valid test-only task', as
   const result = await recordTerminalVerification(observation({ writtenFiles: [] }));
 
   assert.deepEqual(result.scopePaths, ['workspace']);
+});
+
+test('a newly refined acceptance contract binds terminal evidence from the same tool batch', async () => {
+  const canonicalVerification = verification();
+  const result = await recordNewlyAcceptedTerminalVerifications({
+    toolReceipts: [receipt({ purpose: 'execute' })],
+    evidence: [evidence({ workdir: '/workspace' })],
+    existingReceipts: [],
+    workspaceRoot: '/workspace',
+    writtenFiles: observation().writtenFiles,
+    acceptance,
+    verification: canonicalVerification,
+  });
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].status, 'passed');
+  assert.equal(result[0].actionId, 'terminal-action-4');
+  assert.deepEqual(result[0].scopePaths, ['src/parser.js']);
+  assert.deepEqual(canonicalVerification.receipts(), result);
+});
+
+test('dispatch-time observation cannot relabel a non-verification terminal command', async () => {
+  const result = await recordTerminalVerification(observation({
+    toolReceipt: receipt({ purpose: 'execute' }),
+  }));
+
+  assert.equal(result, undefined);
+});
+
+test('same-batch terminal evidence binding is idempotent and ownership scoped', async () => {
+  const existing = await recordTerminalVerification(observation());
+  const canonicalVerification = verification();
+  const duplicate = await recordNewlyAcceptedTerminalVerifications({
+    toolReceipts: [receipt()],
+    evidence: [evidence()],
+    existingReceipts: [existing],
+    workspaceRoot: '/workspace',
+    writtenFiles: observation().writtenFiles,
+    acceptance,
+    verification: canonicalVerification,
+  });
+  const mismatched = await recordNewlyAcceptedTerminalVerifications({
+    toolReceipts: [receipt()],
+    evidence: [evidence({
+      canonicalAction: {
+        actionId: 'another-action',
+        sequence: 4,
+        evidenceRefs: ['terminal-host:another-action:exit-0'],
+      },
+    })],
+    existingReceipts: [],
+    workspaceRoot: '/workspace',
+    writtenFiles: observation().writtenFiles,
+    acceptance,
+    verification: canonicalVerification,
+  });
+
+  assert.deepEqual(duplicate, []);
+  assert.deepEqual(mismatched, []);
+  assert.deepEqual(canonicalVerification.receipts(), []);
 });

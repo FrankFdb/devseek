@@ -1,6 +1,7 @@
 import * as crypto from 'crypto';
 import {
   createDevSeekTraceLogger,
+  measureProviderMessagePrompt,
   summarizeTraceText,
   type CodingToolCall,
 } from '@devseek-netai/shared';
@@ -95,26 +96,33 @@ export async function chatViaProvider(
 
 async function invokeLoopChat(input: LoopChatInput): Promise<{ text: string; tools: CodingToolCall[] }> {
   const provider = getActiveProvider();
+  const samplingId = crypto.randomUUID();
+  const promptBudget = measureProviderMessagePrompt(input.messages);
   const text = await providerInvocationRetry.execute({
     providerType: provider.type,
     signal: input.signal,
-    invoke: async ({ markOutputObserved }) => {
+    invoke: async ({ attempt, markOutputObserved }) => {
       const traceOperationId = crypto.randomUUID();
       return invokeProviderWithRunEvidence({
         request: {
           prompt: input.evidencePrompt,
+          signal: input.signal,
           traceRunId: input.traceRunId,
           traceWorkspaceRoot: input.traceWorkspaceRoot,
           traceOperationId,
           traceEvidenceParticipantToken: input.traceEvidenceParticipantToken,
         },
         providerType: provider.type,
+        samplingId,
+        transportAttempt: attempt,
+        promptBudget,
         onEvidenceError: input.onTraceEvidenceError,
-        invoke: () => provider.chat({
+        invoke: observation => provider.chat({
           messages: input.messages,
           stream: true,
           onDelta: (delta) => {
             if (delta.length > 0) markOutputObserved();
+            observation.observeOutput(delta);
             input.onDelta?.(delta);
           },
           mode: input.mode,
@@ -123,13 +131,15 @@ async function invokeLoopChat(input: LoopChatInput): Promise<{ text: string; too
           traceRunId: input.traceRunId,
           traceWorkspaceRoot: input.traceWorkspaceRoot,
           traceOperationId,
+          traceSamplingId: samplingId,
+          traceTransportAttempt: attempt,
           ...(provider.type === 'bridge' && input.traceEvidenceParticipantToken
             ? { evidenceCapability: { role: 'participant' as const, token: input.traceEvidenceParticipantToken } }
             : {}),
         }),
       });
     },
-    onRetry: event => traceProviderRetry(input, event),
+    onRetry: event => traceProviderRetry(input, event, samplingId),
   });
   const normalized = normalizeProviderMessage({
     type: 'message',
@@ -140,7 +150,7 @@ async function invokeLoopChat(input: LoopChatInput): Promise<{ text: string; too
   return { text: normalized.event.type === 'message' ? normalized.event.content : text, tools: [...normalized.tools] };
 }
 
-function traceProviderRetry(input: LoopChatInput, event: ProviderInvocationRetryEvent): void {
+function traceProviderRetry(input: LoopChatInput, event: ProviderInvocationRetryEvent, samplingId: string): void {
   if (!input.traceRunId || !input.traceWorkspaceRoot) return;
   const trace = createDevSeekTraceLogger({
     workspaceRoot: input.traceWorkspaceRoot,
@@ -149,6 +159,7 @@ function traceProviderRetry(input: LoopChatInput, event: ProviderInvocationRetry
     runId: input.traceRunId,
   });
   trace.info('provider-retry', 'provider-transport-retry-scheduled', {
+    samplingId,
     attempt: event.attempt,
     nextAttempt: event.nextAttempt,
     delayMs: event.delayMs,

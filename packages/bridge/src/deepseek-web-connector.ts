@@ -73,6 +73,12 @@ export interface DeepSeekWebConnectorExecutionOptions {
   readonly sleep?: (milliseconds: number) => Promise<void>;
 }
 
+export interface DeepSeekWebConnectorExecutionObserver {
+  readonly onAttemptStarted?: (attempt: number) => void;
+  readonly onRetryScheduled?: (decision: DeepSeekWebConnectorRetryDecision) => void;
+  readonly onRetryFrame?: (frame: DeepSeekStreamFrame) => void;
+}
+
 export class DeepSeekWebConnectorCancelledError extends Error {
   constructor(readonly requestId: string) {
     super('Cancelled');
@@ -91,12 +97,13 @@ export class CanonicalDeepSeekWebConnectorExecutionService {
   execute<T>(
     session: DeepSeekWebConnectorSessionPort,
     operation: (attempt: number) => Promise<T>,
-    onRetry: (frame: DeepSeekStreamFrame) => void = () => {},
+    observer: DeepSeekWebConnectorExecutionObserver = {},
   ): Promise<T> {
     return this.options.exclusive.execute(async () => {
       while (true) {
         try {
           const attempt = session.beginAttempt();
+          notifyExecutionObserver(observer.onAttemptStarted, attempt);
           session.assertDispatchable();
           return await operation(attempt);
         } catch (error) {
@@ -105,11 +112,20 @@ export class CanonicalDeepSeekWebConnectorExecutionService {
           if (snapshot.state !== 'running') throw error;
           const retry = session.decideRetry(this.options.classifyError(error));
           if (retry.decision !== 'retry') throw error;
-          if (retry.frame) onRetry(retry.frame);
+          notifyExecutionObserver(observer.onRetryScheduled, retry);
+          if (retry.frame) notifyExecutionObserver(observer.onRetryFrame, retry.frame);
           await this.sleep(retry.retryAfterMs ?? 0);
         }
       }
     }, session.requestId);
+  }
+}
+
+function notifyExecutionObserver<T>(observer: ((value: T) => void) | undefined, value: T): void {
+  try {
+    observer?.(value);
+  } catch {
+    // Diagnostics must never alter provider execution or retry semantics.
   }
 }
 

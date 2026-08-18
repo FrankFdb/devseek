@@ -15,6 +15,11 @@ import {
   RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_RESOLUTION,
   RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_TRIGGER,
 } from './run-evidence-protocol';
+import {
+  providerAttemptEvidenceIdentity,
+  providerTransportSuccessSupersedesFailure,
+  type ProviderAttemptEvidenceIdentity,
+} from './provider-attempt-evidence';
 
 export type RunEvidenceSemanticEvent = Pick<
   RunEvidenceEvent,
@@ -36,6 +41,7 @@ interface OperationState {
   authorizedRecoveryOperationId?: string;
   startedRecoveryOperationId?: string;
   terminalRecoveryOperationId?: string;
+  providerAttempt?: ProviderAttemptEvidenceIdentity;
 }
 
 interface AdverseTerminal {
@@ -44,6 +50,7 @@ interface AdverseTerminal {
   type: RunEvidenceEventType;
   sequence: number;
   payload: { [key: string]: RunEvidenceJson };
+  providerAttempt?: ProviderAttemptEvidenceIdentity;
   resolvedBy?: string;
 }
 
@@ -160,12 +167,15 @@ function reduceProvider(
   const operationKey = `${operationId}\u0000${boundary}`;
   const label = `${operationId}@${boundary}`;
   const state = stateFor(states, operationKey, label);
+  const providerAttempt = validatedProviderAttemptEvidence(event);
   if (event.type === 'provider.requested') {
     if (state.requested || state.terminal) semanticFailure(`Provider operation ${label} was requested twice`);
     state.requested = true;
+    state.providerAttempt = providerAttempt;
     return;
   }
   if (!state.requested) semanticFailure(`Provider operation ${label} terminated before request`);
+  assertProviderAttemptLifecycleConsistency(label, state.providerAttempt, providerAttempt);
   setTerminal(state, event, label);
   if (event.type === 'provider.failed') {
     adverse.push({
@@ -174,7 +184,46 @@ function reduceProvider(
       type: event.type,
       sequence: event.sequence,
       payload: readObjectPayload(event),
+      providerAttempt,
     });
+    return;
+  }
+  if (event.type === 'provider.completed') {
+    const completion = providerAttempt;
+    if (!completion) return;
+    for (const terminal of adverse) {
+      if (terminal.type !== 'provider.failed' || terminal.resolvedBy || !terminal.providerAttempt) continue;
+      if (providerTransportSuccessSupersedesFailure(terminal.providerAttempt, completion)) {
+        terminal.resolvedBy = operationId;
+      }
+    }
+  }
+}
+
+function validatedProviderAttemptEvidence(
+  event: RunEvidenceSemanticEvent,
+): ProviderAttemptEvidenceIdentity | undefined {
+  const payload = readObjectPayload(event);
+  const hasAttemptFields = payload.sampling_id !== undefined || payload.transport_attempt !== undefined;
+  const identity = providerAttemptEvidenceIdentity(event);
+  if (hasAttemptFields && !identity) {
+    semanticFailure(`Provider operation at sequence ${event.sequence} has invalid attempt identity`);
+  }
+  return identity;
+}
+
+function assertProviderAttemptLifecycleConsistency(
+  label: string,
+  requested: ProviderAttemptEvidenceIdentity | undefined,
+  terminal: ProviderAttemptEvidenceIdentity | undefined,
+): void {
+  if (!requested && !terminal) return;
+  if (!requested || !terminal
+    || requested.samplingId !== terminal.samplingId
+    || requested.operationId !== terminal.operationId
+    || requested.transportAttempt !== terminal.transportAttempt
+    || requested.boundary !== terminal.boundary) {
+    semanticFailure(`Provider operation ${label} changed attempt identity before terminal`);
   }
 }
 

@@ -86,6 +86,29 @@ test('agent run settlement omits undefined verification fields for strict JSON c
   assert.equal(Object.hasOwn(completionData, 'artifactVerificationOk'), false);
 });
 
+test('agent run settlement retains the causal failure reason for diagnostics', () => {
+  let completionData;
+  const terminalPermissions = {
+    completeRunContext(_runContext, requestedStatus, data) {
+      completionData = data;
+      return requestedStatus;
+    },
+  };
+
+  settleAgentLoopResult(terminalPermissions, { runId: 'run-failure-reason' }, {
+    tasksTotal: 1,
+    tasksApplied: 0,
+    tasksFailed: 1,
+    changedPaths: [],
+    failedReason: '工具 create_file 未获授权：workspace-path-outside-root',
+  });
+
+  assert.equal(
+    completionData.failedReason,
+    '工具 create_file 未获授权：workspace-path-outside-root',
+  );
+});
+
 test('agent run settlement keeps explicit artifact verification verdicts', () => {
   let completionData;
   const terminalPermissions = {

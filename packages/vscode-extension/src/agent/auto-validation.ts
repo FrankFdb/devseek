@@ -6,12 +6,14 @@ import type {
   CodingVerificationReceipt,
   CodingVerificationSessionPort,
   CodingKernelTaskContract,
+  CodingWorkspaceMutationReceipt,
   CodingToolAuthoritySessionPort,
   CodingToolExecutionSessionPort,
   DiagnosticPort,
   RegressionSelectionPort,
   VerifierSelectionPort,
 } from '@devseek-netai/shared';
+import { codingWorkspaceTargetMatchesScope } from '@devseek-netai/shared';
 import type { AgentStatusEvent } from './events';
 import {
   type TerminalEvidence,
@@ -101,6 +103,16 @@ export interface AgentAutoValidationOptions {
   };
   verificationAcceptance?: readonly CodingVerificationCriterion[];
   verificationEvidenceRefs?: readonly string[];
+  priorVerificationReceipts?: readonly CodingVerificationReceipt[];
+  changeReceipts?: readonly CodingWorkspaceMutationReceipt<unknown>[];
+}
+
+export interface ReusableVerificationReceiptInput {
+  readonly runId?: string;
+  readonly changedPaths: readonly string[];
+  readonly acceptance: readonly CodingVerificationCriterion[];
+  readonly verificationReceipts: readonly CodingVerificationReceipt[];
+  readonly changeReceipts: readonly CodingWorkspaceMutationReceipt<unknown>[];
 }
 
 let autoValidationOperationSequence = 0;
@@ -114,6 +126,44 @@ function nextAutoValidationOperationId(changedPaths: readonly string[]): string 
   autoValidationOperationSequence += 1;
   const scope = changedPaths.join('|').replace(/[^0-9A-Za-z._/-]+/g, '-').slice(0, 160) || 'workspace';
   return `auto-validation-${autoValidationOperationSequence}-${scope}`.slice(0, 512);
+}
+
+/** Selects only the latest current-run receipt that post-dates the full write cohort. */
+export function selectReusableVerificationReceipt(
+  input: ReusableVerificationReceiptInput,
+): CodingVerificationReceipt | undefined {
+  if (input.acceptance.length === 0 || input.changedPaths.length === 0) return undefined;
+  const latestMutationSequence = input.changeReceipts
+    .filter(receipt => receipt.status === 'committed'
+      && receipt.paths.some(path => input.changedPaths.some(changedPath => (
+        codingWorkspaceTargetMatchesScope(path, changedPath)
+          || codingWorkspaceTargetMatchesScope(changedPath, path)
+      ))))
+    .reduce((latest, receipt) => Math.max(latest, receipt.sequence), 0);
+  const acceptanceIds = new Set(input.acceptance.map(criterion => criterion.id));
+  const latest = input.verificationReceipts
+    .filter(receipt => (
+      (!input.runId || receipt.runId === input.runId)
+        && receipt.sequence > latestMutationSequence
+        && receiptCoversPaths(receipt, input.changedPaths)
+        && [...acceptanceIds].every(id => receipt.acceptance.some(result => result.criterionId === id))
+    ))
+    .sort((left, right) => left.sequence - right.sequence)
+    .at(-1);
+  return latest?.status === 'passed'
+    && latest.acceptance.length > 0
+    && latest.acceptance.every(result => result.status === 'passed')
+    ? latest
+    : undefined;
+}
+
+function receiptCoversPaths(
+  receipt: CodingVerificationReceipt,
+  changedPaths: readonly string[],
+): boolean {
+  return changedPaths.every(path => receipt.scopePaths.some(scope => (
+    scope === 'workspace' || codingWorkspaceTargetMatchesScope(path, scope)
+  )));
 }
 
 function qualityGateStatusToAgentState(
@@ -601,6 +651,39 @@ export async function runAgentAutoValidationForWrites(
         : requirementQuality
           ? '需求质量门禁未通过'
           : undefined;
+    const reusableVerification = selectReusableVerificationReceipt({
+      runId: callbacks.traceRunId,
+      changedPaths,
+      acceptance: suppliedVerificationAcceptance,
+      verificationReceipts: options.priorVerificationReceipts ?? [],
+      changeReceipts: options.changeReceipts ?? [],
+    });
+    if (reusableVerification) {
+      const qualityGate = policyQuality?.qualityGate ?? {
+        status: 'pass' as const,
+        summary: '已复用当前写入批次之后通过的终端验证证据。',
+        evidenceRefs: [...reusableVerification.evidenceRefs],
+      };
+      const feedbackForAI = [
+        policyQuality?.feedbackForAI,
+        policyQuality ? '' : '当前代码写入已由同一运行中的后续终端命令验证，无需重复启动自动验证器。',
+      ].filter(Boolean).join('\n\n');
+      await callbacks.onAgentStatus({
+        type: 'agentStatus',
+        phase: 'validate',
+        state: qualityGateStatusToValidationState(qualityGate.status),
+        evidenceOperationId,
+        verificationScopePaths: changedPaths,
+        title: policyQualityTitle ?? '已复用终端验证结果',
+        detail: feedbackForAI.slice(0, 1200),
+      });
+      await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, changedPaths, qualityGate);
+      return {
+        evidenceOperationId,
+        feedbackForAI,
+        qualityGate,
+      };
+    }
     const policyCheckId = policyQuality ? `${evidenceOperationId}:policy-quality` : undefined;
     if (suppliedVerificationAcceptance.length === 0 && readbackOnlyScope) {
       const qualityGate = policyQuality?.qualityGate ?? buildReadbackOnlyQualityGate(changedPaths);

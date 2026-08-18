@@ -7,6 +7,7 @@ import {
   type CodingKernelRuntimeRequest,
   type CodingKernelRuntimeOutput,
   type CodingKernelRuntimePort,
+  type CodingVerificationReceipt,
   type LLMProviderType,
 } from '@devseek-netai/shared';
 import type { ExecutionMode } from '../intent/intent-types';
@@ -29,6 +30,7 @@ import { projectVsCodeCodingKernelTaskContract } from './coding-kernel-task-cont
 import {
   AgentTerminalPresentationBuffer,
 } from './agent-terminal-presentation';
+import { reconcileObservedTaskContract } from './observed-task-contract-reconciler';
 
 export { deliverVsCodeRecoverySettlement } from './coding-kernel-recovery-delivery';
 
@@ -112,6 +114,7 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
     const terminalPresentation = new AgentTerminalPresentationBuffer(request.callbacks);
     const originalCheckpoint = request.callbacks.onTaskCheckpoint;
     const originalTaskSemanticContractRevision = request.callbacks.onTaskSemanticContractRevision;
+    const originalSettledModelSemanticContract = request.callbacks.onSettledModelSemanticContract;
     const callbacks: AgentLoopCallbacks = {
       ...request.callbacks,
       onDelta: terminalPresentation.onDelta,
@@ -171,6 +174,18 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
           ],
         });
         originalTaskSemanticContractRevision?.(revision);
+      },
+      onSettledModelSemanticContract: settlement => {
+        const candidate = reconcileObservedTaskContract({
+          current: kernelRequest.taskContractRevision.current(),
+          semanticContract: settlement.semanticContract,
+          contextFiles: request.contextFiles,
+          workspaceRoot: kernelRequest.workspaceRoot,
+          toolReceipts: settlement.toolReceipts,
+          changeReceipts: settlement.changeReceipts,
+        });
+        if (candidate) kernelRequest.taskContractRevision.revise(candidate);
+        originalSettledModelSemanticContract?.(settlement);
       },
       ...(originalCheckpoint ? {
         onTaskCheckpoint: async (firstUnfinishedIndex, remainingTasks, reason) => {
@@ -234,7 +249,7 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
       }
       throw error;
     }
-    const result: AgentLoopResult = {
+    const settlementResult: AgentLoopResult = {
       ...loopResult,
       toolExecutionReceipts: [...kernelRequest.toolExecution.receipts()],
       changeReceipts: [...kernelRequest.workspaceMutations.receipts()],
@@ -243,8 +258,15 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
     const completionEvidence = this.completionEvidence.project({
         runId: kernelRequest.runId,
         taskContract: kernelRequest.taskContractRevision.current(),
-        result,
+        result: settlementResult,
     });
+    const result: AgentLoopResult = {
+      ...settlementResult,
+      verificationReceipts: mergeVerificationAuditReceipts(
+        loopResult.verificationReceipts ?? [],
+        settlementResult.verificationReceipts ?? [],
+      ),
+    };
     const pendingRecoveryTasks = request.recovery && originalCheckpoint && !terminalCheckpointEmitted
       ? getPendingKernelRecoveryTasks(request.recovery)
       : [];
@@ -274,6 +296,17 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
       completionEvidence,
     };
   }
+}
+
+function mergeVerificationAuditReceipts(
+  history: readonly CodingVerificationReceipt[],
+  settled: readonly CodingVerificationReceipt[],
+): CodingVerificationReceipt[] {
+  const receipts = new Map<string, CodingVerificationReceipt>();
+  for (const receipt of [...history, ...settled]) {
+    receipts.set(`${receipt.runId}:${receipt.actionId}`, receipt);
+  }
+  return [...receipts.values()];
 }
 
 function mergeContextText(...values: readonly (string | undefined)[]): string {

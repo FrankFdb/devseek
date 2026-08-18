@@ -55,6 +55,8 @@ export class BridgeProvider implements LLMProvider {
       traceRunId: opts.traceRunId,
       traceWorkspaceRoot: opts.traceWorkspaceRoot,
       traceOperationId: opts.traceOperationId,
+      traceSamplingId: opts.traceSamplingId,
+      traceTransportAttempt: opts.traceTransportAttempt,
       traceEvidenceParticipantToken: opts.evidenceCapability?.token,
       signal: opts.signal,
     });

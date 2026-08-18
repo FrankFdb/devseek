@@ -249,8 +249,10 @@ export function compareCodingConformanceProjection(
     }
     const semanticallyConformant = dimension === 'taskContract'
       ? taskContractSemanticallyConforms(expected.taskContract, actual.taskContract)
-      : canonicalJson(projectSemanticDimension(expected, dimension))
-        === canonicalJson(projectSemanticDimension(actual, dimension));
+      : dimension === 'completion'
+        ? completionSemanticallyConforms(expected.completion, actual.completion)
+        : canonicalJson(projectSemanticDimension(expected, dimension))
+          === canonicalJson(projectSemanticDimension(actual, dimension));
     if (!semanticallyConformant) {
       violations.push({ surface, dimension, code: 'semantic-mismatch' });
     }
@@ -274,11 +276,41 @@ function taskContractSemanticallyConforms(
 ): boolean {
   if (!actual) return false;
   if (expected.goal !== actual.goal || expected.mode !== actual.mode) return false;
-  if (canonicalJson(expected.constraints) !== canonicalJson(actual.constraints)) return false;
-  if (canonicalJson(expected.acceptance) !== canonicalJson(actual.acceptance)) return false;
+  if (!stringSetIncludes(actual.constraints, expected.constraints)) return false;
+  if (!identifiedSetIncludes(actual.acceptance, expected.acceptance)) return false;
   if ((expected.provenanceRefs.length > 0) !== (actual.provenanceRefs.length > 0)) return false;
   if (!scopeSemanticallyNarrows(expected.scope, actual.scope)) return false;
   return deliverablesSemanticallyNarrow(expected.deliverables, actual.deliverables, actual.scope.include);
+}
+
+function stringSetIncludes(actual: readonly string[], expected: readonly string[]): boolean {
+  const actualValues = new Set(actual);
+  return expected.every(value => actualValues.has(value));
+}
+
+function identifiedSetIncludes<T extends { readonly id: string }>(
+  actual: readonly T[],
+  expected: readonly T[],
+): boolean {
+  const actualById = new Map(actual.map(value => [value.id, value]));
+  return expected.every(value => canonicalJson(actualById.get(value.id)) === canonicalJson(value));
+}
+
+function completionSemanticallyConforms(
+  expected: CodingCompletionProjection,
+  actual: CodingCompletionProjection | undefined,
+): boolean {
+  if (!actual || expected.status !== actual.status) return false;
+  if (canonicalJson([...expected.residualRisks].sort()) !== canonicalJson([...actual.residualRisks].sort())) {
+    return false;
+  }
+  if ((expected.evidenceRefs.length > 0) !== (actual.evidenceRefs.length > 0)) return false;
+  const actualAcceptance = new Map(actual.acceptance.map(criterion => [criterion.criterionId, criterion]));
+  return expected.acceptance.every(criterion => {
+    const candidate = actualAcceptance.get(criterion.criterionId);
+    return candidate?.status === criterion.status
+      && (criterion.evidenceRefs.length > 0) === (candidate.evidenceRefs.length > 0);
+  });
 }
 
 function scopeSemanticallyNarrows(

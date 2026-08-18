@@ -22,7 +22,6 @@ import {
 } from '../intent/safety-intent';
 import {
   buildTerminalFailureRepairFeedback,
-  assessMissingCompletionEvidence,
   describeBlockingTerminalFailure,
   getUnsupportedSummaryFileClaims,
   requiresCommandEvidence,
@@ -72,8 +71,8 @@ import {
 } from './agentic-planning';
 import { projectTaskContractAcceptance } from './task-contract-acceptance';
 import {
+  assessAgenticEvidenceClosure,
   describeAgenticDeniedToolExecution,
-  getAgenticBlockingTerminalFailure,
   getAgenticBlockingDeniedToolExecution,
 } from './agentic-execution-evidence';
 import { ProviderWaitFeedback } from './provider-wait-feedback';
@@ -136,6 +135,7 @@ import {
   isContextGatheringToolName,
   makeContextToolSignature,
 } from './context-convergence-feedback';
+import { createModelSemanticSettlementService } from './model-semantic-settlement';
 const AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS = 3;
 
 // ----------------------------------------------------------------
@@ -273,6 +273,8 @@ export async function runAgenticLoop(
     mode,
     callbacks,
     onProviderSessionReplaced: () => { forceProviderNewSessionNextTurn = true; },
+    semanticContract: () => writeAuthority.completionSemanticContract,
+    canonicalTaskContract: () => callbacks.canonicalTaskContract,
   });
   let progressEpoch = 0;
   const recordQualityGateFailureFeedback = (qualityGate: AgenticHistoryQualityGate | undefined): string => {
@@ -294,16 +296,30 @@ export async function runAgenticLoop(
   const allChangeReceipts: CodingWorkspaceMutationReceipt<unknown>[] = [];
   const allToolExecutionReceipts: CodingToolExecutionReceipt<unknown>[] = [];
   let autoValidatedWriteCount = 0;
-  const assessCurrentCompletionEvidence = (): string[] => assessMissingCompletionEvidence({
-    userPrompt: writeAuthority.currentPrompt,
-    todos: currentTodos,
-    writtenFiles: allWrittenFiles,
-    terminalEvidence: allTerminalEvidence,
-    readEvidencePaths: [...allReadEvidencePaths],
+  const currentVerificationReceipts = (): readonly CodingVerificationReceipt[] => (
+    callbacks.canonicalVerification?.receipts() ?? allVerificationReceipts
+  );
+  const assessCurrentEvidenceClosure = () => assessAgenticEvidenceClosure({
+    requiredBeforeExecution: promptRequiresTools,
+    workToolObserved: sawWorkTool,
+    completion: {
+      userPrompt: writeAuthority.currentPrompt,
+      todos: currentTodos,
+      writtenFiles: allWrittenFiles,
+      terminalEvidence: allTerminalEvidence,
+      readEvidencePaths: [...allReadEvidencePaths],
+      workspaceRoot,
+      semanticContract: writeAuthority.completionSemanticContract,
+      canonicalTaskContract: callbacks.canonicalTaskContract,
+      verificationReceipts: [...currentVerificationReceipts()],
+    },
+  });
+  const modelSemanticSettlement = createModelSemanticSettlementService({
+    authority: writeAuthority,
+    callbacks,
     workspaceRoot,
-    semanticContract: writeAuthority.canonicalSemanticContract,
-    canonicalTaskContract: callbacks.canonicalTaskContract,
-    verificationReceipts: allVerificationReceipts,
+    writtenFiles: () => allWrittenFiles,
+    verificationReceipts: currentVerificationReceipts,
   });
 
   // Announce Working box to webview — neutral action (not 'analyze') so the
@@ -528,7 +544,7 @@ export async function runAgenticLoop(
         userPrompt: writeAuthority.currentPrompt, todos: currentTodos, writtenFiles: allWrittenFiles,
         terminalEvidence: allTerminalEvidence, readEvidencePaths: [...allReadEvidencePaths],
         workspaceRoot, completeSummary,
-        semanticContract: writeAuthority.canonicalSemanticContract,
+        semanticContract: writeAuthority.completionSemanticContract,
         canonicalTaskContract: callbacks.canonicalTaskContract,
       });
       if (providerSettlement.completed) {
@@ -710,9 +726,7 @@ export async function runAgenticLoop(
         appendUserFeedback(retryMessage);
         continue;
       }
-      const missingWithoutTools = promptRequiresTools
-        ? assessCurrentCompletionEvidence()
-        : [];
+      const missingWithoutTools = assessCurrentEvidenceClosure().missingEvidence;
       if (!callbacks.signal?.aborted && missingWithoutTools.length > 0 && noToolRounds < 4) {
         noToolRounds++;
         await emitAgenticCorrectionStatus(
@@ -754,9 +768,7 @@ export async function runAgenticLoop(
       fallbackTodosVisible = true;
     }
 
-    const missingBeforeTools = promptRequiresTools
-      ? assessCurrentCompletionEvidence()
-      : [];
+    const missingBeforeTools = assessCurrentEvidenceClosure().missingEvidence;
 
     const blockedRepeatedToolIndexes = new Set<number>();
     const suppressedTools: ToolSuppressionEvidence[] = [];
@@ -868,6 +880,11 @@ export async function runAgenticLoop(
     if (loopRes.evidenceRefs?.length) {
       allEvidenceRefs.push(...loopRes.evidenceRefs);
     }
+    const semanticSettlement = await modelSemanticSettlement.observe(loopRes);
+    if (semanticSettlement.settled) {
+      refreshPromptRequirements();
+      allVerificationReceipts.push(...semanticSettlement.verificationReceipts);
+    }
     if ((loopRes.readFiles?.length ?? 0) > 0
       || (loopRes.writtenFiles?.length ?? 0) > 0
       || (loopRes.terminalEvidence?.length ?? 0) > 0
@@ -914,7 +931,9 @@ export async function runAgenticLoop(
         qualityWrittenFiles: allWrittenFiles,
         verificationScopeWrittenFiles: allWrittenFiles,
         verificationAcceptance: callbacks.canonicalVerificationAcceptance
-          ?? projectAgenticVerificationAcceptance(writeAuthority.canonicalSemanticContract.taskContract),
+          ?? projectAgenticVerificationAcceptance(writeAuthority.completionSemanticContract.taskContract),
+        priorVerificationReceipts: currentVerificationReceipts(),
+        changeReceipts: allChangeReceipts,
       },
     );
     if (autoValidation.verificationReceipt) allVerificationReceipts.push(autoValidation.verificationReceipt);
@@ -974,7 +993,7 @@ export async function runAgenticLoop(
     }
 
     const deniedToolAfterTools = getAgenticBlockingDeniedToolExecution(callbacks.canonicalToolExecution?.receipts()
-      ?? allToolExecutionReceipts, allChangeReceipts, allVerificationReceipts);
+      ?? allToolExecutionReceipts, allChangeReceipts, currentVerificationReceipts());
     if (deniedToolAfterTools
       && (loopRes.taskComplete || loopRes.allTodosCompleted)
       && !callbacks.signal?.aborted) {
@@ -984,18 +1003,9 @@ export async function runAgenticLoop(
       break;
     }
 
-    const missingAfterTools = promptRequiresTools
-      ? assessCurrentCompletionEvidence()
-      : [];
-    const blockingFailureAfterTools = promptRequiresTools
-      ? getAgenticBlockingTerminalFailure(
-        writeAuthority.currentPrompt,
-        currentTodos,
-        allWrittenFiles,
-        allTerminalEvidence,
-        writeAuthority.canonicalSemanticContract,
-      )
-      : undefined;
+    const evidenceAfterTools = assessCurrentEvidenceClosure();
+    const missingAfterTools = evidenceAfterTools.missingEvidence;
+    const blockingFailureAfterTools = evidenceAfterTools.blockingTerminalFailure;
     const roundSummaryForFactCheck = loopRes.completeSummary !== undefined
       ? loopRes.completeSummary ?? ''
       : cleanAgentFinalSummaryForUser(stripToolCallBlocks(text));
@@ -1031,19 +1041,18 @@ export async function runAgenticLoop(
 
     let reviewFeedback: string | undefined;
     if (!callbacks.signal?.aborted
-      && promptRequiresTools
       && sawWorkTool
       && missingAfterTools.length === 0
       && !blockingFailureAfterTools
       && summaryFactFailuresAfterTools.length === 0) {
-      reviewFeedback = await requirementReview.request({
-        sourceChangeRequested: currentTaskIntent.mutation.sourceChange,
+      const reviewOutcome = await requirementReview.request({
         qualityGate: sourceValidation.qualityGateForCurrentSource(),
         writtenFiles: allWrittenFiles,
         roundReadFiles: loopRes.readFiles ?? [],
         hostFinalSourceEvidenceReady: sourceValidation.currentSourceIsValidated(),
       });
-      if (reviewFeedback) {
+      if (reviewOutcome.kind === 'feedback') {
+        reviewFeedback = reviewOutcome.feedback;
         noToolRounds = 0;
         const repairWindow = updateRequirementReviewRepairWindow(requirementReviewRepairGraceRounds, reviewFeedback);
         requirementReviewRepairGraceRounds = repairWindow.graceRounds;
@@ -1051,7 +1060,7 @@ export async function runAgenticLoop(
           await emitAgenticCorrectionStatus(...repairWindow.failureStatus);
         }
         loopWarnings.push(reviewFeedback);
-      } else {
+      } else if (reviewOutcome.kind === 'settled') {
         hadTaskComplete = hadTaskComplete || loopRes.taskComplete;
         if (loopRes.completeSummary !== undefined) completeSummary = loopRes.completeSummary ?? '';
         break;
@@ -1110,18 +1119,9 @@ export async function runAgenticLoop(
     }
 
     if (!loopRes.toolCallsMade && loopWarnings.length === 0) {
-      const missingNow = promptRequiresTools
-        ? assessCurrentCompletionEvidence()
-        : [];
-      const blockingFailureNow = promptRequiresTools
-        ? getAgenticBlockingTerminalFailure(
-          writeAuthority.currentPrompt,
-          currentTodos,
-          allWrittenFiles,
-          allTerminalEvidence,
-          writeAuthority.canonicalSemanticContract,
-        )
-        : undefined;
+      const evidenceNow = assessCurrentEvidenceClosure();
+      const missingNow = evidenceNow.missingEvidence;
+      const blockingFailureNow = evidenceNow.blockingTerminalFailure;
       if (blockingFailureNow && noToolRounds < 2 && !callbacks.signal?.aborted) {
         noToolRounds++;
         const retryMessage = buildTerminalFailureRepairFeedback(blockingFailureNow, missingNow);
@@ -1137,18 +1137,9 @@ export async function runAgenticLoop(
     appendUserFeedback(feedback);
   }
 
-  const finalMissingEvidence = promptRequiresTools
-    ? assessCurrentCompletionEvidence()
-    : [];
-  const finalBlockingFailure = promptRequiresTools
-    ? getAgenticBlockingTerminalFailure(
-      writeAuthority.currentPrompt,
-      currentTodos,
-      allWrittenFiles,
-      allTerminalEvidence,
-      writeAuthority.canonicalSemanticContract,
-    )
-    : undefined;
+  const finalEvidence = assessCurrentEvidenceClosure();
+  const finalMissingEvidence = finalEvidence.missingEvidence;
+  const finalBlockingFailure = finalEvidence.blockingTerminalFailure;
   const finalSummaryFactFailures = completeSummary
     ? getUnsupportedSummaryFileClaims(completeSummary, allWrittenFiles, workspaceRoot)
     : lastSummaryFactFailures;
@@ -1236,7 +1227,9 @@ export async function runAgenticLoop(
     currentTodos,
     writtenFiles: allWrittenFiles,
     terminalEvidence: allTerminalEvidence,
-    verificationReceipts: allVerificationReceipts,
+    // Preserve the full failure/repair/reverification history for audit and
+    // conformance. Decision sites above consume currentVerificationReceipts().
+    verificationReceipts: [...allVerificationReceipts],
     toolExecutionReceipts: allToolExecutionReceipts,
     changeReceipts: allChangeReceipts,
     latestAutoQualityGate,

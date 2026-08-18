@@ -1,4 +1,6 @@
 import {
+  collectTransportSupersededProviderFailureKeys,
+  collectTransportSupersededProviderFailureOperationIds,
   createProductRunEvidenceId,
   createProductRunEvidenceAuthorityToken,
   createDevSeekTraceLogger,
@@ -9,6 +11,8 @@ import {
   RUN_EVIDENCE_PROVIDER_FAILURE_RECOVERY_RESOLUTION,
   RUN_EVIDENCE_PROVIDER_FAILURE_RECOVERY_TRIGGER,
   summarizeTraceText,
+  providerAttemptEvidenceIdentity,
+  providerAttemptEvidenceLifecycleKey,
   type DevSeekTraceLogger,
   type DevSeekTraceLevel,
   type RunEvidenceEvent,
@@ -940,6 +944,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     try {
       const resolved = new Set<string>();
       const events = this.evidence.readEvents();
+      const supersededFailureKeys = collectTransportSupersededProviderFailureKeys(events);
       for (const event of events) {
         if (event.type !== 'recovery.completed') continue;
         const payload = evidencePayloadObject(event.payload);
@@ -953,6 +958,11 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
       const operationIds = new Set<string>();
       for (const event of events) {
         if (event.type !== 'provider.failed') continue;
+        const attemptIdentity = providerAttemptEvidenceIdentity(event);
+        if (attemptIdentity
+          && supersededFailureKeys.has(providerAttemptEvidenceLifecycleKey(attemptIdentity))) {
+          continue;
+        }
         const payload = evidencePayloadObject(event.payload);
         const operationId = typeof payload?.operation_id === 'string' ? payload.operation_id.trim() : '';
         if (operationId && !resolved.has(operationId)) operationIds.add(operationId);
@@ -971,9 +981,15 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
       const verifiedLocalResult = findLatestVerifiedLocalResult(events);
       if (!verifiedLocalResult) return;
       const resolved = collectResolvedOperationIds(events);
+      const supersededFailureKeys = collectTransportSupersededProviderFailureKeys(events);
       const unresolvedProviderFailuresByOperation = new Map<string, RunEvidenceEvent[]>();
       for (const event of events) {
         if (event.type !== 'provider.failed') continue;
+        const attemptIdentity = providerAttemptEvidenceIdentity(event);
+        if (attemptIdentity
+          && supersededFailureKeys.has(providerAttemptEvidenceLifecycleKey(attemptIdentity))) {
+          continue;
+        }
         const operationId = evidenceOperationId(event);
         if (!operationId || resolved.has(operationId)) continue;
         const failures = unresolvedProviderFailuresByOperation.get(operationId) ?? [];
@@ -1052,13 +1068,17 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
       return;
     }
     try {
-      const resolved = collectResolvedOperationIds(this.evidence.readEvents());
+      const events = this.evidence.readEvents();
+      const resolved = collectResolvedOperationIds(events);
+      const superseded = collectTransportSupersededProviderFailureOperationIds(events);
       for (const operationId of this.recoverableProviderBoundaryGapOperationIds) {
-        if (!resolved.has(operationId)) continue;
+        if (!resolved.has(operationId) && !superseded.has(operationId)) continue;
         this.recoverableProviderBoundaryGapOperationIds.delete(operationId);
         this.trace.info('run-evidence', 'provider-failure-boundary-gap-recovered', {
           operationId,
-          recoveryResolution: 'verified-local-result',
+          recoveryResolution: resolved.has(operationId)
+            ? 'verified-local-result'
+            : 'later-transport-attempt',
         });
       }
       if (this.recoverableProviderBoundaryGapOperationIds.size > 0) {

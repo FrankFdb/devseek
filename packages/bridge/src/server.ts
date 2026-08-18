@@ -21,6 +21,7 @@ import {
   type BridgeShutdownReason,
 } from './bridge-runtime-lifecycle';
 import { attachBridgeRunEvidence, type BridgeRunEvidence } from './run-evidence';
+import { BridgeProviderLifecycle } from './bridge-provider-lifecycle';
 import {
   CanonicalDeepSeekWebConnectorExecutionService,
   CanonicalDeepSeekWebConnectorService,
@@ -145,20 +146,6 @@ function createRequestEvidence(
 function isPathInsideOrEqual(root: string, candidate: string): boolean {
   const relative = nodePath.relative(root, candidate);
   return relative === '' || (!relative.startsWith('..') && !nodePath.isAbsolute(relative));
-}
-
-function recordBridgeEvidence(
-  evidence: ReturnType<typeof createRequestEvidence>,
-  trace: DevSeekTraceLogger,
-  type: 'provider.requested' | 'provider.completed' | 'provider.failed',
-  payload: Record<string, unknown>,
-): void {
-  if (!evidence) return;
-  try {
-    evidence.record(type, payload);
-  } catch (error) {
-    trace.error('run-evidence', 'append-failed', summarizeBridgeEvidenceError(error));
-  }
 }
 
 function summarizeBridgeEvidenceError(error: unknown): { name: string; code: string | null; message: string } {
@@ -402,14 +389,18 @@ app.post('/chat', async (req: Request, res: Response) => {
     files: body.files?.map(file => nodePath.basename(file)),
     prompt: summarizeTraceText(prompt),
   });
-  recordBridgeEvidence(evidence, trace, 'provider.requested', {
-    provider: 'deepseek-web',
-    operation_id: streamRequestId,
+  const providerLifecycle = BridgeProviderLifecycle.start({
+    operationId: streamRequestId,
+    samplingId: body.samplingId,
+    transportAttempt: body.transportAttempt,
+    prompt,
     stream: useStream,
-    mode: body.mode ?? null,
-    prompt: summarizeTraceText(prompt),
-    file_count: body.files?.length ?? 0,
+    mode: body.mode,
+    fileCount: body.files?.length ?? 0,
+    evidence,
+    trace,
   });
+  providerLifecycle.beginInitialization();
 
   // 初始化 agent（异步，第一次请求会等待浏览器启动）
   try {
@@ -418,10 +409,11 @@ app.post('/chat', async (req: Request, res: Response) => {
     const safeMessage = safeBridgeErrorMessage(e);
     const category = classifyDeepSeekStreamErrorMessage(safeMessage);
     const terminalFrame = connectorSession.rejectBeforeDispatch(safeMessage, category);
-    recordBridgeEvidence(evidence, trace, 'provider.failed', {
-      provider: 'deepseek-web',
+    providerLifecycle.fail({
+      message: safeMessage,
+      category: terminalFrame.event === 'cancelled' ? 'cancelled' : category,
       phase: 'initialization',
-      error: summarizeTraceText(safeMessage),
+      retryAfterMs: terminalFrame.retryAfterMs,
     });
     if (terminalFrame.event === 'cancelled') {
       trace.info('bridge-server', 'chat-request-cancelled-before-dispatch', { operationId: streamRequestId });
@@ -438,12 +430,24 @@ app.post('/chat', async (req: Request, res: Response) => {
 
   if (connectorSession.snapshot().cancelRequested) {
     connectorSession.settleCancelled();
+    providerLifecycle.fail({
+      message: 'Cancelled by client',
+      category: 'cancelled',
+      phase: 'initialization',
+    });
     trace.info('bridge-server', 'chat-request-cancelled-after-initialization', {
       operationId: streamRequestId,
     });
     if (!res.headersSent) res.status(499).json({ error: 'Cancelled by client' });
     return;
   }
+
+  providerLifecycle.beginAdmission();
+  const agentLifecycle = {
+    onPromptPrepared: (effectivePrompt: string) => providerLifecycle.promptPrepared(effectivePrompt),
+    onSubmitConfirmed: () => providerLifecycle.submitConfirmed(),
+    onProviderOutput: (delta: string) => providerLifecycle.observeProviderOutput(delta),
+  };
 
   if (useStream) {
     // ---- SSE 流式响应 ----
@@ -465,6 +469,7 @@ app.post('/chat', async (req: Request, res: Response) => {
           mode: body.mode,
           files: body.files,
           trace: trace.child('deepseek-web'),
+          lifecycle: agentLifecycle,
           onDelta: (delta) => {
             const released = responseGuard.push(delta);
             const frame = connectorSession.acceptProviderDelta(delta, released);
@@ -477,33 +482,32 @@ app.post('/chat', async (req: Request, res: Response) => {
           if (frame) sendEvent(frame);
         }
         return content;
-      }, frame => {
-        trace.info('bridge-server', 'chat-request-retry', {
-          operationId: streamRequestId,
-          attempt: frame.attempt,
-          retryAfterMs: frame.retryAfterMs,
-        });
-        sendEvent(frame);
+      }, {
+        onAttemptStarted: attempt => providerLifecycle.beginAttempt(attempt),
+        onRetryScheduled: () => providerLifecycle.retryScheduled(),
+        onRetryFrame: frame => {
+          trace.info('bridge-server', 'chat-request-retry', {
+            operationId: streamRequestId,
+            attempt: frame.attempt,
+            retryAfterMs: frame.retryAfterMs,
+          });
+          sendEvent(frame);
+        },
       });
       trace.info('bridge-server', 'chat-request-complete', { response: summarizeTraceText(content) });
-      recordBridgeEvidence(evidence, trace, 'provider.completed', {
-        provider: 'deepseek-web',
-        operation_id: streamRequestId,
-        response: summarizeTraceText(content),
-      });
-      sendEvent(connectorSession.complete());
+      const terminalFrame = connectorSession.complete();
+      providerLifecycle.complete(content);
+      sendEvent(terminalFrame);
     } catch (e) {
       const msg = safeBridgeErrorMessage(e);
       const errorCategory = classifyDeepSeekStreamErrorMessage(msg);
       trace.error('bridge-server', 'chat-request-failed', { message: msg });
       const terminalFrame = settleConnectorFailure(connectorSession, msg, errorCategory);
-      recordBridgeEvidence(evidence, trace, 'provider.failed', {
-        provider: 'deepseek-web',
-        operation_id: streamRequestId,
+      providerLifecycle.fail({
+        message: msg,
+        category: terminalFrame.event === 'cancelled' ? 'cancelled' : errorCategory,
         phase: 'generation',
-        category: errorCategory,
-        retry_after_ms: terminalFrame.retryAfterMs ?? null,
-        error: summarizeTraceText(msg),
+        retryAfterMs: terminalFrame.retryAfterMs,
       });
       resetAgentAfterSessionLoss(errorCategory);
       sendEvent(terminalFrame);
@@ -520,16 +524,16 @@ app.post('/chat', async (req: Request, res: Response) => {
           mode: body.mode,
           files: body.files,
           trace: trace.child('deepseek-web'),
+          lifecycle: agentLifecycle,
         });
+      }, {
+        onAttemptStarted: attempt => providerLifecycle.beginAttempt(attempt),
+        onRetryScheduled: () => providerLifecycle.retryScheduled(),
       });
       const safeContent = requireBridgePrimitiveText(content, 'response');
       connectorSession.complete();
       trace.info('bridge-server', 'chat-request-complete', { response: summarizeTraceText(safeContent) });
-      recordBridgeEvidence(evidence, trace, 'provider.completed', {
-        provider: 'deepseek-web',
-        operation_id: streamRequestId,
-        response: summarizeTraceText(safeContent),
-      });
+      providerLifecycle.complete(safeContent);
       const response: ChatResponse = { content: safeContent };
       res.json(response);
     } catch (e) {
@@ -537,13 +541,11 @@ app.post('/chat', async (req: Request, res: Response) => {
       const errorCategory = classifyDeepSeekStreamErrorMessage(msg);
       const terminalFrame = settleConnectorFailure(connectorSession, msg, errorCategory);
       trace.error('bridge-server', 'chat-request-failed', { message: msg });
-      recordBridgeEvidence(evidence, trace, 'provider.failed', {
-        provider: 'deepseek-web',
-        operation_id: streamRequestId,
+      providerLifecycle.fail({
+        message: msg,
+        category: terminalFrame.event === 'cancelled' ? 'cancelled' : errorCategory,
         phase: 'generation',
-        category: errorCategory,
-        retry_after_ms: terminalFrame.retryAfterMs ?? null,
-        error: summarizeTraceText(msg),
+        retryAfterMs: terminalFrame.retryAfterMs,
       });
       resetAgentAfterSessionLoss(errorCategory);
       if (errorCategory === 'browser-session-lost' || errorCategory === 'login-required') {

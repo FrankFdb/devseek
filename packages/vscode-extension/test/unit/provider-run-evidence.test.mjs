@@ -32,6 +32,8 @@ const {
 test('provider wrapper appends direct provider request and completion to the owning run', async () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-provider-evidence-'));
   try {
+    const prompt = 'secret prompt 说明';
+    const ticks = [0, 10, 20, 40, 50];
     const ownerToken = createProductRunEvidenceAuthorityToken();
     const participantToken = createProductRunEvidenceAuthorityToken();
     const owner = ProductRunEvidenceSession.forWorkspace({
@@ -42,10 +44,16 @@ test('provider wrapper appends direct provider request and completion to the own
       openIfMissing: true,
     });
     const response = await invokeProviderWithRunEvidence({
-      request: { prompt: 'secret prompt', traceRunId: 'provider-success', traceWorkspaceRoot: workspaceRoot, traceEvidenceParticipantToken: participantToken },
+      request: { prompt, traceRunId: 'provider-success', traceWorkspaceRoot: workspaceRoot, traceEvidenceParticipantToken: participantToken },
       providerType: 'deepseek-api',
+      samplingId: 'semantic-sampling-1',
+      transportAttempt: 2,
+      now: () => ticks.shift(),
       newOperationId: () => 'provider-op-1',
-      invoke: async () => 'secret response',
+      invoke: async observation => {
+        observation.observeOutput('首');
+        return 'secret response';
+      },
     });
     assert.equal(response, 'secret response');
     owner.settleAndSeal({ status: 'completed', idempotencyKey: 'settled' });
@@ -60,6 +68,12 @@ test('provider wrapper appends direct provider request and completion to the own
     ]);
     assert.equal(JSON.stringify(events).includes('secret prompt'), false);
     assert.equal(JSON.stringify(events).includes('secret response'), false);
+    assert.equal(events[1].payload.sampling_id, 'semantic-sampling-1');
+    assert.equal(events[1].payload.transport_attempt, 2);
+    assert.equal(events[1].payload.prompt_budget.total_bytes, Buffer.byteLength(prompt));
+    assert.equal(events[2].payload.efficiency.total_ms, 50);
+    assert.equal(events[2].payload.efficiency.time_to_first_output_ms, 20);
+    assert.equal(events[2].payload.efficiency.stream_bytes_observed, Buffer.byteLength('首'));
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });
   }
@@ -377,4 +391,80 @@ test('bridge provider reports a recoverable missing failed server boundary witho
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });
   }
+});
+
+test('T9 transport retries keep one semantic sampling identity and distinct operation evidence', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-provider-evidence-'));
+  try {
+    const ownerToken = createProductRunEvidenceAuthorityToken();
+    const participantToken = createProductRunEvidenceAuthorityToken();
+    const owner = ProductRunEvidenceSession.forWorkspace({
+      workspaceRoot,
+      runId: 'provider-retry-correlation',
+      surface: 'vscode',
+      authority: { role: 'owner', token: ownerToken, participantToken },
+      openIfMissing: true,
+    });
+    const request = {
+      prompt: '继续完成这个任务',
+      traceRunId: 'provider-retry-correlation',
+      traceWorkspaceRoot: workspaceRoot,
+      traceEvidenceParticipantToken: participantToken,
+    };
+
+    await assert.rejects(invokeProviderWithRunEvidence({
+      request: { ...request, traceOperationId: 'transport-operation-1' },
+      providerType: 'deepseek-api',
+      samplingId: 'one-semantic-turn',
+      transportAttempt: 1,
+      invoke: async () => { throw new Error('temporary transport failure'); },
+    }), /temporary transport failure/);
+    assert.equal(await invokeProviderWithRunEvidence({
+      request: { ...request, traceOperationId: 'transport-operation-2' },
+      providerType: 'deepseek-api',
+      samplingId: 'one-semantic-turn',
+      transportAttempt: 2,
+      invoke: async observation => {
+        observation.observeOutput('完成');
+        return '完成';
+      },
+    }), '完成');
+
+    const providerEvents = owner.readEvents().filter(event => event.type.startsWith('provider.'));
+    const requested = providerEvents.filter(event => event.type === 'provider.requested');
+    assert.deepEqual(requested.map(event => event.payload.operation_id), [
+      'transport-operation-1',
+      'transport-operation-2',
+    ]);
+    assert.deepEqual(requested.map(event => event.payload.sampling_id), [
+      'one-semantic-turn',
+      'one-semantic-turn',
+    ]);
+    assert.deepEqual(requested.map(event => event.payload.transport_attempt), [1, 2]);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('T9 profiler failures remain diagnostic and preserve the original provider result', async () => {
+  const diagnostics = [];
+  const ticks = [10, 5];
+  let invoked = false;
+
+  const result = await invokeProviderWithRunEvidence({
+    request: { prompt: 'hello' },
+    providerType: 'vscode-lm',
+    newOperationId: () => 'diagnostic-isolation',
+    now: () => ticks.shift(),
+    onEvidenceError: error => diagnostics.push(error),
+    invoke: async () => {
+      invoked = true;
+      return 'provider result';
+    },
+  });
+
+  assert.equal(result, 'provider result');
+  assert.equal(invoked, true);
+  assert.equal(diagnostics.length, 1);
+  assert.match(String(diagnostics[0]), /clock-regressed/);
 });

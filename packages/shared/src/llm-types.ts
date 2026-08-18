@@ -46,6 +46,10 @@ export interface LLMChatOptions {
   traceWorkspaceRoot?: string;
   /** Correlates one provider operation across client, transport and server boundaries. */
   traceOperationId?: string;
+  /** Joins bounded transport retries that belong to one semantic model sampling turn. */
+  traceSamplingId?: string;
+  /** One-based transport attempt within traceSamplingId. */
+  traceTransportAttempt?: number;
   /** Bridge-only authority envelope. Callers must omit it for non-Bridge providers. */
   evidenceCapability?: {
     readonly role: 'participant';

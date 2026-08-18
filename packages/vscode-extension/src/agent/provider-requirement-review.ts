@@ -10,6 +10,12 @@ import {
   type RequirementReviewInput,
   type RequirementReviewNoToolRecovery,
 } from './requirement-review-ledger';
+import {
+  RequirementReviewPolicy,
+} from './requirement-review-policy';
+import type { TaskSemanticContract } from '../task-semantic-contract';
+import type { CodingKernelTaskContract } from '@devseek-netai/shared';
+import { isCodeArtifactPath } from './completion-evidence';
 
 export interface ProviderRequirementReviewInput {
   userPrompt: () => string;
@@ -17,19 +23,27 @@ export interface ProviderRequirementReviewInput {
   mode: 'fast' | 'r1' | undefined;
   callbacks: AgentLoopCallbacks;
   onProviderSessionReplaced: () => void;
+  semanticContract: () => TaskSemanticContract | undefined;
+  canonicalTaskContract: () => CodingKernelTaskContract | undefined;
 }
 
 export interface ProviderRequirementReviewService {
-  request(input: RequirementReviewInput): Promise<string | undefined>;
+  request(input: RequirementReviewInput): Promise<ProviderRequirementReviewOutcome>;
   completionBlocker(): string | undefined;
   recoverNoToolCompletion(consecutiveRound: number): RequirementReviewNoToolRecovery | undefined;
 }
+
+export type ProviderRequirementReviewOutcome =
+  | { readonly kind: 'not-applicable' }
+  | { readonly kind: 'feedback'; readonly feedback: string }
+  | { readonly kind: 'settled' };
 
 /** Composes requirement-review state with a fresh, read-only provider session. */
 export function createProviderRequirementReviewService(
   input: ProviderRequirementReviewInput,
 ): ProviderRequirementReviewService {
   const ledger = new RequirementReviewLedger();
+  const policy = new RequirementReviewPolicy();
   const reviewer = new IndependentRequirementReviewer(async messages => {
     input.onProviderSessionReplaced();
     input.callbacks.onToolActivity?.('label', '使用独立上下文审查最终源码');
@@ -56,17 +70,33 @@ export function createProviderRequirementReviewService(
   });
 
   return {
-    async request(reviewInput): Promise<string | undefined> {
-      const sourceFeedback = ledger.request(reviewInput);
+    async request(reviewInput): Promise<ProviderRequirementReviewOutcome> {
+      if (!reviewInput.writtenFiles.some(file => isCodeArtifactPath(file.path))) {
+        return { kind: 'not-applicable' };
+      }
+      const policyDecision = policy.evaluate({
+        ...reviewInput,
+        workspaceRoot: input.workspaceRoot,
+        semanticContract: input.semanticContract(),
+        canonicalTaskContract: input.canonicalTaskContract(),
+      });
+      const sourceFeedback = ledger.request(reviewInput, policyDecision);
       const candidate = ledger.takeIndependentReviewCandidate();
-      if (!candidate) return sourceFeedback;
+      if (!candidate) {
+        return sourceFeedback
+          ? { kind: 'feedback', feedback: sourceFeedback }
+          : { kind: 'settled' };
+      }
       const decision = await reviewer.review({
         userPrompt: input.userPrompt(),
         workspaceRoot: input.workspaceRoot,
         sourcePaths: candidate.sourcePaths,
         validationSummary: reviewInput.qualityGate?.summary,
       });
-      return ledger.settleIndependentReview(decision);
+      const feedback = ledger.settleIndependentReview(decision);
+      return feedback
+        ? { kind: 'feedback', feedback }
+        : { kind: 'settled' };
     },
     completionBlocker: () => ledger.completionBlocker(),
     recoverNoToolCompletion: consecutiveRound => ledger.recoverNoToolCompletion(consecutiveRound),

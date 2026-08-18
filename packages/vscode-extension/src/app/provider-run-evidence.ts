@@ -2,16 +2,32 @@ import * as crypto from 'crypto';
 
 import {
   ProductRunEvidenceSession,
+  ProviderEfficiencyProfiler,
+  measureProviderTextPrompt,
   productRunEvidenceIdempotencyKey,
+  providerEfficiencyEvidence,
+  providerPromptBudgetEvidence,
+  requireProviderAttempt,
+  requireProviderCorrelationId,
   summarizeTraceText,
   type AgentChatRequest,
   type LLMProviderType,
+  type ProviderEfficiencyProfile,
+  type ProviderPromptBudgetSnapshot,
 } from '@devseek-netai/shared';
+
+export interface ProviderInvocationObservation {
+  observeOutput(delta: string): void;
+}
 
 export interface ProviderRunEvidenceInput {
   request: AgentChatRequest;
   providerType: LLMProviderType;
-  invoke: () => Promise<string>;
+  invoke: (observation: ProviderInvocationObservation) => Promise<string>;
+  samplingId?: string;
+  transportAttempt?: number;
+  promptBudget?: ProviderPromptBudgetSnapshot;
+  now?: () => number;
   newOperationId?: () => string;
   onEvidenceError?: (error: unknown) => void;
 }
@@ -52,18 +68,39 @@ export function isBridgeProviderFailureEvidenceGap(
  */
 export async function invokeProviderWithRunEvidence(input: ProviderRunEvidenceInput): Promise<string> {
   const operationId = input.request.traceOperationId?.trim() || (input.newOperationId ?? crypto.randomUUID)();
+  requireProviderCorrelationId(operationId, 'operation-id');
+  const samplingId = normalizeSamplingId(input, operationId);
+  const transportAttempt = normalizeTransportAttempt(input);
+  const promptBudget = input.promptBudget ?? measureProviderTextPrompt(input.request.prompt);
+  const profiler = ProviderInvocationProfiler.start({
+    input,
+    operationId,
+    samplingId,
+    transportAttempt,
+    promptBudget,
+  });
   const evidence = attachEvidence(input);
   record(evidence, input, 'provider.requested', operationId, {
     provider: input.providerType,
     layer: input.providerType === 'bridge' ? 'bridge-client' : 'direct-provider',
+    sampling_id: samplingId,
+    transport_attempt: transportAttempt,
+    prompt_budget: providerPromptBudgetEvidence(promptBudget),
     prompt: summarizeTraceText(input.request.prompt),
     file_count: input.request.files?.length ?? 0,
   });
   try {
-    const response = await input.invoke();
+    profiler.beginSampling();
+    const response = await input.invoke({
+      observeOutput: delta => profiler.observeOutput(delta),
+    });
+    const efficiency = profiler.finish('completed', response);
     record(evidence, input, 'provider.completed', operationId, {
       provider: input.providerType,
       layer: input.providerType === 'bridge' ? 'bridge-client' : 'direct-provider',
+      sampling_id: samplingId,
+      transport_attempt: transportAttempt,
+      ...(efficiency ? { efficiency: providerEfficiencyEvidence(efficiency) } : {}),
       response: summarizeTraceText(response),
     });
     if (input.providerType === 'bridge') {
@@ -72,9 +109,15 @@ export async function invokeProviderWithRunEvidence(input: ProviderRunEvidenceIn
     return response;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const efficiency = profiler.finish(providerInvocationWasCancelled(input.request.signal, message)
+      ? 'cancelled'
+      : 'failed');
     record(evidence, input, 'provider.failed', operationId, {
       provider: input.providerType,
       layer: input.providerType === 'bridge' ? 'bridge-client' : 'direct-provider',
+      sampling_id: samplingId,
+      transport_attempt: transportAttempt,
+      ...(efficiency ? { efficiency: providerEfficiencyEvidence(efficiency) } : {}),
       error: summarizeTraceText(message),
     });
     if (input.providerType === 'bridge') {
@@ -82,6 +125,97 @@ export async function invokeProviderWithRunEvidence(input: ProviderRunEvidenceIn
     }
     throw error;
   }
+}
+
+interface ProviderInvocationProfilerStartInput {
+  readonly input: ProviderRunEvidenceInput;
+  readonly operationId: string;
+  readonly samplingId: string;
+  readonly transportAttempt: number;
+  readonly promptBudget: ProviderPromptBudgetSnapshot;
+}
+
+/** Best-effort diagnostics wrapper: profiler defects may not change provider behavior. */
+class ProviderInvocationProfiler {
+  private profiler?: ProviderEfficiencyProfiler;
+
+  static start(options: ProviderInvocationProfilerStartInput): ProviderInvocationProfiler {
+    return new ProviderInvocationProfiler(options);
+  }
+
+  private constructor(private readonly options: ProviderInvocationProfilerStartInput) {
+    try {
+      this.profiler = new ProviderEfficiencyProfiler({
+        layer: 'vscode-provider-client',
+        samplingId: options.samplingId,
+        operationId: options.operationId,
+        transportAttempt: options.transportAttempt,
+      }, {
+        promptBudget: options.promptBudget,
+        ...(options.input.now ? { now: options.input.now } : {}),
+      });
+      this.profiler.markAttemptStarted(1);
+    } catch (error) {
+      this.report(error);
+    }
+  }
+
+  beginSampling(): void {
+    this.observe(profiler => profiler.transition('sampling'));
+  }
+
+  observeOutput(delta: string): void {
+    this.observe(profiler => profiler.observeOutput(delta));
+  }
+
+  finish(
+    outcome: 'completed' | 'failed' | 'cancelled',
+    output?: string,
+  ): ProviderEfficiencyProfile | undefined {
+    let efficiency: ProviderEfficiencyProfile | undefined;
+    this.observe(profiler => {
+      profiler.transition('settlement');
+      efficiency = profiler.finish(outcome, output);
+    });
+    return efficiency;
+  }
+
+  private observe(operation: (profiler: ProviderEfficiencyProfiler) => void): void {
+    const profiler = this.profiler;
+    if (!profiler) return;
+    try {
+      operation(profiler);
+    } catch (error) {
+      this.profiler = undefined;
+      this.report(error);
+    }
+  }
+
+  private report(error: unknown): void {
+    this.options.input.onEvidenceError?.(error);
+  }
+}
+
+function normalizeSamplingId(input: ProviderRunEvidenceInput, operationId: string): string {
+  try {
+    return requireProviderCorrelationId(input.samplingId ?? operationId, 'sampling-id');
+  } catch (error) {
+    input.onEvidenceError?.(error);
+    return operationId;
+  }
+}
+
+function normalizeTransportAttempt(input: ProviderRunEvidenceInput): number {
+  try {
+    return requireProviderAttempt(input.transportAttempt ?? 1);
+  } catch (error) {
+    input.onEvidenceError?.(error);
+    return 1;
+  }
+}
+
+function providerInvocationWasCancelled(signal: AbortSignal | undefined, message: string): boolean {
+  return signal?.aborted === true || /(?:cancelled|canceled|已取消|abort(?:ed)?)/iu.test(message);
 }
 
 function attachEvidence(input: ProviderRunEvidenceInput): ProductRunEvidenceSession | undefined {

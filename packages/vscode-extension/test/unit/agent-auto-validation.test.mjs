@@ -27,7 +27,10 @@ execSync(
 );
 
 const require = createRequire(import.meta.url);
-const { runAgentAutoValidationForWrites } = require(bundlePath);
+const {
+  runAgentAutoValidationForWrites,
+  selectReusableVerificationReceipt,
+} = require(bundlePath);
 
 let runCounter = 0;
 
@@ -149,6 +152,138 @@ function seed(root, relativePath, content) {
   mkdirSync(path.dirname(path.join(root, relativePath)), { recursive: true });
   writeFileSync(path.join(root, relativePath), content, 'utf8');
 }
+
+function priorVerificationReceipt(overrides = {}) {
+  return {
+    version: 'devseek.coding-verification-receipt/v1',
+    runId: 'reuse-run',
+    sequence: 7,
+    actionId: 'terminal-verify-7',
+    idempotencyKey: 'reuse-run:terminal-verify-7',
+    verifier: 'vscode-terminal-execution',
+    status: 'passed',
+    scopePaths: ['src/app.js'],
+    checks: [{
+      checkId: 'terminal-terminal-verify-7',
+      status: 'passed',
+      acceptanceIds: ['verified'],
+      summary: 'Focused verification passed.',
+      command: 'npm test',
+      exitCode: 0,
+      evidenceRefs: ['terminal:verify-7:exit-0'],
+    }],
+    acceptance: [{
+      criterionId: 'verified',
+      status: 'passed',
+      evidenceRefs: ['terminal:verify-7:exit-0'],
+    }],
+    evidenceRefs: ['terminal:verify-7:exit-0'],
+    ...overrides,
+  };
+}
+
+function committedChangeReceipt(paths = ['src/app.js'], overrides = {}) {
+  return {
+    version: 'devseek.coding-workspace-mutation-receipt/v1',
+    runId: 'reuse-run',
+    sequence: 5,
+    actionId: 'write-5',
+    idempotencyKey: 'reuse-run:write-5',
+    status: 'committed',
+    paths,
+    evidenceRefs: ['workspace-mutation:write-5:committed'],
+    ...overrides,
+  };
+}
+
+test('terminal verification reuse requires current run, full scope, current acceptance, and post-write order', () => {
+  const base = {
+    runId: 'reuse-run',
+    changedPaths: ['src/app.js'],
+    acceptance: [{ id: 'verified', statement: 'Applicable verification passes.' }],
+    verificationReceipts: [priorVerificationReceipt()],
+    changeReceipts: [committedChangeReceipt()],
+  };
+
+  assert.equal(selectReusableVerificationReceipt(base)?.actionId, 'terminal-verify-7');
+  assert.equal(selectReusableVerificationReceipt({
+    ...base,
+    runId: 'another-run',
+  }), undefined);
+  assert.equal(selectReusableVerificationReceipt({
+    ...base,
+    changedPaths: ['src/app.js', 'src/other.js'],
+  }), undefined);
+  assert.equal(selectReusableVerificationReceipt({
+    ...base,
+    changeReceipts: [committedChangeReceipt(['src/app.js'], { sequence: 8 })],
+  }), undefined);
+  assert.equal(selectReusableVerificationReceipt({
+    ...base,
+    verificationReceipts: [
+      priorVerificationReceipt(),
+      priorVerificationReceipt({
+        sequence: 9,
+        actionId: 'terminal-verify-9',
+        status: 'failed',
+        acceptance: [{
+          criterionId: 'verified',
+          status: 'failed',
+          evidenceRefs: ['terminal:verify-9:exit-1'],
+        }],
+      }),
+    ],
+  }), undefined);
+});
+
+test('Agent auto validation reuses a later same-run terminal proof without rerunning the verifier', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-reuse-terminal-'));
+  try {
+    seed(root, 'src/app.js', 'export const value = 2;\n');
+    seed(root, 'package.json', JSON.stringify({ scripts: { test: 'node --test' } }));
+    const statuses = [];
+    let commandRuns = 0;
+    const context = verificationContext(
+      root,
+      ['src/app.js'],
+      statuses,
+      [],
+      async () => {
+        commandRuns += 1;
+        throw new Error('a settled terminal proof must prevent duplicate validation');
+      },
+    );
+    const prior = priorVerificationReceipt({ runId: context.callbacks.traceRunId });
+    const change = committedChangeReceipt(['src/app.js'], {
+      runId: context.callbacks.traceRunId,
+    });
+
+    const result = await runAgentAutoValidationForWrites(
+      [written(root, 'src/app.js')],
+      root,
+      '修复 src/app.js 并运行项目测试',
+      context.callbacks,
+      {
+        verificationAcceptance: context.acceptance,
+        priorVerificationReceipts: [prior],
+        changeReceipts: [change],
+      },
+    );
+
+    assert.equal(commandRuns, 0);
+    assert.equal(result.verificationReceipt, undefined);
+    assert.equal(result.qualityGate.status, 'pass');
+    assert.match(result.feedbackForAI, /无需重复启动自动验证器/);
+    assert.deepEqual(statuses.map(status => `${status.phase}:${status.state}`), [
+      'validate:started',
+      'validate:completed',
+      'quality:started',
+      'quality:completed',
+    ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('Agent auto validation settles a selected project verifier as completion evidence', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-pass-'));

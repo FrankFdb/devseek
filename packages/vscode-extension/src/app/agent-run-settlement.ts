@@ -36,6 +36,7 @@ export function settleAgentLoopResult(
     tasksApplied: result.tasksApplied,
     tasksFailed: settledTasksFailed,
     changedPaths: changedPaths.slice(0, 12),
+    ...(result.failedReason ? { failedReason: result.failedReason } : {}),
     ...(result.completionDecision ? {
       canonicalCompletionStatus: result.completionDecision.status,
       canonicalCompletionReasonCodes: result.completionDecision.reasonCodes,

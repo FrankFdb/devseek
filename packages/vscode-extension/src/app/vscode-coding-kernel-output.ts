@@ -13,7 +13,9 @@ export function projectVsCodeCodingKernelOutput(
     throw new Error('vscode-coding-kernel:settlement-binding-mismatch');
   }
   const toolActionIds = new Set(output.toolExecutionReceipts.map(receipt => receipt.actionId));
-  const actionOwnedVerifications = output.verificationReceipts.filter(
+  const verificationAuditReceipts = output.result.agentResult.verificationReceipts
+    ?? output.verificationReceipts;
+  const actionOwnedVerifications = verificationAuditReceipts.filter(
     receipt => toolActionIds.has(receipt.actionId),
   );
   const codingConformance = projectSettledCodingConformanceRun({
@@ -33,7 +35,7 @@ export function projectVsCodeCodingKernelOutput(
     terminalPresentation: output.result.terminalPresentation,
     toolExecutionReceipts: [...output.toolExecutionReceipts],
     changeReceipts: [...output.workspaceMutationReceipts],
-    verificationReceipts: [...output.verificationReceipts],
+    verificationReceipts: [...verificationAuditReceipts],
     completionDecision: output.completion,
     codingConformance,
   };

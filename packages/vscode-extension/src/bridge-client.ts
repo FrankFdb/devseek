@@ -200,6 +200,10 @@ export interface ChatOptions {
   traceWorkspaceRoot?: string;
   /** 跨 client/server 的单次 provider 操作标识。 */
   traceOperationId?: string;
+  /** 同一语义模型轮的稳定标识，跨有界传输重试保持不变。 */
+  traceSamplingId?: string;
+  /** 当前一基传输重试号。 */
+  traceTransportAttempt?: number;
   /** owner 签发给 Bridge participant 的 run capability。 */
   traceEvidenceParticipantToken?: string;
   signal?: AbortSignal;
@@ -477,10 +481,14 @@ export async function chat(opts: ChatOptions): Promise<string> {
     timeoutMs: opts.timeoutMs ?? config.get<number>('requestTimeoutMs', 120000),
     mode: opts.mode,
     files: opts.files,
+    samplingId: opts.traceSamplingId,
+    transportAttempt: opts.traceTransportAttempt,
   });
 
   trace.info('bridge-client', 'chat-request-start', {
     operationId,
+    samplingId: opts.traceSamplingId,
+    transportAttempt: opts.traceTransportAttempt,
     stream: useStream,
     newSession: opts.newSession ?? config.get<boolean>('newSessionPerRequest', false),
     timeoutMs: opts.timeoutMs ?? config.get<number>('requestTimeoutMs', 120000),

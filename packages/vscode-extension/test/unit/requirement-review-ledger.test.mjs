@@ -22,7 +22,6 @@ test('requirement review is scheduled once for each newly validated source mutat
   const ledger = new RequirementReviewLedger();
   const firstWrites = [sourceWrite('include/cache.hpp'), sourceWrite('src/cache.cpp')];
   const first = ledger.request({
-    sourceChangeRequested: true,
     qualityGate: passedGate,
     writtenFiles: firstWrites,
     roundReadFiles: [],
@@ -39,14 +38,12 @@ test('requirement review is scheduled once for each newly validated source mutat
   assert.match(ledger.beforeNoToolCompletion(), /不能跳过需求覆盖复核/);
 
   assert.match(ledger.request({
-    sourceChangeRequested: true,
     qualityGate: undefined,
     writtenFiles: firstWrites,
     roundReadFiles: ['include/cache.hpp'],
   }), /run_terminal\/cat 输出不计入/);
 
   assert.match(ledger.request({
-    sourceChangeRequested: true,
     qualityGate: undefined,
     writtenFiles: firstWrites,
     roundReadFiles: ['/workspace/include/cache.hpp', '/workspace/src/cache.cpp'],
@@ -62,14 +59,12 @@ test('requirement review is scheduled once for each newly validated source mutat
   }), undefined);
   assert.equal(ledger.beforeNoToolCompletion(), undefined);
   assert.equal(ledger.request({
-    sourceChangeRequested: true,
     qualityGate: passedGate,
     writtenFiles: firstWrites,
     roundReadFiles: [],
   }), undefined);
 
   const repaired = ledger.request({
-    sourceChangeRequested: true,
     qualityGate: passedGate,
     writtenFiles: [...firstWrites, sourceWrite('src/cache.cpp')],
     roundReadFiles: [],
@@ -77,7 +72,6 @@ test('requirement review is scheduled once for each newly validated source mutat
   assert.match(repaired, /src\/cache\.cpp/);
   assert.match(repaired, /全部已修改源码：include\/cache\.hpp、src\/cache\.cpp/);
   assert.match(ledger.request({
-    sourceChangeRequested: true,
     qualityGate: undefined,
     writtenFiles: [...firstWrites, sourceWrite('src/cache.cpp')],
     roundReadFiles: ['src/cache.cpp'],
@@ -91,14 +85,12 @@ test('pending requirement review survives read-only rounds without a new quality
   const ledger = new RequirementReviewLedger();
   const writes = [sourceWrite('src/order_book.cpp')];
   assert.match(ledger.request({
-    sourceChangeRequested: true,
     qualityGate: passedGate,
     writtenFiles: writes,
     roundReadFiles: [],
   }), /完成前需求覆盖复核/);
 
   assert.match(ledger.request({
-    sourceChangeRequested: true,
     qualityGate: undefined,
     writtenFiles: writes,
     roundReadFiles: ['src/order_book.cpp'],
@@ -119,7 +111,6 @@ test('host final-source evidence can trigger isolated review without provider re
   const ledger = new RequirementReviewLedger();
   const writes = [sourceWrite('src/order_book.cpp'), sourceWrite('include/order_book.hpp')];
   const feedback = ledger.request({
-    sourceChangeRequested: true,
     qualityGate: passedGate,
     writtenFiles: writes,
     roundReadFiles: [],
@@ -142,7 +133,6 @@ test('host final-source evidence can trigger isolated review without provider re
 test('host final-source evidence never bypasses failed validation', () => {
   const ledger = new RequirementReviewLedger();
   const feedback = ledger.request({
-    sourceChangeRequested: true,
     qualityGate: { status: 'fail', summary: 'compile failed' },
     writtenFiles: [sourceWrite('src/order_book.cpp')],
     roundReadFiles: [],
@@ -158,7 +148,6 @@ test('host final-source evidence fails closed on reviewer unavailability without
   const ledger = new RequirementReviewLedger();
   const writes = [sourceWrite('src/order_book.cpp')];
   ledger.request({
-    sourceChangeRequested: true,
     qualityGate: passedGate,
     writtenFiles: writes,
     roundReadFiles: [],
@@ -180,7 +169,6 @@ test('host final-source evidence does not locally clear provider-transcript-poll
   const ledger = new RequirementReviewLedger();
   const writes = [sourceWrite('include/order_book.hpp'), sourceWrite('src/order_book.cpp')];
   ledger.request({
-    sourceChangeRequested: true,
     qualityGate: passedGate,
     writtenFiles: writes,
     roundReadFiles: [],
@@ -205,13 +193,11 @@ test('failed independent review blocks completion until repaired source is reval
   const ledger = new RequirementReviewLedger();
   const firstWrite = sourceWrite('src/order_book.cpp');
   ledger.request({
-    sourceChangeRequested: true,
     qualityGate: passedGate,
     writtenFiles: [firstWrite],
     roundReadFiles: [],
   });
   ledger.request({
-    sourceChangeRequested: true,
     qualityGate: undefined,
     writtenFiles: [firstWrite],
     roundReadFiles: ['src/order_book.cpp'],
@@ -249,7 +235,6 @@ test('failed independent review blocks completion until repaired source is reval
 
   const repairedWrite = sourceWrite('src/order_book.cpp');
   assert.match(ledger.request({
-    sourceChangeRequested: true,
     qualityGate: passedGate,
     writtenFiles: [firstWrite, repairedWrite],
     roundReadFiles: [],
@@ -260,13 +245,11 @@ test('failed independent review emits a targeted remaining-quantity repair proto
   const ledger = new RequirementReviewLedger();
   const firstWrite = sourceWrite('src/order_book.cpp');
   ledger.request({
-    sourceChangeRequested: true,
     qualityGate: passedGate,
     writtenFiles: [firstWrite],
     roundReadFiles: [],
   });
   ledger.request({
-    sourceChangeRequested: true,
     qualityGate: undefined,
     writtenFiles: [firstWrite],
     roundReadFiles: ['src/order_book.cpp'],
@@ -301,13 +284,11 @@ test('indeterminate independent review retries through final-source evidence ins
   const ledger = new RequirementReviewLedger();
   const firstWrite = sourceWrite('src/order_book.cpp');
   ledger.request({
-    sourceChangeRequested: true,
     qualityGate: passedGate,
     writtenFiles: [firstWrite],
     roundReadFiles: [],
   });
   ledger.request({
-    sourceChangeRequested: true,
     qualityGate: undefined,
     writtenFiles: [firstWrite],
     roundReadFiles: ['src/order_book.cpp'],
@@ -325,13 +306,11 @@ test('indeterminate independent review retries through final-source evidence ins
   assert.doesNotMatch(ledger.beforeNoToolCompletion(), /修复生产源码/);
 
   assert.match(ledger.request({
-    sourceChangeRequested: true,
     qualityGate: undefined,
     writtenFiles: [firstWrite],
     roundReadFiles: [],
   }), /重新读取最终源码以重试审查/);
   assert.match(ledger.request({
-    sourceChangeRequested: true,
     qualityGate: undefined,
     writtenFiles: [firstWrite],
     roundReadFiles: ['src/order_book.cpp'],
@@ -355,13 +334,11 @@ test('new failing source cohort pauses stale requirement review until validation
   const ledger = new RequirementReviewLedger();
   const firstWrite = sourceWrite('src/order_book.cpp');
   ledger.request({
-    sourceChangeRequested: true,
     qualityGate: passedGate,
     writtenFiles: [firstWrite],
     roundReadFiles: [],
   });
   ledger.request({
-    sourceChangeRequested: true,
     qualityGate: undefined,
     writtenFiles: [firstWrite],
     roundReadFiles: ['src/order_book.cpp'],
@@ -375,7 +352,6 @@ test('new failing source cohort pauses stale requirement review until validation
 
   const badFragmentWrite = sourceWrite('src/order_book.cpp');
   const pause = ledger.request({
-    sourceChangeRequested: true,
     qualityGate: { status: 'fail', summary: 'QualityGate 未通过：自动验证失败（exitCode=2）。' },
     writtenFiles: [firstWrite, badFragmentWrite],
     roundReadFiles: ['src/order_book.cpp'],
@@ -388,7 +364,6 @@ test('new failing source cohort pauses stale requirement review until validation
   assert.equal(ledger.beforeNoToolCompletion(), undefined);
 
   const readOnlyRetry = ledger.request({
-    sourceChangeRequested: true,
     qualityGate: undefined,
     writtenFiles: [firstWrite, badFragmentWrite],
     roundReadFiles: ['src/order_book.cpp'],
@@ -398,7 +373,6 @@ test('new failing source cohort pauses stale requirement review until validation
 
   const repairedWrite = sourceWrite('src/order_book.cpp');
   assert.match(ledger.request({
-    sourceChangeRequested: true,
     qualityGate: passedGate,
     writtenFiles: [firstWrite, badFragmentWrite, repairedWrite],
     roundReadFiles: [],
@@ -408,7 +382,6 @@ test('new failing source cohort pauses stale requirement review until validation
 test('pending review escalates repeated no-tool completion attempts and then stops', () => {
   const ledger = new RequirementReviewLedger();
   ledger.request({
-    sourceChangeRequested: true,
     qualityGate: passedGate,
     writtenFiles: [sourceWrite('src/order_book.cpp')],
     roundReadFiles: [],
@@ -430,25 +403,30 @@ test('pending review escalates repeated no-tool completion attempts and then sto
   });
 });
 
-test('requirement review pauses unverified source work and ignores non-source/non-code work', () => {
-  const ledger = new RequirementReviewLedger();
-  assert.match(ledger.request({
-    sourceChangeRequested: true,
+test('requirement review follows observed source writes and ignores non-code work', () => {
+  const unverifiedLedger = new RequirementReviewLedger();
+  assert.match(unverifiedLedger.request({
     qualityGate: { status: 'fail', summary: 'tests failed' },
     writtenFiles: [sourceWrite('src/cache.cpp')],
     roundReadFiles: [],
   }), /暂停独立需求审查/);
-  assert.equal(ledger.request({
-    sourceChangeRequested: false,
+
+  const observedSourceLedger = new RequirementReviewLedger();
+  assert.match(observedSourceLedger.request({
     qualityGate: passedGate,
     writtenFiles: [sourceWrite('src/cache.cpp')],
     roundReadFiles: [],
-  }), undefined);
-  assert.equal(ledger.request({
-    sourceChangeRequested: true,
+    hostFinalSourceEvidenceReady: true,
+  }), /全新隔离上下文中的只读审查者/);
+  assert.deepEqual(observedSourceLedger.takeIndependentReviewCandidate(), {
+    sourcePaths: ['src/cache.cpp'],
+  });
+
+  const nonCodeLedger = new RequirementReviewLedger();
+  assert.equal(nonCodeLedger.request({
     qualityGate: passedGate,
     writtenFiles: [sourceWrite('docs/report.md')],
     roundReadFiles: [],
   }), undefined);
-  assert.equal(ledger.beforeNoToolCompletion(), undefined);
+  assert.equal(nonCodeLedger.beforeNoToolCompletion(), undefined);
 });

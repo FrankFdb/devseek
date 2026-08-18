@@ -150,3 +150,57 @@ test('I21-CNT-01 user journey: connector retries remain inside one exclusive bro
   first.complete();
   second.complete();
 });
+
+test('T9 connector reports attempts and retry wait independently of stream frames', async () => {
+  const execution = new CanonicalDeepSeekWebConnectorExecutionService({
+    exclusive: { execute: operation => operation() },
+    classifyError: () => 'provider-error',
+    sleep: async () => {},
+  });
+  const connector = new CanonicalDeepSeekWebConnectorService();
+  const session = connector.open({ requestId: 'observed-nonstream-retry', stream: false });
+  const observations = [];
+
+  const result = await execution.execute(session, async attempt => {
+    observations.push(`operation:${attempt}`);
+    if (attempt === 1) throw new Error('retryable');
+    return 'complete';
+  }, {
+    onAttemptStarted: attempt => observations.push(`attempt:${attempt}`),
+    onRetryScheduled: decision => observations.push(`retry:${decision.retryAfterMs}`),
+    onRetryFrame: () => observations.push('unexpected-frame'),
+  });
+
+  assert.equal(result, 'complete');
+  assert.deepEqual(observations, [
+    'attempt:1',
+    'operation:1',
+    'retry:1000',
+    'attempt:2',
+    'operation:2',
+  ]);
+  session.complete();
+});
+
+test('T9 connector observer failures never alter bounded retry behavior', async () => {
+  const execution = new CanonicalDeepSeekWebConnectorExecutionService({
+    exclusive: { execute: operation => operation() },
+    classifyError: () => 'provider-error',
+    sleep: async () => {},
+  });
+  const connector = new CanonicalDeepSeekWebConnectorService();
+  const session = connector.open({ requestId: 'observer-failure', stream: true });
+
+  const result = await execution.execute(session, async attempt => {
+    if (attempt === 1) throw new Error('retryable');
+    return 'complete';
+  }, {
+    onAttemptStarted: () => { throw new Error('diagnostic attempt failed'); },
+    onRetryScheduled: () => { throw new Error('diagnostic retry failed'); },
+    onRetryFrame: () => { throw new Error('diagnostic frame failed'); },
+  });
+
+  assert.equal(result, 'complete');
+  assert.equal(session.snapshot().attempt, 2);
+  session.complete();
+});

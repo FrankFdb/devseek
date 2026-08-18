@@ -90,6 +90,41 @@ test('canonical Kernel sends VS Code work through its runtime adapter', async ()
   );
 });
 
+test('runtime keeps verification audit history separate from current-contract settlement', async () => {
+  const kernel = createKernel({
+    async runCanonical(request) {
+      const current = (await passCanonicalVerification(request, 'current-contract')).receipt;
+      const historicalFailure = {
+        ...current,
+        actionId: 'verification-prior-contract',
+        idempotencyKey: `${current.runId}:verification-prior-contract`,
+        status: 'failed',
+        checks: current.checks.map(check => ({ ...check, status: 'failed' })),
+        acceptance: current.acceptance.map(criterion => ({ ...criterion, status: 'failed' })),
+        evidenceRefs: ['verification:prior-contract:failed'],
+      };
+      return {
+        ...result('canonical'),
+        verificationReceipts: [historicalFailure, current],
+      };
+    },
+  });
+
+  const output = await execute(kernel, {
+    ...baseRequest(),
+    callbacks: { executionMode: 'edit' },
+  });
+
+  assert.equal(output.status, 'completed');
+  assert.deepEqual(output.verificationReceipts.map(receipt => receipt.actionId), [
+    'verification-current-contract',
+  ]);
+  assert.deepEqual(output.result.agentResult.verificationReceipts.map(receipt => receipt.actionId), [
+    'verification-prior-contract',
+    'verification-current-contract',
+  ]);
+});
+
 test('canonical Kernel observes actual workspace apply lifecycle without replaying mutation evidence', async () => {
   const lifecycle = [];
   let applyCount = 0;

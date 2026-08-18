@@ -1,9 +1,9 @@
 import type { AgenticHistoryQualityGate } from './agentic-history';
 import { isCodeArtifactPath, type WrittenFileEvidence } from './completion-evidence';
 import { buildDanglingAgentActionFeedback } from './no-tool-intent';
+import type { RequirementReviewPolicyDecision } from './requirement-review-policy';
 
 export interface RequirementReviewInput {
-  sourceChangeRequested: boolean;
   qualityGate?: AgenticHistoryQualityGate;
   writtenFiles: readonly WrittenFileEvidence[];
   roundReadFiles: readonly string[];
@@ -52,8 +52,10 @@ export class RequirementReviewLedger {
   private scheduledSourceWriteCount = 0;
   private pending?: PendingRequirementReview;
 
-  request(input: RequirementReviewInput): string | undefined {
-    if (!input.sourceChangeRequested) return undefined;
+  request(
+    input: RequirementReviewInput,
+    policyDecision?: RequirementReviewPolicyDecision,
+  ): string | undefined {
     const sourceWrites = input.writtenFiles.filter(file => isCodeArtifactPath(file.path));
     if (sourceWrites.length > this.scheduledSourceWriteCount) {
       const changedSourcePaths = Array.from(new Set(sourceWrites
@@ -66,6 +68,10 @@ export class RequirementReviewLedger {
       }
       const hostFinalSourceEvidenceReady = input.hostFinalSourceEvidenceReady === true;
       this.scheduledSourceWriteCount = sourceWrites.length;
+      if (policyDecision?.strategy === 'host-evidence') {
+        this.pending = undefined;
+        return undefined;
+      }
       this.pending = {
         changedSourcePaths,
         reviewSourcePaths,

@@ -1076,7 +1076,13 @@ function requirementEvidenceRejectionReason(
 
 function requiresOrderedTrace(quote: string): boolean {
   const text = normalizeRequirementText(quote);
-  if (/(?:\border(?:ing|ed)?\b|\bpriority\b|\bfifo\b|\blifo\b|\bfirst\b|\blast\b|\bsort(?:ed|ing)?\b|顺序|优先|同价|最高|最低|先后|排序|撮合)/iu.test(text)) {
+  const hasExplicitOrderingContract = /(?:\border(?:ing|ed)?\b|\bpriority\b|\bfifo\b|\blifo\b|顺序|优先|同价|先后|排序|撮合)/iu.test(text);
+  if (hasExplicitOrderingContract) {
+    return true;
+  }
+  const hasRelativeOrderOperation = /(?:\bfirst\b|\blast\b|\bsort(?:ed|ing)?\b|最高|最低)/iu.test(text);
+  const hasOrderedCollectionDomain = /(?:\barray\b|\blist\b|\bcollection\b|\bqueue\b|\bitems?\b|\bentries\b|\brows?\b|\brecords?\b|\bvalues?\b|\bprices?\b|\bquantit(?:y|ies)\b|\bamounts?\b|\bcounts?\b|\belements?\b|\bbids?\b|\basks?\b|\blevels?\b|数组|列表|集合|队列|条目|记录|值|价格|价位|数量|金额|个数|元素|报价|档位)/iu.test(text);
+  if (hasRelativeOrderOperation && hasOrderedCollectionDomain) {
     return true;
   }
   const hasMinMaxWord = /(?:\bbest\b|\bminimum\b|\bmaximum\b|\bmin\b|\bmax\b|最[大小])/iu.test(text);

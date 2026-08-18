@@ -1275,6 +1275,45 @@ test('strict review parser requires complete ordered checks and exact requiremen
   ]).status, 'indeterminate');
 });
 
+test('strict review parser does not treat a repair idiom as an ordering contract', () => {
+  const source = snapshot('src/auth.js', 'export function signIn(password) { return password === "correct"; }');
+  const prompt = 'Users cannot sign in after entering the correct password. Please sort it out.';
+  const decision = parseIndependentReviewResponse(response({
+    requirement_checks: [{
+      requirement_id: 'R1',
+      requirement_quote: prompt,
+      status: 'satisfied',
+      evidence: 'src/auth.js:1 and the successful sign-in validation cover the requested execution path.',
+    }],
+    findings: [],
+    overall_correctness: 'patch is correct',
+    overall_explanation: 'The reported sign-in path is fixed and verified.',
+    overall_confidence_score: 0.95,
+  }), [source], prompt);
+
+  assert.equal(decision.status, 'passed');
+});
+
+test('strict review parser still requires a multi-element trace for explicit sorting', () => {
+  const source = snapshot('src/sort.js', 'export const sortValues = values => [...values].sort((a, b) => a - b);');
+  const prompt = 'Sort the list of values in ascending order.';
+  const decision = parseIndependentReviewResponse(response({
+    requirement_checks: [{
+      requirement_id: 'R1',
+      requirement_quote: prompt,
+      status: 'satisfied',
+      evidence: 'src/sort.js:1 contains the final source implementation.',
+    }],
+    findings: [],
+    overall_correctness: 'patch is correct',
+    overall_explanation: 'The implementation appears to sort values.',
+    overall_confidence_score: 0.95,
+  }), [source], prompt);
+
+  assert.equal(decision.status, 'indeterminate');
+  assert.match(decision.explanation, /顺序|优先级/);
+});
+
 test('independent reviewer receives original requirements and final line-numbered source only', async () => {
   const workspace = path.join(tempRoot, 'workspace');
   mkdirSync(path.join(workspace, 'src'), { recursive: true });

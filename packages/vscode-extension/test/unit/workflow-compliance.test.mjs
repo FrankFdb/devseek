@@ -1074,6 +1074,7 @@ test('Agentic loop: terminal completion evidence requires successful validation 
   const terminalAdapter = src('src/agent/tool-loop-terminal-evidence.ts');
   const terminalObservation = src('src/agent/tool-loop-terminal-observation.ts');
   const executionEvidence = src('src/agent/agentic-execution-evidence.ts');
+  const semanticSettlement = src('src/agent/model-semantic-settlement.ts');
   const evidence = src('src/agent/completion-evidence.ts');
   assertContains(toolLoop, 'TerminalEvidence', 'terminal evidence model must exist');
   assertContains(terminalAdapter, 'classifyFormattedTerminalExecutionEvidence', 'terminal evidence must use shared formatted execution evidence parser');
@@ -1082,12 +1083,15 @@ test('Agentic loop: terminal completion evidence requires successful validation 
   assertContains(terminalAdapter, 'isExecutableFile', 'compiler output must be checked on disk');
   assertContains(terminalObservation, '验证命令未通过，不能把编译/运行/测试标记为完成', 'terminal observation owner must feed failed validation back to the agent');
   assertContains(code, 'buildTerminalFailureRepairFeedback', 'terminal failure prose must be converted into a repair instruction');
-  assertContains(code, 'assessMissingCompletionEvidence', 'agent loop must delegate semantic completion checks to evidence boundary');
-  assertContains(code, 'getAgenticBlockingTerminalFailure', 'agentic runtime must use a final settlement gate for terminal failures');
+  assertContains(code, 'assessCurrentEvidenceClosure', 'agent loop must delegate semantic completion checks to evidence boundary');
+  assertContains(executionEvidence, 'assessMissingCompletionEvidence', 'evidence closure must use the semantic completion boundary');
+  assertContains(executionEvidence, 'getAgenticBlockingTerminalFailure', 'evidence closure must preserve terminal failure authority');
+  assertContains(code, 'modelSemanticSettlement.observe(loopRes)', 'agent loop must delegate evidence-settled model semantics');
+  assertContains(semanticSettlement, 'recordNewlyAcceptedTerminalVerifications', 'semantic settlement must rebind same-batch verification evidence');
   assert.match(
     code,
-    /getAgenticBlockingDeniedToolExecution\(callbacks\.canonicalToolExecution\?\.receipts\(\)[\s\S]*?allChangeReceipts, allVerificationReceipts\)[\s\S]*?if \(deniedToolAfterTools[\s\S]*?loopRes\.taskComplete \|\| loopRes\.allTodosCompleted[\s\S]*?break;[\s\S]*?const missingAfterTools/,
-    'only an unsettled authority denial may stop completion before missing-deliverable recovery',
+    /getAgenticBlockingDeniedToolExecution\(callbacks\.canonicalToolExecution\?\.receipts\(\)[\s\S]*?allChangeReceipts, currentVerificationReceipts\(\)\)[\s\S]*?if \(deniedToolAfterTools[\s\S]*?loopRes\.taskComplete \|\| loopRes\.allTodosCompleted[\s\S]*?break;[\s\S]*?const missingAfterTools/,
+    'only an unsettled authority denial under the current contract may stop completion before missing-deliverable recovery',
   );
   assertContains(executionEvidence, 'codingAdverseToolExecutionBlocksCompletion', 'agentic denial settlement must use the canonical shared effect owner');
   assertContains(executionEvidence, 'findBlockingTerminalFailureEvidence(terminalEvidence)', 'agentic settlement owner must not let failed validation evidence be hidden by provider completion prose');
@@ -1531,9 +1535,16 @@ test('Provider transport recovery: Bridge retries are bounded and side-effect aw
   assertContains(retry, "input.providerType === 'bridge'", 'client retry policy must be limited to the Bridge transport');
   assert.match(
     loopChat,
-    /invoke:\s*async \(\{ markOutputObserved \}\) => \{[\s\S]*?const traceOperationId = crypto\.randomUUID\(\)/,
+    /const samplingId = crypto\.randomUUID\(\)[\s\S]*?providerInvocationRetry\.execute/,
+    'one semantic model turn must allocate its sampling id outside transport retries',
+  );
+  assert.match(
+    loopChat,
+    /invoke:\s*async \(\{ attempt, markOutputObserved \}\) => \{[\s\S]*?const traceOperationId = crypto\.randomUUID\(\)/,
     'every retry attempt must receive a fresh evidence operation id',
   );
+  assertContains(loopChat, 'transportAttempt: attempt', 'run evidence must retain the current transport attempt');
+  assertContains(loopChat, 'traceTransportAttempt: attempt', 'Bridge transport must receive the current attempt');
   assertContains(bridgeClient, '!await ensureBridgeRunning()', 'an unverified Bridge must renegotiate or restart before retry');
   assertContains(bridgeClient, 'if (isTransientProviderTransportError(error)) connectorContractVerified = false;', 'transport failures must invalidate Bridge capability state');
 });
@@ -2609,9 +2620,11 @@ test('Architecture: validated source changes require fresh source review before 
   const reviewLedger = src('src/agent/requirement-review-ledger.ts');
   const reviewContract = src('src/agent/requirement-review-contract.ts');
   const providerReview = src('src/agent/provider-requirement-review.ts');
+  const reviewPolicy = src('src/agent/requirement-review-policy.ts');
   const independentReview = src('src/agent/independent-requirement-review.ts');
   const providerTranscriptRecovery = src('src/agent/provider-authored-transcript-recovery.ts');
   const reviewRepairWindow = src('src/agent/requirement-review-repair-window.ts');
+  const executionEvidence = src('src/agent/agentic-execution-evidence.ts');
 
   assertContains(
     providerTranscriptRecovery,
@@ -2682,6 +2695,56 @@ test('Architecture: validated source changes require fresh source review before 
     providerReview,
     'new IndependentRequirementReviewer',
     'provider adapter must delegate final-source judgment to the independent reviewer',
+  );
+  assertContains(
+    providerReview,
+    'policy.evaluate({',
+    'provider adapter must delegate review cost/risk selection to one policy owner',
+  );
+  assertContains(
+    providerReview,
+    "{ readonly kind: 'not-applicable' }",
+    'review orchestration must distinguish no source cohort from settled review',
+  );
+  assertContains(
+    agenticLoop,
+    "reviewOutcome.kind === 'settled'",
+    'only an explicitly settled source review may close the tool round',
+  );
+  assertContains(
+    executionEvidence,
+    'const required = input.requiredBeforeExecution || input.workToolObserved;',
+    'observed tool effects must activate local evidence closure in model-led mode',
+  );
+  assertContains(
+    agenticLoop,
+    'const finalEvidence = assessCurrentEvidenceClosure();',
+    'final settlement must retain evidence closure after any observed work action',
+  );
+  assert.doesNotMatch(
+    agenticLoop,
+    /promptRequiresTools\s*&&[\s\S]{0,240}requirementReview\.request/,
+    'post-action source review must not depend on a pre-execution task-family hint',
+  );
+  assertContains(
+    reviewPolicy,
+    "strategy: 'host-evidence'",
+    'bounded validated creations must have an evidence-only settlement path',
+  );
+  assertContains(
+    reviewPolicy,
+    'sourceWrites.every(file => file.action === \'create\')',
+    'evidence-only settlement must never silently cover existing source edits',
+  );
+  assertContains(
+    reviewPolicy,
+    'contract.conflicts.length > 0 || contract.externalBoundaries.length > 0',
+    'conflicts and external boundaries must remain with the independent reviewer',
+  );
+  assertContains(
+    reviewPolicy,
+    "criterion.oracle.kind === 'verification'",
+    'host evidence must include canonical verification acceptance',
   );
   assert.match(
     providerReview,

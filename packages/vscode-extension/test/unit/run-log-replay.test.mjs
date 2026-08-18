@@ -44,6 +44,7 @@ const {
 } = req(bundlePath);
 const { createDevSeekRunContext } = req(runContextBundlePath);
 const {
+  ProductRunEvidenceWorkspaceReader,
   ProductRunEvidenceSession,
   productRunEvidenceIdempotencyKey,
 } = req(path.join(rootDir, '../shared/dist/index.js'));
@@ -87,7 +88,15 @@ function writeWorkspaceRunLog(workspaceRoot, runId, lines) {
   return logPath;
 }
 
-function recordProviderBoundaryEvidence({ workspaceRoot, runId, token, operationId, status = 'failed' }) {
+function recordProviderBoundaryEvidence({
+  workspaceRoot,
+  runId,
+  token,
+  operationId,
+  status = 'failed',
+  samplingId,
+  transportAttempt,
+}) {
   const provider = ProductRunEvidenceSession.forWorkspace({
     workspaceRoot,
     runId,
@@ -102,6 +111,8 @@ function recordProviderBoundaryEvidence({ workspaceRoot, runId, token, operation
       layer: 'bridge-client',
       status: type.slice('provider.'.length),
       trust: 'product-runtime-observation',
+      ...(samplingId ? { sampling_id: samplingId } : {}),
+      ...(Number.isSafeInteger(transportAttempt) ? { transport_attempt: transportAttempt } : {}),
     };
     if (type === 'provider.failed') {
       payload.error = {
@@ -1053,6 +1064,56 @@ test('run log replay accepts completed runs after provider failure is resolved b
 
     const report = replayRunLog(path.join(workspaceRoot, '.devseek', 'runs', `${runId}.log`));
 
+    assert.equal(report.issues.some(issue => (
+      issue.kind === 'failure-status-reported-completed'
+      && /provider\.failed/.test(issue.message)
+    )), false);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('run log replay accepts a failed transport attempt superseded by the same sampling retry', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-log-provider-retry-'));
+  const runId = 'run-log-provider-transport-retry';
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId,
+      userPrompt: '说明 GPU 和 CPU 的差异。',
+      traceLevel: 'debug',
+    });
+    recordProviderBoundaryEvidence({
+      workspaceRoot,
+      runId,
+      token: context.evidenceParticipantToken,
+      operationId: 'provider:attempt:1',
+      status: 'failed',
+      samplingId: 'sampling:direct-answer',
+      transportAttempt: 1,
+    });
+    recordProviderBoundaryEvidence({
+      workspaceRoot,
+      runId,
+      token: context.evidenceParticipantToken,
+      operationId: 'provider:attempt:2',
+      status: 'completed',
+      samplingId: 'sampling:direct-answer',
+      transportAttempt: 2,
+    });
+
+    assert.equal(context.complete('completed', {
+      tasksTotal: 0,
+      tasksApplied: 0,
+      tasksFailed: 0,
+    }), 'completed');
+    const evidenceEvents = ProductRunEvidenceWorkspaceReader.forWorkspace({ workspaceRoot })
+      .readSnapshot(runId)
+      .records
+      .map(record => record.event);
+    assert.equal(evidenceEvents.some(event => event.type === 'recovery.completed'), false);
+
+    const report = replayRunLog(path.join(workspaceRoot, '.devseek', 'runs', `${runId}.log`));
     assert.equal(report.issues.some(issue => (
       issue.kind === 'failure-status-reported-completed'
       && /provider\.failed/.test(issue.message)

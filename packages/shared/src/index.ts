@@ -77,6 +77,8 @@ export * from './deepseek-web-connector-protocol';
 export * from './engineering-context';
 export * from './llm-types';
 export * from './platform-runtime';
+export * from './provider-attempt-evidence';
+export * from './provider-efficiency';
 export * from './persisted-secret';
 export * from './run-evidence-ledger';
 export * from './run-evidence-integration';

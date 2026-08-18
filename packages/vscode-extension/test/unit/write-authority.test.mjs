@@ -32,6 +32,28 @@ function createAuthority(prompt, steers = [], options = {}, callbacks = {}) {
   });
 }
 
+function toolReceipt(overrides = {}) {
+  return {
+    version: 'devseek.coding-tool-receipt/v1',
+    runId: 'semantic-settlement-run',
+    sequence: 3,
+    actionId: 'semantic-action-3',
+    tool: 'create_file',
+    purpose: 'workspace-mutation',
+    effects: ['workspace-mutation'],
+    inputSha256: 'a'.repeat(64),
+    permission: {
+      decision: 'allow',
+      status: 'authorized',
+      reason: 'user-authorized-target',
+      evidenceRefs: ['authority:semantic-action-3'],
+    },
+    status: 'completed',
+    evidenceRefs: ['tool:semantic-action-3:completed'],
+    ...overrides,
+  };
+}
+
 test('report-only artifact prompts keep source-code no-write as a scoped constraint', () => {
   const prompt = [
     '请创建 docs/r3-iteration/r3-live-deepseek-login-ready-state.md 测试报告。',
@@ -224,9 +246,81 @@ test('provider tool proposals cannot rewrite the user-owned task contract', () =
   assert.equal(authority.semanticContractRevision.semanticContract.intent.mode, 'inspect');
   assert.equal(authority.canonicalSemanticContract.intent.mode, 'inspect');
   assert.equal(authority.semanticContract.intent.mode, 'edit');
+  assert.equal(authority.completionSemanticContract.intent.mode, 'inspect');
   assert.equal(authority.semanticContract.mutation.requested, true);
   assert.deepEqual(authority.semanticContract.mutation.targets, ['notes/ready.txt']);
   assert.equal(authority.writeRevoked, false);
+});
+
+test('provider semantics settle for completion only after a matching local tool receipt', () => {
+  const authority = createAuthority(
+    '帮我见个 notes/ready.txt，里头就一行 READY，弄完再看眼写对没，别碰别的。',
+  );
+  authority.applyModelSemanticProposal({
+    version: 'devseek.semantic-intent/v1',
+    source: 'provider',
+    mode: 'edit',
+    taskKind: 'file-artifact',
+    confidence: 0.98,
+    mutation: 'create-file',
+    targetPaths: ['notes/ready.txt'],
+    requiresWorkspace: true,
+    requiresTerminal: false,
+    requiresExternalEffect: false,
+    requiresClarification: false,
+    reason: 'normalized typo and colloquial create_file request',
+  });
+
+  const unrelated = authority.settleModelSemanticProposal([toolReceipt({
+    tool: 'read_file',
+    purpose: 'observe',
+    effects: ['read'],
+  })]);
+  assert.equal(unrelated, undefined);
+  assert.equal(authority.completionSemanticContract.intent.mode, 'inspect');
+
+  const settled = authority.settleModelSemanticProposal([toolReceipt()]);
+  assert.equal(settled.semanticContract.intent.mode, 'edit');
+  assert.deepEqual(settled.toolReceipts.map(receipt => receipt.actionId), ['semantic-action-3']);
+  assert.equal(authority.completionSemanticContract.intent.mode, 'edit');
+  assert.equal(authority.canonicalSemanticContract.intent.mode, 'inspect');
+});
+
+test('a denied concrete external action settles a blocked run intent without granting workspace authority', () => {
+  const authority = createAuthority('把这个依赖装一下，然后告诉我结果。');
+  authority.applyModelSemanticProposal({
+    version: 'devseek.semantic-intent/v1',
+    source: 'provider',
+    mode: 'run',
+    taskKind: 'external-effect',
+    confidence: 0.97,
+    mutation: 'external-effect',
+    targetPaths: [],
+    requiresWorkspace: false,
+    requiresTerminal: true,
+    requiresExternalEffect: true,
+    requiresClarification: false,
+    reason: 'provider proposed the concrete dependency installation action',
+  });
+
+  const settled = authority.settleModelSemanticProposal([toolReceipt({
+    tool: 'run_terminal',
+    purpose: 'external-effect',
+    effects: ['process', 'network'],
+    permission: {
+      decision: 'deny',
+      status: 'denied',
+      reason: 'external-effect-requires-approval',
+      evidenceRefs: ['authority:semantic-action-3:denied'],
+    },
+    status: 'denied',
+    effectStarted: false,
+  })]);
+
+  assert.equal(settled.semanticContract.intent.mode, 'run');
+  assert.equal(authority.completionSemanticContract.intent.context.externalEffect, 'requested');
+  assert.equal(authority.canonicalSemanticContract.mutation.requested, false);
+  assert.deepEqual(authority.canonicalSemanticContract.mutation.targets, []);
 });
 
 test('provider terminal proposals cannot add user-owned read completion obligations', () => {
@@ -319,6 +413,7 @@ test('a user steer clears the provider semantic overlay and publishes user autho
 
   assert.equal(revisions.length, 1);
   assert.equal(authority.semanticContract, authority.semanticContractRevision.semanticContract);
+  assert.equal(authority.completionSemanticContract, authority.semanticContractRevision.semanticContract);
   assert.ok(authority.semanticContract.mutation.targets.includes('notes/final.txt'));
   assert.equal(authority.semanticContract.mutation.targets.includes('notes/ready.txt'), false);
 });

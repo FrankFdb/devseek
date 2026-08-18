@@ -813,6 +813,7 @@ function controlledScenarioCatalog() {
         '不要修改其他文件。',
       ].join(''),
       providerPlan: 'existing-js-fix-complete',
+      expectedProviderRequestKinds: ['agent-execution', 'independent-review'],
       expected: 'completed-workflow',
       expectedFiles: {
         'src/math.js': fixedMathContent,
@@ -1116,6 +1117,7 @@ function controlledScenarioCatalog() {
         '不要引入依赖，改完运行 node test/slugify.test.js 验证。',
       ].join(''),
       providerPlan: 'multi-file-slugify-test-complete',
+      expectedProviderRequestKinds: ['agent-execution'],
       expected: 'completed-workflow',
       expectedFiles: {
         'src/slugify.js': slugifySourceContent,
@@ -1367,7 +1369,7 @@ function controlledScenarioCatalog() {
       expectedFiles: { 'src/bridge.ts': 'export const bridgeReady = true;\n' },
       expectedChangedPaths: [],
       expectedMutatedUserFiles: [],
-      expectedTaskMode: 'change',
+      expectedTaskMode: 'review',
       requiredTools: ['memory_write', 'task_complete'],
       forbiddenTools: ['create_file', 'replace_in_file', 'delete_file', 'run_terminal'],
     },
@@ -1651,6 +1653,27 @@ function controlledScenarioCatalog() {
       requiredRunLogSubstrings: ['GPU 的大量核心'],
       forbiddenRunLogSubstrings: ['已确定软件工程执行路线', '收集原项目代码、通信链路和接口证据'],
     },
+    't9-transport-reset-recovery': {
+      id: 't9-transport-reset-recovery',
+      kind: 't9-provider-transport-reset-recovery',
+      userProfile: 'english-maintainer',
+      languageStyle: 'en-concise',
+      intentClass: 'direct-concept-answer',
+      targetRelativePath: 'README.md',
+      targetContent: safeBaselineContent,
+      seedFiles: { 'README.md': safeBaselineContent },
+      prompt: 'In one sentence, explain how CPU and GPU workloads differ.',
+      providerPlan: 'direct-assistant-answer',
+      providerAnswer: 'CPUs favor general low-latency work, while GPUs favor high-throughput parallel work.',
+      transportFault: 'reset-before-headers-once',
+      expected: 'completed-advisory-no-mutation',
+      expectedFiles: { 'README.md': safeBaselineContent },
+      expectedChangedPaths: [],
+      expectedMutatedUserFiles: [],
+      expectedTaskMode: 'explain',
+      forbiddenTools: ['read_file', 'create_file', 'replace_in_file', 'run_terminal', 'task_complete'],
+      requiredRunLogSubstrings: ['GPUs favor high-throughput parallel work'],
+    },
     't1-direct-en-concept': {
       id: 't1-direct-en-concept',
       kind: 't1-direct-english-concept-answer',
@@ -1803,6 +1826,7 @@ function controlledScenarioCatalog() {
       targetContent: recoveredCppProgramContent,
       prompt: '在工作目录编写一个 C++ 程序，运行时输出“下班了”，并用 g++ 编译运行验证。',
       providerPlan: 'cpp-failed-write-recovered-complete',
+      expectedProviderRequestKinds: ['agent-execution', 'agent-execution'],
       expected: 'completed-workflow',
       expectedFiles: { 'offwork.cpp': recoveredCppProgramContent },
       expectedChangedPaths: ['offwork.cpp'],
@@ -3302,11 +3326,19 @@ function bindControlledArchitectScenarioPrompt({ promptText, runId, scenarios })
   };
 }
 
-function bindControlledProviderPrompt({ promptText, runId, scenarios, priorRequests }) {
+function bindControlledProviderPrompt({ promptText, runId, scenarios, priorRequests, samplingId = '' }) {
   if (isControlledArchitectPrompt(promptText)) {
     return bindControlledArchitectScenarioPrompt({ promptText, runId, scenarios });
   }
-  return bindControlledScenarioPrompt({ promptText, runId, scenarios, priorRequests });
+  const semanticPriorRequests = samplingId
+    ? priorRequests.filter(request => request.samplingId !== samplingId)
+    : priorRequests;
+  return bindControlledScenarioPrompt({
+    promptText,
+    runId,
+    scenarios,
+    priorRequests: semanticPriorRequests,
+  });
 }
 
 function controlledDeepSeekWebConnectorAdvertisement(activeRequestCount = 0) {
@@ -3381,6 +3413,7 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
     rejectedRequests: [],
     providerInvocationCount: 0,
     internalModelInvocationCount: 0,
+    transportFaultCountByScenario: {},
     statusRequests: 0,
     authFailures: 0,
     promptContractSelfTest,
@@ -3429,6 +3462,7 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
           runId,
           scenarios,
           priorRequests: state.chatRequests,
+          samplingId: typeof body.samplingId === 'string' ? body.samplingId : '',
         });
         const isInternalModelRequest = internalBinding !== undefined;
         const activeScenario = scenarioBinding.scenario;
@@ -3436,12 +3470,25 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
           ? state.internalModelRequests.length + 1
           : scenarioBinding.ordinal;
         const promptContract = scenarioBinding.promptContract;
-        const evidence = attachBridgeRunEvidence({
+        const bridgeEvidence = attachBridgeRunEvidence({
           workspaceRoot: traceWorkspaceRoot,
           runId,
           operationId,
           authorityToken,
         });
+        const evidence = {
+          record(type, payload) {
+            bridgeEvidence.record(type, {
+              ...payload,
+              sampling_id: typeof body.samplingId === 'string' && body.samplingId.trim()
+                ? body.samplingId.trim()
+                : operationId,
+              transport_attempt: Number.isSafeInteger(body.transportAttempt) && body.transportAttempt > 0
+                ? body.transportAttempt
+                : 1,
+            });
+          },
+        };
         const requestedEvidencePayload = {
           provider: 'controlled-fixture',
           layer: isInternalModelRequest ? 'internal-memory-model-fixture' : 'deterministic-fake-provider',
@@ -3462,10 +3509,13 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
           scenarioId: activeScenario?.id || '',
           runId,
           operationId,
+          samplingId: typeof body.samplingId === 'string' ? body.samplingId : '',
+          transportAttempt: Number.isSafeInteger(body.transportAttempt) ? body.transportAttempt : null,
           stream: body.stream !== false,
           newSession: body.newSession === true,
           mode: body.mode || 'fast',
           promptLength: promptText.length,
+          promptBytes: Buffer.byteLength(promptText),
           promptSha256: sha256Text(promptText),
           ...(process.env.DEVSEEK_CONTROLLED_VSIX_DEBUG_PROMPTS === '1'
             ? { controlledPromptText: promptText }
@@ -3577,6 +3627,24 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
             error: 'CONTROLLED_PROVIDER_FAILURE',
             message: 'controlled provider failure for exception-case testing',
           });
+        }
+        if (
+          activeScenario.transportFault === 'reset-before-headers-once'
+          && Number(state.transportFaultCountByScenario[activeScenario.id] || 0) === 0
+        ) {
+          state.transportFaultCountByScenario[activeScenario.id] = 1;
+          state.providerInvocationCount += 1;
+          requestRecord.transportFault = activeScenario.transportFault;
+          requestRecord.responseLength = 0;
+          evidence.record('provider.failed', {
+            provider: 'controlled-fixture',
+            layer: 'deterministic-fake-provider',
+            error_code: 'CONTROLLED_TRANSPORT_RESET',
+            prompt_contract_version: promptContract.contractVersion,
+            prompt_contract_bound: true,
+          });
+          response.destroy(new Error('controlled transport reset before headers'));
+          return;
         }
         state.providerInvocationCount += 1;
         const providerText = scenarioBinding.requestKind === 'architect-plan'
@@ -4053,7 +4121,7 @@ function controlledProviderResponse({ ordinal, workspaceDir, scenario, requestKi
       calls.push(`[TOOL:create_file ${JSON.stringify({ path: scenario.targetRelativePath, content: scenario.targetContent })}]`);
     }
     calls.push(`[TOOL:run_terminal ${JSON.stringify({
-      command: "printf 'INFO start\\nWARN slow\\nERROR fail\\nWARN retry\\n' | python tools/log_summary.py | grep -q '{\"ERROR\": 1, \"WARN\": 2}'",
+      command: "printf 'INFO start\\nWARN slow\\nERROR fail\\nWARN retry\\n' | python tools/log_summary.py | grep -Fx '{\"ERROR\": 1, \"WARN\": 2}'",
     })}]`);
     calls.push(`[TOOL:read_file ${JSON.stringify({ path: scenario.targetRelativePath })}]`);
     calls.push(`[TOOL:manage_todo_list ${JSON.stringify(completedTodos)}]`);
@@ -4586,6 +4654,21 @@ function progress(stage, extra = {}) {
   fs.appendFileSync(progressPath, JSON.stringify({ ts: new Date().toISOString(), stage, ...extra }) + '\n', 'utf8');
 }
 function parseJsonLine(line) { try { return JSON.parse(line); } catch { return null; } }
+function boundedEvidenceText(value, maxChars) {
+  const text = String(value || '');
+  if (text.length <= maxChars) return text;
+  const marker = '\n...[bounded evidence omitted]...\n';
+  const side = Math.max(0, Math.floor((maxChars - marker.length) / 2));
+  return text.slice(0, side) + marker + text.slice(-side);
+}
+function collectPayloadChannel(events, name, maxChars = 32000) {
+  const payloads = events
+    .filter(event => event.event === 'payload-recorded' && event.data?.name === name)
+    .map(event => String(event.data?.content || ''));
+  if (payloads.length === 0) return '';
+  const perPayloadBudget = Math.max(512, Math.floor(maxChars / payloads.length));
+  return payloads.map(payload => boundedEvidenceText(payload, perPayloadBudget)).join('\n');
+}
 function isProductRunTerminalEvent(terminal) {
   const data = terminal && typeof terminal === 'object' ? terminal.data || {} : {};
   return terminal?.source !== 'vscode-extension.memory-pipeline'
@@ -4594,9 +4677,19 @@ function isProductRunTerminalEvent(terminal) {
     && data.mutationKind !== 'pending-edit-undo';
 }
 function selectProductRunTerminalLog(logs) {
-  const terminalLogs = logs.filter(log => log.terminal);
-  const productTerminalLogs = terminalLogs.filter(log => isProductRunTerminalEvent(log.terminal));
-  return productTerminalLogs.at(-1) || terminalLogs[terminalLogs.length - 1] || null;
+  return logs.filter(log => log.terminal && isProductRunTerminalEvent(log.terminal)).at(-1) || null;
+}
+function summarizeRunLogEvent(event) {
+  const data = event?.data && typeof event.data === 'object' ? event.data : {};
+  if (event?.event !== 'payload-recorded') {
+    return { event: event?.event || '', data };
+  }
+  const { content: _content, ...metadata } = data;
+  return { event: event.event, data: metadata };
+}
+function isProductEvidenceLog(log) {
+  if (log.backgroundMaintenance) return false;
+  return !log.terminal || isProductRunTerminalEvent(log.terminal);
 }
 function collectRunLogs(excludePaths = []) {
   const directory = path.join(workspaceDir, '.devseek', 'runs');
@@ -4608,15 +4701,9 @@ function collectRunLogs(excludePaths = []) {
       const absolutePath = path.join(directory, name);
       const events = fs.readFileSync(absolutePath, 'utf8').split(/\r?\n/).filter(Boolean).map(parseJsonLine).filter(Boolean);
       const terminalEvent = events.find(event => event.event === 'agent-run-completed' || event.event === 'agent-run-failed');
-      const payloadText = events
-        .filter(event => event.event === 'payload-recorded' && (
-          event.data?.name === 'extension.response.raw'
-          || event.data?.name === 'terminal.output'
-        ))
-        .map(event => String(event.data?.content || ''))
-        .join('\n')
-        .slice(-5000);
-      const statusText = events
+      const responsePayloadText = collectPayloadChannel(events, 'extension.response.raw');
+      const terminalPayloadText = collectPayloadChannel(events, 'terminal.output');
+      const statusText = boundedEvidenceText(events
         .filter(event => event.event === 'agent-status')
         .map(event => [
           event.data?.title,
@@ -4625,19 +4712,29 @@ function collectRunLogs(excludePaths = []) {
             ? event.data.editedFiles.map(file => file?.path || file?.basename || '')
             : []),
         ].filter(Boolean).map(String).join('\n'))
-        .join('\n')
-        .slice(-5000);
-      const eventSummaryText = events.map(event => JSON.stringify({
-          event: event.event || '',
-          data: event.data || {},
-        }))
-        .join('\n')
-        .slice(-5000);
-      const responseText = [payloadText, statusText, eventSummaryText].filter(Boolean).join('\n');
+        .join('\n'), 16000);
+      const eventSummaryText = boundedEvidenceText(events.map(event => JSON.stringify(
+          summarizeRunLogEvent(event),
+        ))
+        .join('\n'), 16000);
+      const terminalCauseText = terminalEvent
+        ? String(terminalEvent.data?.failedReason || terminalEvent.data?.reason || '')
+        : '';
+      const responseText = [
+        responsePayloadText,
+        terminalPayloadText,
+        statusText,
+        terminalCauseText,
+        eventSummaryText,
+      ].filter(Boolean).join('\n');
       return {
         path: path.relative(workspaceDir, absolutePath).replace(/\\/g, '/'),
         events: events.length,
         lastEvent: events.at(-1)?.event || '',
+        backgroundMaintenance: events.some(event => (
+          event.event === 'agent-run-started'
+          && event.data?.workloadRole === 'background-maintenance'
+        )),
         responseText,
         terminal: terminalEvent ? {
           event: terminalEvent.event,
@@ -4868,7 +4965,10 @@ function evaluate(scenario, initialUserFiles, baselineRunLogPaths, options = {})
   const missingChangedPaths = expectedChangedPaths.filter(value => !sortedUserChangedPaths.includes(value));
   const unexpectedUserFiles = sortedMutatedUserFiles.filter(value => !expectedMutatedUserFiles.includes(value));
   const missingUserFiles = expectedMutatedUserFiles.filter(value => !sortedMutatedUserFiles.includes(value));
-  const runLogSearchText = runLogs.logs.map(log => log.responseText || '').join('\n');
+  const runLogSearchText = runLogs.logs
+    .filter(isProductEvidenceLog)
+    .map(log => log.responseText || '')
+    .join('\n');
   const requiredRunLogSubstrings = sortedStrings(scenario.requiredRunLogSubstrings || []);
   const missingRunLogSubstrings = requiredRunLogSubstrings.filter(value => !runLogSearchText.includes(value));
   const forbiddenRunLogSubstrings = sortedStrings(scenario.forbiddenRunLogSubstrings || []);
@@ -5324,6 +5424,19 @@ function summarizeControlledBridge(state, { providerExpected = true, scenarios =
     .filter(scenario => scenario.providerExpected === false)
     .filter(scenario => state.chatRequests.some(request => request.scenarioId === scenario.id))
     .map(scenario => scenario.id);
+  const providerRequestContractErrors = scenarios.flatMap(scenario => {
+    if (!Array.isArray(scenario.expectedProviderRequestKinds)) return [];
+    const observed = state.chatRequests
+      .filter(request => request.scenarioId === scenario.id)
+      .map(request => request.requestKind);
+    return arraysEqual(observed, scenario.expectedProviderRequestKinds)
+      ? []
+      : [
+        `Provider request contract mismatch for ${scenario.id}: expected `
+        + `${JSON.stringify(scenario.expectedProviderRequestKinds)}, observed ${JSON.stringify(observed)}`,
+      ];
+  });
+  errors.push(...providerRequestContractErrors);
   if (state.authFailures !== 0) errors.push(`Controlled Bridge observed ${state.authFailures} authentication failures`);
   if (!state.promptContractSelfTest?.ok) errors.push('Controlled prompt-contract negative self-test did not pass');
   if (unexpectedProviderScenarios.length > 0) {

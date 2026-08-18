@@ -42,6 +42,7 @@ export async function observeSettledTerminalExecution(
   const analyzed = analyzeTerminalEvidence(input.command, input.output, input.workdir);
   const canonicalEvidence: TerminalEvidence = {
     ...analyzed.evidence,
+    workdir: input.workdir,
     canonicalAction: {
       actionId: input.toolReceipt.actionId,
       sequence: input.toolReceipt.sequence,

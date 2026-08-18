@@ -478,6 +478,162 @@ test('one provider operation closes independently at client and server boundarie
   assert.equal(client.settleAndSeal({ status: 'completed', idempotencyKey: 'settlement' }).head.sealed, true);
 });
 
+test('later transport success closes failed attempts in the same sampling lane at each boundary', t => {
+  const workspaceRoot = tempWorkspace(t);
+  const authority = authoritySet();
+  const owner = ProductRunEvidenceSession.forWorkspace({
+    workspaceRoot,
+    runId: 'provider-transport-retry',
+    surface: 'vscode',
+    authority: authority.ownerOpen,
+    openIfMissing: true,
+  });
+  const bridge = ProductRunEvidenceSession.forWorkspace({
+    workspaceRoot,
+    runId: 'provider-transport-retry',
+    surface: 'bridge',
+    authority: authority.participant,
+  });
+  const samplingId = 'sampling:transport-retry';
+  const recordAttempt = ({ session, type, operationId, attempt, boundary }) => session.record({
+    type,
+    idempotencyKey: `${boundary}:${operationId}:${type}`,
+    payload: observed(type.slice(type.indexOf('.') + 1), {
+      operation_id: operationId,
+      sampling_id: samplingId,
+      transport_attempt: attempt,
+      boundary,
+    }),
+  });
+
+  recordAttempt({ session: owner, type: 'provider.requested', operationId: 'client:1', attempt: 1, boundary: 'client' });
+  recordAttempt({ session: bridge, type: 'provider.requested', operationId: 'server:1', attempt: 1, boundary: 'server' });
+  recordAttempt({ session: bridge, type: 'provider.failed', operationId: 'server:1', attempt: 1, boundary: 'server' });
+  recordAttempt({ session: owner, type: 'provider.failed', operationId: 'client:1', attempt: 1, boundary: 'client' });
+  recordAttempt({ session: owner, type: 'provider.requested', operationId: 'client:2', attempt: 2, boundary: 'client' });
+  recordAttempt({ session: bridge, type: 'provider.requested', operationId: 'server:2', attempt: 2, boundary: 'server' });
+  recordAttempt({ session: bridge, type: 'provider.completed', operationId: 'server:2', attempt: 2, boundary: 'server' });
+  recordAttempt({ session: owner, type: 'provider.completed', operationId: 'client:2', attempt: 2, boundary: 'client' });
+
+  const result = owner.settleAndSeal({ status: 'completed', idempotencyKey: 'settlement' });
+  assert.equal(result.head.sealed, true);
+  assert.equal(owner.readEvents().some(event => event.type === 'recovery.completed'), false);
+});
+
+test('transport supersession requires a complete matching sampling identity', t => {
+  const cases = [
+    {
+      name: 'different-sampling',
+      failed: { sampling_id: 'sampling:a', transport_attempt: 1 },
+      completed: { sampling_id: 'sampling:b', transport_attempt: 2 },
+    },
+    {
+      name: 'same-attempt',
+      failed: { sampling_id: 'sampling:a', transport_attempt: 1 },
+      completed: { sampling_id: 'sampling:a', transport_attempt: 1 },
+    },
+    {
+      name: 'different-boundary',
+      failed: { sampling_id: 'sampling:a', transport_attempt: 1, boundary: 'client' },
+      completed: { sampling_id: 'sampling:a', transport_attempt: 2, boundary: 'server' },
+    },
+    {
+      name: 'legacy-without-attempt-identity',
+      failed: {},
+      completed: {},
+    },
+  ];
+  for (const item of cases) {
+    const workspaceRoot = tempWorkspace(t);
+    const authority = authoritySet();
+    const session = ProductRunEvidenceSession.forWorkspace({
+      workspaceRoot,
+      runId: `provider-retry-negative-${item.name}`,
+      surface: 'vscode',
+      authority: authority.ownerOpen,
+      openIfMissing: true,
+    });
+    const failedBoundary = item.failed.boundary ?? 'client';
+    const completedBoundary = item.completed.boundary ?? 'client';
+    session.record({
+      type: 'provider.requested',
+      idempotencyKey: `${item.name}:failed:requested`,
+      payload: observed('requested', {
+        operation_id: `${item.name}:failed`,
+        boundary: failedBoundary,
+        ...item.failed,
+      }),
+    });
+    session.record({
+      type: 'provider.failed',
+      idempotencyKey: `${item.name}:failed`,
+      payload: observed('failed', {
+        operation_id: `${item.name}:failed`,
+        boundary: failedBoundary,
+        ...item.failed,
+      }),
+    });
+    session.record({
+      type: 'provider.requested',
+      idempotencyKey: `${item.name}:completed:requested`,
+      payload: observed('requested', {
+        operation_id: `${item.name}:completed`,
+        boundary: completedBoundary,
+        ...item.completed,
+      }),
+    });
+    session.record({
+      type: 'provider.completed',
+      idempotencyKey: `${item.name}:completed`,
+      payload: observed('completed', {
+        operation_id: `${item.name}:completed`,
+        boundary: completedBoundary,
+        ...item.completed,
+      }),
+    });
+    assert.throws(
+      () => session.settleAndSeal({ status: 'completed', idempotencyKey: `${item.name}:settlement` }),
+      error => error?.code === 'RUN_SEMANTIC_INVALID' && /unresolved adverse terminals/.test(error.message),
+      item.name,
+    );
+  }
+});
+
+test('provider terminal cannot replace the sampling identity declared at request time', t => {
+  const workspaceRoot = tempWorkspace(t);
+  const authority = authoritySet();
+  const session = ProductRunEvidenceSession.forWorkspace({
+    workspaceRoot,
+    runId: 'provider-attempt-identity-mutation',
+    surface: 'vscode',
+    authority: authority.ownerOpen,
+    openIfMissing: true,
+  });
+  session.record({
+    type: 'provider.requested',
+    idempotencyKey: 'provider:requested',
+    payload: observed('requested', {
+      operation_id: 'provider:1',
+      boundary: 'client',
+      sampling_id: 'sampling:original',
+      transport_attempt: 1,
+    }),
+  });
+  assert.throws(
+    () => session.record({
+      type: 'provider.completed',
+      idempotencyKey: 'provider:completed',
+      payload: observed('completed', {
+        operation_id: 'provider:1',
+        boundary: 'client',
+        sampling_id: 'sampling:substituted',
+        transport_attempt: 1,
+      }),
+    }),
+    error => error?.code === 'RUN_SEMANTIC_INVALID' && /changed attempt identity/.test(error.message),
+  );
+});
+
 test('lifecycle observation status and trust spoofing cannot reach settlement', t => {
   const workspaceRoot = tempWorkspace(t);
   const attacks = [

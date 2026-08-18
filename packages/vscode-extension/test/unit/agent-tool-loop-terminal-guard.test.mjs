@@ -152,10 +152,10 @@ function preparedTerminalCallbacks(host) {
   };
 }
 
-test('ToolLoop work-tool classifier keeps meta tools separate from real work', () => {
+test('ToolLoop work-tool classifier treats durable memory as a real local-state effect', () => {
   assert.equal(isAgentWorkToolName('manage_todo_list'), false);
   assert.equal(isAgentWorkToolName('task_complete'), false);
-  assert.equal(isAgentWorkToolName('memory_write'), false);
+  assert.equal(isAgentWorkToolName('memory_write'), true);
   assert.equal(isAgentWorkToolName('read_file'), true);
   assert.equal(isAgentWorkToolName('run_terminal'), true);
 });

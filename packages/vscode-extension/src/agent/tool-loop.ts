@@ -58,7 +58,7 @@ export type { ToolFailureEvidence, ToolLoopResult, ToolSuppressionEvidence } fro
 
 const workspaceEditService = new WorkspaceEditService();
 const workspaceMutation = new VsCodeWorkspaceMutationAdapter(workspaceEditService);
-const NON_WORK_TOOL_NAMES = new Set(['manage_todo_list', 'task_complete', 'memory_write']);
+const NON_WORK_TOOL_NAMES = new Set(['manage_todo_list', 'task_complete']);
 const TOOL_TRACE_LOGGERS = new Map<string, DevSeekTraceLogger>();
 
 function hasEvidenceAwareToolAuthority(kind: ToolKind, callbacks: AgentLoopCallbacks): boolean {
@@ -88,7 +88,7 @@ export function buildAgentMetaOnlyToolFeedback(taskDescription?: string): string
     ? `当前任务：${taskDescription.trim()}`
     : '当前任务仍缺少真实执行证据。';
   return [
-    '【系统反馈】本轮只更新了 todo/记忆/完成状态，没有执行真实工作工具。',
+    '【系统反馈】本轮只更新了 todo/完成状态，没有执行真实工作工具。',
     scope,
     '请继续调用 read_file/list_dir/grep_search/create_file/write_file/run_terminal 等真实工具。',
     '需要编译、运行或验证时，必须使用 run_terminal 并提供可验证的退出码和输出；不要只更新任务清单。',

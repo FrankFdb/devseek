@@ -47,6 +47,7 @@ export type TerminalEvidenceKind = 'compile' | 'run' | 'test' | 'compile-run' | 
 
 export type TerminalEvidence = {
   command: string;
+  workdir?: string;
   kind: TerminalEvidenceKind;
   ok: boolean;
   exitCode: number | null;

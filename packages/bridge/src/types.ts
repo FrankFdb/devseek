@@ -12,6 +12,10 @@ export interface ChatRequest {
   mode?: 'fast' | 'r1';
   /** 附件文件绝对路径列表，通过 DeepSeek 网页原生上传机制发送 */
   files?: string[];
+  /** 同一语义模型轮的稳定标识，跨 transport retry 保持不变。 */
+  samplingId?: string;
+  /** Extension 到 Bridge 的一基 transport retry 序号。 */
+  transportAttempt?: number;
 }
 
 export interface StreamDelta {
