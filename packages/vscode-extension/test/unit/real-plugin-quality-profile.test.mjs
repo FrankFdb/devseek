@@ -5,6 +5,7 @@ import {
   buildRealPluginScenarioSpec,
   listRealPluginIterationScenarioSpecs,
   parseRequiredArtifactSnippets,
+  specializeRealPluginQualityProfileForDelivery,
 } from '../harness/real-plugin-quality-profile.mjs';
 
 test('real plugin quality profile keeps short canaries task-specific', () => {
@@ -19,6 +20,19 @@ test('real plugin quality profile preserves strict project checks for medium and
   assert.equal(buildRealPluginQualityProfile('medium-integration').requireFormalProjectQuality, true);
   assert.equal(buildRealPluginQualityProfile('formal-simulation').requireFormalProjectQuality, true);
   assert.equal(buildRealPluginQualityProfile('unknown').kind, 'formal');
+});
+
+test('real plugin quality profile derives the quality gate from explicit deliverables', () => {
+  const base = buildRealPluginQualityProfile('t11-live-medium-coding');
+  const codeProfile = specializeRealPluginQualityProfileForDelivery(base, {
+    expectedMarkdownArtifacts: [],
+    expectedCodeArtifacts: ['package.json', 'test/task-service.test.js'],
+    expectedCodeDirs: ['src'],
+  });
+
+  assert.equal(base.requireFormalProjectQuality, true, 'scenario name alone must not disable formal checks');
+  assert.equal(codeProfile.deliveryMode, 'code-workspace-deliverable');
+  assert.equal(codeProfile.requireFormalProjectQuality, false);
 });
 
 test('required artifact snippets are explicit task assertions, not domain keywords', () => {

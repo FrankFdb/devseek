@@ -823,6 +823,19 @@ test('completion evidence: task summary file claims must match written files', (
   }
 });
 
+test('completion evidence: extension-prefix families preserve complete manifest names', () => {
+  const summary = '已创建 package.json、config/settings.jsonc 和 src/index.js。';
+
+  assert.deepEqual(
+    extractClaimedSummaryFiles(summary),
+    ['package.json', 'config/settings.jsonc', 'src/index.js'],
+  );
+  assert.deepEqual(
+    getUnsupportedSummaryFileClaims(summary, [], '/workspace'),
+    ['package.json', 'config/settings.jsonc', 'src/index.js'],
+  );
+});
+
 test('completion evidence: Chinese quoted Markdown document claims require written evidence', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-md-claim-'));
   try {

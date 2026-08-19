@@ -1,13 +1,15 @@
 export const KNOWN_WORKSPACE_FILE_EXTENSIONS_PATTERN = [
-  'jsonc', 'yaml', 'toml', 'scss', 'html', 'bash',
+  'markdown', 'jsonc', 'svelte', 'swift', 'scala', 'cmake',
+  'yaml', 'toml', 'scss', 'html', 'bash', 'sass',
   'tsx', 'jsx', 'mjs', 'cjs', 'cpp', 'cxx', 'hpp', 'hxx',
   'ts', 'js', 'cc', 'hh', 'py', 'java', 'go', 'rs', 'md',
   'css', 'txt', 'yml', 'ini', 'csv', 'tsv', 'log', 'xml',
-  'json', 'zsh', 'sql', 'sh', 'c', 'h',
+  'json', 'zsh', 'sql', 'php', 'kts', 'vue', 'sh', 'rb',
+  'kt', 'cs', 'c', 'h',
 ].join('|');
 
 export const WORKSPACE_FILE_PATH_TOKEN_PATTERN = `[A-Za-z0-9_./\\\\-]+\\.(?:${KNOWN_WORKSPACE_FILE_EXTENSIONS_PATTERN})`;
-const WORKSPACE_FILE_PATH_BOUNDARY_PATTERN = '(?=$|[^A-Za-z0-9_./\\\\-])';
+export const WORKSPACE_FILE_PATH_BOUNDARY_PATTERN = '(?=$|[^A-Za-z0-9_./\\\\-])';
 const WORKSPACE_PATH_BOUNDARY_PATTERN = '(?=$|[\\s，,。；;：:!！?？)）\\]】}"\'`])';
 
 const KNOWN_WORKSPACE_FILE_PATH_RE = new RegExp(

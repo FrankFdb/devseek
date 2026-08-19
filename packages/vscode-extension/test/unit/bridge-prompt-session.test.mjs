@@ -23,7 +23,7 @@ const req = createRequire(import.meta.url);
 const {
   flattenMessagesForBridge,
   prepareBridgePromptForSession,
-  recordBridgePromptSessionResponse,
+  recordBridgePromptSessionRequest,
   resetBridgePromptSessionCacheForTests,
 } = req(bundlePath);
 
@@ -46,20 +46,20 @@ test('BridgePromptSession: first turn sends full prompt, follow-up sends only in
   assert.equal(first.mode, 'full');
   assert.match(first.prompt, /工程原则/);
 
-  const assistantResponse = '[TOOL:read_file {"path":"src/main.cpp"}]';
-  recordBridgePromptSessionResponse({
+  recordBridgePromptSessionRequest({
     ...run,
     newSession: true,
     messages: firstMessages,
-  }, assistantResponse);
+  });
 
+  const compactedAssistant = '[DevSeek 已执行工具请求摘要]读取 src/main.cpp；真实结果见下一条工具反馈。';
   const toolFeedback = '[工具结果 Round 1]\nread_file src/main.cpp\nclass App {};';
   const second = prepareBridgePromptForSession({
     ...run,
     newSession: false,
     messages: [
       ...firstMessages,
-      { role: 'assistant', content: assistantResponse },
+      { role: 'assistant', content: compactedAssistant },
       { role: 'user', content: toolFeedback },
     ],
   });
@@ -68,31 +68,80 @@ test('BridgePromptSession: first turn sends full prompt, follow-up sends only in
   assert.match(second.prompt, /沿用本会话上一轮/);
   assert.match(second.prompt, /read_file src\/main\.cpp/);
   assert.doesNotMatch(second.prompt, /工程原则/);
+  assert.doesNotMatch(second.prompt, /已执行工具请求摘要/);
   assert.ok(second.promptChars < second.fullChars / 2);
   assert.ok(second.promptBytes < second.fullBytes / 2);
+
+  recordBridgePromptSessionRequest({
+    ...run,
+    messages: [
+      ...firstMessages,
+      { role: 'assistant', content: compactedAssistant },
+      { role: 'user', content: toolFeedback },
+    ],
+  });
+  const third = prepareBridgePromptForSession({
+    ...run,
+    messages: [
+      ...firstMessages,
+      { role: 'assistant', content: compactedAssistant },
+      { role: 'user', content: toolFeedback },
+      { role: 'assistant', content: '[DevSeek 已执行工具请求摘要]已写入 main.cpp。' },
+      { role: 'user', content: '[工具结果 Round 2]\nwrite_file src/main.cpp 成功。' },
+    ],
+  });
+  assert.equal(third.mode, 'incremental');
+  assert.match(third.prompt, /Round 2/);
+  assert.doesNotMatch(third.prompt, /Round 1|工程原则|已写入 main\.cpp/);
 });
 
-test('BridgePromptSession: UTF-8 byte savings enable useful CJK incremental turns', () => {
+test('BridgePromptSession: small CJK follow-ups stay incremental once the logical cursor aligns', () => {
   resetBridgePromptSessionCacheForTests();
   const run = { traceRunId: 'run-cjk-budget', traceWorkspaceRoot: '/repo' };
   const firstMessages = [{ role: 'user', content: `工程约束：${'必须保留当前行为。'.repeat(90)}` }];
   const first = prepareBridgePromptForSession({ ...run, newSession: true, messages: firstMessages });
-  const assistantResponse = '[TOOL:read_file {"path":"main.cpp"}]';
-  recordBridgePromptSessionResponse({ ...run, newSession: true, messages: firstMessages }, assistantResponse);
+  recordBridgePromptSessionRequest({ ...run, newSession: true, messages: firstMessages });
 
   const second = prepareBridgePromptForSession({
     ...run,
     newSession: false,
     messages: [
       ...firstMessages,
-      { role: 'assistant', content: assistantResponse },
+      { role: 'assistant', content: '[DevSeek 已执行工具请求摘要]读取 main.cpp。' },
       { role: 'user', content: '[工具结果 Round 1]\n读取成功，请继续。' },
     ],
   });
 
-  assert.ok(first.fullChars - second.promptChars < 1024, 'fixture must stay below the old character threshold');
-  assert.ok(first.fullBytes - second.promptBytes >= 1024, 'fixture must exceed the UTF-8 transport threshold');
   assert.equal(second.mode, 'incremental');
+  assert.equal(second.resetBrowserSession, false);
+  assert.ok(first.fullBytes > second.promptBytes);
+});
+
+test('BridgePromptSession: missing cursor or rewritten request prefix resets the browser conversation', () => {
+  resetBridgePromptSessionCacheForTests();
+  const run = { traceRunId: 'run-reset', traceWorkspaceRoot: '/repo' };
+  const messages = [{ role: 'user', content: '实现 src/main.cpp 并验证。' }];
+
+  const cacheMiss = prepareBridgePromptForSession({ ...run, messages });
+  assert.equal(cacheMiss.mode, 'reset-full');
+  assert.equal(cacheMiss.resetBrowserSession, true);
+  assert.equal(cacheMiss.prompt, flattenMessagesForBridge(messages));
+
+  const first = prepareBridgePromptForSession({ ...run, newSession: true, messages });
+  assert.equal(first.mode, 'full');
+  recordBridgePromptSessionRequest({ ...run, messages });
+
+  const rewritten = prepareBridgePromptForSession({
+    ...run,
+    messages: [
+      { role: 'user', content: '压缩后重建：实现 src/main.cpp 并验证。' },
+      { role: 'assistant', content: '摘要' },
+      { role: 'user', content: '继续' },
+    ],
+  });
+  assert.equal(rewritten.mode, 'reset-full');
+  assert.equal(rewritten.resetBrowserSession, true);
+  assert.match(rewritten.prompt, /压缩后重建/);
 });
 
 test('BridgePromptSession: missing trace key keeps ordinary chat self-contained', () => {
@@ -100,5 +149,6 @@ test('BridgePromptSession: missing trace key keeps ordinary chat self-contained'
   const messages = [{ role: 'user', content: '短问题' }];
   const prepared = prepareBridgePromptForSession({ messages, newSession: false });
   assert.equal(prepared.mode, 'full');
+  assert.equal(prepared.resetBrowserSession, false);
   assert.equal(prepared.prompt, flattenMessagesForBridge(messages));
 });

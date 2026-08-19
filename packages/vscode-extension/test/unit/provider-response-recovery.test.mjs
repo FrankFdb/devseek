@@ -123,12 +123,17 @@ test('Agent provider recovery prompt tightens the last retry', () => {
   assert.doesNotMatch(prompt, /实现一个正式项目功能.{1800}/s);
 });
 
-test('Agent provider recovery does not reset the provider session for repairable text corruption', () => {
+test('Agent provider recovery resets browser state after every rejected response', () => {
   const failure = parseAgentProviderFailure(
     new Error('RESPONSE_CORRUPTED:incomplete-tool-block:Tool block is incomplete.'),
   );
+  const mixed = parseAgentProviderFailure(
+    new Error('RESPONSE_CORRUPTED:mixed-tool-protocol:incompatible tool dialects.'),
+  );
 
-  assert.equal(shouldResetProviderSessionForRecovery(failure), false);
+  assert.equal(shouldResetProviderSessionForRecovery(failure), true);
+  assert.equal(mixed.recoverable, true);
+  assert.equal(shouldResetProviderSessionForRecovery(mixed), true);
 });
 
 test('Agent provider recovery display tells the user a safe retry is running', () => {
@@ -138,7 +143,7 @@ test('Agent provider recovery display tells the user a safe retry is running', (
   const display = describeAgentProviderRecoveryForUser(failure, 2, 3);
   assert.match(display.title, /正在安全续跑/);
   assert.match(display.detail, /已阻止执行/);
-  assert.match(display.activityLabel, /安全续跑 2\/3/);
+  assert.match(display.activityLabel, /重建模型会话，安全恢复 2\/3/);
 });
 
 test('Agent provider recovery display names provider session rebuilds', () => {

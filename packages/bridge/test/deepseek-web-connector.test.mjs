@@ -97,6 +97,34 @@ test('DeepSeekWebConnectorPort retries only before partial output and within one
   assert.equal(failed.sequence, 2);
 });
 
+test('T11 browser request is never replayed after the provider confirms submission', async () => {
+  const execution = new CanonicalDeepSeekWebConnectorExecutionService({
+    exclusive: { execute: operation => operation() },
+    classifyError: () => 'provider-error',
+    sleep: async () => {},
+  });
+  const connector = new CanonicalDeepSeekWebConnectorService();
+  const session = connector.open({ requestId: 'submitted-timeout', stream: true });
+  const attempts = [];
+
+  await assert.rejects(
+    execution.execute(session, async attempt => {
+      attempts.push(attempt);
+      session.confirmProviderSubmission();
+      throw new Error('response timed out after browser submission');
+    }),
+    /response timed out/u,
+  );
+
+  assert.deepEqual(attempts, [1]);
+  assert.equal(session.snapshot().providerSubmissionAttempt, 1);
+  assert.deepEqual(session.decideRetry('provider-error'), {
+    decision: 'stop',
+    reason: 'submission-confirmed',
+  });
+  session.fail('response timed out after browser submission', 'provider-error');
+});
+
 test('DeepSeekWebConnectorPort settles cancellation from queued and retry-wait without provider dispatch', () => {
   const connector = new CanonicalDeepSeekWebConnectorService();
   const queued = connector.open({ requestId: 'queued-cancel', stream: true });

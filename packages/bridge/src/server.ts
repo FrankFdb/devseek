@@ -470,6 +470,9 @@ app.post('/chat', async (req: Request, res: Response) => {
           files: body.files,
           trace: trace.child('deepseek-web'),
           lifecycle: agentLifecycle,
+          dispatch: {
+            confirmSubmission: () => connectorSession.confirmProviderSubmission(),
+          },
           onDelta: (delta) => {
             const released = responseGuard.push(delta);
             const frame = connectorSession.acceptProviderDelta(delta, released);
@@ -525,6 +528,9 @@ app.post('/chat', async (req: Request, res: Response) => {
           files: body.files,
           trace: trace.child('deepseek-web'),
           lifecycle: agentLifecycle,
+          dispatch: {
+            confirmSubmission: () => connectorSession.confirmProviderSubmission(),
+          },
         });
       }, {
         onAttemptStarted: attempt => providerLifecycle.beginAttempt(attempt),

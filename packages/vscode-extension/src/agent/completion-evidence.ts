@@ -30,6 +30,10 @@ import type { VerificationResult } from './evidence-grounding';
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import { hasTaskSemanticDoneCondition } from '../intent/task-semantic-obligations';
 import { isCodeArtifactPathValue } from '../artifact-path-kind';
+import {
+  KNOWN_WORKSPACE_FILE_EXTENSIONS_PATTERN,
+  WORKSPACE_FILE_PATH_BOUNDARY_PATTERN,
+} from '../workspace/path-patterns';
 
 export interface CompletionTodo {
   title: string;
@@ -100,8 +104,14 @@ const COMMAND_EVIDENCE_RE = /(?:编译|运行|执行|测试|验证|调试|compil
 const RUN_EVIDENCE_RE = /(?:运行|执行|run|execute)/i;
 const TEST_EVIDENCE_RE = /(?:测试|run\s+tests?|execute\s+tests?|npm\s+test|pnpm\s+test|yarn\s+test|bun\s+test|unit\s+tests?|pytest|go\s+test|cargo\s+test)/i;
 const RUNTIME_VALIDATION_RE = /(?:启动|看结果|输出效果|运行效果)/i;
-const SUMMARY_FILE_CLAIM_RE = /(?:^|[^\w/.-])((?:[\w.-]+\/)*[\w.-]+(?:\.(?:cpp|cxx|cc|c|hpp|hxx|hh|h|tsx|jsx|mjs|cjs|ts|js|py|java|go|rs|cs|php|rb|swift|kts|kt|scala|html|scss|sass|css|svelte|vue|bash|zsh|sh|json|ya?ml|md|txt|cmake)|\/CMakeLists\.txt|CMakeLists\.txt))/gi;
-const SUMMARY_QUOTED_FILE_CLAIM_RE = /[《「“"'`]([^《》「」“”"'`\n\r]{1,180}\.(?:cpp|cxx|cc|c|hpp|hxx|hh|h|tsx|jsx|mjs|cjs|ts|js|py|java|go|rs|cs|php|rb|swift|kts|kt|scala|html|scss|sass|css|svelte|vue|bash|zsh|sh|json|ya?ml|md|txt|cmake))[》」”"'`]/gi;
+const SUMMARY_FILE_CLAIM_RE = new RegExp(
+  `(?:^|[^\\w/.-])((?:[\\w.-]+\\/)*[\\w.-]+\\.(?:${KNOWN_WORKSPACE_FILE_EXTENSIONS_PATTERN}))${WORKSPACE_FILE_PATH_BOUNDARY_PATTERN}`,
+  'gi',
+);
+const SUMMARY_QUOTED_FILE_CLAIM_RE = new RegExp(
+  `[《「“"'\`]([^《》「」“”"'\`\\n\\r]{1,180}\\.(?:${KNOWN_WORKSPACE_FILE_EXTENSIONS_PATTERN}))${WORKSPACE_FILE_PATH_BOUNDARY_PATTERN}[》」”"'\`]`,
+  'gi',
+);
 const SUMMARY_FILE_CLAIM_POSITIVE_RE = /(?:创建|新建|生成|添加|新增|编写|实现|更新|修改|改造|重构|写入|保存|输出|产出|交付|导出|落地|复制|拷贝|重命名|改名|移动|迁移|替换|create|created|add|added|generate|generated|write|wrote|save|saved|output|produce|produced|deliver|delivered|export|exported|implement|implemented|update|updated|modify|modified|refactor|refactored|copy|copied|duplicate|duplicated|rename|renamed|move|moved|replace|replaced)/i;
 const SUMMARY_FILE_CLAIM_NEGATIVE_RE = /(?:未|没有|尚未|无法|不能|失败|缺少|不存在|not\s+|no\s+|did\s+not|failed|missing|absent)/i;
 const SUMMARY_FILE_CLAIM_ADVISORY_RE = /(?:建议|应当|需要|可以|计划|准备|待|后续|下一步|should|could|would|plan(?:ned)?|todo).{0,20}$/i;

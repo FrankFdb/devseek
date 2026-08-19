@@ -37,13 +37,16 @@ devseek_governance:
 | C8～C10 实施到交付 | `completed` | 15/15：code change、integration、verification/diagnosis/repair、independent review、artifact/Git/release/rollback 均 fail closed |
 | C11 协作与长任务 | `completed` | 6/6 活跃能力已接线：checkpoint、resume idempotency、cancel、steer、user collaboration、Surface accessibility；background automation 保持 deferred |
 | C12 上下文、记忆与证据 | `completed` | 3/3：memory policy、run evidence retention、context compaction 已接线 |
-| T1～T5 专题收敛 | `completed` | `2.0.24` 全面 run 15/15 steps；63 个 targeted case、14 个 controlled suite 的 56 次用户流程（55 unique controlled），共 118 selected、94 required、43/43 设计维度，执行证据缺失 0 |
-| T6 卡顿与资源回收 | `pending_scope` | 按用户要求停在 T5；只有用户明确继续后，才审计 VS Code 窗口、浏览器、Bridge、后台 memory Provider、日志关联与跨进程回收 |
+| T1～T5 意图、流程、网页兼容、权限与记忆 | `completed` | `2.0.24` 全面 run 15/15 steps；63 个 targeted case、14 个 controlled suite 的 56 次用户流程（55 unique controlled），共 118 selected、94 required、43/43 设计维度，执行证据缺失 0 |
+| T6 卡顿与资源回收 | `completed` | `2.0.29` 建立 Bridge/浏览器/extension-host 生命周期 owner；HTTP graceful shutdown 与 parent exit 仿真通过，无跨任务窗口泄漏 |
+| T7～T8 类型、架构债务与效率 | `completed` | `2.0.30` 收敛 read-only/tool route 类型边界、session 调度和差异化仿真；architecture drift 保持 0 violation |
+| T9～T10 Provider 证据与效率 | `completed` | `2.0.31` 建立 sampling/operation/attempt、字节和阶段耗时证据；低风险新建任务减少冗余复核，已有源码编辑仍独立 review；17 suites/60 cases 通过 |
+| T11 真实 Provider 编程收敛 | `completed` | `2.0.32` 真实 DeepSeek Web 五文件 CLI 自测 16/16、独立 holdout 8/8；前一候选由 holdout 检出 2 类入口缺陷；最终 exact-VSIX 17/17 suites、60/60 cases，Extension 197/197 |
 | C13 扩展边界 | `completed` | 唯一活跃项 MCP 已使用官方稳定 SDK；server launch 建立会话信任，只读封闭调用直接执行，高风险调用精确确认且 receipt 不可重放；其余未启用生态保持 conditional/experimental |
-| 用户仿真 | `completed` | I10～I23 共 72 个增量案例绑定唯一 fixture 与自动化证据；I21/I22/I23 分别覆盖 connector/environment、run collaboration、MCP authority；原始结果只保留在被 Git 忽略的 `code/devseek-tests/` |
+| 用户仿真 | `completed` | T11 保留 17 套 60 个不重复产品流程、真实 DeepSeek Web 中型编程任务和实现外独立 CLI holdout；成功与失败样本均保留，case 必须能发现缺陷而不只重复实现自测 |
 | C14 正式顶级资格 | `blocked_external` | Gate 0=`NOT_PASSED`，6 个外部 authority blocker、7 个 exact claims 尚未满足；RC、真实 Provider wave 与 sealed holdout 不得本地伪造 |
-| 本轮 release loop | `completed` | Phase 0～12 的 32/32 门禁通过；VSIX 已打包安装；唯一 Bridge 运行时空闲，无测试进程或 `.inspect.cjs` 残留 |
-| 文档治理 | `completed` | 01～20 编号文档已完整归档且根目录无编号尾页；当前状态与任务只由 PLAN 发放，README 仅提供入口和边界 |
+| 本轮 release loop | `completed` | Extension 197/197、Phase10、架构、T6 lifecycle、run-evidence contract 38/38、packaged Bridge 和 exact-VSIX 产品矩阵通过；最终 VSIX 按提交身份重新打包安装 |
+| 文档治理 | `pending_scope` | 产品文档正文已更新；既有 legacy inventory 仍仅登记 31/60 份受治理文档，`verify:doc-governance` 保持历史 2/4，缺 29 条库存记录，未伪造回执掩盖 |
 
 ## 非活跃能力
 
@@ -60,11 +63,11 @@ devseek_governance:
 
 | 顺序 | 任务 | 状态 | 完成条件 |
 | ---: | --- | --- | --- |
-| 1 | 关闭当前本地候选 | `completed` | 全量 shared/Bridge/CLI/Headless/Extension 测试、Phase 0～12、架构与生成物门禁全部通过；VSIX 已安装；无残留测试进程；产品、候选身份、文档归档和测试边界均已独立提交 |
-| 2 | T6 卡顿与资源回收 | `pending_scope` | 用户明确继续后，按与 T1 相同原则完成 Codex 源码责任对标、模块化修正、真实进程/窗口资源仿真和无残留证据；当前不得自动开始 |
-| 3 | 建立 Gate 0 外部资格设施 | `blocked_external` | 独立受保护 profile/aggregator、签名身份、WORM retention、trusted time/anchor 与 7 个 exact claims 全部由授权主体提供并经机器复算 |
-| 4 | 执行一次 headed DeepSeek 真实用户路径 | `blocked_external` | 第 3 项完成后，按已有条件授权保留 VS Code 窗口和 DeepSeek 页面；绑定当前冻结候选与真实 Provider evidence，不复用旧回执 |
-| 5 | 执行 C14 RC 与 sealed holdout | `blocked_external` | 冻结 profile、runner、候选和 coverage；RC 与全新 disjoint holdout 均满足门槛，失败不得补跑覆盖 |
+| 1 | 关闭 T11 本地候选 | `completed` | Codex 责任审计、真实 Provider 编程任务、差分 holdout、17 套产品仿真、全量门禁、一个提交、最终 VSIX 安装和一次 push 完成 |
+| 2 | 新的本地产品专题 | `pending_scope` | 只从新的真实用户失败、跨平台证据或与 T1-T11 不重复的独立 holdout 建立专题；先固定行为合同，再按 owner 修复和全面回归，不自动重复旧矩阵 |
+| 3 | 修复 legacy 文档库存 | `pending_scope` | 独立治理任务逐条核对 60 份文档 provenance，并把缺失 29 条真实记录加入 inventory；不得为门禁变绿批量伪造元数据 |
+| 4 | 建立 Gate 0 外部资格设施 | `blocked_external` | 独立受保护 profile/aggregator、签名身份、WORM retention、trusted time/anchor 与 7 个 exact claims 全部由授权主体提供并经机器复算 |
+| 5 | 执行真实 Provider wave、C14 RC 与 sealed holdout | `blocked_external` | 冻结 profile、runner、候选和 coverage；跨平台真实 Provider wave、RC 与全新 disjoint holdout 均满足门槛，失败不得补跑覆盖 |
 | 6 | 激活可选产品能力 | `pending_scope` | 仅当产品明确声明相应能力时，为单个 capability 建立 owner、权限、失败恢复、产品入口和独立验收后再提升状态 |
 
 ## 完成口径

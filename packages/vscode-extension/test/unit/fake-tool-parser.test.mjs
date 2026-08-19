@@ -31,6 +31,7 @@ const {
   containsFakeToolCallProtocol,
   findFirstToolCallStart,
   hasIncompleteFakeToolCallProtocol,
+  hasMixedFakeToolCallProtocol,
   parseFakeToolCalls,
   stripToolCallBlocks,
 } = req(bundlePath);
@@ -940,6 +941,47 @@ test('FakeToolParser: parses DeepSeek colon-prefixed XML tool tags with nested p
   assert.equal(tools[0].input.path, '/tmp/devseek-real-plugin-deepseek/workspace/src/deepseek-web-health/deepseek-login-ready-state-contract.ts');
   assert.equal(findFirstToolCallStart(text), text.indexOf('<TOOL:read_file>'));
   assert.equal(stripToolCallBlocks(text), '继续读取源文件。');
+});
+
+test('FakeToolParser: accepts DeepSeek prefixed opens with bare closes and preserves CDATA writes', () => {
+  const source = [
+    '{',
+    '  "name": "task-store",',
+    '  "scripts": { "test": "node --test" }',
+    '}',
+    '',
+  ].join('\n');
+  const text = [
+    '创建根目录清单。',
+    '<TOOL:create_file>',
+    '<path>/tmp/task-store/package.json</path>',
+    `<content><![CDATA[${source}]]></content>`,
+    '</create_file>',
+  ].join('\n');
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(hasMixedFakeToolCallProtocol(text), false);
+  assert.deepEqual(tools, [{
+    name: 'create_file',
+    input: { path: '/tmp/task-store/package.json', content: source },
+  }]);
+  assert.equal(hasIncompleteFakeToolCallProtocol(text), false);
+  assert.equal(stripToolCallBlocks(text), '创建根目录清单。');
+});
+
+test('FakeToolParser: rejects distinct tool serialization dialects instead of executing a subset', () => {
+  const text = [
+    '[TOOL:manage_todo_list {"todoList":[{"id":1,"title":"创建项目","status":"in-progress"}]}]',
+    '```xml',
+    '<create_file><path>/tmp/task-store/package.json</path><content><![CDATA[{"name":"task-store"}]]></content></create_file>',
+    '```',
+  ].join('\n');
+
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.equal(hasMixedFakeToolCallProtocol(text), true);
+  assert.equal(hasIncompleteFakeToolCallProtocol(text), false);
+  assert.deepEqual(parseFakeToolCalls(text), []);
 });
 
 test('FakeToolParser: parses DeepSeek prefixed XML open tags with complete JSON payloads', () => {

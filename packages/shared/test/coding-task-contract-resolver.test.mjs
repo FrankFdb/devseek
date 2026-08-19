@@ -360,3 +360,36 @@ test('a do-not-modify-other-files guard preserves the named repair target', () =
   assert.deepEqual(contract.scope.exclude, []);
   assert.equal(contract.constraints.includes('no-other-files'), true);
 });
+
+test('slash-delimited command options do not become workspace deliverables', () => {
+  const prompt = [
+    '请创建 package.json、src/json-file-repository.js、src/task-service.js、src/cli.js ',
+    '和 test/task-service.test.js。',
+    '功能包括 add、list、done、stats，支持 high/normal/low 优先级和 all/done/pending 状态筛选。',
+    '运行 npm test；不要写到工作区之外。',
+  ].join('');
+  const contract = resolveCodingKernelTaskContract({
+    prompt,
+    surface: 'vscode',
+    modeHint: 'change',
+    confirmedWorkspaceMutation: true,
+  });
+  const expectedTargets = [
+    'package.json',
+    'src/json-file-repository.js',
+    'src/task-service.js',
+    'src/cli.js',
+    'test/task-service.test.js',
+  ];
+
+  assert.deepEqual(extractCodingWorkspacePaths(prompt), expectedTargets);
+  assert.deepEqual(contract.scope.include, expectedTargets);
+  assert.deepEqual(
+    contract.deliverables.filter(item => item.kind === 'source-change').map(item => item.path),
+    expectedTargets,
+  );
+  assert.deepEqual(
+    extractCodingWorkspacePaths('说明 CPU/GPU 的区别，再解释 read/write 和 high/normal/low 这些枚举值。'),
+    [],
+  );
+});

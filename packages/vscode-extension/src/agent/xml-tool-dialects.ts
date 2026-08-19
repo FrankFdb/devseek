@@ -149,19 +149,19 @@ function toolNamesPattern(): string {
 }
 
 function makeXmlToolTagRegex(): RegExp {
-  return new RegExp(`(?:<|&lt;)\\s*((?:TOOL[:_])?(?:${toolNamesPattern()}|mcp__[A-Za-z0-9_]+))\\b([^<>]*?)\\/\\s*(?:>|&gt;)`, 'gi');
+  return new RegExp(`(?:<|&lt;)\\s*(?:TOOL[:_])?(${toolNamesPattern()}|mcp__[A-Za-z0-9_]+)\\b([^<>]*?)\\/\\s*(?:>|&gt;)`, 'gi');
 }
 
 function makeXmlToolPairRegex(): RegExp {
-  return new RegExp(`(?:<|&lt;)\\s*((?:TOOL[:_])?(?:${toolNamesPattern()}|mcp__[A-Za-z0-9_]+))\\b[^<>]*?(?:>|&gt;)([\\s\\S]*?)(?:<\\/|&lt;\\/)\\s*\\1\\s*(?:>|&gt;)`, 'gi');
+  return new RegExp(`(?:<|&lt;)\\s*(?:TOOL[:_])?(${toolNamesPattern()}|mcp__[A-Za-z0-9_]+)\\b[^<>]*?(?:>|&gt;)([\\s\\S]*?)(?:<\\/|&lt;\\/)\\s*(?:TOOL[:_])?\\1\\s*(?:>|&gt;)`, 'gi');
 }
 
 function makeXmlToolOpenJsonRegex(): RegExp {
-  return new RegExp(`(?:<|&lt;)\\s*((?:TOOL[:_])?(?:${toolNamesPattern()}|mcp__[A-Za-z0-9_]+))\\b[^<>]*?(?:>|&gt;)\\s*\\{`, 'gi');
+  return new RegExp(`(?:<|&lt;)\\s*(?:TOOL[:_])?(${toolNamesPattern()}|mcp__[A-Za-z0-9_]+)\\b[^<>]*?(?:>|&gt;)\\s*\\{`, 'gi');
 }
 
 function makeXmlToolTailRegex(flags = 'i'): RegExp {
-  return new RegExp(`(?:<|&lt;)\\s*((?:TOOL[:_])?(?:${toolNamesPattern()}|mcp__[A-Za-z0-9_]+))\\b[\\s\\S]*$`, flags);
+  return new RegExp(`(?:<|&lt;)\\s*(?:TOOL[:_])?(${toolNamesPattern()}|mcp__[A-Za-z0-9_]+)\\b[\\s\\S]*$`, flags);
 }
 
 function makeToolIdPairRegex(): RegExp {
@@ -241,8 +241,9 @@ function parseOpenJsonCalls(
 function hasCloseTagAfterJson(text: string, rawName: string, fromIndex: number): boolean {
   let cursor = fromIndex;
   while (cursor < text.length && /[ \t\r\n]/.test(text[cursor])) cursor += 1;
-  const name = escapeRegExp(decodeXmlishText(rawName || '').trim());
-  return Boolean(name) && new RegExp(`^(?:<\\/|&lt;\\/)\\s*${name}\\s*(?:>|&gt;)`, 'i').test(text.slice(cursor));
+  const name = escapeRegExp(decodeXmlishText(rawName || '').trim().replace(/^TOOL[:_]/i, ''));
+  return Boolean(name)
+    && new RegExp(`^(?:<\\/|&lt;\\/)\\s*(?:TOOL[:_])?${name}\\s*(?:>|&gt;)`, 'i').test(text.slice(cursor));
 }
 
 function findNextXmlStart(text: string, isRegistered: (name: string) => boolean): number {

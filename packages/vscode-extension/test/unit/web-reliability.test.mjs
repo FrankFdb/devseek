@@ -150,6 +150,18 @@ test('ResponseIntegrityChecker: does not treat complete DevSeek tool protocol as
   );
 });
 
+test('ResponseIntegrityChecker: accepts prefixed XML opens closed by canonical tool names', () => {
+  const checker = new ResponseIntegrityChecker();
+  const response = [
+    '<TOOL:create_file>',
+    '<path>/tmp/task-store/package.json</path>',
+    '<content><![CDATA[{"name":"task-store"}]]></content>',
+    '</create_file>',
+  ].join('\n');
+
+  assert.equal(checker.check(response).safeToExecute, true);
+});
+
 test('ResponseIntegrityChecker: accepts complete DeepSeek create_file tools wrapped in uneven fences', () => {
   const checker = new ResponseIntegrityChecker();
   const fence = '```';

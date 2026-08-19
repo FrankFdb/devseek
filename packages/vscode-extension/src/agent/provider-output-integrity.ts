@@ -1,4 +1,8 @@
-import { hasIncompleteFakeToolCallProtocol, parseFakeToolCalls } from './fake-tool-parser';
+import {
+  hasIncompleteFakeToolCallProtocol,
+  hasMixedFakeToolCallProtocol,
+  parseFakeToolCalls,
+} from './fake-tool-parser';
 import { isolateModelToolRequestText } from './model-tool-protocol-adapter';
 import {
   containsDevSeekInternalToolTranscript,
@@ -20,7 +24,8 @@ export type ProviderOutputIntegrityKind =
   | 'error_page'
   | 'login_required'
   | 'empty'
-  | 'incomplete_answer';
+  | 'incomplete_answer'
+  | 'mixed-tool-protocol';
 
 export interface ProviderOutputIntegrity {
   kind: ProviderOutputIntegrityKind;
@@ -36,6 +41,15 @@ export function classifyProviderOutputIntegrity(text: string | undefined): Provi
   const trimmed = raw.trim();
   if (!trimmed) {
     return buildProviderIntegrity('empty', 0, false, 'provider returned an empty response');
+  }
+
+  if (hasMixedFakeToolCallProtocol(trimmed)) {
+    return buildProviderIntegrity(
+      'mixed-tool-protocol',
+      0,
+      false,
+      'provider response combines incompatible tool serialization dialects',
+    );
   }
 
   const toolCallCount = countProviderToolCalls(trimmed);
@@ -80,7 +94,12 @@ export function classifyProviderOutputIntegrity(text: string | undefined): Provi
 }
 
 export function isProviderOutputFatal(kind: ProviderOutputIntegrityKind): boolean {
-  return kind === 'empty' || kind === 'truncated' || kind === 'error_page' || kind === 'login_required';
+  return kind === 'empty'
+    || kind === 'truncated'
+    || kind === 'error_page'
+    || kind === 'login_required'
+    || kind === 'incomplete_answer'
+    || kind === 'mixed-tool-protocol';
 }
 
 export function describeProviderOutputIntegrity(kind: ProviderOutputIntegrityKind): string {
@@ -101,6 +120,8 @@ export function describeProviderOutputIntegrity(kind: ProviderOutputIntegrityKin
       return 'Provider 返回了可结算回答。';
     case 'incomplete_answer':
       return 'Provider 回答缺少可结算结论证据。';
+    case 'mixed-tool-protocol':
+      return 'Provider 在同一回复中混用了不兼容的工具协议，已阻止执行。';
   }
 }
 

@@ -920,6 +920,8 @@ test('Agent planning: task shape guidance is injected before code is written', (
   assertContains(guidelines, 'request JSON 示例', 'engineering guidelines must require request examples for interface deliverables');
   assertContains(guidelines, 'response JSON 示例', 'engineering guidelines must require response examples for interface deliverables');
   assertContains(guidelines, '独立新项目/原型/练习', 'engineering guidelines must preserve standalone task behavior');
+  assertContains(guidelines, '从公开入口运行至少一个真实成功流程', 'executable delivery must require public-entrypoint evidence');
+  assertContains(guidelines, '部分解析的标识符', 'input-boundary verification must reject partial identifier parsing');
   assertContains(agenticPrompt, 'buildReplaceInFileToolPrompt()', 'Agentic prompt must use the shared targeted-edit protocol');
   assertContains(agenticPrompt, 'buildFullFileWriteToolPrompt()', 'Agentic prompt must use the shared lossless full-file protocol');
   assertContains(toolProtocolPrompt, 'replace_in_file', 'shared tool prompt must expose targeted edits, not only full-file writes');
@@ -3153,16 +3155,17 @@ test('Architecture: Bridge chat owns browser reset boundaries and trace-scoped p
   assertContains(service, '不要使用 DeepSeek 网页中可能残留的旧对话作为上下文', 'bridge prompt must instruct against stale web history');
   assert.match(service, /buildBridgeTransportRequest[\s\S]*?newSession: true/, 'bridge transport requests must reset browser-side history');
   assertContains(bridgeProvider, 'prepareBridgePromptForSession', 'BridgeProvider must prepare trace-scoped prompt reuse centrally');
-  assertContains(bridgeProvider, 'recordBridgePromptSessionResponse', 'BridgeProvider must remember successful same-session turns');
-  assert.match(bridgeProvider, /newSession: opts\.newSession \?\? false/, 'BridgeProvider must honor caller-owned browser reset boundaries');
+  assertContains(bridgeProvider, 'recordBridgePromptSessionRequest', 'BridgeProvider must remember successful logical request cursors');
+  assert.match(bridgeProvider, /newSession: Boolean\(opts\.newSession \|\| preparedPrompt\.resetBrowserSession\)/, 'BridgeProvider must honor caller resets and cursor-invalidating resets');
   assert.match(
     bridgeProvider,
-    /new ResponseIntegrityChecker\(\)\.assertSafeForExecution\(response\);[\s\S]*?isProviderOutputFatal\(providerOutput\.kind\)[\s\S]*?recordBridgePromptSessionResponse/,
-    'BridgeProvider must only cache same-session responses after provider integrity gates pass',
+    /new ResponseIntegrityChecker\(\)\.assertSafeForExecution\(response\);[\s\S]*?isProviderOutputFatal\(providerOutput\.kind\)[\s\S]*?recordBridgePromptSessionRequest/,
+    'BridgeProvider must only advance same-session request cursors after provider integrity gates pass',
   );
   assertContains(promptSession, '沿用本会话上一轮已经建立的 DevSeek 编程智能体规则', 'bridge prompt reuse must send a clear same-session continuation marker');
   assertContains(promptSession, 'traceRunId', 'bridge prompt reuse must be scoped to the current agent run');
-  assertContains(promptSession, 'recordBridgePromptSessionResponse', 'bridge prompt reuse must update state from provider responses');
+  assertContains(promptSession, 'recordBridgePromptSessionRequest', 'bridge prompt reuse must advance a logical request cursor');
+  assertContains(promptSession, 'resetBrowserSession', 'bridge prompt reuse must reset hidden browser state when the logical cursor cannot align');
   assertContains(extension, 'Bridge 网页侧历史不作为上下文来源', 'extension session history comment must document explicit context ownership');
 });
 

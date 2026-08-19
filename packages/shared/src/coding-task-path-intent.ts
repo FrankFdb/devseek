@@ -11,6 +11,8 @@ const DATA_PREFIX_RE = /(?:\b(?:example|input|stdin|url|value)\s+|输入|示例|
 const DIRECTORY_SUFFIX_RE = /^\s*(?:directory|folder|目录)(?:\b|下|内)/iu;
 const TECHNOLOGY_LABEL_RE = /^(?:bun|deno|electron|next|node|nuxt|react|vue)\.(?:js|ts)$/iu;
 const TECHNOLOGY_CONTEXT_RE = /^\s*(?:(?:project|application|app|runtime|ecosystem)\b|(?:项目|工程|应用|运行时|生态)(?=$|[\s,，;；]))/iu;
+const CONVENTIONAL_WORKSPACE_ROOT_RE = /^(?:app|apps|bin|cmd|code|config|configs|doc|docs|example|examples|include|lib|libs|module|modules|package|packages|pkg|script|scripts|source|src|test|tests|tool|tools)$/iu;
+const DIRECT_PATH_CONTEXT_RE = /(?:\b(?:add|create|delete|edit|fix|generate|implement|inspect|modify|move|open|read|refactor|remove|rename|repair|review|save|update|write)\b|创建|新增|添加|删除|编辑|修复|生成|实现|编写|修改|移动|打开|读取|重构|移除|重命名|保存|更新|写入|查看|检查|路径|目录|文件|工作区)\s*[`'"“‘({\[：:=-]*\s*$/iu;
 
 export interface CodingTaskPathIntent {
   readonly mentionedPaths: readonly string[];
@@ -103,6 +105,7 @@ function parsePathMentions(prompt: string): PathMention[] {
     const after = source.slice(matchStart + rawPath.length, bounds.end);
     if (DATA_PREFIX_RE.test(before)) continue;
     if (TECHNOLOGY_LABEL_RE.test(path) && TECHNOLOGY_CONTEXT_RE.test(after)) continue;
+    if (!isCredibleWorkspacePathMention(rawPath, path, before, after)) continue;
     mentions.push({
       path,
       before,
@@ -111,6 +114,19 @@ function parsePathMentions(prompt: string): PathMention[] {
     });
   }
   return mentions;
+}
+
+function isCredibleWorkspacePathMention(
+  rawPath: string,
+  path: string,
+  before: string,
+  after: string,
+): boolean {
+  if (ROOT_WORKSPACE_FILE_RE.test(path)) return true;
+  if (/^(?:\.{1,2}\/)/u.test(rawPath) || /[?*]/u.test(rawPath) || /\/$/u.test(rawPath)) return true;
+  const firstSegment = path.split('/')[0] ?? '';
+  if (CONVENTIONAL_WORKSPACE_ROOT_RE.test(firstSegment)) return true;
+  return DIRECTORY_SUFFIX_RE.test(after) || DIRECT_PATH_CONTEXT_RE.test(before);
 }
 
 function classifyMutationIntent(mention: PathMention): 'mutation' | 'allowed' | 'excluded' | 'none' {

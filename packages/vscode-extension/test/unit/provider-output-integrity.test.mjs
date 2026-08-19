@@ -18,6 +18,7 @@ execSync(
 const req = createRequire(import.meta.url);
 const {
   classifyProviderOutputIntegrity,
+  isProviderOutputFatal,
 } = req(bundlePath);
 
 const maintenanceAnalysis = [
@@ -34,6 +35,18 @@ test('provider output integrity: classifies executable tool calls before settlem
   assert.equal(result.kind, 'tool_call');
   assert.equal(result.okForSettlement, false);
   assert.equal(result.toolCallCount, 1);
+});
+
+test('provider output integrity: rejects mixed tool dialects before any subset can execute', () => {
+  const result = classifyProviderOutputIntegrity([
+    '[TOOL:manage_todo_list {"todoList":[{"id":1,"title":"创建项目","status":"in-progress"}]}]',
+    '<create_file><path>/tmp/task-store/package.json</path><content><![CDATA[{"name":"task-store"}]]></content></create_file>',
+  ].join('\n'));
+
+  assert.equal(result.kind, 'mixed-tool-protocol');
+  assert.equal(result.okForSettlement, false);
+  assert.equal(result.toolCallCount, 0);
+  assert.equal(isProviderOutputFatal(result.kind), true);
 });
 
 test('provider output integrity: classifies a fenced structured text tool envelope as executable', () => {
@@ -208,6 +221,7 @@ test('provider output integrity: rejects provider-authored tool-result transcrip
   assert.equal(result.toolCallCount, 0);
   assert.equal(result.hasAnswerEvidence, false);
   assert.match(result.reason, /(?:provider-authored tool-result|DevSeek internal tool) transcript/);
+  assert.equal(isProviderOutputFatal(result.kind), true);
 });
 
 test('provider output integrity: treats DevSeek transcript echoes with read_file result markers as incomplete, not truncated', () => {

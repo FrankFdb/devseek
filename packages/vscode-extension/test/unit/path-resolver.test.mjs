@@ -434,4 +434,104 @@ test('path-resolver: structured timestamp artifact scope routes bare docs and so
   }
 });
 
+test('path-resolver: explicit root manifest outranks source-directory anchoring without weakening containment', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-root-manifest-'));
+  try {
+    mkdirSync(path.join(root, 'src'), { recursive: true });
+    mkdirSync(path.join(root, 'test'), { recursive: true });
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+    const manifest = path.join(root, 'package.json');
+    const prompt = [
+      `请创建 ${manifest}、${path.join(root, 'src', 'task-service.js')} 和 ${path.join(root, 'test', 'task-service.test.js')}。`,
+      '完成后运行 npm test 验证。',
+    ].join('\n');
+
+    const relativeWrite = resolveWorkspaceWritePath('package.json', {
+      requestPrompt: prompt,
+      content: '{"name":"task-store"}\n',
+      workspaceRootFsPath: root,
+      defaultWorkdir: path.join(root, 'src'),
+    });
+    const absoluteWrite = resolveWorkspaceWritePath(manifest, {
+      requestPrompt: prompt,
+      content: '{"name":"task-store"}\n',
+      workspaceRootFsPath: root,
+      defaultWorkdir: path.join(root, 'src'),
+    });
+
+    assert.equal(relativeWrite.relPath, 'package.json');
+    assert.equal(relativeWrite.absPath, manifest);
+    assert.equal(absoluteWrite.relPath, 'package.json');
+    assert.equal(resolveGeneratedArtifactPathForPrompt('package.json', prompt), 'package.json');
+    assert.equal(resolveWorkspaceWritePath(path.join(root, 'unrequested.json'), {
+      requestPrompt: prompt,
+      content: '{}\n',
+      workspaceRootFsPath: root,
+      defaultWorkdir: path.join(root, 'src'),
+    }), undefined);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('path-resolver: scoped directory plus bare filename preserves the concrete in-scope tool path', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-scoped-file-target-'));
+  try {
+    mkdirSync(path.join(root, 'generated'), { recursive: true });
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+    const prompt = '帮我在指定目录 generated/settings 里见个 devseek.ini，写好后读回来确认，别碰其他文件。';
+
+    const scopedWrite = resolveWorkspaceWritePath('generated/settings/devseek.ini', {
+      requestPrompt: prompt,
+      content: '[devseek]\nmode=focused\n',
+      workspaceRootFsPath: root,
+      defaultWorkdir: root,
+    });
+    const bareWrite = resolveWorkspaceWritePath('devseek.ini', {
+      requestPrompt: prompt,
+      content: '[devseek]\nmode=focused\n',
+      workspaceRootFsPath: root,
+      defaultWorkdir: root,
+    });
+
+    assert.equal(scopedWrite.relPath, 'generated/settings/devseek.ini');
+    assert.equal(scopedWrite.absPath, path.join(root, 'generated/settings/devseek.ini'));
+    assert.equal(bareWrite.relPath, 'generated/settings/devseek.ini');
+    assert.equal(resolveGeneratedArtifactPathForPrompt('generated/settings/devseek.ini', prompt), 'generated/settings/devseek.ini');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('path-resolver: a multi-file enumeration keeps its bare root artifact beside qualified siblings', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-enumerated-targets-'));
+  try {
+    mkdirSync(path.join(root, 'src'), { recursive: true });
+    mkdirSync(path.join(root, 'test'), { recursive: true });
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+    const prompt = [
+      '请创建 package.json、src/json-file-repository.js、src/task-service.js、src/cli.js',
+      '和 test/task-service.test.js。完成后运行 npm test。',
+    ].join('');
+
+    const manifest = resolveWorkspaceWritePath('package.json', {
+      requestPrompt: prompt,
+      content: '{"name":"todo-cli"}\n',
+      workspaceRootFsPath: root,
+      defaultWorkdir: root,
+    });
+
+    assert.equal(manifest.relPath, 'package.json');
+    assert.equal(manifest.absPath, path.join(root, 'package.json'));
+    assert.equal(resolveWorkspaceWritePath('src/cli.js', {
+      requestPrompt: prompt,
+      content: 'module.exports = {};\n',
+      workspaceRootFsPath: root,
+      defaultWorkdir: root,
+    }).relPath, 'src/cli.js');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 console.log('\nShared path resolver tests passed.\n');

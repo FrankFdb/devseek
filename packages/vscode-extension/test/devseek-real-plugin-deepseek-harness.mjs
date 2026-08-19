@@ -22,6 +22,7 @@ import {
   buildRealPluginQualityProfile,
   buildRealPluginScenarioSpec,
   parseRequiredArtifactSnippets,
+  specializeRealPluginQualityProfileForDelivery,
 } from './harness/real-plugin-quality-profile.mjs';
 
 const args = process.argv.slice(2);
@@ -56,7 +57,7 @@ const autopilot = !hasFlag('--no-autopilot') && process.env.DEVSEEK_REAL_PLUGIN_
 const promptFromArg = getArgValue('--prompt');
 const scenario = getArgValue('--scenario') || process.env.DEVSEEK_REAL_PLUGIN_SCENARIO || 'formal-simulation';
 const scenarioSpec = buildRealPluginScenarioSpec(scenario);
-const qualityProfile = buildRealPluginQualityProfile(scenario);
+const baseQualityProfile = buildRealPluginQualityProfile(scenario);
 const requiredArtifactSnippets = [...new Set([
   ...scenarioSpec.requiredArtifactSnippets,
   ...parseRequiredArtifactSnippets(
@@ -221,6 +222,11 @@ const expectedCodeDirs = normalizeExpectedWorkspacePaths(parseExpectedArtifacts(
     || fixture.expectedCodeDirRel
     || '',
 ));
+const qualityProfile = specializeRealPluginQualityProfileForDelivery(baseQualityProfile, {
+  expectedMarkdownArtifacts: expectedArtifacts,
+  expectedCodeArtifacts,
+  expectedCodeDirs,
+});
 const prompt = buildHarnessPrompt(promptFromArg || defaultPrompt(workspaceDir, fixture), fixture);
 
 const loginReport = relogin ? await prepareDeepSeekLogin() : null;

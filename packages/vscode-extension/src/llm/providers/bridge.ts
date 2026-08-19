@@ -14,7 +14,7 @@ import {
 import { BridgeHealthMonitor, ResponseIntegrityChecker } from './web-reliability';
 import {
   prepareBridgePromptForSession,
-  recordBridgePromptSessionResponse,
+  recordBridgePromptSessionRequest,
 } from './bridge-prompt-session';
 
 export class BridgeProvider implements LLMProvider {
@@ -46,7 +46,7 @@ export class BridgeProvider implements LLMProvider {
       // Resetting DeepSeek's browser-side conversation is a top-level task
       // boundary decision. Agent loops call the provider several times inside
       // one task, and those rounds must stay in the same web conversation.
-      newSession: opts.newSession ?? false,
+      newSession: Boolean(opts.newSession || preparedPrompt.resetBrowserSession),
       stream: opts.stream !== false,
       onDelta: opts.onDelta,
       timeoutMs: opts.timeoutMs ?? cfg.get<number>('requestTimeoutMs', 120000),
@@ -66,12 +66,12 @@ export class BridgeProvider implements LLMProvider {
       throw new Error(`RESPONSE_CORRUPTED:${providerOutput.kind}:${describeProviderOutputIntegrity(providerOutput.kind)}`);
     }
     if (providerOutput.kind === 'tool_call' || providerOutput.kind === 'complete_answer') {
-      recordBridgePromptSessionResponse({
+      recordBridgePromptSessionRequest({
         messages: opts.messages,
         newSession: opts.newSession,
         traceRunId: opts.traceRunId,
         traceWorkspaceRoot: opts.traceWorkspaceRoot,
-      }, response);
+      });
     }
     return response;
   }

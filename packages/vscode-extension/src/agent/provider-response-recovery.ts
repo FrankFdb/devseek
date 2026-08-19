@@ -33,6 +33,7 @@ const RECOVERABLE_RESPONSE_CORRUPTION_STATUSES = new Set([
   'empty',
   'truncated',
   'incomplete_answer',
+  'mixed-tool-protocol',
   'unclosed-markdown-fence',
   'incomplete-tool-block',
   'incomplete-assistant-intent',
@@ -156,7 +157,7 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
 
 export function shouldResetProviderSessionForRecovery(failure: AgentProviderFailure | undefined): boolean {
   const status = failure?.status?.toLowerCase();
-  return status === 'stream-timeout' || status === 'prompt-submit-failed';
+  return Boolean(status && RECOVERABLE_RESPONSE_CORRUPTION_STATUSES.has(status));
 }
 
 function summarizeList(values: readonly string[], limit: number): string {

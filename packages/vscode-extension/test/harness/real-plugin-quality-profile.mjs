@@ -406,6 +406,23 @@ export function buildRealPluginQualityProfile(scenario) {
   };
 }
 
+export function specializeRealPluginQualityProfileForDelivery(profile, delivery) {
+  const codeEvidenceRequired = (delivery.expectedCodeArtifacts || []).length > 0
+    || (delivery.expectedCodeDirs || []).length > 0;
+  const markdownEvidenceRequired = (delivery.expectedMarkdownArtifacts || []).length > 0;
+  if (codeEvidenceRequired && !markdownEvidenceRequired) {
+    return {
+      ...profile,
+      deliveryMode: 'code-workspace-deliverable',
+      requireFormalProjectQuality: false,
+    };
+  }
+  return {
+    ...profile,
+    deliveryMode: markdownEvidenceRequired ? 'markdown-file-deliverable' : 'unspecified',
+  };
+}
+
 export function buildRealPluginScenarioSpec(scenario) {
   const spec = lookupScenarioSpec(scenario);
   if (!spec) {

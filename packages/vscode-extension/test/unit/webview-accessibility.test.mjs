@@ -22,6 +22,9 @@ test('R3-08C WebView accessibility surfaces expose keyboard, focus, and screen-r
   assert.match(html, /id="send-btn"[^>]*aria-label=/, 'send button must have an accessible label');
   assert.match(html, /id="agent-toggle-btn"[^>]*aria-pressed=/, 'agent mode toggle must expose pressed state');
   assert.match(html, /id="autopilot-btn"[^>]*aria-pressed=/, 'autopilot toggle must expose pressed state');
+  assert.match(html, /#ready-progress \.bar \{[^}]*width: 100%;[^}]*background: var\(--vscode-progressBar-background\);/, 'ready progress must use stable geometry');
+  assert.doesNotMatch(html, /#ready-progress \.bar \{[^}]*animation:/, 'ready progress must not drive a continuous resize/transform loop');
+  assert.doesNotMatch(html, /#ready-progress\.done \{[^}]*height:\s*0/, 'ready completion must not resize the webview');
 
   assert.match(webview, /function setA11yStatus/, 'status updates must mirror to an aria-live region');
   assert.match(webview, /function activateOnEnterOrSpace/, 'clickable non-button rows must support Enter and Space');

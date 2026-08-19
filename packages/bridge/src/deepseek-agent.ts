@@ -125,6 +125,12 @@ export interface SendOptions {
   trace?: DevSeekTraceLogger;
   /** Provider 生命周期诊断；观察失败不得影响浏览器请求。 */
   lifecycle?: DeepSeekAgentSendLifecycleObserver;
+  /** 网页已接收请求后的不可重放副作用边界。 */
+  dispatch?: DeepSeekAgentDispatchPort;
+}
+
+export interface DeepSeekAgentDispatchPort {
+  confirmSubmission(): void;
 }
 
 export interface DeepSeekAgentSendLifecycleObserver {
@@ -565,6 +571,7 @@ export class DeepSeekAgent {
     if (!submitResult.confirmed) {
       throw new Error(`RESPONSE_CORRUPTED:prompt-submit-failed:PROMPT_SUBMIT_FAILED: DeepSeek 网页未确认收到本轮请求（${submitResult.reason}）。请缩小上下文或重试；如果页面输入框仍有内容，说明网页未接收发送动作。`);
     }
+    opts.dispatch?.confirmSubmission();
     notifySendLifecycle(opts.lifecycle, 'onSubmitConfirmed');
 
     console.log(`[agent] Message sent (${effectivePrompt.length} chars), baselineAiMsgs=${baselineAiMsgCount}, baselineTextLen=${baselineText.length}, method=${submitMethod}, submit=${submitResult.reason}`);

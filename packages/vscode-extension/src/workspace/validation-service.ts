@@ -140,6 +140,15 @@ export class ValidationService implements CodingBuildExecutionHostPort {
       scopePaths: step.scopePaths,
       output: [result.stdout, result.stderr, result.output].filter(Boolean).join('\n'),
     });
+    if (outputDiagnostics.failures.length > 0) {
+      return observation(step, 'failed', outputDiagnostics.summary ?? `${command} reported failed checks.`, {
+        exitCode: result.exitCode,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        mutationPaths,
+        evidenceRefs: [...evidenceRefs, ...outputDiagnostics.evidenceRefs],
+      });
+    }
     if (outputDiagnostics.warnings.length > 0) {
       return observation(step, 'failed', outputDiagnostics.summary ?? `${command} emitted compiler warnings.`, {
         exitCode: result.exitCode,

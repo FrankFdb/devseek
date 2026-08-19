@@ -3,9 +3,9 @@ import {
   normalizeCodingToolName as normalizeAgentToolName,
 } from '@devseek-netai/shared';
 import {
+  analyzeModelToolProtocol,
   findFirstModelToolProtocolStart,
   isolateModelToolRequestText,
-  parseModelToolProtocol,
   stripModelToolProtocolBlocks,
   type ModelToolProtocolDialect,
 } from './model-tool-protocol-adapter';
@@ -17,6 +17,7 @@ import {
   createFencedAnonymousJsonToolDialect,
 } from './bare-json-tool-call-dialect';
 import { normalizeFakeTool, normalizeToolInput } from './fake-tool-input-normalizer';
+import { stableStringify } from './stable-stringify';
 import { createFakeToolJsonUtils, decodeLooseJsonString, findJsonArrayEnd, findJsonObjectEnd, type FakeTool } from './fake-tool-json-utils';
 import { decodeXmlishText, stripJsonFence } from './tool-protocol-text';
 import {
@@ -1630,6 +1631,7 @@ const MODEL_TOOL_PROTOCOL_DIALECTS: readonly ModelToolProtocolDialect<FakeTool>[
   },
   {
     name: 'tool-arguments',
+    conflictParticipation: 'payload',
     parse: parseToolArgumentsToolCalls,
     findStart: findToolArgumentsProtocolStart,
     strip: stripToolArgumentsBlocks,
@@ -1641,18 +1643,19 @@ const MODEL_TOOL_PROTOCOL_DIALECTS: readonly ModelToolProtocolDialect<FakeTool>[
     strip: stripFunctionStyleToolCallBlocks,
   },
   ...xmlToolDialects,
-  createBareJsonToolCallDialect<FakeTool>({
+  asPayloadDialect(createBareJsonToolCallDialect<FakeTool>({
     isRegisteredName: isRegisteredFakeToolName,
     normalizeName: normalizeAgentToolName,
     normalizeInput: normalizeToolInput,
     createTool: (name, input) => ({ name, input }),
-  }),
-  createFencedAnonymousJsonToolDialect({
+  })),
+  asPayloadDialect(createFencedAnonymousJsonToolDialect({
     parseImplicit: jsonObjectToImplicitArrayFakeTool,
     normalize: normalizeFakeTool,
-  }),
+  })),
   {
     name: 'json-tool-payload',
+    conflictParticipation: 'payload',
     parse: parseJsonToolPayloadToolCalls,
     findStart: findJsonToolPayloadStart,
     strip: stripJsonToolPayloads,
@@ -1665,6 +1668,7 @@ const MODEL_TOOL_PROTOCOL_DIALECTS: readonly ModelToolProtocolDialect<FakeTool>[
   },
   {
     name: 'legacy-json-array-block',
+    conflictParticipation: 'payload',
     parse: parseLegacyJsonArrayBlockToolCalls,
     findStart: findJsonToolPayloadStart,
     strip: (text: string) => text,
@@ -1689,12 +1693,30 @@ const MODEL_TOOL_PROTOCOL_DIALECTS: readonly ModelToolProtocolDialect<FakeTool>[
   },
 ];
 
+function asPayloadDialect<TTool>(dialect: ModelToolProtocolDialect<TTool>): ModelToolProtocolDialect<TTool> {
+  return { ...dialect, conflictParticipation: 'payload' };
+}
+
 export function parseFakeToolCalls(text: string): FakeTool[] {
-  const normalized = parseModelToolProtocol(
+  const normalized = analyzeFakeToolCallProtocol(text).tools.map(normalizeFakeTool);
+  return collapseSupersededFullFileWrites(normalized);
+}
+
+export function hasMixedFakeToolCallProtocol(text: string): boolean {
+  return analyzeFakeToolCallProtocol(text).mixed;
+}
+
+export function analyzeFakeToolCallProtocol(text: string) {
+  return analyzeModelToolProtocol(
     isolateModelToolRequestText(text).text,
     MODEL_TOOL_PROTOCOL_DIALECTS,
-  ).map(normalizeFakeTool);
-  return collapseSupersededFullFileWrites(normalized);
+    {
+      toolIdentity: tool => {
+        const normalized = normalizeFakeTool(tool);
+        return `${normalized.name}:${stableStringify(normalized.input)}`;
+      },
+    },
+  );
 }
 
 function collapseSupersededFullFileWrites(tools: FakeTool[]): FakeTool[] {
@@ -1715,7 +1737,9 @@ function collapseSupersededFullFileWrites(tools: FakeTool[]): FakeTool[] {
 export function hasIncompleteFakeToolCallProtocol(text: string): boolean {
   const requestText = isolateModelToolRequestText(text).text;
   if (structuredToolEnvelopes.hasIncomplete(requestText)) return true;
+  const analysis = analyzeModelToolProtocol(requestText, MODEL_TOOL_PROTOCOL_DIALECTS);
+  if (analysis.mixed) return false;
   return (findFirstModelToolProtocolStart(requestText, MODEL_TOOL_PROTOCOL_DIALECTS) >= 0
       || findRawNamedToolAttemptStart(requestText) >= 0)
-    && parseModelToolProtocol(requestText, MODEL_TOOL_PROTOCOL_DIALECTS).length === 0;
+    && analysis.tools.length === 0;
 }

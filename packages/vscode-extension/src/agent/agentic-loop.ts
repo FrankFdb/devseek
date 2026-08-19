@@ -68,6 +68,7 @@ import { chatWithMessages } from './loop-chat';
 import { hasWriteRevokedToolAttempt } from './write-authority';
 import {
   extractPlanningTodoItems,
+  shouldAdoptPlanningTodoItems,
 } from './agentic-planning';
 import { projectTaskContractAcceptance } from './task-contract-acceptance';
 import {
@@ -661,7 +662,9 @@ export async function runAgenticLoop(
         failedReason = 'Provider 连续输出损坏工具协议，未形成可执行工具调用。';
         break;
       }
-      const rawFallbackTodos = normalizeVisibleTodos(extractPlanningTodoItems(text));
+      const rawFallbackTodos = shouldAdoptPlanningTodoItems({ sawWorkTool })
+        ? normalizeVisibleTodos(extractPlanningTodoItems(text))
+        : [];
       const fallbackTodos = rawFallbackTodos.length > 0
         ? preserveInitialTodosWhenModelPlanIsTooCoarse(rawFallbackTodos)
         : [];
@@ -1006,9 +1009,12 @@ export async function runAgenticLoop(
     const evidenceAfterTools = assessCurrentEvidenceClosure();
     const missingAfterTools = evidenceAfterTools.missingEvidence;
     const blockingFailureAfterTools = evidenceAfterTools.blockingTerminalFailure;
-    const roundSummaryForFactCheck = loopRes.completeSummary !== undefined
-      ? loopRes.completeSummary ?? ''
-      : cleanAgentFinalSummaryForUser(stripToolCallBlocks(text));
+    const roundIsCompletionCandidate = loopRes.completeSummary !== undefined
+      || loopRes.taskComplete
+      || loopRes.allTodosCompleted;
+    const roundSummaryForFactCheck = roundIsCompletionCandidate
+      ? loopRes.completeSummary ?? cleanAgentFinalSummaryForUser(stripToolCallBlocks(text))
+      : '';
     const summaryFactFailuresAfterTools = roundSummaryForFactCheck
       ? getUnsupportedSummaryFileClaims(roundSummaryForFactCheck, allWrittenFiles, workspaceRoot)
       : [];

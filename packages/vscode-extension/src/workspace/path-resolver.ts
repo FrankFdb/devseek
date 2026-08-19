@@ -16,9 +16,17 @@ export interface WorkspacePathContext {
   root: vscode.Uri;
   preferredDirs: string[];
   hintedFiles: string[];
+  exactFileHints: string[];
   scopedDirs: string[];
   strictScope: boolean;
   forceCodeDir: boolean;
+}
+
+interface PromptFileHint {
+  relPath: string;
+  start: number;
+  end: number;
+  locationQualified: boolean;
 }
 
 export interface BuildWorkspacePathContextOptions {
@@ -68,6 +76,8 @@ export function buildWorkspacePathContext(
     : { requestPrompt: requestPromptOrOptions, preferredAbsolutePaths: preferredAbsolutePathsArg };
   const preferredDirs: string[] = [];
   const hintedFiles: string[] = [];
+  const exactFileHints: string[] = [];
+  const promptFileHints: PromptFileHint[] = [];
   const scopedDirs: string[] = [];
   const rootPath = root.fsPath.replace(/\\/g, '/').replace(/\/$/, '');
   const text = options.requestPrompt || '';
@@ -87,6 +97,7 @@ export function buildWorkspacePathContext(
         // Hints are advisory; stale paths fall back to file-like handling below.
       }
       hintedFiles.push(rel);
+      exactFileHints.push(rel);
       const dir = nodePath.posix.dirname(rel);
       if (dir && dir !== '.') {
         preferredDirs.push(dir);
@@ -129,6 +140,14 @@ export function buildWorkspacePathContext(
     if (rel) {
       if (isInternalDir(nodePath.posix.dirname(rel))) continue;
       hintedFiles.push(rel);
+      const locationQualified = isLocationQualifiedFileHint(candidate);
+      if (locationQualified) exactFileHints.push(rel);
+      promptFileHints.push({
+        relPath: rel,
+        start: m.index,
+        end: pathRe.lastIndex,
+        locationQualified,
+      });
       const dir = nodePath.posix.dirname(rel);
       if (dir && dir !== '.') {
         preferredDirs.push(dir);
@@ -141,6 +160,13 @@ export function buildWorkspacePathContext(
     if (normalized.startsWith(rootPath + '/')) {
       const relAbs = normalized.slice(rootPath.length + 1);
       hintedFiles.push(relAbs);
+      exactFileHints.push(relAbs);
+      promptFileHints.push({
+        relPath: relAbs,
+        start: m.index,
+        end: pathRe.lastIndex,
+        locationQualified: true,
+      });
       const dir = nodePath.posix.dirname(relAbs);
       if (dir && dir !== '.') {
         preferredDirs.push(dir);
@@ -148,6 +174,8 @@ export function buildWorkspacePathContext(
       }
     }
   }
+
+  exactFileHints.push(...enumeratedRootFileHints(text, promptFileHints));
 
   const FAKE_TOOL_SEGS = new Set(['list_dir', 'read_file', 'grep_search', 'run_terminal', 'get_errors', 'manage_todo_list', 'task_complete']);
   const dirTokenRe = /(?:^|[\s'"`(])([A-Za-z0-9_.-]+\/[A-Za-z0-9_./-]*[A-Za-z0-9_.-])(?=$|[\s'"`),;:])/g;
@@ -211,6 +239,7 @@ export function buildWorkspacePathContext(
     root,
     preferredDirs: preferredClean,
     hintedFiles: dedupeStringList(hintedFiles),
+    exactFileHints: dedupeStringList(exactFileHints),
     scopedDirs: scopedClean,
     strictScope: compileLikePrompt && scopedClean.length > 0,
     forceCodeDir,
@@ -272,6 +301,7 @@ export function resolveGeneratedArtifactPathForPrompt(
   const pathContext = buildWorkspacePathContext(root, requestPrompt, preferredAbsolutePaths);
   const resolvedPath = resolveArtifactPathInWorkspace(rawPath, root, pathContext);
   if (!resolvedPath) return normalizeWorkspaceTargetPath(rawPath);
+  if (isExactFileHint(resolvedPath, pathContext)) return resolvedPath;
   return alignRelPathToScope(resolvedPath, root, pathContext);
 }
 
@@ -312,7 +342,9 @@ export function resolveWorkspaceWritePath(
     const directRelPath = sanitizeWorkspacePath(expandedOriginal, root);
     if (!directRelPath) return undefined;
     const relPath = normalizeWorkspaceTargetPath(directRelPath);
-    const drift = detectWriteDriftForRelPaths([relPath], ctx);
+    const drift = isExactFileHint(relPath, ctx)
+      ? undefined
+      : detectWriteDriftForRelPaths([relPath], ctx);
     if (drift) return undefined;
     const absPath = vscode.Uri.joinPath(root, ...relPath.split('/')).fsPath;
     return {
@@ -326,8 +358,9 @@ export function resolveWorkspaceWritePath(
   const resolved = resolveArtifactPathInWorkspace(normalized, root, ctx);
   if (!resolved) return undefined;
 
-  const relPath = alignRelPathToScope(resolved, root, ctx);
-  const drift = detectWriteDriftForRelPaths([relPath], ctx);
+  const explicitlyHinted = isExactFileHint(resolved, ctx);
+  const relPath = explicitlyHinted ? resolved : alignRelPathToScope(resolved, root, ctx);
+  const drift = explicitlyHinted ? undefined : detectWriteDriftForRelPaths([relPath], ctx);
   if (drift) return undefined;
 
   const absPath = vscode.Uri.joinPath(root, ...relPath.split('/')).fsPath;
@@ -485,11 +518,16 @@ function pathDepth(absPath: string): number {
 export function resolveArtifactPathInWorkspace(path: string, root: vscode.Uri, ctx: WorkspacePathContext): string | undefined {
   const direct = sanitizeWorkspacePath(path, root);
   const baseName = nodePath.posix.basename((direct || path).replace(/\\/g, '/'));
+  if (direct) {
+    const directHint = ctx.hintedFiles.find(hint => pathsEqual(hint, direct));
+    if (directHint) return directHint;
+    if (isWithinPathScope(direct, ctx.scopedDirs)) return direct;
+  }
   if (baseName && baseName !== '.' && baseName !== '..') {
-    const hintedExact = ctx.hintedFiles.find(
+    const hintedByBaseName = ctx.hintedFiles.filter(
       (hf) => nodePath.posix.basename(hf) === baseName,
     );
-    if (hintedExact) return hintedExact;
+    if (hintedByBaseName.length === 1) return hintedByBaseName[0];
   }
 
   const scopedDirect = direct ? alignRelPathToScope(direct, root, ctx) : undefined;
@@ -523,6 +561,19 @@ export function resolveArtifactPathInWorkspace(path: string, root: vscode.Uri, c
   }
 
   return direct || undefined;
+}
+
+function isExactFileHint(relPath: string, ctx: WorkspacePathContext): boolean {
+  return ctx.exactFileHints.some(hint => pathsEqual(hint, relPath));
+}
+
+function pathsEqual(left: string, right: string): boolean {
+  return normalizeWorkspaceTargetPath(left) === normalizeWorkspaceTargetPath(right);
+}
+
+function isWithinPathScope(relPath: string, scopedDirs: readonly string[]): boolean {
+  const normalized = normalizeWorkspaceTargetPath(relPath);
+  return scopedDirs.some((dir) => normalized === dir || normalized.startsWith(`${dir}/`));
 }
 
 export function alignRelPathToScope(relPath: string, root: vscode.Uri, ctx: WorkspacePathContext): string {
@@ -790,6 +841,37 @@ function getPathResolutionRootUri(
 
 function extractAbsolutePathHints(text: string): string[] {
   return text.match(/\/[^\s'"`，。！？；：\n]+/g) || [];
+}
+
+function isLocationQualifiedFileHint(value: string): boolean {
+  const normalized = value.trim().replace(/\\/g, '/');
+  return normalized.startsWith('/')
+    || normalized.startsWith('~/')
+    || normalized.startsWith('./')
+    || normalized.includes('/');
+}
+
+function enumeratedRootFileHints(text: string, hints: readonly PromptFileHint[]): string[] {
+  const promoted: string[] = [];
+  let component: PromptFileHint[] = [];
+  const settle = () => {
+    if (component.some(hint => hint.locationQualified)) {
+      promoted.push(...component.filter(hint => !hint.locationQualified).map(hint => hint.relPath));
+    }
+    component = [];
+  };
+
+  for (const hint of hints) {
+    const previous = component[component.length - 1];
+    if (previous && !isFileEnumerationSeparator(text.slice(previous.end, hint.start))) settle();
+    component.push(hint);
+  }
+  settle();
+  return promoted;
+}
+
+function isFileEnumerationSeparator(value: string): boolean {
+  return /^(?:[\s,，、;；]|和|与|及|以及|and)*$/iu.test(value);
 }
 
 function normalizeExplicitWritePath(rawPath: string, userPrompt: string, content: string): string {

@@ -98,15 +98,11 @@ textarea:focus-visible {
 }
 #ready-progress .bar {
   height: 100%;
-  width: 34%;
-  background: linear-gradient(90deg, rgba(99,179,255,0), rgba(99,179,255,.95), rgba(99,179,255,0));
-  animation: loadingSlide 1.1s ease-in-out infinite;
+  width: 100%;
+  background: var(--vscode-progressBar-background);
+  opacity: .78;
 }
-#ready-progress.done { opacity: 0; height: 0; transition: opacity .2s ease, height .2s ease; }
-@keyframes loadingSlide {
-  from { transform: translateX(-120%); }
-  to { transform: translateX(320%); }
-}
+#ready-progress.done { opacity: 0; visibility: hidden; }
 #toolbar .title { flex: 1; font-size: 11px; font-weight: 600; opacity: .65; text-transform: uppercase; letter-spacing: .05em; }
 #toolbar button {
   font-size: 11px; padding: 2px 8px;

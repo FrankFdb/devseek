@@ -248,8 +248,8 @@ function hasIncompleteRegisteredXmlTool(text: string): boolean {
     const openTag = match[0];
     if (!hasXmlTagTerminator(openTag)) return true;
     if (isSelfClosingXmlTag(openTag)) continue;
-    const toolName = match[1];
-    const closeRe = new RegExp(`(?:<\\/|&lt;\\/)\\s*${escapeRegExp(toolName)}\\s*(?:>|&gt;)`, 'i');
+    const toolName = match[1].replace(/^TOOL[:_]/i, '');
+    const closeRe = new RegExp(`(?:<\\/|&lt;\\/)\\s*(?:TOOL[:_])?${escapeRegExp(toolName)}\\s*(?:>|&gt;)`, 'i');
     if (closeRe.test(text.slice(XML_REGISTERED_TOOL_OPEN_RE.lastIndex))) continue;
     if (hasCompleteJsonPayloadAfterXmlToolOpen(text, XML_REGISTERED_TOOL_OPEN_RE.lastIndex)) continue;
     return true;

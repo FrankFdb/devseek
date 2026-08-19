@@ -2,7 +2,7 @@ import * as crypto from 'crypto';
 import { utf8ByteLength } from '@devseek-netai/shared';
 import type { ChatMessage, ContentPart } from '../types';
 
-type BridgePromptMode = 'full' | 'incremental';
+type BridgePromptMode = 'full' | 'reset-full' | 'incremental';
 
 export interface BridgePromptSessionOptions {
   messages: ChatMessage[];
@@ -14,6 +14,7 @@ export interface BridgePromptSessionOptions {
 export interface PreparedBridgePrompt {
   prompt: string;
   mode: BridgePromptMode;
+  resetBrowserSession: boolean;
   sessionKey?: string;
   fullChars: number;
   promptChars: number;
@@ -24,14 +25,12 @@ export interface PreparedBridgePrompt {
 }
 
 interface BridgePromptSessionState {
-  messageHashes: string[];
+  requestMessageHashes: string[];
   lastUsedAt: number;
 }
 
 const MAX_PROMPT_SESSION_COUNT = 32;
 const PROMPT_SESSION_TTL_MS = 30 * 60 * 1000;
-const MIN_INCREMENTAL_SAVINGS_BYTES = 1024;
-
 const bridgePromptSessions = new Map<string, BridgePromptSessionState>();
 
 export function prepareBridgePromptForSession(options: BridgePromptSessionOptions): PreparedBridgePrompt {
@@ -40,6 +39,7 @@ export function prepareBridgePromptForSession(options: BridgePromptSessionOption
   const fullResult: PreparedBridgePrompt = {
     prompt: fullPrompt,
     mode: 'full',
+    resetBrowserSession: false,
     sessionKey,
     fullChars: fullPrompt.length,
     promptChars: fullPrompt.length,
@@ -50,20 +50,32 @@ export function prepareBridgePromptForSession(options: BridgePromptSessionOption
   };
 
   if (!sessionKey) return fullResult;
-  if (options.newSession) bridgePromptSessions.delete(sessionKey);
+  if (options.newSession) {
+    bridgePromptSessions.delete(sessionKey);
+    return fullResult;
+  }
   pruneBridgePromptSessions();
 
-  const state = options.newSession ? undefined : bridgePromptSessions.get(sessionKey);
-  if (!state) return fullResult;
+  const state = bridgePromptSessions.get(sessionKey);
+  if (!state) return resetFullPrompt(fullResult);
 
   const messageHashes = options.messages.map(hashChatMessage);
-  const commonPrefixMessages = longestCommonPrefix(messageHashes, state.messageHashes);
-  if (commonPrefixMessages <= 0 || commonPrefixMessages >= options.messages.length) {
-    return { ...fullResult, commonPrefixMessages };
+  const commonPrefixMessages = longestCommonPrefix(messageHashes, state.requestMessageHashes);
+  if (commonPrefixMessages !== state.requestMessageHashes.length) {
+    bridgePromptSessions.delete(sessionKey);
+    return resetFullPrompt(fullResult, commonPrefixMessages);
   }
 
-  const deltaPrompt = flattenMessagesForBridge(options.messages.slice(commonPrefixMessages));
-  if (!deltaPrompt.trim()) return { ...fullResult, commonPrefixMessages };
+  let deltaStart = commonPrefixMessages;
+  // DeepSeek already owns its raw assistant response in the browser session.
+  // DevSeek may compact that response into a local summary, so the logical
+  // cursor skips exactly one assistant message without comparing its bytes.
+  if (options.messages[deltaStart]?.role === 'assistant') deltaStart += 1;
+  const deltaPrompt = flattenMessagesForBridge(options.messages.slice(deltaStart));
+  if (!deltaPrompt.trim()) {
+    bridgePromptSessions.delete(sessionKey);
+    return resetFullPrompt(fullResult, commonPrefixMessages);
+  }
 
   const incrementalPrompt = [
     '【同一 DeepSeek 会话增量上下文】',
@@ -74,35 +86,41 @@ export function prepareBridgePromptForSession(options: BridgePromptSessionOption
   ].join('\n');
 
   const incrementalBytes = utf8ByteLength(incrementalPrompt);
-  if (fullResult.fullBytes - incrementalBytes < MIN_INCREMENTAL_SAVINGS_BYTES) {
-    return { ...fullResult, commonPrefixMessages };
-  }
 
   return {
     prompt: incrementalPrompt,
     mode: 'incremental',
+    resetBrowserSession: false,
     sessionKey,
     fullChars: fullPrompt.length,
     promptChars: incrementalPrompt.length,
     fullBytes: fullResult.fullBytes,
     promptBytes: incrementalBytes,
     commonPrefixMessages,
-    omittedMessages: commonPrefixMessages,
+    omittedMessages: deltaStart,
   };
 }
 
-export function recordBridgePromptSessionResponse(options: BridgePromptSessionOptions, response: string): void {
+export function recordBridgePromptSessionRequest(options: BridgePromptSessionOptions): void {
   const sessionKey = makeBridgePromptSessionKey(options);
   if (!sessionKey) return;
-  const messageHashes = options.messages.map(hashChatMessage);
-  if (response.trim()) {
-    messageHashes.push(hashChatMessage({ role: 'assistant', content: response }));
-  }
   bridgePromptSessions.set(sessionKey, {
-    messageHashes,
+    requestMessageHashes: options.messages.map(hashChatMessage),
     lastUsedAt: Date.now(),
   });
   pruneBridgePromptSessions();
+}
+
+function resetFullPrompt(
+  fullResult: PreparedBridgePrompt,
+  commonPrefixMessages = 0,
+): PreparedBridgePrompt {
+  return {
+    ...fullResult,
+    mode: 'reset-full',
+    resetBrowserSession: true,
+    commonPrefixMessages,
+  };
 }
 
 export function resetBridgePromptSessionCacheForTests(): void {

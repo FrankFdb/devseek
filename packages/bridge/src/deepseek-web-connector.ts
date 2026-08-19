@@ -25,13 +25,20 @@ export interface DeepSeekWebConnectorRequestSnapshot {
   readonly attempt: number;
   readonly nextSequence: number;
   readonly providerDeltaCount: number;
+  readonly providerSubmissionAttempt?: number;
   readonly cancelRequested: boolean;
   readonly terminalEvent?: 'done' | 'error' | 'cancelled';
 }
 
 export interface DeepSeekWebConnectorRetryDecision {
   readonly decision: 'retry' | 'stop';
-  readonly reason: 'bounded-retry' | 'partial-output' | 'non-retryable' | 'budget-exhausted' | 'cancelled';
+  readonly reason:
+    | 'bounded-retry'
+    | 'submission-confirmed'
+    | 'partial-output'
+    | 'non-retryable'
+    | 'budget-exhausted'
+    | 'cancelled';
   readonly retryAfterMs?: number;
   readonly frame?: DeepSeekStreamFrame;
 }
@@ -45,6 +52,7 @@ export interface DeepSeekWebConnectorCancelDecision {
 export interface DeepSeekWebConnectorSessionPort {
   readonly requestId: string;
   beginAttempt(): number;
+  confirmProviderSubmission(): void;
   acceptProviderDelta(rawDelta: string, releasedDelta: string): DeepSeekStreamFrame | undefined;
   decideRetry(category: DeepSeekStreamErrorCategory): DeepSeekWebConnectorRetryDecision;
   rejectBeforeDispatch(message: string, category: DeepSeekStreamErrorCategory): DeepSeekStreamFrame;
@@ -203,6 +211,7 @@ class CanonicalDeepSeekWebConnectorSession implements DeepSeekWebConnectorSessio
   private attempt = 0;
   private nextSequence = 1;
   private providerDeltaCount = 0;
+  private providerSubmissionAttempt: number | undefined;
   private cancelRequested = false;
   private terminalEvent: 'done' | 'error' | 'cancelled' | undefined;
 
@@ -214,6 +223,9 @@ class CanonicalDeepSeekWebConnectorSession implements DeepSeekWebConnectorSessio
 
   beginAttempt(): number {
     this.assertDispatchable();
+    if (this.providerSubmissionAttempt !== undefined) {
+      throw new Error('deepseek-web-connector:provider-request-already-submitted');
+    }
     if (this.state !== 'queued' && this.state !== 'retry-wait') {
       throw new Error('deepseek-web-connector:attempt-state-invalid');
     }
@@ -223,6 +235,17 @@ class CanonicalDeepSeekWebConnectorSession implements DeepSeekWebConnectorSessio
     this.attempt += 1;
     this.state = 'running';
     return this.attempt;
+  }
+
+  confirmProviderSubmission(): void {
+    this.requireRunning();
+    if (this.providerSubmissionAttempt === undefined) {
+      this.providerSubmissionAttempt = this.attempt;
+      return;
+    }
+    if (this.providerSubmissionAttempt !== this.attempt) {
+      throw new Error('deepseek-web-connector:provider-submission-attempt-mismatch');
+    }
   }
 
   acceptProviderDelta(rawDelta: string, releasedDelta: string): DeepSeekStreamFrame | undefined {
@@ -245,6 +268,9 @@ class CanonicalDeepSeekWebConnectorSession implements DeepSeekWebConnectorSessio
     this.requireRunning();
     if (this.cancelRequested || category === 'cancelled') {
       return Object.freeze({ decision: 'stop', reason: 'cancelled' });
+    }
+    if (this.providerSubmissionAttempt !== undefined) {
+      return Object.freeze({ decision: 'stop', reason: 'submission-confirmed' });
     }
     if (this.providerDeltaCount > 0) {
       return Object.freeze({ decision: 'stop', reason: 'partial-output' });
@@ -340,6 +366,9 @@ class CanonicalDeepSeekWebConnectorSession implements DeepSeekWebConnectorSessio
       attempt: this.attempt,
       nextSequence: this.nextSequence,
       providerDeltaCount: this.providerDeltaCount,
+      ...(this.providerSubmissionAttempt !== undefined
+        ? { providerSubmissionAttempt: this.providerSubmissionAttempt }
+        : {}),
       cancelRequested: this.cancelRequested,
       ...(this.terminalEvent ? { terminalEvent: this.terminalEvent } : {}),
     });

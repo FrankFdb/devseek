@@ -97,6 +97,45 @@ test('ValidationService enforces configured stdout evidence', async () => {
   assert.match(observation.summary, /stdout missed "EXPECTED"/);
 });
 
+test('T11 ValidationService fails closed on positive test-failure summaries despite exit code zero', async () => {
+  const samples = [
+    'Tests: 14 passed, 14 failed',
+    'Tests: 1 failed, 2 passed, 3 total',
+    '# fail 2',
+    '================ 2 failed, 3 passed ================',
+    '2 failing',
+    'Tests run: 5, Failures: 1, Errors: 0',
+    'test result: FAILED. 4 passed; 1 failed',
+    '测试结果：通过 4 项，失败：2',
+  ];
+
+  for (const output of samples) {
+    const service = new ValidationService({
+      commandRunner: async () => commandResult({ stdout: output, output }),
+    });
+    const observation = await service.execute(processStep('/repo'));
+
+    assert.equal(observation.status, 'failed', output);
+    assert.match(observation.summary, /Validation output reported/u, output);
+    assert.match(observation.evidenceRefs.join('\n'), /validation-output-failure/u, output);
+  }
+});
+
+test('T11 ValidationService accepts explicit zero-failure summaries', async () => {
+  const output = [
+    'Suites: 198  198 passed  0 failed',
+    '# fail 0',
+    'Tests run: 14, Failures: 0, Errors: 0',
+    '测试结果：失败：0',
+  ].join('\n');
+  const service = new ValidationService({
+    commandRunner: async () => commandResult({ stdout: output, output }),
+  });
+  const observation = await service.execute(processStep('/repo'));
+
+  assert.equal(observation.status, 'passed');
+});
+
 test('ValidationService rejects compiler warnings emitted for changed C++ sources', async () => {
   const warning = '/repo/src/job_scheduler.cpp:61:8: warning: variable cmp set but not used [-Wunused-but-set-variable]';
   const service = new ValidationService({
