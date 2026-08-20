@@ -8,166 +8,153 @@ import path from 'node:path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
 const proposalBundle = path.join(rootDir, 'test/unit/model-tool-semantic-proposal.bundle.cjs');
-const routerBundle = path.join(rootDir, 'test/unit/model-tool-semantic-router.bundle.cjs');
+const initialBundle = path.join(rootDir, 'test/unit/model-led-semantic-contract.bundle.cjs');
+const actionBundle = path.join(rootDir, 'test/unit/model-action-semantic-contract.bundle.cjs');
 
-execSync(
-  `npx esbuild src/agent/model-tool-semantic-proposal.ts --bundle `
-  + `--outfile=${proposalBundle} --format=cjs --platform=node --external:vscode`,
-  { cwd: rootDir, stdio: 'pipe' },
-);
-execSync(
-  `npx esbuild src/task-intent-router.ts --bundle `
-  + `--outfile=${routerBundle} --format=cjs --platform=node --external:vscode`,
-  { cwd: rootDir, stdio: 'pipe' },
-);
+for (const [entry, outfile] of [
+  ['src/agent/model-tool-semantic-proposal.ts', proposalBundle],
+  ['src/intent/model-led-semantic-contract.ts', initialBundle],
+  ['src/intent/model-action-semantic-contract.ts', actionBundle],
+]) {
+  execSync(
+    `npx esbuild ${entry} --bundle --outfile=${outfile} --format=cjs --platform=node --external:vscode`,
+    { cwd: rootDir, stdio: 'pipe' },
+  );
+}
 
-const { projectModelToolSemanticProposal } = createRequire(import.meta.url)(proposalBundle);
-const { routeTaskIntent } = createRequire(import.meta.url)(routerBundle);
+const req = createRequire(import.meta.url);
+const { projectModelToolSemanticProposal } = req(proposalBundle);
+const { createModelLedTurnSemanticContract } = req(initialBundle);
+const { projectModelActionSemanticContract } = req(actionBundle);
 
-test('Model tool semantic proposal: typo create becomes an arbitrated file change', () => {
-  const prompt = '帮我见个 notes/ready.txt，里头就一行 READY，弄完再看眼写对没，别碰别的。';
-  const initial = routeTaskIntent(prompt).semanticContract;
+test('raw multilingual or typo-prone input never grants local effects before a model action', () => {
+  for (const prompt of [
+    '帮我见个 notes/ready.txt，里头就一行 READY。',
+    'MODEL_LATEST_OK',
+    '先 inspect src/math.js，然后 give me a fix plan only。',
+    'src/app.ts を直してテストしてください',
+  ]) {
+    const contract = createModelLedTurnSemanticContract(prompt);
+    assert.equal(contract.intent.mode, 'model-led');
+    assert.equal(contract.mutation.requested, false);
+    assert.equal(contract.read.requested, false);
+    assert.equal(contract.validation.requested, false);
+    assert.deepEqual(contract.mutation.targets, []);
+  }
+});
+
+test('normalized create action establishes an arbitrated file contract', () => {
+  const initial = createModelLedTurnSemanticContract('帮我见个 notes/ready.txt，里头就一行 READY。');
   const semanticIntent = projectModelToolSemanticProposal([
     tool('create_file', 'edit', 'workspace-mutation', ['notes/ready.txt']),
   ], initial);
-  const route = routeTaskIntent(prompt, { current: initial, semanticIntent });
+  const contract = projectModelActionSemanticContract(initial, semanticIntent);
 
   assert.equal(semanticIntent.taskKind, 'file-artifact');
   assert.equal(semanticIntent.mutation, 'create-file');
-  assert.equal(route.mode, 'edit');
-  assert.equal(route.mutation.requested, true);
-  assert.deepEqual(route.mutation.targets, ['notes/ready.txt']);
-  assert.ok(route.signals.includes('semantic-proposal-accepted'));
+  assert.equal(contract.kind, 'file-artifact');
+  assert.equal(contract.mutation.requested, true);
+  assert.deepEqual(contract.mutation.targets, ['notes/ready.txt']);
+  assert.deepEqual(contract.taskContract.deliverableTargets, ['notes/ready.txt']);
+  assert.ok(contract.signals.includes('semantic-proposal-accepted'));
 });
 
-test('Model tool semantic proposal: concrete tool path refines a basename from directory prose', () => {
-  const prompt = '帮我在指定目录 generated/settings 里见个 devseek.ini，写好后读回来确认，别碰其他文件。';
-  const initial = routeTaskIntent(prompt).semanticContract;
+test('normalized paths with the same basename remain independent', () => {
+  const initial = createModelLedTurnSemanticContract('创建两个 README。');
   const semanticIntent = projectModelToolSemanticProposal([
-    tool('create_file', 'edit', 'workspace-mutation', ['generated/settings/devseek.ini']),
+    tool('create_file', 'edit', 'workspace-mutation', [
+      'docs/README.md',
+      'packages/demo/README.md',
+    ]),
   ], initial);
-  const route = routeTaskIntent(prompt, { current: initial, semanticIntent });
+  const contract = projectModelActionSemanticContract(initial, semanticIntent);
 
-  assert.deepEqual(initial.mutation.targets, ['devseek.ini']);
-  assert.deepEqual(route.mutation.targets, ['generated/settings/devseek.ini']);
-  assert.deepEqual(route.semanticContract.taskContract.deliverableTargets, [
-    'generated/settings/devseek.ini',
-  ]);
+  assert.deepEqual(contract.mutation.targets, ['docs/README.md', 'packages/demo/README.md']);
+  assert.equal(semanticIntent.evidenceBindings.length, 2);
+  assert.equal(semanticIntent.evidenceBindings.every(binding => binding.tool === 'create_file'), true);
 });
 
-test('Model tool semantic proposal: same basenames in separate directories stay independent', () => {
-  const prompt = '创建 docs/README.md 和 packages/demo/README.md，别改其他文件。';
-  const initial = routeTaskIntent(prompt).semanticContract;
-  const semanticIntent = projectModelToolSemanticProposal([
-    tool('create_file', 'edit', 'workspace-mutation', ['docs/README.md', 'packages/demo/README.md']),
-  ], initial);
-  const route = routeTaskIntent(prompt, { current: initial, semanticIntent });
-
-  assert.deepEqual(route.mutation.targets, ['docs/README.md', 'packages/demo/README.md']);
-});
-
-test('Model tool semantic proposal: mixed-language plan stays non-mutating', () => {
-  const prompt = '先 inspect src/math.js，然后 give me a fix plan only，暂时不要 apply，也不要 run command。';
-  const initial = routeTaskIntent(prompt).semanticContract;
+test('observation plus todo action remains planning-only and non-mutating', () => {
+  const initial = createModelLedTurnSemanticContract('Inspect src/math.js and give me a plan.');
   const semanticIntent = projectModelToolSemanticProposal([
     tool('read_file', 'read', 'observe', ['src/math.js']),
-    tool('manage_todo_list', 'plan', 'observe'),
+    tool('manage_todo_list', 'control', 'observe'),
   ], initial);
-  const route = routeTaskIntent(prompt, { current: initial, semanticIntent });
+  const contract = projectModelActionSemanticContract(initial, semanticIntent);
 
   assert.equal(semanticIntent.taskKind, 'planning');
-  assert.equal(route.mode, 'plan');
-  assert.equal(route.mutation.requested, false);
-  assert.equal(route.validation.commandEvidenceRequired, false);
-  assert.equal(route.semanticContract.validation.runRequested, false);
+  assert.equal(contract.intent.mode, 'plan');
+  assert.equal(contract.read.requested, true);
+  assert.equal(contract.mutation.requested, false);
+  assert.equal(contract.validation.requested, false);
 });
 
-test('Model tool semantic proposal: inspection tools preserve code-review semantics', () => {
-  const prompt = 'Review src/queue.ts for correctness. Read only; do not modify or run commands.';
-  const initial = routeTaskIntent(prompt).semanticContract;
+test('read-only terminal action is observation, not validation or mutation', () => {
+  const initial = createModelLedTurnSemanticContract('看看当前目录。');
   const semanticIntent = projectModelToolSemanticProposal([
-    tool('read_file', 'read', 'observe', ['src/queue.ts']),
+    tool('run_terminal', 'terminal', 'observe'),
   ], initial);
+  const contract = projectModelActionSemanticContract(initial, semanticIntent);
 
-  assert.ok(initial.taskContract.taskShapes.includes('inspection'));
-  assert.equal(semanticIntent.taskKind, 'code-review');
-  assert.equal(semanticIntent.mutation, 'none');
-  assert.equal(semanticIntent.requiresExternalEffect, false);
+  assert.equal(semanticIntent.taskKind, 'read-only-analysis');
+  assert.equal(semanticIntent.requiresTerminal, false);
+  assert.equal(contract.read.requested, true);
+  assert.equal(contract.validation.requested, false);
+  assert.equal(contract.mutation.requested, false);
 });
 
-test('Model tool semantic proposal: terminal verification cannot imply mutation', () => {
-  const prompt = '只跑一下 health 检查，把结果告诉我；不要改文件，失败也不要修。';
-  const initial = routeTaskIntent(prompt).semanticContract;
+test('validation terminal action requests command evidence without implying mutation', () => {
+  const initial = createModelLedTurnSemanticContract('Run the project checks.');
   const semanticIntent = projectModelToolSemanticProposal([
     tool('run_terminal', 'terminal', 'verify'),
   ], initial);
-  const route = routeTaskIntent(prompt, { current: initial, semanticIntent });
+  const contract = projectModelActionSemanticContract(initial, semanticIntent);
 
   assert.equal(semanticIntent.taskKind, 'terminal-validation');
-  assert.equal(route.mode, 'run');
-  assert.equal(route.mutation.requested, false);
-  assert.equal(route.validation.commandEvidenceRequired, true);
+  assert.equal(contract.kind, 'validation');
+  assert.equal(contract.validation.requested, true);
+  assert.equal(contract.mutation.requested, false);
 });
 
-test('Model tool semantic proposal: explicit no-run remains a hard boundary', () => {
-  const prompt = '创建 docs/result.md 写入结果，但不要运行任何命令。';
-  const initial = routeTaskIntent(prompt).semanticContract;
-  const semanticIntent = projectModelToolSemanticProposal([
-    tool('create_file', 'edit', 'workspace-mutation', ['docs/result.md']),
-  ], initial);
-  const route = routeTaskIntent(prompt, { current: initial, semanticIntent });
-
-  assert.equal(route.mutation.requested, true);
-  assert.equal(route.semanticContract.validation.runProhibited, true);
-  assert.equal(route.semanticContract.validation.runRequested, false);
-});
-
-test('Model tool semantic proposal: memory capture does not request command execution', () => {
-  const prompt = '记一下这个项目的习惯：处理 src/bridge.ts 后，用 npm run test:bridge 做聚焦验证；现在只记录，不改文件也不运行。';
-  const initial = routeTaskIntent(prompt).semanticContract;
-  const semanticIntent = projectModelToolSemanticProposal([
+test('external and destructive effects remain explicit local arbitration boundaries', () => {
+  const initial = createModelLedTurnSemanticContract('Do the requested work.');
+  const external = projectModelToolSemanticProposal([
     tool('memory_write', 'memory', 'external-effect'),
   ], initial);
-  const route = routeTaskIntent(prompt, { current: initial, semanticIntent });
-
-  assert.equal(semanticIntent.taskKind, 'external-effect');
-  assert.equal(semanticIntent.requiresExternalEffect, true);
-  assert.equal(route.mode, 'inspect');
-  assert.equal(route.mutation.requested, false);
-  assert.equal(route.validation.commandEvidenceRequired, false);
-  assert.equal(route.semanticContract.validation.runRequested, false);
-  assert.ok(route.signals.includes('semantic-proposal-accepted'));
-});
-
-test('Model tool semantic proposal: destructive action stays confirmation-gated', () => {
-  const prompt = '看看 build/cache.json 现在是什么情况。';
-  const initial = routeTaskIntent(prompt).semanticContract;
-  const semanticIntent = projectModelToolSemanticProposal([
+  const destructive = projectModelToolSemanticProposal([
     tool('delete_file', 'edit', 'workspace-mutation', ['build/cache.json']),
   ], initial);
-  const route = routeTaskIntent(prompt, { current: initial, semanticIntent });
 
-  assert.equal(semanticIntent.taskKind, 'destructive');
-  assert.equal(route.semanticContract.kind, 'destructive');
-  assert.equal(route.requiresConfirmation, true);
-  assert.equal(route.mode, 'destructive');
+  const externalContract = projectModelActionSemanticContract(initial, external);
+  const destructiveContract = projectModelActionSemanticContract(initial, destructive);
+  assert.equal(externalContract.intent.context.externalEffect, 'requested');
+  assert.equal(externalContract.intent.requiresConfirmation, true);
+  assert.equal(destructiveContract.kind, 'destructive');
+  assert.equal(destructiveContract.intent.requiresConfirmation, true);
 });
 
 function tool(name, kind, purpose, targetPaths = []) {
+  const input = targetPaths.length > 1
+    ? { files: targetPaths.map(path => ({ path, content: `content for ${path}` })) }
+    : targetPaths.length === 1
+      ? { path: targetPaths[0], content: `content for ${targetPaths[0]}` }
+      : {};
   return {
     id: `tool-${name}`,
     name,
-    input: {},
+    input,
     source: 'native',
     registered: true,
     kind,
-    risk: kind === 'terminal' ? 'high' : 'medium',
+    risk: kind === 'terminal' ? 'medium' : 'low',
     purpose,
     effects: purpose === 'workspace-mutation'
       ? ['workspace-mutation']
       : purpose === 'external-effect'
         ? ['local-state']
-        : [],
+        : purpose === 'observe'
+          ? ['read']
+          : ['process'],
     protectedPath: false,
     targetPaths,
     executable: true,

@@ -19,15 +19,24 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
 const bundlePath = path.join(rootDir, 'test/unit/agentic-provider-settlement.bundle.cjs');
+const initialBundlePath = path.join(rootDir, 'test/unit/agentic-provider-settlement-initial.bundle.cjs');
+const actionBundlePath = path.join(rootDir, 'test/unit/agentic-provider-settlement-action.bundle.cjs');
 
-execSync(
-  `npx esbuild src/agent/agentic-provider-settlement.ts --bundle ` +
-  `--outfile=${bundlePath} --format=cjs --platform=node`,
-  { cwd: rootDir, stdio: 'pipe' },
-);
+for (const [entry, outfile] of [
+  ['src/agent/agentic-provider-settlement.ts', bundlePath],
+  ['src/intent/model-led-semantic-contract.ts', initialBundlePath],
+  ['src/intent/model-action-semantic-contract.ts', actionBundlePath],
+]) {
+  execSync(
+    `npx esbuild ${entry} --bundle --outfile=${outfile} --format=cjs --platform=node`,
+    { cwd: rootDir, stdio: 'pipe' },
+  );
+}
 
 const req = createRequire(import.meta.url);
 const { settleProviderFailureFromCompletedEvidence } = req(bundlePath);
+const { createModelLedTurnSemanticContract } = req(initialBundlePath);
+const { projectModelActionSemanticContract } = req(actionBundlePath);
 
 function filePrompt() {
   return [
@@ -55,8 +64,7 @@ test('provider failure settlement completes only after local file-check evidence
       promptRequiresTools: true,
       sawWorkTool: true,
       aborted: false,
-      userPrompt: filePrompt(),
-      todos: [{ title: '创建自然 UI 测试文件' }, { title: '读回并验证精确内容' }],
+      semanticContract: fileArtifactContract(filePrompt(), file),
       writtenFiles,
       terminalEvidence,
       readEvidencePaths: [],
@@ -92,12 +100,7 @@ test('provider failure settlement completes scoped Markdown deliverable before s
       promptRequiresTools: true,
       sawWorkTool: true,
       aborted: false,
-      userPrompt: prompt,
-      todos: [
-        { title: '项目调查：事实矩阵、通讯链路和集成锚点' },
-        { title: '设计交付：接口文档、原代码修改清单和实现边界' },
-        { title: '验证：编译/测试/静态审计与 QualityGate 自闭环' },
-      ],
+      semanticContract: fileArtifactContract(prompt, report),
       writtenFiles: [{ path: report, basename: path.basename(report), linesAdded: 3, linesRemoved: 0, action: 'create' }],
       terminalEvidence: [{
         command: "test -f 'docs/r3-iteration/r3-live-deepseek-login-ready-state.md' && wc -c 'docs/r3-iteration/r3-live-deepseek-login-ready-state.md' && sed -n '1,80p' 'docs/r3-iteration/r3-live-deepseek-login-ready-state.md'",
@@ -125,8 +128,7 @@ test('provider failure settlement refuses missing or failed validation evidence'
       promptRequiresTools: true,
       sawWorkTool: true,
       aborted: false,
-      userPrompt: filePrompt(),
-      todos: [{ title: '创建自然 UI 测试文件' }, { title: '读回并验证精确内容' }],
+      semanticContract: fileArtifactContract(filePrompt(), file),
       writtenFiles: [{ path: file, basename: 'ui-r1a1b-clean2-4a148c.txt', linesAdded: 1, linesRemoved: 0, action: 'create' }],
       readEvidencePaths: [],
       workspaceRoot: root,
@@ -141,3 +143,23 @@ test('provider failure settlement refuses missing or failed validation evidence'
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+function fileArtifactContract(prompt, target) {
+  return projectModelActionSemanticContract(
+    createModelLedTurnSemanticContract(prompt),
+    {
+      version: 'devseek.semantic-intent/v1',
+      source: 'provider',
+      mode: 'edit',
+      taskKind: 'file-artifact',
+      confidence: 0.98,
+      mutation: 'create-file',
+      targetPaths: [target],
+      requiresWorkspace: true,
+      requiresTerminal: false,
+      requiresExternalEffect: false,
+      requiresClarification: false,
+      reason: 'normalized file artifact action',
+    },
+  );
+}

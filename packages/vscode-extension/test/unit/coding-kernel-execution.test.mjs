@@ -75,7 +75,7 @@ test('canonical Kernel sends VS Code work through its runtime adapter', async ()
   assert.equal(calls[0].userPrompt, 'inspect the repository');
   assert.deepEqual(calls[0].contextFiles, ['src/main.ts', 'build.log']);
   assert.equal(calls[0].workspaceRoot, '/workspace');
-  assert.equal(calls[0].workflowMode, 'inspect');
+  assert.equal('workflowMode' in calls[0], false, 'local workflow predictions must not enter the canonical loop request');
   assert.match(calls[0].sessionContextText, /^session context\n\n\[DevSeek Engineering Context\]/u);
   assert.match(calls[0].sessionContextText, /languages: typescript/u);
   assert.equal(calls[0].recoveryContextText, '');

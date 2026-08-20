@@ -1,10 +1,11 @@
 import type { CodingContextCompactionSessionPort } from '@devseek-netai/shared';
-import type { AgentTaskAction } from '../agent-task-decomposer';
+import type { AgentTaskAction } from './agent-task';
 import type { ChatMessage } from '../llm/types';
 import type { AgentLoopCallbacks } from './loop-types';
 import type { TerminalEvidence, WrittenFileEvidence } from './completion-evidence';
 import type { TodoItem } from './evidence-recovery';
 import type { EvidenceRef } from './tool-executor';
+import type { TextToolProtocolSession } from './text-tool-protocol';
 import { applyProviderRecoveryHistory } from './agent-history-compaction';
 import { compactAgenticMessageHistory } from './agentic-context-compaction';
 import {
@@ -26,6 +27,7 @@ export interface AgenticProviderRecoveryBoundaryInput {
   readonly readEvidencePaths: readonly string[];
   readonly writtenFiles: readonly WrittenFileEvidence[];
   readonly terminalEvidence: readonly TerminalEvidence[];
+  readonly textToolProtocol: TextToolProtocolSession;
   readonly messages: ChatMessage[];
   readonly totalChars: number;
   readonly contextCompaction?: CodingContextCompactionSessionPort;
@@ -93,6 +95,7 @@ export async function recoverAgenticProviderFailure(
     readEvidencePaths: input.readEvidencePaths,
     writtenFiles: input.writtenFiles,
     terminalEvidence: input.terminalEvidence,
+    textToolProtocol: input.textToolProtocol,
     partialResponseLength: input.partialResponseLength,
   });
   applyProviderRecoveryHistory(input.messages, recoveryMessage);
@@ -104,6 +107,7 @@ export async function recoverAgenticProviderFailure(
     round: input.round,
     evidenceRefs: input.evidenceRefs,
     trigger: 'provider-recovery',
+    textToolProtocol: input.textToolProtocol,
   });
 
   return {

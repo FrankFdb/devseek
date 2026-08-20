@@ -1,4 +1,3 @@
-import type { ApplyWorkflowStatus } from '../workspace-applier';
 import type { AgentStatusEvent, AgentToolActivityEvent } from '../agent/events';
 import type { ChatMessage } from '../llm/types';
 import type { TaskHistoryLifecycleReceipt, TaskRunRecord, TaskRunTimelineItem } from '../app/task-history-store';
@@ -56,8 +55,7 @@ export type TaskHistoryOutboundMessage =
 export type WebviewInboundType =
   | 'chat' | 'cancel' | 'clearHistory' | 'ready' | 'insertCode' | 'relogin'
   | 'runCommand' | 'getProblems' | 'resolveFile' | 'getStatus' | 'setMode'
-  | 'previewGeneratedFiles' | 'applyGeneratedFiles' | 'openGeneratedPath'
-  | 'previewGeneratedPath' | 'applyGeneratedPath'
+  | 'openGeneratedPath'
   | 'keepPendingEdit' | 'undoPendingEdit' | 'openPendingEdit'
   | 'keepPendingHunk' | 'undoPendingHunk'
   | 'keepAllPendingEdits' | 'undoAllPendingEdits'
@@ -82,7 +80,6 @@ export interface WebviewInboundMessage {
   mode?: ChatProviderMode;
   files?: string[];
   images?: string[];
-  autoApply?: boolean;
   autopilot?: boolean;
   enabled?: boolean;
   forceNoAgent?: boolean;
@@ -96,6 +93,8 @@ export interface WebviewInboundMessage {
   activityLabel?: string;
   activityTotal?: number;
   id?: string;
+  submissionId?: string;
+  expectedRunId?: string;
 }
 
 export type AgentPresentationMode = 'progress' | 'direct-response' | 'model-led';
@@ -112,7 +111,6 @@ export type WebviewOutboundMessage =
   | { type: 'resetResponse'; text: string }
   | { type: 'endResponse' }
   | { type: 'error'; text: string; loginRequired?: boolean }
-  | { type: 'workflowStatus' } & ApplyWorkflowStatus
   | AgentStatusEvent
   | AgentToolActivityEvent
   | { type: 'agentAnnouncement'; text: string }

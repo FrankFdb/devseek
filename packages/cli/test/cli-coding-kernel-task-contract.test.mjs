@@ -22,15 +22,46 @@ buildSync({
 });
 
 const require = createRequire(import.meta.url);
-const { buildCliCodingKernelTaskContract } = require(bundlePath);
+const {
+  buildCliCodingKernelTaskContract,
+  projectCliModelActionTaskContract,
+} = require(bundlePath);
 
 after(() => rmSync(bundleRoot, { recursive: true, force: true }));
 
-test('CLI task contract gives an explicit requested change precedence over review wording', () => {
-  const contract = buildCliCodingKernelTaskContract(
+test('CLI keeps raw multilingual, typo-rich, and mixed-command text effect-free before a model action', () => {
+  const prompts = [
     'Review src/value.ts and fix the incorrect return value.',
-    ['src/value.ts'],
-  );
+    'Add shout mode and run validation.',
+    '请吧这个错吴修正并运行测式。',
+    'package.json release deploy TEST update',
+  ];
+
+  for (const prompt of prompts) {
+    const contract = buildCliCodingKernelTaskContract(prompt, ['src/value.ts']);
+    assert.equal(contract.mode, 'explain', prompt);
+    assert.equal(contract.orientation.source, 'read-only-default', prompt);
+    assert.deepEqual(contract.scope.include, ['src/value.ts'], prompt);
+    assert.deepEqual(contract.deliverables.map(deliverable => deliverable.kind), ['report'], prompt);
+  }
+});
+
+test('CLI does not turn identifier substrings into execution authority', () => {
+  for (const prompt of ['MODEL_LATEST_OK', 'CONTEST_RESULT', 'TEST_RE', 'latestReleaseValue']) {
+    const contract = buildCliCodingKernelTaskContract(prompt, []);
+    assert.equal(contract.mode, 'explain', prompt);
+    assert.equal(contract.constraints.includes('no-workspace-mutation'), true, prompt);
+  }
+});
+
+test('CLI projects a settled structural source action into scoped change obligations', () => {
+  const current = buildCliCodingKernelTaskContract('Ambiguous natural language stays with the model.', []);
+  const contract = projectCliModelActionTaskContract({
+    current,
+    contextFiles: [],
+    action: modelAction({ targetPaths: ['src/value.ts'] }),
+    committedTargetPaths: ['src/value.ts'],
+  });
 
   assert.equal(contract.mode, 'change');
   assert.deepEqual(contract.scope.include, ['src/value.ts']);
@@ -38,36 +69,44 @@ test('CLI task contract gives an explicit requested change precedence over revie
     'source-change',
     'verification-result',
   ]);
+  assert.equal(contract.provenanceRefs.includes('settled-model-action'), true);
 });
 
-test('CLI task contract keeps review work non-mutating by default', () => {
-  const contract = buildCliCodingKernelTaskContract('Audit src/value.ts for correctness.', ['src/value.ts']);
+test('CLI derives report and verification obligations from artifact structure, not wording', () => {
+  const current = buildCliCodingKernelTaskContract('Do the thing.', []);
+  const report = projectCliModelActionTaskContract({
+    current,
+    contextFiles: [],
+    action: modelAction({ targetPaths: ['docs/audit.md'] }),
+    committedTargetPaths: ['docs/audit.md'],
+  });
 
-  assert.equal(contract.mode, 'review');
-  assert.deepEqual(contract.deliverables.map(deliverable => deliverable.kind), ['report']);
+  assert.equal(report.mode, 'change');
+  assert.deepEqual(report.deliverables.map(deliverable => deliverable.kind), ['report']);
+  assert.equal(report.constraints.includes('verification-before-completion'), false);
 });
 
-test('CLI task contract does not treat package and release filenames as mutation authority', () => {
-  const packageReview = buildCliCodingKernelTaskContract('Review package.json for dependency risks.', ['package.json']);
-  const releaseReview = buildCliCodingKernelTaskContract('Analyze the release workflow.', []);
+test('CLI projects a structural external action into local authority acceptance', () => {
+  const current = buildCliCodingKernelTaskContract('Use the provider response as the semantic owner.', []);
+  const contract = projectCliModelActionTaskContract({
+    current,
+    contextFiles: [],
+    action: {
+      actionId: 'terminal-1',
+      tool: 'run_terminal',
+      purpose: 'external-effect',
+      effects: ['process', 'network', 'workspace-mutation'],
+      input: { command: 'package-manager-operation' },
+      targetPaths: [],
+    },
+  });
 
-  assert.equal(packageReview.mode, 'review');
-  assert.equal(releaseReview.mode, 'review');
-});
-
-test('CLI task contract keeps explanatory questions about change verbs non-mutating', () => {
-  const contract = buildCliCodingKernelTaskContract('How does the update command work?', []);
-
-  assert.equal(contract.mode, 'explain');
-  assert.deepEqual(contract.deliverables.map(deliverable => deliverable.kind), ['report']);
-});
-
-test('CLI task contract recognizes additive and recovery coding commands as changes', () => {
-  const additive = buildCliCodingKernelTaskContract('Add shout mode and run validation.', []);
-  const recovery = buildCliCodingKernelTaskContract('Recover a known loose tool JSON response shape.', []);
-
-  assert.equal(additive.mode, 'change');
-  assert.equal(recovery.mode, 'change');
+  assert.equal(contract.mode, 'change');
+  assert.equal(contract.constraints.includes('external-effect-requires-approval'), true);
+  assert.deepEqual(contract.acceptance.map(criterion => criterion.id), [
+    'grounded-response',
+    'authority',
+  ]);
 });
 
 test('CLI task contract classifies secret harvesting as non-mutating even when phrased as implementation', () => {
@@ -85,3 +124,14 @@ test('CLI task contract classifies secret harvesting as non-mutating even when p
     'a-no-mutation',
   ]);
 });
+
+function modelAction({ targetPaths }) {
+  return {
+    actionId: 'write-1',
+    tool: 'apply_workspace_artifacts',
+    purpose: 'workspace-mutation',
+    effects: ['workspace-mutation'],
+    input: { proposal: { targetPaths } },
+    targetPaths,
+  };
+}

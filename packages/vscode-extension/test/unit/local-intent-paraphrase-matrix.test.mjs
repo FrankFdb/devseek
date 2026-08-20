@@ -1,361 +1,232 @@
-/**
- * Provider-free local intent paraphrase matrix.
- *
- * These cases exercise local semantic hints at the same front door used by the
- * extension. Hints never pre-route execution; the main model owns the turn.
- */
-
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
+import test, { after } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const rootDir = path.resolve(__dirname, '../../');
+const testDir = path.dirname(fileURLToPath(import.meta.url));
+const extensionRoot = path.resolve(testDir, '../..');
+const bundleDir = mkdtempSync(path.join(tmpdir(), 'devseek-paraphrase-matrix-'));
 
-function bundle(entry, outfile) {
-  execSync(
-    `npx esbuild ${entry} --bundle ` +
-    `--outfile=${outfile} --format=cjs --platform=node --external:vscode`,
-    { cwd: rootDir, stdio: 'pipe' },
-  );
-}
+execFileSync('npx', [
+  'esbuild',
+  'src/intent-router.ts',
+  'src/intent/model-action-semantic-contract.ts',
+  '--bundle',
+  `--outdir=${bundleDir}`,
+  '--outbase=src',
+  '--format=cjs',
+  '--platform=node',
+  '--external:vscode',
+], { cwd: extensionRoot, stdio: 'pipe' });
 
-const taskIntentBundle = path.join(rootDir, 'test/unit/local-intent-paraphrase-task-intent.bundle.cjs');
-const chatControllerBundle = path.join(rootDir, 'test/unit/local-intent-paraphrase-chat-controller.bundle.cjs');
+const require = createRequire(import.meta.url);
+const { decideChatIntent } = require(path.join(bundleDir, 'intent-router.js'));
+const { projectModelActionSemanticContract } = require(path.join(
+  bundleDir,
+  'intent/model-action-semantic-contract.js',
+));
+after(() => rmSync(bundleDir, { recursive: true, force: true }));
 
-bundle('src/task-intent-router.ts', taskIntentBundle);
-bundle('src/app/chat-controller.ts', chatControllerBundle);
+const REPAIR_PARAPHRASES = [
+  '请吧 src/login.ts 空密码崩溃的问题秀一下。',
+  '登录表单没填密码就挂了，麻烦处理 src/login.ts。',
+  'The login form crashes when the password is blank; take care of src/login.ts.',
+  'src/login.ts は空のパスワードで落ちます。修正してください。',
+  'src/login.ts blank password 时会 crash，帮忙 fix 一下。',
+  '现象：密码为空时退出。目标文件 src/login.ts；完成后用现有检查确认。',
+];
 
-const req = createRequire(import.meta.url);
-const { routeTaskIntent } = req(taskIntentBundle);
-const { ChatRouteController } = req(chatControllerBundle);
+test('different users and typo styles converge only after the same typed model action', () => {
+  const projectedViews = REPAIR_PARAPHRASES.map(prompt => {
+    const initial = decideChatIntent(prompt).semanticContract;
+    const projected = projectModelActionSemanticContract(initial, proposal({
+      mode: 'edit',
+      taskKind: 'existing-project-edit',
+      mutation: 'modify-source',
+      targetPaths: ['src/login.ts'],
+      requiresWorkspace: true,
+      requiresTerminal: true,
+    }));
+    assert.equal(projected.prompt, prompt);
+    return semanticView(projected);
+  });
 
-const CASES = [
-  {
-    name: 'smalltalk-polished-thanks',
-    prompt: 'Great, thank you!',
-    route: { family: 'smalltalk', chatKind: 'chat', mode: 'smalltalk', shape: 'general' },
-    workflow: { kind: 'plain-chat', useAgent: false, toolPolicy: 'smalltalk' },
-    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'smalltalk-acknowledgement',
-    prompt: 'ok got it',
-    route: { family: 'smalltalk', chatKind: 'chat', mode: 'smalltalk', shape: 'general' },
-    workflow: { kind: 'plain-chat', useAgent: false, toolPolicy: 'smalltalk' },
-    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'smalltalk-cn-acknowledgement',
-    prompt: '好的，明白了',
-    route: { family: 'smalltalk', chatKind: 'chat', mode: 'smalltalk', shape: 'general' },
-    workflow: { kind: 'plain-chat', useAgent: false, toolPolicy: 'smalltalk' },
-    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'inspect-look-through-no-edits',
-    prompt: 'Could you look through src/payment.ts for risky logic? No edits.',
-    route: { family: 'read-only-advisory', chatKind: 'chat', mode: 'inspect', shape: 'read-only-analysis' },
-    workflow: { kind: 'inspect-agent', useAgent: true, toolPolicy: 'inspect' },
-    readTargets: ['src/payment.ts'],
-    validation: { commandEvidenceRequired: false },
-    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'inspect-cn-see-summary',
-    prompt: '帮我看下 src/order.ts 的职责，只说结论别改。',
-    route: { family: 'read-only-advisory', chatKind: 'chat', mode: 'inspect', shape: 'read-only-analysis' },
-    workflow: { kind: 'inspect-agent', useAgent: true, toolPolicy: 'inspect' },
-    readTargets: ['src/order.ts'],
-    validation: { commandEvidenceRequired: false },
-    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'plan-cn-repair-idea-no-code',
-    prompt: '先给我 src/cache.ts 的修复思路，不要动代码。',
-    route: { family: 'read-only-advisory', chatKind: 'chat', mode: 'plan', shape: 'read-only-analysis' },
-    workflow: { kind: 'plan-agent', useAgent: true, toolPolicy: 'plan' },
-    validation: { commandEvidenceRequired: false },
-    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'review-diff-test-coverage-language',
-    prompt: 'Review the current diff for security regressions and missing tests.',
-    files: [],
-    route: { family: 'review', chatKind: 'chat', mode: 'inspect', shape: 'read-only-analysis' },
-    workflow: { kind: 'inspect-agent', useAgent: true, toolPolicy: 'inspect' },
-    signals: ['workspace-diff-review'],
-    validation: { commandEvidenceRequired: false, testRequested: false },
-    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'edit-cn-indirect-repair',
-    prompt: '登录页空密码会崩，帮忙处理一下 src/login.ts。',
-    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
-    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-    signals: ['runtime-error-repair-request', 'conditional-repair-on-failure'],
-    validation: { commandEvidenceRequired: true },
-    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: ['src/login.ts'] },
-  },
-  {
-    name: 'artifact-release-notes-not-release-command',
-    prompt: 'Draft docs/release-notes.md with the user-visible changes.',
-    route: { family: 'file-artifact', chatKind: 'code-change', mode: 'edit', shape: 'general' },
-    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
+  for (const view of projectedViews.slice(1)) {
+    assert.deepEqual(view, projectedViews[0]);
+  }
+  assert.deepEqual(projectedViews[0], {
+    mode: 'edit',
+    taskKind: 'existing-project-edit',
+    kind: 'existing-project-code',
+    scope: 'existing-project',
+    mutationRequested: true,
+    sourceChange: true,
+    fileArtifact: false,
+    mutationTargets: ['src/login.ts'],
+    readRequested: false,
+    readTargets: [],
+    validationRequested: true,
+    runRequested: true,
     externalEffect: 'none',
-    mutation: { requested: true, sourceChange: false, fileArtifact: true, targets: ['docs/release-notes.md'] },
+  });
+});
+
+const ACTION_MATRIX = [
+  {
+    name: 'direct explanation',
+    prompt: '说明 GPU CPU',
+    action: proposal({ mode: 'qa', taskKind: 'question-answer' }),
+    expected: { kind: 'general', mutation: false, read: false, validation: false },
   },
   {
-    name: 'artifact-cn-test-results-summary',
-    prompt: '整理一份 docs/qa-summary.md，总结这次测试结果，不要改源码。',
-    route: { family: 'file-artifact', chatKind: 'code-change', mode: 'edit', shape: 'general' },
-    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-    validation: { commandEvidenceRequired: false, testRequested: false },
-    mutation: { requested: true, sourceChange: false, fileArtifact: true, targets: ['docs/qa-summary.md'] },
+    name: 'detailed follow-up explanation',
+    prompt: '再详细说明他们的差异',
+    action: proposal({ mode: 'qa', taskKind: 'question-answer' }),
+    expected: { kind: 'general', mutation: false, read: false, validation: false },
   },
   {
-    name: 'external-effect-en-push-branch',
-    prompt: 'Push this branch after committing the fix.',
-    route: { family: 'release-external-effect', chatKind: 'code-change', mode: 'edit', shape: 'general' },
-    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-    externalEffect: 'requested',
-    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
+    name: 'repository review',
+    prompt: 'Review the current diff for regressions and missing tests.',
+    action: proposal({
+      mode: 'inspect',
+      taskKind: 'code-review',
+      requiresWorkspace: true,
+      targetPaths: ['src/router.ts'],
+    }),
+    expected: { kind: 'read-only', mutation: false, read: true, validation: false },
   },
   {
-    name: 'external-effect-cn-commit-push',
-    prompt: '提交并推送当前分支。',
-    route: { family: 'release-external-effect', chatKind: 'code-change', mode: 'edit', shape: 'general' },
-    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-    externalEffect: 'requested',
-    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
+    name: 'documentation artifact',
+    prompt: '整理一份 docs/qa-summary.md，总结结果，不改源码。',
+    action: proposal({
+      mode: 'edit',
+      taskKind: 'file-artifact',
+      mutation: 'create-file',
+      requiresWorkspace: true,
+      targetPaths: ['docs/qa-summary.md'],
+    }),
+    expected: { kind: 'file-artifact', mutation: true, read: false, validation: false },
   },
   {
-    name: 'terminal-run-output',
-    prompt: 'Run npm test and show me the output.',
-    route: { family: 'terminal-validation', chatKind: 'code-change', mode: 'run', shape: 'general' },
-    workflow: { kind: 'run-agent', useAgent: true, toolPolicy: 'run' },
-    validation: { commandEvidenceRequired: true, testRequested: true },
-    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
+    name: 'run validation',
+    prompt: 'Run the existing focused test and report the result.',
+    action: proposal({
+      mode: 'run',
+      taskKind: 'terminal-validation',
+      mutation: 'run-only',
+      requiresWorkspace: true,
+      requiresTerminal: true,
+    }),
+    expected: { kind: 'validation', mutation: false, read: false, validation: true },
   },
   {
-    name: 'run-to-repair-en-test-failure',
-    prompt: 'Run npm test, and if it fails fix the issue.',
-    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
-    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-    signals: ['conditional-repair-on-failure', 'validation-repair-request'],
-    validation: { commandEvidenceRequired: true, testRequested: true },
-    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
+    name: 'external side effect',
+    prompt: 'Push the current branch after the checks pass.',
+    action: proposal({
+      mode: 'run',
+      taskKind: 'external-effect',
+      mutation: 'external-effect',
+      requiresWorkspace: true,
+      requiresTerminal: true,
+      requiresExternalEffect: true,
+    }),
+    expected: { kind: 'validation', mutation: false, read: false, validation: true },
   },
   {
-    name: 'run-to-repair-cn-compile-error',
-    prompt: '请编译，执行，如果有编译错误，请修正。',
-    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
-    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-    signals: ['conditional-repair-on-failure', 'validation-repair-request'],
-    validation: { commandEvidenceRequired: true },
-    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'health-repair-en-ci-green',
-    prompt: 'CI is red, get it green.',
-    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
-    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-    signals: ['conditional-repair-on-failure', 'validation-repair-request', 'validation-health-repair-request'],
-    validation: { commandEvidenceRequired: true, testRequested: true },
-    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'health-repair-en-tests-pass',
-    prompt: 'The tests are failing, make them pass.',
-    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
-    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-    signals: ['conditional-repair-on-failure', 'validation-repair-request', 'validation-health-repair-request'],
-    validation: { commandEvidenceRequired: true, testRequested: true },
-    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'health-repair-cn-tests-pass',
-    prompt: '测试挂了，帮我过掉。',
-    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
-    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-    signals: ['conditional-repair-on-failure', 'validation-repair-request', 'validation-health-repair-request'],
-    validation: { commandEvidenceRequired: true, testRequested: true },
-    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'project-health-repair-en-app-working',
-    prompt: 'The app is broken, make it work again.',
-    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
-    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-    signals: ['conditional-repair-on-failure', 'project-health-repair-request'],
-    validation: { commandEvidenceRequired: true, testRequested: false },
-    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'project-health-repair-en-login-flow',
-    prompt: 'The login flow regressed, can you get it working again?',
-    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
-    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-    signals: ['conditional-repair-on-failure', 'project-health-repair-request'],
-    validation: { commandEvidenceRequired: true, testRequested: false },
-    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'project-health-repair-cn-login-flow',
-    prompt: '登录流程坏了，帮我恢复可用。',
-    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
-    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-    signals: ['conditional-repair-on-failure', 'project-health-repair-request'],
-    validation: { commandEvidenceRequired: true, testRequested: false },
-    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'project-health-read-only-question',
-    prompt: 'The app is broken, can I get an explanation?',
-    route: { family: 'qa', chatKind: 'chat', mode: 'qa', shape: 'general' },
-    workflow: { kind: 'plain-chat', useAgent: false, toolPolicy: 'qa' },
-    validation: { commandEvidenceRequired: false, testRequested: false },
-    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'runtime-error-repair-en-stack-take-care',
-    prompt: 'Here is the stack trace from login: TypeError: Cannot read properties of undefined. Can you take care of it?',
-    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
-    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-    signals: ['conditional-repair-on-failure', 'runtime-error-repair-request'],
-    validation: { commandEvidenceRequired: true, testRequested: false },
-    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'runtime-error-repair-en-console-go-away',
-    prompt: 'The console shows TypeError in src/profile.ts when opening profile. Please make it go away.',
-    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
-    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-    signals: ['conditional-repair-on-failure', 'runtime-error-repair-request'],
-    validation: { commandEvidenceRequired: true, testRequested: false },
-    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'runtime-error-repair-cn-white-screen',
-    prompt: '用户反馈登录后白屏，麻烦看一下并处理。',
-    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
-    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-    signals: ['conditional-repair-on-failure', 'runtime-error-repair-request'],
-    validation: { commandEvidenceRequired: true, testRequested: false },
-    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'runtime-error-read-only-question',
-    prompt: 'What does TypeError: config is undefined mean?',
-    route: { family: 'qa', chatKind: 'chat', mode: 'qa', shape: 'general' },
-    workflow: { kind: 'plain-chat', useAgent: false, toolPolicy: 'qa' },
-    validation: { commandEvidenceRequired: false, testRequested: false },
-    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'user-symptom-repair-en-signin',
-    prompt: 'Users cannot sign in after entering the correct password. Please sort it out.',
-    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
-    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-    signals: ['conditional-repair-on-failure', 'user-symptom-repair-request'],
-    validation: { commandEvidenceRequired: true, testRequested: false },
-    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'user-symptom-repair-cn-save',
-    prompt: '用户反馈点击保存没有反应，帮我修一下。',
-    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
-    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-    signals: ['conditional-repair-on-failure', 'user-symptom-repair-request'],
-    validation: { commandEvidenceRequired: true, testRequested: false },
-    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'user-symptom-read-only-question',
-    prompt: 'The login button does nothing. Why might that happen?',
-    route: { family: 'qa', chatKind: 'chat', mode: 'qa', shape: 'general' },
-    workflow: { kind: 'plain-chat', useAgent: false, toolPolicy: 'qa' },
-    validation: { commandEvidenceRequired: false, testRequested: false },
-    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'self-help-repair-question-with-path',
-    prompt: 'How do I fix src/login.ts if users cannot sign in?',
-    route: { family: 'read-only-advisory', chatKind: 'chat', mode: 'inspect', shape: 'read-only-analysis' },
-    workflow: { kind: 'inspect-agent', useAgent: true, toolPolicy: 'inspect' },
-    signals: ['self-help-repair-question'],
-    validation: { commandEvidenceRequired: false, testRequested: false },
-    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'run-only-negated-repair',
-    prompt: 'Run tests, but do not fix failures.',
-    route: { family: 'terminal-validation', chatKind: 'code-change', mode: 'run', shape: 'validation-repair' },
-    workflow: { kind: 'run-agent', useAgent: true, toolPolicy: 'run' },
-    validation: { commandEvidenceRequired: true, testRequested: true },
-    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
-  },
-  {
-    name: 'health-repair-negated-read-only',
-    prompt: 'CI is red, tell me why, but do not change files.',
-    route: { family: 'read-only-advisory', chatKind: 'chat', mode: 'inspect', shape: 'read-only-analysis' },
-    workflow: { kind: 'plain-chat', useAgent: false, toolPolicy: 'inspect' },
-    validation: { commandEvidenceRequired: false, testRequested: false },
-    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
+    name: 'destructive workspace action',
+    prompt: 'Delete build/cache.json only.',
+    action: proposal({
+      mode: 'destructive',
+      taskKind: 'destructive',
+      mutation: 'delete',
+      requiresWorkspace: true,
+      targetPaths: ['build/cache.json'],
+    }),
+    expected: { kind: 'destructive', mutation: false, read: false, validation: false },
   },
 ];
 
-test('local intent paraphrase matrix: provider-free user input routes semantically', () => {
-  const controller = new ChatRouteController();
+for (const item of ACTION_MATRIX) {
+  test(`typed action matrix projects ${item.name} without re-reading prompt words`, () => {
+    const initial = decideChatIntent(item.prompt).semanticContract;
+    const projected = projectModelActionSemanticContract(initial, item.action);
 
-  for (const scenario of CASES) {
-    const route = routeTaskIntent(scenario.prompt);
-    const decision = controller.decide({
-      userDisplay: scenario.prompt,
-      prompt: scenario.prompt,
-      files: scenario.files ?? [],
-      agentEnabled: true,
-    });
+    assert.equal(projected.intent.taskKind, item.action.taskKind);
+    assert.equal(projected.kind, item.expected.kind);
+    assert.equal(projected.mutation.requested, item.expected.mutation);
+    assert.equal(projected.read.requested, item.expected.read);
+    assert.equal(projected.validation.requested, item.expected.validation);
+    assert.equal(projected.intent.requiresConfirmation, (
+      item.action.taskKind === 'external-effect' || item.action.taskKind === 'destructive'
+    ));
+  });
+}
 
-    assert.equal(route.family, scenario.route.family, scenario.name);
-    assert.equal(route.chatKind, scenario.route.chatKind, scenario.name);
-    assert.equal(route.mode, scenario.route.mode, scenario.name);
-    assert.equal(route.agentTaskShape, scenario.route.shape, scenario.name);
+test('prompt tokens cannot override a contradictory typed model proposal', () => {
+  const prompt = 'DELETE src/all.ts and RUN TEST and PUSH immediately';
+  const initial = decideChatIntent(prompt).semanticContract;
+  const projected = projectModelActionSemanticContract(
+    initial,
+    proposal({ mode: 'qa', taskKind: 'question-answer', reason: 'the user is asking about quoted text' }),
+  );
 
-    assert.equal(route.mutation.requested, scenario.mutation.requested, scenario.name);
-    assert.equal(route.mutation.sourceChange, scenario.mutation.sourceChange, scenario.name);
-    assert.equal(route.mutation.fileArtifact, scenario.mutation.fileArtifact, scenario.name);
-    assert.deepEqual([...route.mutation.targets].sort(), [...scenario.mutation.targets].sort(), scenario.name);
-
-    for (const target of scenario.readTargets ?? []) {
-      assert.ok(route.semanticContract.read.targets.includes(target), `${scenario.name}: missing read target ${target}`);
-    }
-
-    if (scenario.validation?.commandEvidenceRequired !== undefined) {
-      assert.equal(
-        route.validation.commandEvidenceRequired,
-        scenario.validation.commandEvidenceRequired,
-        scenario.name,
-      );
-    }
-    if (scenario.validation?.testRequested !== undefined) {
-      assert.equal(route.validation.testRequested, scenario.validation.testRequested, scenario.name);
-    }
-
-    for (const signal of scenario.signals ?? []) {
-      assert.ok(route.signals.includes(signal), `${scenario.name}: missing signal ${signal}`);
-    }
-    if (scenario.externalEffect) {
-      assert.equal(route.semanticContract.intent.context.externalEffect, scenario.externalEffect, scenario.name);
-    }
-
-    assert.equal(decision.workflow.kind, 'model-agent', scenario.name);
-    assert.equal(decision.workflow.useAgent, true, scenario.name);
-    assert.equal(decision.toolPolicy.mode, 'model-led', scenario.name);
-  }
+  assert.equal(projected.intent.taskKind, 'question-answer');
+  assert.equal(projected.mutation.requested, false);
+  assert.equal(projected.validation.requested, false);
+  assert.equal(projected.intent.context.externalEffect, 'none');
 });
 
-console.log('\nLocal intent paraphrase matrix tests passed.\n');
+test('low-confidence model output is ignored instead of becoming a local fallback guess', () => {
+  const initial = decideChatIntent('这句话可能是任务，也可能只是例子。').semanticContract;
+  const projected = projectModelActionSemanticContract(initial, proposal({
+    confidence: 0.61,
+    mode: 'edit',
+    taskKind: 'existing-project-edit',
+    mutation: 'modify-source',
+    targetPaths: ['src/guess.ts'],
+    requiresWorkspace: true,
+  }));
+
+  assert.equal(projected, initial);
+  assert.equal(projected.mutation.requested, false);
+});
+
+function proposal(overrides = {}) {
+  return {
+    version: 'devseek.semantic-intent/v1',
+    source: 'test',
+    mode: 'qa',
+    taskKind: 'question-answer',
+    confidence: 0.98,
+    mutation: 'none',
+    targetPaths: [],
+    requiresWorkspace: false,
+    requiresTerminal: false,
+    requiresExternalEffect: false,
+    requiresClarification: false,
+    reason: 'normalized model action for paraphrase simulation',
+    ...overrides,
+  };
+}
+
+function semanticView(contract) {
+  return {
+    mode: contract.intent.mode,
+    taskKind: contract.intent.taskKind,
+    kind: contract.kind,
+    scope: contract.scope,
+    mutationRequested: contract.mutation.requested,
+    sourceChange: contract.mutation.sourceChange,
+    fileArtifact: contract.mutation.fileArtifact,
+    mutationTargets: contract.mutation.targets,
+    readRequested: contract.read.requested,
+    readTargets: contract.read.targets,
+    validationRequested: contract.validation.requested,
+    runRequested: contract.validation.runRequested,
+    externalEffect: contract.intent.context.externalEffect,
+  };
+}

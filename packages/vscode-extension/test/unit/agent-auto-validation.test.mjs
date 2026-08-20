@@ -527,7 +527,7 @@ test('Agent auto validation leaves unknown binary targets unverified', async () 
   }
 });
 
-test('Agent auto validation appends artifact quality as a shared host check', async () => {
+test('Agent auto validation does not derive literal acceptance from ordinary prompt text', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-anchor-'));
   try {
     const target = 'docs/audit.md';
@@ -548,17 +548,16 @@ test('Agent auto validation appends artifact quality as a shared host check', as
       context.callbacks,
     );
 
-    assert.equal(result.qualityGate.status, 'fail');
-    assert.equal(result.verificationReceipt.status, 'failed');
-    assert.match(result.feedbackForAI, /artifact_quality:missing-literal-anchor/);
-    assert.match(result.feedbackForAI, /login-state-not-send-button/);
-    assert.equal(statuses.some(status => status.title === '生成文件质量门禁未通过'), true);
+    assert.equal(result.qualityGate.status, 'pass');
+    assert.equal(result.verificationReceipt.status, 'passed');
+    assert.doesNotMatch(result.feedbackForAI ?? '', /artifact_quality|login-state-not-send-button/);
+    assert.equal(statuses.some(status => status.title === '生成文件质量门禁未通过'), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-test('Agent auto validation rejects weak formal project Markdown despite successful readback', async () => {
+test('Agent auto validation leaves semantic Markdown quality to the model and explicit acceptance contract', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-formal-md-'));
   try {
     const target = 'docs/01-warranty-design.md';
@@ -585,15 +584,15 @@ test('Agent auto validation rejects weak formal project Markdown despite success
       context.callbacks,
     );
 
-    assert.equal(result.qualityGate.status, 'fail');
-    assert.equal(result.verificationReceipt.status, 'failed');
-    assert.match(result.feedbackForAI, /formal_project_markdown_quality/);
+    assert.equal(result.qualityGate.status, 'pass');
+    assert.equal(result.verificationReceipt.status, 'passed');
+    assert.doesNotMatch(result.feedbackForAI ?? '', /formal_project_markdown_quality/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-test('Agent auto validation rejects standalone sample main for a formal integration task', async () => {
+test('Agent auto validation does not infer integration architecture from prompt vocabulary', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-formal-source-'));
   try {
     const target = 'src/oam/src/lifting/zc_maintenance/run/src/proc_warranty_main.cpp';
@@ -617,10 +616,9 @@ test('Agent auto validation rejects standalone sample main for a formal integrat
       context.callbacks,
     );
 
-    assert.equal(result.qualityGate.status, 'fail');
-    assert.equal(result.verificationReceipt.status, 'failed');
-    assert.match(result.feedbackForAI, /formal_project_source_quality/);
-    assert.match(result.feedbackForAI, /孤岛 main|样例入口/);
+    assert.equal(result.qualityGate.status, 'pass');
+    assert.equal(result.verificationReceipt.status, 'passed');
+    assert.doesNotMatch(result.feedbackForAI ?? '', /formal_project_source_quality|孤岛 main|样例入口/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -1,11 +1,12 @@
 import { ProjectInstructionService } from '../app/project-instruction-service';
 import {
-  resolveTaskSemanticContract,
+  bindTaskSemanticProjectInstructions,
   type TaskSemanticProjectInstructionInput,
-} from '../intent/task-semantic-contract-service';
+} from '../intent/task-semantic-project-instructions';
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import type { AgentLoopCallbacks } from './loop-types';
 import { createWriteAuthority, type WriteAuthority } from './write-authority';
+import { createModelLedTurnSemanticContract } from '../intent/model-led-semantic-contract';
 
 const projectInstructionService = new ProjectInstructionService();
 
@@ -25,7 +26,8 @@ export interface SemanticExecutionResolution {
 export function resolveSemanticExecutionContext(
   input: SemanticExecutionResolutionInput,
 ): SemanticExecutionResolution {
-  const initial = input.semanticContract ?? resolveTaskSemanticContract(input.userPrompt);
+  const supplied = input.semanticContract ?? createModelLedTurnSemanticContract(input.userPrompt);
+  const initial = createModelLedTurnSemanticContract(input.userPrompt, supplied);
   if (initial.context.projectInstructions.status !== 'none') {
     return { semanticContract: initial };
   }
@@ -40,10 +42,7 @@ export function resolveSemanticExecutionContext(
     ])],
   });
   return {
-    semanticContract: resolveTaskSemanticContract(input.userPrompt, {
-      current: initial,
-      projectInstructions,
-    }),
+    semanticContract: bindTaskSemanticProjectInstructions(initial, projectInstructions),
     projectInstructions,
   };
 }

@@ -5,7 +5,7 @@ import {
   type CodingWorkspaceMutationReceipt,
 } from '@devseek-netai/shared';
 import { looksLikeRawToolCallText } from '../generated-file-parser';
-import { resolveGeneratedArtifactPathForPrompt, resolveWorkspaceWritePath } from '../workspace/path-resolver';
+import { resolveWorkspaceWritePath } from '../workspace/path-resolver';
 import {
   WorkspaceEditService,
   type WorkspaceCommittedEdit,
@@ -16,7 +16,7 @@ import {
   detectNestedFilePayloadDrift,
   shouldBlockUnverifiedSourceOverwrite,
 } from './write-guard';
-import { requiresCodeArtifactForEvidence } from './completion-evidence';
+import { isCodeArtifactPathValue } from '../artifact-path-kind';
 import type { AgentLoopCallbacks } from './loop-types';
 import type { AgentToolExecutionPlan, EvidenceRef } from './tool-executor';
 import type { ToolReadEvidenceRecorder } from './tool-read-evidence';
@@ -46,7 +46,6 @@ export interface ToolLoopFileWriterOptions {
   readonly callbacks: AgentLoopCallbacks;
   readonly workspaceRoot: string;
   readonly defaultWorkdir?: string;
-  readonly userPrompt?: string;
   readonly requireReadBeforeOverwrite?: boolean;
   readonly readEvidencePaths: ReadonlySet<string>;
   readonly readEvidenceRecorder: ToolReadEvidenceRecorder;
@@ -93,16 +92,19 @@ export class ToolLoopFileWriter {
     }
     callbacks.onToolActivity?.('write', rawPath);
     try {
-      const taskPrompt = this.options.userPrompt ?? '';
       const normalized = normalizeFileWritePath(
         rawPath,
-        taskPrompt,
-        content,
         this.options.workspaceRoot,
         this.options.defaultWorkdir,
       );
+      if (!normalized) {
+        return failBeforeEffect(
+          'file-write-path-unresolved',
+          '目标路径无法在当前工作区和工作目录中确定，未写入任何文件。请提供明确的文件路径。',
+        );
+      }
       if (normalized.note) reporter.feedback(`[${toolName}: ${rawPath}] 诊断: ${normalized.note}`);
-      if (!content && requiresCodeArtifactForEvidence(taskPrompt)) {
+      if (!content && isCodeArtifactPathValue(normalized.path)) {
         return failBeforeEffect('empty-source-artifact-content', 'content 为空，不能创建空源码文件。请提供完整文件内容。');
       }
       if (looksLikeRawToolCallText(content)) {
@@ -115,7 +117,7 @@ export class ToolLoopFileWriter {
       const instructionDecision = decideProjectInstructionFileWrite({
         filePath: normalized.path,
         content,
-        requestPrompt: taskPrompt,
+        source: 'model-tool-action',
       });
       if (!instructionDecision.allowed) {
         return failBeforeEffect('project-instruction-write-denied', instructionDecision.reason ?? '项目指令文件写入未被允许');
@@ -158,11 +160,9 @@ export class ToolLoopFileWriter {
       }
       const fileWriteConstraint = await callbacks.onResolveFileWriteConstraint(absPath, {
         purpose: 'tool-write',
-        userRequested: false,
         taskAction: toolName,
         toolRisk: toolPlan.risk,
         displayName: rawPath,
-        requestPrompt: taskPrompt,
       });
       if (this.cancellationRequested()) {
         await canonical.fail(toolPlan, canonicalContext, 'tool-cancelled-before-effect');
@@ -296,23 +296,17 @@ export class ToolLoopFileWriter {
 
 function normalizeFileWritePath(
   rawPath: string,
-  userPrompt: string,
-  content: string,
   workspaceRootFsPath?: string,
   defaultWorkdir?: string,
-): { path: string; absPath?: string; note?: string } {
+): { path: string; absPath: string; note?: string } | undefined {
   const resolved = resolveWorkspaceWritePath(rawPath, {
-    requestPrompt: userPrompt,
-    content,
     workspaceRootFsPath,
     defaultWorkdir,
   });
-  if (resolved) {
-    return {
-      path: resolved.relPath,
-      absPath: resolved.absPath,
-      ...(resolved.note ? { note: resolved.note } : {}),
-    };
-  }
-  return { path: resolveGeneratedArtifactPathForPrompt(rawPath, userPrompt) };
+  if (!resolved) return undefined;
+  return {
+    path: resolved.relPath,
+    absPath: resolved.absPath,
+    ...(resolved.note ? { note: resolved.note } : {}),
+  };
 }

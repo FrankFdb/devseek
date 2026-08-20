@@ -10,12 +10,12 @@ import test from 'node:test';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
 const bundleDir = mkdtempSync(path.join(tmpdir(), 'devseek-agentic-execution-evidence-'));
-const bundlePath = path.join(bundleDir, 'agentic-execution-evidence.bundle.cjs');
+const bundlePath = path.join(bundleDir, 'agent', 'agentic-execution-evidence.js');
 process.on('exit', () => rmSync(bundleDir, { recursive: true, force: true }));
 
 execSync(
-  `npx esbuild src/agent/agentic-execution-evidence.ts --bundle ` +
-  `--outfile=${bundlePath} --format=cjs --platform=node --external:vscode`,
+  `npx esbuild src/agent/agentic-execution-evidence.ts src/intent-router.ts src/intent/model-action-semantic-contract.ts --bundle ` +
+  `--outdir=${bundleDir} --outbase=src --format=cjs --platform=node --external:vscode`,
   { cwd: rootDir, stdio: 'pipe' },
 );
 
@@ -26,10 +26,36 @@ const {
   getAgenticBlockingTerminalFailure,
   getAgenticBlockingDeniedToolExecution,
 } = req(bundlePath);
+const { decideChatIntent } = req(path.join(bundleDir, 'intent-router.js'));
+const { projectModelActionSemanticContract } = req(path.join(
+  bundleDir,
+  'intent',
+  'model-action-semantic-contract.js',
+));
+
+function semanticContract(prompt, action) {
+  const initial = decideChatIntent(prompt).semanticContract;
+  if (!action) return initial;
+  return projectModelActionSemanticContract(initial, {
+    version: 'devseek.semantic-intent/v1',
+    source: 'test',
+    mode: 'edit',
+    taskKind: 'existing-project-edit',
+    confidence: 0.98,
+    mutation: 'create-file',
+    targetPaths: ['src/ready.js'],
+    requiresWorkspace: true,
+    requiresTerminal: true,
+    requiresExternalEffect: false,
+    requiresClarification: false,
+    reason: 'test model action',
+  });
+}
 
 test('agentic evidence closure starts from prompt policy or observed concrete work', () => {
   const completion = {
     userPrompt: 'Create src/ready.js and verify it.',
+    semanticContract: semanticContract('Create src/ready.js and verify it.', true),
     todos: [],
     writtenFiles: [],
     terminalEvidence: [],
@@ -57,6 +83,7 @@ test('agentic evidence closure preserves a real failed check after model-led wor
     workToolObserved: true,
     completion: {
       userPrompt: 'Repair src/parser.js and verify the behavior.',
+      semanticContract: semanticContract('Repair src/parser.js and verify the behavior.'),
       todos: [],
       writtenFiles: [],
       terminalEvidence: [failedCheck],
@@ -176,19 +203,15 @@ test('agentic execution evidence keeps a failed functional check open after weak
 
   assert.equal(
     getAgenticBlockingTerminalFailure(
-      'Repair src/parser.js and keep working until the focused parser check passes.',
-      [],
-      [],
       [failedFunctionalCheck, successfulSyntaxCheck],
+      semanticContract('Repair src/parser.js and keep working until the focused parser check passes.'),
     ),
     failedFunctionalCheck,
   );
   assert.equal(
     getAgenticBlockingTerminalFailure(
-      'Repair src/parser.js and keep working until the focused parser check passes.',
-      [],
-      [],
       [failedFunctionalCheck, successfulSyntaxCheck, successfulFunctionalCheck],
+      semanticContract('Repair src/parser.js and keep working until the focused parser check passes.'),
     ),
     undefined,
   );

@@ -1,9 +1,4 @@
-/**
- * Static contract for direct VS Code chat returns.
- *
- * These branches do not enter the full Agent loop, but they are still visible
- * user turns and must appear correctly after reopening History.
- */
+/** Static contracts for VS Code chat routing and visible history. */
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,21 +11,22 @@ const rootDir = path.resolve(__dirname, '../../');
 const extensionSource = readFileSync(path.join(rootDir, 'src/extension.ts'), 'utf8');
 const projectInitSource = readFileSync(path.join(rootDir, 'src/app/project-init-service.ts'), 'utf8');
 
-test('VS Code direct /init response records visible history with displayPrompt', () => {
+test('VS Code /init preserves display input while submitting a model-led task', () => {
   const branch = sourceBetween(
-    'if (tryPublishProjectInitTurn({',
-    'decideAgentTurnRoute(chatRouteController',
+    'let effectiveFiles = normalizeConversationFiles(files);',
+    'await getChatSessionTurnService(webview).beginTurn({',
   );
 
-  assert.match(branch, /userDisplay,[\s\S]*prompt,[\s\S]*publisher:\s*directVisibleResponsePublisher/);
-  assert.match(projectInitSource, /input\.publisher\.publish\(\{[\s\S]*userDisplay:\s*input\.userDisplay,[\s\S]*userMessagePrompt:\s*input\.prompt,[\s\S]*responsePrompt:\s*input\.prompt,[\s\S]*responseText/);
-  assert.doesNotMatch(branch, /nonBridgeChatHistory\.push\(\{ role: 'user', content: prompt \}\)/);
+  assert.match(branch, /prompt = resolveProjectInitPrompt\(userDisplay, prompt\) \?\? prompt/);
+  assert.match(projectInitSource, /String\(text \|\| ''\)\.trim\(\) === PROJECT_INIT_COMMAND/);
+  assert.match(projectInitSource, /inspect the repository/i);
+  assert.doesNotMatch(projectInitSource, /publish\(|writeFile|readFile|readdir/);
 });
 
 test('VS Code provider status direct response records visible history with displayPrompt', () => {
   const branch = sourceBetween(
     'if (providerStatusResponse) {',
-    "if (initialRouteDecision.intent.mode === 'smalltalk')",
+    '// If this is the first user message of a restored session',
   );
 
   assert.match(branch, /directVisibleResponsePublisher\.publish\(\{[\s\S]*userDisplay,[\s\S]*userMessagePrompt:\s*prompt,[\s\S]*responsePrompt:\s*initialRouteDecision\.intentRoutingText,[\s\S]*responseText:\s*providerStatusResponse/);
@@ -38,24 +34,18 @@ test('VS Code provider status direct response records visible history with displ
   assert.doesNotMatch(branch, /nonBridgeChatHistory\.push\(\{ role: 'user', content: prompt \}\)/);
 });
 
-test('VS Code provider status shortcut yields to the routed coding intent', () => {
+test('VS Code provider status checks only the explicit command text', () => {
   const call = sourceBetween(
     'const providerStatusResponse = await resolveProviderStatusResponse({',
     'if (providerStatusResponse) {',
   );
 
-  assert.match(call, /routedIntent:\s*initialRouteDecision\.intent/);
+  assert.match(call, /prompt:\s*initialRouteDecision\.intentRoutingText/);
+  assert.doesNotMatch(call, /routedIntent|family|mode|keyword/);
 });
 
-test('VS Code smalltalk direct response records visible history with displayPrompt', () => {
-  const branch = sourceBetween(
-    "if (initialRouteDecision.intent.mode === 'smalltalk')",
-    'if (!newSession && nonBridgeChatHistory.length === 0',
-  );
-
-  assert.match(branch, /const reply = buildSmalltalkReply\(initialRouteDecision\.intentRoutingText\);/);
-  assert.match(branch, /directVisibleResponsePublisher\.publish\(\{[\s\S]*userDisplay,[\s\S]*userMessagePrompt:\s*prompt,[\s\S]*responsePrompt:\s*initialRouteDecision\.intentRoutingText,[\s\S]*responseText:\s*reply/);
-  assert.doesNotMatch(branch, /nonBridgeChatHistory\.push\(\{ role: 'user', content: prompt \}\)/);
+test('ordinary smalltalk has no local response shortcut', () => {
+  assert.doesNotMatch(extensionSource, /buildSmalltalkReply|intent\.mode === 'smalltalk'/);
 });
 
 function sourceBetween(startNeedle, endNeedle) {

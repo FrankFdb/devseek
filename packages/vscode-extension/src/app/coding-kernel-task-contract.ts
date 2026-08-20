@@ -7,13 +7,7 @@ import {
 } from '@devseek-netai/shared';
 import type { TaskContract } from '../agent/task-contract';
 import type { ExecutionMode } from '../intent/intent-types';
-import type { ExternalEffectIntent } from '../intent/operational-language-boundary';
-import {
-  hasProjectHealthRepairIntent,
-  hasRuntimeErrorRepairIntent,
-  hasUserSymptomRepairIntent,
-  hasValidationHealthRepairIntent,
-} from '../intent/conditional-repair-intent';
+import type { TaskExternalEffectIntent } from '../task-semantic-contract';
 
 export interface VsCodeCodingKernelTaskContractInput {
   readonly userPrompt: string;
@@ -21,13 +15,11 @@ export interface VsCodeCodingKernelTaskContractInput {
   readonly contextFiles: readonly string[];
   readonly workspaceRoot: string;
   readonly taskContract: TaskContract;
-  readonly externalEffectIntent: ExternalEffectIntent;
+  readonly externalEffectIntent: TaskExternalEffectIntent;
   readonly targetPaths?: readonly string[];
   readonly prohibitedTargets?: readonly string[];
   readonly strictTargetScope?: boolean;
 }
-
-const DEPENDENCY_EXTERNAL_EFFECT_RE = /(?:安装[^，,。；;\n]{0,32}(?:依赖|npm\s*包|软件包|包|库|模块)|(?:新增|添加|引入)[^，,。；;\n]{0,24}(?:依赖|npm\s*包|软件包|包|库|模块)|\binstall\b[^,.;\n]{0,48}\b(?:packages?|dependenc(?:y|ies)|librar(?:y|ies)|modules?)\b|\b(?:add|introduce)\b[^,.;\n]{0,48}\b(?:new\s+)?dependenc(?:y|ies)\b|npm\s+(?:install|i|add|ci)|pnpm\s+(?:install|i|add)|yarn\s+(?:install|add)|pip\s+install)/iu;
 
 export function projectVsCodeCodingKernelTaskContract(
   input: VsCodeCodingKernelTaskContractInput,
@@ -51,18 +43,10 @@ export function projectVsCodeCodingKernelTaskContract(
   const explicitlyRequiresVerification = input.taskContract.qualityObligations.includes('validation')
     || (!reportFileRequested && input.taskContract.deliverables.includes('verification-result'));
   const verificationRequired = resolveVsCodeVerificationRequirement({
-    userPrompt: input.userPrompt,
+    executionMode: input.executionMode,
     sourceChangeRequested,
     reportFileRequested,
     explicitlyRequiresVerification,
-    projectHealthRepairRequested: input.executionMode === 'edit'
-      && hasProjectHealthRepairIntent(input.userPrompt),
-    runtimeErrorRepairRequested: input.executionMode === 'edit'
-      && hasRuntimeErrorRepairIntent(input.userPrompt),
-    userSymptomRepairRequested: input.executionMode === 'edit'
-      && hasUserSymptomRepairIntent(input.userPrompt),
-    validationHealthRepairRequested: input.executionMode === 'edit'
-      && hasValidationHealthRepairIntent(input.userPrompt),
   });
   return resolveCodingKernelTaskContract({
     prompt: input.userPrompt,
@@ -82,30 +66,22 @@ export function projectVsCodeCodingKernelTaskContract(
 }
 
 function resolveVsCodeVerificationRequirement(input: {
-  readonly userPrompt: string;
+  readonly executionMode: ExecutionMode;
   readonly sourceChangeRequested: boolean;
   readonly reportFileRequested: boolean;
   readonly explicitlyRequiresVerification: boolean;
-  readonly projectHealthRepairRequested: boolean;
-  readonly runtimeErrorRepairRequested: boolean;
-  readonly userSymptomRepairRequested: boolean;
-  readonly validationHealthRepairRequested: boolean;
 }): boolean | undefined {
   if (input.sourceChangeRequested
     || input.explicitlyRequiresVerification
-    || input.projectHealthRepairRequested
-    || input.runtimeErrorRepairRequested
-    || input.userSymptomRepairRequested
-    || input.validationHealthRepairRequested) {
+    || input.executionMode === 'run') {
     return true;
   }
   if (input.reportFileRequested) return false;
-  if (DEPENDENCY_EXTERNAL_EFFECT_RE.test(input.userPrompt)) return undefined;
   return false;
 }
 
 function projectTaskMode(mode: ExecutionMode): CodingTaskMode {
-  if (mode === 'inspect') return 'review';
+  if (mode === 'inspect' || mode === 'plan') return 'review';
   if (mode === 'edit' || mode === 'run' || mode === 'destructive') return 'change';
   return 'explain';
 }

@@ -27,12 +27,6 @@ export function chatContentEquals(content: ChatMessage['content'] | undefined, e
   return chatContentText(content) === expected;
 }
 
-export function buildSmalltalkReply(prompt: string): string {
-  const text = (prompt || '').trim().toLowerCase();
-  if (/^(?:hi|hello|ello|hey)[\s!.?]*$/.test(text)) return 'Hello! 我在。';
-  return '你好，我在。';
-}
-
 export function appendStructuredGenerationHint(prompt: string): string {
   return [
     prompt,

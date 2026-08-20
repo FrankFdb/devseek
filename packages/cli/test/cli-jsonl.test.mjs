@@ -522,7 +522,10 @@ test('CLI records recovery.failed and preserves an unsafe repair apply error', a
       const events = records.filter(record => record.record_kind === 'event').map(record => record.event);
       const recoveryFailed = events.find(event => event.type === 'recovery.failed');
       assert.ok(recoveryFailed);
-      assert.deepEqual(recoveryFailed.payload.reason, summarizeTraceText(readCliErrorMessage(result.stderr)));
+      assert.deepEqual(
+        recoveryFailed.payload.reason,
+        summarizeTraceText('Refusing to write outside workspace'),
+      );
       assert.ok(recoveryFailed.payload.unresolved_operation_ids.includes('cli-file-write-2'));
       const rejectedWrite = events.find(event => (
         event.type === 'side_effect.failed' && event.payload.operation_id === 'cli-file-write-2'
@@ -999,8 +1002,7 @@ test('CLI attaches mentioned workspace files to Bridge requests', async () => {
         timeout: 5000,
       });
 
-      assert.equal(result.status, 1, result.stderr);
-      assert.match(result.stderr, /verification-not-run/);
+      assert.equal(result.status, 0, result.stderr);
       assert.equal(seenBodies.length, 1);
       assert.deepEqual(seenBodies[0].files, [path.join(cwd, 'src/existing.cpp')]);
     });
@@ -1059,8 +1061,7 @@ test('CLI attaches bounded implicit project context for coding prompts', async (
         timeout: 5000,
       });
 
-      assert.equal(result.status, 1, result.stderr);
-      assert.match(result.stderr, /verification-not-run/);
+      assert.equal(result.status, 0, result.stderr);
       assert.equal(seenBodies.length, 1);
       assert.ok(seenBodies[0].files.includes(path.join(cwd, 'package.json')));
       assert.ok(seenBodies[0].files.includes(path.join(cwd, 'src/app.js')));

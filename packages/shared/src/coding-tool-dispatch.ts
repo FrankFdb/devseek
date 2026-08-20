@@ -13,7 +13,7 @@ import {
 
 export const CODING_TOOL_DISPATCH_VERSION = 'devseek.coding-tool-dispatch/v1' as const;
 
-export type CodingToolCallSource = 'fake-tool' | 'native' | 'surface' | 'internal';
+export type CodingToolCallSource = 'text-protocol' | 'fake-tool' | 'native' | 'surface' | 'internal';
 export type CodingToolDispatchRejectionReason =
   | 'malformed-tool-arguments'
   | 'partial-tool-call'
@@ -160,7 +160,9 @@ function projectOperation(
   const effects = projectTerminalEffects(command, terminal.risk);
   const purpose = effects.includes('network') || effects.includes('workspace-mutation')
     ? 'external-effect'
-    : 'verify';
+    : terminal.risk === 'read-only'
+      ? 'observe'
+      : 'verify';
   return Object.freeze({
     risk: projectTerminalRisk(terminal.risk),
     purpose,

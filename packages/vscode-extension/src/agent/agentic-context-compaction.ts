@@ -6,6 +6,7 @@ import type {
 } from '@devseek-netai/shared';
 import type { ChatMessage } from '../llm/types';
 import type { TodoItem } from './evidence-recovery';
+import type { TextToolProtocolSession } from './text-tool-protocol';
 import {
   CONTEXT_COMPACTION_SUMMARY_MARKER,
   compactAgentMessageHistoryWithFidelity,
@@ -38,6 +39,7 @@ export interface AgenticMessageCompactionInput {
   readonly round: number;
   readonly evidenceRefs: readonly AgenticCompactionEvidenceRef[];
   readonly trigger?: CodingContextCompactionTrigger;
+  readonly textToolProtocol: TextToolProtocolSession;
 }
 
 export interface AgenticContextCompactionInput {
@@ -55,7 +57,7 @@ export interface AgenticContextCompactionInput {
 
 /** Owns the agentic history budget and delegates semantic pruning to the Kernel session. */
 export function compactAgenticMessageHistory(input: AgenticMessageCompactionInput): number {
-  replaceAllAssistantToolHistory(input.messages);
+  replaceAllAssistantToolHistory(input.messages, input.textToolProtocol);
   for (let index = 0; index < input.messages.length; index += 1) {
     const message = input.messages[index];
     if (typeof message.content !== 'string') continue;

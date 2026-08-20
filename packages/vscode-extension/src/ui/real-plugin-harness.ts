@@ -3,12 +3,16 @@ import * as nodePath from 'path';
 import * as vscode from 'vscode';
 import type { DeepSeekViewProvider } from './deepseek-view-provider';
 
-type HarnessViewProvider = Pick<DeepSeekViewProvider, 'focus' | 'webview' | 'submitHarnessChatMessage'>;
+type HarnessViewProvider = Pick<
+  DeepSeekViewProvider,
+  'focus' | 'webview' | 'submitHarnessChatMessage' | 'submitHarnessAgentSteer'
+>;
 type HarnessSessionMeta = { readonly id: string; readonly title: string };
 type HarnessSessionControls = {
   readonly getActiveSessionId: () => string;
   readonly getSessions: () => readonly HarnessSessionMeta[];
   readonly loadSession: (webview: vscode.Webview, sessionId: string) => Promise<void>;
+  readonly getSteeringSnapshot?: () => unknown;
 };
 type HarnessRunChat = (
   webview: vscode.Webview,
@@ -44,6 +48,25 @@ export function registerRealPluginDeepSeekHarnessCommand(
       recordRealPluginHarnessProgress('extension-command-run-chat-started', { mode: harnessMode });
       await runChat(webview, userDisplay, prompt, newSession, harnessMode, undefined, undefined, undefined, undefined, undefined, true);
       recordRealPluginHarnessProgress('extension-command-run-chat-completed');
+    },
+  ));
+
+  context.subscriptions.push(vscode.commands.registerCommand(
+    '_devseek.harnessSubmitAgentSteer',
+    async (instruction: string, expectedRunId?: string, steeringId?: string) => {
+      recordRealPluginHarnessProgress('extension-command-steering-started', { steeringId });
+      viewProvider.focus();
+      const webview = await waitForHarnessWebview(() => viewProvider.webview, 30_000);
+      if (!webview) throw new Error('DevSeek harness could not resolve the chat webview for steering within 30s');
+      const submission = await viewProvider.submitHarnessAgentSteer({
+        type: 'agentSteer',
+        text: instruction,
+        prompt: instruction,
+        expectedRunId,
+        submissionId: steeringId,
+      });
+      recordRealPluginHarnessProgress('extension-command-steering-completed', submission);
+      return submission;
     },
   ));
 
@@ -89,6 +112,12 @@ export function registerRealPluginDeepSeekHarnessCommand(
         return snapshotHarnessSessions(sessionControls);
       },
     ));
+    if (sessionControls.getSteeringSnapshot) {
+      context.subscriptions.push(vscode.commands.registerCommand(
+        '_devseek.harnessSteeringSnapshot',
+        () => sessionControls.getSteeringSnapshot?.(),
+      ));
+    }
   }
 }
 

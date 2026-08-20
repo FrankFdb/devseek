@@ -1,5 +1,12 @@
-import type { CodingToolCall } from '@devseek-netai/shared';
-import type { SemanticIntentInterpretation, SemanticTaskKind } from '../intent/semantic-intent';
+import {
+  codingSemanticDigest,
+  isFileWriteToolName,
+  normalizeCodingFileWriteInputs,
+  type CodingToolCall,
+  type CodingToolEffect,
+  type CodingToolPurpose,
+} from '@devseek-netai/shared';
+import type { SemanticIntentInterpretation } from '../intent/semantic-intent';
 import type { TaskSemanticContract } from '../task-semantic-contract';
 
 const CODE_PATH_RE = /\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx|cs|go|java|js|jsx|mjs|cjs|kt|kts|php|py|rb|rs|scala|sh|swift|ts|tsx|vue)$/i;
@@ -11,11 +18,23 @@ const FILE_MUTATION_TOOLS = new Set([
   'delete_file',
 ]);
 
+export interface ModelToolSemanticEvidenceBinding {
+  readonly tool: string;
+  readonly purpose: CodingToolPurpose;
+  readonly effects: readonly CodingToolEffect[];
+  readonly inputSha256: string;
+}
+
+export interface ModelToolSemanticProposal extends SemanticIntentInterpretation {
+  /** Exact normalized tool operations that may settle this proposal. */
+  readonly evidenceBindings: readonly ModelToolSemanticEvidenceBinding[];
+}
+
 /** Projects a normalized model action into loop semantics, never authority. */
 export function projectModelToolSemanticProposal(
   tools: readonly CodingToolCall[],
   current: TaskSemanticContract,
-): SemanticIntentInterpretation | undefined {
+): ModelToolSemanticProposal | undefined {
   const actionable = tools.filter(tool => tool.executable && tool.registered);
   if (actionable.length === 0) return undefined;
 
@@ -24,10 +43,14 @@ export function projectModelToolSemanticProposal(
   const mutationTools = actionable.filter(tool =>
     tool.purpose === 'workspace-mutation' || FILE_MUTATION_TOOLS.has(tool.name)
   );
-  const externalEffect = actionable.some(tool =>
-    tool.purpose === 'external-effect' || tool.kind === 'mcp' || /^mcp__/.test(tool.name)
-  );
-  const terminal = actionable.some(tool => tool.kind === 'terminal' || tool.name === 'run_terminal');
+  const externalEffect = actionable.some(tool => (
+    tool.purpose === 'external-effect'
+      || tool.effects.some(effect => effect === 'network' || effect === 'local-state' || effect === 'release')
+  ));
+  const validationTerminal = actionable.some(tool => (
+    (tool.kind === 'terminal' || tool.name === 'run_terminal')
+      && tool.purpose === 'verify'
+  ));
   const observation = actionable.some(tool =>
     tool.purpose === 'observe'
     || tool.kind === 'read'
@@ -42,23 +65,26 @@ export function projectModelToolSemanticProposal(
       mutation: 'delete',
       targetPaths: targets,
       requiresWorkspace: true,
-      requiresTerminal: terminal,
+      requiresTerminal: validationTerminal,
       requiresExternalEffect: false,
       reason: 'model proposed a destructive workspace action',
-    });
+    }, actionable.filter(tool => tool.name === 'delete_file'));
   }
 
   if (externalEffect) {
     return proposal({
-      mode: terminal ? 'run' : 'edit',
+      mode: validationTerminal ? 'run' : 'edit',
       taskKind: 'external-effect',
       mutation: 'external-effect',
       targetPaths: targets,
       requiresWorkspace: targets.length > 0,
-      requiresTerminal: terminal,
+      requiresTerminal: validationTerminal,
       requiresExternalEffect: true,
       reason: 'model proposed an externally visible effect',
-    });
+    }, actionable.filter(tool => (
+      tool.purpose === 'external-effect'
+        || tool.effects.some(effect => effect === 'network' || effect === 'local-state' || effect === 'release')
+    )));
   }
 
   if (mutationTools.length > 0) {
@@ -69,17 +95,17 @@ export function projectModelToolSemanticProposal(
       || current.taskContract.deliverables.includes('source-change');
     return proposal({
       mode: 'edit',
-      taskKind: codeChange ? resolveCodeTaskKind(current, mutationTargets) : 'file-artifact',
+      taskKind: codeChange ? 'existing-project-edit' : 'file-artifact',
       mutation: createsOnly ? 'create-file' : 'modify-source',
       targetPaths: mutationTargets,
       requiresWorkspace: true,
-      requiresTerminal: terminal,
+      requiresTerminal: validationTerminal,
       requiresExternalEffect: false,
       reason: 'model proposed a workspace mutation through normalized tools',
-    });
+    }, mutationTools);
   }
 
-  if (terminal) {
+  if (validationTerminal) {
     return proposal({
       mode: 'run',
       taskKind: 'terminal-validation',
@@ -89,54 +115,54 @@ export function projectModelToolSemanticProposal(
       requiresTerminal: true,
       requiresExternalEffect: false,
       reason: 'model proposed terminal validation without a workspace mutation',
-    });
+    }, actionable.filter(tool => (
+      (tool.kind === 'terminal' || tool.name === 'run_terminal') && tool.purpose === 'verify'
+    )));
   }
 
-  if (!observation || !isLocallyNonMutating(current)) return undefined;
+  if (!observation) return undefined;
+  const planning = names.has('manage_todo_list');
   return proposal({
-    mode: current.intent.mode === 'plan' ? 'plan' : 'inspect',
-    taskKind: current.intent.mode === 'plan'
-      ? 'planning'
-      : current.taskContract.taskShapes.includes('inspection')
-        ? 'code-review'
-        : 'read-only-analysis',
+    mode: planning ? 'plan' : 'inspect',
+    taskKind: planning ? 'planning' : 'read-only-analysis',
     mutation: 'none',
     targetPaths: targets,
     requiresWorkspace: true,
     requiresTerminal: false,
     requiresExternalEffect: false,
-    reason: 'model proposed observation within a locally non-mutating task',
-  });
-}
-
-function isLocallyNonMutating(contract: TaskSemanticContract): boolean {
-  return contract.mutation.prohibited
-    || contract.intent.mode === 'inspect'
-    || contract.intent.mode === 'plan'
-    || contract.intent.mode === 'qa';
-}
-
-function resolveCodeTaskKind(
-  current: TaskSemanticContract,
-  targets: readonly string[],
-): SemanticTaskKind {
-  if (current.scope === 'standalone' || current.kind === 'standalone-code') return 'standalone-program';
-  if (current.scope === 'existing-project' || current.kind === 'existing-project-code') {
-    return 'existing-project-edit';
-  }
-  return targets.some(path => path.includes('/')) ? 'existing-project-edit' : 'standalone-program';
+    reason: 'model proposed a normalized observation action',
+  }, actionable.filter(tool => (
+    tool.purpose === 'observe'
+      || tool.kind === 'read'
+      || tool.kind === 'search'
+      || tool.kind === 'diagnostics'
+  )));
 }
 
 function proposal(
   input: Omit<SemanticIntentInterpretation, 'version' | 'source' | 'confidence' | 'requiresClarification'>,
-): SemanticIntentInterpretation {
+  tools: readonly CodingToolCall[],
+): ModelToolSemanticProposal {
   return {
     version: 'devseek.semantic-intent/v1',
     source: 'provider',
     confidence: 0.98,
     requiresClarification: false,
     ...input,
+    evidenceBindings: tools.flatMap(semanticEvidenceBindings),
   };
+}
+
+function semanticEvidenceBindings(tool: CodingToolCall): ModelToolSemanticEvidenceBinding[] {
+  const inputs = isFileWriteToolName(tool.name) && tool.name !== 'replace_in_file'
+    ? normalizeCodingFileWriteInputs(tool.input).map(item => ({ path: item.rawPath, content: item.content }))
+    : [tool.input];
+  return inputs.map(input => ({
+    tool: tool.name,
+    purpose: tool.purpose,
+    effects: [...tool.effects],
+    inputSha256: codingSemanticDigest(input),
+  }));
 }
 
 function uniquePaths(paths: readonly string[]): string[] {

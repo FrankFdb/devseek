@@ -1,4 +1,4 @@
-import type { AgentTaskAction } from '../agent-task-decomposer';
+import type { AgentTaskAction } from './agent-task';
 
 export interface AgentEditedFileEvent {
   path: string;

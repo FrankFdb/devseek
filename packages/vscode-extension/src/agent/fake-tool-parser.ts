@@ -766,15 +766,6 @@ function stripCallingShellTranscriptBlocks(text: string): string {
   return out + text.slice(last);
 }
 
-function hasShellTranscriptMarker(text: string): boolean {
-  const callRe = makeAnyCallingRegex();
-  let m: RegExpExecArray | null;
-  while ((m = callRe.exec(text)) !== null) {
-    if (m[1] && isShellTranscriptName(m[1])) return true;
-  }
-  return false;
-}
-
 export function jsonObjectToFakeTool(obj: Record<string, unknown>): FakeTool | null {
   const functionCall = obj.function_call ?? obj.functionCall;
   if (functionCall && typeof functionCall === 'object' && !Array.isArray(functionCall)) {
@@ -1204,10 +1195,6 @@ function parseJsonObjectToolCalls(text: string): FakeTool[] {
       const converted = jsonValueToFakeTools(obj);
       if (converted.length > 0) {
         tools.push(...converted);
-      } else if (Array.isArray(obj.todoList)) {
-        tools.push({ name: 'manage_todo_list', input: { todoList: obj.todoList } });
-      } else if (typeof obj.summary === 'string' && /(?:完成|结束|complete|done)/i.test(text) && !hasShellTranscriptMarker(text)) {
-        tools.push({ name: 'task_complete', input: { summary: obj.summary } });
       }
     } catch {
       const malformed = parseMalformedFunctionEnvelopeToolSpans(candidate);

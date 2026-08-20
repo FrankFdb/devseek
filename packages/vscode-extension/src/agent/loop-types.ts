@@ -1,11 +1,10 @@
-import type { AgentTask } from '../agent-task-decomposer';
-import type { AppliedChangeRecord, ApplyWorkflowStatus } from '../workspace-applier';
+import type { AgentTask } from './agent-task';
+import type { AppliedChangeRecord } from '../workspace/applied-change-record';
 import type { McpToolRef } from '../mcp/client';
 import type { MemoryWriteProposal } from '../memory/types';
 import type { AgentStatusEvent } from './events';
 import type { TodoItem } from './evidence-recovery';
 import type { ExecutionMode } from '../intent/intent-types';
-import type { IntentSemanticContractRevision } from '../intent/intent-revision-lineage';
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import type { AgentFileWriteContext } from '../app/agent-file-write-policy';
 import type { ArtifactClaim, EvidenceRef, VerificationResult } from './evidence-grounding';
@@ -17,6 +16,7 @@ import type {
   CodingConformanceProjection,
   CodingKernelTaskContract,
   CodingCheckpoint,
+  CodingSteeringCandidate,
   CodingExternalEffectReconciliation,
   CodingExternalEffectSessionPort,
   CodingToolExecutionSessionPort,
@@ -69,8 +69,6 @@ export interface AgentLoopCallbacks {
   executionMode?: ExecutionMode;
   /** Stream delta text to chat bubble */
   onDelta: (delta: string) => void;
-  /** Post a workflowStatus message to the webview */
-  onWorkflowStatus: (status: ApplyWorkflowStatus) => void | Promise<void>;
   /** Post an agentStatus message (new type for Working area Agent mode) */
   onAgentStatus: (status: AgentStatusMessage) => void | Promise<void>;
   /** A file was applied — register for Keep/Undo */
@@ -247,9 +245,11 @@ export interface AgentLoopCallbacks {
    * Consumed at round boundaries so the next model call treats it as an
    * incremental correction/supplement, not as a brand-new task.
    */
-  onUserSteer?: () => string[];
-  /** Publishes each ordered semantic revision before the next tool can execute. */
-  onTaskSemanticContractRevision?: (revision: IntentSemanticContractRevision) => void;
+  onUserSteer?: () => readonly (string | CodingSteeringCandidate)[];
+  /** Atomically closes turn intake and drains inputs accepted before completion. */
+  onUserSteerCompletionFence?: () => readonly (string | CodingSteeringCandidate)[];
+  /** Reopens the same turn after the completion fence found pending user input. */
+  onReopenUserSteering?: () => boolean;
   /** Publishes evidence-settled model semantics without changing user authority. */
   onSettledModelSemanticContract?: (settlement: SettledModelSemanticContract) => void;
   /**

@@ -1,4 +1,3 @@
-import { parseSimpleFileWriteRequest, type SimpleFileWriteRequest } from './agent/simple-file-intent';
 import { classifyIntent } from './intent/intent-classifier';
 import type { ExecutionMode, IntentClassification, ToolKind } from './intent/intent-types';
 import { isMutatingExecutionMode } from './intent/execution-mode-policy';
@@ -7,10 +6,8 @@ import {
   shouldValidateNonCodeFilesForContract,
   type TaskSemanticContract,
 } from './task-semantic-contract';
-import {
-  resolveTaskSemanticContract,
-  type TaskSemanticResolutionContext,
-} from './intent/task-semantic-contract-service';
+import { createModelLedTurnSemanticContract } from './intent/model-led-semantic-contract';
+import { hasTaskSemanticDoneCondition } from './intent/task-semantic-obligations';
 
 export type TaskIntentFamily =
   | 'smalltalk'
@@ -18,7 +15,6 @@ export type TaskIntentFamily =
   | 'read-only-advisory'
   | 'safety-refusal'
   | 'review'
-  | 'simple-file'
   | 'file-artifact'
   | 'standalone-program'
   | 'existing-project-edit'
@@ -29,7 +25,6 @@ export type TaskIntentFamily =
   | 'ambiguous';
 
 export type RoutedAgentTaskShape =
-  | 'simple-file'
   | 'existing-project'
   | 'standalone-project'
   | 'read-only-analysis'
@@ -47,7 +42,6 @@ export interface TaskIntentRoute {
   agentTaskShape: RoutedAgentTaskShape;
   semanticContract: TaskSemanticContract;
   classification: IntentClassification;
-  simpleFile?: SimpleFileWriteRequest;
   mutation: {
     requested: boolean;
     prohibited: boolean;
@@ -78,20 +72,15 @@ export interface TaskIntentRoute {
 
 export function routeTaskIntent(
   promptText: string,
-  context: TaskSemanticResolutionContext = {},
 ): TaskIntentRoute {
-  const prompt = String(promptText || '').trim();
-  const semanticContract = resolveTaskSemanticContract(prompt, context);
-  return routeTaskSemanticContract(semanticContract);
+  const prompt = String(promptText || '');
+  return routeTaskSemanticContract(createModelLedTurnSemanticContract(prompt));
 }
 
 export function routeTaskSemanticContract(semanticContract: TaskSemanticContract): TaskIntentRoute {
   const prompt = semanticContract.prompt;
   const classification = classifyIntent(semanticContract);
-  const simpleFile = semanticContract.mutation.prohibited
-    ? undefined
-    : parseSimpleFileWriteRequest(prompt);
-  const family = resolveTaskIntentFamily(classification, semanticContract, simpleFile);
+  const family = resolveTaskIntentFamily(classification, semanticContract);
   const safetyRefusal = family === 'safety-refusal';
   const readOnlyChatFamily = isReadOnlyChatFamily(family);
   const constrainedNoMutationFamily = readOnlyChatFamily || safetyRefusal;
@@ -109,8 +98,7 @@ export function routeTaskSemanticContract(semanticContract: TaskSemanticContract
       targets: [],
     }
     : { ...semanticContract.mutation };
-  const fileCheckRequired = !safetyRefusal && (family === 'simple-file'
-    || shouldValidateNonCodeFilesForContract(semanticContract));
+  const fileCheckRequired = !safetyRefusal && shouldValidateNonCodeFilesForContract(semanticContract);
   const runtimeRequired = !safetyRefusal
     && !semanticContract.validation.runProhibited
     && shouldRunCppValidationForContract(semanticContract);
@@ -118,6 +106,10 @@ export function routeTaskSemanticContract(semanticContract: TaskSemanticContract
     || semanticContract.validation.compileRequested
     || semanticContract.validation.runRequested
     || semanticContract.validation.testRequested
+    || hasTaskSemanticDoneCondition(semanticContract.completion, 'code-validation-passed')
+    || hasTaskSemanticDoneCondition(semanticContract.completion, 'compile-passed')
+    || hasTaskSemanticDoneCondition(semanticContract.completion, 'run-passed')
+    || hasTaskSemanticDoneCondition(semanticContract.completion, 'test-passed')
     || (fileCheckRequired && semanticContract.validation.requested));
 
   return {
@@ -129,7 +121,6 @@ export function routeTaskSemanticContract(semanticContract: TaskSemanticContract
     agentTaskShape,
     semanticContract,
     classification,
-    simpleFile,
     mutation: effectiveMutation,
     validation: {
       requested: safetyRefusal ? false : semanticContract.validation.requested,
@@ -171,12 +162,10 @@ export function shouldValidateNonCodeFilesForRoute(route: TaskIntentRoute): bool
 function resolveTaskIntentFamily(
   classification: IntentClassification,
   semanticContract: TaskSemanticContract,
-  simpleFile: SimpleFileWriteRequest | undefined,
 ): TaskIntentFamily {
   if (semanticContract.intent.context.empty) return 'smalltalk';
   if (semanticContract.intent.context.unsafeSecretHarvesting) return 'safety-refusal';
   if (classification.mode === 'destructive' || semanticContract.kind === 'destructive') return 'destructive';
-  if (simpleFile) return 'simple-file';
   if (semanticContract.intent.context.externalEffect === 'requested') return 'release-external-effect';
   if (classification.blockers.includes('semantic-clarification-needed')) return 'qa';
   if (isReadOnlyRoute(classification, semanticContract)) {
@@ -212,7 +201,6 @@ function resolveAgentTaskShape(
   if (semanticContract.intent.context.failureContext) {
     return 'validation-repair';
   }
-  if (family === 'simple-file') return 'simple-file';
   if (family === 'existing-project-edit') return 'existing-project';
   if (family === 'standalone-program') return 'standalone-project';
   return 'general';
@@ -239,7 +227,6 @@ function isCodeChangeRoute(family: TaskIntentFamily, mode: ExecutionMode): boole
     || family === 'existing-project-edit'
     || family === 'standalone-program'
     || family === 'file-artifact'
-    || family === 'simple-file'
     || family === 'terminal-validation'
     || family === 'destructive'
     || family === 'general-edit';

@@ -93,6 +93,10 @@ test('CLI runtime adapter keeps context, interpretation, mutation, and verificat
   assert.match(contextSelector, /\breaddir\s*\(/);
   assert.match(contextSelector, /\bstat\s*\(/);
   assert.doesNotMatch(contextSelector, /(?:AgentApplicationService|create_file|replace_file|spawnSync)/);
+  assert.doesNotMatch(
+    contextSelector,
+    /(?:CodingKernelTaskContract|CodingToolAuthority|taskContract|toolAuthority|completion)/,
+  );
 
   assert.match(runEvidence, /class CliRunEvidence/);
   assert.match(runEvidence, /ProductRunEvidenceSession\.forWorkspace/);

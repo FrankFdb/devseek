@@ -1,8 +1,8 @@
 import type { TerminalEvidence } from './completion-evidence';
 import {
   hasHardExecutionFailureEvidence,
+  hasInteractiveLaunchEvidence,
   isIndeterminateExecutionEvidence,
-  isVisualOrInteractiveContext,
   visualSourcePathsLookInteractive,
 } from '../execution-outcome-classifier';
 
@@ -23,8 +23,8 @@ export function shouldRequestManualReviewForRun(input: ManualReviewRunInput): Ma
   if (!isRuntimeEvidence(input.terminalEvidence)) return undefined;
   if (input.terminalEvidence.ok) return undefined;
 
-  const context = buildManualReviewContext(input);
-  if (!isVisualOrInteractiveContext(context) && !visualSourcePathsLookInteractive(input.changedPaths)) {
+  if (!hasInteractiveLaunchEvidence(input.output)
+    && !visualSourcePathsLookInteractive(input.changedPaths)) {
     return undefined;
   }
   if (!isIndeterminateRun(input)) return undefined;
@@ -49,12 +49,4 @@ function isIndeterminateRun(input: ManualReviewRunInput): boolean {
     input.terminalEvidence.exitCode,
     input.output || input.terminalEvidence.detail || '',
   );
-}
-
-function buildManualReviewContext(input: ManualReviewRunInput): string {
-  return [
-    input.userPrompt,
-    input.command,
-    input.changedPaths.join('\n'),
-  ].filter(Boolean).join('\n');
 }

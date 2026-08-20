@@ -1,3 +1,4 @@
+export * from './applied-change-record';
 export * from './change-set';
 export * from './edit-service';
 export * from './file-context-service';

@@ -1,6 +1,6 @@
 import type { TaskContract } from '../agent/task-contract';
 import type { TaskSemanticContract } from '../task-semantic-contract';
-import { resolveTaskSemanticContract } from '../intent/task-semantic-contract-service';
+import { createModelLedTurnSemanticContract } from '../intent/model-led-semantic-contract';
 import type { AgentLoopResult } from '../agent/loop-types';
 import { resolveSemanticExecutionContext } from '../agent/semantic-execution-context';
 import type {
@@ -64,7 +64,7 @@ export class AgentKernelService {
   private execute(request: CanonicalKernelExecutionRequest): Promise<AgentLoopResult> {
     return this.execution.execute({
       ...request,
-      semanticContract: request.semanticContract ?? resolveTaskSemanticContract(request.userPrompt),
+      semanticContract: request.semanticContract ?? createModelLedTurnSemanticContract(request.userPrompt),
     });
   }
 

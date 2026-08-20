@@ -80,7 +80,10 @@ test('explicit medium-task targets remain included and are never projected as ex
   assert.deepEqual(contract.scope.exclude, []);
   assert.deepEqual(
     contract.deliverables.filter(item => item.kind === 'source-change'),
-    [{ id: 'source-change', kind: 'source-change' }],
+    [
+      { id: 'source-change', kind: 'source-change', path: targets[0] },
+      { id: 'source-change:2', kind: 'source-change', path: targets[1] },
+    ],
   );
   assert.equal(contract.constraints.includes('no-other-files'), true);
   assert.deepEqual(contract.externalBoundaries, []);
@@ -106,17 +109,20 @@ test('model-proposed paths cannot turn allowed files or a prohibited verifier in
       deliverableTargets: [...targets, 'test.sh'],
     },
     externalEffectIntent: 'none',
+    targetPaths: targets,
+    prohibitedTargets: ['test.sh'],
   });
 
   assert.deepEqual(contract.scope.include, targets);
   assert.deepEqual(contract.scope.exclude, ['test.sh']);
   assert.deepEqual(contract.deliverables, [
-    { id: 'source-change', kind: 'source-change' },
+    { id: 'source-change', kind: 'source-change', path: targets[0] },
+    { id: 'source-change:2', kind: 'source-change', path: targets[1] },
     { id: 'verification-result', kind: 'verification-result' },
   ]);
 });
 
-test('an explicit external deployment action retains its deployment boundary', () => {
+test('an explicit external action retains a generic effect boundary until a concrete tool is selected', () => {
   const contract = projectVsCodeCodingKernelTaskContract({
     userPrompt: 'Deploy the service to production after updating src/service.ts.',
     executionMode: 'edit',
@@ -128,7 +134,7 @@ test('an explicit external deployment action retains its deployment boundary', (
   });
 
   assert.deepEqual(contract.externalBoundaries.map(boundary => boundary.id), [
-    'external-deployment',
+    'external-effect',
   ]);
 });
 

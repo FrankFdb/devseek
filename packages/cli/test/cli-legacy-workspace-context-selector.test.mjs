@@ -58,6 +58,19 @@ test('CLI context selector resolves explicit files once and ignores unsafe or mi
   assert.deepEqual(files, ['src/入口.ts']);
 });
 
+test('CLI context selector preserves explicit paths in noisy multilingual wording without task keywords', async () => {
+  const workspaceRoot = createWorkspace();
+  writeWorkspaceFile(workspaceRoot, 'src/入口.ts', 'export const value = 1;\n');
+  writeWorkspaceFile(workspaceRoot, 'src/unrelated.ts', 'export const stale = true;\n');
+
+  const files = await selector.select(
+    workspaceRoot,
+    '请祥细看下 `src/入口.ts`，窝可能有错字，但不要猜其他文件。',
+  );
+
+  assert.deepEqual(files, ['src/入口.ts']);
+});
+
 test('CLI context selector does not attach implicit project files for a non-coding prompt', async () => {
   const workspaceRoot = createWorkspace();
   writeWorkspaceFile(workspaceRoot, 'package.json', '{}\n');

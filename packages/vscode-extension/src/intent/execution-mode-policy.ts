@@ -5,6 +5,7 @@ const PLAN_TOOLS: readonly ToolKind[] = [...READ_CONTROL_TOOLS, 'plan', 'memory'
 const EDIT_TOOLS: readonly ToolKind[] = [...PLAN_TOOLS, 'edit', 'terminal'];
 const RUN_TOOLS: readonly ToolKind[] = [...READ_CONTROL_TOOLS, 'plan', 'memory', 'terminal'];
 const DESTRUCTIVE_TOOLS: readonly ToolKind[] = [...EDIT_TOOLS, 'vscode', 'vscode-command', 'mcp'];
+const MODEL_LED_TOOLS: readonly ToolKind[] = [...new Set([...EDIT_TOOLS, ...RUN_TOOLS, ...DESTRUCTIVE_TOOLS])];
 
 export function allowedToolKindsForMode(mode: ExecutionMode): ToolKind[] {
   switch (mode) {
@@ -13,6 +14,7 @@ export function allowedToolKindsForMode(mode: ExecutionMode): ToolKind[] {
     case 'edit': return [...EDIT_TOOLS];
     case 'run': return [...RUN_TOOLS];
     case 'destructive': return [...DESTRUCTIVE_TOOLS];
+    case 'model-led': return [...MODEL_LED_TOOLS];
     case 'smalltalk':
     case 'qa':
     default:

@@ -105,13 +105,8 @@ test('ModelLedIntentBoundary: explicit product opt-out still bypasses the agent 
 
 test('ModelLedIntentBoundary: the main prompt owns typo recovery and action selection', () => {
   const prompt = buildAgenticSystemPrompt(
-    '请吧 src/login.ts 修号，然候跑侧试。',
     '/workspace',
     [],
-    undefined,
-    undefined,
-    undefined,
-    'model-led',
   );
 
   assert.match(prompt, /原始自然语言目标/u);
@@ -124,26 +119,17 @@ test('ModelLedIntentBoundary: the main prompt owns typo recovery and action sele
   assert.doesNotMatch(prompt, /当前是简单文件写入/u);
 });
 
-test('ModelLedIntentBoundary: a resolved chat contract shapes delivery without becoming tool authority', () => {
+test('ModelLedIntentBoundary: direct-answer delivery remains model-owned without local family routing', () => {
   const prompt = buildAgenticSystemPrompt(
-    '解释 gpu cpu',
     '/workspace',
     [],
-    undefined,
-    undefined,
-    undefined,
-    'model-led',
-    {
-      family: 'qa',
-      chatKind: 'chat',
-      agentTaskShape: 'general',
-      quality: { formalProjectRequired: false },
-    },
   );
 
-  assert.match(prompt, /普通 assistant message 就是有效交付/u);
+  assert.match(prompt, /简单问答直接回答/u);
+  assert.match(prompt, /纯问答可以直接回答/u);
   assert.match(prompt, /不要求固定格式、长度或结论关键词/u);
-  assert.match(prompt, /只有答案依赖当前工作区/u);
+  assert.match(prompt, /需要工作区事实时先读取/u);
+  assert.match(prompt, /工具调用只是动作提案/u);
   assert.doesNotMatch(prompt, /结论需包含：证据/u);
 });
 
@@ -174,28 +160,34 @@ test('ModelLedIntentBoundary: semantic route selection calls only the local cont
   }]);
 });
 
-test('ModelLedIntentBoundary: ordered semantic revisions reach the canonical TaskContract owner', () => {
+test('ModelLedIntentBoundary: ordered steering invalidates stale actions before receipt-backed contract revision', () => {
   const runtimeSource = readFileSync(
     path.join(rootDir, 'src/app/coding-kernel-execution.ts'),
     'utf8',
   );
-  const authoritySource = readFileSync(
-    path.join(rootDir, 'src/agent/write-authority.ts'),
+  const steerSource = readFileSync(
+    path.join(rootDir, 'src/agent/user-steer.ts'),
     'utf8',
   );
-  const revisionLineageSource = readFileSync(
-    path.join(rootDir, 'src/intent/intent-revision-lineage.ts'),
+  const runControlSource = readFileSync(
+    path.join(rootDir, '../shared/src/coding-run-control.ts'),
+    'utf8',
+  );
+  const reconcilerSource = readFileSync(
+    path.join(rootDir, 'src/app/observed-task-contract-reconciler.ts'),
     'utf8',
   );
 
-  assert.match(authoritySource, /onTaskSemanticContractRevision\?\.\(semanticContractRevision\)/u);
-  assert.match(runtimeSource, /kernelRequest\.taskContractRevision\.revise\(/u);
-  assert.match(runtimeSource, /targetPaths:\s*executionAllowed\s*\?\s*revision\.pendingTargets\s*:\s*\[\]/u);
-  assert.match(runtimeSource, /prohibitedTargets:\s*executionAllowed/u);
-  assert.match(runtimeSource, /signals\.includes\('scoped-target-write-boundary'\)/u);
-  assert.match(runtimeSource, /taskContract:\s*kernelRequest\.taskContractRevision\.current\(\)/u);
-  assert.match(revisionLineageSource, /hasIntentRevisionLanguageSignal\('reauthorization'/u);
-  assert.doesNotMatch(revisionLineageSource, /const\s+REAUTHORIZE_RE\s*=/u);
+  assert.match(steerSource, /role:\s*'user'/u);
+  assert.match(runtimeSource, /runControl\.consumeSteering\(\)/u);
+  assert.match(runtimeSource, /runControl\.closeSteeringIntake\(\)/u);
+  assert.match(runtimeSource, /onSettledModelSemanticContract:\s*settlement\s*=>/u);
+  assert.match(runtimeSource, /reconcileObservedTaskContract\(/u);
+  assert.match(runtimeSource, /taskContractRevision\.revise\(candidate\)/u);
+  assert.match(runControlSource, /invalidatesPendingActions:\s*true/u);
+  assert.match(runControlSource, /requiresModelReinterpretation:\s*true/u);
+  assert.match(reconcilerSource, /receipt\.status === 'committed'/u);
+  assert.doesNotMatch(steerSource, /REAUTHORIZE_RE|REPLACE_SCOPE_RE/u);
 });
 
 test('ModelLedIntentBoundary: model interpretation reaches completion only through local action evidence', () => {
@@ -222,7 +214,10 @@ test('ModelLedIntentBoundary: model interpretation reaches completion only throu
 
   assert.match(authoritySource, /settleModelSemanticProposal\(receipts\)/u);
   assert.match(authoritySource, /receiptMatchesSemanticProposal/u);
-  assert.match(authoritySource, /settledModelSemanticContract\s*\?\?\s*semanticContractRevision\.semanticContract/u);
+  assert.match(
+    authoritySource,
+    /get completionSemanticContract\(\)\s*\{\s*return settledModelSemanticContract\s*\?\?\s*turnSemanticContract;/u,
+  );
   assert.match(loopSource, /modelSemanticSettlement\.observe\(loopRes\)/u);
   assert.match(settlementSource, /input\.authority\.settleModelSemanticProposal\(toolReceipts\)/u);
   assert.match(settlementSource, /onSettledModelSemanticContract\?\.\(/u);

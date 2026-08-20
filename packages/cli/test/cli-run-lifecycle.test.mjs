@@ -52,6 +52,7 @@ test('CLI run lifecycle retains canonical output before projecting a blocked ter
       lifecycle,
       settlement: { status: 'blocked' },
       completion,
+      toolExecutionReceipts: [],
       result: { completion },
     });
   } catch (error) {

@@ -1,90 +1,58 @@
-const PROVIDER_RATE_LIMIT_RE = /(?:\brate[-_ ]?limit(?:ed|ing)?\b|too many requests|HTTP\s*429|429\s+too many requests|请求(?:过于|太)频繁|访问频率(?:过高|太高)|当前访问人数较多|请求达到上限|使用量达到上限|排队(?:中|等待)|(?:触发|受到|遭遇|进入|已被?|被)限流|限流(?:中|保护|限制|状态)|(?:^|[\n:：])\s*限流(?:[，,。.!！：:]|$)|(?:服务|系统)繁忙(?:[，,。.!！]|$)|请?稍后再试|service busy|waiting for verification)/i;
-const PROVIDER_RATE_LIMIT_HTML_RE = new RegExp(`${PROVIDER_RATE_LIMIT_RE.source}|\\b429\\b`, 'i');
-const PROVIDER_LOGIN_RE = /(?:请先?登录|重新登录|登录(?:已)?失效|会话(?:已)?过期|登录后继续|sign[-\s]+in\b|log[-\s]+in\b|login required|session expired|authentication required|not authenticated)/i;
-const PROVIDER_LOGIN_HTML_RE = new RegExp(`${PROVIDER_LOGIN_RE.source}|\\blogin\\b`, 'i');
+const LOGIN_LINE_RE = /^(?:error\s*[:：]\s*)?(?:LOGIN_REQUIRED|请先?登录(?:后继续)?|请重新登录|重新登录(?:后继续)?|登录(?:已)?失效|会话(?:已)?过期|login required|session expired|authentication required|not authenticated|(?:please\s+)?(?:sign|log)[-\s]?in(?:\s+(?:required|to continue))?)(?:[。.!！])?$/i;
+const VERIFICATION_LINE_RE = /^(?:(?:请|需要|必须)?(?:完成|通过|进行)?(?:人机|安全|身份|真人|滑块)?验证(?:码)?(?:后继续)?|请输入验证码(?:完成|通过|进行)?(?:人机|安全|身份|真人|滑块)?验证|verify you are human|complete captcha|captcha required)(?:[。.!！])?$/i;
+const RATE_LIMIT_LINE_RE = /^(?:error\s*[:：]\s*)?(?:rate[-_ ]?limit(?:ed|ing)?|too many requests|HTTP\s*429(?:\s+too many requests)?|429\s+too many requests|当前请求已被限流|请求(?:过于|太)频繁|访问频率(?:过高|太高)|当前访问人数较多|请求达到上限|使用量达到上限|正在排队|排队中|系统繁忙|服务繁忙|请稍后再试|service busy|waiting for verification)(?:[，,。.!！：:]\s*[^\n]{0,120})?$/i;
+const ERROR_LINE_RE = /^(?:bad gateway|service unavailable|gateway timeout|application error|something went wrong|页面加载失败|网络错误|请求失败|ERR_[A-Z_]+|HTTP\s*(?:4\d\d|5\d\d))(?:[：:]?\s*[^\n]{0,160})?$/i;
 
 export function looksLikeProviderLoginGate(text: string): boolean {
   const normalized = normalizeSurfaceText(text);
   if (!normalized) return false;
-  if (looksLikeProviderLoginRequiredSentinel(normalized)) return true;
   if (looksLikeHtmlSurface(normalized)) {
-    return PROVIDER_LOGIN_HTML_RE.test(stripHtml(normalized));
+    return /(?:\blogin\b|sign[-\s]?in|log[-\s]?in|请先?登录|重新登录|会话(?:已)?过期)/i.test(stripHtml(normalized));
   }
-  if (!looksLikeProviderControlText(normalized)) return false;
-  return PROVIDER_LOGIN_RE.test(normalized);
+  const control = parseControlPayload(normalized);
+  if (control) return containsControlValue(control, ['LOGIN_REQUIRED', 'login-required']);
+  return isBoundedControlLine(normalized, LOGIN_LINE_RE);
 }
 
 export function looksLikeProviderVerificationGate(text: string): boolean {
   const normalized = normalizeSurfaceText(text);
   if (!normalized) return false;
   if (looksLikeHtmlSurface(normalized)) {
-    return /(?:captcha|人机验证|安全验证|身份验证|真人验证|滑块验证|验证码|verify you are human|verify.*captcha)/i.test(stripHtml(normalized));
+    return /(?:captcha|人机验证|安全验证|身份验证|真人验证|滑块验证|验证码|verify you are human)/i.test(stripHtml(normalized));
   }
-  if (!looksLikeProviderControlText(normalized)) return false;
-  return /(?:captcha|人机验证|安全验证|身份验证|真人验证|滑块验证|验证你不是机器人|请输入.{0,24}验证码|请.{0,24}(?:输入|完成|通过|进行).{0,24}验证码|验证码(?:错误|过期|校验失败|验证失败)|complete.{0,32}captcha|verify.{0,32}(?:human|captcha))/i.test(normalized);
+  const control = parseControlPayload(normalized);
+  if (control) return containsControlValue(control, ['captcha', 'verification-required']);
+  return isBoundedControlLine(normalized, VERIFICATION_LINE_RE);
 }
 
 export function looksLikeProviderRateLimitGate(text: string): boolean {
   const normalized = normalizeSurfaceText(text);
   if (!normalized) return false;
   if (looksLikeHtmlSurface(normalized)) {
-    return PROVIDER_RATE_LIMIT_HTML_RE.test(stripHtml(normalized));
+    return /(?:\b429\b|rate[-_ ]?limit|too many requests|请求(?:过于|太)频繁|限流|系统繁忙|服务繁忙)/i.test(stripHtml(normalized));
   }
-  if (!looksLikeProviderControlText(normalized)) return false;
-  return PROVIDER_RATE_LIMIT_RE.test(normalized);
+  const control = parseControlPayload(normalized);
+  if (control) return containsControlValue(control, ['RATE_LIMITED', 'rate-limited', '429']);
+  return isBoundedControlLine(normalized, RATE_LIMIT_LINE_RE);
 }
 
 export function looksLikeProviderErrorSurface(text: string): boolean {
   const normalized = normalizeSurfaceText(text);
   if (!normalized) return false;
   if (looksLikeHtmlSurface(normalized)) {
-    return /(?:bad gateway|service unavailable|gateway timeout|application error|something went wrong|页面加载失败|(?:服务|系统)繁忙(?:[，,。.!！]|$)|网络错误|请求失败|ERR_[A-Z_]+|HTTP\s*(?:4\d\d|5\d\d)|error|unavailable|gateway|cloudflare|错误|不可用)/i.test(stripHtml(normalized));
+    return /(?:bad gateway|service unavailable|gateway timeout|application error|something went wrong|页面加载失败|网络错误|请求失败|ERR_[A-Z_]+|HTTP\s*(?:4\d\d|5\d\d)|cloudflare)/i.test(stripHtml(normalized));
   }
-  if (!looksLikeProviderControlText(normalized)) return false;
-  return /(?:bad gateway|service unavailable|gateway timeout|application error|something went wrong|页面加载失败|(?:服务|系统)繁忙(?:[，,。.!！]|$)|网络错误|请求失败|ERR_[A-Z_]+|HTTP\s*(?:4\d\d|5\d\d))/i.test(normalized);
+  const control = parseControlPayload(normalized);
+  if (control) return containsProviderErrorControl(control);
+  return isBoundedControlLine(normalized, ERROR_LINE_RE);
 }
 
 function normalizeSurfaceText(text: string): string {
   return String(text || '').replace(/\u00a0/g, ' ').trim();
 }
 
-function looksLikeProviderLoginRequiredSentinel(text: string): boolean {
-  const compact = text.trim();
-  if (/^(?:error\s*:\s*)?LOGIN_REQUIRED$/i.test(compact)) return true;
-  if (/^RESPONSE_CORRUPTED\s*:\s*login-required$/i.test(compact)) return true;
-  if (compact.length <= 240 && /^(?:error|failed|failure|provider\s+failed)\b[\s\S]*\bLOGIN_REQUIRED\b/i.test(compact)) {
-    return true;
-  }
-  if (compact.length <= 1000 && /^[{[]/.test(compact)) {
-    try {
-      const parsed = JSON.parse(compact);
-      return containsLoginRequiredControlValue(parsed);
-    } catch {
-      return false;
-    }
-  }
-  return false;
-}
-
-function containsLoginRequiredControlValue(value: unknown): boolean {
-  if (!value || typeof value !== 'object') return false;
-  if (Array.isArray(value)) {
-    return value.some((item) => containsLoginRequiredControlValue(item));
-  }
-  const record = value as Record<string, unknown>;
-  return record.error === 'LOGIN_REQUIRED'
-    || record.code === 'LOGIN_REQUIRED'
-    || record.reason === 'LOGIN_REQUIRED'
-    || record.errorCategory === 'login-required';
-}
-
-function looksLikeProviderControlText(text: string): boolean {
-  const head = text.slice(0, 240);
-  if (/^(?:\s|[#>*-])*(?:error|错误|异常|failed|failure|登录|请先?登录|重新登录|sign\s*in|log\s*in|login|required|验证码|请输入|captcha|rate[-_ ]?limit(?:ed|ing)?\b|too many requests|HTTP\s*(?:4\d\d|5\d\d)|服务繁忙|系统繁忙|限流(?:中|保护|限制|状态|[，,。.!！：:]))/i.test(head)) {
-    return true;
-  }
-  if (looksLikeModelAnswerText(text)) return false;
-  return text.length <= 1200;
+function isBoundedControlLine(text: string, pattern: RegExp): boolean {
+  return text.length <= 320 && !/[\r\n]/.test(text) && pattern.test(text);
 }
 
 function looksLikeHtmlSurface(text: string): boolean {
@@ -99,8 +67,31 @@ function stripHtml(text: string): string {
     .trim();
 }
 
-function looksLikeModelAnswerText(text: string): boolean {
-  return /(?:^|\n)\s*#{1,6}\s+\S/.test(text)
-    || /(?:\[TOOL:[A-Za-z_]|<tool_call\b|\[调用\s+[A-Za-z_]\w*\s*\])/i.test(text)
-    || /(?:结论|依据|原因|问题|风险|建议|对策|方案|任务拆解|验证结果|summary|conclusion|evidence|recommendation)/i.test(text);
+function parseControlPayload(text: string): unknown | undefined {
+  if (text.length > 2000 || !/^(?:\{|\[)/.test(text)) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+function containsControlValue(value: unknown, expected: readonly string[]): boolean {
+  if (typeof value === 'string') return expected.includes(value);
+  if (typeof value === 'number') return expected.includes(String(value));
+  if (!value || typeof value !== 'object') return false;
+  if (Array.isArray(value)) return value.some(item => containsControlValue(item, expected));
+  const record = value as Record<string, unknown>;
+  return ['error', 'code', 'reason', 'errorCategory', 'status']
+    .some(key => containsControlValue(record[key], expected));
+}
+
+function containsProviderErrorControl(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  if (Array.isArray(value)) return value.some(containsProviderErrorControl);
+  const record = value as Record<string, unknown>;
+  const status = record.status ?? record.statusCode;
+  if (typeof status === 'number' && status >= 400 && status <= 599) return true;
+  const code = record.error ?? record.code ?? record.reason;
+  return typeof code === 'string' && /^(?:PROVIDER_ERROR|HTTP_[45]\d\d|ERR_[A-Z_]+)$/.test(code);
 }

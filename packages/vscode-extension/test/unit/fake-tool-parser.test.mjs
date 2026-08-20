@@ -281,6 +281,18 @@ test('FakeToolParser: keeps ordinary structured text JSON inert', () => {
   assert.equal(stripToolCallBlocks(text), text);
 });
 
+test('FakeToolParser: bare todo and completion-shaped JSON remain inert', () => {
+  for (const text of [
+    '{"todoList":[{"id":1,"title":"测试","status":"completed"}]}',
+    '{"summary":"done"}',
+    '```json\n{"summary":"任务完成"}\n```',
+  ]) {
+    assert.equal(parseFakeToolCalls(text).length, 0);
+    assert.equal(containsFakeToolCallProtocol(text), false);
+    assert.equal(stripToolCallBlocks(text), text);
+  }
+});
+
 test('FakeToolParser: recovers quote-damaged manage_todo_list control calls', () => {
   const text = [
     'Todo 状态需要校正。',

@@ -105,7 +105,17 @@ test('TaskContractPort fails closed on malformed, contradictory, and spoofed con
 test('all product Surfaces resolve through the same TaskContractPort semantics', () => {
   const prompt = 'Fix src/value.ts and run the relevant tests.';
   const contracts = ['vscode', 'cli', 'headless'].map(surface => (
-    resolveCodingKernelTaskContract({ prompt, surface })
+    resolveCodingKernelTaskContract({
+      prompt,
+      surface,
+      modeHint: 'change',
+      confirmedWorkspaceMutation: true,
+      targetPaths: ['src/value.ts'],
+      targetPathsAuthoritative: true,
+      deliverableKinds: ['source-change', 'verification-result'],
+      verificationRequired: true,
+      verificationRequirementAuthoritative: true,
+    })
   ));
 
   for (const contract of contracts) {

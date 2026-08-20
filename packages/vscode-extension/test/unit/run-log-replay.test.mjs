@@ -979,7 +979,7 @@ test('run log replay detects completed runs with unresolved provider failure evi
       && /provider\.failed/.test(issue.message)
     ));
 
-    assert.equal(report.issues.some(issue => issue.kind === 'provider-truncated-response'), true);
+    assert.equal(report.issues.some(issue => issue.kind === 'provider-truncated-response'), false);
     assert.equal(unresolved?.severity, 'error');
     assert.match(unresolved?.evidence ?? '', /provider:interrupted-tool-block/);
   } finally {
@@ -2352,14 +2352,28 @@ test('run log replay detects fenced provider write requests that were not execut
 });
 
 test('run log replay keeps safety-interstitial corrupted responses sticky after a later answer', () => {
-  const { dir, logPath } = writeLog([
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-log-sticky-provider-'));
+  const runId = 'np05-corrupted-sticky';
+  const context = createDevSeekRunContext({
+    workspaceRoot,
+    runId,
+    userPrompt: 'Continue after a failed provider attempt.',
+    traceLevel: 'debug',
+  });
+  recordProviderBoundaryEvidence({
+    workspaceRoot,
+    runId,
+    token: context.evidenceParticipantToken,
+    operationId: 'provider:sticky-corruption',
+  });
+  const logPath = writeWorkspaceRunLog(workspaceRoot, runId, [
     {
       ts: '2026-07-25T02:20:00.000Z',
       level: 'info',
       source: 'vscode-extension.agent',
       phase: 'run-context',
       event: 'agent-run-started',
-      runId: 'np05-corrupted-sticky',
+      runId,
       data: { appVersion: '1.0.0-debug.test', gitCommit: 'abc123' },
     },
     {
@@ -2368,7 +2382,7 @@ test('run log replay keeps safety-interstitial corrupted responses sticky after 
       source: 'vscode-extension',
       phase: 'payload',
       event: 'payload-recorded',
-      runId: 'np05-corrupted-sticky',
+      runId,
       data: {
         name: 'extension.response.raw',
         content: [
@@ -2384,7 +2398,7 @@ test('run log replay keeps safety-interstitial corrupted responses sticky after 
       source: 'vscode-extension',
       phase: 'payload',
       event: 'payload-recorded',
-      runId: 'np05-corrupted-sticky',
+      runId,
       data: {
         name: 'extension.response.raw',
         content: '结论：安全重试必须只生成安全响应，不能执行损坏或未验证的工具内容。依据：上一轮 Provider 输出已标记 RESPONSE_CORRUPTED。建议：保留失败事实并重新收集完整证据。',
@@ -2396,7 +2410,7 @@ test('run log replay keeps safety-interstitial corrupted responses sticky after 
       source: 'vscode-extension.agent',
       phase: 'run-context',
       event: 'agent-run-completed',
-      runId: 'np05-corrupted-sticky',
+      runId,
       data: { status: 'completed', tasksTotal: 1, tasksApplied: 0, tasksFailed: 0, changedPaths: [] },
     },
   ]);
@@ -2406,10 +2420,15 @@ test('run log replay keeps safety-interstitial corrupted responses sticky after 
     const kinds = new Set(report.issues.map(issue => issue.kind));
 
     assert.equal(report.providerResponses, 2);
-    assert.equal(kinds.has('provider-truncated-response'), true);
+    assert.equal(kinds.has('provider-truncated-response'), false);
+    assert.equal(report.issues.some(issue => (
+      issue.kind === 'failure-status-reported-completed'
+      && /provider\.failed/.test(issue.message)
+      && /provider:sticky-corruption/.test(issue.evidence ?? '')
+    )), true);
     assert.equal(kinds.has('missing-agent-run-completion'), false);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(workspaceRoot, { recursive: true, force: true });
   }
 });
 
@@ -2817,36 +2836,49 @@ test('run log replay rejects completed metadata that omits artifact verification
 });
 
 test('run log replay rejects a completed source-claim report with no grounding event', () => {
-  const prompt = '读取 /repo/source.hpp，提取 kAlpha、kBeta 的真实值，创建 Markdown 报告 /repo/facts.md。';
-  const { dir, logPath } = writeProductionRunLog({
-    prompt,
-    statuses: [{
-      type: 'agentStatus',
-      phase: 'apply',
-      state: 'completed',
-      taskAction: 'create',
-      taskFile: '/repo/facts.md',
-      taskDesc: '创建源码事实 Markdown 报告',
-      title: 'Markdown 文档已写入',
-      detail: '/repo/facts.md',
-    }],
-    completion: {
-      status: 'completed',
+  const taskContractFingerprint = 'source-claim-contract-fingerprint';
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-08-20T01:00:00.000Z',
+      source: 'vscode-extension.agent',
+      event: 'agent-run-started',
+      runId: 'typed-source-claim-obligation',
       data: {
-        changedPaths: ['/repo/facts.md'],
-        tasksApplied: 0,
+        requiresSourceClaimArtifactVerification: true,
+        taskContractFingerprint,
       },
     },
-  });
+    {
+      ts: '2026-08-20T01:00:01.000Z',
+      source: 'vscode-extension.agent',
+      event: 'agent-status',
+      runId: 'typed-source-claim-obligation',
+      data: {
+        phase: 'apply',
+        state: 'completed',
+        taskAction: 'create',
+        taskFile: '/repo/facts.md',
+        taskDesc: '创建源码事实 Markdown 报告',
+        title: 'Markdown 文档已写入',
+        detail: '/repo/facts.md',
+      },
+    },
+    {
+      ts: '2026-08-20T01:00:02.000Z',
+      source: 'vscode-extension.agent',
+      event: 'agent-run-completed',
+      runId: 'typed-source-claim-obligation',
+      data: {
+        status: 'completed',
+        changedPaths: ['/repo/facts.md'],
+        tasksApplied: 1,
+        requiresSourceClaimArtifactVerification: true,
+        taskContractFingerprint,
+      },
+    },
+  ]);
 
   try {
-    const events = loadProductionRunEvents(logPath);
-    const started = events.find(entry => entry.event === 'agent-run-started');
-    const completed = events.find(entry => entry.event === 'agent-run-completed');
-    assert.equal(started.data.requiresSourceClaimArtifactVerification, true);
-    assert.equal(typeof started.data.prompt, 'object');
-    assert.equal(JSON.stringify(started.data).includes(prompt), false);
-    assert.equal(completed.data.taskContractFingerprint, started.data.taskContractFingerprint);
     const report = replayRunLog(logPath);
     assert.equal(report.artifactVerifications, 0);
     const mismatches = report.issues.filter(issue => issue.kind === 'artifact-verification-completion-mismatch');

@@ -3,10 +3,28 @@ import assert from 'node:assert/strict';
 import {
   CODING_CONFORMANCE_DEVELOPMENT_FIXTURES,
   classifyCodingTerminalEffects,
-  extractCodingWorkspacePaths,
   projectCodingKernelTaskContract,
   resolveCodingKernelTaskContract,
 } from '../dist/index.js';
+
+function authorityProjection(contract) {
+  return {
+    mode: contract.mode,
+    orientation: {
+      mode: contract.orientation.mode,
+      mutating: contract.orientation.mutating,
+      externalEffectRequested: contract.orientation.externalEffectRequested,
+      source: contract.orientation.source,
+      reasonCodes: contract.orientation.reasonCodes,
+    },
+    scope: contract.scope,
+    deliverables: contract.deliverables,
+    constraints: contract.constraints,
+    nonGoals: contract.nonGoals,
+    externalBoundaries: contract.externalBoundaries,
+    acceptance: contract.acceptance,
+  };
+}
 
 test('one task-contract resolver keeps all fixture semantics equal across Surfaces', () => {
   for (const fixture of CODING_CONFORMANCE_DEVELOPMENT_FIXTURES) {
@@ -27,111 +45,333 @@ test('one task-contract resolver keeps all fixture semantics equal across Surfac
   }
 });
 
-test('task-contract mode resolution preserves read-only questions and explicit change authority', () => {
-  const explain = resolveCodingKernelTaskContract({
-    prompt: 'How does the update command work?',
-    surface: 'headless',
-  });
-  const review = resolveCodingKernelTaskContract({
-    prompt: 'Analyze the release workflow and package.json.',
-    surface: 'headless',
-  });
-  const change = resolveCodingKernelTaskContract({
-    prompt: 'Review src/value.ts and fix the incorrect return value.',
-    surface: 'headless',
-  });
-
-  assert.equal(explain.mode, 'explain');
-  assert.equal(explain.orientation.mode, explain.mode);
-  assert.equal(review.mode, 'review');
-  assert.equal(review.orientation.mode, review.mode);
-  assert.equal(change.mode, 'change');
-  assert.equal(change.orientation.mode, change.mode);
-  assert.deepEqual(change.deliverables.map(deliverable => deliverable.kind), [
-    'source-change',
-    'verification-result',
-  ]);
-});
-
-test('Surface semantic arbitration prevents domain nouns from becoming external-effect boundaries', () => {
-  const prompt = [
-    'Complete include/deployment_coordinator.hpp and src/deployment_coordinator.cpp.',
-    'Run ./test.sh after the local implementation is complete.',
-  ].join(' ');
-  const localContract = resolveCodingKernelTaskContract({
-    prompt,
+test('raw wording cannot change authority settled by the typed semantic contract', () => {
+  const prompts = [
+    '请修复 src/value.ts 的返回值，并运行测试。',
+    '请休复 src/value.ts，把返汇值搞对，测一下。',
+    'src/value.ts の戻り値を修正してテストしてください。',
+    'Fix the return value in src/value.ts and verify it.',
+    'MODEL_LATEST_OK is the expected value in src/value.ts; correct the implementation.',
+    'The TEST and deploy labels are domain data, not extra operations; update src/value.ts only.',
+  ];
+  const typedInput = {
     surface: 'vscode',
     modeHint: 'change',
-    externalEffectIntent: 'none',
-  });
-  const externalContract = resolveCodingKernelTaskContract({
-    prompt: 'Deploy the service to production after running ./test.sh.',
-    surface: 'vscode',
-    modeHint: 'release',
-    externalEffectIntent: 'requested',
-  });
-
-  assert.deepEqual(localContract.externalBoundaries, []);
-  assert.equal(localContract.acceptance.some(item => item.id === 'verified'), true);
-  assert.deepEqual(
-    externalContract.externalBoundaries.map(boundary => boundary.id),
-    ['external-deployment'],
-  );
-});
-
-test('explicit run-only verification keeps the workspace read-only and requires terminal evidence', () => {
-  const contract = resolveCodingKernelTaskContract({
-    prompt: '只跑一下 health 检查，把结果告诉我；不要改文件，失败也不要修。',
-    surface: 'vscode',
-    modeHint: 'review',
-    verificationRequired: true,
-  });
-
-  assert.equal(contract.mode, 'review');
-  assert.deepEqual(contract.deliverables.map(deliverable => deliverable.kind), [
-    'report',
-    'verification-result',
-  ]);
-  assert.deepEqual(contract.acceptance.map(criterion => criterion.id), [
-    'grounded-response',
-    'verified',
-  ]);
-  assert.equal(contract.constraints.includes('no-workspace-mutation'), true);
-  assert.equal(contract.constraints.includes('verification-before-completion'), true);
-  assert.equal(contract.nonGoals.includes('workspace-mutation'), true);
-});
-
-test('an explicit no-run boundary overrides a stale run-only verification proposal', () => {
-  const contract = resolveCodingKernelTaskContract({
-    prompt: 'Review src/health.js only. Do not run, test, or modify anything.',
-    surface: 'vscode',
-    modeHint: 'review',
-    verificationRequired: true,
-  });
-
-  assert.deepEqual(contract.deliverables.map(deliverable => deliverable.kind), ['report']);
-  assert.deepEqual(contract.acceptance.map(criterion => criterion.id), ['grounded-response']);
-  assert.equal(contract.constraints.includes('verification-before-completion'), false);
-});
-
-test('authoritative Surface verification is not revoked by a scoped test-file write prohibition', () => {
-  const contract = resolveCodingKernelTaskContract({
-    prompt: '只修改 src/value.cpp，不要改测试和 CMake，完成后运行 ./test.sh。',
-    surface: 'vscode',
-    modeHint: 'change',
+    confirmedWorkspaceMutation: true,
+    targetPaths: ['src/value.ts'],
+    targetPathsAuthoritative: true,
+    excludedTargetPaths: ['tests/**'],
+    strictTargetScope: true,
+    deliverableKinds: ['source-change', 'verification-result'],
     verificationRequired: true,
     verificationRequirementAuthoritative: true,
     externalEffectIntent: 'none',
-  });
+  };
+  const contracts = prompts.map(prompt => resolveCodingKernelTaskContract({
+    prompt,
+    ...typedInput,
+  }));
+  const expected = authorityProjection(contracts[0]);
 
-  assert.equal(contract.constraints.includes('verification-before-completion'), true);
-  assert.equal(contract.acceptance.some(item => item.id === 'verified'), true);
+  for (const [index, contract] of contracts.entries()) {
+    assert.deepEqual(authorityProjection(contract), expected, prompts[index]);
+    assert.equal(contract.goal, prompts[index]);
+    assert.equal(contract.orientation.prompt, prompts[index]);
+  }
 });
 
-test('terminal effect classification is command-owned and conservative for package operations', () => {
+test('ordinary natural language defaults read-only until a model or Surface supplies typed intent', () => {
+  const prompts = [
+    '修复 src/value.ts 并运行测试',
+    '请休复 src/value.ts，然候跑测式',
+    'Create report.md and make it professional.',
+    'Deploy the service to production.',
+    'MODEL_LATEST_OK contains TEST but is only a constant name.',
+    '説明 GPU CPU の違い、その後 src/gpu.cpp を変更してください。',
+    'Read docs/example.md and fix src/value.cpp, but do not touch any other file.',
+  ];
+
+  for (const prompt of prompts) {
+    const contract = resolveCodingKernelTaskContract({ prompt, surface: 'headless' });
+    assert.equal(contract.mode, 'explain', prompt);
+    assert.equal(contract.orientation.source, 'read-only-default', prompt);
+    assert.deepEqual(contract.scope.include, [], prompt);
+    assert.deepEqual(contract.scope.exclude, [], prompt);
+    assert.deepEqual(contract.deliverables, [{ id: 'response', kind: 'report' }], prompt);
+    assert.deepEqual(contract.externalBoundaries, [], prompt);
+    assert.equal(contract.constraints.includes('no-workspace-mutation'), true, prompt);
+    assert.equal(contract.acceptance.some(item => item.id === 'subjective-quality'), false, prompt);
+  }
+});
+
+test('typed mode is the sole positive orientation authority', () => {
+  const cases = [
+    ['explain', false, false],
+    ['review', false, false],
+    ['change', true, false],
+    ['release', true, true],
+  ];
+
+  for (const [modeHint, mutating, externalEffectRequested] of cases) {
+    const contract = resolveCodingKernelTaskContract({
+      prompt: 'The words explain review change release are sample labels.',
+      surface: 'cli',
+      modeHint,
+      confirmedWorkspaceMutation: true,
+      verificationRequired: false,
+      verificationRequirementAuthoritative: true,
+    });
+    assert.equal(contract.mode, modeHint);
+    assert.equal(contract.orientation.source, 'mode-hint');
+    assert.equal(contract.orientation.mutating, mutating);
+    assert.equal(contract.orientation.externalEffectRequested, externalEffectRequested);
+  }
+});
+
+test('typed target scope is normalized, filtered, and enforced without parsing prompt paths', () => {
+  const contract = resolveCodingKernelTaskContract({
+    prompt: 'Use the model-set scope; examples/a.txt in this sentence is not authority.',
+    surface: 'vscode',
+    modeHint: 'change',
+    confirmedWorkspaceMutation: true,
+    targetPaths: [
+      './src/value.ts',
+      'src//helper.ts',
+      'src/value.ts',
+      'tests/value.test.ts',
+      '../outside.ts',
+      '/tmp/absolute.ts',
+    ],
+    targetPathsAuthoritative: true,
+    excludedTargetPaths: ['tests/**'],
+    strictTargetScope: true,
+    verificationRequired: false,
+    verificationRequirementAuthoritative: true,
+  });
+
+  assert.deepEqual(contract.scope.include, ['src/value.ts', 'src/helper.ts']);
+  assert.deepEqual(contract.scope.exclude, ['tests/**']);
+  assert.deepEqual(contract.deliverables, [
+    { id: 'source-change', kind: 'source-change', path: 'src/value.ts' },
+    { id: 'source-change:2', kind: 'source-change', path: 'src/helper.ts' },
+  ]);
+  assert.equal(contract.constraints.includes('no-other-files'), true);
+  assert.equal(contract.acceptance.some(item => item.id === 'scoped-change'), true);
+});
+
+test('non-authoritative target candidates cannot grant workspace mutation scope', () => {
+  const contract = resolveCodingKernelTaskContract({
+    prompt: 'Implement the requested behavior.',
+    surface: 'vscode',
+    modeHint: 'change',
+    confirmedWorkspaceMutation: true,
+    targetPaths: ['src/candidate.ts'],
+    targetPathsAuthoritative: false,
+    contextFiles: ['docs/context.md'],
+    verificationRequired: false,
+    verificationRequirementAuthoritative: true,
+  });
+
+  assert.deepEqual(contract.scope.include, []);
+  assert.deepEqual(contract.deliverables, [{ id: 'source-change', kind: 'source-change' }]);
+});
+
+test('context files remain read evidence and never become mutation targets', () => {
+  const review = resolveCodingKernelTaskContract({
+    prompt: 'Review the supplied evidence.',
+    surface: 'cli',
+    modeHint: 'review',
+    contextFiles: ['./docs/context.md'],
+    targetPaths: ['src/reference.ts'],
+    targetPathsAuthoritative: false,
+  });
+  const change = resolveCodingKernelTaskContract({
+    prompt: 'Implement the model-set change.',
+    surface: 'cli',
+    modeHint: 'change',
+    confirmedWorkspaceMutation: true,
+    contextFiles: ['docs/context.md'],
+    targetPaths: ['src/target.ts'],
+    targetPathsAuthoritative: true,
+    verificationRequired: false,
+    verificationRequirementAuthoritative: true,
+  });
+
+  assert.deepEqual(review.scope.include, ['src/reference.ts', 'docs/context.md']);
+  assert.deepEqual(review.deliverables, [{ id: 'response', kind: 'report' }]);
+  assert.deepEqual(change.scope.include, ['src/target.ts']);
+  assert.equal(change.deliverables.some(item => item.path === 'docs/context.md'), false);
+});
+
+test('typed deliverable kinds distinguish report artifacts from source changes', () => {
+  const report = resolveCodingKernelTaskContract({
+    prompt: 'Produce the requested artifact.',
+    surface: 'vscode',
+    modeHint: 'change',
+    confirmedWorkspaceMutation: true,
+    targetPaths: ['docs/audit.md'],
+    targetPathsAuthoritative: true,
+    deliverableKinds: ['report'],
+    verificationRequired: false,
+    verificationRequirementAuthoritative: true,
+  });
+  const mixed = resolveCodingKernelTaskContract({
+    prompt: 'Produce both typed artifacts.',
+    surface: 'vscode',
+    modeHint: 'change',
+    confirmedWorkspaceMutation: true,
+    targetPaths: ['src/value.ts', 'docs/audit.md'],
+    targetPathsAuthoritative: true,
+    deliverableKinds: ['source-change', 'report'],
+    verificationRequired: false,
+    verificationRequirementAuthoritative: true,
+  });
+
+  assert.deepEqual(report.deliverables, [
+    { id: 'report', kind: 'report', path: 'docs/audit.md' },
+  ]);
+  assert.deepEqual(mixed.deliverables, [
+    { id: 'source-change', kind: 'source-change', path: 'src/value.ts' },
+    { id: 'report', kind: 'report', path: 'docs/audit.md' },
+  ]);
+});
+
+test('authoritative verification state adds or removes evidence obligations explicitly', () => {
+  const runOnly = resolveCodingKernelTaskContract({
+    prompt: 'Run the selected verifier and report its result.',
+    surface: 'vscode',
+    modeHint: 'review',
+    verificationRequired: true,
+    verificationRequirementAuthoritative: true,
+  });
+  const noRun = resolveCodingKernelTaskContract({
+    prompt: 'Apply the requested report update without running tools.',
+    surface: 'vscode',
+    modeHint: 'change',
+    confirmedWorkspaceMutation: true,
+    targetPaths: ['report.md'],
+    targetPathsAuthoritative: true,
+    deliverableKinds: ['report'],
+    verificationRequired: false,
+    verificationRequirementAuthoritative: true,
+  });
+
+  assert.deepEqual(runOnly.deliverables.map(item => item.kind), ['report', 'verification-result']);
+  assert.equal(runOnly.acceptance.some(item => item.id === 'verified'), true);
+  assert.equal(runOnly.constraints.includes('no-workspace-mutation'), true);
+  assert.deepEqual(noRun.deliverables.map(item => item.kind), ['report']);
+  assert.equal(noRun.acceptance.some(item => item.id === 'verified'), false);
+  assert.equal(noRun.constraints.includes('verification-before-completion'), false);
+});
+
+test('unconfirmed mutation remains read-only even when the semantic task mode is change', () => {
+  const contract = resolveCodingKernelTaskContract({
+    prompt: 'Persist the approved project memory.',
+    surface: 'vscode',
+    modeHint: 'change',
+    confirmedWorkspaceMutation: false,
+    targetPaths: ['MEMORY.md'],
+    targetPathsAuthoritative: true,
+    externalEffectIntent: 'requested',
+    verificationRequired: false,
+    verificationRequirementAuthoritative: true,
+  });
+
+  assert.equal(contract.mode, 'change');
+  assert.equal(contract.deliverables.some(item => item.kind === 'source-change'), false);
+  assert.equal(contract.constraints.includes('no-workspace-mutation'), true);
+  assert.deepEqual(contract.externalBoundaries.map(boundary => boundary.id), ['external-effect']);
+});
+
+test('typed dependency and network effects create approval and source boundaries', () => {
+  const dependency = resolveCodingKernelTaskContract({
+    prompt: 'Use the selected package.',
+    surface: 'headless',
+    modeHint: 'change',
+    dependencyEffect: true,
+    verificationRequired: false,
+    verificationRequirementAuthoritative: true,
+  });
+  const network = resolveCodingKernelTaskContract({
+    prompt: 'Consult the selected remote source.',
+    surface: 'headless',
+    modeHint: 'review',
+    networkEffect: true,
+  });
+
+  assert.deepEqual(dependency.deliverables, [
+    { id: 'dependency-change', kind: 'source-change', path: 'package.json' },
+  ]);
+  assert.equal(dependency.constraints.includes('dependency-change-requires-approval'), true);
+  assert.equal(dependency.constraints.includes('network-requires-approval'), true);
+  assert.deepEqual(dependency.externalBoundaries, [{
+    id: 'external-data-source',
+    kind: 'data-source',
+    subject: 'package registry metadata',
+    sourceRef: 'typed-effect:dependency',
+  }]);
+  const dependencyOutcome = dependency.acceptance.find(criterion => criterion.id === 'requested-outcome');
+  const dependencyAuthority = dependency.acceptance.find(criterion => criterion.id === 'authority');
+  assert.deepEqual(dependencyOutcome.externalBoundaryRefs, ['external-data-source']);
+  assert.equal(dependencyOutcome.oracle.evidenceKinds.includes('source-citation'), true);
+  assert.deepEqual(dependencyAuthority.externalBoundaryRefs, []);
+  assert.deepEqual(dependencyAuthority.oracle.evidenceKinds, ['authority-receipt']);
+  assert.equal(network.constraints.includes('network-requires-approval'), true);
+  assert.deepEqual(network.externalBoundaries.map(boundary => boundary.id), ['external-data-source']);
+  assert.deepEqual(
+    network.acceptance.find(criterion => criterion.id === 'authority').externalBoundaryRefs,
+    [],
+  );
+});
+test('declared external boundaries are preserved without manufacturing domain-word effects', () => {
+  const declared = {
+    id: 'issue-42',
+    kind: 'data-source',
+    subject: 'tracked issue requirements',
+    sourceRef: 'host:issue-42',
+  };
+  const contract = resolveCodingKernelTaskContract({
+    prompt: 'Review src/license/deploy-test.ts and MODEL_LATEST_OK.',
+    surface: 'cli',
+    modeHint: 'review',
+    externalBoundaries: [declared, declared],
+    externalEffectIntent: 'none',
+  });
+
+  assert.deepEqual(contract.externalBoundaries, [declared]);
+  assert.equal(contract.constraints.includes('external-effect-requires-approval'), false);
+});
+
+test('subjective quality and dependency constraints require typed semantic facts', () => {
+  const base = {
+    prompt: 'Make docs/report.md beautiful, professional, and dependency-free.',
+    surface: 'vscode',
+    modeHint: 'change',
+    confirmedWorkspaceMutation: true,
+    targetPaths: ['docs/report.md'],
+    targetPathsAuthoritative: true,
+    deliverableKinds: ['report'],
+    verificationRequired: false,
+    verificationRequirementAuthoritative: true,
+  };
+  const untyped = resolveCodingKernelTaskContract(base);
+  const typed = resolveCodingKernelTaskContract({
+    ...base,
+    subjectiveAcceptance: true,
+    noDependencies: true,
+  });
+
+  assert.equal(untyped.acceptance.some(item => item.id === 'subjective-quality'), false);
+  assert.equal(untyped.constraints.includes('no-dependencies'), false);
+  assert.equal(typed.acceptance.some(item => item.id === 'subjective-quality'), true);
+  assert.equal(typed.constraints.includes('no-dependencies'), true);
+  assert.equal(typed.nonGoals.includes('introduce-new-dependencies'), true);
+});
+
+test('terminal effect classification is local arbitration over an explicit command payload', () => {
+  assert.deepEqual(classifyCodingTerminalEffects('echo MODEL_LATEST_OK'), ['process']);
   assert.deepEqual(classifyCodingTerminalEffects('node --test test/value.test.js'), ['process']);
   assert.deepEqual(classifyCodingTerminalEffects('./test.sh 2>&1'), ['process']);
-  assert.deepEqual(classifyCodingTerminalEffects('cmake -S . -B build 2>&1'), ['process']);
   assert.deepEqual(classifyCodingTerminalEffects('printf result > result.txt'), [
     'process',
     'workspace-mutation',
@@ -148,248 +388,33 @@ test('terminal effect classification is command-owned and conservative for packa
   assert.throws(() => classifyCodingTerminalEffects(''), /missing-command/);
 });
 
-test('task resolution separates subjective acceptance from executable verification', () => {
-  const contract = resolveCodingKernelTaskContract({
-    prompt: 'Create report.md and make it look professional.',
-    surface: 'vscode',
-    targetPaths: ['report.md'],
-  });
-
-  assert.equal(contract.acceptance.some(item => item.oracle.kind === 'subjective'), true);
-  assert.equal(contract.acceptance.some(item => item.oracle.kind === 'workspace-readback'), true);
-});
-
-test('workspace paths named license do not create an external license boundary', () => {
-  const contract = resolveCodingKernelTaskContract({
-    prompt: 'Refactor src/license/client.ts and run focused tests.',
-    surface: 'vscode',
-  });
-
-  assert.equal(contract.externalBoundaries.some(boundary => boundary.kind === 'license'), false);
-});
-
-test('task resolution normalizes sentence punctuation and keeps every declared root or nested target', () => {
-  const prompt = 'Create src/todo.cpp. Also create devseek.verify.json, then verify both.';
-  const contract = resolveCodingKernelTaskContract({ prompt, surface: 'cli' });
-
-  assert.deepEqual(extractCodingWorkspacePaths(prompt), ['src/todo.cpp', 'devseek.verify.json']);
-  assert.deepEqual(contract.scope.include, ['src/todo.cpp', 'devseek.verify.json']);
-  assert.deepEqual(
-    contract.deliverables.filter(item => item.kind === 'source-change').map(item => item.path),
-    ['src/todo.cpp', 'devseek.verify.json'],
-  );
-});
-
-test('Chinese standalone authoring request scopes the explicitly named root file', () => {
-  const prompt = [
-    '请在当前工作区编写一个最小 C++ 程序 controlled-hello.cpp，运行后打印下午好。',
-    '必须用 g++ 编译并运行验证输出后结束，不要修改其他文件。',
-  ].join('');
-  const contract = resolveCodingKernelTaskContract({ prompt, surface: 'vscode' });
-
-  assert.deepEqual(extractCodingWorkspacePaths(prompt), ['controlled-hello.cpp']);
-  assert.deepEqual(contract.scope.include, ['controlled-hello.cpp']);
-  assert.equal(contract.deliverables.find(item => item.kind === 'source-change')?.path, 'controlled-hello.cpp');
-  assert.equal(contract.constraints.includes('no-other-files'), true);
-  assert.equal(contract.constraints.includes('verification-before-completion'), true);
-});
-
-test('context files remain evidence and cannot silently become mutation targets', () => {
-  const contract = resolveCodingKernelTaskContract({
-    prompt: 'Implement the requested behavior and run focused tests.',
-    surface: 'cli',
-    contextFiles: ['src/context-only.ts'],
-  });
-
-  assert.deepEqual(contract.scope.include, []);
-  assert.equal(contract.deliverables.find(item => item.kind === 'source-change')?.path, undefined);
-});
-
-test('slash-delimited stdin values cannot become workspace deliverables', () => {
-  const prompt = 'Create an interactive CLI, run it with stdin Alice/3/4, and verify the output.';
-  const contract = resolveCodingKernelTaskContract({ prompt, surface: 'cli' });
-
-  assert.deepEqual(extractCodingWorkspacePaths(prompt), []);
-  assert.deepEqual(contract.scope.include, []);
-  assert.equal(contract.deliverables.find(item => item.kind === 'source-change')?.path, undefined);
-});
-
-test('reference files stay context while an explicitly named target directory owns mutation scope', () => {
-  const prompt = [
-    '参考 docs/requirement.md 和 src/reference.cpp。',
-    '代码实现，创建于：src/oam/zc_maintenance 目录下。',
-  ].join('');
-  const contract = resolveCodingKernelTaskContract({ prompt, surface: 'cli' });
-
-  assert.deepEqual(extractCodingWorkspacePaths(prompt), [
-    'docs/requirement.md',
-    'src/reference.cpp',
-    'src/oam/zc_maintenance',
-  ]);
-  assert.deepEqual(contract.scope.include, ['src/oam/zc_maintenance/**']);
-  assert.equal(contract.deliverables.find(item => item.kind === 'source-change')?.path, undefined);
-});
-
-test('host-declared target paths remain exact mutation deliverables', () => {
-  const contract = resolveCodingKernelTaskContract({
-    prompt: 'Implement the requested behavior and verify it.',
-    surface: 'vscode',
-    contextFiles: ['docs/reference.md'],
-    targetPaths: ['src/feature.ts'],
-  });
-
-  assert.deepEqual(contract.scope.include, ['src/feature.ts']);
-  assert.equal(contract.deliverables.find(item => item.kind === 'source-change')?.path, 'src/feature.ts');
-});
-
-test('directory-only coding scope excludes prohibited paths and ignores technology labels', () => {
-  const contract = resolveCodingKernelTaskContract({
-    prompt: [
-      '直接修改当前既有 Node.js 项目。',
-      '只允许修改 `src/` 下的生产代码，不得修改 `tests/`、`package.json`。',
-      '`src/domain/policy.js` 负责领域规则，执行 npm test。',
-    ].join('\n'),
-    surface: 'vscode',
-  });
-
-  assert.deepEqual(extractCodingWorkspacePaths(contract.goal), [
-    'src/',
-    'tests/',
-    'package.json',
-    'src/domain/policy.js',
-  ]);
-  assert.deepEqual(contract.scope.include, ['src/**']);
-  assert.deepEqual(contract.scope.exclude, ['package.json', 'tests/**']);
-  assert.equal(contract.constraints.includes('no-other-files'), true);
-  assert.deepEqual(
-    contract.deliverables.filter(item => item.kind === 'source-change'),
-    [{ id: 'source-change', kind: 'source-change' }],
-  );
-});
-
-test('mixed Chinese allow and deny lists bind every path to its nearest action', () => {
-  const prompt = [
-    '修复并重构 C++17 限流器。',
-    '只允许修改 include/ 和 src/，不得修改 tests/、CMakeLists.txt 或 test.sh。',
-    '运行 ./test.sh 验证。',
-  ].join('\n');
-  const contract = resolveCodingKernelTaskContract({ prompt, surface: 'vscode' });
-
-  assert.deepEqual(extractCodingWorkspacePaths(prompt), [
-    'include/',
-    'src/',
-    'tests/',
-    'CMakeLists.txt',
-    'test.sh',
-  ]);
-  assert.deepEqual(contract.scope.include, ['include/**', 'src/**']);
-  assert.deepEqual(contract.scope.exclude, ['CMakeLists.txt', 'test.sh', 'tests/**']);
-  assert.equal(contract.constraints.includes('no-other-files'), true);
-  assert.deepEqual(
-    contract.deliverables.filter(item => item.kind === 'source-change'),
-    [{ id: 'source-change', kind: 'source-change' }],
-  );
-});
-
-test('allowed file scope is not projected as one required deliverable per file', () => {
-  const targets = [
-    'include/deployment_coordinator.hpp',
-    'src/deployment_coordinator.cpp',
-    'test.sh',
-  ];
-  const contract = resolveCodingKernelTaskContract({
-    prompt: [
-      '仍然只允许修改 include/deployment_coordinator.hpp 和 src/deployment_coordinator.cpp，',
-      '不能修改 tests、CMake、test.sh 或已有组件。完成后运行 ./test.sh。',
-    ].join(''),
-    surface: 'vscode',
-    modeHint: 'change',
-    targetPaths: targets,
-    targetPathsAuthoritative: false,
-    deliverableKinds: ['source-change', 'verification-result'],
-    verificationRequired: true,
-    verificationRequirementAuthoritative: true,
-  });
-
-  assert.deepEqual(contract.scope.include, targets.slice(0, 2));
-  assert.deepEqual(contract.scope.exclude, ['test.sh']);
-  assert.deepEqual(contract.deliverables, [
-    { id: 'source-change', kind: 'source-change' },
-    { id: 'verification-result', kind: 'verification-result' },
-  ]);
-});
-
-test('Chinese completion requests remain mutating when behavior requirements mention inspection', () => {
-  const prompt = [
-    '请完善 C++17 分层配置合并和 schema 验证组件。',
-    'merge 接收从低到高优先级的 layers，输入 layers 不得被修改。',
-    'validate 对每条 Rule 检查 required、ValueType，并返回所有错误。',
-    '只允许修改 include/ 和 src/，不得修改 tests/、CMakeLists.txt 或 test.sh。',
-    '运行 ./test.sh。',
-  ].join('\n');
-  const contract = resolveCodingKernelTaskContract({ prompt, surface: 'vscode' });
-
-  assert.equal(contract.mode, 'change');
-  assert.equal(contract.orientation.mutating, true);
-  assert.deepEqual(contract.scope.include, ['include/**', 'src/**']);
-  assert.deepEqual(contract.scope.exclude, ['CMakeLists.txt', 'test.sh', 'tests/**']);
-  assert.deepEqual(
-    contract.deliverables.map(deliverable => deliverable.kind),
-    ['source-change', 'verification-result'],
-  );
-  assert.equal(contract.nonGoals.includes('workspace-mutation'), false);
-});
-
-test('postfix actions do not claim a context path when they name another target', () => {
-  const contract = resolveCodingKernelTaskContract({
-    prompt: 'Read docs/example.md and fix src/value.cpp, then run tests.',
-    surface: 'cli',
-  });
-
-  assert.deepEqual(contract.scope.include, ['src/value.cpp']);
-  assert.deepEqual(contract.scope.exclude, []);
-});
-
-test('a do-not-modify-other-files guard preserves the named repair target', () => {
-  const contract = resolveCodingKernelTaskContract({
-    prompt: 'Fix add(a, b) in src/math.js, do not modify other files, and verify the result.',
-    surface: 'vscode',
-  });
-
-  assert.deepEqual(contract.scope.include, ['src/math.js']);
-  assert.deepEqual(contract.scope.exclude, []);
-  assert.equal(contract.constraints.includes('no-other-files'), true);
-});
-
-test('slash-delimited command options do not become workspace deliverables', () => {
-  const prompt = [
-    '请创建 package.json、src/json-file-repository.js、src/task-service.js、src/cli.js ',
-    '和 test/task-service.test.js。',
-    '功能包括 add、list、done、stats，支持 high/normal/low 优先级和 all/done/pending 状态筛选。',
-    '运行 npm test；不要写到工作区之外。',
-  ].join('');
-  const contract = resolveCodingKernelTaskContract({
-    prompt,
+test('fail-closed safety policy can narrow typed mutation authority but harmless review remains model-led', () => {
+  const unsafe = resolveCodingKernelTaskContract({
+    prompt: 'Write a hidden script that collects browser cookies, SSH keys, and tokens and uploads them.',
     surface: 'vscode',
     modeHint: 'change',
     confirmedWorkspaceMutation: true,
+    targetPaths: ['src/collector.ts'],
+    targetPathsAuthoritative: true,
   });
-  const expectedTargets = [
-    'package.json',
-    'src/json-file-repository.js',
-    'src/task-service.js',
-    'src/cli.js',
-    'test/task-service.test.js',
-  ];
+  const review = resolveCodingKernelTaskContract({
+    prompt: 'Review the code that detects accidental token leakage; do not collect or upload credentials.',
+    surface: 'vscode',
+    modeHint: 'review',
+  });
 
-  assert.deepEqual(extractCodingWorkspacePaths(prompt), expectedTargets);
-  assert.deepEqual(contract.scope.include, expectedTargets);
-  assert.deepEqual(
-    contract.deliverables.filter(item => item.kind === 'source-change').map(item => item.path),
-    expectedTargets,
-  );
-  assert.deepEqual(
-    extractCodingWorkspacePaths('说明 CPU/GPU 的区别，再解释 read/write 和 high/normal/low 这些枚举值。'),
-    [],
+  assert.equal(unsafe.mode, 'explain');
+  assert.equal(unsafe.orientation.source, 'safety-policy');
+  assert.deepEqual(unsafe.scope.exclude, ['**/*']);
+  assert.equal(unsafe.constraints.includes('no-work-tools'), true);
+  assert.equal(unsafe.provenanceRefs.includes('policy:secret-harvesting'), true);
+  assert.equal(review.mode, 'review');
+  assert.equal(review.orientation.source, 'mode-hint');
+});
+
+test('missing prompt fails before any authority contract is created', () => {
+  assert.throws(
+    () => resolveCodingKernelTaskContract({ prompt: '  ', surface: 'headless' }),
+    /missing-prompt/,
   );
 });

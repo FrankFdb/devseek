@@ -74,12 +74,7 @@ test('WebView protocol: task history commands are explicit and snapshot-stable',
   ]);
 });
 
-test('WebViewEventAdapter: maps domain events to WebView messages', () => {
-  assert.deepEqual(adapter.toWebviewMessage({
-    kind: 'workflow',
-    status: { phase: 'validate', state: 'failed', title: '验证失败' },
-  }), { type: 'workflowStatus', phase: 'validate', state: 'failed', title: '验证失败' });
-
+test('WebViewEventAdapter maps supported domain events to WebView messages', () => {
   assert.deepEqual(adapter.toWebviewMessage({
     kind: 'agent',
     event: { type: 'agentNotice', kind: 'warn', text: 'blocked' },
@@ -91,128 +86,34 @@ test('WebViewEventAdapter: maps domain events to WebView messages', () => {
   }), { type: 'agentCheckpointAvailable', resumeTaskIndex: 1, totalTasks: 2, userPrompt: '继续', savedAt: 123 });
 });
 
-test('WebViewEventAdapter: strips split DSML transcripts at the outbound UI boundary', () => {
+test('WebViewEventAdapter preserves structured examples across split direct-chat deltas', () => {
   const sent = [];
   const target = { postMessage: (message) => { sent.push(message); } };
-  adapter.postWebviewMessage(target, { type: 'startResponse', agentMode: false });
-  adapter.postWebviewMessage(target, {
-    type: 'delta',
-    text: '好的，我先查看当前代码。< | DS',
-  });
-  adapter.postWebviewMessage(target, {
-    type: 'delta',
-    text: 'ML | tool_calls< | DSML | invoke name="read_file">< | DSML | parameter name="filePath" string="true">/home/kaka/code/shape_manager/main.cpp</ | DSML | parameter></ | DSML | invoke></ | DSML | tool_calls>',
-  });
-  adapter.postWebviewMessage(target, {
-    type: 'delta',
-    text: '\n继续实现。',
-  });
+  const fragments = [
+    '说明下面的文本：< | DS',
+    'ML | tool_calls><TOOL_CALL>{"command":"npm test"}</TOOL_CALL>',
+    ' Action: read_file Action Input: {"path":"README.md"}',
+  ];
 
-  const visibleText = sent.map((message) => message.text || '').join('');
-  assert.equal(visibleText, '好的，我先查看当前代码。\n继续实现。');
-  assert.doesNotMatch(visibleText, /DSML|tool_calls|read_file|filePath|^ML\s*\|/);
+  adapter.postWebviewMessage(target, { type: 'startResponse', agentMode: false });
+  for (const text of fragments) adapter.postWebviewMessage(target, { type: 'delta', text });
+
+  assert.equal(sent.map(message => message.text || '').join(''), fragments.join(''));
 });
 
-test('WebViewEventAdapter: strips fullwidth double-bar DSML transcripts at the outbound UI boundary', () => {
+test('WebViewEventAdapter preserves agent deltas and announcements without semantic reparsing', () => {
   const sent = [];
   const target = { postMessage: (message) => { sent.push(message); } };
-  adapter.postWebviewMessage(target, { type: 'startResponse', agentMode: false });
-  adapter.postWebviewMessage(target, {
-    type: 'delta',
-    text: '我来先查看当前 shape_manager 的完整代码。<｜｜DS',
-  });
-  adapter.postWebviewMessage(target, {
-    type: 'delta',
-    text: 'ML｜｜tool_calls><｜｜DSML｜｜invoke name="read_file"><｜｜DSML｜｜parameter name="filePath" string="true">code/shape_manager/main.cpp</｜｜DSML｜｜parameter></｜｜DSML｜｜invoke><｜｜DSML｜｜invoke name="list_dir"><｜｜DSML｜｜parameter name="path" string="true">code/shape_manager</｜｜DSML｜｜parameter></｜｜DSML｜｜invoke></｜｜DSML｜｜tool_calls>',
-  });
-  adapter.postWebviewMessage(target, { type: 'delta', text: '\n继续实现。' });
-
-  const visibleText = sent.map((message) => message.text || '').join('');
-  assert.equal(visibleText, '我来先查看当前 shape_manager 的完整代码。\n继续实现。');
-  assert.doesNotMatch(visibleText, /DSML|tool_calls|read_file|list_dir|filePath|^ML/);
-});
-
-test('WebViewEventAdapter: strips TOOL_CALL envelope transcripts at the outbound UI boundary', () => {
-  const sent = [];
-  const target = { postMessage: (message) => { sent.push(message); } };
-  adapter.postWebviewMessage(target, { type: 'startResponse', agentMode: false });
-  adapter.postWebviewMessage(target, {
-    type: 'delta',
-    text: '我先检查标题。<TOOL_CALL>run_terminal</TOOL_CALL>',
-  });
-  adapter.postWebviewMessage(target, {
-    type: 'delta',
-    text: '<TOOL_CALL>{"command":"cat /tmp/main.cpp | head -200"}</TOOL_CALL>',
-  });
-  adapter.postWebviewMessage(target, { type: 'delta', text: '\n继续修改。' });
-
-  const visibleText = sent.map((message) => message.text || '').join('');
-  assert.equal(visibleText, '我先检查标题。\n继续修改。');
-  assert.doesNotMatch(visibleText, /TOOL_CALL|run_terminal|command|main\.cpp/);
-});
-
-test('WebViewEventAdapter: strips split ReAct Action/Input transcripts at the outbound UI boundary', () => {
-  const sent = [];
-  const target = { postMessage: (message) => { sent.push(message); } };
-  adapter.postWebviewMessage(target, { type: 'startResponse', agentMode: false });
-  adapter.postWebviewMessage(target, {
-    type: 'delta',
-    text: '我需要先读取完整文件内容。 Action: read_file',
-  });
-  adapter.postWebviewMessage(target, {
-    type: 'delta',
-    text: ' Action Input: {"path":"/tmp/main.cpp"}',
-  });
-  adapter.postWebviewMessage(target, { type: 'delta', text: '\n继续修改。' });
-
-  const visibleText = sent.map((message) => message.text || '').join('');
-  assert.equal(visibleText, '我需要先读取完整文件内容。\n继续修改。');
-  assert.doesNotMatch(visibleText, /Action|Action Input|read_file|main\.cpp|path/);
-});
-
-test('WebViewEventAdapter: strips glued ReAct Action/Input transcripts at the outbound UI boundary', () => {
-  const sent = [];
-  const target = { postMessage: (message) => { sent.push(message); } };
-  adapter.postWebviewMessage(target, { type: 'startResponse', agentMode: false });
-  adapter.postWebviewMessage(target, {
-    type: 'delta',
-    text: '我需要先读取完整文件内容。 Action: read_fileAction Input: {"path":"/tmp/main.cpp"}',
-  });
-  adapter.postWebviewMessage(target, { type: 'delta', text: '\n继续修改。' });
-
-  const visibleText = sent.map((message) => message.text || '').join('');
-  assert.equal(visibleText, '我需要先读取完整文件内容。\n继续修改。');
-  assert.doesNotMatch(visibleText, /Action|Action Input|read_file|main\.cpp|path/);
-});
-
-test('WebViewEventAdapter: keeps agent raw deltas for tool parsing but sanitizes announcements', () => {
-  const sent = [];
-  const target = { postMessage: (message) => { sent.push(message); } };
-  const rawDsml = '我先查看。< | DSML | tool_calls< | DSML | invoke name="read_file"></ | DSML | invoke></ | DSML | tool_calls>';
+  const example = '示例：<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name="read_file"></｜｜DSML｜｜invoke></｜｜DSML｜｜tool_calls>';
 
   adapter.postWebviewMessage(target, { type: 'startResponse', agentMode: true });
-  adapter.postWebviewMessage(target, { type: 'delta', text: rawDsml });
-  adapter.postWebviewMessage(target, { type: 'agentAnnouncement', text: rawDsml });
+  adapter.postWebviewMessage(target, { type: 'delta', text: example });
+  adapter.postWebviewMessage(target, { type: 'agentAnnouncement', text: example });
 
-  assert.equal(sent[1].type, 'delta');
-  assert.match(sent[1].text, /DSML/);
-  assert.equal(sent[2].type, 'agentAnnouncement');
-  assert.equal(sent[2].text, '我先查看。');
-});
-
-test('WebViewEventAdapter: keeps fullwidth DSML raw agent deltas but sanitizes announcements', () => {
-  const sent = [];
-  const target = { postMessage: (message) => { sent.push(message); } };
-  const rawDsml = '我先查看。<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name="read_file"></｜｜DSML｜｜invoke></｜｜DSML｜｜tool_calls>';
-
-  adapter.postWebviewMessage(target, { type: 'startResponse', agentMode: true });
-  adapter.postWebviewMessage(target, { type: 'delta', text: rawDsml });
-  adapter.postWebviewMessage(target, { type: 'agentAnnouncement', text: rawDsml });
-
-  assert.equal(sent[1].type, 'delta');
-  assert.match(sent[1].text, /DSML/);
-  assert.equal(sent[2].type, 'agentAnnouncement');
-  assert.equal(sent[2].text, '我先查看。');
+  assert.deepEqual(sent.slice(1), [
+    { type: 'delta', text: example },
+    { type: 'agentAnnouncement', text: example },
+  ]);
 });
 
 test('SessionDisplayService: builds clean UI payload and restored LLM context', () => {

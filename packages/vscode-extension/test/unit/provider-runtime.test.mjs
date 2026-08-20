@@ -8,6 +8,10 @@ import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import {
+  CanonicalProviderEventService,
+  CanonicalToolDispatchService,
+} from '../../../shared/dist/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
@@ -28,10 +32,15 @@ const {
 } = bundle('src/llm/provider-config-service.ts', 'provider-config-service');
 const { LLMProviderRuntime } = bundle('src/llm/provider-runtime.ts', 'provider-runtime');
 const {
+  bindProviderNormalizationBoundary,
   llmEventsToToolCallEnvelopes,
   llmEventsToToolCalls,
   redactProviderSecrets,
 } = bundle('src/llm/provider-events.ts', 'provider-events');
+const {
+  createTextToolProtocolSession,
+  renderTextToolProtocolEnvelope,
+} = bundle('src/agent/text-tool-protocol.ts', 'provider-runtime-text-tool-protocol');
 const {
   buildProviderStatusResponse,
   isProviderStatusRequest,
@@ -84,7 +93,7 @@ test('ProviderConfigService: unknown capability negotiation fails closed', () =>
 });
 
 test('Provider status request is answered from local redacted configuration', () => {
-  const prompt = '请检查当前 Provider 配置是否可用，并说明是否发现了密钥。不要输出密钥原文，不要修改文件。';
+  const prompt = '/provider status';
   const snapshot = new ProviderConfigService(config({
     provider: 'deepseek-api',
     model: 'deepseek-reasoner',
@@ -199,16 +208,26 @@ test('Provider runtime: unknown required capabilities cannot fall back to the Br
   assert.equal(JSON.stringify(route).includes('sk-r2-07a-runtime'), false);
 });
 
-test('Provider events: DeepSeek Web text tool parsing normalizes to ToolCall', () => {
+test('Provider events: an authorized DeepSeek Web text envelope normalizes to ToolCall', () => {
+  const session = createTextToolProtocolSession('provider-runtime-simulation');
+  const boundary = bindProviderNormalizationBoundary(
+    new CanonicalProviderEventService(),
+    new CanonicalToolDispatchService(),
+    {},
+    session,
+  );
   const calls = llmEventsToToolCalls([{
     type: 'message',
     provider: 'bridge',
-    content: '准备读取文件。\n[TOOL:read_file] {"path":"src/index.ts"}',
-  }]);
+    content: renderTextToolProtocolEnvelope(
+      session,
+      '[TOOL:read_file] {"path":"src/index.ts"}',
+    ),
+  }], boundary);
 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].name, 'read_file');
-  assert.equal(calls[0].source, 'fake-tool');
+  assert.equal(calls[0].source, 'text-protocol');
   assert.deepEqual(calls[0].input, { path: 'src/index.ts' });
   assert.equal(calls[0].registered, true);
 });

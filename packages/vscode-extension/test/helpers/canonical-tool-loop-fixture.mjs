@@ -7,14 +7,10 @@ import {
   CanonicalWorkspaceMutationTransaction,
   InMemoryCodingOperationJournal,
   resolveCodingKernelTaskContract,
-  resolveCodingTaskPathIntent,
 } from '../../../shared/dist/index.js';
 import path from 'node:path';
 
 let fixtureRunSequence = 0;
-
-const REPORT_DELIVERABLE_RE = /(?:\.(?:md|markdown)\b|markdown|\breports?\b|\bdocuments?\b|报告|文档)/iu;
-const REPORT_ARTIFACT_PATH_RE = /\.(?:md|markdown)$/iu;
 
 export function withCanonicalToolLoopFixture(callbacks, input) {
   fixtureRunSequence += 1;
@@ -62,34 +58,14 @@ function projectTaskMode(mode) {
 
 function projectFixtureTaskContractInput(input) {
   const rawPrompt = input.userPrompt?.trim() || 'Exercise the VS Code tool loop fixture.';
-  const prompt = projectWorkspacePromptPaths(rawPrompt, input.workspaceRoot);
   const explicitTargets = uniqueNonEmpty((input.targetPaths ?? [])
     .map(target => projectWorkspacePath(target, input.workspaceRoot)));
-  const pathIntent = resolveCodingTaskPathIntent({ prompt, targetPaths: explicitTargets });
-  const targetPaths = uniqueNonEmpty([
-    ...explicitTargets,
-    ...pathIntent.mutationFileTargets,
-    ...pathIntent.mutationDirectoryTargets.map(target => `${target}/**`),
-  ]);
-  const deliverableKinds = uniqueNonEmpty([
-    ...(input.deliverableKinds ?? []),
-    ...(isReportDeliverablePrompt(rawPrompt, targetPaths) ? ['report'] : []),
-  ]);
-  const reportOnlyArtifact = deliverableKinds.includes('report')
-    && !deliverableKinds.includes('source-change')
-    && targetPaths.length > 0
-    && targetPaths.every(isReportArtifactPath);
   return {
-    prompt,
-    targetPaths,
-    deliverableKinds,
-    confirmedWorkspaceMutation: input.confirmedWorkspaceMutation ?? (
-      targetPaths.length > 0 && (
-        deliverableKinds.includes('source-change')
-        || deliverableKinds.includes('report')
-      )
-    ),
-    verificationRequired: input.verificationRequired ?? (reportOnlyArtifact ? false : undefined),
+    prompt: projectWorkspacePromptPaths(rawPrompt, input.workspaceRoot),
+    targetPaths: explicitTargets,
+    deliverableKinds: uniqueNonEmpty(input.deliverableKinds ?? []),
+    confirmedWorkspaceMutation: input.confirmedWorkspaceMutation,
+    verificationRequired: input.verificationRequired,
   };
 }
 
@@ -119,14 +95,6 @@ function normalizeWorkspaceRoot(value) {
 
 function normalizeWorkspacePath(value) {
   return String(value || '').trim().replace(/\\/g, '/').replace(/^\.\//u, '').replace(/\/{2,}/g, '/');
-}
-
-function isReportDeliverablePrompt(prompt, targetPaths) {
-  return REPORT_DELIVERABLE_RE.test(prompt) || targetPaths.some(isReportArtifactPath);
-}
-
-function isReportArtifactPath(value) {
-  return REPORT_ARTIFACT_PATH_RE.test(String(value || '').trim());
 }
 
 function uniqueNonEmpty(values) {

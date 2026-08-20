@@ -171,7 +171,7 @@ function routeInput(recovery, fixture) {
   const taskContract = resolveCodingKernelTaskContract({
     prompt: fixture.prompt,
     surface: 'vscode',
-    modeHint: fixture.expected.taskContract.mode,
+    ...(fixture.taskContractInput ?? {}),
   });
   const canonicalCheckpoint = recovery
     ? createCanonicalCheckpointFixture({

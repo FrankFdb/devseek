@@ -90,7 +90,7 @@ const ALLOW_FILE_WRITE = Object.freeze({
   evidenceRefs: Object.freeze(['test:model-led-user-simulation']),
 });
 
-function createHarness(root, prompt) {
+function createHarness(root, prompt, options = {}) {
   const statuses = [];
   const changes = [];
   const activities = [];
@@ -116,16 +116,23 @@ function createHarness(root, prompt) {
     userPrompt: prompt,
     executionMode: 'model-led',
     authorityStrategy: 'model-led',
+    verificationRequired: options.verificationRequired,
   });
   return { callbacks, statuses, changes, activities, todos };
 }
 
 async function runSimulation(prompt, provider, options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-model-led-user-'));
-  const harness = createHarness(root, prompt);
+  const harness = createHarness(root, prompt, options);
   fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'model-led-user', index: 0 }];
   globalThis.__DEVSEEK_MODEL_LED_CHAT_STUB__ = provider;
   if (options.onUserSteer) harness.callbacks.onUserSteer = options.onUserSteer;
+  if (options.onUserSteerCompletionFence) {
+    harness.callbacks.onUserSteerCompletionFence = options.onUserSteerCompletionFence;
+  }
+  if (options.onReopenUserSteering) {
+    harness.callbacks.onReopenUserSteering = options.onReopenUserSteering;
+  }
   if (options.runDisplayAction) harness.callbacks.runDisplayAction = options.runDisplayAction;
   try {
     const result = await runAgenticLoop(
@@ -135,8 +142,8 @@ async function runSimulation(prompt, provider, options = {}) {
       'fast',
       harness.callbacks,
       options.sessionContextText || '',
-      'model-led',
       [],
+      options.semanticContract,
     );
     return { root, harness, result };
   } catch (error) {
@@ -295,7 +302,7 @@ test('ModelLedUserSimulation: concise concept answers settle across natural user
     let calls = 0;
     const simulation = await runSimulation(scenario.prompt, async messages => {
       calls += 1;
-      assert.match(messages[0].content, /普通 assistant message 就是有效交付/u);
+      assert.match(messages[0].content, /简单问答直接回答/u);
       assert.match(messages[0].content, /会话、工作区、记忆检索、路由和工具可用性是内部执行上下文/u);
       return { text: scenario.answer, tools: [] };
     });
@@ -425,6 +432,76 @@ test('ModelLedUserSimulation: an in-flight correction discards stale tools and a
     assert.equal(readFileSync(path.join(simulation.root, 'beta.txt'), 'utf8'), 'LATEST\n');
     assert.deepEqual(simulation.result.changedPaths, [path.join(simulation.root, 'beta.txt')]);
     assert.equal(simulation.harness.activities.some(item => item.label.includes('最新要求')), true);
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
+test('ModelLedUserSimulation: a correction accepted at the completion fence reopens the same turn', async () => {
+  const prompt = '创建 result.txt，内容为：MODEL_FIRST_OK';
+  const correction = '完成前再改一下：result.txt 的最终内容必须是 MODEL_LATEST_OK。';
+  let calls = 0;
+  let fencePolls = 0;
+  let reopenCalls = 0;
+  let correctionWrites = 0;
+  const simulation = await runSimulation(prompt, async messages => {
+    calls += 1;
+    const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'result.txt');
+    if (calls === 1) {
+      return {
+        text: '先完成初始要求。',
+        tools: [
+          { name: 'create_file', input: { path: target, content: 'MODEL_FIRST_OK\n' } },
+          { name: 'read_file', input: { path: target } },
+          { name: 'task_complete', input: { summary: `已创建并读回 ${target}。` } },
+        ],
+      };
+    }
+    assert.equal(
+      messages.some(message => /最终内容必须是 MODEL_LATEST_OK/u.test(message.content)),
+      true,
+      'the reopened provider context must retain the completion-fence revision',
+    );
+    if (correctionWrites === 0) {
+      correctionWrites += 1;
+      return {
+        text: '按完成前收到的最新要求修订结果。',
+        tools: [
+          { name: 'write_file', input: { path: target, content: 'MODEL_LATEST_OK\n' } },
+          { name: 'read_file', input: { path: target } },
+          { name: 'task_complete', input: { summary: `已将 ${target} 更新为 MODEL_LATEST_OK 并读回确认。` } },
+        ],
+      };
+    }
+    return {
+      text: '补充最终文件读回证据，不重复写入。',
+      tools: [
+        { name: 'read_file', input: { path: target } },
+        { name: 'task_complete', input: { summary: `${target} 的最终内容为 MODEL_LATEST_OK。` } },
+      ],
+    };
+  }, {
+    onUserSteerCompletionFence() {
+      fencePolls += 1;
+      return fencePolls === 1 ? [correction] : [];
+    },
+    onReopenUserSteering() {
+      reopenCalls += 1;
+      return true;
+    },
+    runDisplayAction: 'create',
+    verificationRequired: false,
+  });
+  try {
+    assert.equal(calls >= 2, true, simulation.result.historyText);
+    assert.equal(correctionWrites, 1);
+    assert.equal(reopenCalls, 1);
+    assert.equal(readFileSync(path.join(simulation.root, 'result.txt'), 'utf8'), 'MODEL_LATEST_OK\n');
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+    assert.equal(
+      simulation.harness.activities.some(item => item.label.includes('完成前收到最新要求')),
+      true,
+    );
   } finally {
     rmSync(simulation.root, { recursive: true, force: true });
   }

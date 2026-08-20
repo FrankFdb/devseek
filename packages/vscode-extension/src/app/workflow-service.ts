@@ -67,15 +67,15 @@ export class WorkflowStateMachine {
     const { intent, agentEnabled, forceNoAgent } = normalizedInput;
 
     if (forceNoAgent) {
-      return makeSelection('plain-chat', 'plain_chat', false, 'force-no-agent', intent.mode);
+      return makeSelection('plain-chat', 'plain_chat', false, 'force-no-agent', 'qa');
     }
 
     if (!agentEnabled) {
-      return makeSelection('plain-chat', 'plain_chat', false, 'agent-disabled', intent.mode);
+      return makeSelection('plain-chat', 'plain_chat', false, 'agent-disabled', 'qa');
     }
 
     if (intent.blockers.includes('empty-prompt')) {
-      return makeSelection('plain-chat', 'plain_chat', false, 'empty-prompt', intent.mode);
+      return makeSelection('plain-chat', 'plain_chat', false, 'empty-prompt', 'qa');
     }
 
     return makeSelection('model-agent', 'acting', true, 'model-led-turn', 'model-led');

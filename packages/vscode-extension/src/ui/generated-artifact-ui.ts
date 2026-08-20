@@ -1,8 +1,10 @@
 import * as vscode from 'vscode';
 import * as nodePath from 'path';
 import { parseGeneratedArtifacts, type GeneratedArtifact } from '../generated-file-parser';
-import { resolveGeneratedArtifactPathForPrompt } from '../workspace-applier';
-import { isGeneratedArtifactAllowedForPrompt } from '../workspace/path-resolver';
+import {
+  isGeneratedArtifactAllowedForPrompt,
+  resolveGeneratedArtifactPathForPrompt,
+} from '../workspace/path-resolver';
 import { resolveWorkspaceFileUri } from '../workspace-roots';
 
 type GeneratedContentDisplayMode = 'hidden' | 'collapsed' | 'full';

@@ -2,7 +2,6 @@ import * as fs from 'fs';
 import * as nodePath from 'path';
 import { isCppBuildOutputDirName } from '../cpp-build-layout';
 import {
-  isVisualOrInteractiveContext,
   sourceTextLooksVisualOrInteractive,
 } from '../execution-outcome-classifier';
 import { containsRuntimeExecutableSegment } from '../tools/shell-command-analysis';
@@ -17,7 +16,6 @@ export interface TerminalLaunchClassificationInput {
 
 export function shouldUseManualReviewLaunchMode(input: TerminalLaunchClassificationInput): boolean {
   if (!containsRuntimeExecutableSegment(input.command)) return false;
-  if (isVisualOrInteractiveContext(input.command)) return true;
   return sourceTextLooksVisualOrInteractive(readVisualSourceHints(input.command, input.workdir, input.workspaceRoot));
 }
 

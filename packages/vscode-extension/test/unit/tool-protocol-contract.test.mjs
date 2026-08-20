@@ -1,10 +1,9 @@
 /**
  * Contract tests for DeepSeek web pseudo-tool transcripts.
  *
- * The same replay fixtures must be recognized by the Agent parser and hidden by
- * the WebView sanitizer. This protects ARCH-16 Phase 1 from split-brain fixes:
- * backend executes a tool while the UI leaks it, or the UI hides text that the
- * backend failed to execute.
+ * Replay fixtures are recognized only at the authorized Agent protocol boundary.
+ * The Webview remains presentation-only, so ordinary JSON/XML/ReAct examples
+ * cannot disappear merely because they resemble a tool transcript.
  */
 
 import { test } from 'node:test';
@@ -67,7 +66,7 @@ for (const fixture of DEEPSEEK_TOOL_TRANSCRIPT_FIXTURES) {
 
     assert.equal(typeof webviewSanitizer.containsAgentInternalTranscript, 'function');
     assert.equal(typeof webviewSanitizer.stripToolCallBlocks, 'function');
-    assert.equal(webviewSanitizer.containsAgentInternalTranscript(fixture.text), true);
-    assert.equal(webviewSanitizer.stripToolCallBlocks(fixture.text), fixture.expectedVisibleText);
+    assert.equal(webviewSanitizer.containsAgentInternalTranscript(fixture.text), false);
+    assert.equal(webviewSanitizer.stripToolCallBlocks(fixture.text), fixture.text);
   });
 }

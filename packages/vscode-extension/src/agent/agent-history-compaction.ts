@@ -5,12 +5,13 @@ import {
   type CodingContextCompactionReceipt,
 } from '@devseek-netai/shared';
 import type { ChatMessage } from '../llm/types';
+import type { FakeTool } from './fake-tool-parser';
 import {
-  findFirstToolCallStart,
-  parseFakeToolCalls,
-  stripToolCallBlocks,
-  type FakeTool,
-} from './fake-tool-parser';
+  findFirstAuthorizedTextToolEnvelopeStart,
+  parseAuthorizedTextToolCalls,
+  stripAuthorizedTextToolEnvelopes,
+  type TextToolProtocolSession,
+} from './text-tool-protocol';
 
 const MAX_TOOL_SUMMARIES = 14;
 const EXECUTED_TOOL_SUMMARY_MARKER = '[DevSeek 已执行工具请求摘要]';
@@ -26,11 +27,14 @@ export interface AgentHistoryCompactionOptions {
   isProtectedMessage?: (message: ChatMessage, index: number) => boolean;
 }
 
-export function replaceLatestAssistantToolHistory(messages: ChatMessage[]): boolean {
+export function replaceLatestAssistantToolHistory(
+  messages: ChatMessage[],
+  textToolProtocol: TextToolProtocolSession,
+): boolean {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (message.role !== 'assistant' || typeof message.content !== 'string') continue;
-    const summarized = summarizeExecutedAssistantToolHistory(message.content);
+    const summarized = summarizeExecutedAssistantToolHistory(message.content, textToolProtocol);
     if (summarized === message.content) return false;
     message.content = summarized;
     return true;
@@ -38,11 +42,14 @@ export function replaceLatestAssistantToolHistory(messages: ChatMessage[]): bool
   return false;
 }
 
-export function replaceAllAssistantToolHistory(messages: ChatMessage[]): number {
+export function replaceAllAssistantToolHistory(
+  messages: ChatMessage[],
+  textToolProtocol: TextToolProtocolSession,
+): number {
   let changed = 0;
   for (const message of messages) {
     if (message.role !== 'assistant' || typeof message.content !== 'string') continue;
-    const summarized = summarizeExecutedAssistantToolHistory(message.content);
+    const summarized = summarizeExecutedAssistantToolHistory(message.content, textToolProtocol);
     if (summarized === message.content) continue;
     message.content = summarized;
     changed += 1;
@@ -54,7 +61,6 @@ export function applyProviderRecoveryHistory(
   messages: ChatMessage[],
   recoveryMessage: ChatMessage,
 ): void {
-  replaceAllAssistantToolHistory(messages);
   const taskPrompt = messages[0];
   messages.splice(0, messages.length, taskPrompt, recoveryMessage);
 }
@@ -66,7 +72,6 @@ export function compactAgentMessageHistoryWithFidelity(
   const maxMessages = clampPositiveInteger(options.maxMessages, 10, 2);
   const summary = renderCodingContextCompactionReceipt(options.receipt);
   redactAgentMessageHistory(messages);
-  replaceAllAssistantToolHistory(messages);
   rewriteMessagesWithContextSummary(messages, summary, options, maxMessages);
   return options.receipt;
 }
@@ -82,15 +87,19 @@ export function redactAgentMessageHistory(messages: ChatMessage[]): number {
   return count;
 }
 
-export function summarizeExecutedAssistantToolHistory(text: string): string {
+export function summarizeExecutedAssistantToolHistory(
+  text: string,
+  textToolProtocol: TextToolProtocolSession,
+): string {
   if (text.trimStart().startsWith(EXECUTED_TOOL_SUMMARY_MARKER)) return text;
-  const tools = parseFakeToolCalls(text);
+  const tools = parseAuthorizedTextToolCalls(text, textToolProtocol);
   if (!tools.length) return text;
 
-  const firstToolIndex = findFirstToolCallStart(text);
-  const prose = firstToolIndex >= 0
-    ? stripToolCallBlocks(text.slice(0, firstToolIndex)).trim()
-    : stripToolCallBlocks(text).trim();
+  const firstToolIndex = findFirstAuthorizedTextToolEnvelopeStart(text, textToolProtocol);
+  const prose = stripAuthorizedTextToolEnvelopes(
+    firstToolIndex >= 0 ? text.slice(0, firstToolIndex) : text,
+    textToolProtocol,
+  ).trim();
   const lines = [
     EXECUTED_TOOL_SUMMARY_MARKER,
   ];

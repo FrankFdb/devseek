@@ -35,9 +35,6 @@ import {
 } from './completion-evidence';
 import type { TodoItem } from './evidence-recovery';
 import type { AgentLoopCallbacks } from './loop-types';
-import {
-  detectTaskOutputScopeDrift,
-} from './task-output-scope';
 import { resolveTerminalCommandCapabilities } from '../app/environment-capability-resolver';
 import { buildToolPolicy } from '../app/permission-service';
 import type { ToolKind } from '../intent/intent-types';
@@ -252,7 +249,6 @@ export async function executeFakeToolsForLoop(
     callbacks,
     workspaceRoot,
     defaultWorkdir,
-    userPrompt: taskContext?.userPrompt,
     requireReadBeforeOverwrite: taskContext?.requireReadBeforeOverwrite,
     readEvidencePaths,
     readEvidenceRecorder,
@@ -456,24 +452,6 @@ export async function executeFakeToolsForLoop(
           callbacks.onToolActivity?.('terminal', `阻止终端文件变更: ${shellMutation}`);
           await canonicalTools.deny(toolPlan, canonicalContext, reason);
           recordToolFailure('run_terminal', 'terminal-guard', shellMutation, reason);
-          parts.push(msg);
-          continue;
-        }
-        const outputScopeDrift = detectTaskOutputScopeDrift({
-          requestPrompt: taskContext?.userPrompt,
-          text: `${command}\n${workdir ?? ''}`,
-          workspaceRoot,
-        });
-        if (outputScopeDrift.blocked) {
-          const reason = outputScopeDrift.reason ?? '检测到旧运行目录或过期产物路径。';
-          const msg = [
-            `[run_terminal: ${command}] 已阻止`,
-            reason,
-            `请使用当前用户指定的输出目录重新生成命令；不要复用旧时间戳目录或旧会话路径。`,
-          ].join('\n');
-          callbacks.onToolActivity?.('terminal', '阻止旧运行目录命令');
-          await canonicalTools.deny(toolPlan, canonicalContext, reason);
-          recordToolFailure('run_terminal', 'terminal-guard', command, reason);
           parts.push(msg);
           continue;
         }
@@ -860,11 +838,9 @@ export async function executeFakeToolsForLoop(
         }
         const fileWriteConstraint = await callbacks.onResolveFileWriteConstraint(absPath, {
           purpose: 'tool-write',
-          userRequested: false,
           taskAction: 'delete_file',
           toolRisk: toolPlan.risk,
           displayName: rawPath,
-          requestPrompt: taskContext?.userPrompt ?? '',
         });
         if (cancellationRequested()) {
           await canonicalTools.fail(toolPlan, canonicalContext, 'tool-cancelled-before-effect');
@@ -1065,11 +1041,9 @@ export async function executeFakeToolsForLoop(
           }
           const fileWriteConstraint = await callbacks.onResolveFileWriteConstraint(absPath, {
             purpose: 'tool-write',
-            userRequested: false,
             taskAction: 'create_directory',
             toolRisk: toolPlan.risk,
             displayName: dirPath,
-            requestPrompt: taskContext?.userPrompt ?? '',
           });
           if (cancellationRequested()) {
             await canonicalTools.fail(toolPlan, canonicalContext, 'tool-cancelled-before-effect');

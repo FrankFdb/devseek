@@ -3,41 +3,15 @@ import {
   isCanonicalPathInsideRoot,
   type CodingToolSurfaceConstraint,
 } from '@devseek-netai/shared';
-import { authorizeAgentFileWriteContract } from '../agent/task-contract';
-import {
-  detectIsolatedArtifactWriteScope,
-  isTargetExactIsolatedArtifactWriteScope,
-  isTargetInsideIsolatedArtifactWriteScope,
-} from '../agent/isolated-artifact-write-scope';
-import type { ToolPolicy } from './permission-service';
-import { decideToolPermission } from './permission-service';
 import type { ToolRisk } from '../intent/intent-types';
-
-export { detectIsolatedArtifactWriteScope };
-export type { IsolatedArtifactWriteScope } from '../agent/isolated-artifact-write-scope';
-
-export type AgentFileWritePurpose =
-  | 'workspace-edit'
-  | 'markdown-deliverable'
-  | 'deterministic-task'
-  | 'tool-write'
-  | 'local-repair';
+import { isProjectInstructionFilePath } from '../workspace/instruction-file-safety';
+import { decideToolPermission, type ToolPolicy } from './permission-service';
 
 export interface AgentFileWriteContext {
-  purpose?: AgentFileWritePurpose;
-  userRequested?: boolean;
+  purpose?: 'tool-write';
   taskAction?: string;
   toolRisk?: ToolRisk;
   displayName?: string;
-  requestPrompt?: string;
-  semanticIntent?: {
-    mutationRequested?: boolean;
-    mutationProhibited?: boolean;
-    sourceChange?: boolean;
-    fileArtifact?: boolean;
-    targets?: readonly string[];
-    signals?: readonly string[];
-  };
 }
 
 export interface AgentFileWriteDecisionInput {
@@ -58,26 +32,13 @@ export interface AgentFileWriteDecision {
     absPath: string;
     workspaceRoot?: string;
     toolPolicyMode?: string;
-    purpose?: string;
-    userRequested?: boolean;
-    protectedPath?: boolean;
-    autopilotMode?: boolean;
-    explicitMarkdownDeliverable?: boolean;
-    markdownArtifactWriteAllowed?: boolean;
-    markdownArtifactWriteReason?: string;
-    markdownArtifactRequestedTargets?: string[];
-    semanticWriteAllowed?: boolean;
-    semanticWriteReason?: string;
-    isolatedArtifactScopeRequired?: boolean;
-    isolatedArtifactAllowedRoots?: string[];
+    taskAction?: string;
+    protectedPath: boolean;
+    autopilotMode: boolean;
   };
 }
 
-/**
- * Projects product policy into the only authority contribution a VS Code
- * Surface is allowed to make. A real confirmation reference can only be added
- * by the interaction owner after the user accepts the prompt.
- */
+/** Projects the VS Code surface decision into canonical tool authority evidence. */
 export function projectAgentFileWriteConstraint(
   decision: AgentFileWriteDecision,
   confirmationRef?: string,
@@ -98,177 +59,84 @@ export function projectAgentFileWriteConstraint(
   return { decision: 'allow', reason: decision.reason, evidenceRefs };
 }
 
-/** Surface-only preflight for legacy deterministic paths that do not invoke a tool host. */
-export function isAgentFileWriteConstraintSatisfied(
-  constraint: CodingToolSurfaceConstraint,
-): boolean {
-  return constraint.decision === 'allow'
-    || (constraint.decision === 'require-confirmation' && Boolean(constraint.confirmationRef?.trim()));
-}
-
-const SENSITIVE_FILE_RE = /^(\.env(\.|$))|.*\.(pem|key|p12|pfx|crt|cer|jks|keystore|secret|credentials|token|passwd|password)$/i;
+const SENSITIVE_FILE_RE = /^(\.env(?:\.|$))|.*\.(?:pem|key|p12|pfx|crt|cer|jks|keystore|secret|credentials|token|passwd|password)$/i;
 
 export function decideAgentFileWrite(input: AgentFileWriteDecisionInput): AgentFileWriteDecision {
-  const absPath = nodePath.normalize(String(input.absPath || '').trim());
-  const workspaceRoot = input.workspaceRoot ? nodePath.normalize(input.workspaceRoot) : '';
+  const rawPath = String(input.absPath || '').trim();
+  const rawWorkspaceRoot = String(input.workspaceRoot || '').trim();
+  const absPath = rawPath ? nodePath.normalize(rawPath) : '';
+  const workspaceRoot = rawWorkspaceRoot ? nodePath.normalize(rawWorkspaceRoot) : '';
   const relPath = displayWritePath(absPath, workspaceRoot, input.context?.displayName);
-  const explicitMarkdownDeliverable = isExplicitMarkdownDeliverable(input.context, absPath);
-  const isolatedScope = detectIsolatedArtifactWriteScope(input.context?.requestPrompt, workspaceRoot);
-  const targetInsideIsolatedScope = isTargetInsideIsolatedArtifactWriteScope(
-    input.context?.requestPrompt,
+  const audit: NonNullable<AgentFileWriteDecision['audit']> = {
     absPath,
-    workspaceRoot || undefined,
-  );
-  const targetExactIsolatedScope = isTargetExactIsolatedArtifactWriteScope(
-    input.context?.requestPrompt,
-    absPath,
-    workspaceRoot || undefined,
-  );
-  const semanticAuthorization = resolveSemanticFileWriteAuthorization({
-    absPath,
-    workspaceRoot,
-    context: input.context,
-  });
-  const modelLedActionProposal = input.toolPolicy?.mode === 'model-led';
-  const markdownAuthorization = authorizeAgentFileWriteContract({
-    promptText: input.context?.requestPrompt || '',
-    targetPath: absPath,
-    workspaceRoot: workspaceRoot || undefined,
-    allowImplicitPrimaryArtifact: input.context?.purpose === 'markdown-deliverable'
-      && input.context?.userRequested === true,
-    allowScopedSourceArtifact: targetInsideIsolatedScope,
-    allowExactScopedArtifact: targetExactIsolatedScope,
-    targetKind: isDirectoryWriteAction(input.context?.taskAction) ? 'directory' : 'file',
-    writeAction: input.context?.taskAction,
-  });
-  const audit = {
-    absPath,
-    workspaceRoot: workspaceRoot || undefined,
-    toolPolicyMode: input.toolPolicy?.mode,
-    purpose: input.context?.purpose,
-    userRequested: input.context?.userRequested,
-    protectedPath: !!input.protectedPath,
-    autopilotMode: !!input.autopilotMode,
-    explicitMarkdownDeliverable,
-    markdownArtifactWriteAllowed: modelLedActionProposal || markdownAuthorization.allowed || semanticAuthorization.allowed,
-    markdownArtifactWriteReason: markdownAuthorization.reason,
-    markdownArtifactRequestedTargets: markdownAuthorization.requestedTargets.length > 0
-      ? markdownAuthorization.requestedTargets
-      : undefined,
-    semanticWriteAllowed: modelLedActionProposal || semanticAuthorization.allowed || undefined,
-    semanticWriteReason: modelLedActionProposal ? 'model-led-action-proposal' : semanticAuthorization.reason,
-  };
-  const scopedAudit = {
-    ...audit,
-    isolatedArtifactScopeRequired: isolatedScope.required,
-    isolatedArtifactAllowedRoots: isolatedScope.allowedRoots.length > 0 ? isolatedScope.allowedRoots : undefined,
+    ...(workspaceRoot ? { workspaceRoot } : {}),
+    ...(input.toolPolicy?.mode ? { toolPolicyMode: input.toolPolicy.mode } : {}),
+    ...(input.context?.taskAction ? { taskAction: input.context.taskAction } : {}),
+    protectedPath: input.protectedPath === true,
+    autopilotMode: input.autopilotMode === true,
   };
 
-  if (!absPath) {
-    return deny('missing-target-path', '缺少可写入的目标路径。', scopedAudit);
+  if (!absPath || !nodePath.isAbsolute(absPath)) {
+    return deny('invalid-target-path', '缺少可验证的绝对写入路径。', audit);
   }
-  if (workspaceRoot && (!isInsidePath(absPath, workspaceRoot) || !isCanonicalPathInsideRoot(absPath, workspaceRoot))) {
-    return deny('target-outside-workspace', `写入目标不在当前 workspace 内：${relPath}`, scopedAudit);
+  if (!workspaceRoot || !nodePath.isAbsolute(workspaceRoot)) {
+    return deny('missing-workspace-root', '缺少可验证的 workspace 根目录，已停止写入。', audit);
   }
-  if (isolatedScope.required && isolatedScope.allowedRoots.length === 0) {
-    return deny(
-      'invalid-isolated-artifact-scope',
-      '本次请求要求隔离新增产物，但未能解析出可验证的输出目录；为避免写入正式源码或未授权位置，已停止写入。',
-      scopedAudit,
-    );
-  }
-  if (isolatedScope.required && isolatedScope.allowedRoots.length > 0 && !targetInsideIsolatedScope) {
-    return deny(
-      'isolated-artifact-scope',
-      `写入被测试/交付产物隔离规则阻止：${relPath}。本次请求要求新增产物只能写入 ${isolatedScope.allowedRoots.map(root => displayWritePath(root, workspaceRoot)).join('、')}；正式源码修改请写入“原有代码修改清单”，不要直接改正式源码。`,
-      scopedAudit,
-    );
-  }
-  if (!modelLedActionProposal && !markdownAuthorization.allowed && !semanticAuthorization.allowed) {
-    const targetList = markdownAuthorization.requestedTargets.length > 0
-      ? `；用户明确允许的 Markdown 目标为 ${markdownAuthorization.requestedTargets.join('、')}`
-      : '';
-    return deny(
-      markdownAuthorization.reason || 'markdown-artifact-write-prohibited',
-      `文件写入不符合当前用户请求：${relPath}${targetList}。`,
-      scopedAudit,
-    );
+  if (!isInsidePath(absPath, workspaceRoot) || !isCanonicalPathInsideRoot(absPath, workspaceRoot)) {
+    return deny('target-outside-workspace', `写入目标不在当前 workspace 内：${relPath}`, audit);
   }
   if (input.protectedPath) {
-    return deny('protected-files-match', `已跳过受保护文件：${relPath}（匹配 devseek.protectedFiles 规则）`, scopedAudit);
+    return deny('protected-files-match', `已跳过受保护文件：${relPath}（匹配 devseek.protectedFiles 规则）`, audit);
   }
-  if (input.toolPolicy) {
-    const writePermission = decideToolPermission(input.toolPolicy, {
-      kind: 'edit',
-      risk: input.context?.toolRisk,
-      mutatesWorkspace: true,
-      protectedPath: input.protectedPath,
-    });
-    if (writePermission.action === 'deny') {
-      return deny(writePermission.reason, `当前 ${input.toolPolicy.mode} 模式不允许写入文件（${writePermission.reason}）。`, scopedAudit);
-    }
-    if (writePermission.action === 'requireConfirm' && !explicitMarkdownDeliverable) {
-      return {
-        action: 'requireConfirm',
-        reason: writePermission.reason,
-        confirmationTitle: `确认写入文件：${relPath}`,
-        audit: scopedAudit,
-      };
-    }
+  if (!input.toolPolicy) {
+    return deny('missing-tool-policy', '缺少工具权限策略，已停止写入。', audit);
   }
 
+  const permission = decideToolPermission(input.toolPolicy, {
+    kind: 'edit',
+    risk: input.context?.toolRisk,
+    mutatesWorkspace: true,
+    protectedPath: input.protectedPath,
+  });
+  if (permission.action === 'deny') {
+    return deny(
+      permission.reason,
+      `当前 ${input.toolPolicy.mode} 模式不允许写入文件（${permission.reason}）。`,
+      audit,
+    );
+  }
+  if (permission.action === 'requireConfirm') {
+    return {
+      action: 'requireConfirm',
+      reason: permission.reason,
+      confirmationTitle: `确认写入文件：${relPath}`,
+      audit,
+    };
+  }
+  if (!input.autopilotMode && isProjectInstructionFilePath(relPath)) {
+    return {
+      action: 'requireConfirm',
+      reason: 'project-instruction-file-requires-confirmation',
+      confirmationTitle: `确认写入项目指令文件：${relPath}`,
+      audit,
+    };
+  }
   if (!input.autopilotMode && SENSITIVE_FILE_RE.test(nodePath.basename(absPath))) {
     return {
       action: 'requireConfirm',
       reason: 'sensitive-file-requires-confirmation',
-      confirmationTitle: `⚠️ 写入敏感文件：${relPath}`,
-      audit: scopedAudit,
+      confirmationTitle: `确认写入敏感文件：${relPath}`,
+      audit,
     };
   }
-
-  return {
-    action: 'allow',
-    reason: explicitMarkdownDeliverable ? 'explicit-markdown-deliverable' : 'workspace-write-allowed',
-    audit: scopedAudit,
-  };
+  return { action: 'allow', reason: 'workspace-write-allowed', audit };
 }
 
-export function isExplicitMarkdownDeliverable(context: AgentFileWriteContext | undefined, absPath: string): boolean {
-  return context?.purpose === 'markdown-deliverable'
-    && context.userRequested === true
-    && ['.md', '.markdown'].includes(nodePath.extname(absPath).toLowerCase());
-}
-
-function resolveSemanticFileWriteAuthorization(input: {
-  absPath: string;
-  workspaceRoot: string;
-  context?: AgentFileWriteContext;
-}): { allowed: boolean; reason?: string } {
-  const semantic = input.context?.semanticIntent;
-  if (!semantic?.mutationRequested || semantic.mutationProhibited) return { allowed: false };
-  if (!semantic.sourceChange && !semantic.fileArtifact) return { allowed: false };
-  if (!semantic.signals?.includes('prior-task-continuation-request')) return { allowed: false };
-
-  const absPath = nodePath.normalize(input.absPath);
-  const targets = Array.isArray(semantic.targets) ? semantic.targets : [];
-  const matched = targets.some(target => {
-    const raw = String(target || '').trim();
-    if (!raw) return false;
-    const candidate = nodePath.normalize(nodePath.isAbsolute(raw)
-      ? raw
-      : nodePath.resolve(input.workspaceRoot || process.cwd(), raw));
-    return candidate === absPath;
-  });
-  return matched
-    ? { allowed: true, reason: 'semantic-prior-task-continuation-target' }
-    : { allowed: false, reason: 'semantic-prior-task-continuation-target-mismatch' };
-}
-
-function isDirectoryWriteAction(taskAction: string | undefined): boolean {
-  return /^(?:create[_-]?directory|mkdir|make[_-]?(?:directory|folder))$/i.test(String(taskAction || '').trim());
-}
-
-function deny(reason: string, notice: string, audit?: AgentFileWriteDecision['audit']): AgentFileWriteDecision {
+function deny(
+  reason: string,
+  notice: string,
+  audit: NonNullable<AgentFileWriteDecision['audit']>,
+): AgentFileWriteDecision {
   return { action: 'deny', reason, notice, audit };
 }
 
@@ -282,12 +150,4 @@ function displayWritePath(absPath: string, workspaceRoot: string, fallback?: str
 function isInsidePath(absPath: string, root: string): boolean {
   const rel = nodePath.relative(root, absPath);
   return rel === '' || (!!rel && !rel.startsWith('..') && !nodePath.isAbsolute(rel));
-}
-
-function isFormalSourceDirectoryTarget(absPath: string, workspaceRoot: string): boolean {
-  const relative = workspaceRoot
-    ? nodePath.relative(workspaceRoot, absPath).replace(/\\/g, '/')
-    : nodePath.normalize(absPath).replace(/\\/g, '/').replace(/^\/+/, '');
-  return /(?:^|\/)(?:src|source|sources|lib|app)(?:\/|$)/i.test(relative)
-    || /(?:^|\/)packages\/[^/]+\/src(?:\/|$)/i.test(relative);
 }

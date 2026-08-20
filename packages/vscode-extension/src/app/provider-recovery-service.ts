@@ -18,6 +18,8 @@ export type ProviderRecoveryKind =
 
 export interface ProviderAnomaly {
   providerType: string;
+  /** Typed upstream classification wins over all message parsing. */
+  kindHint?: Exclude<ProviderRecoveryKind, 'Unknown'>;
   message?: string;
   code?: string;
   statusCode?: number;
@@ -61,105 +63,7 @@ export class ProviderRecoveryService {
   constructor(private readonly historyStore?: TaskHistoryStore) {}
 
   classify(anomaly: ProviderAnomaly): ProviderRecoveryPlan {
-    const text = normalizeText([
-      anomaly.providerType,
-      anomaly.message,
-      anomaly.code,
-      ...(anomaly.signals || []),
-      anomaly.partialResponse,
-      String(anomaly.statusCode || ''),
-    ].join('\n'));
-
-    if (anomaly.statusCode === 401 || looksLikeProviderLoginGate(text)) {
-      return makePlan({
-        kind: 'LoginRequired',
-        taskStatus: 'paused',
-        pauseReason: 'DeepSeek 网页登录已失效，任务已暂停。',
-        requiresUserAction: true,
-        canRetry: false,
-        nextActions: ['用户重新登录 DeepSeek 网页后，从 checkpoint 继续任务。'],
-      });
-    }
-
-    if (anomaly.statusCode === 429 || looksLikeProviderVerificationGate(text) || looksLikeProviderRateLimitGate(text)) {
-      return makePlan({
-        kind: 'RateLimited',
-        taskStatus: 'paused',
-        pauseReason: 'DeepSeek 网页触发验证码、排队或限流，已保存任务进度。',
-        requiresUserAction: true,
-        canRetry: false,
-        nextActions: ['等待或手动处理网页限制后，从 checkpoint 继续任务。'],
-      });
-    }
-
-    if (/(selector|dom|input box|send button|message node|找不到输入框|页面结构|选择器)/i.test(text)) {
-      return makePlan({
-        kind: 'DOMContractChanged',
-        taskStatus: 'failed',
-        pauseReason: 'DeepSeek 网页结构或 Bridge 选择器异常，需要更新适配后继续。',
-        requiresUserAction: true,
-        canRetry: false,
-        nextActions: ['查看 Bridge 诊断并更新网页选择器适配。'],
-      });
-    }
-
-    const transportFailure = isTransientProviderTransportError({
-      message: anomaly.message,
-      code: anomaly.code,
-      cause: anomaly.signals?.join('\n'),
-    });
-    if (anomaly.bridgeRestarted || transportFailure || /(bridge restart|bridge restarted|shutdown)/i.test(text)) {
-      return makePlan({
-        kind: 'BridgeRestarted',
-        taskStatus: 'recoverable',
-        pauseReason: 'Bridge 连接中断或重启，任务可从最后稳定 checkpoint 继续。',
-        requiresUserAction: false,
-        canRetry: true,
-        nextActions: ['重新连接 Bridge 后使用 ResumeContextBuilder 继续任务。'],
-      });
-    }
-
-    if (/(timeout|timed out|no token|stream stalled|sse|finish reason|无 token|流式)/i.test(text)) {
-      return makePlan({
-        kind: 'StreamTimeout',
-        taskStatus: 'recoverable',
-        pauseReason: 'DeepSeek 网页流式输出超时或未正常结束，未执行新的副作用操作。',
-        requiresUserAction: false,
-        canRetry: true,
-        nextActions: ['从 checkpoint 重试，并通过 IdempotencyGuard 阻断已提交副作用重放。'],
-      });
-    }
-
-    if (/(response_corrupted|response corrupted|invalid-json-response|truncated|partial|unclosed|unterminated|json parse|tool parse|diff parse|代码块未闭合|截断|不完整)/i.test(text)) {
-      return makePlan({
-        kind: 'ResponseCorrupted',
-        taskStatus: 'recoverable',
-        pauseReason: '模型回复不完整或格式损坏，DevSeek 已阻止执行未验证的内容。',
-        requiresUserAction: false,
-        canRetry: true,
-        nextActions: ['要求模型续写或重新生成，恢复时只注入最小任务事实。'],
-      });
-    }
-
-    if (/(qualitygate|quality gate|validation failed|验证失败|编译失败|测试失败)/i.test(text)) {
-      return makePlan({
-        kind: 'QualityGateFailed',
-        taskStatus: 'quality-failed',
-        pauseReason: '代码生成未通过自检查，必须修复后重新验证。',
-        requiresUserAction: false,
-        canRetry: true,
-        nextActions: ['修复验证失败项，然后重新运行 QualityGate。'],
-      });
-    }
-
-    return makePlan({
-      kind: 'Unknown',
-      taskStatus: 'recoverable',
-      pauseReason: 'Provider 异常，任务已保留 checkpoint，等待恢复。',
-      requiresUserAction: false,
-      canRetry: true,
-      nextActions: ['查看异常证据并从 checkpoint 继续。'],
-    });
+    return planForKind(anomaly.kindHint ?? classifyStructuredAnomaly(anomaly));
   }
 
   async recordRecovery(task: TaskRunRecord, anomaly: ProviderAnomaly, checkpointRef?: string): Promise<TaskRunRecord | undefined> {
@@ -177,7 +81,9 @@ export class ProviderRecoveryService {
 }
 
 export function buildProviderRecoveryDisplay(plan: ProviderRecoveryPlan, rawMessage = ''): ProviderRecoveryDisplay {
-  const corruption = plan.kind === 'ResponseCorrupted' ? parseResponseCorruption(rawMessage) : undefined;
+  const corruption = plan.kind === 'ResponseCorrupted' || plan.kind === 'StreamTimeout'
+    ? parseResponseCorruption(rawMessage)
+    : undefined;
   const title = plan.kind === 'ResponseCorrupted' ? '响应损坏，已阻止执行' : plan.userMessage;
   const detail = [
     plan.pauseReason,
@@ -194,258 +100,130 @@ export function buildProviderRecoveryDisplay(plan: ProviderRecoveryPlan, rawMess
   };
 }
 
+/**
+ * Recovery restores the sealed task contract; it never reinterprets the user
+ * prompt into local file actions. The main model must propose fresh typed calls.
+ */
 export function buildProviderRecoveryCheckpointTasks(input: {
   prompt: string;
   files?: string[];
   workspaceRootFsPath?: string;
   recoveryKind?: ProviderRecoveryKind;
 }): ProviderRecoveryCheckpointTask[] {
-  const trustedPrompt = stripUntrustedProtocolPayloads(input.prompt);
-  const literalOnly = hasLiteralOutputIntent(input.prompt) && !hasSideEffectIntent(trustedPrompt);
-  const refs = new Set<string>();
-  const workspaceRoot = input.workspaceRootFsPath || '';
-  for (const file of input.files || []) {
-    const rel = workspaceRelativePath(file, workspaceRoot);
-    if (rel) refs.add(rel);
-  }
-  const pathRe = /(?:^|[\s"'`(（:：])((?:\.\/)?(?:[A-Za-z0-9_.-]+\/)+[A-Za-z0-9_.-]+\.[A-Za-z0-9_+-]{1,12})(?=$|[\s"'`),，。；;])/g;
-  let match: RegExpExecArray | null;
-  while (!literalOnly && (match = pathRe.exec(trustedPrompt)) !== null) {
-    const rel = workspaceRelativePath(match[1], workspaceRoot);
-    if (rel) refs.add(rel);
-  }
-  const refsList = [...refs].slice(0, 12);
-  const action = inferRecoveryAction(trustedPrompt, refs.size > 0 && (input.files || []).length > 0);
-  if (literalOnly) return [buildFallbackRecoveryTask(input.recoveryKind)];
-  if (refsList.length === 0 || action === 'explore') {
-    if (input.recoveryKind === 'ResponseCorrupted') return [buildExplorationRecoveryTask()];
-    return [buildFallbackRecoveryTask(input.recoveryKind)];
-  }
-  const expectedContents = action === 'create' ? extractExpectedContents(trustedPrompt, refsList) : [];
-  const shouldVerify = hasValidationIntent(trustedPrompt);
-  const tasks = refsList.map((file, index) => {
-    const expectedContent = expectedContents[index];
-    return {
-      id: `provider-recovery-${index + 1}`,
-      file,
-      targetKind: 'workspace-file' as const,
-      action,
-      desc: buildRecoveryTaskDesc(file, action, expectedContent, shouldVerify),
-      absPath: workspaceRoot ? `${workspaceRoot.replace(/\/$/, '')}/${file}` : undefined,
-      ...(expectedContent !== undefined ? { expectedContent } : {}),
-    };
-  });
-  return tasks.length > 0 ? tasks : [buildFallbackRecoveryTask(input.recoveryKind)];
-}
-
-function makePlan(input: {
-  kind: ProviderRecoveryKind;
-  taskStatus: ProviderRecoveryPlan['taskStatus'];
-  pauseReason: string;
-  requiresUserAction: boolean;
-  canRetry: boolean;
-  nextActions: string[];
-}): ProviderRecoveryPlan {
-  const evidenceRef = `provider:${input.kind}`;
-  return {
-    ...input,
-    userMessage: input.pauseReason,
-    safeToContinueFromCheckpoint: input.taskStatus === 'recoverable' || input.taskStatus === 'quality-failed',
-    evidenceRefs: [evidenceRef],
-  };
-}
-
-function normalizeText(value: string): string {
-  return String(value || '').replace(/\s+/g, ' ').trim();
-}
-
-function unique(values: string[]): string[] {
-  return [...new Set(values.filter(Boolean))];
-}
-
-function parseResponseCorruption(rawMessage: string): { status: string; reason: string } | undefined {
-  const match = /^RESPONSE_CORRUPTED:([^:\n]+):([\s\S]*)$/i.exec(String(rawMessage || '').trim());
-  if (!match) return undefined;
-  return { status: match[1].trim(), reason: match[2].trim() };
-}
-
-function stripUntrustedProtocolPayloads(prompt: string): string {
-  return String(prompt || '')
-    .replace(/```[\s\S]*?```/g, '\n')
-    .replace(/<tool_call[\s\S]*?<\/tool_call>/gi, '\n')
-    .replace(/(?:^|\n)[^\n]*\[TOOL:[\s\S]*?(?=\n\s*\n|$)/gi, '\n')
-    .replace(/(?:^|\n)\s*(?:Calling|Call|调用)[ \t]*:?[^\n]*(?:run_terminal|create_file|write_file|replace_file|mcp__)[\s\S]*?(?=\n\s*\n|$)/gi, '\n')
-    .replace(/(?:^|\n)\s*[{[]\s*"(?:tool|name|path|arguments)"[\s\S]*?(?=\n\s*\n|$)/gi, '\n');
-}
-
-function hasCreateIntent(prompt: string): boolean {
-  return /(创建|新建|写入|新增|建立|生成|建\s*(?:\.\/)?(?:[A-Za-z0-9_.-]+\/)+|create|add|write)/i.test(stripNegatedActionPhrases(prompt));
-}
-
-function hasModifyIntent(prompt: string): boolean {
-  return /(修改|更新|修复|重构|替换|编辑|调整|改写|modify|update|fix|refactor|replace|edit)/i.test(stripNegatedActionPhrases(prompt));
-}
-
-function hasDeleteIntent(prompt: string): boolean {
-  return /(删除|移除|删掉|delete|remove)/i.test(stripNegatedActionPhrases(prompt));
-}
-
-function hasInspectIntent(prompt: string): boolean {
-  return /(检查|查看|确认|验证|分析|读取|列出|inspect|check|verify|validate|analy[sz]e|read|list)/i.test(stripNegatedActionPhrases(prompt));
-}
-
-function hasExplainIntent(prompt: string): boolean {
-  return /(解释|说明|总结|explain|summari[sz]e|describe)/i.test(stripNegatedActionPhrases(prompt));
-}
-
-function hasLiteralOutputIntent(prompt: string): boolean {
-  return /(原样输出|逐字输出|不要补全|不要解释|不要执行|不要运行|不要写文件|不要创建|作为文本|纯文本|literal|verbatim|as[- ]?is|do not execute|don't execute|do not run|do not write|do not create)/i.test(prompt);
-}
-
-function hasSideEffectIntent(prompt: string): boolean {
-  return hasCreateIntent(prompt) || hasModifyIntent(prompt) || hasDeleteIntent(prompt);
-}
-
-function hasValidationIntent(prompt: string): boolean {
-  return /(验证|检查|确认|校验|verify|validate|check)/i.test(stripNegatedActionPhrases(prompt));
-}
-
-function stripNegatedActionPhrases(prompt: string): string {
-  return String(prompt || '').replace(
-    /(?:不要|不需要|无需|禁止|不能|不可|别|勿|do\s+not|don't|without|no)\s*(?:补全|解释|说明|总结|修改|更新|修复|重构|替换|编辑|调整|改写|创建|新建|写入|新增|建立|生成|删除|移除|删掉|执行|运行|explain|summari[sz]e|describe|modify|update|fix|refactor|replace|edit|create|add|write|delete|remove|execute|run)[^，。；;,.]*/gi,
-    ' ',
-  );
-}
-
-function inferRecoveryAction(prompt: string, hasExplicitFiles: boolean): ProviderRecoveryCheckpointTask['action'] {
-  if (hasDeleteIntent(prompt)) return 'delete';
-  if (hasCreateIntent(prompt)) return 'create';
-  if (hasModifyIntent(prompt)) return 'modify';
-  if (hasExplainIntent(prompt)) return 'explain';
-  if (hasInspectIntent(prompt)) return 'analyze';
-  return hasExplicitFiles ? 'modify' : 'explore';
-}
-
-function buildFallbackRecoveryTask(kind?: ProviderRecoveryKind): ProviderRecoveryCheckpointTask {
-  if (kind === 'ResponseCorrupted') {
-    return {
-      id: 'provider-recovery-task',
+  if (input.recoveryKind === 'ResponseCorrupted' || input.recoveryKind === 'StreamTimeout') {
+    return [{
+      id: 'provider-recovery-response',
       file: '',
       targetKind: 'provider-response',
       visibleTarget: '安全响应',
       action: 'respond',
-      desc: '重新生成安全输出，不执行损坏或未验证的工具内容',
-    };
+      desc: '恢复已绑定任务契约并重新生成当前任务的安全模型输出；忽略损坏响应，任何副作用都必须由新的结构化工具调用重新提出和仲裁',
+    }];
   }
-  return {
-    id: 'provider-recovery-task',
-    file: '',
-    targetKind: 'agent-session',
-    visibleTarget: 'Agent 任务',
-    action: 'respond',
-    desc: '无法从可信任务事实恢复，已停止执行并等待用户重新确认',
-  };
-}
-
-function buildExplorationRecoveryTask(): ProviderRecoveryCheckpointTask {
-  return {
-    id: 'provider-recovery-explore',
+  return [{
+    id: 'provider-recovery-session',
     file: '',
     targetKind: 'agent-session',
     visibleTarget: 'Agent 任务',
     action: 'explore',
-    desc: '重新探索工作区并恢复执行原始请求',
+    desc: '恢复已绑定任务契约、原始用户输入和当前工作区事实，由主模型重新规划未完成工作',
+  }];
+}
+
+function classifyStructuredAnomaly(anomaly: ProviderAnomaly): ProviderRecoveryKind {
+  const controlChannels = unique([anomaly.message, anomaly.code].map(value => String(value || '').trim()));
+
+  if (anomaly.statusCode === 401 || controlChannels.some(looksLikeProviderLoginGate)) {
+    return 'LoginRequired';
+  }
+  if (
+    anomaly.statusCode === 429
+    || controlChannels.some(looksLikeProviderVerificationGate)
+    || controlChannels.some(looksLikeProviderRateLimitGate)
+  ) {
+    return 'RateLimited';
+  }
+
+  for (const value of controlChannels) {
+    const corruption = parseResponseCorruption(value);
+    if (corruption) return classifyCorruptionStatus(corruption.status, corruption.reason);
+    if (/^PROMPT_INPUT_FAILED:/i.test(value)) return 'DOMContractChanged';
+    if (/^QUALITY_GATE_FAILED:/i.test(value)) return 'QualityGateFailed';
+    if (/^BRIDGE_RESTARTED(?:[:\s]|$)/i.test(value)) return 'BridgeRestarted';
+  }
+
+  if (anomaly.bridgeRestarted) return 'BridgeRestarted';
+  if (isTransientProviderTransportError({
+    message: anomaly.message,
+    code: anomaly.code,
+    cause: anomaly.signals?.join('\n'),
+  })) {
+    return 'BridgeRestarted';
+  }
+  return 'Unknown';
+}
+
+function classifyCorruptionStatus(status: string, reason: string): ProviderRecoveryKind {
+  const normalized = status.toLowerCase();
+  if (normalized === 'stream-timeout') return 'StreamTimeout';
+  if (normalized === 'prompt-submit-failed') return 'DOMContractChanged';
+  if (normalized === 'stream-error') {
+    const category = reason.split(':', 1)[0].trim().toLowerCase();
+    if (category === 'login-required') return 'LoginRequired';
+    if (category === 'rate-limited') return 'RateLimited';
+    if (category === 'browser-session-lost') return 'BridgeRestarted';
+  }
+  return 'ResponseCorrupted';
+}
+
+function planForKind(kind: ProviderRecoveryKind): ProviderRecoveryPlan {
+  switch (kind) {
+    case 'LoginRequired':
+      return makePlan(kind, 'paused', 'DeepSeek 网页登录已失效，任务已暂停。', true, false, ['用户重新登录后，从已封存 checkpoint 继续任务。']);
+    case 'RateLimited':
+      return makePlan(kind, 'paused', 'DeepSeek 网页触发验证码、排队或限流，已保存任务进度。', true, false, ['处理网页限制后，从已封存 checkpoint 继续任务。']);
+    case 'DOMContractChanged':
+      return makePlan(kind, 'failed', 'DeepSeek 网页输入或结构化交互契约异常，需要修复适配后继续。', true, false, ['查看 Bridge 诊断并修复网页适配。']);
+    case 'BridgeRestarted':
+      return makePlan(kind, 'recoverable', 'Bridge 连接中断或重启，任务可从最后稳定 checkpoint 继续。', false, true, ['重新连接 Bridge 后恢复已绑定任务契约。']);
+    case 'StreamTimeout':
+      return makePlan(kind, 'recoverable', 'DeepSeek 网页流式输出超时或未正常结束，未执行未结算内容。', false, true, ['从 checkpoint 重新生成当前轮输出。']);
+    case 'ResponseCorrupted':
+      return makePlan(kind, 'recoverable', '模型回复不完整或格式损坏，DevSeek 已阻止执行未验证的内容。', false, true, ['丢弃损坏文本，从 checkpoint 重新生成。']);
+    case 'QualityGateFailed':
+      return makePlan(kind, 'quality-failed', '代码生成未通过自检查，必须修复后重新验证。', false, true, ['恢复任务契约并根据真实验证证据继续修复。']);
+    case 'Unknown':
+      return makePlan(kind, 'recoverable', 'Provider 异常，任务已保留 checkpoint，等待恢复。', false, true, ['查看结构化异常证据后继续。']);
+  }
+}
+
+function makePlan(
+  kind: ProviderRecoveryKind,
+  taskStatus: ProviderRecoveryPlan['taskStatus'],
+  pauseReason: string,
+  requiresUserAction: boolean,
+  canRetry: boolean,
+  nextActions: string[],
+): ProviderRecoveryPlan {
+  return {
+    kind,
+    taskStatus,
+    pauseReason,
+    userMessage: pauseReason,
+    requiresUserAction,
+    canRetry,
+    safeToContinueFromCheckpoint: taskStatus === 'recoverable' || taskStatus === 'quality-failed',
+    evidenceRefs: [`provider:${kind}`],
+    nextActions,
   };
 }
 
-function buildRecoveryTaskDesc(
-  file: string,
-  action: ProviderRecoveryCheckpointTask['action'],
-  expectedContent: string | undefined,
-  shouldVerify: boolean,
-): string {
-  const verb = action === 'create' ? '创建'
-    : action === 'delete' ? '删除'
-    : action === 'analyze' ? '检查'
-    : action === 'explain' ? '解释'
-    : '恢复并继续处理';
-  const parts = [`${verb} ${file}`];
-  if (expectedContent !== undefined) parts.push(`内容为: ${expectedContent}`);
-  if (shouldVerify) parts.push('并验证文件内容');
-  return parts.join('，');
+function parseResponseCorruption(rawMessage: string): { status: string; reason: string } | undefined {
+  const match = /^RESPONSE_CORRUPTED:([^:\n]+)(?::([\s\S]*))?$/i.exec(String(rawMessage || '').trim());
+  if (!match) return undefined;
+  return { status: match[1].trim(), reason: (match[2] || '').trim() };
 }
 
-function extractExpectedContents(prompt: string, files: string[] = []): string[] {
-  const separate = /内容\s*分别(?:为|是|:|：)\s*([\s\S]+)/i.exec(prompt);
-  if (separate) {
-    const body = cleanContentClause(separate[1]);
-    const values = body.split(/\s+(?:和|与|及|and)\s+|、/i).map(cleanExpectedContent).filter(Boolean);
-    if (values.length > 0) return values;
-  }
-
-  const single = /内容\s*(?:为|是|:|：)\s*([\s\S]+)/i.exec(prompt);
-  if (single) {
-    const value = cleanExpectedContent(cleanContentClause(single[1]));
-    if (value) return [value];
-  }
-
-  const codeProbeContents = extractJavaScriptProbeExpectedContents(prompt, files);
-  if (codeProbeContents.length > 0) return codeProbeContents;
-
-  return [];
-}
-
-function extractJavaScriptProbeExpectedContents(prompt: string, files: string[]): string[] {
-  if (!files.some(file => /\.(?:js|mjs|cjs)$/i.test(file))) return [];
-  const functionSpec = /定义函数\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*[，,]?\s*返回\s*([^。；;\n]+)/i.exec(prompt);
-  const printSpec = /(?:最后一行)?\s*打印\s*[:：]\s*([^。；;\n]+)/i.exec(prompt);
-  if (!functionSpec || !printSpec) return [];
-
-  const functionName = functionSpec[1];
-  const args = functionSpec[2].split(',').map(arg => arg.trim()).filter(Boolean).join(', ');
-  const returnExpr = functionSpec[3].trim();
-  const printText = printSpec[1].trim();
-  const logLine = buildJavaScriptProbeLogLine(functionName, printText);
-  return [`function ${functionName}(${args}) {return ${returnExpr};}\n\n${logLine}\n`];
-}
-
-function buildJavaScriptProbeLogLine(functionName: string, printText: string): string {
-  const arithmetic = /^(.*?)(-?\d+)\s*\+\s*(-?\d+)\s*=\s*(-?\d+)\s*$/.exec(printText);
-  if (arithmetic && Number(arithmetic[2]) + Number(arithmetic[3]) === Number(arithmetic[4])) {
-    const prefix = arithmetic[1];
-    const left = arithmetic[2];
-    const right = arithmetic[3];
-    return `console.log('${escapeJavaScriptSingleQuoted(prefix)}${left}+${right}=' + ${functionName}(${left}, ${right}));`;
-  }
-  return `console.log('${escapeJavaScriptSingleQuoted(printText)}');`;
-}
-
-function escapeJavaScriptSingleQuoted(value: string): string {
-  return String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-}
-
-function cleanContentClause(value: string): string {
-  return String(value || '')
-    .split(/[。；;]/)[0]
-    .split(/[,，]\s*(?:不要|不需要|无需|禁止|不能|不可|别|勿|do\s+not|don't|without|no)\s*(?:修改|更新|修复|重构|替换|编辑|创建|新建|写入|新增|建立|生成|删除|移除|删掉|执行|运行|modify|update|fix|refactor|replace|edit|create|add|write|delete|remove|execute|run)/i)[0]
-    .split(/[,，]\s*(?:并|且)?\s*(?:验证|检查|确认|校验)/i)[0]
-    .replace(/\s*(?:并|且)?\s*(?:验证|检查|确认|校验).*$/i, '')
-    .trim();
-}
-
-function cleanExpectedContent(value: string): string {
-  return value
-    .replace(/^[`"'“”‘’]+|[`"'“”‘’]+$/g, '')
-    .trim();
-}
-
-function workspaceRelativePath(file: string, workspaceRoot: string): string {
-  const clean = String(file || '').trim().replace(/\\/g, '/').replace(/^\.\//, '');
-  if (!clean) return '';
-  const root = workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '');
-  if (root && clean.startsWith(root + '/')) {
-    return clean.slice(root.length + 1);
-  }
-  if (clean.startsWith('/') || clean.startsWith('..') || clean.includes('/../')) return '';
-  return clean;
+function unique(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))];
 }

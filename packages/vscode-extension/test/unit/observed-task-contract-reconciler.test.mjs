@@ -86,9 +86,18 @@ function reconcile(prompt, proposal, receipts, changeReceipts = []) {
     taskContract: canonical.taskContract,
     externalEffectIntent: canonical.intent.context.externalEffect,
     targetPaths: canonical.mutation.targets,
-    prohibitedTargets: authority.semanticContractRevision.prohibitedTargets,
+    prohibitedTargets: [],
   });
-  assert.equal(authority.applyModelSemanticProposal(proposal), true);
+  const boundProposal = {
+    ...proposal,
+    evidenceBindings: proposal.evidenceBindings ?? receipts.map(receipt => ({
+      tool: receipt.tool,
+      purpose: receipt.purpose,
+      effects: receipt.effects,
+      inputSha256: receipt.inputSha256,
+    })),
+  };
+  assert.equal(authority.applyModelSemanticProposal(boundProposal), true);
   const settled = authority.settleModelSemanticProposal(receipts);
   assert.ok(settled, 'the concrete receipt must settle the model interpretation');
   return {
@@ -208,14 +217,14 @@ test('a settled memory effect replaces stale source and verification obligations
     [memoryReceipt],
   );
 
-  assert.equal(current.mode, 'change');
+  assert.equal(current.mode, 'explain');
   assert.ok(candidate);
-  assert.equal(candidate.taskContract.mode, 'review');
+  assert.equal(candidate.taskContract.mode, 'change');
   assert.equal(candidate.taskContract.deliverables.some(item => item.kind === 'source-change'), false);
   assert.equal(candidate.taskContract.deliverables.some(item => item.kind === 'verification-result'), false);
   assert.equal(candidate.taskContract.constraints.includes('verification-before-completion'), false);
   assert.equal(candidate.taskContract.constraints.includes('no-workspace-mutation'), true);
-  assert.deepEqual(candidate.taskContract.acceptance.map(item => item.id), ['grounded-response']);
+  assert.deepEqual(candidate.taskContract.acceptance.map(item => item.id), ['grounded-response', 'authority']);
 });
 
 test('a denied external action can refine blocked intent but cannot manufacture workspace scope', () => {
@@ -247,10 +256,8 @@ test('a denied external action can refine blocked intent but cannot manufacture 
   );
 
   assert.ok(candidate);
-  assert.equal(candidate.taskContract.mode, 'release');
+  assert.equal(candidate.taskContract.mode, 'change');
   assert.deepEqual(candidate.taskContract.scope.include, current.scope.include);
-  assert.equal(current.constraints.every(constraint => (
-    candidate.taskContract.constraints.includes(constraint)
-  )), true);
+  assert.equal(candidate.taskContract.deliverables.some(item => item.kind === 'source-change'), false);
   assert.equal(candidate.taskContract.externalBoundaries.length > 0, true);
 });

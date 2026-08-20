@@ -13,8 +13,6 @@ export * from './context-assembly-service';
 export * from './context-scope-resolver';
 export * from './context-discovery-service';
 export * from './judgment-owners';
-export * from './agentic-repair-service';
-export * from './apply-failure-recovery-service';
 export * from './local-attachment-context';
 export * from './memory-service';
 export * from './pending-edit-service';

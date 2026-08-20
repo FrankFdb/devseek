@@ -1,11 +1,7 @@
 import {
-  AutoApplyPolicy,
   ChatIntentDecision,
   decideChatIntent,
 } from '../intent-router';
-import type { SemanticIntentInterpretation } from '../intent/semantic-intent';
-import { governSemanticIntent } from '../intent/semantic-intent-governor';
-import type { TaskSemanticResolutionContext } from '../intent/task-semantic-contract-service';
 import { buildToolPolicy, ToolPolicy } from './permission-service';
 import { selectWorkflow, WorkflowSelection } from './workflow-service';
 
@@ -16,10 +12,6 @@ export interface ChatRouteInput {
   agentEnabled: boolean;
   forceNoAgent?: boolean;
   intentConfirmed?: boolean;
-  lookupLearnedIntent?: (text: string) => 'chat' | 'code-change' | null;
-  semanticIntent?: SemanticIntentInterpretation;
-  semanticContext?: TaskSemanticResolutionContext;
-  autoApplyPolicy?: AutoApplyPolicy;
 }
 
 export interface ChatRouteDecision {
@@ -27,22 +19,12 @@ export interface ChatRouteDecision {
   intent: ChatIntentDecision;
   toolPolicy: ToolPolicy;
   workflow: WorkflowSelection;
-  autoApplyPolicy: AutoApplyPolicy;
 }
 
 export class ChatRouteController {
   decide(input: ChatRouteInput): ChatRouteDecision {
     const intentRoutingText = getIntentRoutingText(input.userDisplay, input.prompt);
-    const semanticContext = input.semanticIntent
-      ? { ...(input.semanticContext ?? {}), semanticIntent: input.semanticIntent }
-      : input.semanticContext;
-    let intent = decideChatIntent(intentRoutingText, semanticContext);
-    intent = governSemanticIntent(intent, input.semanticIntent);
-
-    const learnedKind = input.lookupLearnedIntent?.(intentRoutingText) ?? null;
-    if (learnedKind !== null) {
-      intent = applyLearnedIntentSafely(intent, learnedKind);
-    }
+    const intent = decideChatIntent(intentRoutingText);
 
     const workflow = selectWorkflow({
       intent,
@@ -60,35 +42,19 @@ export class ChatRouteController {
       intent,
       toolPolicy,
       workflow,
-      autoApplyPolicy: input.autoApplyPolicy ?? 'conservative',
     };
   }
 }
 
 export function getIntentRoutingText(userDisplay: string, prompt: string): string {
-  const display = (userDisplay || '').trim();
-  if (!display) return prompt;
+  const display = userDisplay || '';
+  if (!display.trim()) return prompt;
 
-  const withoutAttachmentBadges = display
-    .split(/\r?\n/)
-    .filter(line => !/^\s*📎\s*`[^`]+`\s*$/.test(line.trim()))
-    .join('\n')
-    .trim();
+  const lines = display.split(/\r?\n/);
+  const withoutAttachmentBadges = lines.filter(line => !/^\s*📎\s*`[^`]+`\s*$/.test(line));
+  if (withoutAttachmentBadges.length === lines.length) return display;
 
-  return withoutAttachmentBadges || display;
-}
-
-function applyLearnedIntentSafely(
-  intent: ChatIntentDecision,
-  learnedKind: 'chat' | 'code-change',
-): ChatIntentDecision {
-  if (learnedKind === intent.kind) {
-    return { ...intent, signals: ['learned-habit', ...intent.signals] };
-  }
-
-  return {
-    ...intent,
-    signals: ['learned-habit-ignored', ...intent.signals],
-    blockers: ['learned-habit-conflict', ...intent.blockers],
-  };
+  while (withoutAttachmentBadges[0]?.trim() === '') withoutAttachmentBadges.shift();
+  while (withoutAttachmentBadges.at(-1)?.trim() === '') withoutAttachmentBadges.pop();
+  return withoutAttachmentBadges.join('\n') || display;
 }

@@ -263,30 +263,6 @@
           "maximum": 6,
           "description": "自动验证失败后回传 DeepSeek 的最大闭环修复轮次（0=关闭）"
         },
-        "devseek.autoApplyPolicy": {
-          "type": "string",
-          "default": "conservative",
-          "enum": [
-            "conservative",
-            "balanced",
-            "aggressive"
-          ],
-          "description": "自动落地策略：conservative=严格门控，balanced=常规门控，aggressive=宽松门控"
-        },
-        "devseek.localExecutionFirst": {
-          "type": "boolean",
-          "default": true,
-          "description": "对明确的编译/运行附件请求，优先由插件本地推导并执行命令；失败后再将最小必要错误与文件发送给 DeepSeek"
-        },
-        "devseek.executionApproval": {
-          "type": "string",
-          "default": "auto",
-          "enum": [
-            "auto",
-            "confirm"
-          ],
-          "description": "本地执行审批策略：auto=插件直接执行，confirm=执行前由用户确认"
-        },
         "devseek.completionEnabled": {
           "type": "boolean",
           "default": false,

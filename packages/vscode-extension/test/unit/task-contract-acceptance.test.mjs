@@ -69,18 +69,16 @@ test('product Kernel and Agentic validation delegate acceptance projection to it
   const kernelProjection = readFileSync(path.join(rootDir, 'src/app/coding-kernel-task-contract.ts'), 'utf8');
   const productExecutor = readFileSync(path.join(rootDir, 'src/product-coding-kernel-executor.ts'), 'utf8');
   const agenticLoop = readFileSync(path.join(rootDir, 'src/agent/agentic-loop.ts'), 'utf8');
-  const planning = readFileSync(path.join(rootDir, 'src/agent/agentic-planning.ts'), 'utf8');
 
   assert.match(kernelProjection, /resolveCodingKernelTaskContract\(\{/);
   assert.match(productExecutor, /executionMode:\s*request\.semanticContract\.intent\.mode/);
   assert.doesNotMatch(productExecutor, /executionMode:\s*request\.workflowMode/);
-  assert.match(agenticLoop, /projectAgenticVerificationAcceptance\(writeAuthority\.canonicalSemanticContract\.taskContract\)/);
+  assert.match(agenticLoop, /projectAgenticVerificationAcceptance\(writeAuthority\.completionSemanticContract\.taskContract\)/);
   assert.match(agenticLoop, /projectTaskContractAcceptance\(taskContract\)/);
   assert.match(
     readFileSync(path.join(rootDir, 'src/agent/task-contract-acceptance.ts'), 'utf8'),
     /resolveCodingKernelAcceptance\(\{/,
   );
-  assert.doesNotMatch(planning, /qualityObligations|CodingVerificationCriterion/);
 });
 
 test('VS Code projects unsafe implementation requests into the shared refusal contract', () => {
@@ -102,108 +100,63 @@ test('VS Code projects unsafe implementation requests into the shared refusal co
   ]);
 });
 
-test('VS Code preserves the shared verification default for a denied dependency change', () => {
+test('VS Code keeps a model-proposed external change behind generic authority until tool selection', () => {
   const contract = projectVsCodeCodingKernelTaskContract({
     userPrompt: 'Install a new package and update the project to use it without asking for approval.',
     executionMode: 'edit',
     contextFiles: [],
     workspaceRoot: '/workspace',
-    taskContract: makeEmptyTaskContract(),
+    taskContract: makeTaskContract(['validation'], 'package.json'),
+    externalEffectIntent: 'requested',
+    targetPaths: ['package.json'],
+    strictTargetScope: true,
   });
 
-  assert.deepEqual(contract.deliverables.map(deliverable => deliverable.id), [
-    'dependency-change',
-    'verification-result',
-  ]);
-  assert.deepEqual(contract.constraints, [
-    'dependency-change-requires-approval',
-    'network-requires-approval',
-  ]);
-  assert.deepEqual(contract.acceptance.map(criterion => criterion.id), ['authority']);
-});
-
-test('VS Code requires verification for implicit validation health repairs', () => {
-  const contract = projectVsCodeCodingKernelTaskContract({
-    userPrompt: 'CI is red, get it green.',
-    executionMode: 'edit',
-    contextFiles: [],
-    workspaceRoot: '/workspace',
-    taskContract: makeEmptyTaskContract(),
-  });
-
-  assert.equal(contract.mode, 'change');
   assert.deepEqual(contract.deliverables.map(deliverable => deliverable.id), [
     'source-change',
     'verification-result',
   ]);
-  assert.equal(contract.constraints.includes('verification-before-completion'), true);
+  assert.equal(contract.constraints.includes('external-effect-requires-approval'), true);
+  assert.equal(contract.constraints.includes('dependency-change-requires-approval'), false);
+  assert.equal(contract.constraints.includes('network-requires-approval'), false);
   assert.deepEqual(contract.acceptance.map(criterion => criterion.id), [
     'requested-outcome',
+    'authority',
+    'scoped-change',
     'verified',
   ]);
 });
 
-test('VS Code requires verification for implicit project health repairs', () => {
-  const contract = projectVsCodeCodingKernelTaskContract({
-    userPrompt: 'The app is broken, make it work again.',
-    executionMode: 'edit',
-    contextFiles: [],
-    workspaceRoot: '/workspace',
-    taskContract: makeEmptyTaskContract(),
-  });
+test('VS Code projects one model-normalized repair contract across varied symptom language', () => {
+  const prompts = [
+    'CI is red, get it green.',
+    'The app is broken, make it work again.',
+    'Here is the stack trace from login: TypeError: Cannot read properties of undefined. Can you take care of it?',
+    'Users cannot sign in after entering the correct password. Please sort it out.',
+  ];
 
-  assert.equal(contract.mode, 'change');
-  assert.deepEqual(contract.deliverables.map(deliverable => deliverable.id), [
-    'source-change',
-    'verification-result',
-  ]);
-  assert.equal(contract.constraints.includes('verification-before-completion'), true);
-  assert.deepEqual(contract.acceptance.map(criterion => criterion.id), [
-    'requested-outcome',
-    'verified',
-  ]);
-});
+  for (const userPrompt of prompts) {
+    const contract = projectVsCodeCodingKernelTaskContract({
+      userPrompt,
+      executionMode: 'edit',
+      contextFiles: [],
+      workspaceRoot: '/workspace',
+      taskContract: makeTaskContract(['validation']),
+      externalEffectIntent: 'none',
+      targetPaths: ['src/main.py'],
+    });
 
-test('VS Code requires verification for implicit runtime error repairs', () => {
-  const contract = projectVsCodeCodingKernelTaskContract({
-    userPrompt: 'Here is the stack trace from login: TypeError: Cannot read properties of undefined. Can you take care of it?',
-    executionMode: 'edit',
-    contextFiles: [],
-    workspaceRoot: '/workspace',
-    taskContract: makeEmptyTaskContract(),
-  });
-
-  assert.equal(contract.mode, 'change');
-  assert.deepEqual(contract.deliverables.map(deliverable => deliverable.id), [
-    'source-change',
-    'verification-result',
-  ]);
-  assert.equal(contract.constraints.includes('verification-before-completion'), true);
-  assert.deepEqual(contract.acceptance.map(criterion => criterion.id), [
-    'requested-outcome',
-    'verified',
-  ]);
-});
-
-test('VS Code requires verification for implicit user symptom repairs', () => {
-  const contract = projectVsCodeCodingKernelTaskContract({
-    userPrompt: 'Users cannot sign in after entering the correct password. Please sort it out.',
-    executionMode: 'edit',
-    contextFiles: [],
-    workspaceRoot: '/workspace',
-    taskContract: makeEmptyTaskContract(),
-  });
-
-  assert.equal(contract.mode, 'change');
-  assert.deepEqual(contract.deliverables.map(deliverable => deliverable.id), [
-    'source-change',
-    'verification-result',
-  ]);
-  assert.equal(contract.constraints.includes('verification-before-completion'), true);
-  assert.deepEqual(contract.acceptance.map(criterion => criterion.id), [
-    'requested-outcome',
-    'verified',
-  ]);
+    assert.equal(contract.mode, 'change', userPrompt);
+    assert.deepEqual(contract.deliverables.map(deliverable => deliverable.id), [
+      'source-change',
+      'verification-result',
+    ], userPrompt);
+    assert.equal(contract.constraints.includes('verification-before-completion'), true, userPrompt);
+    assert.deepEqual(contract.acceptance.map(criterion => criterion.id), [
+      'requested-outcome',
+      'verified',
+    ], userPrompt);
+  }
 });
 
 test('VS Code projects report-only Markdown deliverables as scoped workspace mutation', () => {
@@ -218,6 +171,9 @@ test('VS Code projects report-only Markdown deliverables as scoped workspace mut
     contextFiles: [`${workspaceRoot}/docs/r3-iteration/deepseek-login-ready-state-matrix.md`],
     workspaceRoot,
     taskContract: makeReportTaskContract(workspaceRoot),
+    externalEffectIntent: 'none',
+    targetPaths: [`${workspaceRoot}/docs/r3-iteration/r3-live-deepseek-login-ready-state.md`],
+    strictTargetScope: true,
   });
 
   assert.equal(contract.mode, 'change');
@@ -230,15 +186,18 @@ test('VS Code projects report-only Markdown deliverables as scoped workspace mut
   }]);
   assert.equal(contract.constraints.includes('no-workspace-mutation'), false);
   assert.equal(contract.constraints.includes('workspace-root-only'), true);
-  assert.deepEqual(contract.acceptance.map(criterion => criterion.id), ['requested-outcome']);
+  assert.deepEqual(contract.acceptance.map(criterion => criterion.id), [
+    'requested-outcome',
+    'scoped-change',
+  ]);
 });
 
-function makeTaskContract(qualityObligations) {
+function makeTaskContract(qualityObligations, target = 'src/main.py') {
   return {
     taskShapes: ['standalone'],
     objectives: ['Create and verify src/main.py'],
     inputs: [],
-    deliverableTargets: ['src/main.py'],
+    deliverableTargets: [target],
     deliverables: ['source-change'],
     constraints: [],
     qualityObligations,

@@ -6,8 +6,6 @@ import {
 } from '../llm/provider-config-service';
 import type { LLMProviderCapability } from '../llm/types';
 import { redactProviderSecrets } from '../llm/provider-events';
-import { isUnsafeSecretHarvestingImplementationRequest } from '../intent/safety-intent';
-import type { ChatIntentDecision } from '../intent-router';
 
 export interface ProviderAvailabilitySnapshot {
   available: boolean | null;
@@ -24,23 +22,14 @@ export interface ResolveProviderStatusResponseInput {
   prompt: string;
   snapshot: ProviderConfigSnapshot;
   checkAvailability?: () => Promise<boolean>;
-  routedIntent?: Pick<ChatIntentDecision, 'kind'>;
 }
 
 export function isProviderStatusRequest(prompt: string): boolean {
-  const text = normalizeText(prompt);
-  if (!text) return false;
-  if (isUnsafeSecretHarvestingImplementationRequest(text)) return false;
-
-  const mentionsProvider = /(?:\bprovider\b|模型供应商|供应商|\bllm\b|deepseek|api\s*key|apikey|密钥|cookie|凭据|(?:api|access|auth|bearer|session)\s*token|访问令牌|认证令牌)/i.test(text);
-  const asksStatus = /(?:状态|可用|使用哪个|检查|查询|配置|是否发现|是否配置|密钥|key|credential|secret|token|cookie|当前\s*(?:provider|模型|供应商|配置|api\s*key|apikey|密钥|token|cookie|凭据))/i.test(text);
-  const requestsWorkspaceMutation = /(?:创建|新建|写入|覆盖|删除|重命名|生成文件|修改代码|修复|重构|实现|编写|开发|运行测试|create\s+file|write\s+file|delete\s+file|fix|refactor|implement|run\s+tests?|\[tool:write_file|\[tool:create_file)/i.test(text);
-
-  return mentionsProvider && asksStatus && !requestsWorkspaceMutation;
+  const command = normalizeText(prompt).toLowerCase();
+  return command === '/provider status' || command === '/provider-status';
 }
 
 export async function resolveProviderStatusResponse(input: ResolveProviderStatusResponseInput): Promise<string | null> {
-  if (input.routedIntent?.kind === 'code-change') return null;
   if (!isProviderStatusRequest(input.prompt)) return null;
   return buildProviderStatusResponse({
     prompt: input.prompt,

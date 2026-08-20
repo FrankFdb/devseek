@@ -1,6 +1,6 @@
 # Codex 与 Claude Code 公开源码对标说明
 
-日期：2026-08-14（基于 2026-08-13 本地快照持续复核）
+日期：2026-08-20（基于 2026-08-13 本地快照持续复核）
 
 ## 本地留档位置
 
@@ -241,3 +241,56 @@ DevSeek 对标的是 Codex 的责任和行为合同，不复制 Rust/SQLite 形�
 ### 验收结论
 
 T5 focused exact-VSIX 两进程重启、T1-T5 中型项目跨 session/重启和默认全面矩阵均通过。最终全面 run `20260817-t1-t5-memory-session-complete-2.0.24-final` 执行 63 个 targeted case、14 个 controlled suites 的 56 次真实流程（55 个唯一 controlled case id），合并为 118 selected；94 个 required acceptance case、43 个设计维度全覆盖，missing suites/dimensions 和 execution evidence missing 均为 0。该证据证明本地 T3 可观察行为，不宣称 Claude Code 闭源实现等价，也不替代 C14 发布资格。
+
+## 2026-08-20 模型语义、工具仲裁与回执验收复核
+
+### Codex 可逐行确认的产品责任
+
+固定源码仍为 `code/upstream-agent-sources/openai-codex` @ `fe614a6304ef804be74a622e482fdd75977abcba`。
+
+| 责任 | Codex 源码事实 | DevSeek 对标约束 |
+|---|---|---|
+| turn 语义所有权 | `codex-rs/core/src/session/turn.rs:139-151`：模型输出 function call 或 assistant message；function call 的真实结果在下一次采样回注，assistant-only 才结束 turn | 非空自然语言原样进入主模型；本地不得用词表先替模型决定任务或执行捷径 |
+| 中途用户输入 | `turn.rs:273-315`：同一 turn 在采样间隙 drain pending input，并让一次 step 的 context、advertised tools 和 tool call 共用请求视图 | steering 逐字进入当前 revision，旧的未执行 proposal 失效，已提交 effect 只作为事实保留 |
+| 结构化动作边界 | `stream_events_utils.rs:296-382`：只有 `ToolRouter::build_tool_call` 产出的结构化调用进入 runtime；拒绝或可恢复错误写回 transcript 并要求 follow-up | 普通回答、Markdown/XML/JSON 示例不构成动作；文本 provider 必须满足当前 run 的随机 channel envelope |
+| 本地工具生命周期 | `tools/registry.rs:478-688`：校验注册和 payload，运行 pre-tool hook，执行 handler，再运行 post-tool hook | schema、scope、risk、approval、sandbox、执行和 result receipt 各有明确 owner |
+| 审批优先级 | `tools/approvals.rs:467-513`：hooks 优先，其后 Guardian 或用户，最后形成明确 resolution | 模型意图和 task-family 不能授予权限；授权/拒绝必须绑定具体 action 和 payload |
+
+这些源码事实支持“模型语义理解 + 本地具体动作仲裁 + 工具结果回注”的责任结构。它们不意味着 assistant message 的文字本身可以证明 workspace mutation、命令成功或外部效果完成；DevSeek 对有副作用任务继续使用更严格的本地结算和 readback/verification 证据。
+
+### Claude Code 公开证据及边界
+
+固定公开归档为 `code/upstream-agent-sources/anthropic-claude-code` @ `be90077c6a353f292fa612d97173865a9ab21b83`。核心 CLI/agent loop 仍未在该仓库公开，以下只能确认公开接口和产品行为：
+
+- `examples/hooks/bash_command_validator_example.py`、`plugins/plugin-dev/skills/hook-development/examples/validate-bash.sh` 和 `validate-write.sh` 显示 `PreToolUse` 对具体 Bash/Write/Edit payload 返回 `allow/ask/deny`，属于动作前边界。
+- `CHANGELOG.md:151,459` 说明 auto-allow/auto mode 不能绕过既有工具限制，hook 的 `ask` 至少保留用户提示；权限不是自然语言分类器的附带结果。
+- `CHANGELOG.md:1816` 说明 `PostToolUse` 拒绝原因可回注 Claude 并继续 turn；`:2115` 说明 post-tool hook 可替换工具输出。
+- `CHANGELOG.md:2097,2194` 说明 transcript 要保持 `tool_use_id`/`tool_result` 配对，telemetry 的 tool result/decision 也关联 `tool_use_id`。
+
+据此可以把 Claude Code 作为“具体工具输入上的前后钩子、权限下限、结果回注和调用身份关联”的补充基线，但不能声称 DevSeek 已复制其闭源内部实现。
+
+### DevSeek 最终责任映射
+
+1. `model-led-semantic-contract.ts` 创建 effect-free 初始 turn；`model-action-semantic-contract.ts` 只消费模型规范化动作，不解析用户关键词。
+2. `coding-tool-dispatch.ts`、`coding-tool-authority.ts` 和各 Surface adapter 对具体 action/payload 逐项仲裁；tool proposal 与 authority receipt 绑定 run、action、tool、purpose、input SHA-256 和 effects。
+3. `text-tool-protocol.ts` 给文本 provider 建立 run-scoped 随机 channel；未经当前 channel 授权的工具样式文本始终是普通内容。
+4. `coding-receipt-acceptance.ts` 只从 canonical tool execution 与 workspace mutation receipt 投影 workspace/authority acceptance；committed readback 可证明 requested outcome，精确 denied receipt 只能给 requested outcome 提供 blocked 证据并证明本地 authority boundary，不能伪装成任务完成。普通文字只能满足 response-evidence。
+5. `coding-run-control.ts` 与 live steering owner 在完成前 drain 当前输入并使 stale proposal 失效；session/history/memory 保持上下文角色，不获得执行 authority。
+6. 已删除 task-path 关键词解析、simple-file/no-tool 本地捷径、重复 planner/decomposer 和基于文本形状的产物/完成 oracle；精确产品命令、工具 schema、shell grammar/risk classifier 仍保留，因为它们属于协议和安全判断，不是自然语言意图分类。
+7. CLI 与 VS Code 都从 effect-free 原始 turn 开始，在 canonical receipt 后才修订模型动作语义；显式 mode-hint 的只读合同保持不可扩大。Headless 是 typed SDK/CI Surface，由调用方传入语义合同，不从 prompt 词汇恢复执行权限。
+
+本轮回归覆盖短问答、追问、错别字、多语言、标识符、路径斜杠、普通工具样式文本、源码/报告写入、终端、外部及破坏性动作、拒绝、失败恢复、steering、session/restart 和 UI/todo 结算。Shared `366/366`、Bridge `42/42`、CLI `84/84`、Headless `25/25`、Extension `174/174 suites` 与根级 Phase 10 通过，architecture drift 为 0 violation。该结果证明当前本地合同和仿真范围收敛，不是对 Codex/Claude Code 整体智能、真实 Provider 分布或发布资格的等价认证。
+
+### 保留的确定性解析与启发式边界
+
+本轮没有采用“发现正则就删除”的机械规则。Codex 的 tool registry、shell parser、approval/sandbox policy 同样依赖确定性结构；Claude Code 公开 hooks 也按具体工具名和 payload 匹配。审计标准是该逻辑是否获得了不属于它的执行权威：
+
+| DevSeek 逻辑 | 允许职责 | 明确禁止 |
+|---|---|---|
+| CLI 显式路径抽取与有界隐式项目上下文 | 生成只读附件候选，限制路径、数量和大小 | 不得决定 task mode、工具权限、effect 或 completion；错字/多语言只要保留显式路径仍可正确挂载 |
+| Bridge 回复形状与 incomplete-tail 检测 | 判断网页流是否还应等待，减少半截响应 | 不得把文字变成工具调用、成功证据或用户意图 |
+| 工具 envelope、JSON/XML、diff、shell grammar 解析 | 验证协议身份、schema 和实际 payload | 不得从普通 prose 或子串推导授权 |
+| 精确 slash/product command | 执行用户明确选择的产品控制 | 不得用包含匹配拦截自然语言 |
+| UI artifact/path 提取 | 展示已经存在的候选或差异 | 不得写盘或改变 canonical settlement |
+
+CLI 架构守卫进一步禁止 workspace context selector 依赖 TaskContract、tool authority 或 completion owner。这样既保留 Codex/Claude 风格的确定性本地边界，也防止 `LATEST`/`TEST` 一类子串碰撞重新进入正式意图与执行逻辑。

@@ -11,19 +11,16 @@ import {
 } from '../bridge-client';
 import { getActiveProvider, getActiveProviderType } from '../llm/provider-router';
 import type { ChatMessage } from '../llm/types';
-import type { AgentTask } from '../agent-task-decomposer';
+import type { AgentTask } from '../agent/agent-task';
 import type { TaskCheckpointRecord } from '../app/task-checkpoint-store';
-import {
-  GeneratedArtifactSurfaceController,
-  type AppliedChangeRecord,
-  type GeneratedArtifactRouteChatOptions,
-} from './generated-artifact-surface-controller';
+import type { AppliedChangeRecord } from '../workspace/applied-change-record';
 import type { TerminalPermissionCoordinator } from '../app/terminal-permission-coordinator';
 import type { PendingEditCoordinator } from '../pending-edit-coordinator';
 import { insertCodeToEditor } from '../app/chat-resource-actions';
 import type { SessionMeta } from '../app/session-service';
 import {
   emitResponseMeta,
+  openWorkspacePathInEditor,
   pushUiSettings,
 } from './generated-artifact-ui';
 import { postWebviewMessage } from './webview-event-adapter';
@@ -38,6 +35,11 @@ import { createDevSeekRunContext } from '../app/run-context';
 import { getProblemsContext } from '../context-builder';
 import { VSCodeSurfaceAdapter } from './vscode-surface-adapter';
 import { ProductMutationCoordinator } from '../app/product-mutation-coordinator';
+import type {
+  ActiveChatSteeringRejectionReason,
+  ActiveChatSteeringRequest,
+  ActiveChatSteeringSubmission,
+} from '../app/active-chat-run-coordinator';
 
 type WebviewMessage = WebviewInboundMessage;
 type AgentTaskCheckpoint = TaskCheckpointRecord<AgentTask>;
@@ -53,8 +55,6 @@ interface PendingAttachment {
   content: string;
   filePath?: string;
 }
-
-export type ViewRouteChatOptions = GeneratedArtifactRouteChatOptions;
 
 export type ViewRunChat = (
   webview: vscode.Webview,
@@ -77,12 +77,11 @@ export interface DeepSeekViewProviderDeps {
   pendingEditCoordinator: PendingEditCoordinator;
   terminalPermissionCoordinator: TerminalPermissionCoordinator;
   runChat: ViewRunChat;
-  routeChat: (opts: ViewRouteChatOptions) => Promise<string>;
   getActiveSessionId: () => string;
   getLastConversationFiles: () => string[];
   setLastConversationFiles: (files: string[]) => void;
   cancelActiveRun: (data?: Record<string, unknown>) => void;
-  pushAgentSteer: (text: string) => boolean;
+  pushAgentSteer: (request: ActiveChatSteeringRequest) => ActiveChatSteeringSubmission;
   getActiveSessionPayload: () => WebviewOutboundMessage | undefined;
   loadFreshAgentCheckpoint: (maxAgeMs: number) => Promise<AgentTaskCheckpoint | undefined>;
   loadAgentCheckpoint: () => AgentTaskCheckpoint | undefined;
@@ -101,17 +100,8 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
   private _pendingQueue: PendingItem[] = [];
   private _pendingAttachments: PendingAttachment[] = [];
   private readonly surfaceAdapter = new VSCodeSurfaceAdapter(() => this._view?.webview);
-  private readonly generatedArtifactActions: GeneratedArtifactSurfaceController;
 
-  constructor(private readonly deps: DeepSeekViewProviderDeps) {
-    this.generatedArtifactActions = new GeneratedArtifactSurfaceController({
-      pendingEditCoordinator: deps.pendingEditCoordinator,
-      terminalPermissionCoordinator: deps.terminalPermissionCoordinator,
-      routeChat: deps.routeChat,
-      getActiveSessionId: deps.getActiveSessionId,
-      getLastConversationFiles: deps.getLastConversationFiles,
-    });
-  }
+  constructor(private readonly deps: DeepSeekViewProviderDeps) {}
 
   focus(): void {
     void vscode.commands.executeCommand('workbench.view.extension.devseek-sidebar');
@@ -172,6 +162,13 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
     const webview = this._view?.webview;
     if (!webview) throw new Error('DevSeek chat webview is not available for harness submission');
     await this._onMessage(webview, msg);
+  }
+
+  async submitHarnessAgentSteer(msg: WebviewMessage): Promise<ActiveChatSteeringSubmission> {
+    this.focus();
+    const webview = this._view?.webview;
+    if (!webview) throw new Error('DevSeek chat webview is not available for harness steering');
+    return this.handleAgentSteer(webview, msg);
   }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -236,20 +233,17 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
       case 'agentSteer':
         this.handleAgentSteer(wv, msg);
         break;
-      case 'previewGeneratedFiles':
-        await this.generatedArtifactActions.previewFiles(msg);
-        break;
-      case 'applyGeneratedFiles':
-        await this.generatedArtifactActions.applyFiles(wv, msg);
-        break;
       case 'openGeneratedPath':
-        await this.generatedArtifactActions.openPath(msg);
-        break;
-      case 'previewGeneratedPath':
-        await this.generatedArtifactActions.previewPath(msg);
-        break;
-      case 'applyGeneratedPath':
-        await this.generatedArtifactActions.applyPath(wv, msg);
+        if (msg.path) {
+          await openWorkspacePathInEditor({
+            rawPath: msg.path,
+            line: msg.line,
+            generatedText: msg.text,
+            requestPrompt: msg.prompt,
+            preferredAbsolutePaths: msg.files,
+            fallbackAbsolutePaths: this.deps.getLastConversationFiles(),
+          });
+        }
         break;
       case 'openPendingEdit':
         if (msg.editId || msg.path) {
@@ -422,17 +416,33 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private handleAgentSteer(wv: vscode.Webview, msg: WebviewMessage): void {
+  private handleAgentSteer(wv: vscode.Webview, msg: WebviewMessage): ActiveChatSteeringSubmission {
     const steerText = (msg.prompt ?? msg.text ?? '').trim();
-    if (!steerText) return;
+    if (!steerText) {
+      return this.deps.pushAgentSteer({
+        instruction: '',
+        steeringId: msg.submissionId,
+        expectedRunId: msg.expectedRunId,
+      });
+    }
     const fileNote = (msg.files && msg.files.length > 0)
       ? `\n\n【用户补充附件路径】\n${msg.files.map(f => `- ${f}`).join('\n')}`
       : '';
-    if (!this.deps.pushAgentSteer(`${steerText}${fileNote}`)) {
-      wv.postMessage({ type: 'agentSteerRejected', text: '当前没有正在运行的 Agent 任务。' });
-      return;
+    const submission = this.deps.pushAgentSteer({
+      instruction: `${steerText}${fileNote}`,
+      steeringId: msg.submissionId,
+      expectedRunId: msg.expectedRunId,
+    });
+    if (submission.status === 'rejected') {
+      wv.postMessage({
+        type: 'agentSteerRejected',
+        text: describeSteeringRejection(submission.reason),
+        ...submission,
+      });
+      return submission;
     }
-    wv.postMessage({ type: 'agentSteerAccepted', text: msg.text ?? steerText });
+    wv.postMessage({ type: 'agentSteerAccepted', text: msg.text ?? steerText, ...submission });
+    return submission;
   }
 
   private async handleRelogin(wv: vscode.Webview): Promise<void> {
@@ -609,5 +619,23 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
     for (const item of items) {
       void this.deps.runChat(wv, item.userDisplay, item.prompt, item.newSession);
     }
+  }
+}
+
+function describeSteeringRejection(reason: ActiveChatSteeringRejectionReason): string {
+  switch (reason) {
+    case 'turn-completing':
+      return '当前 Agent 正在完成结算，请在本轮结束后继续补充要求。';
+    case 'expected-run-mismatch':
+      return '补充要求对应的任务已经切换，请确认当前任务后重试。';
+    case 'conflicting-steering-id':
+      return '同一补充请求标识对应了不同内容，已拒绝以避免重复执行。';
+    case 'run-not-steerable':
+      return '当前请求尚未进入可追加要求的 Agent 执行阶段。';
+    case 'empty-input':
+      return '补充要求不能为空。';
+    case 'no-active-run':
+    default:
+      return '当前没有正在运行的 Agent 任务。';
   }
 }

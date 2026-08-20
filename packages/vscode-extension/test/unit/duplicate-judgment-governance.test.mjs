@@ -126,7 +126,7 @@ test('ARCH-16 tool alias search_content is owned by shared schema and generated 
   assert.ok(!extensionFileExists('src/agent/tool-registry.ts'));
 });
 
-test('ARCH-16 webview tool manifest is generated from shared coding tool schema', () => {
+test('ARCH-16 generated tool manifest cannot make the Webview a second protocol parser', () => {
   const packageJson = readExtensionFile('package.json');
   const packageVsix = readFileSync(path.resolve(extensionRoot, '../../scripts/package-vsix.mjs'), 'utf8');
   const manifest = readExtensionFile('media/webview-agent-tool-manifest.js');
@@ -138,8 +138,10 @@ test('ARCH-16 webview tool manifest is generated from shared coding tool schema'
   assert.ok(runtime.indexOf('webview-agent-tool-manifest.js') < runtime.indexOf('webview-agent-sanitizer.js'));
   assert.ok(manifest.includes('Source of truth: packages/shared/src/coding-tool-schema.ts'));
   assert.ok(manifest.includes('"search_content"'));
-  assert.ok(sanitizer.includes('DevSeekAgentToolManifest'), 'sanitizer must read generated tool manifest');
-  assert.ok(sanitizer.includes('makeWebviewToolNamePattern'), 'sanitizer regexes must derive tool names from generated manifest');
+  assert.ok(!sanitizer.includes('DevSeekAgentToolManifest'), 'presentation sanitizer must not consume execution schemas');
+  assert.ok(!sanitizer.includes('makeWebviewToolNamePattern'), 'presentation sanitizer must not derive tool semantics');
+  assert.ok(sanitizer.includes('function stripToolCallBlocks(text)'));
+  assert.ok(sanitizer.includes("return String(text || '')"), 'ordinary structured model text must remain visible');
   assert.ok(!sanitizer.includes('read_file: true'), 'sanitizer must not keep a hand-written tool-name map');
   assert.ok(!sanitizer.includes('search_content'), 'sanitizer must not keep hand-written tool aliases');
   assert.ok(extensionFileExists('test/fixtures/deepseek-tool-transcripts.mjs'), 'DeepSeek transcript replay fixtures must exist');
@@ -163,15 +165,13 @@ test('ARCH-16 legacy .devseek-build paths stay limited to compatibility and excl
   const hits = decisionFilesContaining('.devseek-build');
   assert.deepEqual(hits, ['src/cpp-build-layout.ts']);
   assert.ok(readExtensionFile('src/cpp-build-layout.ts').includes('LEGACY_CPP_BUILD_DIR_NAMES'));
-  assert.ok(!readExtensionFile('src/execution-planner.ts').includes('.devseek-build'));
-  assert.ok(!readExtensionFile('src/local-execution.ts').includes('.devseek-build'));
   assert.ok(!readExtensionFile('src/app/verification-planner.ts').includes('.devseek-build'));
 });
 
 test('ARCH-16 runtime build planners do not produce legacy .devseek-build paths', () => {
   const hits = [
-    'src/execution-planner.ts',
-    'src/local-execution.ts',
+    'src/app/verification-planner.ts',
+    'src/agent/auto-validation.ts',
     'src/tools/terminal.ts',
   ].filter(relPath => readExtensionFile(relPath).includes('.devseek-build'));
   assert.deepEqual(hits, []);

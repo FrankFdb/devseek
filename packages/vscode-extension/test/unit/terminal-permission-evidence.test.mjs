@@ -196,15 +196,20 @@ test('Terminal evidence: active UI command entry points cannot bypass the owned 
     'visible webview terminal action must use the owned boundary',
   );
 
-  const localRunner = readFileSync(path.join(rootDir, 'src/local-execution-chat-runner.ts'), 'utf8');
-  const localRepair = readFileSync(path.join(rootDir, 'src/local-execution-repair.ts'), 'utf8');
   const extension = readFileSync(path.join(rootDir, 'src/extension.ts'), 'utf8');
   const coordinator = readFileSync(path.join(rootDir, 'src/app/terminal-permission-coordinator.ts'), 'utf8');
-  assert.doesNotMatch(localRunner, /runLocalExecution\s*\(\s*localPlan\s*\)/);
-  assert.match(localRunner, /terminalPermissionCoordinator\.runCommandWithPermissionDetailed\s*\(/);
-  assert.match(localRunner, /manageRecoveryExternally:\s*true/);
-  assert.doesNotMatch(localRepair, /runAgentTerminalCommandForLocalRepair/);
-  assert.match(localRepair, /terminalPermissionCoordinator\.prepareToolExecutionWithPermission\s*\(/);
+  for (const retiredPath of [
+    'src/local-execution-chat-runner.ts',
+    'src/local-execution-repair.ts',
+    'src/local-execution.ts',
+    'src/execution-planner.ts',
+  ]) {
+    assert.equal(
+      existsSync(path.join(rootDir, retiredPath)),
+      false,
+      `${retiredPath} must not restore a parallel terminal path`,
+    );
+  }
   assert.doesNotMatch(
     extension,
     /if \(localExecutionResult\.handled\) \{\s*chatRunContext\.complete\('completed'/,
@@ -222,16 +227,10 @@ test('Terminal evidence: validation execution has one injected authority and no 
   const validationService = source('src/workspace/validation-service.ts');
   const coordinator = source('src/app/terminal-permission-coordinator.ts');
   const autoValidation = source('src/agent/auto-validation.ts');
-  const workspaceApplier = source('src/workspace-applier.ts');
-  const closedLoop = source('src/app/closed-loop-repair-runner.ts');
   const extension = source('src/extension.ts');
   const viewProvider = source('src/ui/deepseek-view-provider.ts');
-  const generatedArtifacts = source('src/ui/generated-artifact-surface-controller.ts');
-  const localRepair = source('src/local-execution-repair.ts');
   const agenticLoop = source('src/agent/agentic-loop.ts');
   const toolLoop = source('src/agent/tool-loop.ts');
-  const executionPlanner = source('src/execution-planner.ts');
-  const legacyExecution = source('src/local-execution.ts');
 
   assert.doesNotMatch(validationService, /child_process|\bexec\s*\(/);
   assert.match(validationService, /options\.commandRunner\s*\?\?\s*rejectMissingCommandAuthority/);
@@ -251,24 +250,28 @@ test('Terminal evidence: validation execution has one injected authority and no 
     /commandRunner:\s*canonicalCommandRunner\?\.run\s*\?\?\s*callbacks\.onValidationCommand/,
     'host validation must prefer the canonical tool timeline',
   );
-  assert.match(workspaceApplier, /commandRunner:\s*input\.validationCommandRunner/);
-  assert.match(closedLoop, /validationCommandRunner:\s*input\.validationCommandRunner/);
-  assert.equal((extension.match(/createValidationCommandRunner\s*\(\{/g) ?? []).length, 2);
+  assert.equal((extension.match(/createValidationCommandRunner\s*\(\{/g) ?? []).length, 1);
   assert.doesNotMatch(viewProvider, /createValidationCommandRunner\s*\(\{/);
-  assert.equal((generatedArtifacts.match(/createValidationCommandRunner\s*\(\{/g) ?? []).length, 2);
-  assert.equal((localRepair.match(/createValidationCommandRunner\s*\(\{/g) ?? []).length, 1);
 
-  assert.equal(
-    existsSync(path.join(rootDir, 'src/agent/deterministic-analyze-execution.ts')),
-    false,
-    'retired deterministic executor must not restore a parallel terminal path',
-  );
+  for (const retiredPath of [
+    'src/agent/deterministic-analyze-execution.ts',
+    'src/local-execution-repair.ts',
+    'src/local-execution.ts',
+    'src/execution-planner.ts',
+    'src/workspace-applier.ts',
+    'src/app/closed-loop-repair-runner.ts',
+    'src/ui/generated-artifact-surface-controller.ts',
+  ]) {
+    assert.equal(
+      existsSync(path.join(rootDir, retiredPath)),
+      false,
+      `${retiredPath} must not restore a parallel terminal path`,
+    );
+  }
   assert.doesNotMatch(agenticLoop, /\brunLocalExecution\s*\(/);
   assert.match(agenticLoop, /executeFakeToolsForLoop\s*\(/);
   assert.match(toolLoop, /plannedTerminalValidation/);
   assert.doesNotMatch(toolLoop, /onTerminalCommand/);
-  assert.doesNotMatch(executionPlanner, /child_process|\brunLocalExecution\s*\(/);
-  assert.doesNotMatch(legacyExecution, /child_process|\brunLocalExecution\s*\(/);
 });
 
 test('Terminal evidence: static process guard allows only the coordinator and explicit read-only adapters', () => {
@@ -281,7 +284,6 @@ test('Terminal evidence: static process guard allows only the coordinator and ex
     'src/app/extension-runtime-shutdown.ts',
     'src/app/terminal-permission-coordinator.ts',
     'src/extension.ts',
-    'src/local-execution-repair.ts',
   ]);
 
   const shutdownSource = sources.find(
@@ -290,10 +292,7 @@ test('Terminal evidence: static process guard allows only the coordinator and ex
   assert.match(shutdownSource, /disposeCapturedTerminalProcesses/);
   assert.doesNotMatch(shutdownSource, /\brunCommand\s*\(/);
 
-  for (const relativePath of [
-    'src/extension.ts',
-    'src/local-execution-repair.ts',
-  ]) {
+  for (const relativePath of ['src/extension.ts']) {
     const source = sources.find(candidate => candidate.relativePath === relativePath)?.source ?? '';
     assert.match(source, /grep|git status|git diff/, `${relativePath} must remain an explicit read-only adapter`);
     assert.doesNotMatch(

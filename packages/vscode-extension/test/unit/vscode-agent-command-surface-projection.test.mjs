@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -136,35 +136,15 @@ test('R1-D2C auxiliary VS Code commands only form AgentCommand or ContextRef', (
   assert.match(registration, /addMemoryFileToChat\(deps\.viewProvider\)/);
 });
 
-test('R1-D2C generated artifact webview actions dispatch to one surface owner', () => {
+test('R1-D2C generated artifact webview is presentation-only', () => {
   const viewProvider = source('src/ui/deepseek-view-provider.ts');
-  const controller = source('src/ui/generated-artifact-surface-controller.ts');
 
-  assert.match(viewProvider, /new GeneratedArtifactSurfaceController\(/);
-  for (const [messageType, handler] of [
-    ['previewGeneratedFiles', 'previewFiles'],
-    ['applyGeneratedFiles', 'applyFiles'],
-    ['openGeneratedPath', 'openPath'],
-    ['previewGeneratedPath', 'previewPath'],
-    ['applyGeneratedPath', 'applyPath'],
-  ]) {
-    assert.match(
-      viewProvider,
-      new RegExp(`case '${messageType}':[\\s\\S]*?this\\.generatedArtifactActions\\.${handler}\\(`),
-      `${messageType} must dispatch to the generated artifact surface owner`,
-    );
-  }
+  assert.match(viewProvider, /case 'openGeneratedPath':[\s\S]*?openWorkspacePathInEditor\(\{/);
+  assert.doesNotMatch(viewProvider, /case '(?:preview|apply)Generated(?:Files|Path)'/);
   assert.doesNotMatch(
     viewProvider,
-    /previewGeneratedArtifactsWithPrompt|applyGeneratedArtifactsWithPrompt|openWorkspacePathInEditor|recoverApplyFailureIfPossible|runClosedLoopRepair/,
-    'webview provider must not own generated artifact preview/apply/recovery runtime',
+    /previewGeneratedArtifactsWithPrompt|applyGeneratedArtifactsWithPrompt|recoverApplyFailureIfPossible|runClosedLoopRepair/,
+    'webview provider must not own generated artifact mutation or recovery runtime',
   );
-  assert.doesNotMatch(
-    viewProvider,
-    /private async handleApplyGenerated/,
-    'webview provider must not keep generated artifact apply handlers after D2C cutover',
-  );
-  assert.match(controller, /export class GeneratedArtifactSurfaceController/);
-  assert.match(controller, /applyGeneratedArtifactsWithPrompt/);
-  assert.match(controller, /completeRunContext\(runContext/);
+  assert.equal(existsSync(path.join(rootDir, 'src/ui/generated-artifact-surface-controller.ts')), false);
 });

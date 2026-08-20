@@ -1,4 +1,3 @@
-import { makeIncompleteCallingTailRegex, stripToolCallBlocks } from '../agent/fake-tool-parser';
 import type { ChatMessage } from '../llm/types';
 import type { SessionLoadedMessage, WebviewOutboundMessage } from './webview-protocol';
 
@@ -110,15 +109,7 @@ export function getWebviewOutboundSanitizer(target: object): WebviewOutboundSani
 }
 
 export function sanitizeVisibleModelText(text: string): string {
-  const raw = String(text || '');
-  if (!raw) return '';
-  return stripIncompleteCallingTail(stripToolCallBlocks(raw)).trim();
-}
-
-function stripIncompleteCallingTail(text: string): string {
-  const raw = String(text || '');
-  const match = makeIncompleteCallingTailRegex().exec(raw);
-  return match ? raw.slice(0, match.index).trimEnd() : raw;
+  return String(text || '');
 }
 
 function sanitizeTextMessage<T extends { text: string }>(message: T): T | undefined {

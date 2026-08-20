@@ -348,7 +348,7 @@ const USER_INPUT_CASES = [
   },
 ];
 
-test('AgentKernel user-input simulation: local task families remain hints inside one model loop', () => {
+test('AgentKernel user-input simulation: every non-empty language form enters one effect-free model loop', () => {
   const controller = new ChatRouteController();
 
   for (const scenario of USER_INPUT_CASES) {
@@ -360,18 +360,18 @@ test('AgentKernel user-input simulation: local task families remain hints inside
       agentEnabled: true,
     });
 
-    assert.equal(route.family, scenario.route.family, scenario.name);
-    assert.equal(route.chatKind, scenario.route.chatKind, scenario.name);
-    assert.equal(route.mode, scenario.route.mode, scenario.name);
-    assert.equal(route.agentTaskShape, scenario.route.shape, scenario.name);
-    assert.equal(route.requiresConfirmation, scenario.route.requiresConfirmation ?? false, scenario.name);
-    assert.equal(route.validation.runtimeRequired, scenario.validation.runtimeRequired, scenario.name);
-    assert.equal(route.validation.fileCheckRequired, scenario.validation.fileCheckRequired, scenario.name);
-    assert.equal(route.quality.formalProjectRequired, scenario.validation.formalProjectRequired, scenario.name);
-    assert.equal(route.mutation.requested, scenario.mutation.requested, scenario.name);
-    assert.equal(route.mutation.sourceChange, scenario.mutation.sourceChange, scenario.name);
-    assert.equal(route.mutation.fileArtifact, scenario.mutation.fileArtifact, scenario.name);
-    assert.deepEqual([...route.mutation.targets].sort(), [...scenario.mutation.targets].sort(), scenario.name);
+    assert.equal(route.family, 'ambiguous', scenario.name);
+    assert.equal(route.chatKind, 'chat', scenario.name);
+    assert.equal(route.mode, 'model-led', scenario.name);
+    assert.equal(route.agentTaskShape, 'general', scenario.name);
+    assert.equal(route.requiresConfirmation, false, scenario.name);
+    assert.equal(route.validation.commandEvidenceRequired, false, scenario.name);
+    assert.equal(route.validation.fileCheckRequired, false, scenario.name);
+    assert.equal(route.quality.formalProjectRequired, false, scenario.name);
+    assert.equal(route.mutation.requested, false, scenario.name);
+    assert.equal(route.mutation.sourceChange, false, scenario.name);
+    assert.equal(route.mutation.fileArtifact, false, scenario.name);
+    assert.deepEqual(route.mutation.targets, [], scenario.name);
     assert.equal(decision.workflow.kind, 'model-agent', scenario.name);
     assert.equal(decision.workflow.useAgent, true, scenario.name);
     assert.equal(decision.toolPolicy.mode, 'model-led', scenario.name);

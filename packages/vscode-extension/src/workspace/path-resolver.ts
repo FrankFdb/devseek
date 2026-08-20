@@ -2,7 +2,6 @@ import * as fs from 'fs';
 import * as nodePath from 'path';
 import * as vscode from 'vscode';
 import { isCppBuildArtifactDirName } from '../cpp-build-layout';
-import { isReadOnlyAdvisoryPlanningRequest } from '../intent/advisory-patterns';
 import { getWorkspaceRootUri } from '../workspace-roots';
 import { sanitizeWorkspaceContextAnchorPath } from './context-anchor';
 import { createWorkspaceFilePathTokenRegExp } from './path-patterns';
@@ -19,7 +18,6 @@ export interface WorkspacePathContext {
   exactFileHints: string[];
   scopedDirs: string[];
   strictScope: boolean;
-  forceCodeDir: boolean;
 }
 
 interface PromptFileHint {
@@ -33,6 +31,7 @@ export interface BuildWorkspacePathContextOptions {
   requestPrompt?: string;
   preferredAbsolutePaths?: string[];
   fallbackAbsoluteDirs?: string[];
+  strictScope?: boolean;
 }
 
 export interface WorkspacePathScope {
@@ -49,10 +48,10 @@ export interface WorkspaceWritePathResult {
 
 export interface ResolveWorkspaceWritePathOptions {
   requestPrompt?: string;
-  content?: string;
   workspaceRootFsPath?: string;
   defaultWorkdir?: string;
   preferredAbsolutePaths?: string[];
+  strictScope?: boolean;
 }
 
 export function normalizeWorkspaceTargetPath(path: string): string {
@@ -208,12 +207,6 @@ export function buildWorkspacePathContext(
     scopedDirs.push(dir);
   }
 
-  const forceCodeDir = promptRequestsCodeDirectory(text);
-  if (forceCodeDir && !scopedDirs.some((dir) => dir === 'code' || dir.startsWith('code/'))) {
-    preferredDirs.push('code');
-    scopedDirs.push('code');
-  }
-
   let preferredClean = pruneStructuredArtifactContainerDirs(
     dedupeStringList(preferredDirs).filter(d => !isInternalDir(d)),
   );
@@ -233,16 +226,13 @@ export function buildWorkspacePathContext(
     );
   }
 
-  const compileLikePrompt = /编译|构建|运行|recompile|compile|build|run/i.test(text);
-
   return {
     root,
     preferredDirs: preferredClean,
     hintedFiles: dedupeStringList(hintedFiles),
     exactFileHints: dedupeStringList(exactFileHints),
     scopedDirs: scopedClean,
-    strictScope: compileLikePrompt && scopedClean.length > 0,
-    forceCodeDir,
+    strictScope: options.strictScope === true && scopedClean.length > 0,
   };
 }
 
@@ -314,10 +304,10 @@ export function isGeneratedArtifactAllowedForPrompt(
   if (!root) return true;
 
   const ctx = buildWorkspacePathContext(root, requestPrompt, preferredAbsolutePaths);
-  if (!shouldRestrictGeneratedArtifactsToHintedFiles(ctx, requestPrompt)) return true;
+  if (ctx.exactFileHints.length === 0) return true;
 
   const normalized = normalizeWorkspaceTargetPath(resolvedRelPath);
-  return ctx.hintedFiles.some((hint) => normalizeWorkspaceTargetPath(hint) === normalized);
+  return ctx.exactFileHints.some((hint) => normalizeWorkspaceTargetPath(hint) === normalized);
 }
 
 export function resolveWorkspaceWritePath(
@@ -335,6 +325,7 @@ export function resolveWorkspaceWritePath(
     requestPrompt: options.requestPrompt,
     preferredAbsolutePaths: options.preferredAbsolutePaths,
     fallbackAbsoluteDirs,
+    strictScope: options.strictScope,
   });
 
   const expandedOriginal = expandHomePath(original).replace(/\\/g, '/');
@@ -354,7 +345,7 @@ export function resolveWorkspaceWritePath(
     };
   }
 
-  const normalized = normalizeExplicitWritePath(original, options.requestPrompt || '', options.content || '');
+  const normalized = normalizeExplicitWritePath(original);
   const resolved = resolveArtifactPathInWorkspace(normalized, root, ctx);
   if (!resolved) return undefined;
 
@@ -384,11 +375,9 @@ export function detectWorkspacePathScope(
 ): WorkspacePathScope {
   const workspaceRoots = (vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath);
   const activeAnchor = sanitizeWorkspaceContextAnchorPath(activeEditorFile, workspaceRoots);
-  const advisoryExternalRoot = isReadOnlyAdvisoryPlanningRequest(userPrompt)
-    ? inferExternalAdvisoryProjectRoot(userPrompt, attachedFiles, activeAnchor, workspaceRoots)
-    : undefined;
-  if (advisoryExternalRoot) {
-    return { promptDir: advisoryExternalRoot, promptDirIsExplicit: false };
+  const externalProjectRoot = inferExternalProjectRoot(userPrompt, attachedFiles, activeAnchor, workspaceRoots);
+  if (externalProjectRoot) {
+    return { promptDir: externalProjectRoot, promptDirIsExplicit: false };
   }
 
   const root = getPathResolutionRootUri(userPrompt, attachedFiles);
@@ -399,10 +388,6 @@ export function detectWorkspacePathScope(
       if (activeProjectRoot && isInsideOrSamePath(root.fsPath, activeProjectRoot) && isInsideOrSamePath(activeProjectRoot, root.fsPath)) {
         return { promptDir: root.fsPath, promptDirIsExplicit: false };
       }
-    }
-
-    if (isReadOnlyAdvisoryPlanningRequest(userPrompt)) {
-      return { promptDir: root.fsPath, promptDirIsExplicit: false };
     }
 
     const ctx = buildWorkspacePathContext(root, { requestPrompt: userPrompt });
@@ -459,7 +444,7 @@ const PROJECT_CONTENT_ROOT_SEGMENTS = new Set([
   'tools', 'tooling', 'scripts',
 ]);
 
-function inferExternalAdvisoryProjectRoot(
+function inferExternalProjectRoot(
   userPrompt: string | undefined,
   attachedFiles: string[],
   activeAnchor: string | undefined,
@@ -554,10 +539,6 @@ export function resolveArtifactPathInWorkspace(path: string, root: vscode.Uri, c
   const compatibleDir = ctx.preferredDirs.find((dir) => !(isCodeFile && isDocDir(dir)));
   if (compatibleDir) {
     return nodePath.posix.join(compatibleDir, baseName);
-  }
-
-  if (ctx.forceCodeDir && isCodeFile) {
-    return nodePath.posix.join('code', baseName);
   }
 
   return direct || undefined;
@@ -874,66 +855,15 @@ function isFileEnumerationSeparator(value: string): boolean {
   return /^(?:[\s,，、;；]|和|与|及|以及|and)*$/iu.test(value);
 }
 
-function normalizeExplicitWritePath(rawPath: string, userPrompt: string, content: string): string {
-  let p = rawPath.trim().replace(/\\/g, '/').replace(/^\.\//, '');
-  if (!p || nodePath.isAbsolute(expandHomePath(p))) return expandHomePath(p);
-
-  const original = p;
-  const base = nodePath.posix.basename(p.replace(/\/$/, ''));
-  const hasExt = !!nodePath.posix.extname(base) || ['Makefile', 'Dockerfile', 'CMakeLists.txt'].includes(base);
-  if (hasExt) return p;
-
-  if (!promptRequestsCodeDirectory(userPrompt) && !promptLooksLikeCProgram(userPrompt) && !promptLooksLikeCppProgram(userPrompt)) {
-    return original;
-  }
-
-  const wantsCpp = promptLooksLikeCppProgram(userPrompt) || contentLooksLikeCppProgram(content);
-  const wantsC = !wantsCpp && (promptLooksLikeCProgram(userPrompt) || contentLooksLikeCProgram(content));
-  const ext = wantsCpp ? '.cpp' : wantsC ? '.c' : '.txt';
-
-  if (p.endsWith('/') || p === 'code' || p === 'src') {
-    return nodePath.posix.join(p.replace(/\/$/, ''), `${defaultCodeArtifactBasename(userPrompt)}${ext}`);
-  }
-
-  return `${p}${ext}`;
+function normalizeExplicitWritePath(rawPath: string): string {
+  const normalized = rawPath.trim().replace(/\\/g, '/').replace(/^\.\//, '');
+  return expandHomePath(normalized);
 }
 
 function expandHomePath(value: string): string {
   if (!value.startsWith('~/')) return value;
   const homePath = process.env.HOME ? process.env.HOME.replace(/\\/g, '/').replace(/\/$/, '') : '';
   return homePath ? `${homePath}/${value.slice(2)}` : value;
-}
-
-function promptRequestsCodeDirectory(userPrompt: string): boolean {
-  return /(?:code\s*目录|code目录|code\/|code\s+dir|code\s+folder)/i.test(userPrompt);
-}
-
-function shouldRestrictGeneratedArtifactsToHintedFiles(ctx: WorkspacePathContext, requestPrompt = ''): boolean {
-  if (ctx.hintedFiles.length === 0) return false;
-  const text = requestPrompt || '';
-  const expandsScope = /(创建|新建|新增|添加|拆分|抽取|迁移|重构|改造|多文件|多个文件|整个|全部|create|add|split|extract|move|rename|refactor)/i.test(text);
-  if (expandsScope) return false;
-  return /(修复|修正|修改|改一下|优化|完善|fix|modify|update|repair)/i.test(text) || ctx.hintedFiles.length === 1;
-}
-
-function promptLooksLikeCppProgram(userPrompt: string): boolean {
-  return /(?:c\+\+|cpp|\.cpp\b|\.cc\b|\.cxx\b|C\+\+)/i.test(userPrompt);
-}
-
-function promptLooksLikeCProgram(userPrompt: string): boolean {
-  return /(?:\bC\b|C语言|c程序|\.c\b)/i.test(userPrompt) && !promptLooksLikeCppProgram(userPrompt);
-}
-
-function contentLooksLikeCProgram(content: string): boolean {
-  return /#include\s*</.test(content) && /\bmain\s*\(/.test(content) && !contentLooksLikeCppProgram(content);
-}
-
-function contentLooksLikeCppProgram(content: string): boolean {
-  return /#include\s*<(?:iostream|vector|string|map|memory|algorithm|GL\/glut|GLFW|SFML)|\bstd::|using\s+namespace\s+std|class\s+\w+/i.test(content);
-}
-
-function defaultCodeArtifactBasename(userPrompt: string): string {
-  return /(?:三维|3d|3D|OpenGL|GLUT|动画世界)/i.test(userPrompt) ? '3d_world' : 'main';
 }
 
 function isCodeLikeFileName(baseName: string): boolean {

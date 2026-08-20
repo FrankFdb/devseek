@@ -5,6 +5,7 @@
     "webview-agent-todos.js",
     "webview-working-copy.js",
     "webview-agent-activity.js",
+    "webview-terminal-output.js",
     "webview-generated-rules.js",
     "webview-generated-content.js",
     "webview-input-suggestions.js",

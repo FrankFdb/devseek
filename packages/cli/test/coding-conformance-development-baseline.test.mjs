@@ -66,28 +66,52 @@ test('CLI product route settles five coding fixtures from isolated real workspac
     seedWorkspace(cwd, scenario.files, scenario.verifier);
     const before = snapshotUserFiles(cwd, scenario.trackedPaths);
     const output = await runCliProductRoute(fixture, scenario, cwd);
-    const observation = bindSettledCodingConformanceObservation({
-      fixture,
-      surface: 'cli',
-      adapterId: 'cli-canonical-real-workspace-product-route',
-      sourceRefs: [
-        'packages/cli/src/cli-coding-kernel-runtime.ts',
-        'packages/cli/src/cli-workspace-mutation-service.ts',
-        `cli-real-workspace:${scenario.fixtureId}`,
-      ],
-      projection: projectSettledCodingConformanceRun({
-        fixtureId: output.runId,
-        taskContract: output.taskContract,
-        toolExecutions: output.toolExecutionReceipts,
-        changeReceipts: output.workspaceMutationReceipts,
-        verifications: output.verificationReceipts,
-        completion: output.completion,
-      }),
+    const projection = projectSettledCodingConformanceRun({
+      fixtureId: output.runId,
+      taskContract: output.taskContract,
+      toolExecutions: output.toolExecutionReceipts,
+      changeReceipts: output.workspaceMutationReceipts,
+      verifications: output.verificationReceipts,
+      completion: output.completion,
     });
+    let observation;
+    try {
+      observation = bindSettledCodingConformanceObservation({
+        fixture,
+        surface: 'cli',
+        adapterId: 'cli-canonical-real-workspace-product-route',
+        sourceRefs: [
+          'packages/cli/src/cli-coding-kernel-runtime.ts',
+          'packages/cli/src/cli-workspace-mutation-service.ts',
+          `cli-real-workspace:${scenario.fixtureId}`,
+        ],
+        projection,
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`${scenario.fixtureId}: ${detail}: ${JSON.stringify({
+        acceptance: output.taskContract.acceptance.map(criterion => ({
+          id: criterion.id,
+          oracle: criterion.oracle.kind,
+        })),
+        toolExecutions: output.toolExecutionReceipts.map(receipt => ({
+          actionId: receipt.actionId,
+          purpose: receipt.purpose,
+          effects: receipt.effects,
+          status: receipt.status,
+          permissionStatus: receipt.permission.status,
+        })),
+        completion: output.completion,
+      })}`);
+    }
     const evaluation = evaluateCodingConformanceFixture(fixture, [observation]);
     const surface = evaluation.surfaceResults.find(result => result.surface === 'cli');
 
-    assert.equal(surface.contractConformant, true, JSON.stringify(surface.violations));
+    assert.equal(surface.contractConformant, true, JSON.stringify({
+      violations: surface.violations,
+      expectedVerifications: fixture.expected.verifications,
+      actualVerifications: observation.projection.verifications,
+    }));
     assert.equal(surface.evidenceClass, 'product-route', scenario.fixtureId);
     assert.deepEqual(output.result.changedPaths, scenario.expectedChangedPaths, scenario.fixtureId);
     assert.deepEqual(
@@ -121,7 +145,11 @@ async function runCliProductRoute(fixture, scenario, cwd) {
     signal: new AbortController().signal,
     operationJournal: new InMemoryCodingOperationJournal(),
     environment: createFixtureCodingKernelEnvironment(cwd, 'local-api'),
-    taskContract: resolveCodingKernelTaskContract({ prompt: fixture.prompt, surface: 'cli' }),
+    taskContract: resolveCodingKernelTaskContract({
+      prompt: fixture.prompt,
+      surface: 'cli',
+      ...(fixture.taskContractInput ?? {}),
+    }),
     runtimeContext: {
       response: scenario.response,
       usesBridge: false,

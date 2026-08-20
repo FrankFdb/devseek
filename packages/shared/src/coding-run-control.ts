@@ -1,7 +1,7 @@
 import { codingSemanticDigest } from './coding-semantic-digest';
 
 export const CODING_CANCELLATION_RECEIPT_VERSION = 'devseek.coding-cancellation-receipt/v1' as const;
-export const CODING_STEERING_RECEIPT_VERSION = 'devseek.coding-steering-receipt/v1' as const;
+export const CODING_STEERING_RECEIPT_VERSION = 'devseek.coding-steering-receipt/v2' as const;
 export const CODING_RUN_CONTROL_SNAPSHOT_VERSION = 'devseek.coding-run-control-snapshot/v1' as const;
 
 export interface CodingCancellationRequest {
@@ -31,6 +31,10 @@ export interface CodingSteeringCandidate {
 
 export interface CodingSteeringSourcePort {
   drain(): readonly (string | CodingSteeringCandidate)[];
+  /** Atomically closes surface intake and returns everything accepted before the fence. */
+  closeAndDrain?(): readonly (string | CodingSteeringCandidate)[];
+  /** Reopens intake when the completion fence found work that needs another model round. */
+  reopen?(): boolean;
 }
 
 export interface CodingSteeringReceipt {
@@ -40,8 +44,9 @@ export interface CodingSteeringReceipt {
   readonly sequence: number;
   readonly status: 'accepted' | 'duplicate' | 'cancelled';
   readonly instructionSha256: string;
-  readonly writePolicy: 'unchanged' | 'revoke';
-  readonly requiresTaskContractRevision: true;
+  /** Every accepted steer makes model actions proposed from an older turn snapshot stale. */
+  readonly invalidatesPendingActions: true;
+  readonly requiresModelReinterpretation: true;
   readonly evidenceRefs: readonly string[];
   readonly receiptSha256: string;
 }
@@ -80,6 +85,8 @@ export interface CancellationPort extends CodingEffectGuardPort {
 
 export interface SteeringPort {
   consumeSteering(): readonly CodingSteeringDecision[];
+  closeSteeringIntake(): readonly CodingSteeringDecision[];
+  reopenSteeringIntake(): boolean;
   steeringReceipts(): readonly CodingSteeringReceipt[];
 }
 
@@ -117,6 +124,40 @@ export class CanonicalRunControlService implements RunControlPort {
     let terminalStatus: CodingRunControlSnapshot['terminalStatus'];
     let cancellationSequence = 0;
     let steeringSequence = 0;
+    let steeringIntakeClosed = false;
+
+    const decideSteering = (
+      candidates: readonly (string | CodingSteeringCandidate)[],
+    ): readonly CodingSteeringDecision[] => {
+      const decisions: CodingSteeringDecision[] = [];
+      for (const candidate of candidates) {
+        const normalized = snapshotSteeringCandidate(candidate);
+        if (!normalized) continue;
+        const instructionSha256 = codingSemanticDigest({ instruction: normalized.instruction });
+        const occurrence = (steeringOccurrences.get(instructionSha256) ?? 0) + 1;
+        steeringOccurrences.set(instructionSha256, occurrence);
+        const steeringId = normalized.steeringId
+          ?? `steer-${instructionSha256.slice(0, 20)}-${occurrence}`;
+        const existing = steeringById.get(steeringId);
+        if (existing && existing.instructionSha256 !== instructionSha256) {
+          throw new Error(`coding-run-control:conflicting-steering-id:${steeringId}`);
+        }
+        steeringSequence += 1;
+        const receipt = snapshotSteeringReceipt({
+          runId,
+          steeringId,
+          sequence: steeringSequence,
+          status: existing ? 'duplicate' : state === 'active' ? 'accepted' : 'cancelled',
+          instructionSha256,
+        });
+        steeringReceipts.push(receipt);
+        if (!existing) steeringById.set(steeringId, receipt);
+        if (receipt.status === 'accepted') {
+          decisions.push(Object.freeze({ instruction: normalized.instruction, receipt }));
+        }
+      }
+      return Object.freeze(decisions);
+    };
 
     const cancel = (candidate: CodingCancellationRequest): CodingCancellationReceipt => {
       const request = snapshotCancellationRequest(candidate);
@@ -175,36 +216,22 @@ export class CanonicalRunControlService implements RunControlPort {
         });
       },
       consumeSteering: (): readonly CodingSteeringDecision[] => {
-        const candidates = input.steeringSource?.drain() ?? [];
-        const decisions: CodingSteeringDecision[] = [];
-        for (const candidate of candidates) {
-          const normalized = snapshotSteeringCandidate(candidate);
-          if (!normalized) continue;
-          const instructionSha256 = codingSemanticDigest({ instruction: normalized.instruction });
-          const occurrence = (steeringOccurrences.get(instructionSha256) ?? 0) + 1;
-          steeringOccurrences.set(instructionSha256, occurrence);
-          const steeringId = normalized.steeringId
-            ?? `steer-${instructionSha256.slice(0, 20)}-${occurrence}`;
-          const existing = steeringById.get(steeringId);
-          if (existing && existing.instructionSha256 !== instructionSha256) {
-            throw new Error(`coding-run-control:conflicting-steering-id:${steeringId}`);
-          }
-          steeringSequence += 1;
-          const receipt = snapshotSteeringReceipt({
-            runId,
-            steeringId,
-            sequence: steeringSequence,
-            status: existing ? 'duplicate' : state === 'active' ? 'accepted' : 'cancelled',
-            instructionSha256,
-            writePolicy: codingSteeringRevokesWrites(normalized.instruction) ? 'revoke' : 'unchanged',
-          });
-          steeringReceipts.push(receipt);
-          if (!existing) steeringById.set(steeringId, receipt);
-          if (receipt.status === 'accepted') {
-            decisions.push(Object.freeze({ instruction: normalized.instruction, receipt }));
-          }
-        }
-        return Object.freeze(decisions);
+        if (steeringIntakeClosed) return Object.freeze([]);
+        return decideSteering(input.steeringSource?.drain() ?? []);
+      },
+      closeSteeringIntake: (): readonly CodingSteeringDecision[] => {
+        if (steeringIntakeClosed) return Object.freeze([]);
+        steeringIntakeClosed = true;
+        const candidates = input.steeringSource?.closeAndDrain?.()
+          ?? input.steeringSource?.drain()
+          ?? [];
+        return decideSteering(candidates);
+      },
+      reopenSteeringIntake: (): boolean => {
+        if (!steeringIntakeClosed || state !== 'active' || controller.signal.aborted) return false;
+        if (input.steeringSource?.reopen && !input.steeringSource.reopen()) return false;
+        steeringIntakeClosed = false;
+        return true;
       },
       steeringReceipts: () => Object.freeze([...steeringReceipts]),
       snapshot: () => snapshotRunControl({
@@ -233,19 +260,6 @@ export class CanonicalRunControlService implements RunControlPort {
     };
     return Object.freeze(session);
   }
-}
-
-export function codingSteeringRevokesWrites(text: string): boolean {
-  const normalized = String(text || '').trim();
-  if (!normalized) return false;
-
-  // This owner answers only the global authority question. Target-scoped
-  // constraints such as "do not modify tests" remain mutation policy input.
-  return /(?:停止(?:所有|任何)?(?:创建|修改|改写|写入)|停止写入)(?:任何|任意|所有)?(?:文件|代码|源码|源代码|内容)?(?=$|[\s，,。；;！!])/iu.test(normalized)
-    || /(?:不要|禁止|不得)(?:再)?(?:创建|修改|改写|写入)(?:任何|任意|所有)?(?:文件|代码|源码|源代码|内容)(?=$|[\s，,。；;！!])/iu.test(normalized)
-    || /(?:不要|禁止|不得)(?:再)?(?:创建|修改|改写|写入)(?=$|[，,。；;！!])/iu.test(normalized)
-    || /(?:stop\s+(?:all\s+)?(?:writing|editing)|do\s+not\s+(?:create|modify|write)(?:\s+(?:any|more|all))?\s+(?:files?|code|source\s+code))\b/iu.test(normalized)
-    || /do\s+not\s+(?:create|modify|write)\s*[,.!;]?\s*$/iu.test(normalized);
 }
 
 function snapshotCancellationRequest(input: CodingCancellationRequest): CodingCancellationRequest {
@@ -285,12 +299,13 @@ function snapshotSteeringCandidate(
 }
 
 function snapshotSteeringReceipt(
-  input: Omit<CodingSteeringReceipt, 'version' | 'requiresTaskContractRevision' | 'evidenceRefs' | 'receiptSha256'>,
+  input: Omit<CodingSteeringReceipt, 'version' | 'invalidatesPendingActions' | 'requiresModelReinterpretation' | 'evidenceRefs' | 'receiptSha256'>,
 ): CodingSteeringReceipt {
   const value = {
     version: CODING_STEERING_RECEIPT_VERSION,
     ...input,
-    requiresTaskContractRevision: true as const,
+    invalidatesPendingActions: true as const,
+    requiresModelReinterpretation: true as const,
     evidenceRefs: Object.freeze([
       `steering:${input.runId}:${input.steeringId}:${input.status}`,
       `steering-instruction-sha256:${input.instructionSha256}`,

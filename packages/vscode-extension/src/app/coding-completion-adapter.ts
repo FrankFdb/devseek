@@ -2,7 +2,6 @@ import { createHash } from 'crypto';
 import {
   codingAdverseToolExecutionBlocksCompletion,
   codingDeniedToolExecutionIsPolicyNoEffect,
-  codingTaskContractRequiresVerification,
   isSecretHarvestingRefusalTaskContract,
   settledCodingVerificationReceipts,
   type CodingCompletionAcceptanceDecision,
@@ -24,7 +23,6 @@ export interface VsCodeCompletionInput {
 /** Projects VS Code observations without owning or predicting terminal state. */
 export class VsCodeCompletionEvidenceAdapter {
   project(input: VsCodeCompletionInput): CodingKernelCompletionEvidence {
-    const verificationRequired = codingTaskContractRequiresVerification(input.taskContract);
     const resultEvidenceRefs = collectResultEvidenceRefs(input.runId, input.result);
     const failedArtifactRefs = collectFailedArtifactRefs(input.result);
     const uncoveredChangedPaths = findUncoveredChangedPaths(
@@ -65,7 +63,6 @@ export class VsCodeCompletionEvidenceAdapter {
       : input.result.tasksFailed;
     const acceptanceEvidence = buildDirectAcceptanceEvidence({
       acceptance: input.taskContract.acceptance,
-      verificationRequired,
       tasksFailed,
       resultEvidenceRefs,
       failedArtifactRefs,
@@ -171,7 +168,6 @@ function isRecoverableLegacyEvidenceFailure(reason: string | undefined): boolean
 
 function buildDirectAcceptanceEvidence(input: {
   readonly acceptance: CodingKernelTaskContract['acceptance'];
-  readonly verificationRequired: boolean;
   readonly tasksFailed: number;
   readonly resultEvidenceRefs: readonly string[];
   readonly failedArtifactRefs: readonly string[];
@@ -181,25 +177,31 @@ function buildDirectAcceptanceEvidence(input: {
   readonly requiresDirectEvidence: boolean;
 }): CodingCompletionAcceptanceDecision[] {
   if (input.deniedEffectRefs.length > 0) {
-    return input.acceptance.map(criterion => ({
-      criterionId: criterion.id,
-      status: 'blocked',
-      evidenceRefs: input.deniedEffectRefs,
-    }));
+    return input.acceptance
+      .filter(criterion => criterion.oracle.kind !== 'authority')
+      .map(criterion => ({
+        criterionId: criterion.id,
+        status: 'blocked',
+        evidenceRefs: input.deniedEffectRefs,
+      }));
   }
   if (input.tasksFailed > 0) {
-    return input.acceptance.map(criterion => ({
-      criterionId: criterion.id,
-      status: 'failed',
-      evidenceRefs: [input.failureRef],
-    }));
+    return input.acceptance
+      .filter(criterion => criterion.oracle.kind !== 'authority')
+      .map(criterion => ({
+        criterionId: criterion.id,
+        status: 'failed',
+        evidenceRefs: [input.failureRef],
+      }));
   }
   if (input.failedArtifactRefs.length > 0) {
-    return input.acceptance.map(criterion => ({
-      criterionId: criterion.id,
-      status: 'failed',
-      evidenceRefs: input.failedArtifactRefs,
-    }));
+    return input.acceptance
+      .filter(criterion => criterion.oracle.kind !== 'authority')
+      .map(criterion => ({
+        criterionId: criterion.id,
+        status: 'failed',
+        evidenceRefs: input.failedArtifactRefs,
+      }));
   }
   if (input.requiresDirectEvidence) return [...input.explicitEvidence];
   if (input.resultEvidenceRefs.length === 0) return [...input.explicitEvidence];
@@ -208,7 +210,7 @@ function buildDirectAcceptanceEvidence(input: {
     ...input.explicitEvidence,
     ...input.acceptance
       .filter(criterion => !explicitCriterionIds.has(criterion.id))
-      .filter(criterion => !input.verificationRequired || criterion.oracle.kind !== 'verification')
+      .filter(criterion => criterion.oracle.kind === 'response-evidence')
       .map(criterion => ({
         criterionId: criterion.id,
         status: 'passed' as const,

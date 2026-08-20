@@ -7,20 +7,20 @@ import {
   resolveCodingKernelTaskContract,
 } from '../dist/index.js';
 
-test('OrientationDecisionPort resolves explicit intent before fallback hints', () => {
+test('OrientationDecisionPort uses typed semantic intent without reclassifying prompt wording', () => {
   const service = new CanonicalOrientationDecisionService();
   const cases = [
-    ['How does the update command work?', 'change', 'explain'],
-    ['如何修改 package.json 中的脚本？', 'change', 'explain'],
-    ['Review the release workflow and package.json.', 'change', 'review'],
-    ['请分析 npm install 的风险。', 'release', 'review'],
-    ['Review src/value.ts and fix the incorrect return value.', 'review', 'change'],
-    ['请完善配置合并组件，并检查全部规则。', 'review', 'change'],
-    ['Fix the version and then deploy it.', 'review', 'release'],
-    ['Run npm install axios.', 'review', 'release'],
-    ['Commit the current changes.', 'review', 'release'],
-    ['推送当前分支。', 'review', 'release'],
-    ['部署当前版本。', 'review', 'release'],
+    ['How does the update command work?', 'change', 'change'],
+    ['如何修改 package.json 中的脚本？', 'change', 'change'],
+    ['Review the release workflow and package.json.', 'change', 'change'],
+    ['请分析 npm install 的风险。', 'release', 'release'],
+    ['Review src/value.ts and fix the incorrect return value.', 'review', 'review'],
+    ['请完善配置合并组件，并检查全部规则。', 'review', 'review'],
+    ['Fix the version and then deploy it.', 'review', 'review'],
+    ['Run npm install axios.', 'review', 'review'],
+    ['Commit the current changes.', 'review', 'review'],
+    ['推送当前分支。', 'review', 'review'],
+    ['部署当前版本。', 'review', 'review'],
     ['Continue with the agreed task.', 'review', 'review'],
   ];
 
@@ -33,6 +33,7 @@ test('OrientationDecisionPort resolves explicit intent before fallback hints', (
 test('OrientationDecisionPort makes mutation and external-effect facts explicit and immutable', () => {
   const decision = new CanonicalOrientationDecisionService().decide({
     prompt: ' Package and publish the extension. ',
+    modeHint: 'release',
   });
 
   assert.equal(decision.version, CODING_ORIENTATION_DECISION_VERSION);
@@ -40,8 +41,8 @@ test('OrientationDecisionPort makes mutation and external-effect facts explicit 
   assert.equal(decision.mode, 'release');
   assert.equal(decision.mutating, true);
   assert.equal(decision.externalEffectRequested, true);
-  assert.equal(decision.source, 'prompt');
-  assert.ok(decision.reasonCodes.includes('explicit-external-effect-action'));
+  assert.equal(decision.source, 'mode-hint');
+  assert.ok(decision.reasonCodes.includes('mode-hint:release'));
   assert.equal(Object.isFrozen(decision), true);
   assert.equal(Object.isFrozen(decision.reasonCodes), true);
 });
@@ -67,7 +68,7 @@ test('OrientationDecisionPort and TaskContract reject malformed or contradictory
     /coding-orientation:invalid-mode-hint/u,
   );
 
-  const decision = service.decide({ prompt: 'Fix src/value.ts.' });
+  const decision = service.decide({ prompt: 'Fix src/value.ts.', modeHint: 'change' });
   assert.throws(
     () => assertCodingOrientationDecision({ ...decision, mutating: false }),
     /coding-orientation:mutating-flag-mismatch/u,
@@ -77,7 +78,7 @@ test('OrientationDecisionPort and TaskContract reject malformed or contradictory
     surface: 'headless',
     modeHint: 'review',
   });
-  assert.equal(contract.mode, 'change');
+  assert.equal(contract.mode, 'review');
   assert.equal(contract.orientation.mode, contract.mode);
   assert.equal(contract.orientation.prompt, 'Fix src/value.ts.');
 });

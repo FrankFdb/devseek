@@ -527,8 +527,8 @@ test('ToolLoop terminal guard: raw ReAct Action protocol text never reaches shel
   assert.match(result.feedbackForAI, /工具协议文本/);
 });
 
-test('ToolLoop terminal guard: stale timestamp artifact directories never reach shell', async () => {
-  let terminalCalled = false;
+test('ToolLoop does not infer an executable path constraint from timestamp text in the raw prompt', async () => {
+  let executedCommand = '';
   const requestPrompt = [
     '本次测试所有新增设计文档、实施文档、代码和验证脚本必须放在：/tmp/project/out/202607101945',
     '- 代码和测试文件放入：/tmp/project/out/202607101945/src',
@@ -544,8 +544,8 @@ test('ToolLoop terminal guard: stale timestamp artifact directories never reach 
       },
     ],
     {
-      ...preparedTerminalCallbacks(async () => {
-        terminalCalled = true;
+      ...preparedTerminalCallbacks(async (command) => {
+        executedCommand = command;
         return 'should-not-run';
       }),
       onToolActivity: () => {},
@@ -555,12 +555,14 @@ test('ToolLoop terminal guard: stale timestamp artifact directories never reach 
     { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: '/tmp/project', userPrompt: requestPrompt },
   );
 
-  assert.equal(terminalCalled, false);
+  assert.equal(
+    executedCommand,
+    'cd /tmp/project/out/202607101942/src && g++ -std=c++11 main.cpp -o test_app',
+  );
   assert.equal(result.toolCallsMade, true);
   assert.equal(result.workToolCallsMade, true);
-  assert.deepEqual(result.terminalCommands ?? [], []);
-  assert.equal(result.toolFailures?.[0]?.tool, 'run_terminal');
-  assert.match(result.feedbackForAI, /旧运行目录/);
+  assert.equal(result.toolFailures, undefined);
+  assert.equal(result.toolExecutionReceipts?.[0]?.status, 'completed');
 });
 
 test('ToolLoop terminal guard blocks shell writes to every file class, not only source extensions', async () => {
@@ -865,11 +867,9 @@ test('ToolLoop create_directory consults the file-write policy before invoking t
       absPath: path.join(workspaceRoot, 'generated/docs'),
       context: {
         purpose: 'tool-write',
-        userRequested: false,
         taskAction: 'create_directory',
         toolRisk: 'medium',
         displayName: 'generated/docs',
-        requestPrompt,
       },
     }]);
     assert.equal(result.writtenFiles, undefined);
@@ -1121,11 +1121,9 @@ test('ToolLoop delete_file leaves the file intact when the file-write policy rej
       absPath: filePath,
       context: {
         purpose: 'tool-write',
-          userRequested: false,
-          taskAction: 'delete_file',
-          toolRisk: 'high',
-          displayName: 'notes.txt',
-        requestPrompt,
+        taskAction: 'delete_file',
+        toolRisk: 'high',
+        displayName: 'notes.txt',
       },
     }]);
     assert.equal(result.writtenFiles, undefined);

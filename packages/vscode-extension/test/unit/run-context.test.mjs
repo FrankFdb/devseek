@@ -39,6 +39,49 @@ function readStartedContractFingerprint(workspaceRoot, runId) {
   return entries.find(entry => entry.event === 'agent-run-started').data.taskContractFingerprint;
 }
 
+function sourceClaimArtifactContract(title) {
+  const exactArtifact = title
+    ? {
+        kind: 'source-fact-markdown',
+        title,
+        sourcePathLines: ['源码路径：/repo/source.hpp'],
+        tableHeader: ['Symbol', 'Value'],
+        symbols: ['kAlpha'],
+        valuePresentation: 'source-initializer',
+        codeBlocks: [],
+        forbidAdditionalContent: true,
+      }
+    : undefined;
+  return {
+    taskShapes: ['documentation'],
+    objectives: ['Create a source-grounded report'],
+    inputs: ['/repo/source.hpp'],
+    deliverableTargets: ['/repo/facts.md'],
+    deliverables: ['report'],
+    constraints: ['Use only verified source facts'],
+    qualityObligations: ['source-evidence'],
+    evidenceRequirements: [{
+      kind: 'source-claim',
+      symbol: 'kAlpha',
+      validator: 'exact-or-numeric',
+      sourcePath: '/repo/source.hpp',
+    }],
+    verificationContract: {
+      requireSourceClaimGrounding: true,
+      requireTitle: Boolean(exactArtifact),
+      requiredSourcePaths: ['/repo/source.hpp'],
+      exactClaimTable: exactArtifact
+        ? { symbols: ['kAlpha'], rowCount: 1, forbidAdditionalRows: true }
+        : undefined,
+      exactCodeBlocks: [],
+      exactArtifactRequested: Boolean(exactArtifact),
+      exactArtifact,
+      requireArtifactReadback: true,
+      maxWrittenFiles: 1,
+    },
+  };
+}
+
 function observed(status, payload = {}) {
   return { ...payload, status, trust: 'product-runtime-observation' };
 }
@@ -115,6 +158,7 @@ test('RunContext: records a non-sensitive source-claim artifact obligation at st
       workspaceRoot,
       runId: 'run-context-source-claim-artifact',
       userPrompt,
+      taskContract: sourceClaimArtifactContract(),
       traceLevel: 'debug',
     });
     context.complete('completed', { changedPaths: ['/repo/facts.md'], tasksApplied: 1 });
@@ -140,22 +184,19 @@ test('RunContext: records a non-sensitive source-claim artifact obligation at st
 
 test('RunContext: exact artifact fingerprint is stable and changes with its executable contract', () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-exact-contract-'));
-  const strictPrompt = title => [
-    '请读取 /repo/source.hpp，从源码提取 kAlpha 的真实定义和值。',
-    '只创建 Markdown 报告 /repo/facts.md。',
-    '报告必须严格满足以下结构：',
-    `1. 标题必须逐字为：${title}`,
-    '2. 紧接一行必须逐字为：源码路径：/repo/source.hpp',
-    '3. 仅包含一个 Markdown 表格，表头必须是 Symbol 和 Value，数据行恰好一行。',
-    '不得增加其他标题、表格数据行、代码块或说明段落。',
-  ].join('\n');
   try {
-    for (const [runId, prompt] of [
-      ['exact-contract-a1', strictPrompt('# 源码事实报告 A')],
-      ['exact-contract-a2', strictPrompt('# 源码事实报告 A')],
-      ['exact-contract-b', strictPrompt('# 源码事实报告 B')],
+    for (const [runId, title] of [
+      ['exact-contract-a1', '# 源码事实报告 A'],
+      ['exact-contract-a2', '# 源码事实报告 A'],
+      ['exact-contract-b', '# 源码事实报告 B'],
     ]) {
-      createDevSeekRunContext({ workspaceRoot, runId, userPrompt: prompt, traceLevel: 'debug' })
+      createDevSeekRunContext({
+        workspaceRoot,
+        runId,
+        userPrompt: 'Create the requested grounded report.',
+        taskContract: sourceClaimArtifactContract(title),
+        traceLevel: 'debug',
+      })
         .complete('completed');
     }
 

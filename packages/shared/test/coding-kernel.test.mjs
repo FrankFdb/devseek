@@ -16,6 +16,7 @@ import {
   createFixtureCodingKernelEnvironment,
   createCodingWorktreeSnapshot,
   projectCodingKernelTaskContract,
+  resolveCodingOrientationDecision,
 } from '../dist/index.js';
 import { commitCanonicalWorkspaceChange } from './support/canonical-code-change-fixture.mjs';
 
@@ -573,10 +574,14 @@ test('task contract rejects missing provenance and ambiguous acceptance ids', ()
   }), /invalid-acceptance/u);
 });
 
-test('task contract rejects a mode that contradicts canonical prompt orientation', () => {
+test('task contract rejects a mode that contradicts an explicit semantic orientation', () => {
   assert.throws(() => buildCodingKernelTaskContract({
     goal: 'Fix src/value.ts.',
     mode: 'review',
+    orientation: resolveCodingOrientationDecision({
+      prompt: 'Fix src/value.ts.',
+      modeHint: 'change',
+    }),
     deliverables: [{ id: 'report', kind: 'report' }],
     acceptance: [{
       id: 'reviewed',

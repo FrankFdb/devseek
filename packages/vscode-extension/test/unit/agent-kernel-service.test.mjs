@@ -195,7 +195,6 @@ test('AgentKernelService: named request contracts enforce the kernel route', asy
 
 test('AgentKernelService: extension Surface does not own agent completion decisions', () => {
   const extension = readFileSync(path.join(rootDir, 'src/extension.ts'), 'utf8');
-  const localExecutionRunner = readFileSync(path.join(rootDir, 'src/local-execution-chat-runner.ts'), 'utf8');
   const kernelService = readFileSync(path.join(rootDir, 'src/app/agent-kernel-service.ts'), 'utf8');
   const activeRunCoordinator = readFileSync(path.join(rootDir, 'src/app/active-chat-run-coordinator.ts'), 'utf8');
   const productExecutor = readFileSync(path.join(rootDir, 'src/product-coding-kernel-executor.ts'), 'utf8');
@@ -215,16 +214,13 @@ test('AgentKernelService: extension Surface does not own agent completion decisi
   );
   assert.equal(importsKernelLoop(extension), false);
   assert.doesNotMatch(extension, /await\s+runAgent(?:ic)?Loop\s*\(/u);
-  assert.match(localExecutionRunner, /input\.agentKernelService\.executeCanonicalTask\(\{[\s\S]*createLocalValidationKernelRecovery\(\{/);
-  assert.equal(importsKernelLoop(localExecutionRunner), false);
-  assert.doesNotMatch(localExecutionRunner, /await\s+runAgent(?:ic)?Loop\s*\(/u);
   assert.doesNotMatch(extension, /from '\.\/app\/agent-run-settlement'/);
   assert.doesNotMatch(extension, /terminalPermissionCoordinator\.completeRunContext\(agentRunContext/);
   assert.match(kernelService, /resolveSemanticExecutionContext\(\{/);
   assert.match(kernelService, /input\.taskContract \?\? semanticContract\.taskContract/);
   assert.doesNotMatch(kernelService, /buildTaskContract\(/);
   assert.match(kernelService, /createDevSeekRunContext\(\{[\s\S]*taskContract/);
-  assert.match(kernelService, /semanticContract: request\.semanticContract \?\? resolveTaskSemanticContract\(request\.userPrompt\)/);
+  assert.match(kernelService, /semanticContract: request\.semanticContract \?\? createModelLedTurnSemanticContract\(request\.userPrompt\)/);
   assert.match(kernelService, /this\.execution\.execute\(\{/);
   assert.match(kernelService, /decideExecutionRoute\([\s\S]*decideCodingKernelRoute\(input\)/);
   assert.match(kernelService, /executeCanonicalTask\([\s\S]*route: 'canonical'/);

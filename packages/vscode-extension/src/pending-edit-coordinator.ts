@@ -26,7 +26,7 @@ import {
   summarizePendingEditHunkResolutions,
   type PendingEditHunk,
 } from './app/pending-edit-service';
-import type { AppliedChangeRecord } from './workspace-applier';
+import type { AppliedChangeRecord } from './workspace/applied-change-record';
 import { resolveWorkspaceFileUri } from './workspace-roots';
 import { DiffDecorationManager, type DiffRecordInfo } from './diff-decorator';
 import { closePendingEditDiffTabAsync, DeepSeekOriginalContentProvider } from './ui/pending-edit-diff';

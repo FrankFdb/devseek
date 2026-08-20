@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import {
   CanonicalRunControlService,
   CodingRunCancelledError,
-  codingSteeringRevokesWrites,
 } from '../dist/index.js';
 
 test('I22-CAN-01 user journey: cancellation freezes effects until in-flight work is reconciled', () => {
@@ -51,7 +50,7 @@ test('I22-CAN-01 user journey: cancellation freezes effects until in-flight work
   );
 });
 
-test('I22-STR-01 user journey: steering is idempotent and can revoke write authority', () => {
+test('I22-STR-01 user journey: steering is idempotent and invalidates stale model actions', () => {
   const queued = [
     { steeringId: 'steer-one', instruction: '  Continue, but do not create files.  ' },
     { steeringId: 'steer-one', instruction: 'Continue, but do not create files.' },
@@ -64,23 +63,36 @@ test('I22-STR-01 user journey: steering is idempotent and can revoke write autho
 
   const decisions = session.consumeSteering();
   assert.deepEqual(decisions.map(decision => decision.receipt.status), ['accepted', 'accepted']);
-  assert.deepEqual(decisions.map(decision => decision.receipt.writePolicy), ['revoke', 'unchanged']);
+  assert.deepEqual(decisions.map(decision => decision.receipt.invalidatesPendingActions), [true, true]);
+  assert.deepEqual(decisions.map(decision => decision.receipt.requiresModelReinterpretation), [true, true]);
   assert.deepEqual(session.steeringReceipts().map(receipt => receipt.status), [
     'accepted',
     'duplicate',
     'accepted',
   ]);
   assert.equal(JSON.stringify(session.steeringReceipts()).includes('parser boundary'), false);
-  assert.equal(codingSteeringRevokesWrites('停止写入。'), true);
 });
 
-test('write revocation distinguishes global stop commands from scoped mutation constraints', () => {
-  assert.equal(codingSteeringRevokesWrites('不要修改，只分析这个文件。'), true);
-  assert.equal(codingSteeringRevokesWrites('Do not create any files.'), true);
-  assert.equal(codingSteeringRevokesWrites('只允许修改 src/，不得修改 tests/ 或 package.json。'), false);
-  assert.equal(codingSteeringRevokesWrites('请保持函数为纯函数，不要修改调用方输入。'), false);
-  assert.equal(codingSteeringRevokesWrites('Modify src/index.js but do not modify tests.'), false);
-  assert.equal(codingSteeringRevokesWrites('请创建报告，不要修改其他用户文件。'), false);
+test('steering receipts never infer authority from wording, language, typos, or identifiers', () => {
+  const queued = [
+    '停止写入。',
+    'Do not create any files.',
+    '先别写了，我打错了，只说明 GPU CPU。',
+    'MODEL_LATEST_OK contest_result happy_value',
+    '只允许修改 src/，不得修改 tests/ 或 package.json。',
+  ];
+  const session = new CanonicalRunControlService().bind({
+    runId: 'wording-neutral-steer-run',
+    steeringSource: { drain: () => queued.splice(0) },
+  });
+
+  const decisions = session.consumeSteering();
+  assert.equal(decisions.length, 5);
+  for (const decision of decisions) {
+    assert.equal(decision.receipt.invalidatesPendingActions, true);
+    assert.equal(decision.receipt.requiresModelReinterpretation, true);
+    assert.equal('writePolicy' in decision.receipt, false);
+  }
 });
 
 test('SteeringPort fails closed when one steering identity changes meaning', () => {
@@ -95,6 +107,30 @@ test('SteeringPort fails closed when one steering identity changes meaning', () 
 
   assert.throws(() => session.consumeSteering(), /conflicting-steering-id/);
   assert.deepEqual(session.steeringReceipts().map(receipt => receipt.status), ['accepted']);
+});
+
+test('completion fence closes surface intake, preserves order, and can reopen the same run', () => {
+  const queued = [{ steeringId: 'late-1', instruction: 'Preserve the public API.' }];
+  let surfaceOpen = true;
+  const source = {
+    drain: () => surfaceOpen ? queued.splice(0) : [],
+    closeAndDrain: () => {
+      surfaceOpen = false;
+      return queued.splice(0);
+    },
+    reopen: () => {
+      surfaceOpen = true;
+      return true;
+    },
+  };
+  const session = new CanonicalRunControlService().bind({ runId: 'fenced-steer-run', steeringSource: source });
+
+  const fenced = session.closeSteeringIntake();
+  assert.deepEqual(fenced.map(decision => decision.instruction), ['Preserve the public API.']);
+  queued.push({ steeringId: 'blocked-while-closed', instruction: 'This is not surface-accepted.' });
+  assert.deepEqual(session.consumeSteering(), []);
+  assert.equal(session.reopenSteeringIntake(), true);
+  assert.deepEqual(session.consumeSteering().map(decision => decision.receipt.steeringId), ['blocked-while-closed']);
 });
 
 test('external AbortSignal enters the same cancellation saga before runtime work begins', () => {

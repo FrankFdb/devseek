@@ -59,7 +59,11 @@ test('Headless product entry settles five coding fixtures from isolated real wor
           runId: fixture.fixtureId,
           userPrompt: fixture.prompt,
           workspaceRoot: cwd,
-          taskContract: resolveCodingKernelTaskContract({ prompt: fixture.prompt, surface: 'headless' }),
+          taskContract: resolveCodingKernelTaskContract({
+            prompt: fixture.prompt,
+            surface: 'headless',
+            ...(fixture.taskContractInput ?? {}),
+          }),
           runtimeContext: { provider: 'deterministic-product-probe' },
         });
       } catch (error) {

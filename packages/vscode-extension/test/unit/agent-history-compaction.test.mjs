@@ -33,14 +33,38 @@ const {
   CanonicalTaskContractService,
 } = req('@devseek-netai/shared');
 
+const textToolProtocol = Object.freeze({
+  version: 'devseek.text-tools/v1',
+  channelId: 'history-compaction-test-channel',
+});
+
+function authorizedTools(payload) {
+  return [
+    `<devseek_tool_calls version="${textToolProtocol.version}" channel="${textToolProtocol.channelId}">`,
+    payload,
+    `</devseek_tool_calls channel="${textToolProtocol.channelId}">`,
+  ].join('\n');
+}
+
+test('Agent history compaction: unscoped tool examples remain ordinary history', () => {
+  const examples = [
+    '<read_file>{"path":"README.md"}</read_file>',
+    '[TOOL:run_terminal {"command":"npm test"}]',
+    'Action: create_file\nAction Input: {"path":"demo.ts","content":"example"}',
+  ];
+  for (const example of examples) {
+    assert.equal(summarizeExecutedAssistantToolHistory(example, textToolProtocol), example);
+  }
+});
+
 test('Agent history compaction: executed create_file payload is summarized', () => {
   const largeContent = '# Design\\n' + 'very detailed paragraph\\n'.repeat(500);
   const text = [
     '我将创建设计文档。',
-    `<create_file>{"path":"/repo/docs/design.md","content":${JSON.stringify(largeContent)}}</create_file>`,
+    authorizedTools(`<create_file>{"path":"/repo/docs/design.md","content":${JSON.stringify(largeContent)}}</create_file>`),
   ].join('\n\n');
 
-  const summary = summarizeExecutedAssistantToolHistory(text);
+  const summary = summarizeExecutedAssistantToolHistory(text, textToolProtocol);
 
   assert.match(summary, /已执行工具请求摘要/);
   assert.match(summary, /create_file path=\/repo\/docs\/design\.md/);
@@ -55,10 +79,10 @@ test('Agent history compaction: replaces the latest assistant tool message only'
     { role: 'user', content: '任务' },
     { role: 'assistant', content: '普通回复' },
     { role: 'user', content: '[工具结果 Round 1]\\n已读取文件' },
-    { role: 'assistant', content: '<read_file>{"path":"/repo/a.cpp","startLine":1,"endLine":20}</read_file>' },
+    { role: 'assistant', content: authorizedTools('<read_file>{"path":"/repo/a.cpp","startLine":1,"endLine":20}</read_file>') },
   ];
 
-  const changed = replaceLatestAssistantToolHistory(messages);
+  const changed = replaceLatestAssistantToolHistory(messages, textToolProtocol);
 
   assert.equal(changed, true);
   assert.equal(messages[1].content, '普通回复');
@@ -68,12 +92,12 @@ test('Agent history compaction: replaces the latest assistant tool message only'
 test('Agent history compaction: replaces every assistant tool message before provider send', () => {
   const messages = [
     { role: 'user', content: '任务' },
-    { role: 'assistant', content: '<read_file>{"path":"/repo/a.cpp","startLine":1,"endLine":20}</read_file>' },
+    { role: 'assistant', content: authorizedTools('<read_file>{"path":"/repo/a.cpp","startLine":1,"endLine":20}</read_file>') },
     { role: 'user', content: '[工具结果 Round 1]\n已读取文件' },
-    { role: 'assistant', content: '<create_file>{"path":"/repo/docs/design.md","content":"# Design\\nbody"} </create_file>' },
+    { role: 'assistant', content: authorizedTools('<create_file>{"path":"/repo/docs/design.md","content":"# Design\\nbody"} </create_file>') },
   ];
 
-  const changed = replaceAllAssistantToolHistory(messages);
+  const changed = replaceAllAssistantToolHistory(messages, textToolProtocol);
 
   assert.equal(changed, 2);
   assert.match(messages[1].content, /read_file path=\/repo\/a\.cpp lines=1-20/);
@@ -87,11 +111,11 @@ test('Agent history compaction: an executed-tool summary is idempotent across la
     '<read_file>{"path":"/repo/a.cpp"}</read_file>',
     '<run_terminal>{"command":"find /repo -name \\"*.cpp\\""}</run_terminal>',
   ].join('\n');
-  const summary = summarizeExecutedAssistantToolHistory(raw);
+  const summary = summarizeExecutedAssistantToolHistory(authorizedTools(raw), textToolProtocol);
   const messages = [{ role: 'assistant', content: summary }];
 
-  assert.equal(summarizeExecutedAssistantToolHistory(summary), summary);
-  assert.equal(replaceAllAssistantToolHistory(messages), 0);
+  assert.equal(summarizeExecutedAssistantToolHistory(summary, textToolProtocol), summary);
+  assert.equal(replaceAllAssistantToolHistory(messages, textToolProtocol), 0);
   assert.equal(messages[0].content, summary);
   assert.match(summary, /工具调用：2 个/);
   assert.doesNotMatch(summary, /run_terminal command=工具调用/);
@@ -123,10 +147,10 @@ test('Agent history compaction: internal summaries are not nested into the next 
     '正在修复验证脚本。',
     '[DevSeek 已执行工具请求摘要] 意图：上一轮内部摘要不应继续嵌套',
     '[工具结果 Round 9] old output',
-    '<replace_in_file>{"path":"/repo/verify.sh","old_str":"old","new_str":"new"}</replace_in_file>',
+    authorizedTools('<replace_in_file>{"path":"/repo/verify.sh","old_str":"old","new_str":"new"}</replace_in_file>'),
   ].join('\n');
 
-  const summary = summarizeExecutedAssistantToolHistory(text);
+  const summary = summarizeExecutedAssistantToolHistory(text, textToolProtocol);
 
   assert.match(summary, /意图：正在修复验证脚本/);
   assert.doesNotMatch(summary, /上一轮内部摘要/);
@@ -271,8 +295,8 @@ test('I11-CMP-02 user journey: VS Code delivers a sealed context compaction rece
 test('R3-04 Context compaction: executed tool summaries redact command secrets', () => {
   const summary = summarizeExecutedAssistantToolHistory([
     '检查远端健康。',
-    '<run_terminal>{"command":"curl -H \\"Authorization: Bearer live-secret-token-abcdef\\" https://example.test && echo api_key=sk-r3toolsecret123456"}</run_terminal>',
-  ].join('\n'));
+    authorizedTools('<run_terminal>{"command":"curl -H \\"Authorization: Bearer live-secret-token-abcdef\\" https://example.test && echo api_key=sk-r3toolsecret123456"}</run_terminal>'),
+  ].join('\n'), textToolProtocol);
 
   assert.match(summary, /run_terminal command=/);
   assert.match(summary, /\[REDACTED_SECRET]/);

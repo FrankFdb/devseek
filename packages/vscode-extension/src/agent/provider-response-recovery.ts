@@ -1,6 +1,7 @@
 import type { ChatMessage } from '../llm/types';
 import type { TerminalEvidence, WrittenFileEvidence } from './completion-evidence';
 import type { TodoItem } from './evidence-recovery';
+import type { TextToolProtocolSession } from './text-tool-protocol';
 import { buildReplaceInFileRecoveryPrompt } from './tool-protocol-prompt';
 
 export interface AgentProviderFailure {
@@ -20,6 +21,7 @@ export interface AgentProviderRecoveryPromptInput {
   readEvidencePaths: readonly string[];
   writtenFiles: readonly WrittenFileEvidence[];
   terminalEvidence: readonly TerminalEvidence[];
+  textToolProtocol: TextToolProtocolSession;
   partialResponseLength?: number;
 }
 
@@ -121,7 +123,7 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
     : '- 恢复轮必须小步推进：最多 6 个只读工具；如需写入，最多 1 个写入工具，content 控制在 6000 字符以内。';
   const resetProviderSession = shouldResetProviderSessionForRecovery(input.failure);
   const toolSerializationLine = input.failure.status.toLowerCase() === 'incomplete-tool-block'
-    ? buildReplaceInFileRecoveryPrompt()
+    ? buildReplaceInFileRecoveryPrompt(input.textToolProtocol)
     : '';
 
   return {

@@ -1,4 +1,7 @@
-import { parseFakeToolCalls } from '../agent/fake-tool-parser';
+import {
+  parseAuthorizedTextToolCalls,
+  type TextToolProtocolSession,
+} from '../agent/text-tool-protocol';
 import {
   CanonicalProviderEventService,
   CanonicalToolDispatchService,
@@ -24,12 +27,14 @@ export interface ProviderNormalizationBoundary {
   readonly providerEvents: ProviderEventPort;
   readonly toolDispatch: ToolDispatchPort;
   readonly dispatchContext: Readonly<Pick<CodingToolDispatchContext, 'workspaceRoot'>>;
+  readonly textToolProtocol?: TextToolProtocolSession;
 }
 
 export function bindProviderNormalizationBoundary(
   providerEvents: ProviderEventPort | undefined,
   toolDispatch: ToolDispatchPort | undefined,
   dispatchContext: Pick<CodingToolDispatchContext, 'workspaceRoot'> = {},
+  textToolProtocol?: TextToolProtocolSession,
 ): ProviderNormalizationBoundary | undefined {
   if (!providerEvents && !toolDispatch) return undefined;
   if (!providerEvents || !toolDispatch) {
@@ -39,6 +44,7 @@ export function bindProviderNormalizationBoundary(
     providerEvents,
     toolDispatch,
     dispatchContext: Object.freeze({ ...dispatchContext }),
+    ...(textToolProtocol ? { textToolProtocol } : {}),
   });
 }
 
@@ -66,11 +72,11 @@ export function llmEventsToToolCallEnvelopes(
       }));
       continue;
     }
-    if (event.type === 'message') {
-      for (const fakeTool of parseFakeToolCalls(event.content)) {
-        envelopes.push(boundary.toolDispatch.dispatch(fakeTool, {
+    if (event.type === 'message' && boundary.textToolProtocol) {
+      for (const textTool of parseAuthorizedTextToolCalls(event.content, boundary.textToolProtocol)) {
+        envelopes.push(boundary.toolDispatch.dispatch(textTool, {
           ...boundary.dispatchContext,
-          source: 'fake-tool',
+          source: 'text-protocol',
         }));
       }
     }
@@ -86,10 +92,10 @@ export function normalizeProviderMessage(
   if (accepted.type !== 'message') throw new Error('vscode-provider-event:message-normalization-mismatch');
   return Object.freeze({
     event: accepted,
-    tools: Object.freeze(parseFakeToolCalls(accepted.content)
+    tools: Object.freeze(parseAuthorizedTextToolCalls(accepted.content, boundary.textToolProtocol)
       .map(tool => boundary.toolDispatch.dispatch(tool, {
         ...boundary.dispatchContext,
-        source: 'fake-tool',
+        source: 'text-protocol',
       }).call)),
   });
 }

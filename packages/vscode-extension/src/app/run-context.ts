@@ -22,7 +22,7 @@ import type { AgentStatusEvent } from '../agent/events';
 import type { WorkspaceMutationLifecycleEvent } from '../workspace/workspace-mutation-observer';
 import { hasSourceClaimArtifactContract, type TaskContract } from '../agent/task-contract';
 import type { TaskSemanticContract } from '../task-semantic-contract';
-import { resolveTaskSemanticContract } from '../intent/task-semantic-contract-service';
+import { createModelLedTurnSemanticContract } from '../intent/model-led-semantic-contract';
 import { isBridgeProviderFailureEvidenceGap } from './provider-run-evidence';
 import { buildRunSettlementSealBinding, type RunSettlementBuildIdentity } from './run-settlement-seal-binding';
 import { decideSettlementState, type SettlementTerminalStatus } from './settlement-state';
@@ -122,12 +122,11 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     this.sessionId = options.sessionId;
     this.mode = options.mode;
     this.workloadRole = options.workloadRole ?? 'foreground-agent';
-    const semanticContract = options.semanticContract ?? resolveTaskSemanticContract(options.userPrompt);
+    const semanticContract = options.semanticContract ?? createModelLedTurnSemanticContract(options.userPrompt);
     const taskContract = options.taskContract ?? semanticContract.taskContract;
     this.taskContractFingerprint = fingerprintTaskContract(taskContract);
     this.semanticContractFingerprint = fingerprintTaskSemanticContract(semanticContract);
-    this.requiresSourceClaimArtifactVerification = hasSourceClaimArtifactContract(taskContract)
-      && semanticContract.mutation.requested;
+    this.requiresSourceClaimArtifactVerification = hasSourceClaimArtifactContract(taskContract);
     this.buildIdentity = {
       app_version: options.appVersion ?? null,
       build_channel: options.buildChannel ?? null,

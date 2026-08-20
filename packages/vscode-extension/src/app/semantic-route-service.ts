@@ -1,6 +1,6 @@
 import type { ChatRouteDecision, ChatRouteInput, ChatRouteController } from './chat-controller';
 
-export interface SemanticRouteDecisionInput extends Omit<ChatRouteInput, 'semanticIntent'> {
+export interface SemanticRouteDecisionInput extends ChatRouteInput {
   controller: ChatRouteController;
   mode?: 'fast' | 'r1';
   signal?: AbortSignal;

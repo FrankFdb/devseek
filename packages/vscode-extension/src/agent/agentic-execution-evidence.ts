@@ -4,21 +4,19 @@ import {
   type CodingVerificationReceipt,
   type CodingWorkspaceMutationReceipt,
 } from '@devseek-netai/shared';
-import type { TaskSemanticContract } from '../task-semantic-contract';
 import {
   assessMissingCompletionEvidence,
   findBlockingTerminalFailureEvidence,
   getBlockingTerminalFailure,
   type CompletionEvidenceAssessmentInput,
   type TerminalEvidence,
-  type WrittenFileEvidence,
 } from './completion-evidence';
 import type { TodoItem } from './evidence-recovery';
 
 export interface AgenticEvidenceClosureInput {
   readonly requiredBeforeExecution: boolean;
   readonly workToolObserved: boolean;
-  readonly completion: Omit<CompletionEvidenceAssessmentInput, 'todos'> & {
+  readonly completion: CompletionEvidenceAssessmentInput & {
     readonly todos: TodoItem[];
   };
 }
@@ -43,9 +41,6 @@ export function assessAgenticEvidenceClosure(
     required,
     missingEvidence: assessMissingCompletionEvidence(completion),
     blockingTerminalFailure: getAgenticBlockingTerminalFailure(
-      completion.userPrompt,
-      completion.todos,
-      completion.writtenFiles,
       completion.terminalEvidence,
       completion.semanticContract,
     ),
@@ -53,13 +48,10 @@ export function assessAgenticEvidenceClosure(
 }
 
 export function getAgenticBlockingTerminalFailure(
-  userPrompt: string,
-  todos: readonly TodoItem[],
-  writtenFiles: readonly WrittenFileEvidence[],
   terminalEvidence: readonly TerminalEvidence[],
-  semanticContract?: TaskSemanticContract,
+  semanticContract: CompletionEvidenceAssessmentInput['semanticContract'],
 ): TerminalEvidence | undefined {
-  return getBlockingTerminalFailure(userPrompt, todos, writtenFiles, terminalEvidence, semanticContract)
+  return getBlockingTerminalFailure(terminalEvidence, semanticContract)
     ?? findBlockingTerminalFailureEvidence(terminalEvidence);
 }
 

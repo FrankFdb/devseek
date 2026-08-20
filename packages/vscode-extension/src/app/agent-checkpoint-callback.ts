@@ -1,4 +1,4 @@
-import type { AgentTask } from '../agent-task-decomposer';
+import type { AgentTask } from '../agent/agent-task';
 import type { AgentLoopCallbacks } from '../agent/loop-types';
 import type { CodingCheckpoint } from '@devseek-netai/shared';
 import type { TaskCheckpointRecord } from './task-checkpoint-store';

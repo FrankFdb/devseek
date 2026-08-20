@@ -146,6 +146,10 @@ test('CanonicalToolDispatchService projects artifact paths and terminal effects 
     name: 'run_terminal',
     input: { command: 'ruby custom_task.rb' },
   }, { source: 'surface', workspaceRoot: '/workspace' });
+  const readOnlyTerminal = dispatch.dispatch({
+    name: 'run_terminal',
+    input: { command: "printf '%s\\n' MODEL_LATEST_OK && ls -la" },
+  }, { source: 'surface', workspaceRoot: '/workspace' });
   const projectValidation = dispatch.dispatch({
     name: 'run_terminal',
     input: {
@@ -160,6 +164,10 @@ test('CanonicalToolDispatchService projects artifact paths and terminal effects 
   assert.equal(unknownTerminal.call.risk, 'high');
   assert.equal(unknownTerminal.call.purpose, 'external-effect');
   assert.deepEqual(unknownTerminal.call.effects, ['process', 'workspace-mutation']);
+  assert.equal(readOnlyTerminal.decision, 'accepted');
+  assert.equal(readOnlyTerminal.call.risk, 'low');
+  assert.equal(readOnlyTerminal.call.purpose, 'observe');
+  assert.deepEqual(readOnlyTerminal.call.effects, ['process']);
   assert.equal(projectValidation.call.risk, 'medium');
   assert.equal(projectValidation.call.purpose, 'verify');
   assert.deepEqual(projectValidation.call.effects, ['process']);

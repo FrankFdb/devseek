@@ -1,37 +1,39 @@
-import type { ChatMessage } from '../llm/types';
 import type { CodingToolExecutionReceipt } from '@devseek-netai/shared';
+import type { ChatMessage } from '../llm/types';
+import { createModelLedTurnSemanticContract } from '../intent/model-led-semantic-contract';
+import { projectModelActionSemanticContract } from '../intent/model-action-semantic-contract';
 import {
-  buildIntentRevisionLineage,
-  type IntentRevisionChangeKind,
-  type IntentRevisionEffectReceipt,
-  type IntentSemanticContractRevision,
-} from '../intent/intent-revision-lineage';
+  bindTaskSemanticProjectInstructions,
+  type TaskSemanticProjectInstructionInput,
+} from '../intent/task-semantic-project-instructions';
 import type { TaskSemanticContract } from '../task-semantic-contract';
-import type { TaskSemanticProjectInstructionInput } from '../intent/task-semantic-contract-service';
-import { resolveTaskSemanticContract } from '../intent/task-semantic-contract-service';
-import type { SemanticIntentInterpretation } from '../intent/semantic-intent';
 import type { AgentLoopCallbacks } from './loop-types';
 import { copyAgentLoopCallbacks } from './loop-callbacks';
-import { buildUserSteerMessage, consumeUserSteerTexts, userSteerRevokesWrites } from './user-steer';
+import {
+  buildUserSteerMessage,
+  consumeUserSteerCompletionFenceTexts,
+  consumeUserSteerTexts,
+} from './user-steer';
+import type { ModelToolSemanticProposal } from './model-tool-semantic-proposal';
 
 export interface WriteAuthority {
   readonly callbacks: AgentLoopCallbacks;
   readonly currentPrompt: string;
-  readonly semanticContractRevision: IntentSemanticContractRevision;
-  /** User-owned contract used by action authority and explicit user constraints. */
+  /** User turn snapshot. In model-led mode this carries no inferred effects. */
   readonly canonicalSemanticContract: TaskSemanticContract;
-  /** Loop-only model interpretation; never use it to add completion obligations. */
+  /** Current model action proposal, used only for loop guidance. */
   readonly semanticContract: TaskSemanticContract;
-  /** Evidence-settled model interpretation used for completion, never authority. */
+  /** Proposal promoted only after a matching local tool receipt exists. */
   readonly completionSemanticContract: TaskSemanticContract;
   readonly projectInstructionsText: string;
-  readonly writeRevoked: boolean;
-  applyModelSemanticProposal(proposal: SemanticIntentInterpretation): boolean;
+  applyModelSemanticProposal(proposal: ModelToolSemanticProposal): boolean;
   settleModelSemanticProposal(
     receipts: readonly CodingToolExecutionReceipt<unknown>[],
   ): SettledModelSemanticProposal | undefined;
   drainAfterProvider(): ChatMessage[];
   takePendingAndDrain(): ChatMessage[];
+  closeForCompletionAndDrain(): ChatMessage[];
+  reopenAfterCompletionFence(): boolean;
 }
 
 export interface SettledModelSemanticProposal {
@@ -40,172 +42,70 @@ export interface SettledModelSemanticProposal {
 }
 
 export interface WriteAuthorityOptions {
-  committedEffects?: () => IntentRevisionEffectReceipt[];
   initialSemanticContract?: TaskSemanticContract;
   projectInstructions?: TaskSemanticProjectInstructionInput;
 }
 
-const WRITE_REVOKED_MUTATION_TOOL_NAMES = new Set([
-  'create_file',
-  'write_file',
-  'replace_file',
-  'replace_in_file',
-  'delete_file',
-  'run_terminal',
-  'run_vscode_command',
-]);
-
-const SOURCE_ONLY_WRITE_CONSTRAINT_RE = /(?:源码|源代码|source\s+code|source\s+files?)/iu;
-
-export function isWriteRevokedToolAttempt(tool: { name?: unknown }): boolean {
-  const name = typeof tool.name === 'string' ? tool.name : '';
-  return WRITE_REVOKED_MUTATION_TOOL_NAMES.has(name) || /^mcp__/.test(name);
-}
-
-export function hasWriteRevokedToolAttempt(tools: readonly { name?: unknown }[]): boolean {
-  return tools.some(isWriteRevokedToolAttempt);
-}
-
-function isReportOnlyArtifactContract(contract: TaskSemanticContract): boolean {
-  return contract.mutation.fileArtifact
-    && !contract.mutation.sourceChange
-    && !contract.mutation.prohibited
-    && contract.mutation.targets.length > 0;
-}
-
-function userSteerRevokesWritesForContract(
-  text: string,
-  contract: TaskSemanticContract,
-  previousContract?: TaskSemanticContract,
-): boolean {
-  if (!userSteerRevokesWrites(text)) return false;
-  const reportOnlyArtifactTask = isReportOnlyArtifactContract(contract)
-    || (previousContract !== undefined
-      && !contract.mutation.sourceChange
-      && isReportOnlyArtifactContract(previousContract));
-  if (reportOnlyArtifactTask && SOURCE_ONLY_WRITE_CONSTRAINT_RE.test(text)) {
-    return false;
-  }
-  return true;
-}
-
-function resolveWriteRevocation(
-  current: boolean,
-  text: string,
-  revision: IntentSemanticContractRevision,
-  changeKinds: readonly IntentRevisionChangeKind[],
-  previousContract?: TaskSemanticContract,
-): boolean {
-  const contract = revision.semanticContract;
-  if (userSteerRevokesWritesForContract(text, contract, previousContract)) return true;
-  const explicitlyReauthorizes = changeKinds.some(kind => kind === 'correction' || kind === 'scope-reduction')
-    && contract.mutation.requested
-    && !contract.mutation.prohibited;
-  if (explicitlyReauthorizes) return false;
-  return current;
-}
-
-/** Keeps file-write authorization aligned with user steers received in flight. */
+/**
+ * Owns model proposal and evidence settlement for one turn. Natural-language
+ * steering is preserved verbatim and invalidates pending proposals; it never
+ * changes tool authority through local keyword classification.
+ */
 export function createWriteAuthority(
   initialPrompt: string,
   callbacks: AgentLoopCallbacks,
   options: WriteAuthorityOptions = {},
 ): WriteAuthority {
   let currentPrompt = initialPrompt;
-  let lineage = buildIntentRevisionLineage({
-    prompt: initialPrompt,
-    currentSemanticContract: options.initialSemanticContract,
-    projectInstructions: options.projectInstructions,
-  });
-  let semanticContractRevision = lineage.semanticContractRevision;
+  let turnSemanticContract = createInitialTurnContract(initialPrompt, options);
   let modelSemanticContract: TaskSemanticContract | undefined;
   let settledModelSemanticContract: TaskSemanticContract | undefined;
-  let pendingModelSemanticProposal: SemanticIntentInterpretation | undefined;
-  let writeRevoked = userSteerRevokesWritesForContract(
-    initialPrompt,
-    semanticContractRevision.semanticContract,
-  );
+  let pendingModelSemanticProposal: ModelToolSemanticProposal | undefined;
   const pendingMessages: ChatMessage[] = [];
-  const drain = (): ChatMessage[] => {
-    const texts = consumeUserSteerTexts(callbacks);
+
+  const applyTexts = (texts: readonly string[]): ChatMessage[] => {
     const messages: ChatMessage[] = [];
     for (const text of texts) {
-      const previousSemanticContract = semanticContractRevision.semanticContract;
-      lineage = buildIntentRevisionLineage({
-        previous: lineage,
-        committedEffects: options.committedEffects?.() ?? [],
-        prompt: text,
-        projectInstructions: options.projectInstructions,
+      currentPrompt = text;
+      turnSemanticContract = createInitialTurnContract(text, {
+        ...options,
+        initialSemanticContract: turnSemanticContract,
       });
-      semanticContractRevision = lineage.semanticContractRevision;
       modelSemanticContract = undefined;
       settledModelSemanticContract = undefined;
       pendingModelSemanticProposal = undefined;
-      callbacks.onTaskSemanticContractRevision?.(semanticContractRevision);
-      writeRevoked = resolveWriteRevocation(
-        writeRevoked,
-        text,
-        semanticContractRevision,
-        lineage.effectiveRevision.changeKinds,
-        previousSemanticContract,
-      );
-      messages.push(buildUserSteerMessage(text, { semanticContractRevision }));
+      messages.push(buildUserSteerMessage(text));
     }
-    // Provider history retains earlier turns. Local action arbitration consumes
-    // only the latest revision snapshot so superseded targets cannot look active.
-    if (texts.length > 0) currentPrompt = texts.at(-1)!;
     return messages;
   };
+  const drain = (): ChatMessage[] => applyTexts(consumeUserSteerTexts(callbacks));
   const guardedCallbacks = copyAgentLoopCallbacks(callbacks);
   const resolveFileWriteConstraint = callbacks.onResolveFileWriteConstraint;
   if (resolveFileWriteConstraint) {
     guardedCallbacks.onResolveFileWriteConstraint = async (absPath, context) => {
-      // A correction can arrive while an earlier provider/tool operation awaits I/O.
+      // Finish the in-flight tool boundary, retain accepted input, and force a
+      // fresh model turn before any subsequent action proposal is dispatched.
       pendingMessages.push(...drain());
-      const semanticContract = semanticContractRevision.semanticContract;
-      return resolveFileWriteConstraint(absPath, {
-        ...context,
-        requestPrompt: currentPrompt,
-        semanticIntent: {
-          mutationRequested: semanticContract.mutation.requested,
-          mutationProhibited: semanticContract.mutation.prohibited,
-          sourceChange: semanticContract.mutation.sourceChange,
-          fileArtifact: semanticContract.mutation.fileArtifact,
-          targets: semanticContract.mutation.targets,
-          signals: semanticContract.signals,
-        },
-      });
+      return resolveFileWriteConstraint(absPath, context);
     };
   }
+
   return {
     callbacks: guardedCallbacks,
     get currentPrompt() { return currentPrompt; },
-    get semanticContractRevision() { return semanticContractRevision; },
-    get canonicalSemanticContract() { return semanticContractRevision.semanticContract; },
-    get semanticContract() { return modelSemanticContract ?? semanticContractRevision.semanticContract; },
+    get canonicalSemanticContract() { return turnSemanticContract; },
+    get semanticContract() { return modelSemanticContract ?? turnSemanticContract; },
     get completionSemanticContract() {
-      return settledModelSemanticContract ?? semanticContractRevision.semanticContract;
+      return settledModelSemanticContract ?? turnSemanticContract;
     },
     get projectInstructionsText() {
-      return semanticContractRevision.semanticContract.context.projectInstructions.content;
+      return turnSemanticContract.context.projectInstructions.content;
     },
-    get writeRevoked() { return writeRevoked; },
     applyModelSemanticProposal(proposal) {
-      const current = modelSemanticContract ?? semanticContractRevision.semanticContract;
-      const next = resolveTaskSemanticContract(currentPrompt, {
-        current,
-        semanticIntent: proposal,
-        projectInstructions: options.projectInstructions,
-      });
-      if (current.kind !== 'destructive'
-        && next.signals.includes('semantic-destructive-fail-closed')) {
-        return false;
-      }
+      const current = modelSemanticContract ?? turnSemanticContract;
+      const next = projectModelActionSemanticContract(current, proposal);
       if (next.signals.includes('semantic-intent-constrained')) return false;
       if (JSON.stringify(next) === JSON.stringify(current)) return false;
-      // Provider semantics may improve typo or colloquial intent handling for
-      // this loop. Only user input can revise the authority contract consumed
-      // by sandbox and workspace mutation transactions.
       modelSemanticContract = next;
       pendingModelSemanticProposal = proposal;
       return true;
@@ -225,13 +125,34 @@ export function createWriteAuthority(
     },
     drainAfterProvider: drain,
     takePendingAndDrain: () => [...pendingMessages.splice(0), ...drain()],
+    closeForCompletionAndDrain: () => [
+      ...pendingMessages.splice(0),
+      ...applyTexts(consumeUserSteerCompletionFenceTexts(callbacks)),
+    ],
+    reopenAfterCompletionFence: () => callbacks.onReopenUserSteering?.() ?? true,
   };
+}
+
+function createInitialTurnContract(
+  prompt: string,
+  options: WriteAuthorityOptions,
+): TaskSemanticContract {
+  const supplied = createModelLedTurnSemanticContract(prompt, options.initialSemanticContract);
+  return bindTaskSemanticProjectInstructions(supplied, options.projectInstructions);
 }
 
 function receiptMatchesSemanticProposal(
   receipt: CodingToolExecutionReceipt<unknown>,
-  proposal: SemanticIntentInterpretation,
+  proposal: ModelToolSemanticProposal,
 ): boolean {
+  const operationMatches = proposal.evidenceBindings.some(binding => (
+    binding.tool === receipt.tool
+      && binding.purpose === receipt.purpose
+      && binding.inputSha256 === receipt.inputSha256
+      && sameEffects(binding.effects, receipt.effects)
+  ));
+  if (!operationMatches) return false;
+
   if (proposal.mutation === 'create-file'
     || proposal.mutation === 'modify-source'
     || proposal.mutation === 'delete') {
@@ -245,6 +166,13 @@ function receiptMatchesSemanticProposal(
     return receipt.tool === 'run_terminal' || receipt.effects.includes('process');
   }
   return receipt.purpose === 'observe'
-    && receipt.effects.every(effect => effect === 'read')
+    && receipt.effects.every(effect => effect === 'read' || effect === 'process')
     && receipt.status === 'completed';
+}
+
+function sameEffects(left: readonly string[], right: readonly string[]): boolean {
+  const normalizedLeft = [...new Set(left)].sort();
+  const normalizedRight = [...new Set(right)].sort();
+  return normalizedLeft.length === normalizedRight.length
+    && normalizedLeft.every((effect, index) => effect === normalizedRight[index]);
 }

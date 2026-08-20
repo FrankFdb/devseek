@@ -10,38 +10,19 @@ import {
   assembleProjectRulesAndMemoryContext,
 } from './project-rules';
 import { getDiagnosticsContext } from './context-builder';
-import {
-  applyGeneratedArtifactsWithPrompt,
-  looksLikeTargetScopedSourceResponse,
-  resolveGeneratedArtifactPathForPrompt,
-  type ApplyWorkflowStatus,
-} from './workspace-applier';
 import { detectWorkspacePathScope, isGeneratedArtifactAllowedForPrompt } from './workspace/path-resolver';
 import { sanitizeWorkspaceContextAnchorPath } from './workspace/context-anchor';
-import { parseGeneratedArtifacts, type GeneratedArtifact } from './generated-file-parser';
-import {
-  type LocalExecutionPlan,
-  planLocalExecution,
-  planRepeatLocalExecution,
-  shouldPreferLocalExecution,
-} from './execution-planner';
-import { AutoApplyPolicy, shouldAutoApplyFromResponse } from './intent-router';
-import { clearSessionHabits, lookupLearnedIntent, recordIntentOutcome } from './intent-learner';
 import {
   initAgentLearner, clearLearnerSession, emitLearningEvent,
   getCommandHints,
 } from './agent-learner';
-import { getAgentTaskDisplayTarget, type AgentTask } from './agent-task-decomposer';
+import { getAgentTaskDisplayTarget, type AgentTask } from './agent/agent-task';
 import type { AgentLoopCallbacks, AgentLoopResult } from './agent/loop-types';
 import { createAgentHostToolCallbacks } from './agent/agent-host-tools';
 import { getTaskWorkspaceRootFsPath, resolveWorkspaceFileUri } from './workspace-roots';
 import { createVscodeMcpManager, initializeWorkspaceMcp, renderMcpStatusText } from './mcp/vscode-mcp-runtime';
 import type { McpLoadReport } from './mcp/client';
 import type { AgentFileWriteContext } from './app/agent-file-write-policy';
-import { recoverApplyFailureIfPossible } from './app/apply-failure-recovery-service';
-import { responseClaimsStatusOk, shouldRunClosedLoopRepair } from './app/agentic-repair-service';
-import { runClosedLoopRepair } from './app/closed-loop-repair-runner';
-import { runLocalExecutionChatIfPossible } from './local-execution-chat-runner';
 import { TerminalPermissionCoordinator } from './app/terminal-permission-coordinator';
 import { ChatRouteController } from './app/chat-controller';
 import { deliverSettledAgentTerminalPresentation } from './app/agent-terminal-presentation';
@@ -67,14 +48,11 @@ import { ActiveChatRunCoordinator, type ActiveChatRunHandle } from './app/active
 import { productCodingKernelExecutor } from './product-coding-kernel-executor';
 import { createDevSeekRunContext } from './app/run-context';
 import { createAgentCheckpointCallback } from './app/agent-checkpoint-callback';
-import { guardNonAgentResponse } from './app/non-agent-response-guard';
 import type { AgentChatRequest } from './app/agent-protocol';
 import { createAgentApplicationBridgeAdapter, EvidenceAwareChatRouter } from './app/evidence-aware-chat-router';
 import { createEvidenceAwareMcpToolCallFactory } from './app/evidence-aware-mcp-tool-call';
 import { createEvidenceAwareMemoryWriteFactory } from './app/evidence-aware-memory-write';
-import { recordApplyWorkflowEvidence } from './app/workflow-run-evidence-adapter';
-import { tryPublishProjectInitTurn } from './app/project-init-service';
-import { tryBuildReadOnlyInspectionResult } from './app/read-only-inspection-service';
+import { resolveProjectInitPrompt } from './app/project-init-service';
 import { buildRestoredSessionLlmHistory, buildSessionLoadedPayload } from './app/session-display-service';
 import { buildSessionBootstrapState } from './app/session-bootstrap-service';
 import { SessionService, type SessionMeta } from './app/session-service';
@@ -83,7 +61,7 @@ import { SessionContinuationProjector } from './app/session-continuation-project
 import { RunChangedPathRecorder } from './app/run-changed-path-recorder';
 import {
   appendSessionContinuationContext,
-  shouldResumeCheckpointFromPrompt,
+  shouldResumeCheckpointFromCommand,
 } from './app/session-continuation';
 import {
   ScopedTaskCheckpointService,
@@ -96,9 +74,9 @@ import { PendingEditCoordinator } from './pending-edit-coordinator';
 import { recordTrackedChatHistory as recordTrackedChatHistoryState } from './app/chat-history-tracker';
 import { createDirectVisibleResponsePublisher } from './app/direct-visible-response-service';
 import type { AgentSessionState } from './app/agent-session-context';
-import { emitResponseMeta, injectFileHintsIntoResponse } from './ui/generated-artifact-ui';
+import { emitResponseMeta } from './ui/generated-artifact-ui';
 import { createAgentFileWriteConstraintResolver } from './ui/agent-file-write-constraint-resolver';
-import { postWebviewEvent, postWebviewMessage } from './ui/webview-event-adapter';
+import { postWebviewMessage } from './ui/webview-event-adapter';
 import { AgentTurnPresenter } from './ui/agent-turn-presenter';
 import { DeepSeekViewProvider } from './ui/deepseek-view-provider';
 import { recordRealPluginHarnessProgress, registerRealPluginDeepSeekHarnessCommand } from './ui/real-plugin-harness';
@@ -113,8 +91,6 @@ import { listWorkspaceDirectoryForAi } from './workspace/list-dir-service';
 import {
   appendFileAwareFormatHint,
   appendStructuredGenerationHint,
-  buildReformatPrompt,
-  buildSmalltalkReply,
   chatContentText,
   normalizeConversationFiles,
 } from './app/chat-prompt-formatting';
@@ -127,7 +103,6 @@ import {
 // Sidebar chat view state (single-level entry, no launcher page)
 // ----------------------------------------------------------------
 let viewProvider: DeepSeekViewProvider;
-let lastLocalExecutionPlan: LocalExecutionPlan | undefined;
 let pendingEditCoordinator: PendingEditCoordinator;
 const chatRouteController = new ChatRouteController();
 const terminalPermissionCoordinator = new TerminalPermissionCoordinator();
@@ -266,7 +241,7 @@ async function runChat(
   suppressUserMessage = false,
   resumeCheckpoint?: TaskCheckpointRecord<AgentTask>,
 ): Promise<void> {
-  const promptResumeCp = shouldResumeCheckpointFromPrompt({ userDisplay, prompt, newSession, resumeFromIndex })
+  const promptResumeCp = shouldResumeCheckpointFromCommand({ userDisplay, prompt, newSession, resumeFromIndex })
     ? await agentCheckpointService.loadFresh(7_200_000)
     : undefined;
   if (promptResumeCp) {
@@ -306,10 +281,13 @@ async function runActiveChat(
   resumeCheckpoint: TaskCheckpointRecord<AgentTask> | undefined,
 ): Promise<void> {
   const chatSignal = activeRun.signal;
-  const consumeAgentSteer = (): string[] => activeRun.consumeAgentSteer();
+  const consumeAgentSteer = () => activeRun.consumeAgentSteer();
+  const closeAgentSteeringAndConsume = () => activeRun.closeAgentSteeringAndConsume();
+  const reopenAgentSteering = () => activeRun.reopenAgentSteering();
 
   let effectiveFiles = normalizeConversationFiles(files);
   const userExplicitlyAttachedFiles = effectiveFiles.length > 0;
+  prompt = resolveProjectInitPrompt(userDisplay, prompt) ?? prompt;
   await getChatSessionTurnService(webview).beginTurn({
     newSession,
     userDisplay,
@@ -321,19 +299,8 @@ async function runActiveChat(
     recordHistory: recordTrackedChatHistory,
   });
 
-  if (tryPublishProjectInitTurn({
-    userDisplay,
-    prompt,
-    workspaceRoot: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
-    publisher: directVisibleResponsePublisher,
-    images,
-    newSession,
-    suppressUserMessage,
-  })) return;
-
   const {
     decision: initialRouteDecision,
-    semanticContext: turnSemanticContext,
   } = decideAgentTurnRoute(chatRouteController, {
     newSession,
     userDisplay,
@@ -342,8 +309,6 @@ async function runActiveChat(
     agentEnabled: vscode.workspace.getConfiguration('devseek').get<boolean>('agentEnabled', true),
     forceNoAgent,
     intentConfirmed,
-    loadPreviousSemanticContract: () => loadAgentSessionState()?.semanticContract,
-    lookupLearnedIntent: extContext ? (text) => lookupLearnedIntent(text, extContext!) : undefined,
   });
   recordRealPluginHarnessProgress('run-chat-initial-route', {
     intentKind: initialRouteDecision.intent.kind,
@@ -356,7 +321,6 @@ async function runActiveChat(
     prompt: initialRouteDecision.intentRoutingText,
     snapshot: getProviderConfigService().getSnapshot(),
     checkAvailability: () => getActiveProvider().available(),
-    routedIntent: initialRouteDecision.intent,
   });
   if (providerStatusResponse) {
     recordRealPluginHarnessProgress('run-chat-return-provider-status');
@@ -369,23 +333,6 @@ async function runActiveChat(
       newSession,
       suppressUserMessage,
     });
-    if (extContext) recordIntentOutcome(initialRouteDecision.intentRoutingText, 'chat', activeSessionId, extContext);
-    return;
-  }
-
-  if (initialRouteDecision.intent.mode === 'smalltalk') {
-    recordRealPluginHarnessProgress('run-chat-return-smalltalk');
-    const reply = buildSmalltalkReply(initialRouteDecision.intentRoutingText);
-    directVisibleResponsePublisher.publish({
-      userDisplay,
-      userMessagePrompt: prompt,
-      responsePrompt: initialRouteDecision.intentRoutingText,
-      responseText: reply,
-      images,
-      newSession,
-      suppressUserMessage,
-    });
-    if (extContext) recordIntentOutcome(initialRouteDecision.intentRoutingText, 'chat', activeSessionId, extContext);
     return;
   }
 
@@ -407,7 +354,6 @@ async function runActiveChat(
   const initialSessionProjection = sessionContinuationProjector.project({
     workspaceRoot: continuationWorkspaceRoot,
     currentPrompt: userDisplay || prompt,
-    intent: initialRouteDecision.intent,
     currentFilePaths: effectiveFiles,
     newSession,
   });
@@ -473,10 +419,8 @@ async function runActiveChat(
     agentEnabled,
     forceNoAgent,
     intentConfirmed,
-    semanticContext: turnSemanticContext,
     mode,
     signal: chatSignal,
-    lookupLearnedIntent: extContext ? (text) => lookupLearnedIntent(text, extContext!) : undefined,
     recordProgress: recordRealPluginHarnessProgress,
   });
   if (chatSignal.aborted) return;
@@ -490,57 +434,6 @@ async function runActiveChat(
     requiresPlanReview: workflow.requiresPlanReview,
     effectiveFiles: effectiveFiles.length,
   });
-  const directInspectionRoot = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath)
-    ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
-    ?? '';
-  const directInspection = workflow.kind === 'inspect-agent' && intent.mode === 'inspect' && resumeFromIndex === undefined
-    ? tryBuildReadOnlyInspectionResult({ prompt: intentRoutingText, workspaceRoot: directInspectionRoot })
-    : null;
-  if (directInspection) {
-    recordRealPluginHarnessProgress('run-chat-return-direct-inspection', {
-      workspaceRoot: directInspectionRoot,
-      textLength: directInspection.text.length,
-    });
-    webview.postMessage({
-      type: 'startResponse',
-      prompt: intentRoutingText,
-      expectGeneratedArtifacts: false,
-      agentMode: false,
-    });
-    postWebviewMessage(webview, { type: 'delta', text: directInspection.text });
-    webview.postMessage({ type: 'responseMeta', hasGeneratedArtifacts: false, generatedPaths: [] });
-    webview.postMessage({ type: 'endResponse' });
-    recordTrackedChatHistory({
-      prompt: intentRoutingText,
-      displayPrompt: userDisplay,
-      newSession,
-      mode,
-      files: effectiveFiles,
-      images,
-      trackHistory: true,
-      signal: chatSignal,
-    }, directInspection.text);
-    if (extContext) recordIntentOutcome(intentRoutingText, 'chat', activeSessionId, extContext);
-    return;
-  }
-
-  let workflowRunContext: ReturnType<typeof createDevSeekRunContext> | undefined;
-  const workflowReporter = async (status: ApplyWorkflowStatus): Promise<void> => {
-    recordApplyWorkflowEvidence(workflowRunContext, status);
-    postWebviewEvent(webview, { kind: 'workflow', status });
-  };
-  const localPreflightConfig = vscode.workspace.getConfiguration('devseek');
-  const shouldBypassAgentForLocalExecution = (() => {
-    if (workflow.toolPolicyMode === 'model-led') return false;
-    if (!localPreflightConfig.get<boolean>('localExecutionFirst', true)) return false;
-    if (intent.mode !== 'run') return false;
-    const workspaceRootForLocal = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath);
-    if (shouldPreferLocalExecution(prompt, effectiveFiles, workspaceRootForLocal)) {
-      return !!planLocalExecution(prompt, effectiveFiles || [], workspaceRootForLocal);
-    }
-    return !!planRepeatLocalExecution(prompt, lastLocalExecutionPlan, workspaceRootForLocal);
-  })();
-
   // ── Agent Mode: two-phase Architect + Editor loop ────────────────────────
   if (workflow.useAgent) {
   recordRealPluginHarnessProgress('run-chat-enter-agent-workflow', {
@@ -548,7 +441,6 @@ async function runActiveChat(
     intentMode: intent.mode,
     effectiveFiles: effectiveFiles.length,
   });
-  if (!shouldBypassAgentForLocalExecution) {
     // 只有 bridge provider 才需要检查 bridge 连接
     if (getActiveProviderType() === 'bridge') {
       const ready = await ensureBridgeRunning();
@@ -587,12 +479,9 @@ async function runActiveChat(
       prompt,
       sessionContinuationNote,
       autoDiscoveredNote,
-      presentation: workflow.toolPolicyMode === 'model-led'
-        ? 'model-led'
-        : agDisplayProfile.kind === 'direct-response' ? 'direct-response' : 'progress',
+      presentation: 'model-led',
     });
     const { postStatus: postAgent, postToolActivity: postAgentToolActivity } = agentPresenter;
-    workflowRunContext = agentRunContext;
     const agentTraceRunId = agentRunContext.runId;
     const agentTraceWorkspaceRoot = agentRunContext.workspaceRoot;
     // L1a: filled inside try/catch, used after to persist agent turn in session history
@@ -613,7 +502,6 @@ async function runActiveChat(
         const agSessionContext = sessionContinuationProjector.project({
           workspaceRoot: agWsRoot,
           currentPrompt: userDisplay || prompt,
-          intent,
           currentFilePaths: effectiveFiles,
           newSession,
         }).contextText;
@@ -692,7 +580,6 @@ async function runActiveChat(
                 postWebviewMessage(webview, { type: 'delta', text: delta });
               }
             },
-            onWorkflowStatus: async (s) => { postWebviewEvent(webview, { kind: 'workflow', status: s }); },
             ...agentPresenter.runtimeObservers,
             onAppliedChange: async (c) => {
               agentChangedPathScope.add([c.path]);
@@ -707,6 +594,8 @@ async function runActiveChat(
             },
             onTodoUpdate: (items) => { webview.postMessage({ type: 'todoUpdate', items }); },
             onUserSteer: consumeAgentSteer,
+            onUserSteerCompletionFence: closeAgentSteeringAndConsume,
+            onReopenUserSteering: reopenAgentSteering,
             onTaskComplete: (_summary) => { /* phase:done handled inside runAgenticLoop */ },
             onPrepareMemoryWrite: agWsRoot
               ? createEvidenceAwareMemoryWriteFactory({
@@ -791,7 +680,6 @@ async function runActiveChat(
             autopilot: vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false),
           },
           sessionContextText: agSessionContext,
-          workflowMode: workflow.toolPolicyMode,
           memoryRelatedPaths: agMemoryRelatedPaths,
           recovery: kernelRecovery,
         });
@@ -835,7 +723,6 @@ async function runActiveChat(
             saveSessionMeta({ id: activeSessionId, title: userDisplay.slice(0, 50), createdAt: Date.now(), updatedAt: Date.now() });
           }
           saveCurrentSession();
-          recordIntentOutcome(intentRoutingText, 'code-change', activeSessionId, extContext);
         }
         if (agDurablyCompleted) {
           const agAutopilotHandled = pendingEditCoordinator.handleAgentAutopilot(webview, agResult);
@@ -870,8 +757,6 @@ async function runActiveChat(
         const recovery = new ProviderRecoveryService().classify({
           providerType: getActiveProviderType(),
           message: msg,
-          code: msg,
-          signals: [msg],
         });
         if (recovery.kind !== 'Unknown' && isCheckpointableProviderRecoveryError(e)) {
           const savedAt = Date.now();
@@ -946,15 +831,12 @@ async function runActiveChat(
           saveSessionMeta({ id: activeSessionId, title: userDisplay.slice(0, 50), createdAt: Date.now(), updatedAt: Date.now() });
         }
         saveCurrentSession();
-        // Record agent-mode outcome for learning
-        recordIntentOutcome(intentRoutingText, 'code-change', activeSessionId, extContext);
       }
     }
 
     webview.postMessage({ type: 'endResponse' });
     activeRun.clearAgentKernelRun(agentKernelRun);
     return;
-  }
   }
   // ── End Agent Mode ────────────────────────────────────────────────────────
 
@@ -986,7 +868,6 @@ async function runActiveChat(
   }
 
   let chatRunContext: ReturnType<typeof createDevSeekRunContext> | undefined;
-  let currentChatRunChangedPaths: string[] = [];
   try {
     let finalPrompt = prompt;
     const config = vscode.workspace.getConfiguration('devseek');
@@ -1012,7 +893,7 @@ async function runActiveChat(
       const agentCapabilityHint = `[系统] 你是 VS Code 插件 DeepSeek 的 AI 编程助手（当前为对话模式）。
 插件支持 Agent 模式，启用后 AI 可使用 list_dir、read_file、grep_search、run_terminal 等工具直接访问工作区文件。
 若用户询问能否读取文件：可以读取，建议用户使用 @文件 语法或开启 Agent 模式以获得最佳体验。
-若用户询问能否编写代码：可以编写，将代码直接输出即可，插件会自动检测并提供应用选项。
+若用户只需要示例或说明，可以直接回答；若需要修改工作区文件，应建议使用 Agent 模式，由结构化工具调用完成写入和验证。
 
 `;
       finalPrompt = agentCapabilityHint + finalPrompt;
@@ -1060,14 +941,10 @@ async function runActiveChat(
       }
     }
 
-    const autoApplyPolicy = config.get<AutoApplyPolicy>('autoApplyPolicy', 'conservative');
-    const localExecutionFirst = config.get<boolean>('localExecutionFirst', true);
-    const executionApproval = config.get<'auto' | 'confirm'>('executionApproval', 'auto');
     const workspaceRoot = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath);
     const chatWorkspaceRoot = workspaceRoot
       ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
       ?? process.cwd();
-    const chatRunChangedPaths = runChangedPathRecorder.openScope(chatWorkspaceRoot);
     chatRunContext = createDevSeekRunContext({
       workspaceRoot: chatWorkspaceRoot,
       source: 'vscode-extension.chat',
@@ -1075,17 +952,6 @@ async function runActiveChat(
       sessionId: activeSessionId,
       mode,
       traceLevel: config.get<string>('traceLevel', 'debug'),
-    });
-    workflowRunContext = chatRunContext;
-    const chatValidationCommandRunner = terminalPermissionCoordinator.createValidationCommandRunner({
-      webview,
-      workspaceRoot: chatWorkspaceRoot,
-      mode: intent.mode,
-      toolPolicy,
-      traceRunId: chatRunContext.runId,
-      traceEvidenceParticipantToken: chatRunContext.evidenceParticipantToken,
-      onTraceEvidenceError: error => chatRunContext?.reportEvidenceIssue(error),
-      signal: chatSignal,
     });
     chatRunContext.trace.info('routing', 'route-decision', {
       agentEnabled: config.get<boolean>('agentEnabled', true),
@@ -1147,68 +1013,11 @@ async function runActiveChat(
       const sessionContextForChat = sessionContinuationProjector.project({
         workspaceRoot: workspaceRoot ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '',
         currentPrompt: userDisplay || prompt,
-        intent,
         currentFilePaths: effectiveFiles,
         newSession,
       }).contextText;
       if (sessionContextForChat) {
         finalPrompt = appendSessionContinuationContext(finalPrompt, sessionContextForChat);
-      }
-    }
-
-    if (localExecutionFirst) {
-      const localExecutionResult = await runLocalExecutionChatIfPossible({
-        webview,
-        prompt,
-        effectiveFiles,
-        workspaceRoot,
-        mode,
-        config,
-        executionApproval,
-        workflowReporter,
-        lastLocalExecutionPlan,
-        setLastLocalExecutionPlan: (plan) => { lastLocalExecutionPlan = plan; },
-        requestTerminalConfirmation: (command, workdir) => terminalPermissionCoordinator.requestInlineConfirmation(webview, command, workdir ?? ''),
-        routeChat,
-        toolPolicy,
-        terminalPermissionCoordinator,
-        agentKernelService,
-        providerType: getActiveProviderType(),
-        traceRunId: chatRunContext.runId,
-        traceEvidenceParticipantToken: chatRunContext.evidenceParticipantToken,
-        onTraceEvidenceError: error => chatRunContext?.reportEvidenceIssue(error),
-        consumeAgentSteer,
-        registerAppliedChange: (change) => pendingEditCoordinator.registerChange(webview, change),
-        registerToMemory,
-        sessionRecentFiles,
-        mcpToolRefs: mcpManager.hasMcpTools ? mcpManager.toolRefs : undefined,
-        onPrepareMcpToolCall: mcpManager.hasMcpTools
-          ? createEvidenceAwareMcpToolCall(chatRunContext, webview, chatSignal)
-          : undefined,
-        signal: chatSignal,
-        sessionId: activeSessionId,
-        onChangedPaths: (paths) => { chatRunChangedPaths.add(paths); },
-      });
-      if (localExecutionResult.handled) {
-        const requestedStatus = localExecutionResult.status ?? 'failed';
-        currentChatRunChangedPaths = chatRunChangedPaths.commit();
-        const settlementStatus = terminalPermissionCoordinator.completeRunContext(chatRunContext, requestedStatus, {
-          reason: 'local-execution-handled',
-          terminalOutcome: requestedStatus,
-          changedPaths: currentChatRunChangedPaths,
-        });
-        if (requestedStatus === 'completed') {
-          if (settlementStatus === 'completed' && localExecutionResult.successMessage) {
-            postWebviewMessage(webview, { type: 'delta', text: localExecutionResult.successMessage });
-          } else if (settlementStatus !== 'completed') {
-            postWebviewMessage(webview, {
-              type: 'error',
-              text: '本地命令已成功，但运行证据结算失败；本轮不能标记完成。',
-            });
-          }
-          webview.postMessage({ type: 'endResponse' });
-        }
-        return;
       }
     }
 
@@ -1244,15 +1053,12 @@ async function runActiveChat(
       },
     });
 
-    const guardedNonAgentResponse = guardNonAgentResponse(finalResponse);
-    const finalResponseForUser = guardedNonAgentResponse.visibleText;
-    const finalResponseForArtifacts = noAgentCodeChat || guardedNonAgentResponse.containsInternalToolProtocol
-      ? guardedNonAgentResponse.artifactText
-      : finalResponse;
-    if (noAgentCodeChat || guardedNonAgentResponse.usedProtocolNotice) {
+    const finalResponseForUser = finalResponse;
+    const finalResponseForArtifacts = finalResponse;
+    if (noAgentCodeChat) {
       postWebviewMessage(webview, {
         type: 'resetResponse',
-        text: finalResponseForUser || guardedNonAgentResponse.artifactText,
+        text: finalResponseForUser,
       });
     }
 
@@ -1264,135 +1070,10 @@ async function runActiveChat(
       webview.postMessage({ type: 'responseMeta', hasGeneratedArtifacts: false, generatedPaths: [] });
     }
 
-    const canApplyArtifacts = intent.kind === 'code-change';
-    const parsedArtifacts = canApplyArtifacts ? parseGeneratedArtifacts(finalResponseForArtifacts) : [];
-    let responseToApply = finalResponseForArtifacts;
-    let shouldApplyToReviewQueue = canApplyArtifacts
-      && (parsedArtifacts.length > 0 || shouldAutoApplyFromResponse(intent, finalResponseForArtifacts, autoApplyPolicy));
-
-    // 兜底1：注入已知路径让 parser 能关联代码块
-    if (canApplyArtifacts && !shouldApplyToReviewQueue && effectiveFiles.length > 0 && /```[\s\S]*?```/.test(finalResponseForArtifacts)) {
-      responseToApply = injectFileHintsIntoResponse(finalResponseForArtifacts, effectiveFiles);
-      if (responseToApply !== finalResponseForArtifacts) {
-        const hintedArtifacts = parseGeneratedArtifacts(responseToApply);
-        if (hintedArtifacts.length > 0) {
-          shouldApplyToReviewQueue = true;
-        }
-      }
-    }
-
-    // 兜底2：注入仍然失败 → 追问 DeepSeek 按标准格式重新整理输出（参考 Aider 的 retry 思路）
-    if (canApplyArtifacts && !shouldApplyToReviewQueue && effectiveFiles.length > 0 && /```[\s\S]*?```/.test(finalResponseForArtifacts)) {
-      const reformatReq = buildReformatPrompt(effectiveFiles);
-      postWebviewMessage(webview, { type: 'delta', text: '\n\n---\n_[系统] 未识别到文件路径标注，正在请求按标准格式重新整理输出…_\n' });
-      try {
-        const reformatResp = await routeChat({
-          prompt: reformatReq,
-          newSession: false,
-          mode,
-          traceRunId: chatRunContext.runId,
-          traceWorkspaceRoot: chatRunContext.workspaceRoot,
-          traceEvidenceParticipantToken: chatRunContext.evidenceParticipantToken,
-          onTraceEvidenceError: error => chatRunContext?.reportEvidenceIssue(error),
-          onDelta: (delta) => {
-            if (delta.startsWith('\x00RESET\x00')) {
-              postWebviewMessage(webview, { type: 'delta', text: delta.slice(7) });
-            } else {
-              postWebviewMessage(webview, { type: 'delta', text: delta });
-            }
-          },
-        });
-        if (reformatResp) {
-          const reformatArtifacts = parseGeneratedArtifacts(reformatResp);
-          if (reformatArtifacts.length > 0) {
-            responseToApply = reformatResp;
-            shouldApplyToReviewQueue = true;
-          }
-        }
-      } catch { /* reformat 失败，继续正常流程 */ }
-    }
-
-    // 兜底3：仍然没有标准路径标注时，把原始回复交给 applier 的目标作用域兜底。
-    // applier 会根据会话文件、语言和完整文件特征判定唯一目标；不唯一则不写入。
-    if (
-      canApplyArtifacts
-      && !shouldApplyToReviewQueue
-      && looksLikeTargetScopedSourceResponse(finalResponseForArtifacts, prompt, effectiveFiles)
-    ) {
-      responseToApply = finalResponseForArtifacts;
-      shouldApplyToReviewQueue = true;
-    }
-
-    if (shouldApplyToReviewQueue) {
-      const firstApply = await applyGeneratedArtifactsWithPrompt(responseToApply, prompt, workflowReporter, true, async (change) => {
-        chatRunChangedPaths.add([change.path]);
-        await pendingEditCoordinator.registerChange(webview, change);
-      }, pathResolutionHints, {
-        rollbackOnValidationFailure: false,
-        validationCommandRunner: chatValidationCommandRunner,
-      });
-      const recoveredApply = await recoverApplyFailureIfPossible({
-        reporter: workflowReporter,
-        originalPrompt: prompt,
-        failedResponse: responseToApply,
-        failedApply: firstApply,
-        preferredAbsolutePaths: pathResolutionHints,
-        chat: (repairPrompt) => routeChat({
-          prompt: repairPrompt,
-          newSession: false,
-          mode,
-          stream: false,
-          trackHistory: false,
-          traceRunId: chatRunContext?.runId,
-          traceWorkspaceRoot: chatRunContext?.workspaceRoot,
-          traceEvidenceParticipantToken: chatRunContext?.evidenceParticipantToken,
-          onTraceEvidenceError: error => chatRunContext?.reportEvidenceIssue(error),
-        }),
-        apply: (repairResponse, repairPrompt, onAppliedChange) => applyGeneratedArtifactsWithPrompt(
-          repairResponse,
-          repairPrompt,
-          workflowReporter,
-          true,
-          onAppliedChange,
-          pathResolutionHints,
-          { rollbackOnValidationFailure: false, validationCommandRunner: chatValidationCommandRunner },
-        ),
-        onAppliedChange: async (change) => {
-          chatRunChangedPaths.add([change.path]);
-          await pendingEditCoordinator.registerChange(webview, change);
-        },
-      });
-      const finalApply = recoveredApply ?? firstApply;
-      chatRunChangedPaths.add(finalApply.changedPaths);
-      if (shouldRunClosedLoopRepair(finalApply)) {
-        await runClosedLoopRepair({
-          reporter: workflowReporter,
-          originalPrompt: prompt,
-          mode,
-          initialApply: finalApply,
-          preferredAbsolutePaths: pathResolutionHints,
-          routeChat: (request) => routeChat({
-            ...request,
-            traceRunId: request.traceRunId ?? chatRunContext?.runId,
-            traceWorkspaceRoot: request.traceWorkspaceRoot ?? chatRunContext?.workspaceRoot,
-            traceEvidenceParticipantToken: request.traceEvidenceParticipantToken ?? chatRunContext?.evidenceParticipantToken,
-            onTraceEvidenceError: request.onTraceEvidenceError ?? (error => chatRunContext?.reportEvidenceIssue(error)),
-          }),
-          registerAppliedChange: async (change) => {
-            chatRunChangedPaths.add([change.path]);
-            await pendingEditCoordinator.registerChange(webview, change);
-          },
-          getSessionId: () => activeSessionId,
-          postVisibleDelta: (text) => { postWebviewMessage(webview, { type: 'delta', text }); },
-          validationCommandRunner: chatValidationCommandRunner,
-        });
-      }
-    }
-    currentChatRunChangedPaths = chatRunChangedPaths.commit();
     const chatSettlementStatus = terminalPermissionCoordinator.completeRunContext(chatRunContext, 'completed', {
       intent: intent.kind,
       workflow: workflow.kind,
-      changedPaths: currentChatRunChangedPaths.slice(0, 12),
+      changedPaths: [],
     });
     if (chatSettlementStatus !== 'completed') {
       throw new Error('运行证据结算失败；本轮回复和文件候选不能标记为完成。');
@@ -1402,7 +1083,7 @@ async function runActiveChat(
     if (chatRunContext) terminalPermissionCoordinator.completeRunContext(chatRunContext, 'failed', {
       reason: 'chat-error',
       message: msg,
-      changedPaths: currentChatRunChangedPaths.slice(0, 12),
+      changedPaths: [],
     });
     if (msg === 'LOGIN_REQUIRED') {
       postWebviewMessage(webview, {
@@ -1427,8 +1108,6 @@ async function runActiveChat(
       postWebviewMessage(webview, { type: 'error', text: msg });
     }
   } finally {
-    // Record chat-mode outcome for learning
-    if (extContext) recordIntentOutcome(intentRoutingText, intent.kind as 'chat' | 'code-change', activeSessionId, extContext);
     // ActiveChatRunCoordinator releases cancellation and steer state in runChat.
   }
 
@@ -1453,7 +1132,6 @@ function getChatSessionTurnService(webview: vscode.Webview): ChatSessionTurnServ
     setLastConversationFiles: (files) => { lastConversationFiles = files; },
     setLastAnalysisText: (text) => { lastAnalysisText = text; },
     setLastAgentChangedPaths: (paths) => { lastAgentChangedPaths = paths; },
-    clearSessionHabits,
     clearLearnerSession,
     emitContextFiles: (files) => webview.postMessage({ type: 'contextFiles', files }),
   });
@@ -1576,12 +1254,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     pendingEditCoordinator,
     terminalPermissionCoordinator,
     runChat,
-    routeChat,
     getActiveSessionId: () => activeSessionId,
     getLastConversationFiles: () => lastConversationFiles,
     setLastConversationFiles: (files) => { lastConversationFiles = files; },
     cancelActiveRun: (data) => { activeChatRunCoordinator.cancelActiveRun(data); },
-    pushAgentSteer: (text) => activeChatRunCoordinator.pushAgentSteer(text),
+    pushAgentSteer: request => activeChatRunCoordinator.pushAgentSteer(request),
     getActiveSessionPayload: () => {
       if (!activeSessionId) return undefined;
       const state = getSessionService()?.loadSessionState(activeSessionId);
@@ -1658,6 +1335,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     getActiveSessionId: () => activeSessionId,
     getSessions,
     loadSession: loadSessionIntoWebview,
+    getSteeringSnapshot: () => activeChatRunCoordinator.steeringSnapshot(),
   });
 
   // ── Session memory: restore previous session on startup ────────────

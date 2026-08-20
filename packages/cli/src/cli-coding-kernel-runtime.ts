@@ -4,7 +4,6 @@ import {
   codingToolExecutionFailureReason,
   hasUnsafeSecretHarvestingRefusalEvidence,
   isSecretHarvestingRefusalTaskContract,
-  type CodingKernelExecutionRequest,
   type CodingKernelRuntimeRequest,
   type CodingKernelRuntimeOutput,
   type CodingKernelRuntimePort,
@@ -30,6 +29,7 @@ import type { CliCodingArtifactInterpreter } from './cli-coding-artifact-interpr
 import type { CliVerificationAdapter } from './cli-verification-adapter';
 import type { CliValidationResult } from './cli-verification-service';
 import type { CliWorkspaceMutationHostAdapter } from './cli-workspace-mutation-service';
+import { reconcileCliSettledModelAction } from './cli-coding-kernel-task-contract';
 import { CliToolExecutionAdapter } from './cli-tool-execution-adapter';
 
 export type CliCodingKernelEvent =
@@ -99,6 +99,7 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
     request: CodingKernelRuntimeRequest<CliCodingKernelRuntimeContext>,
   ): Promise<CodingKernelRuntimeOutput<CliCodingKernelRuntimeResult>> {
     const input = request.runtimeContext;
+    const contextFiles = (request.contextSeed?.files ?? []).map(file => file.path);
     let response = acceptCliProviderMessage(
       request.providerEvents,
       input.usesBridge ? 'cli-bridge' : 'cli-provider',
@@ -139,6 +140,7 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
               authority: request.toolAuthority,
             });
             toolExecutions.push(terminalOutcome.receipt);
+            reviseCliTaskContract(request, contextFiles, call, terminalOutcome.receipt);
           }
           return buildCliRuntimeOutput({
             request,
@@ -146,11 +148,7 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
             changedPaths,
             verificationStatus: 'not-run',
             evidenceRefs: toolExecutions.flatMap(receipt => receipt.evidenceRefs),
-            acceptanceEvidence: request.taskContract.acceptance.map(criterion => ({
-              criterionId: criterion.id,
-              status: 'blocked',
-              evidenceRefs: toolExecutions.flatMap(receipt => receipt.evidenceRefs),
-            })),
+            acceptanceEvidence: [],
             residualRisks: ['requested-change-not-applied'],
           });
         }
@@ -158,7 +156,8 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
           if (recovery) {
             throw new Error('DevSeek repair response contained no workspace artifacts to validate');
           }
-          const directRefusal = isSecretHarvestingRefusalTaskContract(request.taskContract)
+          const taskContract = request.taskContractRevision.current();
+          const directRefusal = isSecretHarvestingRefusalTaskContract(taskContract)
             && hasUnsafeSecretHarvestingRefusalEvidence(request.userPrompt, response, {
               workToolUsed: false,
               changedFileCount: changedPaths.size,
@@ -171,15 +170,15 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
             attempts: attempt,
             changedPaths,
             verificationStatus: 'not-run',
-            evidenceRefs: request.taskContract.mode === 'change' || request.taskContract.mode === 'release'
+            evidenceRefs: taskContract.mode === 'change' || taskContract.mode === 'release'
               ? []
               : responseEvidenceRefs,
-            acceptanceEvidence: request.taskContract.mode === 'change'
-              || request.taskContract.mode === 'release'
+            acceptanceEvidence: taskContract.mode === 'change'
+              || taskContract.mode === 'release'
               ? []
               : directRefusal
                 ? buildSecretHarvestingRefusalAcceptanceEvidence()
-                : request.taskContract.acceptance.map(criterion => ({
+                : taskContract.acceptance.map(criterion => ({
                   criterionId: criterion.id,
                   status: 'passed',
                   evidenceRefs: responseEvidenceRefs,
@@ -199,69 +198,9 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
             proposal: artifactProposal,
           },
         }, 'internal', request.workspaceRoot);
-        if (request.taskContract.mode !== 'change' && request.taskContract.mode !== 'release') {
-          const denied = await toolExecution.executeWorkspaceMutation({
-            call: workspaceCall,
-            authority: request.toolAuthority,
-          });
-          toolExecutions.push(denied.outcome.receipt);
-          input.recordOperationEvidence({
-            type: 'side_effect.requested',
-            idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-requested', {
-              runId: request.runId,
-              attempt: executionAttempt,
-            }),
-            payload: {
-              kind: 'workspace-file-write',
-              attempt: executionAttempt,
-              candidate_count: candidateCount,
-              ...recoveryCorrelation,
-            },
-          }, sideEffectOperationId);
-          input.recordOperationEvidence({
-            type: 'side_effect.failed',
-            idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-failed', {
-              runId: request.runId,
-              attempt: executionAttempt,
-            }),
-            payload: {
-              kind: 'workspace-file-write',
-              attempt: executionAttempt,
-              reason: 'task-contract-does-not-authorize-workspace-mutation',
-              ...recoveryCorrelation,
-            },
-          }, sideEffectOperationId);
-          throw new Error(`DevSeek ${request.taskContract.mode} task rejected an unexpected workspace mutation`);
-        }
         input.recordOperationEvidence({
           type: 'side_effect.requested',
           idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-requested', {
-            runId: request.runId,
-            attempt: executionAttempt,
-          }),
-          payload: {
-            kind: 'workspace-file-write',
-            attempt: executionAttempt,
-            candidate_count: candidateCount,
-            ...recoveryCorrelation,
-          },
-        }, sideEffectOperationId);
-        input.recordOperationEvidence({
-          type: 'side_effect.authorized',
-          idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-authorized', {
-            runId: request.runId,
-            attempt: executionAttempt,
-          }),
-          payload: {
-            kind: 'workspace-file-write',
-            attempt: executionAttempt,
-            authorization: 'cli-exec-request',
-            ...recoveryCorrelation,
-          },
-        }, sideEffectOperationId);
-        input.recordOperationEvidence({
-          type: 'side_effect.started',
-          idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-started', {
             runId: request.runId,
             attempt: executionAttempt,
           }),
@@ -278,6 +217,44 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
         });
         toolExecutions.push(workspaceExecution.outcome.receipt);
         const toolReceipt = workspaceExecution.outcome.receipt;
+        const observedMutationReceipts = toolReceipt.result ? [toolReceipt.result] : [];
+        reviseCliTaskContract(
+          request,
+          contextFiles,
+          workspaceCall,
+          toolReceipt,
+          observedMutationReceipts,
+        );
+        if (toolReceipt.permission.status === 'authorized') {
+          input.recordOperationEvidence({
+            type: 'side_effect.authorized',
+            idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-authorized', {
+              runId: request.runId,
+              attempt: executionAttempt,
+            }),
+            payload: {
+              kind: 'workspace-file-write',
+              attempt: executionAttempt,
+              authorization: toolReceipt.permission.reason,
+              ...recoveryCorrelation,
+            },
+          }, sideEffectOperationId);
+        }
+        if (toolReceipt.status === 'completed' || toolReceipt.effectStarted === true) {
+          input.recordOperationEvidence({
+            type: 'side_effect.started',
+            idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-started', {
+              runId: request.runId,
+              attempt: executionAttempt,
+            }),
+            payload: {
+              kind: 'workspace-file-write',
+              attempt: executionAttempt,
+              candidate_count: candidateCount,
+              ...recoveryCorrelation,
+            },
+          }, sideEffectOperationId);
+        }
         if (toolReceipt.status !== 'completed') {
           const failureReason = codingToolExecutionFailureReason(toolReceipt);
           noteCliRecoveryAdverse(recovery, sideEffectOperationId);
@@ -297,6 +274,20 @@ export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
               ...recoveryCorrelation,
             },
           }, sideEffectOperationId);
+          if (toolReceipt.status === 'denied') {
+            if (recovery) {
+              recoveryExitError = new Error(cliWorkspaceToolFailureMessage(failureReason));
+            }
+            return buildCliRuntimeOutput({
+              request,
+              attempts: executionAttempt,
+              changedPaths,
+              verificationStatus: 'not-run',
+              evidenceRefs: toolReceipt.evidenceRefs,
+              acceptanceEvidence: [],
+              residualRisks: ['requested-change-not-applied'],
+            });
+          }
           throw new Error(cliWorkspaceToolFailureMessage(failureReason));
         }
         const changeReceipt = toolReceipt.result;
@@ -631,7 +622,7 @@ function dispatchCliTool(
   return envelope.call;
 }
 
-function cliWorkspaceToolFailureMessage(errorCode: string | undefined): string {
+export function cliWorkspaceToolFailureMessage(errorCode: string | undefined): string {
   if (errorCode === 'workspace-path-outside-root'
     || errorCode?.startsWith('workspace-path-outside-root:')) {
     return 'Refusing to write outside workspace';
@@ -687,7 +678,7 @@ function closeCliRecoveryFailed(
 }
 
 function buildCliRuntimeOutput(input: {
-  request: CodingKernelExecutionRequest<CliCodingKernelRuntimeContext>;
+  request: CodingKernelRuntimeRequest<CliCodingKernelRuntimeContext>;
   attempts: number;
   changedPaths: ReadonlySet<string>;
   verificationStatus: CliCodingKernelRuntimeResult['verification']['status'];
@@ -701,7 +692,10 @@ function buildCliRuntimeOutput(input: {
     pendingRefs: [],
     adverseEvidenceRefs: [],
     residualRisks: input.residualRisks ?? [],
-    evidenceRefs: [...input.request.taskContract.provenanceRefs, ...input.evidenceRefs],
+    evidenceRefs: [
+      ...input.request.taskContractRevision.current().provenanceRefs,
+      ...input.evidenceRefs,
+    ],
   };
   return {
     result: {
@@ -711,6 +705,23 @@ function buildCliRuntimeOutput(input: {
     },
     completionEvidence,
   };
+}
+
+function reviseCliTaskContract(
+  request: CodingKernelRuntimeRequest<CliCodingKernelRuntimeContext>,
+  contextFiles: readonly string[],
+  call: CodingToolCall,
+  receipt: CodingToolExecutionReceipt<unknown>,
+  changeReceipts: readonly CodingWorkspaceMutationReceipt<unknown>[] = [],
+): void {
+  const candidate = reconcileCliSettledModelAction({
+    request,
+    contextFiles,
+    call,
+    receipt,
+    changeReceipts,
+  });
+  if (candidate) request.taskContractRevision.revise(candidate);
 }
 
 function cliValidationFromReceipt(receipt: CodingVerificationReceipt): CliValidationResult {

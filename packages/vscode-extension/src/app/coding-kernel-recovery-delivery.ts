@@ -1,5 +1,5 @@
 import type { CodingCheckpoint, CodingTerminalStatus } from '@devseek-netai/shared';
-import type { AgentTask } from '../agent-task-decomposer';
+import type { AgentTask } from '../agent/agent-task';
 import type { AgentLoopCallbacks } from '../agent/loop-types';
 
 export interface VsCodeRecoveryFallback {

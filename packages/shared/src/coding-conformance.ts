@@ -142,6 +142,14 @@ export interface CodingConformanceFixture {
   readonly taskContractInput?: {
     readonly modeHint?: CodingTaskMode;
     readonly verificationRequired?: boolean;
+    readonly verificationRequirementAuthoritative?: boolean;
+    readonly targetPaths?: readonly string[];
+    readonly targetPathsAuthoritative?: boolean;
+    readonly strictTargetScope?: boolean;
+    readonly confirmedWorkspaceMutation?: boolean;
+    readonly dependencyEffect?: boolean;
+    readonly networkEffect?: boolean;
+    readonly externalEffectIntent?: 'none' | 'question' | 'requested';
   };
   readonly requiredSurfaces: readonly CodingConformanceSurface[];
   readonly benchmark: {

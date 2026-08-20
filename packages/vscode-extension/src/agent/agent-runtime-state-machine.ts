@@ -1,5 +1,5 @@
 import type { EvidenceRef } from './tool-executor';
-import type { AgentTaskAction } from '../agent-task-decomposer';
+import type { AgentTaskAction } from './agent-task';
 import {
   classifyProviderOutputIntegrity,
   describeProviderOutputIntegrity,
@@ -70,7 +70,10 @@ export function resolveAgentRuntimeTaskAction(
 }
 
 export function settleAgentRuntimeState(input: AgentRuntimeStateInput): AgentRuntimeSettlement {
-  const providerOutput = classifyProviderOutputIntegrity(input.roundText || input.providerText || '');
+  const providerOutput = classifyProviderOutputIntegrity(
+    input.roundText || input.providerText || '',
+    { toolCallCount: input.toolRequests },
+  );
   const toolRequests = input.toolRequests ?? providerOutput.toolCallCount;
   const toolExecutions = input.toolExecutions ?? 0;
   const evidenceCount = countEvidence(input);

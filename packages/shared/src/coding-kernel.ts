@@ -165,7 +165,7 @@ import {
   type CodingCompletionDecision,
   type CodingKernelCompletionEvidence,
 } from './coding-completion';
-import { CanonicalStructuralAcceptanceEvidenceService } from './coding-structural-acceptance';
+import { CanonicalReceiptAcceptanceEvidenceService } from './coding-receipt-acceptance';
 import {
   CanonicalRequirementDecisionService,
   type CodingRequirementDecision,
@@ -458,7 +458,7 @@ const DELIVERY_MANIFEST = new CanonicalDeliveryManifestService();
 const RELEASE_GATE = new CanonicalReleaseGateService();
 const CI_DEPLOY_OBSERVE = new CanonicalCiDeployObserveService();
 const ROLLBACK = new CanonicalRollbackService();
-const STRUCTURAL_ACCEPTANCE = new CanonicalStructuralAcceptanceEvidenceService();
+const RECEIPT_ACCEPTANCE = new CanonicalReceiptAcceptanceEvidenceService();
 const REQUIREMENTS = new CanonicalRequirementDecisionService();
 const DESIGN = new CanonicalDesignDecisionService();
 const CHANGE_PLAN = new CanonicalChangePlanService();
@@ -870,8 +870,9 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         deployment,
         rollback: rollbackDecision,
       });
-      const structuralAcceptanceEvidence = STRUCTURAL_ACCEPTANCE.project({
+      const receiptAcceptanceEvidence = RECEIPT_ACCEPTANCE.project({
         taskContract: settledTaskContract,
+        toolExecutions: toolExecution.receipts(),
         mutations: workspaceMutations.receipts(),
       });
       const cancellationRequested = runControl.cancellationRequested();
@@ -887,7 +888,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         mutations: workspaceMutations.receipts(),
         verifications: verification.receipts(),
         acceptanceEvidence: [
-          ...structuralAcceptanceEvidence,
+          ...receiptAcceptanceEvidence,
           ...completionEvidence.acceptanceEvidence,
         ],
         ...(completionEvidence.reviewRequired ? {

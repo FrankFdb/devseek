@@ -340,10 +340,11 @@ test('canonical CLI runtime records one committed and verified edit', async () =
 test('canonical CLI runtime reports a proposed workspace escape before mutation', async () => {
   const harness = createHarness({ changedFiles: [['../escaped.ts']] });
 
-  await assert.rejects(
-    harness.kernel.execute(harness.request),
-    /Refusing to write outside workspace/u,
-  );
+  const output = await harness.kernel.execute(harness.request);
+
+  assert.equal(output.status, 'blocked');
+  assert.equal(output.toolExecutionReceipts[0].status, 'denied');
+  assert.match(output.toolExecutionReceipts[0].permission.reason, /workspace-path-outside-root/u);
   assert.equal(harness.mutations.length, 0);
   assert.equal(harness.verifications.length, 0);
 });
@@ -351,11 +352,12 @@ test('canonical CLI runtime reports a proposed workspace escape before mutation'
 test('canonical CLI runtime fails closed when a non-mutating task proposes a workspace write', async () => {
   const harness = createHarness({ mode: 'review' });
 
-  await assert.rejects(
-    harness.kernel.execute(harness.request),
-    /review task rejected an unexpected workspace mutation/u,
-  );
+  const output = await harness.kernel.execute(harness.request);
 
+  assert.equal(output.status, 'blocked');
+  assert.equal(output.taskContract.mode, 'review');
+  assert.equal(output.toolExecutionReceipts[0].status, 'denied');
+  assert.equal(output.toolExecutionReceipts[0].permission.reason, 'sandbox-denies-workspace-mutation');
   assert.equal(harness.mutations.length, 0);
   assert.equal(harness.verifications.length, 0);
   assert.deepEqual(evidenceTypes(harness), ['side_effect.requested', 'side_effect.failed']);
@@ -516,11 +518,11 @@ test('I13-CLI-01 user journey: CLI protected artifact path is denied before work
     changedFiles: [[scenario.input.attempted_path]],
   });
 
-  await assert.rejects(
-    harness.kernel.execute(harness.request),
-    /none could be applied/u,
-  );
+  const output = await harness.kernel.execute(harness.request);
 
+  assert.equal(output.status, 'blocked');
+  assert.equal(output.toolExecutionReceipts[0].status, 'denied');
+  assert.match(output.toolExecutionReceipts[0].permission.reason, /protected-path/u);
   assert.equal(harness.mutations.length, 0);
   assert.equal(harness.verifications.length, 0);
   assert.equal(harness.repairRequests.length, 0);

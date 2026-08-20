@@ -58,6 +58,10 @@ test('I13-VSC-01 user journey: VS Code rejects invalid wiring and preserves work
     new CanonicalProviderEventService(),
     new CanonicalToolDispatchService(),
     { workspaceRoot: scenario.input.workspace_root },
+    {
+      version: 'devseek.text-tools/v1',
+      channelId: 'provider-events-test-channel',
+    },
   );
   const [native] = llmEventsToToolCallEnvelopes([{
     type: 'tool-call',
@@ -69,10 +73,19 @@ test('I13-VSC-01 user journey: VS Code rejects invalid wiring and preserves work
       },
     },
   }], boundary);
-  const fake = normalizeProviderMessage({
+  const nakedText = normalizeProviderMessage({
     type: 'message',
     provider: 'deepseek-api',
     content: `[TOOL:run_terminal ${JSON.stringify({ command: scenario.input.inside_validation_command })}]`,
+  }, boundary);
+  const textProtocol = normalizeProviderMessage({
+    type: 'message',
+    provider: 'deepseek-api',
+    content: [
+      '<devseek_tool_calls version="devseek.text-tools/v1" channel="provider-events-test-channel">',
+      `[TOOL:run_terminal ${JSON.stringify({ command: scenario.input.inside_validation_command })}]`,
+      '</devseek_tool_calls channel="provider-events-test-channel">',
+    ].join('\n'),
   }, boundary).tools[0];
   const [outside] = llmEventsToToolCallEnvelopes([{
     type: 'tool-call',
@@ -86,6 +99,8 @@ test('I13-VSC-01 user journey: VS Code rejects invalid wiring and preserves work
   }], boundary);
 
   assert.equal(native.call.risk, 'medium');
-  assert.equal(fake.risk, 'medium');
+  assert.equal(nakedText.tools.length, 0);
+  assert.equal(textProtocol.risk, 'medium');
+  assert.equal(textProtocol.source, 'text-protocol');
   assert.equal(outside.call.risk, 'high');
 });

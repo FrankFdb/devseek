@@ -207,7 +207,6 @@ export function runCommand(opts: TerminalRunOptions): Promise<TerminalRunResult>
           command,
           timeoutMs: observationMs,
           allowManualReview: true,
-          manualReviewContext: command,
           manualReviewDetail: INTERACTIVE_RUN_MANUAL_REVIEW_DETAIL,
           timeoutFailureDetail: buildInteractiveTimeoutFailureDetail(observationMs),
         });
@@ -254,7 +253,6 @@ export function runCommand(opts: TerminalRunOptions): Promise<TerminalRunResult>
         command,
         timeoutMs,
         allowManualReview: Boolean(opts.manualReviewOnLongRunning),
-        manualReviewContext: command,
         manualReviewDetail: INTERACTIVE_RUN_MANUAL_REVIEW_DETAIL,
         timeoutFailureDetail: opts.executionProfile === 'validation'
           ? buildValidationTimeoutFailureDetail(timeoutMs)

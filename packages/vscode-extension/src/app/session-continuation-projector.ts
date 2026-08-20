@@ -4,7 +4,6 @@ import {
   type AgentSessionState,
   type SessionContinuationProjection,
 } from './agent-session-context';
-import type { SessionContinuationIntent } from './session-continuation';
 import { stripSessionContextPrefix } from './session-display-service';
 
 export interface SessionContinuationProjectorDeps {
@@ -17,7 +16,6 @@ export interface SessionContinuationProjectorDeps {
 export interface SessionContinuationProjectorInput {
   workspaceRoot: string;
   currentPrompt: string;
-  intent?: SessionContinuationIntent;
   currentFilePaths?: readonly string[];
   newSession: boolean;
 }

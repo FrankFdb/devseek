@@ -2,19 +2,6 @@ import type { ChatMessage } from '../llm/types';
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import { isCppBuildArtifactDirName } from '../cpp-build-layout';
 import { absPathFromWorkspaceRel, relPathFromWorkspace } from './context-discovery-service';
-import {
-  buildContextAnchors,
-  filterByContextAnchors,
-  hasContextAnchors,
-  textMatchesContextAnchors,
-  type ContextAnchorSet,
-} from './context-relevance';
-import {
-  isLikelySessionContinuation,
-  shouldInjectSessionContinuationForIntent,
-  shouldRestoreSessionFiles,
-  type SessionContinuationIntent,
-} from './session-continuation';
 
 export const AGENT_CODE_FILE_RE = /(?:^|\/)(?:Makefile|CMakeLists\.txt)$|\.(cpp|c|h|hpp|cc|cxx|ts|tsx|js|jsx|mjs|py|rs|go|java|cs|rb|php|swift|kt|scala|dart|lua|r)$/i;
 
@@ -24,63 +11,47 @@ export interface AgentSessionState {
   changedPaths: string[];
   completed: boolean;
   savedAt: number;
+  /** Historical metadata only; never restored as current execution authority. */
   semanticContract?: TaskSemanticContract;
 }
 
 export interface ResolveSessionContinuationFilesInput {
   workspaceRoot: string;
   prompt: string;
-  intent?: SessionContinuationIntent;
   state?: AgentSessionState;
   lastAgentChangedPaths: readonly string[];
   recentFilePaths: Iterable<string>;
   currentFilePaths?: Iterable<string>;
 }
 
+/**
+ * Returns a bounded same-session working set without interpreting the current
+ * sentence. These files are context for the model, not mutation permission.
+ */
 export function resolveSessionContinuationFilesFromState(input: ResolveSessionContinuationFilesInput): string[] {
   if (!input.workspaceRoot) return [];
 
-  const primaryRelPaths = [
-    ...(input.state?.changedPaths ?? []),
-    ...input.lastAgentChangedPaths,
-  ].filter(pathValue => isRestorableSessionPath(pathValue, input.workspaceRoot));
-  const primaryAnchors = buildSessionRelevanceAnchors({
-    workspaceRoot: input.workspaceRoot,
-    prompt: input.prompt,
-    currentFilePaths: input.currentFilePaths,
-    fallbackPaths: primaryRelPaths,
-    state: input.state,
-  });
-
   const candidates: string[] = [];
-  for (const rel of input.state?.changedPaths ?? []) {
-    if (isRestorableSessionPath(rel, input.workspaceRoot)) candidates.push(rel);
+  for (const pathValue of input.state?.changedPaths ?? []) {
+    if (isRestorableSessionPath(pathValue, input.workspaceRoot)) candidates.push(pathValue);
   }
-  for (const rel of input.lastAgentChangedPaths) {
-    if (isRestorableSessionPath(rel, input.workspaceRoot)) candidates.push(rel);
+  for (const pathValue of input.lastAgentChangedPaths) {
+    if (isRestorableSessionPath(pathValue, input.workspaceRoot)) candidates.push(pathValue);
   }
-  for (const abs of input.recentFilePaths) {
-    const rel = relPathFromWorkspace(input.workspaceRoot, abs);
-    if (rel && isRestorableSessionPath(rel, input.workspaceRoot)) candidates.push(rel);
+  for (const absPath of input.recentFilePaths) {
+    const relative = relPathFromWorkspace(input.workspaceRoot, absPath);
+    if (relative && isRestorableSessionPath(relative, input.workspaceRoot)) candidates.push(relative);
   }
 
-  const preserveSessionWorkingSet = isUnscopedExplicitContinuation(
-    input.prompt,
-    input.intent,
-    input.currentFilePaths,
+  const resolved = prioritizeContinuationFiles(
+    [...new Set(candidates)]
+      .map(relative => absPathFromWorkspaceRel(input.workspaceRoot, relative))
+      .filter((absPath): absPath is string => Boolean(absPath)),
+    input.workspaceRoot,
   );
-  const scopedCandidates = !preserveSessionWorkingSet && hasContextAnchors(primaryAnchors)
-    ? filterByContextAnchors([...new Set(candidates)], primaryAnchors, pathValue => pathValue)
-    : [...new Set(candidates)];
-
-  const resolved = prioritizeContinuationFiles(scopedCandidates
-    .map(rel => absPathFromWorkspaceRel(input.workspaceRoot, rel))
-    .filter((abs): abs is string => Boolean(abs)), input.workspaceRoot);
-  const codeFirst = resolved.filter(pathValue => AGENT_CODE_FILE_RE.test(pathValue));
-  if (!shouldRestoreSessionFiles(input.prompt, input.intent, codeFirst.length > 0)) return [];
-  if (codeFirst.length === 0) return [];
-  const supporting = resolved.filter(pathValue => !AGENT_CODE_FILE_RE.test(pathValue)).slice(0, 3);
-  return [...codeFirst.slice(0, 6), ...supporting];
+  const codeFiles = resolved.filter(pathValue => AGENT_CODE_FILE_RE.test(pathValue));
+  const supportingFiles = resolved.filter(pathValue => !AGENT_CODE_FILE_RE.test(pathValue));
+  return [...codeFiles.slice(0, 6), ...supportingFiles.slice(0, 3)];
 }
 
 function prioritizeContinuationFiles(absPaths: string[], workspaceRoot: string): string[] {
@@ -88,17 +59,17 @@ function prioritizeContinuationFiles(absPaths: string[], workspaceRoot: string):
     absPath,
     score: continuationPathScore(absPath, workspaceRoot),
   }));
-  scored.sort((a, b) => b.score - a.score || a.absPath.localeCompare(b.absPath));
+  scored.sort((left, right) => right.score - left.score || left.absPath.localeCompare(right.absPath));
   return scored.map(item => item.absPath);
 }
 
 function continuationPathScore(absPath: string, workspaceRoot: string): number {
-  const rel = relPathFromWorkspace(workspaceRoot, absPath) ?? absPath.replace(/\\/g, '/');
-  const depth = rel.split('/').filter(Boolean).length;
-  const sourceRootBonus = /^(?:code|src|source|sources|include|lib|app|apps|packages|pkg|modules|cmd|core)\//i.test(rel)
+  const relative = relPathFromWorkspace(workspaceRoot, absPath) ?? absPath.replace(/\\/g, '/');
+  const depth = relative.split('/').filter(Boolean).length;
+  const sourceRootBonus = /^(?:code|src|source|sources|include|lib|app|apps|packages|pkg|modules|cmd|core)\//i.test(relative)
     ? 100
     : 0;
-  const rootFilePenalty = rel.includes('/') ? 0 : -50;
+  const rootFilePenalty = relative.includes('/') ? 0 : -50;
   return sourceRootBonus + depth + rootFilePenalty;
 }
 
@@ -116,91 +87,51 @@ export interface BuildAgenticSessionContextInput {
 export function buildAgenticSessionContextFromState(input: BuildAgenticSessionContextInput): string {
   if (!input.workspaceRoot) return '';
 
-  const primaryRelatedPaths = [
-    ...(input.state?.changedPaths ?? []),
-    ...input.lastAgentChangedPaths,
-  ].filter(pathValue => isRestorableSessionPath(pathValue, input.workspaceRoot));
-  const recentFileList = [...new Set(input.recentFilePaths)]
-    .filter(Boolean)
-    .filter(pathValue => isRestorableSessionPath(pathValue, input.workspaceRoot));
-  const anchors = buildSessionRelevanceAnchors({
-    workspaceRoot: input.workspaceRoot,
-    prompt: input.currentPrompt,
-    currentFilePaths: input.currentFilePaths,
-    fallbackPaths: primaryRelatedPaths.length > 0 ? primaryRelatedPaths : recentFileList,
-    state: input.state,
-  });
-  const shouldFilter = !input.preserveSessionContext && hasContextAnchors(anchors);
-  const historySource = shouldFilter
-    ? filterByContextAnchors(input.history, anchors, message => chatMessageText(message))
-    : [...input.history];
-
-  const recentHistory = historySource
+  const recentHistory = input.history
     .slice(-6)
-    .map((entry) => {
+    .map(entry => {
       const role = entry.role === 'user' ? '用户' : '助手';
-      const content = chatMessageText(entry);
-      return `- ${role}: ${content.replace(/\s+/g, ' ').slice(0, 700)}`;
+      return `- ${role}: ${chatMessageText(entry).replace(/\s+/g, ' ').slice(0, 700)}`;
     });
-
-  const relevantRecentFiles = shouldFilter
-    ? filterByContextAnchors(recentFileList, anchors, abs => relPathFromWorkspace(input.workspaceRoot, abs) ?? abs)
-    : recentFileList;
-  const recentFiles = relevantRecentFiles
-    .filter(Boolean)
-    .map(abs => relPathFromWorkspace(input.workspaceRoot, abs) ?? abs)
+  const recentFiles = [...new Set(input.recentFilePaths)]
+    .filter(pathValue => isRestorableSessionPath(pathValue, input.workspaceRoot))
+    .map(absPath => relPathFromWorkspace(input.workspaceRoot, absPath) ?? absPath)
     .filter(pathValue => pathValue && !pathValue.startsWith('..'))
     .slice(0, 12);
+  const changedPaths = [...new Set([
+    ...(input.state?.changedPaths ?? []),
+    ...input.lastAgentChangedPaths,
+  ])]
+    .filter(pathValue => isRestorableSessionPath(pathValue, input.workspaceRoot))
+    .slice(0, 12);
 
-  const stateRelevant = input.state
-    && (input.preserveSessionContext
-      || !shouldFilter
-      || textMatchesContextAnchors(input.state.lastSummary, anchors)
-      || input.state.changedPaths
-        .filter(pathValue => isRestorableSessionPath(pathValue, input.workspaceRoot))
-        .some(pathValue => textMatchesContextAnchors(pathValue, anchors)));
-  if (recentHistory.length === 0 && recentFiles.length === 0 && !stateRelevant) return '';
+  if (!input.state && recentHistory.length === 0 && recentFiles.length === 0 && changedPaths.length === 0) {
+    return '';
+  }
 
   const lines: string[] = [
-    '这是同一个聊天 session 的后续消息。当前用户消息如果是短句、追问、纠错或反馈，必须优先基于下面的上一轮上下文继续处理；不要把它当作全新任务，也不要默认扫描整个工作区目录。',
+    '【同一 session 的有界历史上下文（非执行授权）】',
+    '以下记录可用于理解指代、追问、纠错或任务切换。请由模型根据当前用户消息判断相关性；历史路径、状态和旧契约不授权任何工具动作，也不得覆盖当前要求。',
     `当前用户消息：${input.currentPrompt}`,
   ];
-  if (input.state?.lastSummary && stateRelevant) {
+  if (input.state) {
     lines.push('上一轮 Agent 状态：');
-    lines.push(`- 用户目标：${input.state.lastUserPrompt}`);
-    lines.push(`- 执行结果：${input.state.completed ? '已完成' : '未完成或需要复核'}`);
-    lines.push(`- 摘要：${input.state.lastSummary.slice(0, 800)}`);
-    if (input.state.changedPaths.length > 0) {
-      const changedPaths = input.state.changedPaths.filter(pathValue => isRestorableSessionPath(pathValue, input.workspaceRoot));
-      if (changedPaths.length > 0) {
-        lines.push('- 涉及文件：');
-        const relevantChangedPaths = shouldFilter
-          ? filterByContextAnchors(changedPaths, anchors, pathValue => pathValue)
-          : changedPaths;
-        lines.push(...relevantChangedPaths.slice(0, 12).map(pathValue => `  - ${pathValue}`));
-      }
-    }
+    lines.push(`- 历史用户目标：${input.state.lastUserPrompt.slice(0, 700)}`);
+    lines.push(`- 历史执行状态：${input.state.completed ? '已完成' : '未完成或需要复核'}`);
+    if (input.state.lastSummary) lines.push(`- 历史摘要：${input.state.lastSummary.slice(0, 800)}`);
   }
-  if (input.lastAgentChangedPaths.length > 0) {
-    const restorableChangedPaths = input.lastAgentChangedPaths
-      .filter(pathValue => isRestorableSessionPath(pathValue, input.workspaceRoot));
-    const changedPaths = (shouldFilter
-      ? filterByContextAnchors(restorableChangedPaths, anchors, pathValue => pathValue)
-      : restorableChangedPaths).slice(0, 10);
-    if (changedPaths.length > 0) {
-      lines.push('上一轮 Agent 涉及/修改的文件：');
-      lines.push(...changedPaths.map(pathValue => `- ${pathValue}`));
-    }
+  if (changedPaths.length > 0) {
+    lines.push('历史工作集路径：');
+    lines.push(...changedPaths.map(pathValue => `- ${pathValue}`));
   }
   if (recentFiles.length > 0) {
-    lines.push('本 session 最近文件记忆：');
+    lines.push('本 session 最近文件：');
     lines.push(...recentFiles.map(pathValue => `- ${pathValue}`));
   }
   if (recentHistory.length > 0) {
-    lines.push('最近对话摘要：');
+    lines.push('最近对话：');
     lines.push(...recentHistory);
   }
-  lines.push('执行要求：若用户反馈“没有看到/找不到/不对/继续/重新编译/运行”等，先核查上一轮目标文件和目录的真实状态，再修复或验证；不要泛化为分析整个 code 目录。');
   return lines.join('\n').slice(0, 6000);
 }
 
@@ -212,7 +143,6 @@ export type SessionContinuationProjectionMode =
 
 export interface ProjectSessionContinuationInput extends BuildAgenticSessionContextInput {
   newSession: boolean;
-  intent?: SessionContinuationIntent;
 }
 
 export interface SessionContinuationProjection {
@@ -231,79 +161,24 @@ export function projectSessionContinuationFromState(
   const restoreFiles = currentFilePaths.length > 0
     ? []
     : resolveSessionContinuationFilesFromState({
-      workspaceRoot: input.workspaceRoot,
-      prompt: input.currentPrompt,
-      intent: input.intent,
-      state: input.state,
-      lastAgentChangedPaths: input.lastAgentChangedPaths,
-      recentFilePaths,
-      currentFilePaths,
-    });
-  const contextCandidate = buildAgenticSessionContextFromState({
+        workspaceRoot: input.workspaceRoot,
+        prompt: input.currentPrompt,
+        state: input.state,
+        lastAgentChangedPaths: input.lastAgentChangedPaths,
+        recentFilePaths,
+        currentFilePaths,
+      });
+  const contextText = buildAgenticSessionContextFromState({
     ...input,
     recentFilePaths,
     currentFilePaths,
-    preserveSessionContext: isUnscopedExplicitContinuation(
-      input.currentPrompt,
-      input.intent,
-      currentFilePaths,
-    ),
   });
-  const contextText = shouldInjectSessionContinuationForIntent(
-    input.currentPrompt,
-    contextCandidate,
-    input.intent,
-  ) ? contextCandidate : '';
 
   return {
     mode: projectionMode(restoreFiles.length > 0, Boolean(contextText)),
     restoreFiles,
     contextText,
   };
-}
-
-function isUnscopedExplicitContinuation(
-  prompt: string,
-  intent?: SessionContinuationIntent,
-  currentFilePaths?: Iterable<string>,
-): boolean {
-  if (!isLikelySessionContinuation(prompt)) return false;
-  if (intent?.signals?.includes('explicit-file-path')) return false;
-  return [...(currentFilePaths ?? [])].length === 0;
-}
-
-const CONTINUATION_CONTROL_TOKENS = new Set([
-  'add', 'again', 'also', 'build', 'change', 'compile', 'continue', 'create',
-  'execute', 'fix', 'implement', 'last', 'make', 'modify', 'more', 'next',
-  'please', 'previous', 'run', 'test', 'that', 'then', 'this', 'update',
-]);
-
-function buildSessionRelevanceAnchors(input: {
-  workspaceRoot: string;
-  prompt: string;
-  currentFilePaths?: Iterable<string>;
-  fallbackPaths: Iterable<string>;
-  state?: AgentSessionState;
-}): ContextAnchorSet {
-  const currentAnchors = buildContextAnchors({
-    workspaceRoot: input.workspaceRoot,
-    prompt: input.prompt,
-    relatedPaths: input.currentFilePaths,
-  });
-  const scopedCurrentAnchors = {
-    pathAnchors: currentAnchors.pathAnchors,
-    tokenAnchors: currentAnchors.tokenAnchors.filter(token => !CONTINUATION_CONTROL_TOKENS.has(token)),
-  };
-  if (hasContextAnchors(scopedCurrentAnchors)) return scopedCurrentAnchors;
-
-  return buildContextAnchors({
-    workspaceRoot: input.workspaceRoot,
-    relatedPaths: input.fallbackPaths,
-    extraText: [
-      input.state?.lastUserPrompt ?? '',
-      input.state?.lastSummary ?? '',
-    ],
-  });
 }
 
 function projectionMode(hasFiles: boolean, hasContext: boolean): SessionContinuationProjectionMode {
@@ -318,8 +193,8 @@ function chatMessageText(message: ChatMessage): string {
 }
 
 function isRestorableSessionPath(pathValue: string, workspaceRoot: string): boolean {
-  const rel = relPathFromWorkspace(workspaceRoot, pathValue) ?? String(pathValue || '').replace(/\\/g, '/');
-  return !rel
+  const relative = relPathFromWorkspace(workspaceRoot, pathValue) ?? String(pathValue || '').replace(/\\/g, '/');
+  return !relative
     .split('/')
     .filter(Boolean)
     .some(isGeneratedArtifactSegment);

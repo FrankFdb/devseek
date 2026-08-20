@@ -35,7 +35,6 @@ const runtime = new VsCodeCodingKernelRuntimeAdapter({
     request.mode,
     request.callbacks,
     request.sessionContextText,
-    request.workflowMode,
     request.memoryRelatedPaths,
     request.semanticContract,
     {
@@ -86,7 +85,7 @@ export const productCodingKernelExecutor: CodingKernelExecutionPort = {
         userPrompt: request.userPrompt,
         workspaceRoot: request.workspaceRoot,
         taskContract,
-        toolAuthorityStrategy: request.workflowMode === 'model-led' ? 'model-led' : 'contract-bound',
+        toolAuthorityStrategy: 'model-led',
         contextSeed: projectVsCodeCodingContextSeed(request.contextFiles, request.semanticContract),
         memoryCandidates,
         resumeCheckpoint: request.recovery?.kind === 'checkpoint-resume'
@@ -102,7 +101,6 @@ export const productCodingKernelExecutor: CodingKernelExecutionPort = {
           mode: request.mode,
           callbacks: request.callbacks,
           sessionContextText: request.sessionContextText,
-          workflowMode: request.workflowMode,
           memoryRelatedPaths: request.memoryRelatedPaths,
           semanticContract: request.semanticContract,
           recovery: request.recovery,
@@ -113,9 +111,21 @@ export const productCodingKernelExecutor: CodingKernelExecutionPort = {
           steeringSource: {
             drain: () => {
               const steering = request.callbacks.onUserSteer?.() ?? [];
-              observedSteering.push(...steering);
+              observedSteering.push(...steering.map(item => (
+                typeof item === 'string' ? item : item.instruction
+              )));
               return steering;
             },
+            closeAndDrain: () => {
+              const steering = request.callbacks.onUserSteerCompletionFence?.()
+                ?? request.callbacks.onUserSteer?.()
+                ?? [];
+              observedSteering.push(...steering.map(item => (
+                typeof item === 'string' ? item : item.instruction
+              )));
+              return steering;
+            },
+            reopen: () => request.callbacks.onReopenUserSteering?.() ?? true,
           },
         } : {}),
       });

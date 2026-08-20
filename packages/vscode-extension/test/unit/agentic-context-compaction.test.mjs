@@ -25,6 +25,11 @@ const {
   CanonicalTaskContractService,
 } = req('@devseek-netai/shared');
 
+const textToolProtocol = Object.freeze({
+  version: 'devseek.text-tools/v1',
+  channelId: 'agentic-compaction-test-channel',
+});
+
 function session() {
   const taskContract = new CanonicalTaskContractService().build({
     goal: 'Refactor src/resume.ts and run focused tests',
@@ -96,6 +101,7 @@ test('agentic history budget delegates over-budget pruning to the canonical comp
     workspaceRoot: '/repo',
     round: 3,
     evidenceRefs: [{ kind: 'read', label: 'resume source', evidenceId: 'evidence:resume' }],
+    textToolProtocol,
   });
 
   assert.equal(compaction.receipts().length, 1);

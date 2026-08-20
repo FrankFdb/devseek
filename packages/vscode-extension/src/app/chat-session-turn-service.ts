@@ -27,7 +27,6 @@ export interface ChatSessionTurnServiceDeps {
   setLastConversationFiles: (files: string[]) => void;
   setLastAnalysisText: (text: string) => void;
   setLastAgentChangedPaths: (paths: string[]) => void;
-  clearSessionHabits: () => void;
   clearLearnerSession: () => void;
   emitContextFiles: (files: string[]) => void;
   now?: () => number;
@@ -75,7 +74,6 @@ export class ChatSessionTurnService {
     this.deps.setLastAnalysisText('');
     this.deps.setLastAgentChangedPaths([]);
     this.deps.setHistory([]);
-    this.deps.clearSessionHabits();
     this.deps.clearLearnerSession();
     this.deps.emitContextFiles([]);
   }

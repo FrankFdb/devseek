@@ -66,7 +66,6 @@ let workingCopyStyle = 'detailed';
 let suppressGeneratedStreaming = false;
 let expectGeneratedArtifacts = false;
 let currentResponseMeta = { hasGeneratedArtifacts: false, generatedPaths: [], pathHints: [] };
-let nonAgentPendingToolArgumentDelta = false;
 let readySettled = false;
 let editingUserTurn = null;
 let userPinnedToBottom = true;
@@ -88,6 +87,7 @@ let agentLastEditedFiles = null;  // editedFiles from done phase — used for au
 let agentDoneSummaryInserted = false; // guard against duplicate final prose summaries
 let agentLastErrorTitle = ''; // provider/agent error title for final failed Working header
 let agentAnalysisFeedbackSeq = 0; // stable ids for analysis feedback bubbles
+let agentSteeringSubmissionSeq = 0;
 let collapsedCodeUidSeq = 0; // stable unique ids for collapsed code blocks across turns
 let autopilotMode   = false;    // L-5: 自动驾驶模式
 let agentEnabled    = true;     // P5-4: Agent 模式开关（false 时强制走普通对话）
@@ -560,6 +560,7 @@ function submitAgentSteer() {
   addUserSteerBubble(displayText);
   vscode.postMessage({
     type: 'agentSteer',
+    submissionId: 'webview-steer-' + Date.now().toString(36) + '-' + (++agentSteeringSubmissionSeq),
     text: displayText,
     prompt: promptText,
     files: attachPaths.length > 0 ? attachPaths : undefined,
@@ -1022,41 +1023,7 @@ function renderMermaidBlocks(container) {
 // Agent text sanitization helpers live in webview-agent-sanitizer.js.
 
 function cleanAgentFinalProseForUser(text) {
-  if (containsAgentInternalTranscript(text || '')) return '';
-  var cleaned = stripAgentGeneratedCodeBlocks(stripToolCallBlocks(text || '').trim())
-    .replace(makeDsmlTailRegexInText(), '')
-    .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
-    .replace(/<tool_calls>[\s\S]*?<\/tool_calls>/gi, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-  if (!cleaned) return '';
-  var lines = cleaned.split('\n').filter(function(line) {
-    var s = line.trim();
-    if (!s) return true;
-    if (containsAgentInternalTranscript(s)) return false;
-    if (/^(?:Arguments?|参数)[ \t]*[:：]\s*\{/i.test(s)) return false;
-    if (/^\$\s+\S+/.test(s)) return false;
-    if (/^(?:stdout|stderr|exitCode|exit code|命令输出|执行命令|终端输出)\s*[:：]/i.test(s)) return false;
-    return true;
-  });
-  cleaned = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
-  if (!cleaned || containsAgentInternalTranscript(cleaned)) return '';
-  return cleaned.length > 800 ? cleaned.slice(0, 797).trimEnd() + '...' : cleaned;
-}
-
-// Agent todo-list parsing helpers live in webview-agent-todos.js.
-
-function maybeHandleTodoUpdateFromModelText(text) {
-  if (!isAgentMode || !text) return false;
-  var items = extractTodoItemsFromModelText(text);
-  if (!items.length) return false;
-  var signature = JSON.stringify(items.map(function(item) {
-    return [item.id, item.title, item.status];
-  }));
-  if (signature === agentLastParsedTodoSignature) return false;
-  agentLastParsedTodoSignature = signature;
-  handleTodoUpdate(items);
-  return true;
+  return sanitizeAgentVisibleText(text || '');
 }
 
 function addUserBubble(markdown, promptText, images) {
@@ -1711,10 +1678,6 @@ var agentPlanDone = false;
 var agentTodos = [];
 /** Stable task list from manage_todo_list; some models send partial updates. */
 var agentToolTodos = [];
-/** Raw model text buffer used to surface DeepSeek manage_todo_list as soon as it is parsed. */
-var agentTodoParseBuffer = '';
-/** De-dupe signature for todo lists parsed directly from model text. */
-var agentLastParsedTodoSignature = '';
 /** DOM element for the live Todos panel */
 var agentTodosEl = null;
 /** Shimmer/rolling-label timer while agent is working */
@@ -1885,40 +1848,7 @@ function looksLikeFullTodoSnapshot(items) {
 }
 
 function stripAgentGeneratedCodeBlocks(text) {
-  if (!text) return '';
-  var removed = false;
-  var cleaned = text.replace(/```[A-Za-z0-9_+-]*\s*\n[\s\S]*?```/g, function(block) {
-    if (/#include\s*<|\bint\s+main\s*\(|\bfunction\s+|\bclass\s+|^\s*(?:const|let|var)\s+/m.test(block)) {
-      removed = true;
-      return '\n\n（代码已写入文件，详情请查看文件变更。）\n\n';
-    }
-    return block;
-  });
-  if (!removed) {
-    if (looksLikeRawAgentSourceDump(text)) {
-      return '（模型输出了大段代码，DevSeek 已隐藏正文；请以文件变更和验证结果为准。）';
-    }
-    return text;
-  }
-  return cleaned.replace(/\n{3,}/g, '\n\n').trim();
-}
-
-function looksLikeRawAgentSourceDump(text) {
-  var raw = String(text || '').trim();
-  if (raw.length < 1200) return false;
-  var lines = raw.split(/\r?\n/);
-  if (lines.length < 24) return false;
-  var sourceSignals = 0;
-  for (var i = 0; i < lines.length; i++) {
-    var s = lines[i].trim();
-    if (!s) continue;
-    if (/#include\s*[<"]|\bstd::|\bglut[A-Z]\w*\b|\bgl[A-Z]\w*\b/.test(s)) sourceSignals++;
-    else if (/^(?:void|int|float|double|bool|char|class|struct|template|static|const|auto)\b/.test(s)) sourceSignals++;
-    else if (/^(?:\/\/|\/\*|\*)/.test(s)) sourceSignals++;
-    else if (/[{};]\s*$/.test(s) && /\b(?:return|if|for|while|switch|case|break|continue|new|delete)\b/.test(s)) sourceSignals++;
-    if (sourceSignals >= 12) return true;
-  }
-  return false;
+  return String(text || '');
 }
 
 /**
@@ -4350,8 +4280,6 @@ function resetWorkingArea() {
     agentExecContainer = null;
     agentTodos = [];
     agentToolTodos = [];
-    agentTodoParseBuffer = '';
-    agentLastParsedTodoSignature = '';
     agentLastEditedFiles = null;
     agentLastErrorTitle = '';
     agentValidationSummary = null;
@@ -4598,7 +4526,6 @@ window.addEventListener('message', function(event) {
   } else if (msg.type === 'startResponse') {
     settleReadyProgress();
     isGenerating = true; currentRaw = ''; hadResetRender = false;
-    nonAgentPendingToolArgumentDelta = false;
     suppressGeneratedStreaming = false;
     expectGeneratedArtifacts = !!msg.expectGeneratedArtifacts;
     currentResponseMeta = { hasGeneratedArtifacts: false, generatedPaths: [], pathHints: [] };
@@ -4657,39 +4584,9 @@ window.addEventListener('message', function(event) {
     if (isAgentMode && msg.text) {
       msg.text = restoreAgentRoutingMarkerText(String(msg.text));
     }
-    if (!isAgentMode && msg.text) {
-      var _rawNonAgentDelta = String(msg.text);
-      if (nonAgentPendingToolArgumentDelta && looksLikeWebviewToolArgumentPayload(_rawNonAgentDelta)) {
-        nonAgentPendingToolArgumentDelta = false;
-        return;
-      }
-      var _hasCallingToolIntent = containsWebviewCallingToolIntent(_rawNonAgentDelta);
-      if (_rawNonAgentDelta.indexOf('[TOOL:') !== -1 || containsAgentInternalTranscript(_rawNonAgentDelta) || _hasCallingToolIntent) {
-        var _cleanNonAgentToolDelta = sanitizeAssistantVisibleText(_rawNonAgentDelta);
-        nonAgentPendingToolArgumentDelta = _hasCallingToolIntent;
-        if (!_cleanNonAgentToolDelta) return;
-        msg.text = _cleanNonAgentToolDelta;
-      } else {
-        nonAgentPendingToolArgumentDelta = false;
-      }
-    }
-    if (isAgentMode && msg.text) {
-      agentTodoParseBuffer += msg.text;
-      if (agentTodoParseBuffer.length > 30000) agentTodoParseBuffer = agentTodoParseBuffer.slice(-30000);
-      maybeHandleTodoUpdateFromModelText(agentTodoParseBuffer);
-    }
     // Agent mode: suppress deltas until plan is complete so the decompose JSON
     // never leaks into the chat bubble (it belongs to the planning phase only).
     if (isAgentMode && !agentPlanDone) return;
-    // Agent mode: suppress noisy tool-output dumps (read_file / grep_search / list_dir results).
-    // These are shown as activity chips in the working area instead.
-    if (isAgentMode && /^\n\n\*\*\[(?:文件|搜索|目录)\]/.test(msg.text)) return;
-    // Agent mode: suppress terminal output deltas from chat bubble — shown via
-    // collapsible blocks at endResponse only (Claude Code / Copilot pattern).
-    if (isAgentMode && /^\n\n\*\*\[终端/.test(msg.text)) return;
-    // Agent mode: suppress raw LLM "文件 N：path\n```" listings that may leak from
-    // analyze task streaming or decompose deltas.
-    if (isAgentMode && /^文件\s*\d+[：:]/u.test(msg.text.trimStart())) return;
     // ── Analyze file/summary delta routing (\ x00AFILE: / \x00ASUM\x00 prefix) ──
     var _afPfx = '\x00AFILE:';
     var _asPfx = '\x00ASUM\x00';
@@ -4751,13 +4648,8 @@ window.addEventListener('message', function(event) {
       if (suppressGeneratedStreaming) maybeScrollToBottom();
     }
   } else if (msg.type === 'resetResponse') {
-    nonAgentPendingToolArgumentDelta = false;
     if (isAgentMode && msg.text) {
       msg.text = restoreAgentRoutingMarkerText(String(msg.text));
-    }
-    if (isAgentMode) {
-      agentTodoParseBuffer = msg.text || '';
-      maybeHandleTodoUpdateFromModelText(agentTodoParseBuffer);
     }
     if (isAgentMode && !agentPlanDone) {
       currentRaw = '';
@@ -4825,11 +4717,7 @@ window.addEventListener('message', function(event) {
         // Agent mode: only render if we have real post-plan analysis content.
         // agentPlanDone gates the delta handler, so currentRaw only contains
         // analysis text from execute tasks — never the decompose JSON.
-        // If only content is a task_complete tool call, extract its summary as the final prose.
         var strippedForEnd = cleanAgentFinalProseForUser(currentRaw);
-        if (!strippedForEnd && /\[TOOL:task_complete\b/.test(currentRaw)) {
-          strippedForEnd = cleanAgentFinalProseForUser(extractTaskCompleteSummary(currentRaw) || '');
-        }
         // Copilot pattern: for analysis tasks the conclusion stays in currentRaw (prose bubble).
         // But if AFILE prefix routing was used, the raw content went to the Working box body
         // instead of currentRaw. Recover it now so the analysis conclusion is visible below
@@ -5039,7 +4927,6 @@ window.addEventListener('message', function(event) {
     pendingNewSession = false;
     isGenerating = false;
     currentRaw = '';
-    nonAgentPendingToolArgumentDelta = false;
     currentBubble = null;
     agentPlanDone = false;
     agentTodos = [];
@@ -5366,7 +5253,7 @@ window.addEventListener('message', function(event) {
 });
 
 function stopGenerating() {
-  isGenerating = false; currentBubble = null; currentRaw = ''; nonAgentPendingToolArgumentDelta = false;
+  isGenerating = false; currentBubble = null; currentRaw = '';
   workflowStateCards = new Map();
   sendBtn.textContent = '\u27a4'; sendBtn.title = '\u53d1\u9001 (Enter)';
 }

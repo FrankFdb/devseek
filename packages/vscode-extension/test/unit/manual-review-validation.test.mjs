@@ -68,7 +68,7 @@ test('manual review validation: compiler and binary errors remain hard failures'
   assert.equal(decision, undefined);
 });
 
-test('manual review validation: standalone visual run task can request review without fresh changed files', () => {
+test('manual review validation: prose alone cannot manufacture visual launch evidence', () => {
   const decision = shouldRequestManualReviewForRun({
     userPrompt: '/home/ff/work/devseek_netai/code/shape_manager 优化图形描画，需要通过图形库描画方式，做图，完成后，编译，执行看效果',
     command: 'cmake -S /tmp/shape_manager -B /tmp/shape_manager/.devseek-build && /tmp/shape_manager/.devseek-build/shape_manager',
@@ -83,5 +83,5 @@ test('manual review validation: standalone visual run task can request review wi
     },
   });
 
-  assert.equal(decision?.reason, 'manual-visual-confirmation-required');
+  assert.equal(decision, undefined);
 });

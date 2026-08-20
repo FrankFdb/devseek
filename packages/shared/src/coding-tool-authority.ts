@@ -558,7 +558,12 @@ function snapshotSurfaceConstraint(
 function validatePurpose(request: CodingToolAuthorityRequest): string | undefined {
   switch (request.purpose) {
     case 'observe':
-      return request.effects.every(effect => effect === 'read' || effect === 'network')
+      // Observational shell tools still create a process. The process effect is
+      // locally arbitrated and journaled; it does not turn model interpretation
+      // into mutation authority.
+      return request.effects.every(effect => (
+        effect === 'read' || effect === 'process' || effect === 'network'
+      ))
         ? undefined : 'observe-purpose-has-mutating-effect';
     case 'verify':
       return request.effects.every(effect => (

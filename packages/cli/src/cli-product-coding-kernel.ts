@@ -2,6 +2,7 @@ import {
   CODING_KERNEL_REQUEST_VERSION,
   CanonicalCodingKernel,
   FileSystemCodingOperationJournal,
+  codingToolExecutionFailureReason,
   createCodingKernelEnvironmentSync,
   projectSettledCodingConformanceRun,
   type CodingKernelExecutionOutput,
@@ -9,6 +10,7 @@ import {
 import { CliCodingArtifactInterpreter } from './cli-coding-artifact-interpreter';
 import {
   CliCodingKernelRuntimeAdapter,
+  cliWorkspaceToolFailureMessage,
   type CliCodingKernelResult,
   type CliCodingKernelRuntimeContext,
   type CliCodingKernelRuntimeResult,
@@ -66,6 +68,7 @@ export const productCliCodingKernelExecutor = {
       userPrompt,
       workspaceRoot,
       taskContract,
+      toolAuthorityStrategy: 'model-led',
       contextSeed: { files: contextFiles.map(path => ({ path })) },
       operationJournal: FileSystemCodingOperationJournal.forWorkspace(workspaceRoot),
       environment: createCodingKernelEnvironmentSync({
@@ -106,7 +109,17 @@ export function assertCompletedCliCodingKernelOutput(
     throw new Error('cli-coding-kernel:settlement-binding-mismatch');
   }
   if (output.status === 'completed') return;
-  const reasons = output.completion.reasonCodes.join(', ') || 'completion-not-authorized';
+  const workspaceFailure = output.toolExecutionReceipts.find(receipt => (
+    receipt.tool === 'apply_workspace_artifacts' && receipt.status !== 'completed'
+  ));
+  const reasons = [
+    ...(workspaceFailure
+      ? [cliWorkspaceToolFailureMessage(codingToolExecutionFailureReason(workspaceFailure))]
+      : []),
+    ...(output.completion.reasonCodes.length > 0
+      ? output.completion.reasonCodes
+      : ['completion-not-authorized']),
+  ].join(', ');
   throw new CliCodingKernelTerminalError(
     output.status,
     `DevSeek coding run ${output.status}: ${reasons}`,

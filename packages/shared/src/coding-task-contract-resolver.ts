@@ -14,21 +14,9 @@ import {
   buildSecretHarvestingRefusalTaskContract,
   isUnsafeSecretHarvestingImplementationRequest,
 } from './coding-safety-policy';
-import { resolveCodingTaskPathIntent } from './coding-task-path-intent';
-
-const VERIFICATION_REQUEST_RE = /(?:\bverif(?:y|ied|ication)\b|\bvalidat(?:e|ed|ion)\b|\btests?\b|\bchecks?\b|\bcompile\b|\brun\b|验证|校验|测试|检查|编译|运行|自测)/iu;
-const VERIFICATION_PROHIBITION_RE = /(?:(?:do\s+not|don't|must\s+not|should\s+not|never|without)\b[^,.;\n]{0,80}\b(?:run|compile|test|verify|validate|check)\b|(?:不要|不得|禁止|不允许|无需|不需要|别)[^,，。；;\n]{0,40}(?:运行|编译|测试|验证|校验|检查)|不(?:运行|编译|测试|验证|校验|检查))/iu;
-const SCOPED_CHANGE_RE = /(?:keep\s+the\s+change\s+scoped|do\s+not\s+(?:modify|change|touch)\s+(?:any\s+)?other\s+files?|(?:only|solely)\s+(?:modify|change|edit|touch)\b[^.\n]{0,80}|only\s+[^.\n]{0,80}\s+changes?|不要(?:修改|改动|新增)(?:任何)?其他文件|(?:只|仅)(?:允许)?(?:修改|改动)[^，。；\n]{0,80})/iu;
-const NO_DEPENDENCY_RE = /(?:do\s+not\s+(?:add|introduce)\s+(?:any\s+)?dependenc|no\s+(?:new\s+)?dependenc|不要(?:新增|引入)(?:任何)?依赖|不(?:新增|引入)依赖)/iu;
-const DEPENDENCY_EFFECT_RE = /(?:\binstall\b[^.\n]{0,80}\b(?:package|dependency)\b|\b(?:npm|pnpm|yarn|bun|pip)\s+(?:install|add)\b|安装[^，。；\n]{0,80}(?:包|依赖))/iu;
-const NETWORK_EFFECT_RE = /(?:\bnetwork\b|\bdownload\b|\bupload\b|\bregistry\b|\bcurl\b|\bwget\b|网络|下载|上传|仓库|注册表)/iu;
-const API_VERSION_BOUNDARY_RE = /(?:(?:latest|current|versioned)\s+[^.\n]{0,60}\bapi\b|\bapi\b[^.\n]{0,60}(?:version|latest|current)|(?:最新|当前|指定)[^，。；\n]{0,60}(?:API|接口)|(?:API|接口)[^，。；\n]{0,60}(?:版本|最新|当前))/iu;
-const LICENSE_BOUNDARY_RE = /(?:(?<![/\\])\blicen[cs]e\b|许可证|授权协议|开源协议)/iu;
-const DEPLOYMENT_BOUNDARY_RE = /(?:\bdeploy(?:ment)?\b|\bproduction\b|\bstaging\b|部署|上线|生产环境|预发布环境)/iu;
-const SUBJECTIVE_ACCEPTANCE_RE = /(?:looks?\s+(?:good|professional|polished|nice)|看起来(?:专业|不错|很好|好看)|足够美观|令人满意|主观满意)/iu;
-const REPORT_DELIVERABLE_RE = /(?:\.(?:md|markdown)\b|markdown|\breports?\b|\bdocuments?\b|报告|文档)/iu;
 
 export interface ResolveCodingKernelTaskContractInput {
+  /** Raw user goal. It is retained for the model and audit, not locally classified. */
   readonly prompt: string;
   readonly surface: CodingKernelSurface;
   readonly contextFiles?: readonly string[];
@@ -41,14 +29,20 @@ export interface ResolveCodingKernelTaskContractInput {
   readonly verificationRequirementAuthoritative?: boolean;
   readonly deliverableKinds?: readonly CodingDeliverableKind[];
   readonly confirmedWorkspaceMutation?: boolean;
-  /**
-   * Optional semantic arbitration from a product Surface. When supplied, raw
-   * domain nouns cannot independently create external-effect authority.
-   */
+  readonly dependencyEffect?: boolean;
+  readonly networkEffect?: boolean;
+  readonly noDependencies?: boolean;
+  readonly subjectiveAcceptance?: boolean;
+  readonly externalBoundaries?: readonly CodingTaskExternalBoundary[];
+  /** Typed semantic arbitration supplied by a model/Surface boundary. */
   readonly externalEffectIntent?: 'none' | 'question' | 'requested';
 }
 
-/** Resolves the product-level coding contract once for every Surface. */
+/**
+ * Builds a Kernel contract exclusively from typed semantic fields. Prompt text
+ * cannot create scope, effects, deliverables, or acceptance obligations. The
+ * only local natural-language inspection is the fail-closed safety policy.
+ */
 export function resolveCodingKernelTaskContract(
   input: ResolveCodingKernelTaskContractInput,
 ): CodingKernelTaskContract {
@@ -62,89 +56,52 @@ export function resolveCodingKernelTaskContract(
     return buildSecretHarvestingRefusalTaskContract(input.surface, orientation);
   }
 
-  const externalEffectRelevant = input.externalEffectIntent === undefined
-    || input.externalEffectIntent !== 'none';
-  const dependencyEffect = externalEffectRelevant && DEPENDENCY_EFFECT_RE.test(prompt);
-  const networkEffect = dependencyEffect
-    || (externalEffectRelevant && NETWORK_EFFECT_RE.test(prompt));
+  const dependencyEffect = input.dependencyEffect === true;
   const mode = orientation.mode;
-  const mutating = mode === 'change' || mode === 'release';
-  const pathIntent = resolveCodingTaskPathIntent({ prompt });
-  const suppliedTargets = uniquePaths(input.targetPaths ?? []);
-  const targetPathsAuthoritative = suppliedTargets.length > 0
-    && input.targetPathsAuthoritative !== false;
-  const deliverableKinds = uniqueDeliverableKinds(input.deliverableKinds ?? []);
-  const reportDeliverableRequested = deliverableKinds.includes('report')
-    || REPORT_DELIVERABLE_RE.test(prompt);
-  const excludedScope = uniquePaths([
-    ...pathIntent.excludedFileTargets,
-    ...pathIntent.excludedDirectoryTargets.map(path => `${path}/**`),
-    ...(input.excludedTargetPaths ?? []),
-  ]);
-  const explicitMutationTargets = pathIntent.mutationFileTargets.filter(
-    path => !workspacePathIsExcluded(path, excludedScope),
+  const mutating = dependencyEffect || (
+    (mode === 'change' || mode === 'release')
+      && input.confirmedWorkspaceMutation !== false
   );
-  const authoritativeScopeOnly = targetPathsAuthoritative
-    && (pathIntent.allowedFileTargets.length > 0 || pathIntent.allowedDirectoryTargets.length > 0);
-  const requiredTargets = uniquePaths([
-    ...explicitMutationTargets,
-    ...(targetPathsAuthoritative && !authoritativeScopeOnly ? suppliedTargets : []),
-  ]).filter(path => !workspacePathIsExcluded(path, excludedScope));
-  const suggestedReportTargets = !targetPathsAuthoritative && reportDeliverableRequested
+  const networkEffect = dependencyEffect || input.networkEffect === true;
+  const externalEffectRequested = orientation.externalEffectRequested
+    || input.externalEffectIntent === 'requested'
+    || dependencyEffect
+    || networkEffect;
+  const suppliedTargets = uniquePaths(input.targetPaths ?? []);
+  const excludedScope = uniquePaths(input.excludedTargetPaths ?? []);
+  const authoritativeTargets = input.targetPathsAuthoritative !== false
     ? suppliedTargets.filter(path => !workspacePathIsExcluded(path, excludedScope))
     : [];
-  const mutationScope = uniquePaths(targetPathsAuthoritative
-    ? suppliedTargets
-    : [
-        ...explicitMutationTargets,
-        ...pathIntent.mutationDirectoryTargets.map(path => `${path}/**`),
-        ...pathIntent.allowedFileTargets,
-        ...pathIntent.allowedDirectoryTargets.map(path => `${path}/**`),
-        ...suggestedReportTargets,
-      ]).filter(path => !workspacePathIsExcluded(path, excludedScope));
-  const include = dependencyEffect && mutationScope.length === 0
-    ? ['package.json', 'package-lock.json', 'src/**']
-    : mutating
-      ? mutationScope
-      : uniquePaths([
-          ...pathIntent.mentionedPaths,
-          ...(pathIntent.mentionedPaths.length === 0 ? input.contextFiles ?? [] : []),
-        ]);
-  const scopedChange = mutating && (
-    input.strictTargetScope === true || SCOPED_CHANGE_RE.test(prompt)
-  );
-  const verificationProhibited = input.verificationRequirementAuthoritative !== true
-    && VERIFICATION_PROHIBITION_RE.test(prompt);
+  const include = mutating
+    ? authoritativeTargets
+    : uniquePaths([...suppliedTargets, ...(input.contextFiles ?? [])]);
+  const scopedChange = mutating && input.strictTargetScope === true;
+  const deliverableKinds = uniqueDeliverableKinds(input.deliverableKinds ?? []);
+  const reportDeliverableRequested = deliverableKinds.includes('report');
+  const sourceChangeDeliverableRequested = deliverableKinds.includes('source-change');
   const verificationRequired = input.verificationRequirementAuthoritative === true
     ? input.verificationRequired === true
-    : !verificationProhibited
-      && (
-        input.verificationRequired === true
-        || (mutating && (input.verificationRequired !== false || VERIFICATION_REQUEST_RE.test(prompt)))
-      );
+    : input.verificationRequired ?? (mode === 'change');
   const deliverables = resolveDeliverables({
     mutating,
     dependencyEffect,
     verificationRequired,
-    declaredTargets: uniquePaths([
-      ...requiredTargets,
-      ...(reportDeliverableRequested ? suggestedReportTargets : []),
-    ]),
+    declaredTargets: authoritativeTargets,
     reportDeliverableRequested,
-    sourceChangeDeliverableRequested: deliverableKinds.includes('source-change'),
+    sourceChangeDeliverableRequested,
   });
-  const externalBoundaries = resolveExternalBoundaries(
-    prompt,
+  const externalBoundaries = resolveExternalBoundaries({
+    declared: input.externalBoundaries ?? [],
     dependencyEffect,
     networkEffect,
-    input.externalEffectIntent,
-  );
+    externalEffectRequested,
+  });
   const acceptance = resolveAcceptance({
     mutating,
-    dependencyEffect,
+    externalEffectRequested,
     scopedChange,
     verificationRequired,
-    weakAcceptance: SUBJECTIVE_ACCEPTANCE_RE.test(prompt),
+    weakAcceptance: input.subjectiveAcceptance === true,
     deliverableIds: deliverables.map(deliverable => deliverable.id),
     externalBoundaryIds: externalBoundaries.map(boundary => boundary.id),
   });
@@ -160,18 +117,19 @@ export function resolveCodingKernelTaskContract(
       mutating,
       dependencyEffect,
       networkEffect,
+      externalEffectRequested,
       scopedChange,
       verificationRequired,
-      noDependencies: NO_DEPENDENCY_RE.test(prompt),
+      noDependencies: input.noDependencies === true,
     }),
     nonGoals: resolveNonGoals({
       mutating,
       scopedChange,
-      noDependencies: NO_DEPENDENCY_RE.test(prompt),
+      noDependencies: input.noDependencies === true,
     }),
     externalBoundaries,
     acceptance,
-    provenanceRefs: ['user-prompt', `surface:${input.surface}`],
+    provenanceRefs: ['user-goal', 'typed-semantic-contract', `surface:${input.surface}`],
   });
 }
 
@@ -270,126 +228,101 @@ function resolveConstraints(input: {
   readonly mutating: boolean;
   readonly dependencyEffect: boolean;
   readonly networkEffect: boolean;
+  readonly externalEffectRequested: boolean;
   readonly scopedChange: boolean;
   readonly verificationRequired: boolean;
   readonly noDependencies: boolean;
 }): string[] {
-  if (!input.mutating) {
-    return [
-      'no-workspace-mutation',
-      ...(input.verificationRequired ? ['verification-before-completion'] : []),
-    ];
-  }
-  if (input.dependencyEffect) {
-    return [
-      'dependency-change-requires-approval',
-      ...(input.networkEffect ? ['network-requires-approval'] : []),
-    ];
-  }
-  return [
-    'workspace-root-only',
+  return uniqueStrings([
+    input.mutating ? 'workspace-root-only' : 'no-workspace-mutation',
+    ...(input.externalEffectRequested ? ['external-effect-requires-approval'] : []),
+    ...(input.dependencyEffect ? ['dependency-change-requires-approval'] : []),
+    ...(input.networkEffect ? ['network-requires-approval'] : []),
     ...(input.scopedChange ? ['no-other-files'] : []),
     ...(input.noDependencies ? ['no-dependencies'] : []),
     ...(input.verificationRequired ? ['verification-before-completion'] : []),
-  ];
+  ]);
 }
 
 function resolveAcceptance(input: {
   readonly mutating: boolean;
-  readonly dependencyEffect: boolean;
+  readonly externalEffectRequested: boolean;
   readonly scopedChange: boolean;
   readonly verificationRequired: boolean;
   readonly weakAcceptance: boolean;
   readonly deliverableIds: readonly string[];
   readonly externalBoundaryIds: readonly string[];
 }): CodingTaskAcceptanceCriterion[] {
-  const evidenceKinds = (
+  const externallyGroundedEvidenceKinds = (
     values: CodingTaskAcceptanceCriterion['oracle']['evidenceKinds'],
   ): CodingTaskAcceptanceCriterion['oracle']['evidenceKinds'] => [
     ...values,
     ...(input.externalBoundaryIds.length > 0 ? ['source-citation' as const] : []),
   ];
-  const subjectiveAcceptance: CodingTaskAcceptanceCriterion[] = input.weakAcceptance
+  const criteria: CodingTaskAcceptanceCriterion[] = input.mutating
     ? [{
-        id: 'subjective-quality',
-        statement: 'The requested subjective quality must be replaced by an executable acceptance oracle.',
+        id: 'requested-outcome',
+        statement: 'The requested workspace outcome is applied and read back.',
         deliverableIds: input.deliverableIds,
-        oracle: acceptanceOracle('subjective', 'user-impression', ['workspace'], evidenceKinds([])),
+        oracle: acceptanceOracle('workspace-readback', 'workspace-mutation-readback', ['workspace'], externallyGroundedEvidenceKinds([
+          'workspace-mutation-receipt',
+          'workspace-readback',
+        ])),
         externalBoundaryRefs: input.externalBoundaryIds,
       }]
-    : [];
-  if (input.dependencyEffect) {
-    return [{
-      id: 'authority',
-      statement: 'No dependency or network effect occurs without approval and grounded package metadata.',
-      deliverableIds: input.deliverableIds,
-      oracle: acceptanceOracle('authority', 'kernel-tool-authority', ['dependency', 'network'], evidenceKinds([
-        'authority-receipt',
-      ])),
-      externalBoundaryRefs: input.externalBoundaryIds,
-    }, ...subjectiveAcceptance];
-  }
-  if (!input.mutating) {
-    return [
-      {
+    : [{
         id: 'grounded-response',
         statement: 'The response addresses the request without unauthorized effects.',
         deliverableIds: input.deliverableIds,
-        oracle: acceptanceOracle('response-evidence', 'grounded-response-review', ['response'], evidenceKinds([
+        oracle: acceptanceOracle('response-evidence', 'grounded-response-review', ['response'], externallyGroundedEvidenceKinds([
           'response-evidence',
         ])),
         externalBoundaryRefs: input.externalBoundaryIds,
-      },
-      ...(input.verificationRequired
-        ? [{
-            id: 'verified',
-            statement: 'Applicable verification passes before completion.',
-            deliverableIds: input.deliverableIds,
-            oracle: acceptanceOracle('verification', 'project-verification', ['workspace'], evidenceKinds([
-              'verification-receipt',
-            ])),
-            externalBoundaryRefs: input.externalBoundaryIds,
-          }]
-        : []),
-      ...subjectiveAcceptance,
-    ];
-  }
-  return [
-    {
-      id: 'requested-outcome',
-      statement: 'The requested workspace outcome is applied and read back.',
+      }];
+  if (input.externalEffectRequested) {
+    criteria.push({
+      id: 'authority',
+      statement: 'No external effect occurs without a concrete local authority receipt.',
       deliverableIds: input.deliverableIds,
-      oracle: acceptanceOracle('workspace-readback', 'workspace-mutation-readback', ['workspace'], evidenceKinds([
+      oracle: acceptanceOracle('authority', 'kernel-tool-authority', ['external-effect'], [
+        'authority-receipt',
+      ]),
+      externalBoundaryRefs: [],
+    });
+  }
+  if (input.scopedChange) {
+    criteria.push({
+      id: 'scoped-change',
+      statement: 'Workspace changes remain inside the requested file scope.',
+      deliverableIds: input.deliverableIds,
+      oracle: acceptanceOracle('workspace-readback', 'change-set-scope', ['workspace'], [
         'workspace-mutation-receipt',
         'workspace-readback',
-      ])),
-      externalBoundaryRefs: input.externalBoundaryIds,
-    },
-    ...(input.scopedChange
-      ? [{
-          id: 'scoped-change',
-          statement: 'Workspace changes remain inside the requested file scope.',
-          deliverableIds: input.deliverableIds,
-          oracle: acceptanceOracle('workspace-readback', 'change-set-scope', ['workspace'], evidenceKinds([
-            'workspace-mutation-receipt',
-            'workspace-readback',
-          ])),
-          externalBoundaryRefs: input.externalBoundaryIds,
-        }]
-      : []),
-    ...(input.verificationRequired
-      ? [{
-          id: 'verified',
-          statement: 'Applicable verification passes before completion.',
-          deliverableIds: input.deliverableIds,
-          oracle: acceptanceOracle('verification', 'project-verification', ['workspace'], evidenceKinds([
-            'verification-receipt',
-          ])),
-          externalBoundaryRefs: input.externalBoundaryIds,
-        }]
-      : []),
-    ...subjectiveAcceptance,
-  ];
+      ]),
+      externalBoundaryRefs: [],
+    });
+  }
+  if (input.verificationRequired) {
+    criteria.push({
+      id: 'verified',
+      statement: 'Applicable verification passes before completion.',
+      deliverableIds: input.deliverableIds,
+      oracle: acceptanceOracle('verification', 'project-verification', ['workspace'], [
+        'verification-receipt',
+      ]),
+      externalBoundaryRefs: [],
+    });
+  }
+  if (input.weakAcceptance) {
+    criteria.push({
+      id: 'subjective-quality',
+      statement: 'The requested subjective quality must be replaced by an executable acceptance oracle.',
+      deliverableIds: input.deliverableIds,
+      oracle: acceptanceOracle('subjective', 'user-impression', ['workspace'], []),
+      externalBoundaryRefs: [],
+    });
+  }
+  return criteria;
 }
 
 function resolveNonGoals(input: {
@@ -405,36 +338,41 @@ function resolveNonGoals(input: {
   ];
 }
 
-function resolveExternalBoundaries(
-  prompt: string,
-  dependencyEffect: boolean,
-  networkEffect: boolean,
-  externalEffectIntent?: 'none' | 'question' | 'requested',
-): CodingTaskExternalBoundary[] {
-  const boundaries: CodingTaskExternalBoundary[] = [];
-  const add = (boundary: CodingTaskExternalBoundary): void => {
-    if (!boundaries.some(current => current.id === boundary.id)) boundaries.push(boundary);
-  };
-  if (dependencyEffect || networkEffect) {
-    add({
+function resolveExternalBoundaries(input: {
+  readonly declared: readonly CodingTaskExternalBoundary[];
+  readonly dependencyEffect: boolean;
+  readonly networkEffect: boolean;
+  readonly externalEffectRequested: boolean;
+}): CodingTaskExternalBoundary[] {
+  const boundaries = input.declared.map(boundary => ({ ...boundary }));
+  if (input.dependencyEffect && !boundaries.some(boundary => boundary.id === 'external-data-source')) {
+    boundaries.push({
       id: 'external-data-source',
       kind: 'data-source',
-      subject: dependencyEffect ? 'package registry metadata' : 'requested network source',
-      sourceRef: 'external-source:data',
+      subject: 'package registry metadata',
+      sourceRef: 'typed-effect:dependency',
+    });
+  } else if (input.networkEffect && !boundaries.some(boundary => boundary.id === 'external-data-source')) {
+    boundaries.push({
+      id: 'external-data-source',
+      kind: 'data-source',
+      subject: 'model-proposed network source',
+      sourceRef: 'typed-effect:network',
+    });
+  } else if (input.externalEffectRequested && boundaries.length === 0) {
+    boundaries.push({
+      id: 'external-effect',
+      kind: 'deployment',
+      subject: 'model-proposed external effect',
+      sourceRef: 'typed-effect:external',
     });
   }
-  if (API_VERSION_BOUNDARY_RE.test(prompt)) {
-    add({ id: 'external-api-version', kind: 'api-version', subject: 'requested API version', sourceRef: 'external-source:api-version' });
-  }
-  if (LICENSE_BOUNDARY_RE.test(prompt)) {
-    add({ id: 'external-license', kind: 'license', subject: 'requested license terms', sourceRef: 'external-source:license' });
-  }
-  const deploymentEffectRelevant = externalEffectIntent === undefined
-    || externalEffectIntent !== 'none';
-  if (deploymentEffectRelevant && DEPLOYMENT_BOUNDARY_RE.test(prompt)) {
-    add({ id: 'external-deployment', kind: 'deployment', subject: 'requested deployment target', sourceRef: 'external-source:deployment' });
-  }
-  return boundaries;
+  const seen = new Set<string>();
+  return boundaries.filter(boundary => {
+    if (seen.has(boundary.id)) return false;
+    seen.add(boundary.id);
+    return true;
+  });
 }
 
 function acceptanceOracle(
@@ -469,6 +407,10 @@ function isReportArtifactPath(path: string): boolean {
 
 function uniquePaths(values: readonly string[]): string[] {
   return [...new Set(values.map(normalizeWorkspacePath).filter(Boolean))];
+}
+
+function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values)];
 }
 
 function uniqueDeliverableKinds(values: readonly CodingDeliverableKind[]): CodingDeliverableKind[] {

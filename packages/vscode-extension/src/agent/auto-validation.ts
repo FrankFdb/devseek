@@ -1,5 +1,3 @@
-import * as fs from 'fs';
-import * as nodePath from 'path';
 import type {
   BuildOrchestrationPort,
   CodingVerificationCriterion,
@@ -19,9 +17,6 @@ import {
   type TerminalEvidence,
   type WrittenFileEvidence,
 } from './completion-evidence';
-import { assessFormalProjectDocumentQuality } from './formal-project-document-quality';
-import { assessFormalProjectSourceQuality } from './formal-project-source-quality';
-import { isInsideWorkspacePath } from './write-guard';
 import {
   ValidationService,
   projectAutoValidationResult,
@@ -40,10 +35,6 @@ import {
   type VerificationResultStatus,
 } from '../app/verification-result-authority';
 import { evaluateCodingRequirementQualityGate } from '../app/coding-requirement-quality-gate';
-import {
-  evaluateArtifactQualityOracle,
-  readWrittenMarkdownFilesForQuality,
-} from './artifact-quality-oracle';
 import {
   VsCodeVerificationAdapter,
   type VsCodeVerificationExecution,
@@ -91,7 +82,6 @@ export interface AgentAutoValidationResult {
 
 export interface AgentAutoValidationOptions {
   validationService?: Pick<ValidationService, 'discover' | 'execute'>;
-  qualityWrittenFiles?: WrittenFileEvidence[];
   verificationScopeWrittenFiles?: readonly WrittenFileEvidence[];
   verificationAdapter?: Pick<VsCodeVerificationAdapter, 'verify'>;
   verificationPorts?: {
@@ -260,176 +250,8 @@ function formatBlockedAutoValidationFeedback(result: AutoValidationResult): stri
   ].filter(Boolean).join('\n');
 }
 
-const FORMAL_PROJECT_DOC_REASON_LABELS: Record<string, string> = {
-  'unresolved-project-facts': '未落定的项目事实（待确认/待分配/建议范围等）',
-  'missing-source-fact-matrix': '源项目事实矩阵',
-  'missing-concrete-protocol-facts': '协议/通讯数值事实',
-  'missing-remote-controller-interface-doc': '遥控器/主控接口 schema、request/response 示例',
-  'missing-existing-code-modification-plan': '原有代码修改清单（文件、函数/类、风险、验证方式）',
-  'missing-project-wide-communication-chain': '项目级通讯链路证据（uart*_tx/rx_main、TunnelTransport/分片、MAVLink/topic）',
-};
-
-const FORMAL_PROJECT_SOURCE_REASON_LABELS: Record<string, string> = {
-  'standalone-sample-code': '正式项目中禁止新建孤岛 main/样例入口',
-  'unresolved-project-facts': '源码中仍有待确认/待分配/建议范围等未落定事实',
-};
-
-function readWrittenSourceFilesForQuality(
-  writtenFiles: WrittenFileEvidence[],
-  workspaceRootFsPath: string,
-): { files: Array<{ path: string; content: string; action?: string; exists?: boolean }> } {
-  const root = nodePath.resolve(workspaceRootFsPath);
-  const seen = new Set<string>();
-  const files: Array<{ path: string; content: string; action?: string; exists?: boolean }> = [];
-  for (const file of writtenFiles) {
-    if (!/\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx|sh|bash|py)$/i.test(file.path) && !/\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx|sh|bash|py)$/i.test(file.basename)) continue;
-    const absPath = nodePath.resolve(nodePath.isAbsolute(file.path) ? file.path : nodePath.join(root, file.path));
-    if (!isInsideWorkspacePath(absPath, root)) continue;
-    const relPath = nodePath.relative(root, absPath).replace(/\\/g, '/');
-    if (seen.has(relPath)) continue;
-    seen.add(relPath);
-    try {
-      if (!fs.existsSync(absPath)) {
-        files.push({ path: relPath, content: '', action: file.action, exists: false });
-        continue;
-      }
-      if (fs.statSync(absPath).isDirectory()) continue;
-      files.push({
-        path: relPath,
-        content: fs.readFileSync(absPath, 'utf8'),
-        action: file.action,
-        exists: true,
-      });
-    } catch {
-      // Ignore transient reads; normal validation still records lower-level failures.
-    }
-  }
-  return { files };
-}
-
-function evaluateFormalProjectMarkdownQuality(
-  writtenFiles: WrittenFileEvidence[],
-  workspaceRootFsPath: string,
-  userPrompt: string,
-): AgentAutoValidationResult | undefined {
-  const baseline = assessFormalProjectDocumentQuality('', userPrompt);
-  if (!baseline.required) return undefined;
-
-  const markdown = readWrittenMarkdownFilesForQuality(writtenFiles, workspaceRootFsPath);
-  if (markdown.paths.length === 0) return undefined;
-  const quality = assessFormalProjectDocumentQuality(markdown.content, userPrompt);
-  if (!quality.required || quality.ok) return undefined;
-
-  const missing = quality.reasons.map(reason => FORMAL_PROJECT_DOC_REASON_LABELS[reason] ?? reason);
-  const summary = `正式项目 Markdown 质量门禁未通过：缺少${missing.join('、')}。`;
-  const feedbackForAI = [
-    '[formal_project_markdown_quality]',
-    `files=${markdown.paths.join(', ')}`,
-    summary,
-    '请继续调用 read_file/grep_search 精确补证据，并用 create_file/write_file/replace_in_file 修正文档；需要把源项目事实矩阵、项目级通讯链路、接口 request/response schema 示例和原有代码修改清单落实到交付物中。',
-    '协议/通讯事实必须来自源码或接口文档中的具体常量、topic、payload_type、命令号、字段名、超时/分片/重试数值；不要用 100、128 字节这类未从项目证据中证明的默认值。',
-    'JSON 示例必须使用标准 Markdown 三反引号代码块，例如 ```json。',
-    '完成摘要只能引用修正后的真实文件内容，不能把不合格草稿标记完成。',
-  ].filter(Boolean).join('\n');
-  return {
-    feedbackForAI,
-    qualityGate: {
-      status: 'fail',
-      summary,
-      risks: missing.map(item => `缺少${item}`),
-      evidenceRefs: markdown.paths.map(path => `file:${path}`),
-      requiredActions: [
-        '补齐源项目事实矩阵、通讯链路、接口示例和原有代码修改清单后重新验证。',
-      ],
-    },
-  };
-}
-
-function evaluateFormalProjectSourceQuality(
-  writtenFiles: WrittenFileEvidence[],
-  workspaceRootFsPath: string,
-  userPrompt: string,
-): AgentAutoValidationResult | undefined {
-  const baseline = assessFormalProjectDocumentQuality('', userPrompt);
-  if (!baseline.required) return undefined;
-
-  const source = readWrittenSourceFilesForQuality(writtenFiles, workspaceRootFsPath);
-  if (source.files.length === 0) return undefined;
-  const quality = assessFormalProjectSourceQuality(source.files, userPrompt);
-  if (!quality.required || quality.ok) return undefined;
-
-  const missing = quality.reasons.map(reason => FORMAL_PROJECT_SOURCE_REASON_LABELS[reason] ?? reason);
-  const summary = `正式项目源码质量门禁未通过：${missing.join('、')}。`;
-  const feedbackForAI = [
-    '[formal_project_source_quality]',
-    `files=${source.files.map(file => file.path).join(', ')}`,
-    summary,
-    'A 类正式项目代码必须嵌入既有主流程/模块边界；除非用户明确要求新增独立可执行程序，不要新建 proc_*_main.cpp、main() 或只为自洽存在的样例入口。',
-    '请改为读取既有入口、调度、通讯和构建锚点，输出需要修改的原有文件/函数/类，并把新增代码设计为可被既有主流程接入的模块。',
-  ].join('\n');
-  return {
-    feedbackForAI,
-    qualityGate: {
-      status: 'fail',
-      summary,
-      risks: missing.map(item => item),
-      evidenceRefs: (quality.offendingPaths.length ? quality.offendingPaths : source.files.map(file => file.path))
-        .map(path => `file:${path}`),
-      requiredActions: [
-        '删除或改造孤岛入口/样例代码，补齐既有工程集成锚点后重新验证。',
-      ],
-    },
-  };
-}
-
-function combineAgentQualityResults(
-  results: Array<AgentAutoValidationResult | undefined>,
-): AgentAutoValidationResult | undefined {
-  const present = results.filter((result): result is AgentAutoValidationResult => !!result);
-  if (present.length === 0) return undefined;
-  const gates = present.map(result => result.qualityGate).filter((gate): gate is NonNullable<AgentAutoValidationResult['qualityGate']> => !!gate);
-  const status = gates.some(gate => gate.status === 'fail')
-    ? 'fail'
-    : gates.some(gate => gate.status === 'blocked')
-      ? 'blocked'
-      : 'pass';
-  return {
-    feedbackForAI: present.map(result => result.feedbackForAI).filter(Boolean).join('\n\n'),
-    qualityGate: gates.length > 0
-      ? {
-        status,
-        summary: gates.map(gate => gate.summary).filter(Boolean).join('；'),
-        risks: gates.flatMap(gate => gate.risks ?? []),
-        evidenceRefs: gates.flatMap(gate => gate.evidenceRefs ?? []),
-        ...(selectStickyFailureDiagnosis(gates) ? { failureDiagnosis: selectStickyFailureDiagnosis(gates) } : {}),
-        alternativeChecks: gates.flatMap(gate => gate.alternativeChecks ?? []),
-        requiredActions: gates.flatMap(gate => gate.requiredActions ?? []),
-      }
-      : undefined,
-  };
-}
-
-function isExplicitContentWriteRequest(prompt: string): boolean {
-  return /(?:内容为|内容是|写入内容|文件内容|content\s*(?:is|:|=)|with\s+content)/i.test(prompt || '');
-}
-
-function buildExactContentRepairBlockedReason(result: AutoValidationResult): string {
-  return [
-    '用户指定了精确文件内容，自动验证未通过；DevSeek 已保留用户指定内容，不能擅自改写为通过验证的其他内容。',
-    `验证原因: ${result.reason ?? 'validation-failed'}`,
-    result.command ? `验证命令: ${result.command}` : '',
-    result.exitCode !== undefined ? `exitCode: ${result.exitCode ?? 'null'}` : '',
-  ].filter(Boolean).join('\n');
-}
-
 function validationEvidenceRef(status: VerificationResultStatus, result: AutoValidationResult): string {
   return `validation:${status}:${result.command || result.reason || 'unknown'}`;
-}
-
-function selectStickyFailureDiagnosis(
-  gates: Array<NonNullable<AgentAutoValidationResult['qualityGate']>>,
-): FailureDiagnosis | undefined {
-  return gates.find(gate => gate.status !== 'pass' && gate.failureDiagnosis)?.failureDiagnosis;
 }
 
 function buildAutoValidationQualityGate(
@@ -517,7 +339,7 @@ function buildReadbackOnlyEvidence(changedPaths: readonly string[]): TerminalEvi
     kind: 'other',
     ok: true,
     exitCode: 0,
-    detail: `${changedPaths.length} 个文档/配置交付物已由宿主读取并通过 artifact quality gate。`,
+    detail: `${changedPaths.length} 个文档/配置交付物已由宿主读取并通过规范需求门禁。`,
   };
 }
 
@@ -529,9 +351,9 @@ function isReadbackOnlyValidationScope(changedPaths: readonly string[]): boolean
 
 function formatReadbackOnlyFeedback(changedPaths: readonly string[]): string {
   return [
-    '[artifact_readback: passed]',
+    '[workspace_readback: passed]',
     `files=${changedPaths.join(', ')}`,
-    '文档/配置交付物不需要编译、运行或测试命令；本轮自动验证以文件读回和 artifact quality gate 作为完成证据。',
+    '文档/配置交付物不需要编译、运行或测试命令；本轮自动验证以文件读回和规范需求门禁作为完成证据。',
   ].join('\n');
 }
 
@@ -619,38 +441,14 @@ export async function runAgentAutoValidationForWrites(
       title: '自动验证写入结果',
       detail: changedPaths.join('\n'),
     });
-    const qualityWrittenFiles = options.qualityWrittenFiles ?? writtenFiles;
-    const formalProjectQuality = combineAgentQualityResults([
-      evaluateFormalProjectMarkdownQuality(
-        qualityWrittenFiles,
-        workspaceRootFsPath,
-        userPrompt,
-      ),
-      evaluateFormalProjectSourceQuality(
-        qualityWrittenFiles,
-        workspaceRootFsPath,
-        userPrompt,
-      ),
-    ]);
-    const artifactQuality = evaluateArtifactQualityOracle(
-      qualityWrittenFiles,
-      workspaceRootFsPath,
-      userPrompt,
-    );
     const requirementQuality = evaluateCanonicalRequirementQuality(
       userPrompt,
       workspaceRootFsPath,
       changedPaths,
       callbacks.canonicalTaskContract,
     );
-    const policyQuality = combineAgentQualityResults([formalProjectQuality, artifactQuality, requirementQuality]);
-    const policyQualityTitle = formalProjectQuality
-      ? '正式项目质量门禁未通过'
-      : artifactQuality
-        ? '生成文件质量门禁未通过'
-        : requirementQuality
-          ? '需求质量门禁未通过'
-          : undefined;
+    const policyQuality = requirementQuality;
+    const policyQualityTitle = requirementQuality ? '需求质量门禁未通过' : undefined;
     const reusableVerification = selectReusableVerificationReceipt({
       runId: callbacks.traceRunId,
       changedPaths,
@@ -816,10 +614,7 @@ export async function runAgentAutoValidationForWrites(
     }
     callbacks.onToolActivity?.('terminal', `自动验证: ${result.command}`);
     const feedbackForAI = formatAutoValidationFeedback(result, changedPaths);
-    const repairBlockedReason = !result.ok && isExplicitContentWriteRequest(userPrompt)
-      ? buildExactContentRepairBlockedReason(result)
-      : undefined;
-    const finalFeedbackForAI = [feedbackForAI, repairBlockedReason, policyQuality?.feedbackForAI]
+    const finalFeedbackForAI = [feedbackForAI, policyQuality?.feedbackForAI]
       .filter(Boolean)
       .join('\n\n');
     const finalQualityGate = policyQuality?.qualityGate ?? buildAutoValidationQualityGate(result, changedPaths);
@@ -843,7 +638,6 @@ export async function runAgentAutoValidationForWrites(
       evidenceOperationId,
       ...(evidence ? { evidence } : {}),
       feedbackForAI: finalFeedbackForAI,
-      repairBlockedReason,
       qualityGate: finalQualityGate,
     };
     return settleAgentAutoValidation(settled, execution);

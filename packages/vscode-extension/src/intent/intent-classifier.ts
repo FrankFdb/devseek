@@ -1,12 +1,12 @@
 import type { TaskSemanticContract } from '../task-semantic-contract';
-import { resolveTaskSemanticContract } from './task-semantic-contract-service';
 import { allowedToolKindsForMode } from './execution-mode-policy';
 import type { IntentClassification } from './intent-types';
+import { createModelLedTurnSemanticContract } from './model-led-semantic-contract';
 
 /** Projects the canonical TaskSemanticContract into the legacy routing shape. */
 export function classifyIntent(input: string | TaskSemanticContract): IntentClassification {
   const contract = typeof input === 'string'
-    ? resolveTaskSemanticContract(input)
+    ? createModelLedTurnSemanticContract(input)
     : input;
   const local = contract.intent;
 

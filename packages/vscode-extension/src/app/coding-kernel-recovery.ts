@@ -3,7 +3,7 @@ import {
   CanonicalCheckpointService,
   type CodingCheckpoint,
 } from '@devseek-netai/shared';
-import type { AgentTask } from '../agent-task-decomposer';
+import type { AgentTask } from '../agent/agent-task';
 
 export const CODING_KERNEL_RECOVERY_VERSION = 'devseek.coding-kernel-recovery/v1';
 const CHECKPOINT = new CanonicalCheckpointService();

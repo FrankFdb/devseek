@@ -4,357 +4,97 @@ import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import {
-  TOOL_PROTOCOL_SAMPLES,
-  TOOL_PROTOCOL_STREAMING_TAIL_SAMPLES,
-} from '../fixtures/tool-protocol-samples.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
 const bundlePath = path.join(rootDir, 'test/unit/web-reliability.bundle.cjs');
 
 execSync(
-  `npx esbuild src/llm/providers/web-reliability.ts --bundle ` +
-  `--outfile=${bundlePath} --format=cjs --platform=node`,
+  `npx esbuild src/llm/providers/web-reliability.ts --bundle `
+  + `--outfile=${bundlePath} --format=cjs --platform=node`,
   { cwd: rootDir, stdio: 'pipe' },
 );
 
-const req = createRequire(import.meta.url);
-const { ResponseIntegrityChecker, StreamWatchdog, BridgeHealthMonitor } = req(bundlePath);
+const { ResponseIntegrityChecker, StreamWatchdog, BridgeHealthMonitor } =
+  createRequire(import.meta.url)(bundlePath);
 
-const maintenanceAnalysisWithBusinessVerificationCode = [
-  '我已完整分析了相关文件。现在整理分析报告。',
-  '# 吊运维保功能重做分析报告',
-  '结论：当前实现需要重构维保码流程，新增伙伴后台生成验证码、管理后台校验验证码的闭环。',
-  '依据：旧实现只保留阈值统计，没有覆盖新增的作业状态和维保码校验职责。',
-  '建议：先统一状态机，再拆分数据结构，最后补充验证用例。',
-  '[TOOL:task_complete {"summary":"完成吊运维保功能重做分析，包含生成验证码、管理后台校验和任务拆解建议。"}]',
-].join('\n\n');
-
-const quoteDamagedChineseTaskComplete = [
-  '我理解。task_complete 需要 summary 必填参数。现在补全调用。',
-  '[调用 task_complete] {"summary": "审计报告已完成并验证通过。',
-  '1. "为什么通过插件按钮打开的 DeepSeek 页面就是当前 bridge 会话的用户路径，不能把它误认为另一个浏览器登录。"',
-  '2. "send button selector drift is not LOGIN_REQUIRED""}',
-  '',
-  '本回答由 AI 生成，内容仅供参考，请仔细甄别。',
-].join('\n');
-
-test('ResponseIntegrityChecker: passes complete responses', () => {
-  const result = new ResponseIntegrityChecker().check('```ts\nexport const ok = 1;\n```');
-
-  assert.equal(result.ok, true);
-  assert.equal(result.safeToExecute, true);
-});
-
-test('ResponseIntegrityChecker: does not treat business verification-code analysis as provider captcha', () => {
-  const result = new ResponseIntegrityChecker().check(maintenanceAnalysisWithBusinessVerificationCode);
-
-  assert.equal(result.status, 'ok');
-  assert.equal(result.safeToExecute, true);
-});
-
-test('ResponseIntegrityChecker: does not treat a rate-limiter tool response as provider throttling', () => {
-  const response = [
-    '我会重构 C++17 令牌桶限流器，并运行测试。',
-    '<tool_call name="list_dir">{"path":"/workspace"}</tool_call>',
-    '<tool_call name="manage_todo_list">{"todoList":[{"id":1,"title":"实现限流器","status":"in-progress"}]}</tool_call>',
-  ].join('\n');
-  const result = new ResponseIntegrityChecker().check(response);
-
-  assert.equal(result.status, 'ok');
-  assert.equal(result.safeToExecute, true);
-});
-
-test('ResponseIntegrityChecker: does not treat log-index workspace paths as provider login gates', () => {
-  const response = [
-    '我先探索工作区结构，了解现有代码、测试和构建配置。',
-    '[调用 list_dir] {"path":"/workspace/cases/04-log-index/workspace"}',
-    '[调用 file_search] {"glob":"**/*.{h,hpp,cpp,cc}"}',
-  ].join('');
-  const result = new ResponseIntegrityChecker().check(response);
-
-  assert.equal(result.status, 'ok');
-  assert.equal(result.safeToExecute, true);
-});
-
-test('ResponseIntegrityChecker: accepts a complete tool request in a structured text envelope', () => {
-  const response = `我先读取实现。\n\n\`\`\`\n${JSON.stringify([{
-    type: 'text',
-    text: '<tool_call>\n[TOOL:read_file {"path":"/workspace/src/rate_limiter.cpp"}]\n</tool_call>',
-  }], null, 2)}\n\`\`\``;
-  const result = new ResponseIntegrityChecker().check(response);
-
-  assert.equal(result.status, 'ok');
-  assert.equal(result.safeToExecute, true);
-});
-
-test('ResponseIntegrityChecker: ignores inline fence literals around complete multiline file tools', () => {
-  const response = [
-    '工具调用必须包裹在```xml代码围栏中。现在重新发送：',
-    '```',
-    '<create_file>',
-    '<path>/workspace/include/router.hpp</path>',
-    '<content><![CDATA[#pragma once',
-    '#include <string>',
-    ']]></content>',
-    '</create_file>',
-    '```',
-  ].join('\n');
-  const result = new ResponseIntegrityChecker().check(response);
-
-  assert.equal(result.status, 'ok');
-  assert.equal(result.safeToExecute, true);
-});
-
-test('ResponseIntegrityChecker: still blocks provider login and captcha control surfaces', () => {
+test('response integrity accepts arbitrary assistant prose at the transport boundary', () => {
   const checker = new ResponseIntegrityChecker();
-
-  assert.equal(checker.check('<html><title>Login</title>请先登录后继续</html>').status, 'login-required');
-  assert.equal(checker.check('Log in to continue').status, 'login-required');
-  assert.equal(checker.check('Sign-in required').status, 'login-required');
-  assert.equal(checker.check('请输入验证码完成安全验证').status, 'rate-limited');
-  assert.equal(checker.check('HTTP 429 Too Many Requests，请稍后再试').status, 'rate-limited');
-  assert.equal(checker.check('当前请求已被限流，请稍后再试').status, 'rate-limited');
-});
-
-test('ResponseIntegrityChecker: blocks truncated markdown and tool blocks', () => {
-  const checker = new ResponseIntegrityChecker();
-
-  assert.equal(checker.check('```ts\nexport const broken = ').status, 'unclosed-markdown-fence');
-  assert.equal(checker.check('[TOOL:write_file {"path":"a.ts","content":"x"').status, 'incomplete-tool-block');
-  assert.equal(
-    checker.check('<TOOL:read_file><path>/tmp/workspace/src/contract.ts</path>').status,
-    'incomplete-tool-block',
-  );
-});
-
-test('ResponseIntegrityChecker: does not treat complete DevSeek tool protocol as invalid provider JSON', () => {
-  const checker = new ResponseIntegrityChecker();
-
-  assert.equal(
-    checker.check('[TOOL:list_dir {"path":"/workspace/code/shape_manager"}]').safeToExecute,
-    true,
-  );
-  assert.equal(
-    checker.check('<TOOL:read_file><path>/tmp/workspace/src/contract.ts</path></TOOL:read_file>').safeToExecute,
-    true,
-  );
-  assert.equal(
-    checker.check('[{"tool":"list_dir","arguments":{"path":"/workspace/code/shape_manager",}}]').safeToExecute,
-    true,
-  );
-  assert.equal(
-    checker.check('{"choices":[{"message":}],"id":"x"}').status,
-    'invalid-json-response',
-  );
-});
-
-test('ResponseIntegrityChecker: accepts prefixed XML opens closed by canonical tool names', () => {
-  const checker = new ResponseIntegrityChecker();
-  const response = [
-    '<TOOL:create_file>',
-    '<path>/tmp/task-store/package.json</path>',
-    '<content><![CDATA[{"name":"task-store"}]]></content>',
-    '</create_file>',
-  ].join('\n');
-
-  assert.equal(checker.check(response).safeToExecute, true);
-});
-
-test('ResponseIntegrityChecker: accepts complete DeepSeek create_file tools wrapped in uneven fences', () => {
-  const checker = new ResponseIntegrityChecker();
-  const fence = '```';
-  const report = [
-    '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE 审计报告',
-    '',
-    'BridgeHealthCheck',
-    'devseek.deepseek-web-connector-health/v1',
-    'loggedInLikely',
-    'plugin-opened DeepSeek page',
-    'chatInput evidence',
-    'deepseek-dom-send-button-missing',
-    'login-state-not-send-button',
-    'send button selector drift is not LOGIN_REQUIRED',
-    'not fixed line-count smoke',
-  ].join('\n');
-  const response = [
-    '文件未写入成功。我需要重新创建，并确保内容完整。',
-    fence,
-    `[TOOL:create_file {"path":"/tmp/workspace/docs/r3-iteration/r3-live-deepseek-login-ready-state.md","content":${JSON.stringify(report)}}${fence}`,
-    fence,
-  ].join('\n');
-
-  const result = checker.check(response);
-
-  assert.equal(result.status, 'ok');
-  assert.equal(result.safeToExecute, true);
-});
-
-test('ResponseIntegrityChecker: recognizes Markdown-bold Calling tool protocol', () => {
-  const checker = new ResponseIntegrityChecker();
-  const response = [
-    '我先核查一下当前代码状态。',
-    '**Calling:** `read_file`',
-    '```json',
-    '{"path": "/workspace/code/shape_manager/main.cpp"}',
-    '```',
-  ].join('\n');
-
-  assert.equal(checker.check(response).safeToExecute, true);
-});
-
-test('ResponseIntegrityChecker: shared tool protocol samples are safe only when complete', () => {
-  const checker = new ResponseIntegrityChecker();
-
-  for (const sample of TOOL_PROTOCOL_SAMPLES) {
-    const result = checker.check(sample.text);
-    assert.equal(
-      result.safeToExecute,
-      true,
-      `${sample.id} should pass response integrity checks`,
-    );
-  }
-
-  for (const sample of TOOL_PROTOCOL_STREAMING_TAIL_SAMPLES) {
-    const result = checker.check(sample.text);
-    assert.equal(result.status, 'incomplete-tool-block', `${sample.id} should be blocked before execution`);
-    assert.equal(result.safeToExecute, false, `${sample.id} should not be safe to execute`);
+  for (const response of [
+    'CPU 适合低延迟通用计算，GPU 适合高吞吐并行计算。',
+    '```ts\nexport const intentionallyOpen = ',
+    '[TOOL:write_file {"path":"a.ts","content":"example"',
+    '<TOOL_call>read_file {"path":"/tmp/a.md"}',
+    '让我修复这个问题：',
+    '{"choices":[{"message":}],"id":"documentation-example"}',
+    '[调用 task_complete] {"summary": "这是未完成协议的示例',
+  ]) {
+    const result = checker.check(response);
+    assert.equal(result.status, 'ok');
+    assert.equal(result.safeToExecute, true);
   }
 });
 
-test('ResponseIntegrityChecker: accepts complete DeepSeek TOOL_call inline-name envelopes', () => {
+test('response integrity blocks exact provider login and verification surfaces', () => {
   const checker = new ResponseIntegrityChecker();
-  const text = [
-    '我先读取两个源文件。',
-    '<TOOL_call>read_file {"path":"/tmp/workspace/docs/r3-iteration/deepseek-login-ready-state-matrix.md"}</TOOL_call><TOOL_call>read_file {"path":"/tmp/workspace/src/deepseek-web-health/deepseek-login-ready-state-contract.ts","startLine":1,"endLine":0}</TOOL_call>',
-  ].join('\n\n');
-
-  const result = checker.check(text);
-
-  assert.equal(result.status, 'ok');
-  assert.equal(result.safeToExecute, true);
+  for (const response of [
+    '<html><title>Login</title>请先登录后继续</html>',
+    'Log in to continue',
+    'Sign-in required',
+  ]) {
+    assert.equal(checker.check(response).status, 'login-required');
+  }
+  for (const response of [
+    '请输入验证码完成安全验证',
+    'HTTP 429 Too Many Requests，请稍后再试',
+    '当前请求已被限流，请稍后再试',
+  ]) {
+    assert.equal(checker.check(response).status, 'rate-limited');
+  }
 });
 
-test('ResponseIntegrityChecker: accepts complete open generic TOOL frames and blocks half JSON', () => {
+test('business prose containing provider words remains ordinary content', () => {
   const checker = new ResponseIntegrityChecker();
-  const complete = [
-    '我先调查工程结构。',
-    '<TOOL>list_dir {"path":"/tmp/project"}',
-    '<TOOL>read_file {"path":"/tmp/project/include/order_book.hpp"}',
-  ].join('');
-
-  assert.equal(checker.check(complete).status, 'ok');
-  assert.equal(
-    checker.check(`${complete}<TOOL>grep_search {"pattern":"OrderBook"`).status,
-    'incomplete-tool-block',
-  );
-});
-
-test('ResponseIntegrityChecker: accepts complete DeepSeek named-parameter tool_call envelopes', () => {
-  const checker = new ResponseIntegrityChecker();
-  const content = [
-    '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE 审计报告',
-    'BridgeHealthCheck',
-    'devseek.deepseek-web-connector-health/v1',
-    'loggedInLikely',
-    'plugin-opened DeepSeek page',
-    'chatInput evidence',
-    'deepseek-dom-send-button-missing',
-    'login-state-not-send-button',
+  for (const response of [
+    '请说明 LOGIN_REQUIRED、captcha 和 HTTP 429 的差异。',
+    '结论：业务需要生成验证码，并让后台校验验证码。',
+    'The rate limiter test handles too many requests without requiring login.',
     'send button selector drift is not LOGIN_REQUIRED',
-    'not fixed line-count smoke',
-  ].join('\n');
-  const text = [
-    '我已读取到两份源文件。现在创建审计报告文件。',
-    '<tool_call><name>manage_todo_list</name><parameter>{"todoList":[{"id":1,"title":"读取源文件内容","status":"completed"},{"id":2,"title":"创建审计报告 Markdown 文件","status":"in-progress"}]}</parameter></tool_call>',
-    `<tool_call><name>create_file</name><parameter>{"path":"/tmp/workspace/docs/r3-iteration/r3-live-deepseek-login-ready-state.md","content":${JSON.stringify(content)}}</parameter></tool_call>`,
-  ].join('');
-
-  const result = checker.check(text);
-
-  assert.equal(result.status, 'ok');
-  assert.equal(result.safeToExecute, true);
+  ]) {
+    assert.equal(checker.check(response).status, 'ok');
+  }
 });
 
-test('ResponseIntegrityChecker: blocks unfinished DeepSeek TOOL_call inline-name envelopes', () => {
+test('structured provider controls are recognized only through control fields', () => {
   const checker = new ResponseIntegrityChecker();
-  const result = checker.check('<TOOL_call>read_file {"path":"/tmp/a.md"}');
 
-  assert.equal(result.status, 'incomplete-tool-block');
+  assert.equal(checker.check('{"error":"LOGIN_REQUIRED"}').status, 'login-required');
+  assert.equal(checker.check('{"status":"RATE_LIMITED"}').status, 'rate-limited');
+  assert.equal(checker.check('{"example":"LOGIN_REQUIRED"}').status, 'ok');
+  assert.equal(checker.check('{"message":"HTTP 429"}').status, 'ok');
+});
+
+test('empty provider content is not executable', () => {
+  const result = new ResponseIntegrityChecker().check(' \n ');
+  assert.equal(result.status, 'empty');
   assert.equal(result.safeToExecute, false);
 });
 
-test('ResponseIntegrityChecker: blocks unfinished assistant action cues', () => {
-  const checker = new ResponseIntegrityChecker();
-  const response = '编译失败了，因为字符串字面量中有换行符。我需要在字符串中使用 \\\\n 而不是直接换行。让我修复这个问题：';
-
-  const result = checker.check(response);
-
-  assert.equal(result.status, 'incomplete-assistant-intent');
-  assert.equal(result.safeToExecute, false);
-});
-
-test('ResponseIntegrityChecker: allows recoverable malformed file tool blocks', () => {
-  const checker = new ResponseIntegrityChecker();
-  const response = String.raw`好的，我需要修改CMakeLists.txt来同时编译二维和三维程序。
-[TOOL:create_file] {"path":"/tmp/shape_manager/CMakeLists.txt","content":"set(CMAKE_CXX_FLAGS "{CMAKE_CXX_FLAGS} -Wall -Wextra\")\nadd_executable(shape_manager_2d {SOURCES_2D} {HEADERS_2D})\nset_target_properties(shape_manager_2d shape_manager_3d PROPERTIES\n RUNTIME_OUTPUT_DIRECTORY \"{CMAKE_BINARY_DIR}/bin"\n)\nmessage(STATUS "构建二维图形程序: shape_manager_2d (使用 X11)")\n"}`;
-
-  const result = checker.check(response);
-
-  assert.equal(result.safeToExecute, true);
-  assert.equal(result.status, 'ok');
-});
-
-test('ResponseIntegrityChecker: allows recoverable malformed Chinese task completion calls', () => {
-  const checker = new ResponseIntegrityChecker();
-  const result = checker.check(quoteDamagedChineseTaskComplete);
-
-  assert.equal(result.safeToExecute, true);
-  assert.equal(result.status, 'ok');
-});
-
-test('ResponseIntegrityChecker: still blocks unfinished Chinese task completion calls', () => {
-  const checker = new ResponseIntegrityChecker();
-  const result = checker.check('[调用 task_complete] {"summary": "审计报告已完成');
-
-  assert.equal(result.safeToExecute, false);
-  assert.equal(result.status, 'incomplete-tool-block');
-});
-
-test('StreamWatchdog: reports stalled stream after idle threshold', () => {
+test('StreamWatchdog reports stalled stream from timing facts', () => {
   const watchdog = new StreamWatchdog(100);
   watchdog.start(1_000);
   watchdog.observeChunk('hello', 1_050);
 
-  const state = watchdog.state(1_200);
-
-  assert.equal(state.status, 'stalled');
-  assert.equal(state.reason, 'stream-stalled');
+  assert.equal(watchdog.state(1_200).status, 'stalled');
+  assert.equal(watchdog.finish(1_210).status, 'finished');
 });
 
-test('BridgeHealthMonitor: login indicator absence blocks prompt sending', () => {
-  const decision = new BridgeHealthMonitor().evaluate({
-    browserReady: true,
-    loggedInLikely: false,
-    reason: 'login-url',
-  });
+test('BridgeHealthMonitor uses typed browser and login state', () => {
+  const monitor = new BridgeHealthMonitor();
 
-  assert.equal(decision.status, 'login-required');
-  assert.equal(decision.canSendPrompt, false);
+  assert.equal(monitor.evaluate(undefined).status, 'unavailable');
+  assert.equal(monitor.evaluate({ browserReady: false, loggedInLikely: false }).canSendPrompt, false);
+  assert.equal(monitor.evaluate({ browserReady: true, loggedInLikely: false }).status, 'login-required');
+  assert.equal(monitor.evaluate({ browserReady: true, loggedInLikely: true, queueLength: 2 }).status, 'degraded');
+  assert.equal(monitor.evaluate({ browserReady: true, loggedInLikely: true }).status, 'ok');
 });
-
-test('BridgeHealthMonitor: send button selector drift does not request relogin', () => {
-  const decision = new BridgeHealthMonitor().evaluate({
-    browserReady: true,
-    loggedInLikely: true,
-    reason: 'deepseek-dom-send-button-missing',
-    queueLength: 0,
-  });
-
-  assert.equal(decision.status, 'ok');
-  assert.equal(decision.canSendPrompt, true);
-  assert.equal(decision.reason, 'deepseek-dom-send-button-missing');
-});
-
-console.log('\nWeb reliability tests passed.\n');

@@ -1,8 +1,7 @@
 /**
  * Agent Learner — Universal Learning Bus for all agent dimensions.
  *
- * Unlike intent-learner.ts (which focuses on intent routing), this module
- * learns from ALL observable agent events:
+ * Learns from observable execution evidence without changing intent routing:
  *
  *   Dimension A: Tool usage patterns (which tools work for which request types)
  *   Dimension B: Successful shell commands (compile/test/run — project-specific)
@@ -13,7 +12,7 @@
  *   emitLearningEvent(event) → learner handlers → workspaceState / globalState
  *   getXxxHint(context) → inject learned knowledge into LLM prompts
  *
- * Three-tier storage (same model as intent-learner.ts):
+ * Three-tier storage:
  *   L0   Session RAM  — current session, cleared on new session
  *   L1   workspaceState — project-scoped, survives restart
  *   L2   globalState  — plugin-wide, cross-project (only for stable patterns)

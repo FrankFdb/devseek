@@ -45,7 +45,6 @@ export interface ClassifyExecResultInput {
   command: string;
   timeoutMs: number;
   allowManualReview?: boolean;
-  manualReviewContext?: string;
   visualSourcePaths?: string[];
   manualReviewDetail?: string;
   timeoutFailureDetail?: string;
@@ -100,9 +99,8 @@ export class ExecutionOutcomeClassifier {
   shouldRequestManualReview(input: ClassifyExecResultInput, output: string): boolean {
     if (!input.allowManualReview) return false;
     if (!containsRuntimeExecutableSegment(input.command)) return false;
-    if (hasHardExecutionFailureEvidence(`${output || ''}\n${input.command || ''}`)) return false;
+    if (hasHardExecutionFailureEvidence(output || '')) return false;
     return hasInteractiveLaunchEvidence(output)
-      || isVisualOrInteractiveContext(input.manualReviewContext || input.command)
       || visualSourcePathsLookInteractive(input.visualSourcePaths || []);
   }
 }

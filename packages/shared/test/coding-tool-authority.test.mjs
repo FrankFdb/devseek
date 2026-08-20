@@ -81,6 +81,22 @@ test('authority derives mutation and verification permission from the immutable 
   assert.equal(mutation.receipt.evidenceRefs.some(ref => ref.startsWith('sandbox-policy:')), true);
 });
 
+test('authority treats a read-only shell process as an observed local effect', () => {
+  const review = session('review');
+  const inspection = review.authorize({
+    actionId: 'inspect-with-shell',
+    tool: 'run_terminal',
+    purpose: 'observe',
+    effects: ['process'],
+    input: { command: 'git diff -- src/value.ts' },
+    risk: 'low',
+  });
+
+  assert.equal(inspection.receipt.status, 'authorized');
+  assert.equal(inspection.receipt.decision, 'allow');
+  assert.deepEqual(inspection.receipt.effects, ['process']);
+});
+
 test('sandboxed verification may write local build output without redundant confirmation', () => {
   const change = session('change');
   const request = {

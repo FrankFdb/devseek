@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -105,14 +105,12 @@ test('Mutation guard: workspace writes in audited flows route through the writer
     'src/memory/memory-projection.ts',
     'src/memory/memory-store.ts',
     'src/ui/real-plugin-harness.ts',
-    'src/workspace/coding-workspace-batch-mutation-adapter.ts',
     'src/workspace/edit-service.ts',
   ]);
 
   for (const relativePath of [
     'src/agent/agent-host-tools.ts',
     'src/agent/auto-validation.ts',
-    'src/agent/markdown-artifact-tool-projector.ts',
     'src/agent/tool-loop.ts',
     'src/pending-edit-coordinator.ts',
   ]) {
@@ -147,25 +145,26 @@ test('Mutation guard: workspace writes in audited flows route through the writer
       `${file.relativePath} reintroduced an unsafe unscoped text-write API`,
     );
   }
-  for (const relativePath of [
+  for (const retiredPath of [
+    'src/agent/markdown-artifact-tool-projector.ts',
     'src/agent/markdown-deliverable-task.ts',
     'src/agent/simple-file-task.ts',
-    'src/agent/tool-loop.ts',
+    'src/workspace-applier.ts',
+    'src/workspace/coding-workspace-batch-mutation-adapter.ts',
+    'src/ui/generated-artifact-surface-controller.ts',
   ]) {
+    assert.equal(
+      existsSync(path.join(packageRoot, retiredPath)),
+      false,
+      `${retiredPath} must not restore a parallel natural-language write path`,
+    );
+  }
+  for (const relativePath of ['src/agent/tool-loop.ts', 'src/agent/tool-loop-file-writer.ts']) {
     const text = source(relativePath);
     assert.match(text, /captureTextFileBaseline\(/, `${relativePath} must capture a workspace-rooted baseline`);
     assert.match(text, /workspaceMutation\.executeTextFile(?:Write|Delete)\(\{/, `${relativePath} must use the canonical mutation adapter`);
     assert.doesNotMatch(text, /commitTextFileProposal\(/, `${relativePath} bypasses canonical mutation settlement`);
   }
-  const workspaceApplier = source('src/workspace-applier.ts');
-  assert.match(workspaceApplier, /captureTextFileBaseline\(/, 'workspace applier must capture workspace-rooted baselines');
-  assert.match(workspaceApplier, /workspaceMutation\.execute\(\{/, 'workspace applier must use the canonical batch mutation adapter');
-  assert.doesNotMatch(workspaceApplier, /commitTextFileProposal\(/, 'workspace applier bypasses canonical mutation settlement');
-  assert.doesNotMatch(workspaceApplier, /rollbackCommittedChanges/, 'workspace applier retained obsolete out-of-transaction rollback');
-
-  const batchMutationAdapter = source('src/workspace/coding-workspace-batch-mutation-adapter.ts');
-  assert.match(batchMutationAdapter, /commitTextFileProposal\(/, 'batch mutation adapter must own atomic host commits');
-  assert.match(batchMutationAdapter, /rollbackTextFileCommit\(/, 'batch mutation adapter must own token compensation');
 });
 
 test('Verification guard: agentic validation projects through the shared receipt owner', () => {
@@ -191,7 +190,7 @@ test('Mutation guard: MCP tools have one authorized product boundary and honest 
   const extension = source('src/extension.ts');
   const mcpBoundary = source('src/app/evidence-aware-mcp-tool-call.ts');
   assert.equal((mcpBoundary.match(/deps\.mcpManager\.callTool\s*\(/g) ?? []).length, 1);
-  assert.equal((extension.match(/createEvidenceAwareMcpToolCall\s*\(/g) ?? []).length, 2);
+  assert.equal((extension.match(/createEvidenceAwareMcpToolCall\s*\(/g) ?? []).length, 1);
   assert.match(extension, /createEvidenceAwareMcpToolCallFactory\(\{[\s\S]*?terminalPermissions:[\s\S]*?mcpManager/);
   assert.match(mcpBoundary, /kind:\s*'mcp-tool'[\s\S]*?kind:\s*'invocation-receipt'[\s\S]*?official-mcp-sdk-call-resolved/);
   assert.match(
@@ -202,12 +201,10 @@ test('Mutation guard: MCP tools have one authorized product boundary and honest 
 
 test('Mutation guard: durable settlement controls every completed success projection', () => {
   const extension = source('src/extension.ts');
-  const localRunner = source('src/local-execution-chat-runner.ts');
   const terminalCoordinator = source('src/app/terminal-permission-coordinator.ts');
   const commands = source('src/commands/index.ts');
   const commandRegistration = source('src/ui/extension-command-registration.ts');
   const viewProvider = source('src/ui/deepseek-view-provider.ts');
-  const generatedArtifacts = source('src/ui/generated-artifact-surface-controller.ts');
   const agentKernel = source('src/app/agent-kernel-service.ts');
   const agentSettlement = source('src/app/agent-run-settlement.ts');
   const evidenceRouter = source('src/app/evidence-aware-chat-router.ts');
@@ -231,15 +228,10 @@ test('Mutation guard: durable settlement controls every completed success projec
   assert.match(agentSettlement, /const status = terminalPermissions\.completeRunContext[\s\S]*?const completed = requestedStatus === 'completed' && status === 'completed'/);
   assert.match(agentSettlement, /function settleRunContextDirect[\s\S]*?runContext\.complete\(requestedStatus, data\)/);
 
-  assert.match(localRunner, /successMessage:\s*buildLocalExecutionSuccessMessage/);
-  assert.doesNotMatch(
-    localRunner,
-    /postWebviewMessage\(input\.webview, \{ type: 'delta', text: buildLocalExecutionSuccessMessage/,
-    'local execution must return candidate success instead of presenting it before owner settlement',
-  );
-  assert.match(
-    extension,
-    /const settlementStatus = terminalPermissionCoordinator\.completeRunContext\([\s\S]*?if \(settlementStatus === 'completed' && localExecutionResult\.successMessage\)/,
+  assert.equal(
+    existsSync(path.join(packageRoot, 'src/local-execution-chat-runner.ts')),
+    false,
+    'retired local execution must not restore a pre-settlement success path',
   );
   assert.match(extension, /const chatSettlementStatus = terminalPermissionCoordinator\.completeRunContext[\s\S]*?chatSettlementStatus !== 'completed'/);
   assert.match(evidenceRouter, /settleRunContextDirect\(ownedContext, 'completed'[\s\S]*?\.completed/);
@@ -253,8 +245,8 @@ test('Mutation guard: durable settlement controls every completed success projec
   assert.doesNotMatch(commandRegistration, /applyInlineChatResult|inline-chat-editor-edit|editor\.edit\s*\(/);
   assert.match(pendingEdit, /settleRunContextDirect\(runContext, 'completed', \{ mutationKind: 'pending-edit-undo' \}\)\.completed/);
   assert.doesNotMatch(viewProvider, /completeRunContext\(runContext/);
-  assert.equal((generatedArtifacts.match(/const settlementStatus = this\.deps\.terminalPermissionCoordinator\.completeRunContext\(runContext/g) ?? []).length, 2);
-  assert.equal((generatedArtifacts.match(/requestedStatus === 'completed' && settlementStatus !== 'completed'/g) ?? []).length, 2);
+  assert.equal(existsSync(path.join(packageRoot, 'src/ui/generated-artifact-surface-controller.ts')), false);
+  assert.doesNotMatch(extension, /applyGeneratedArtifactsWithPrompt|runClosedLoopRepair|recoverApplyFailureIfPossible/);
 
   const directRunCompletionOwners = sources
     .filter(file => /\b[A-Za-z_$][\w$]*Context\??\.complete\s*\(/.test(file.source))
@@ -280,7 +272,7 @@ test('Mutation guard: every ValidationService construction injects command autho
   }
   assert.deepEqual(
     constructors.map(constructor => constructor.relativePath).sort(),
-    ['src/agent/auto-validation.ts', 'src/workspace-applier.ts', 'src/workspace-applier.ts'],
+    ['src/agent/auto-validation.ts'],
   );
   for (const constructor of constructors) {
     assert.match(constructor.excerpt, /commandRunner\s*:/, `${constructor.relativePath} lacks validation command authority`);
@@ -303,7 +295,7 @@ test('Mutation guard: tool planning consumes policy before every execution branc
   assert.match(toolLoop, /toolPlan\.permission\?\.action === 'deny'/);
   assert.match(toolLoop, /toolPlan\.permission\?\.action === 'requireConfirm'/);
   assert.match(toolLoop, /hasEvidenceAwareToolAuthority\(toolPlan\.kind, callbacks\)/);
-  assert.match(agenticLoop, /callbacks = copyAgentLoopCallbacks\(callbacks, \{ executionMode: workflowMode \}\)/);
+  assert.match(agenticLoop, /callbacks = copyAgentLoopCallbacks\(callbacks, \{ executionMode: 'model-led' \}\)/);
   assert.doesNotMatch(writeAuthority, /if \(!callbacks\.onResolveFileWriteConstraint\) return true/);
   assert.match(source('src/extension.ts'), /agentKernelService\.executeCanonicalTask\(\{[\s\S]*?callbacks:\s*agentCallbacks\s*=\s*\{[\s\S]*?executionMode:\s*workflow\.toolPolicyMode/);
 });

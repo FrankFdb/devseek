@@ -1,4 +1,3 @@
-import type { ApplyWorkflowStatus } from '../workspace-applier';
 import type { AgentEvent } from '../agent/events';
 import type {
   AgentCheckpointAvailableMessage,
@@ -13,7 +12,6 @@ export interface WebviewPostTarget {
 }
 
 export type WebviewDomainEvent =
-  | { kind: 'workflow'; status: ApplyWorkflowStatus }
   | { kind: 'agent'; event: AgentEvent }
   | { kind: 'sessionLoaded'; message: SessionLoadedMessage }
   | { kind: 'taskHistory'; message: TaskHistoryOutboundMessage }
@@ -42,8 +40,6 @@ export function postWebviewEvent(target: WebviewPostTarget, event: WebviewDomain
 
 export function toWebviewMessage(event: WebviewDomainEvent): WebviewOutboundMessage {
   switch (event.kind) {
-    case 'workflow':
-      return { type: 'workflowStatus', ...event.status };
     case 'agent':
       return event.event;
     case 'sessionLoaded':

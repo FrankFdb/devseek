@@ -1,141 +1,96 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
+import test, { after } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const rootDir = path.resolve(__dirname, '../..');
-const bundlePath = path.join(__dirname, 'agent-turn-routing-service.bundle.cjs');
+const testDir = path.dirname(fileURLToPath(import.meta.url));
+const extensionRoot = path.resolve(testDir, '../..');
+const bundleDir = mkdtempSync(path.join(tmpdir(), 'devseek-turn-routing-'));
 
 execFileSync('npx', [
   'esbuild',
   'src/app/agent-turn-routing-service.ts',
+  'src/app/chat-controller.ts',
   '--bundle',
-  `--outfile=${bundlePath}`,
+  `--outdir=${bundleDir}`,
+  '--outbase=src',
   '--format=cjs',
   '--platform=node',
   '--external:vscode',
-], { cwd: rootDir, stdio: 'pipe' });
+], { cwd: extensionRoot, stdio: 'pipe' });
 
 const require = createRequire(import.meta.url);
-const { decideAgentTurnRoute } = require(bundlePath);
+const { decideAgentTurnRoute } = require(path.join(bundleDir, 'app/agent-turn-routing-service.js'));
+const { ChatRouteController } = require(path.join(bundleDir, 'app/chat-controller.js'));
+const controller = new ChatRouteController();
+after(() => rmSync(bundleDir, { recursive: true, force: true }));
 
-function createController() {
-  const calls = [];
-  return {
-    calls,
-    controller: {
-      decide(input) {
-        calls.push(input);
-        return { marker: 'decision' };
-      },
+test('turn routing uses only the complete current raw turn', () => {
+  const userDisplay = '  更正：只说明 GPU 和 CPU，不要继续旧任务。  ';
+  const resolution = decideAgentTurnRoute(controller, {
+    userDisplay,
+    prompt: userDisplay,
+    files: ['/workspace/src/old-task.ts'],
+    agentEnabled: true,
+    newSession: false,
+    priorSemanticContract: {
+      intent: { mode: 'destructive' },
+      mutation: { requested: true, targets: ['/workspace/src/old-task.ts'] },
     },
+  });
+
+  assert.equal(resolution.decision.intentRoutingText, userDisplay);
+  assert.equal(resolution.decision.intent.semanticContract.prompt, userDisplay);
+  assert.equal(resolution.decision.intent.mode, 'model-led');
+  assert.equal(resolution.decision.intent.semanticContract.mutation.requested, false);
+  assert.equal(resolution.decision.workflow.kind, 'model-agent');
+});
+
+test('new-session state is projected elsewhere and cannot alter turn semantics', () => {
+  const input = {
+    userDisplay: '继续详细说明',
+    prompt: '继续详细说明',
+    files: [],
+    agentEnabled: true,
   };
-}
+  const sameSession = decideAgentTurnRoute(controller, { ...input, newSession: false });
+  const newSession = decideAgentTurnRoute(controller, { ...input, newSession: true });
 
-test('AgentTurnRoutingService: continuation restores the durable semantic contract once', () => {
-  const { calls, controller } = createController();
-  const previous = { version: 'devseek.task-semantic-contract/v3' };
-  let loadCount = 0;
+  assert.deepEqual(newSession, sameSession);
+});
+
+test('explicit no-agent controls survive the routing boundary', () => {
+  for (const input of [
+    { agentEnabled: false, forceNoAgent: false, reason: 'agent-disabled' },
+    { agentEnabled: true, forceNoAgent: true, reason: 'force-no-agent' },
+  ]) {
+    const resolution = decideAgentTurnRoute(controller, {
+      userDisplay: '创建 src/new.ts',
+      prompt: '创建 src/new.ts',
+      files: [],
+      newSession: false,
+      ...input,
+    });
+
+    assert.equal(resolution.decision.intent.mode, 'model-led');
+    assert.equal(resolution.decision.workflow.kind, 'plain-chat');
+    assert.equal(resolution.decision.workflow.reason, input.reason);
+  }
+});
+
+test('empty current turn remains blocked even when old files exist', () => {
   const resolution = decideAgentTurnRoute(controller, {
+    userDisplay: '',
+    prompt: '',
+    files: ['/workspace/src/old.ts'],
+    agentEnabled: true,
     newSession: false,
-    userDisplay: '继续优化，但不要运行测试。',
-    prompt: '继续优化，但不要运行测试。',
-    files: [],
-    agentEnabled: true,
-    loadPreviousSemanticContract: () => {
-      loadCount += 1;
-      return previous;
-    },
   });
 
-  assert.equal(loadCount, 1);
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].semanticContext.previous, previous);
-  assert.deepEqual(calls[0].semanticContext.revision, { strategy: 'merge' });
-  assert.equal(resolution.semanticContext, calls[0].semanticContext);
-  assert.deepEqual(resolution.decision, { marker: 'decision' });
-});
-
-test('AgentTurnRoutingService: approval shorthand restores the durable semantic contract', () => {
-  const { calls, controller } = createController();
-  const previous = { version: 'devseek.task-semantic-contract/v3' };
-  let loadCount = 0;
-  const resolution = decideAgentTurnRoute(controller, {
-    newSession: false,
-    userDisplay: 'go ahead',
-    prompt: 'go ahead',
-    files: [],
-    agentEnabled: true,
-    loadPreviousSemanticContract: () => {
-      loadCount += 1;
-      return previous;
-    },
-  });
-
-  assert.equal(loadCount, 1);
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].semanticContext.previous, previous);
-  assert.deepEqual(calls[0].semanticContext.revision, { strategy: 'merge' });
-  assert.equal(resolution.semanticContext, calls[0].semanticContext);
-});
-
-test('AgentTurnRoutingService: a new session cannot inherit an earlier contract', () => {
-  const { calls, controller } = createController();
-  let loadCount = 0;
-  const resolution = decideAgentTurnRoute(controller, {
-    newSession: true,
-    userDisplay: '继续优化。',
-    prompt: '继续优化。',
-    files: [],
-    agentEnabled: true,
-    loadPreviousSemanticContract: () => {
-      loadCount += 1;
-      return { version: 'devseek.task-semantic-contract/v3' };
-    },
-  });
-
-  assert.equal(loadCount, 0);
-  assert.equal(calls[0].semanticContext, undefined);
-  assert.equal(resolution.semanticContext, undefined);
-});
-
-test('AgentTurnRoutingService: unrelated smalltalk does not inherit task semantics', () => {
-  const { calls, controller } = createController();
-  let loadCount = 0;
-  decideAgentTurnRoute(controller, {
-    newSession: false,
-    userDisplay: '你好，今天怎么样？',
-    prompt: '你好，今天怎么样？',
-    files: [],
-    agentEnabled: true,
-    loadPreviousSemanticContract: () => {
-      loadCount += 1;
-      return { version: 'devseek.task-semantic-contract/v3' };
-    },
-  });
-
-  assert.equal(loadCount, 0);
-  assert.equal(calls[0].semanticContext, undefined);
-});
-
-test('AgentTurnRoutingService: targeted code task does not inherit a prior deliverable contract', () => {
-  const { calls, controller } = createController();
-  let loadCount = 0;
-  decideAgentTurnRoute(controller, {
-    newSession: false,
-    userDisplay: '请修复 src/math.js 中 add(a, b) 的明显错误。要求 add(2, 3) 返回 5。',
-    prompt: '请修复 src/math.js 中 add(a, b) 的明显错误。要求 add(2, 3) 返回 5。',
-    files: [],
-    agentEnabled: true,
-    loadPreviousSemanticContract: () => {
-      loadCount += 1;
-      return { version: 'devseek.task-semantic-contract/v3' };
-    },
-  });
-
-  assert.equal(loadCount, 0);
-  assert.equal(calls[0].semanticContext, undefined);
+  assert.deepEqual(resolution.decision.intent.blockers, ['empty-prompt']);
+  assert.equal(resolution.decision.workflow.useAgent, false);
 });

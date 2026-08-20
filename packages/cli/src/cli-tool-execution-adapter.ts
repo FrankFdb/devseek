@@ -91,6 +91,7 @@ export class CliToolExecutionAdapter {
           return {
             status: 'failed' as const,
             errorCode,
+            effectStarted: false,
             evidenceRefs: [`cli-mutation-plan:${settledAction.actionId}:rejected`],
           };
         }
@@ -104,6 +105,11 @@ export class CliToolExecutionAdapter {
               : 'failed',
           result: receipt,
           ...(receipt.errorCode ? { errorCode: receipt.errorCode } : {}),
+          ...(receipt.status === 'failed'
+            ? { effectStarted: false }
+            : receipt.status === 'rolled-back'
+              ? { effectStarted: true }
+              : {}),
           evidenceRefs: receipt.evidenceRefs,
         };
       },

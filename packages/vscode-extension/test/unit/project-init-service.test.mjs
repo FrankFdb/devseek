@@ -1,13 +1,11 @@
 /**
- * Unit tests for app/project-init-service.ts.
+ * Unit tests for the explicit /init protocol boundary.
  */
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -22,61 +20,43 @@ execSync(
 );
 
 const req = createRequire(import.meta.url);
-const { ProjectInitService, isProjectInitRequest, renderProjectInitDraftMarkdown } = req(bundlePath);
+const {
+  PROJECT_INIT_AGENT_PROMPT,
+  isProjectInitCommand,
+  resolveProjectInitPrompt,
+} = req(bundlePath);
 
-function withTempWorkspace(fn) {
-  const dir = mkdtempSync(path.join(tmpdir(), 'devseek-init-'));
-  try {
-    return fn(dir);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
+test('exact /init is translated into a model-led repository task', () => {
+  assert.equal(isProjectInitCommand('/init'), true);
+  assert.equal(isProjectInitCommand('  /init\n'), true);
+  assert.equal(resolveProjectInitPrompt('/init', '/init'), PROJECT_INIT_AGENT_PROMPT);
+  assert.match(PROJECT_INIT_AGENT_PROMPT, /\.devseek\/rules\.md/);
+  assert.match(PROJECT_INIT_AGENT_PROMPT, /inspect the repository/i);
+  assert.match(PROJECT_INIT_AGENT_PROMPT, /Do not overwrite/i);
+  assert.match(PROJECT_INIT_AGENT_PROMPT, /read the final file back/i);
+});
+
+test('ordinary language and slash-like text remain raw model input', () => {
+  const ordinaryInputs = [
+    '/init 请生成项目规则',
+    '/initialize',
+    '请初始化这个项目',
+    '帮我生成 DevSeek 规则',
+    '初始化可能会破坏现有配置吗？',
+    'init project',
+  ];
+
+  for (const input of ordinaryInputs) {
+    assert.equal(isProjectInitCommand(input), false, input);
+    assert.equal(resolveProjectInitPrompt(input, input), undefined, input);
   }
-}
-
-test('ProjectInitService: generates a rules draft without writing it', () => {
-  withTempWorkspace((workspace) => {
-    writeFileSync(path.join(workspace, 'package.json'), '{"scripts":{"test":"node --test"}}', 'utf8');
-    writeFileSync(path.join(workspace, 'tsconfig.json'), '{}', 'utf8');
-
-    const draft = new ProjectInitService().generateDraft({
-      workspaceRoot: workspace,
-      projectName: 'demo',
-    });
-
-    assert.equal(draft.targetRelPath, '.devseek/rules.md');
-    assert.equal(existsSync(draft.targetAbsPath), false, 'generateDraft should not write files');
-    assert.deepEqual(draft.detectedFiles.sort(), ['package.json', 'tsconfig.json']);
-    assert.ok(draft.detectedStacks.includes('Node.js / TypeScript or JavaScript'));
-    assert.ok(draft.detectedStacks.includes('TypeScript'));
-    assert.ok(draft.buildCommands.includes('npm run compile'));
-    assert.ok(draft.testCommands.includes('npm test'));
-    assert.match(draft.content, /Project: demo/);
-    assert.match(draft.content, /Definition of Done/);
-    assert.match(renderProjectInitDraftMarkdown(draft), /```md/);
-  });
 });
 
-test('ProjectInitService: detects native and systems project commands', () => {
-  withTempWorkspace((workspace) => {
-    writeFileSync(path.join(workspace, 'CMakeLists.txt'), 'cmake_minimum_required(VERSION 3.20)', 'utf8');
-    writeFileSync(path.join(workspace, 'Cargo.toml'), '[package]\nname = "demo"', 'utf8');
-    writeFileSync(path.join(workspace, 'go.mod'), 'module demo', 'utf8');
-
-    const draft = new ProjectInitService().generateDraft({ workspaceRoot: workspace });
-
-    assert.ok(draft.detectedStacks.includes('C/C++ with CMake'));
-    assert.ok(draft.detectedStacks.includes('Rust'));
-    assert.ok(draft.detectedStacks.includes('Go'));
-    assert.ok(draft.buildCommands.includes('cmake -S . -B build'));
-    assert.ok(draft.testCommands.includes('cargo test'));
-    assert.ok(draft.testCommands.includes('go test ./...'));
-  });
-});
-
-test('ProjectInitService: detects slash init requests', () => {
-  assert.equal(isProjectInitRequest('/init'), true);
-  assert.equal(isProjectInitRequest('/init 请生成项目规则'), true);
-  assert.equal(isProjectInitRequest('hello'), false);
+test('display command may translate a transport-decorated prompt without changing display text', () => {
+  assert.equal(
+    resolveProjectInitPrompt('/init', '[workspace context]\n/init'),
+    PROJECT_INIT_AGENT_PROMPT,
+  );
 });
 
 console.log('\nProject init service tests passed.\n');

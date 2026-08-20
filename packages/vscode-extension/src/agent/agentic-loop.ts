@@ -14,7 +14,6 @@ import type {
 } from '@devseek-netai/shared';
 import { type ChatMessage } from '../llm/types';
 import { bindProviderNormalizationBoundary } from '../llm/provider-events';
-import type { ExecutionMode } from '../intent/intent-types';
 import { routeTaskSemanticContract } from '../task-intent-router';
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import {
@@ -23,10 +22,6 @@ import {
 import {
   buildTerminalFailureRepairFeedback,
   describeBlockingTerminalFailure,
-  getUnsupportedSummaryFileClaims,
-  requiresCommandEvidence,
-  requiresFileChangeEvidence,
-  requiresReadEvidence,
   type TerminalEvidence,
   type WrittenFileEvidence,
 } from './completion-evidence';
@@ -35,18 +30,13 @@ import { runAgentAutoValidationForWrites } from './auto-validation';
 import { normalizeAgenticAutoValidation } from './agentic-auto-validation-settlement';
 import { buildMissingEvidenceRecoveryInstruction, type TodoItem } from './evidence-recovery';
 import {
-  buildDanglingAgentActionFeedback,
-  hasDanglingAgentActionIntent,
-} from './no-tool-intent';
-import {
-  containsFakeToolCallProtocol,
-  findFirstToolCallStart,
-  hasIncompleteFakeToolCallProtocol,
-  parseFakeToolCalls,
-  stripToolCallBlocks,
-} from './fake-tool-parser';
+  createTextToolProtocolSession,
+  findFirstAuthorizedTextToolEnvelopeStart,
+  hasIncompleteAuthorizedTextToolEnvelope,
+  parseAuthorizedTextToolCalls,
+  stripAuthorizedTextToolEnvelopes,
+} from './text-tool-protocol';
 import { recoverRequirementReviewNoToolCompletion } from './provider-authored-transcript-recovery';
-import { isLiteralToolProtocolPrompt } from './agent-run-display';
 import {
   agentAnnouncementKey,
   cleanAgentFinalSummaryForUser,
@@ -65,11 +55,6 @@ import { copyAgentLoopCallbacks } from './loop-callbacks';
 import type { AgentRecoveryReason } from './events';
 import type { EvidenceRef } from './tool-executor';
 import { chatWithMessages } from './loop-chat';
-import { hasWriteRevokedToolAttempt } from './write-authority';
-import {
-  extractPlanningTodoItems,
-  shouldAdoptPlanningTodoItems,
-} from './agentic-planning';
 import { projectTaskContractAcceptance } from './task-contract-acceptance';
 import {
   assessAgenticEvidenceClosure,
@@ -86,19 +71,10 @@ import {
   type ToolSuppressionEvidence,
 } from './tool-loop';
 import {
-  isFileMutationToolName,
-  projectMarkdownFileArtifactToolsForLoop,
-  shouldProjectMarkdownFileArtifacts,
-} from './markdown-artifact-tool-projector';
-import {
-  buildTaskSettlementFailureStatus,
   completeAgentTodos,
-  createAgentTaskTodoLedger,
-  inferInitialAgenticTodos,
   settleMissingEvidenceTodos,
   settleValidationFailureTodos,
 } from './task-state-machine';
-import { tryRunSimpleFileTask } from './simple-file-task';
 import {
   resolveAgentRuntimeTaskAction,
   runtimeStateCanDeliver,
@@ -111,10 +87,6 @@ import {
 } from './provider-response-recovery';
 import { recoverAgenticProviderFailure } from './agentic-provider-recovery-boundary';
 import {
-  buildTaskOutputScopeRecoveryPrompt,
-  detectTaskOutputScopeDrift,
-} from './task-output-scope';
-import {
   replaceLatestAssistantToolHistory,
 } from './agent-history-compaction';
 import { compactAgenticMessageHistory } from './agentic-context-compaction';
@@ -122,7 +94,6 @@ import { ToolFailureRecoveryLedger } from './tool-failure-recovery';
 import { QualityGateStagnationLedger } from './quality-gate-stagnation';
 import { SourceValidationLedger } from './source-validation-ledger';
 import { createProviderRequirementReviewService } from './provider-requirement-review';
-import { tryRunGroundedMarkdownAgenticTask } from './grounded-markdown-agentic-task';
 import { buildAgenticSystemPrompt } from './agentic-system-prompt';
 import { projectModelToolSemanticProposal } from './model-tool-semantic-proposal';
 import { executeScheduledToolLoop } from './tool-loop-scheduler';
@@ -158,12 +129,11 @@ export async function runAgenticLoop(
   mode: 'fast' | 'r1' | undefined,
   callbacks: AgentLoopCallbacks,
   sessionContextText = '',
-  workflowMode: ExecutionMode = 'edit',
   memoryRelatedPaths: readonly string[] = [],
   semanticContract?: TaskSemanticContract,
   executionContext: AgenticLoopExecutionContext = {},
 ): Promise<AgentLoopResult> {
-  callbacks = copyAgentLoopCallbacks(callbacks, { executionMode: workflowMode });
+  callbacks = copyAgentLoopCallbacks(callbacks, { executionMode: 'model-led' });
   const recoveryContextText = executionContext.recoveryContextText?.trim() ?? '';
   const memoryContextText = executionContext.memoryContextText?.trim() ?? '';
   const writeAuthority = createSemanticExecutionWriteAuthority({
@@ -173,58 +143,26 @@ export async function runAgenticLoop(
     workspaceRoots: [workspaceRoot],
     relatedPaths: [...contextFiles, ...memoryRelatedPaths],
   });
-  if (workflowMode !== 'model-led' && !recoveryContextText) {
-    const groundedMarkdown = await tryRunGroundedMarkdownAgenticTask(
-      userPrompt,
-      workspaceRoot,
-      mode,
-      workflowMode,
-      writeAuthority.callbacks,
-      chatWithMessages,
-      contextFiles,
-      sessionContextText,
-      writeAuthority.semanticContract,
-    );
-    if (groundedMarkdown) return groundedMarkdown;
-  }
-
   const rules = writeAuthority.projectInstructionsText || null;
+  const textToolProtocol = createTextToolProtocolSession();
 
-  const effectiveTaskIntent = routeTaskSemanticContract(
-    writeAuthority.semanticContract,
-  );
   const systemPrompt = buildAgenticSystemPrompt(
-    userPrompt,
     workspaceRoot,
     contextFiles,
     callbacks.mcpToolRefs,
     rules ?? undefined,
     memoryContextText || undefined,
-    workflowMode,
-    effectiveTaskIntent,
+    textToolProtocol,
   );
 
-  const literalToolProtocolPrompt = isLiteralToolProtocolPrompt(userPrompt);
   const resolvePromptRequirements = () => {
     const currentContract = writeAuthority.semanticContract;
     const currentTaskIntent = routeTaskSemanticContract(currentContract);
-    if (workflowMode === 'model-led') {
-      return { currentTaskIntent, promptRequiresFileChange: false, promptRequiresTools: false };
-    }
-    const promptIsReadOnly = (
-      currentTaskIntent.family === 'read-only-advisory'
-      || currentTaskIntent.family === 'review'
-      || currentTaskIntent.family === 'safety-refusal'
-    );
-    const promptRequiresFileChange = !literalToolProtocolPrompt
-      && !promptIsReadOnly
-      && requiresFileChangeEvidence(writeAuthority.currentPrompt, currentContract);
-    const promptRequiresTools = !literalToolProtocolPrompt && (
-      requiresReadEvidence(writeAuthority.currentPrompt, currentContract)
-      || promptRequiresFileChange
-      || requiresCommandEvidence(writeAuthority.currentPrompt, currentContract)
-      || currentContract.obligations.sideEffects.length > 0
-    );
+    const promptRequiresFileChange = currentContract.mutation.requested;
+    const promptRequiresTools = promptRequiresFileChange
+      || currentContract.read.requested
+      || currentContract.validation.requested
+      || currentContract.obligations.sideEffects.length > 0;
     return { currentTaskIntent, promptRequiresFileChange, promptRequiresTools };
   };
   let { currentTaskIntent, promptRequiresFileChange, promptRequiresTools } = resolvePromptRequirements();
@@ -251,14 +189,11 @@ export async function runAgenticLoop(
   const allEvidenceRefs: EvidenceRef[] = [];
   const sourceValidation = new SourceValidationLedger();
   let currentTodos: TodoItem[] = [];
-  let initialAgenticTodos: TodoItem[] = [];
   let lastMissingEvidence: string[] = [];
-  let lastSummaryFactFailures: string[] = [];
   let lastProviderText = '';
   let lastRoundToolRequestCount = 0;
   let executedToolRoundCount = 0;
   let providerRecoveryAttempts = 0;
-  let taskOutputScopeRecoveryAttempts = 0;
   let forceProviderNewSessionNextTurn = false;
   const resetProviderRecoveryAttemptsAfterProgress = () => {
     providerRecoveryAttempts = 0;
@@ -286,11 +221,6 @@ export async function runAgenticLoop(
   // Whether the AI has called manage_todo_list yet.
   let todoEverSet = false;
   let fallbackTodosVisible = false;
-  const preserveInitialTodosWhenModelPlanIsTooCoarse = (items: TodoItem[]): TodoItem[] => {
-    if (initialAgenticTodos.length < 3) return items;
-    if (items.length >= 3) return items;
-    return initialAgenticTodos;
-  };
   // Accumulate files written across all rounds for the phase:done editedFiles payload.
   const allWrittenFiles: Array<{path: string; basename: string; linesAdded: number; linesRemoved: number; action: string}> = [];
   const allVerificationReceipts: CodingVerificationReceipt[] = [];
@@ -304,7 +234,6 @@ export async function runAgenticLoop(
     requiredBeforeExecution: promptRequiresTools,
     workToolObserved: sawWorkTool,
     completion: {
-      userPrompt: writeAuthority.currentPrompt,
       todos: currentTodos,
       writtenFiles: allWrittenFiles,
       terminalEvidence: allTerminalEvidence,
@@ -329,7 +258,7 @@ export async function runAgenticLoop(
   const _shortPrompt = userPrompt.trim().replace(/\n+/g, ' ');
   const _agentLabel = _shortPrompt.length > 38 ? _shortPrompt.slice(0, 36) + '…' : _shortPrompt;
   const requestedDisplayAction = callbacks.runDisplayAction || 'explore';
-  const initialDisplayAction = workflowMode === 'model-led' && requestedDisplayAction !== 'respond'
+  const initialDisplayAction = requestedDisplayAction !== 'respond'
     ? 'explore'
     : requestedDisplayAction;
   const initialDisplayTarget = callbacks.runDisplayTarget || '';
@@ -370,6 +299,7 @@ export async function runAgenticLoop(
       readEvidencePaths: [...allReadEvidencePaths],
       writtenFiles: allWrittenFiles,
       terminalEvidence: allTerminalEvidence,
+      textToolProtocol,
       messages,
       totalChars,
       contextCompaction: executionContext.contextCompaction,
@@ -398,40 +328,14 @@ export async function runAgenticLoop(
     detail: '',
   });
 
-  // Infer fallback todos for internal evidence tracking. Do not show them before
-  // work begins; if DeepSeek starts real tools without calling manage_todo_list,
-  // the first work-tool round below reveals these fallback todos at the point
-  // where a task list is actually needed.
-  if (promptRequiresTools) {
-    const initialTodos = inferInitialAgenticTodos(
-      userPrompt,
-      writeAuthority.semanticContract,
-    );
-    if (initialTodos.length > 0) {
-      initialAgenticTodos = initialTodos;
-      currentTodos = initialTodos;
-    }
-  }
-
-  if (workflowMode !== 'model-led' && !recoveryContextText) {
-    const simpleFileResult = await tryRunSimpleFileTask({
-      userPrompt,
-      workspaceRoot,
-      callbacks: writeAuthority.callbacks,
-      options: {
-        verificationAcceptance: callbacks.canonicalVerificationAcceptance
-          ?? projectAgenticVerificationAcceptance(writeAuthority.canonicalSemanticContract.taskContract),
-      },
-    });
-    if (simpleFileResult) return simpleFileResult;
-  }
-
   const maxAgenticRounds = callbacks.autopilot ? AGENTIC_ROUNDS_AUTOPILOT : AGENTIC_ROUNDS_NORMAL;
   let requirementReviewRepairGraceRounds = 0;
+  let steeringRevisionGraceRounds = 0;
   // Track terminal command signatures across rounds to detect and break stuck loops
   const seenTerminalCmdSignatures = new Map<string, { count: number; lastProgressEpoch: number }>();
   const seenContextToolSignatures = new Map<string, { count: number; lastProgressEpoch: number }>();
-  while (roundCount < maxAgenticRounds + requirementReviewRepairGraceRounds) {
+  for (;;) {
+  while (roundCount < maxAgenticRounds + requirementReviewRepairGraceRounds + steeringRevisionGraceRounds) {
     if (callbacks.signal?.aborted) break;
     roundCount++;
 
@@ -439,7 +343,7 @@ export async function runAgenticLoop(
     // As DeepSeek streams its response, detect the first completed manage_todo_list
     // block and fire onTodoUpdate immediately so todos appear in real-time rather
     // than waiting for the full response. Threshold-based to avoid calling
-    // parseFakeToolCalls on every single character delta.
+    // Parse only this run's authenticated text-tool envelope, at bounded intervals.
     let sAccum = '';
     let sNextCheck = 80;
     let sEarlyFired = false;
@@ -463,12 +367,10 @@ export async function runAgenticLoop(
       }
       if (!sEarlyFired && callbacks.onTodoUpdate && sAccum.length >= sNextCheck) {
         sNextCheck = sAccum.length + 150; // check again in 150 chars
-        const earlyTools = parseFakeToolCalls(sAccum);
+        const earlyTools = parseAuthorizedTextToolCalls(sAccum, textToolProtocol);
         const firstTodo = earlyTools.find(t => t.name === 'manage_todo_list');
         if (firstTodo) {
-          const earlyItems = preserveInitialTodosWhenModelPlanIsTooCoarse(
-            normalizeVisibleTodos((firstTodo.input.todoList ?? []) as TodoItem[]),
-          );
+          const earlyItems = normalizeVisibleTodos((firstTodo.input.todoList ?? []) as TodoItem[]);
           if (Array.isArray(earlyItems) && earlyItems.length > 0) {
             if (earlyItems.every(item => item.status === 'completed')) return;
             sEarlyFired = true; // stop checking — already fired
@@ -481,9 +383,9 @@ export async function runAgenticLoop(
       // Early tool activity: emit activity rows as soon as complete tool blocks are detected
       // in the streaming accumulation — before tools are actually executed.
       // The webview deduplicates by actKind:label, so re-emitting at execution time is safe.
-      if (callbacks.onToolActivity && sAccum.length > sLastEarlyToolCheck + 100 && containsFakeToolCallProtocol(sAccum)) {
+      if (callbacks.onToolActivity && sAccum.length > sLastEarlyToolCheck + 100) {
         sLastEarlyToolCheck = sAccum.length;
-        const earlyTools = parseFakeToolCalls(sAccum);
+        const earlyTools = parseAuthorizedTextToolCalls(sAccum, textToolProtocol);
         for (const t of earlyTools) {
           if (t.name === 'manage_todo_list') continue; // handled by the todo-detection block above
           const actKey = t.name + ':' + JSON.stringify(t.input ?? {}).slice(0, 50);
@@ -510,6 +412,7 @@ export async function runAgenticLoop(
       workspaceRoot,
       round: roundCount,
       evidenceRefs: allEvidenceRefs,
+      textToolProtocol,
     });
     let text = '';
     let tools: CodingToolCall[] = [];
@@ -534,6 +437,7 @@ export async function runAgenticLoop(
           callbacks.canonicalProviderEvents,
           callbacks.canonicalToolDispatch,
           { workspaceRoot },
+          textToolProtocol,
         ),
       );
       providerWaitFeedback.complete();
@@ -542,9 +446,9 @@ export async function runAgenticLoop(
     } catch (error) {
       const providerSettlement = settleProviderFailureFromCompletedEvidence({
         promptRequiresTools, sawWorkTool, aborted: callbacks.signal?.aborted,
-        userPrompt: writeAuthority.currentPrompt, todos: currentTodos, writtenFiles: allWrittenFiles,
+        writtenFiles: allWrittenFiles,
         terminalEvidence: allTerminalEvidence, readEvidencePaths: [...allReadEvidencePaths],
-        workspaceRoot, completeSummary,
+        workspaceRoot,
         semanticContract: writeAuthority.completionSemanticContract,
         canonicalTaskContract: callbacks.canonicalTaskContract,
       });
@@ -570,7 +474,7 @@ export async function runAgenticLoop(
       callbacks.onToolActivity?.('label', '已接收最新要求，正在重新规划未执行动作');
       continue;
     }
-    if (workflowMode === 'model-led' && tools.some(tool => isAgentWorkToolName(tool.name))) {
+    if (tools.some(tool => isAgentWorkToolName(tool.name))) {
       const modelSemanticProposal = projectModelToolSemanticProposal(
         tools,
         writeAuthority.semanticContract,
@@ -578,62 +482,19 @@ export async function runAgenticLoop(
       if (modelSemanticProposal && writeAuthority.applyModelSemanticProposal(modelSemanticProposal)) {
         refreshPromptRequirements();
       }
+      refreshPromptRequirements();
       promptRequiresTools = true;
-      if (tools.some(tool => isFileMutationToolName(tool.name))) promptRequiresFileChange = true;
-    }
-
-    const outputScopeDrift = detectTaskOutputScopeDrift({
-      requestPrompt: writeAuthority.currentPrompt,
-      text,
-      workspaceRoot,
-    });
-    if (outputScopeDrift.blocked && !callbacks.signal?.aborted) {
-      taskOutputScopeRecoveryAttempts++;
-      callbacks.onToolActivity?.('label', '检测到旧运行目录，正在要求模型切回当前输出目录');
-      await callbacks.onAgentStatus({
-        type: 'agentStatus',
-        phase: 'execute',
-        taskId: 'agentic',
-        taskFile: initialDisplayTarget,
-        taskAction: initialDisplayAction,
-        taskIndex: 1,
-        taskTotal: 1,
-        state: 'started',
-        title: '已拦截旧运行上下文',
-        detail: outputScopeDrift.reason,
-      });
-      if (taskOutputScopeRecoveryAttempts <= 2) {
-        const recoveryMessage = buildTaskOutputScopeRecoveryPrompt(outputScopeDrift);
-        messages.push(...postProviderSteerMessages, { role: 'user', content: recoveryMessage });
-        totalChars += recoveryMessage.length;
-        continue;
-      }
-      failedReason = outputScopeDrift.reason || '模型持续输出旧运行目录，任务上下文已污染。';
-      break;
+      if (tools.some(tool => tool.purpose === 'workspace-mutation')) promptRequiresFileChange = true;
     }
 
     messages.push({ role: 'assistant', content: text }, ...postProviderSteerMessages);
     lastProviderText = text;
     totalChars += text.length;
 
-    if (callbacks.canonicalToolDispatch && shouldProjectMarkdownFileArtifacts({
-      taskRequiresTools: promptRequiresTools,
-      workspaceAccess: callbacks.canonicalToolAuthority?.sandbox.workspaceAccess,
-      tools,
-    })) {
-      tools = [
-        ...tools,
-        ...projectMarkdownFileArtifactToolsForLoop({
-          text,
-          userPrompt: writeAuthority.currentPrompt,
-          workspaceRoot,
-          dispatch: callbacks.canonicalToolDispatch,
-        }),
-      ];
-    }
-
-    const firstToolIndex = findFirstToolCallStart(text);
-    const preToolProse = firstToolIndex >= 0 ? stripToolCallBlocks(text.slice(0, firstToolIndex)).trim() : '';
+    const firstToolIndex = findFirstAuthorizedTextToolEnvelopeStart(text, textToolProtocol);
+    const preToolProse = firstToolIndex >= 0
+      ? stripAuthorizedTextToolEnvelopes(text.slice(0, firstToolIndex), textToolProtocol).trim()
+      : '';
     const userAnnouncement = normalizeAgentUserAnnouncement(preToolProse);
     const userAnnouncementKey = agentAnnouncementKey(userAnnouncement);
     lastRoundToolRequestCount = tools.length;
@@ -650,7 +511,7 @@ export async function runAgenticLoop(
     }
 
     if (!tools.length) {
-      if (!literalToolProtocolPrompt && !callbacks.signal?.aborted && hasIncompleteFakeToolCallProtocol(text)) {
+      if (!callbacks.signal?.aborted && hasIncompleteAuthorizedTextToolEnvelope(text, textToolProtocol)) {
         noToolRounds++;
         const recovered = await recoverProviderFailureInsideCurrentTask({
           status: 'incomplete-tool-block',
@@ -662,23 +523,7 @@ export async function runAgenticLoop(
         failedReason = 'Provider 连续输出损坏工具协议，未形成可执行工具调用。';
         break;
       }
-      const rawFallbackTodos = shouldAdoptPlanningTodoItems({ sawWorkTool })
-        ? normalizeVisibleTodos(extractPlanningTodoItems(text))
-        : [];
-      const fallbackTodos = rawFallbackTodos.length > 0
-        ? preserveInitialTodosWhenModelPlanIsTooCoarse(rawFallbackTodos)
-        : [];
-      if (fallbackTodos.length > 0) {
-        todoEverSet = true;
-        currentTodos = fallbackTodos;
-        if (callbacks.onTodoUpdate) {
-          await callbacks.onTodoUpdate(fallbackTodos);
-        }
-        const continueMessage = '【系统反馈】任务清单已收到，请立即开始执行第一个任务，不要只停留在规划。';
-        appendUserFeedback(continueMessage);
-        continue;
-      }
-      const stripped = stripToolCallBlocks(text).trim();
+      const stripped = stripAuthorizedTextToolEnvelopes(text, textToolProtocol).trim();
       const reviewRecovery = recoverRequirementReviewNoToolCompletion(requirementReview, noToolRounds + 1, text);
       if (!callbacks.signal?.aborted && reviewRecovery) {
         noToolRounds++;
@@ -692,19 +537,6 @@ export async function runAgenticLoop(
           reviewRecovery.statusActivity,
         );
         appendUserFeedback(reviewRecovery.feedback);
-        continue;
-      }
-      const danglingActionWithoutTools = promptRequiresTools && hasDanglingAgentActionIntent(stripped);
-      if (!callbacks.signal?.aborted && danglingActionWithoutTools && noToolRounds < 4) {
-        noToolRounds++;
-        await emitAgenticCorrectionStatus(
-          '已拦接口头承诺，要求真实工具执行',
-          '模型刚才只说明要继续检查、创建、写入或验证，但没有调用任何工具。DevSeek 已保留这个失败事实，并要求下一轮必须使用真实文件、搜索或终端工具推进。',
-          '拦接口头承诺，要求真实工具执行',
-          'provider-short-intent',
-        );
-        const retryMessage = buildDanglingAgentActionFeedback();
-        appendUserFeedback(retryMessage);
         continue;
       }
       if (!callbacks.signal?.aborted && promptRequiresTools && !sawWorkTool && noToolRounds < 2) {
@@ -740,7 +572,7 @@ export async function runAgenticLoop(
         const retryMessage = `【系统反馈】不能停在检查目录或说明阶段。当前缺少${missingWithoutTools.join('、')}。${buildMissingEvidenceRecoveryInstruction(missingWithoutTools, {
           mutationExpected: promptRequiresFileChange || writeAuthority.canonicalSemanticContract.mutation.requested,
           mutationAllowed: !writeAuthority.canonicalSemanticContract.mutation.prohibited
-            && !writeAuthority.writeRevoked,
+            && !writeAuthority.semanticContract.mutation.prohibited,
         })}不要把 memory_write/项目记忆列为用户 todo。`;
         appendUserFeedback(retryMessage);
         continue;
@@ -776,7 +608,7 @@ export async function runAgenticLoop(
     const blockedRepeatedToolIndexes = new Set<number>();
     const suppressedTools: ToolSuppressionEvidence[] = [];
     const loopWarnings: string[] = [];
-    const hasFileWriteIntentThisRound = tools.some(tool => isFileMutationToolName(tool.name));
+    const hasFileWriteIntentThisRound = tools.some(tool => tool.purpose === 'workspace-mutation');
     tools.forEach((tool, toolIndex) => {
       if (tool.name !== 'run_terminal') return;
       const command = typeof tool.input.command === 'string' ? tool.input.command.trim() : '';
@@ -815,11 +647,6 @@ export async function runAgenticLoop(
       ? tools.filter((_, toolIndex) => !blockedRepeatedToolIndexes.has(toolIndex))
       : tools;
 
-    if (writeAuthority.writeRevoked && hasWriteRevokedToolAttempt(toolsToExecute)) {
-      failedReason = '用户已撤销写入授权，任务已在工具执行前停止。';
-      break;
-    }
-
     const loopRes = await executeScheduledToolLoop(
       toolsToExecute,
       batch => executeFakeToolsForLoop(
@@ -840,9 +667,8 @@ export async function runAgenticLoop(
         },
       ),
     );
-    if (writeAuthority.writeRevoked && hasWriteRevokedToolAttempt(toolsToExecute)) { failedReason = '用户实时补充已撤销写入授权，任务已停止。'; break; }
     if (loopRes.toolCallsMade) {
-      replaceLatestAssistantToolHistory(messages);
+      replaceLatestAssistantToolHistory(messages, textToolProtocol);
     }
 
     if (loopRes.workToolCallsMade) {
@@ -896,7 +722,7 @@ export async function runAgenticLoop(
     }
     const roundHasWriteProgress = hasFileWriteIntentThisRound
       || (loopRes.writtenFiles?.length ?? 0) > 0
-      || toolsToExecute.some(tool => isFileMutationToolName(tool.name));
+      || toolsToExecute.some(tool => tool.purpose === 'workspace-mutation');
     const roundHasTerminalProgress = (loopRes.terminalCommands?.length ?? 0) > 0
       || (loopRes.terminalEvidence?.length ?? 0) > 0;
     const roundHasOnlyContextGathering = toolsToExecute.length > 0
@@ -931,7 +757,6 @@ export async function runAgenticLoop(
       writeAuthority.currentPrompt,
       writeAuthority.callbacks,
       {
-        qualityWrittenFiles: allWrittenFiles,
         verificationScopeWrittenFiles: allWrittenFiles,
         verificationAcceptance: callbacks.canonicalVerificationAcceptance
           ?? projectAgenticVerificationAcceptance(writeAuthority.completionSemanticContract.taskContract),
@@ -1001,7 +826,8 @@ export async function runAgenticLoop(
       && (loopRes.taskComplete || loopRes.allTodosCompleted)
       && !callbacks.signal?.aborted) {
       hadTaskComplete = hadTaskComplete || loopRes.taskComplete;
-      completeSummary = loopRes.completeSummary ?? cleanAgentFinalSummaryForUser(stripToolCallBlocks(text));
+      completeSummary = loopRes.completeSummary
+        ?? cleanAgentFinalSummaryForUser(stripAuthorizedTextToolEnvelopes(text, textToolProtocol));
       failedReason = describeAgenticDeniedToolExecution(deniedToolAfterTools);
       break;
     }
@@ -1009,20 +835,7 @@ export async function runAgenticLoop(
     const evidenceAfterTools = assessCurrentEvidenceClosure();
     const missingAfterTools = evidenceAfterTools.missingEvidence;
     const blockingFailureAfterTools = evidenceAfterTools.blockingTerminalFailure;
-    const roundIsCompletionCandidate = loopRes.completeSummary !== undefined
-      || loopRes.taskComplete
-      || loopRes.allTodosCompleted;
-    const roundSummaryForFactCheck = roundIsCompletionCandidate
-      ? loopRes.completeSummary ?? cleanAgentFinalSummaryForUser(stripToolCallBlocks(text))
-      : '';
-    const summaryFactFailuresAfterTools = roundSummaryForFactCheck
-      ? getUnsupportedSummaryFileClaims(roundSummaryForFactCheck, allWrittenFiles, workspaceRoot)
-      : [];
     lastMissingEvidence = missingAfterTools;
-    lastSummaryFactFailures = summaryFactFailuresAfterTools;
-    if (summaryFactFailuresAfterTools.length > 0) {
-      loopWarnings.push(`【系统反馈】完成文字缺少文件事实证据：${summaryFactFailuresAfterTools.join('、')}。请核对磁盘并补齐真实文件，或修正完成摘要。`);
-    }
     const gatheredEvidenceCount = allReadEvidencePaths.size + allEvidenceRefs.length;
     if (!callbacks.signal?.aborted
       && promptRequiresFileChange
@@ -1049,8 +862,7 @@ export async function runAgenticLoop(
     if (!callbacks.signal?.aborted
       && sawWorkTool
       && missingAfterTools.length === 0
-      && !blockingFailureAfterTools
-      && summaryFactFailuresAfterTools.length === 0) {
+      && !blockingFailureAfterTools) {
       const reviewOutcome = await requirementReview.request({
         qualityGate: sourceValidation.qualityGateForCurrentSource(),
         writtenFiles: allWrittenFiles,
@@ -1074,7 +886,7 @@ export async function runAgenticLoop(
     }
 
     if ((loopRes.taskComplete || loopRes.allTodosCompleted)
-      && (missingAfterTools.length > 0 || blockingFailureAfterTools || summaryFactFailuresAfterTools.length > 0)
+      && (missingAfterTools.length > 0 || blockingFailureAfterTools)
       && !callbacks.signal?.aborted) {
       noToolRounds++;
       if (callbacks.onTodoUpdate && currentTodos.length > 0) {
@@ -1085,22 +897,20 @@ export async function runAgenticLoop(
       }
       const retryMessage = blockingFailureAfterTools
         ? `${buildTerminalFailureRepairFeedback(blockingFailureAfterTools, missingAfterTools)}${autoValidationFeedback ? `\n\n${autoValidationFeedback}` : ''}`
-        : summaryFactFailuresAfterTools.length > 0
-          ? `【系统反馈】不能结束任务。完成摘要声称创建或修改了这些文件，但工作区没有对应写入/存在证据：${summaryFactFailuresAfterTools.join('、')}。请先用 list_dir/read_file 核对，再用 create_file/write_file 补齐或修正摘要；summary 必须只基于真实工具结果。${autoValidationFeedback ? `\n\n${autoValidationFeedback}` : ''}`
         : `【系统反馈】不能结束任务。当前仍缺少可验证的${missingAfterTools.join('、')}。请继续调用实际工具完成缺失项：需要读取时用 read_file/list_dir/只读 run_terminal；需要代码时用 create_file/write_file 写入源码；需要验证时用合适的验证命令，文档/配置只需文件存在和内容证据，代码才需要编译/运行/测试。完成后再调用 task_complete，summary 必须只基于真实工具结果。${autoValidationFeedback ? `\n\n${autoValidationFeedback}` : ''}`;
       appendUserFeedback(retryMessage);
       continue;
     }
 
     if (loopRes.taskComplete && !reviewFeedback) {
-      if (promptRequiresTools && !sawWorkTool && noToolRounds < 2 && !callbacks.signal?.aborted) {
+      if (!sawWorkTool && noToolRounds < 2 && !callbacks.signal?.aborted) {
         noToolRounds++;
-        const retryMessage = '【系统反馈】你调用了 task_complete，但还没有执行任何实际工具。请继续完成任务：更新 todo 状态，并调用必要的文件/终端工具后再完成。';
+        const retryMessage = '【系统反馈】task_complete 是工作任务的显式结算信号，但当前没有任何实际读取、写入或命令工具证据。若这是普通问答，请直接返回答案且不要调用 task_complete；若任务需要执行，请先调用必要工具。';
         appendUserFeedback(retryMessage);
         continue;
       }
-      if (promptRequiresTools && !sawWorkTool) {
-        failedReason = cleanAgentFinalSummaryForUser(loopRes.completeSummary || '') || '模型未执行任何实际工具就结束，任务未完成。';
+      if (!sawWorkTool) {
+        failedReason = '模型调用 task_complete 时没有任何实际工具证据，任务未完成。';
       }
       hadTaskComplete = true;
       completeSummary = loopRes.completeSummary ?? '';
@@ -1143,12 +953,29 @@ export async function runAgenticLoop(
     appendUserFeedback(feedback);
   }
 
+  if (callbacks.signal?.aborted) break;
+  const completionFenceMessages = writeAuthority.closeForCompletionAndDrain();
+  if (completionFenceMessages.length === 0) break;
+  if (!writeAuthority.reopenAfterCompletionFence()) {
+    failedReason = failedReason || '收到新的用户要求，但当前 turn 无法重新打开输入窗口。';
+    break;
+  }
+
+  messages.push(...completionFenceMessages);
+  totalChars += completionFenceMessages.reduce((sum, message) => sum + message.content.length, 0);
+  refreshPromptRequirements();
+  steeringRevisionGraceRounds += Math.max(2, Math.min(6, completionFenceMessages.length * 2));
+  hadTaskComplete = false;
+  completeSummary = '';
+  failedReason = '';
+  noToolRounds = 0;
+  lastMissingEvidence = [];
+  callbacks.onToolActivity?.('label', '完成前收到最新要求，正在继续当前任务');
+  }
+
   const finalEvidence = assessCurrentEvidenceClosure();
   const finalMissingEvidence = finalEvidence.missingEvidence;
   const finalBlockingFailure = finalEvidence.blockingTerminalFailure;
-  const finalSummaryFactFailures = completeSummary
-    ? getUnsupportedSummaryFileClaims(completeSummary, allWrittenFiles, workspaceRoot)
-    : lastSummaryFactFailures;
   const runtimeTaskAction = resolveAgentRuntimeTaskAction({
     routeChatKind: currentTaskIntent.chatKind,
     taskComplete: hadTaskComplete,
@@ -1212,8 +1039,6 @@ export async function runAgenticLoop(
     }
   } else if (!failedReason && lastMissingEvidence.length > 0) {
     failedReason = `实际执行证据不足：缺少${lastMissingEvidence.join('、')}。`;
-  } else if (!failedReason && finalSummaryFactFailures.length > 0) {
-    failedReason = `完成摘要缺少文件事实证据：${finalSummaryFactFailures.join('、')}。`;
   }
   if (!failedReason && !callbacks.signal?.aborted && callbacks.onTodoUpdate && currentTodos.length > 0) {
     currentTodos = completeAgentTodos(currentTodos);

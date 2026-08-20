@@ -1,15 +1,4 @@
 import {
-  hasIncompleteFakeToolCallProtocol,
-  hasMixedFakeToolCallProtocol,
-  parseFakeToolCalls,
-} from './fake-tool-parser';
-import { isolateModelToolRequestText } from './model-tool-protocol-adapter';
-import {
-  containsDevSeekInternalToolTranscript,
-  containsProviderAuthoredToolTranscript,
-} from './provider-authored-transcript-recovery';
-import { normalizeStructuredToolEnvelope } from './structured-tool-envelope-normalizer';
-import {
   looksLikeProviderErrorSurface,
   looksLikeProviderLoginGate,
   looksLikeProviderVerificationGate,
@@ -35,15 +24,23 @@ export interface ProviderOutputIntegrity {
   reason: string;
 }
 
-const TRUNCATED_RE = /(?:RESPONSE_CORRUPTED|TRUNCATED|stream.*(?:closed|ended)|ERR_STREAM_PREMATURE_CLOSE|finish_reason["']?\s*:\s*["']?length)/i;
-export function classifyProviderOutputIntegrity(text: string | undefined): ProviderOutputIntegrity {
-  const raw = normalizeStructuredToolEnvelope(String(text ?? ''));
+export interface ProviderOutputObservation {
+  readonly toolCallCount?: number;
+  readonly incompleteToolProtocol?: boolean;
+  readonly mixedToolProtocol?: boolean;
+}
+
+export function classifyProviderOutputIntegrity(
+  text: string | undefined,
+  observation: ProviderOutputObservation = {},
+): ProviderOutputIntegrity {
+  const raw = String(text ?? '');
   const trimmed = raw.trim();
   if (!trimmed) {
     return buildProviderIntegrity('empty', 0, false, 'provider returned an empty response');
   }
 
-  if (hasMixedFakeToolCallProtocol(trimmed)) {
+  if (observation.mixedToolProtocol) {
     return buildProviderIntegrity(
       'mixed-tool-protocol',
       0,
@@ -52,31 +49,14 @@ export function classifyProviderOutputIntegrity(text: string | undefined): Provi
     );
   }
 
-  const toolCallCount = countProviderToolCalls(trimmed);
-  if (toolCallCount === 0 && containsDevSeekInternalToolTranscript(trimmed)) {
-    return buildProviderIntegrity(
-      'incomplete_answer',
-      0,
-      false,
-      'provider response contains DevSeek internal tool transcript instead of executable evidence',
-    );
-  }
+  const toolCallCount = Math.max(0, Math.trunc(observation.toolCallCount ?? 0));
 
-  if (TRUNCATED_RE.test(trimmed) || looksLikeTruncatedToolProtocol(trimmed, toolCallCount)) {
+  if (isStructuralCorruptionSentinel(trimmed) || observation.incompleteToolProtocol) {
     return buildProviderIntegrity('truncated', toolCallCount, false, 'provider response appears truncated');
   }
 
   if (toolCallCount > 0) {
     return buildProviderIntegrity('tool_call', toolCallCount, false, 'provider requested tool execution');
-  }
-
-  if (containsProviderAuthoredToolTranscript(trimmed)) {
-    return buildProviderIntegrity(
-      'incomplete_answer',
-      0,
-      false,
-      'provider response contains provider-authored tool-result transcript instead of executable evidence',
-    );
   }
 
   if (looksLikeProviderLoginGate(trimmed) || looksLikeProviderVerificationGate(trimmed)) {
@@ -91,6 +71,11 @@ export function classifyProviderOutputIntegrity(text: string | undefined): Provi
   // terminal delivery. Semantic adequacy belongs to the model prompt/evals;
   // local settlement must not depend on language, answer length, or keywords.
   return buildProviderIntegrity('complete_answer', 0, true, 'provider returned a complete assistant message');
+}
+
+function isStructuralCorruptionSentinel(text: string): boolean {
+  return /^RESPONSE_CORRUPTED:[^:\n]+(?::[\s\S]*)?$/i.test(text)
+    || /^(?:ERR_STREAM_PREMATURE_CLOSE|STREAM_TRUNCATED)$/i.test(text);
 }
 
 export function isProviderOutputFatal(kind: ProviderOutputIntegrityKind): boolean {
@@ -138,25 +123,4 @@ function buildProviderIntegrity(
     hasAnswerEvidence,
     reason,
   };
-}
-
-function countProviderToolCalls(text: string): number {
-  const isolated = isolateModelToolRequestText(text).text;
-  return parseFakeToolCalls(isolated).length;
-}
-
-function looksLikeTruncatedToolProtocol(text: string, toolCallCount = countProviderToolCalls(text)): boolean {
-  const isolated = isolateModelToolRequestText(text).text;
-  if (hasIncompleteFakeToolCallProtocol(isolated)) return true;
-  const bracketStart = text.lastIndexOf('[TOOL:');
-  if (bracketStart >= 0 && bracketStart > text.length - 240) {
-    const tail = text.slice(bracketStart);
-    if (parseFakeToolCalls(tail).length > 0) return false;
-    if (!/\}\s*\]?\s*$/.test(tail)) return true;
-  }
-  const fencedStart = text.lastIndexOf('```');
-  return toolCallCount === 0
-    && fencedStart >= 0
-    && (text.match(/```/g)?.length ?? 0) % 2 === 1
-    && fencedStart > text.length - 400;
 }

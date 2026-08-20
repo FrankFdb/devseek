@@ -31,11 +31,12 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
     status: 'owner-established',
     canonicalSymbols: [
       'TaskSemanticContract',
-      'buildTaskSemanticContract',
+      'createModelLedTurnSemanticContract',
+      'projectModelActionSemanticContract',
     ],
     supportingModules: [
-      'src/intent/local-intent-contract.ts',
-      'src/intent/semantic-intent-governor.ts',
+      'src/intent/model-led-semantic-contract.ts',
+      'src/intent/model-action-semantic-contract.ts',
       'src/intent/semantic-intent.ts',
       'src/intent/intent-classifier.ts',
       'src/task-intent-router.ts',
@@ -45,7 +46,7 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
       'test/unit/semantic-intent-routing-matrix.test.mjs',
       'test/unit/workflow-compliance.test.mjs',
     ],
-    guardedTerms: ['semantic-intent-owner', 'local-keyword-owner', 'provider-semantic-governor'],
+    guardedTerms: ['semantic-intent-owner', 'model-action-proposal', 'local-action-arbiter'],
   },
   {
     id: 'architecture-decision',
@@ -157,8 +158,6 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
     supportingModules: [
       'src/agent/manual-review-validation.ts',
       'src/agent/tool-loop.ts',
-      'src/execution-planner.ts',
-      'src/local-execution.ts',
       'src/app/terminal-launch-classifier.ts',
       'src/tools/terminal.ts',
       'src/workspace/validation-service.ts',
@@ -166,7 +165,6 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
     contractTests: [
       'test/unit/execution-outcome-classifier.test.mjs',
       'test/unit/manual-review-validation.test.mjs',
-      'test/unit/execution-planner.test.mjs',
       'test/unit/terminal-launch-classifier.test.mjs',
       'test/unit/duplicate-judgment-governance.test.mjs',
     ],
@@ -212,7 +210,6 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
     status: 'guarded',
     canonicalSymbols: [
       'createAgentTaskTodoLedger',
-      'inferInitialAgenticTodos',
       'settleMissingEvidenceTodos',
       'settleValidationFailureTodos',
       'completeAgentTodos',
@@ -224,7 +221,6 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
       'src/app/task-history-store.ts',
       'src/app/task-checkpoint-store.ts',
       'src/agent/agentic-loop.ts',
-      'src/agent/simple-file-task.ts',
       'src/agent/evidence-recovery.ts',
       'src/agent/completion-evidence.ts',
     ],
@@ -325,7 +321,7 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
     ],
     supportingModules: [
       'src/workspace/workspace-edit-service.ts',
-      'src/workspace-applier.ts',
+      'src/agent/tool-loop-file-writer.ts',
     ],
     contractTests: [
       'test/unit/workflow-compliance.test.mjs',
@@ -346,15 +342,12 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
       'isCppBuildArtifactDirName',
     ],
     supportingModules: [
-      'src/execution-planner.ts',
       'src/app/terminal-launch-classifier.ts',
       'src/tools/terminal.ts',
       'src/file-discovery.ts',
       'src/workspace/list-dir-service.ts',
-      'src/local-execution-repair.ts',
     ],
     contractTests: [
-      'test/unit/execution-planner.test.mjs',
       'test/unit/terminal-launch-classifier.test.mjs',
       'test/unit/duplicate-judgment-governance.test.mjs',
     ],

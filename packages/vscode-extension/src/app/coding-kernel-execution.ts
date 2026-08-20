@@ -10,7 +10,6 @@ import {
   type CodingVerificationReceipt,
   type LLMProviderType,
 } from '@devseek-netai/shared';
-import type { ExecutionMode } from '../intent/intent-types';
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import type {
   AgentLoopCallbacks,
@@ -41,7 +40,6 @@ export interface VsCodeCodingKernelRuntimeContext {
   readonly mode: AgentRunMode;
   readonly callbacks: AgentLoopCallbacks;
   readonly sessionContextText?: string;
-  readonly workflowMode: ExecutionMode;
   readonly memoryRelatedPaths?: readonly string[];
   readonly semanticContract?: TaskSemanticContract;
   readonly recovery?: CodingKernelRecovery;
@@ -67,7 +65,6 @@ export interface CanonicalKernelLoopRequest {
   readonly mode: AgentRunMode;
   readonly callbacks: AgentLoopCallbacks;
   readonly sessionContextText: string;
-  readonly workflowMode: ExecutionMode;
   readonly memoryRelatedPaths: readonly string[];
   readonly semanticContract?: TaskSemanticContract;
   readonly recoveryContextText: string;
@@ -113,7 +110,6 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
       : 0;
     const terminalPresentation = new AgentTerminalPresentationBuffer(request.callbacks);
     const originalCheckpoint = request.callbacks.onTaskCheckpoint;
-    const originalTaskSemanticContractRevision = request.callbacks.onTaskSemanticContractRevision;
     const originalSettledModelSemanticContract = request.callbacks.onSettledModelSemanticContract;
     const callbacks: AgentLoopCallbacks = {
       ...request.callbacks,
@@ -143,38 +139,9 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
       canonicalVerification: kernelRequest.verification,
       onUserSteer: () => kernelRequest.runControl.consumeSteering()
         .map(decision => decision.instruction),
-      onTaskSemanticContractRevision: revision => {
-        const executionAllowed = revision.allowedToExecute;
-        const latestContract = projectVsCodeCodingKernelTaskContract({
-          userPrompt: revision.semanticContract.prompt,
-          executionMode: revision.semanticContract.intent.mode,
-          contextFiles: request.contextFiles,
-          workspaceRoot: kernelRequest.workspaceRoot,
-          taskContract: revision.semanticContract.taskContract,
-          externalEffectIntent: revision.semanticContract.intent.context.externalEffect,
-          targetPaths: executionAllowed ? revision.pendingTargets : [],
-          prohibitedTargets: executionAllowed
-            ? revision.prohibitedTargets
-            : [
-                ...revision.prohibitedTargets,
-                ...revision.pendingTargets,
-                ...kernelRequest.taskContract.scope.include,
-              ],
-          strictTargetScope: !executionAllowed
-            || revision.semanticContract.signals.includes('scoped-target-write-boundary'),
-        });
-        kernelRequest.taskContractRevision.revise({
-          revisionId: revision.revisionId,
-          taskContract: latestContract,
-          evidenceRefs: [
-            `intent-revision:${revision.revisionId}`,
-            ...(revision.parentRevisionId
-              ? [`intent-revision-parent:${revision.parentRevisionId}`]
-              : []),
-          ],
-        });
-        originalTaskSemanticContractRevision?.(revision);
-      },
+      onUserSteerCompletionFence: () => kernelRequest.runControl.closeSteeringIntake()
+        .map(decision => decision.instruction),
+      onReopenUserSteering: () => kernelRequest.runControl.reopenSteeringIntake(),
       onSettledModelSemanticContract: settlement => {
         const candidate = reconcileObservedTaskContract({
           current: kernelRequest.taskContractRevision.current(),
@@ -232,7 +199,6 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
           renderCodingRequirementDecisionSummary(kernelRequest.requirementDecision),
           renderCodingChangePlanSummary(kernelRequest.changePlan),
         ),
-        workflowMode: request.workflowMode,
         memoryRelatedPaths: request.memoryRelatedPaths ?? [],
         semanticContract: request.semanticContract,
         recoveryContextText,

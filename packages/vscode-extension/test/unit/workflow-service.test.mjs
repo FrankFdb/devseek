@@ -42,7 +42,7 @@ function assertModelLed(prompt, files = []) {
   return { intent, selected };
 }
 
-test('WorkflowService: local intent families remain hints inside one model-led turn', () => {
+test('WorkflowService: every ordinary natural-language family enters one model-led turn', () => {
   const cases = [
     ['smalltalk', 'hello', []],
     ['question', '解释一下这个错误是什么意思', []],
@@ -53,14 +53,12 @@ test('WorkflowService: local intent families remain hints inside one model-led t
     ['destructive', '删除 code/main.cpp', ['/tmp/main.cpp']],
   ];
 
-  const observedModes = new Set();
   for (const [name, prompt, files] of cases) {
     const { intent } = assertModelLed(prompt, files);
-    observedModes.add(intent.mode);
-    assert.ok(intent.signals, `${name} should still expose local hint evidence`);
+    assert.equal(intent.mode, 'model-led', `${name} must remain model-owned`);
+    assert.deepEqual(intent.signals, ['model-led-unclassified-turn']);
+    assert.equal(intent.semanticContract.intent.taskKind, 'ambiguous');
   }
-
-  assert.ok(observedModes.size > 1, 'the fixture must cover distinct local hint families');
 });
 
 test('WorkflowService: noisy and multilingual requests are not rejected by local routing', () => {
