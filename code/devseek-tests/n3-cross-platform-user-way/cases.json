@@ -5,12 +5,12 @@
   "claims_permitted": false,
   "asserts_gate_pass": false,
   "candidate": {
-    "source_commit": "a47ffe37f01817d14358b0ef4040e885b7867c8f",
-    "artifact_filename": "devseek-netai-latest.vsix",
-    "vsix_sha256": "8386445523df3b550d9a9edda07e59b594cc3c766e2aecc0a367b9ef5084a854",
-    "packaged_bridge_sha256": "9e0b4b79ba528266089ddd472e52deae1186288937a40f12496ac5bd5d28a332",
+    "source_commit": "2db5768a70ebd53aea6c279328e2c87a9ad1aab2",
+    "artifact_filename": "devseek-netai-2.0.32-debug.20260824.t170937.g2db5768.vsix",
+    "vsix_sha256": "236d45d9ad7559e82912435e3f47bd0633e4259617e8bb2cda235a1b96875951",
+    "packaged_bridge_sha256": "8add0a5912cd4c70ed107a459b32881af8b1086ee18e0083a90058dcd93a5ef7",
     "extension_id": "devseek-netai.devseek-netai",
-    "extension_version": "2.0.32-debug.20260820.t172525.ga47ffe3",
+    "extension_version": "2.0.32-debug.20260824.t170937.g2db5768",
     "vscode_engine": "^1.85.0"
   },
   "execution_policy": {
@@ -112,7 +112,7 @@
     {
       "case_id": "N3-UW-02-NATURAL-MEDIUM-TASK",
       "title": "Natural multilingual medium task through the visible product entry",
-      "prompt": "我不太会写代码。请在这个空目录做一个能直接运行的待办 CLI，文件放在 src/todo.js 和 test/todo.test.js；支持 add、list、done，数据存到当前项目的 data/todos.json。不要安装依赖，用 Node 自带测试，README 用中文并给出 Windows、WSL、macOS 的运行命令。请实际跑测试，失败就修好，不要只告诉我代码。",
+      "prompt": "我不太会写代码。请在这个空目录做一个能直接运行的待办 CLI，文件放在 src/todo.js 和 test/todo.test.js；支持 add、list、done，数据存到当前项目的 data/todos.json。不要安装依赖，包括 @modelcontextprotocol/sdk；用 Node 自带测试，README 用中文并给出 Windows、WSL、macOS 的运行命令。请实际跑测试，失败就修好，不要只告诉我代码。",
       "actions": [
         "Submit the prompt through the visible DevSeek chat input without pre-creating target source files.",
         "Respond to approval prompts as an ordinary user and do not use internal test APIs or edit generated files manually.",
@@ -121,6 +121,7 @@
       "pass_criteria": [
         "All requested files are present under the workspace and no file is written outside it.",
         "The CLI add/list/done flow and Node tests pass on the tested platform.",
+        "The exact @modelcontextprotocol/sdk token reaches the task unchanged and is not rewritten as a missing workspace file.",
         "The final UI summary agrees with changed files and test output."
       ],
       "required_evidence_kinds": [
@@ -204,6 +205,7 @@
       ],
       "pass_criteria": [
         "The session recovers enough state to continue or explicitly reports a recoverable blocker.",
+        "The resumed canonical task still contains only export-jsonl; an older migration task or a prose-only protocol retry cannot replace it.",
         "Already committed effects are not replayed, export output is not duplicated, and cancelled migration work does not revive.",
         "Exactly one stable candidate Bridge remains after recovery."
       ],
@@ -226,6 +228,7 @@
       "pass_criteria": [
         "The UI remains responsive and reaches a bounded failed, cancelled, blocked, or completed settlement.",
         "A provider submission confirmed before interruption is not automatically replayed as a duplicate effect.",
+        "A completed outcome is accepted only when the requested failure-input test has a matching write/readback receipt; read-only evidence or malformed tool prose cannot settle it.",
         "No unbounded retry, wrong-session response, duplicate file mutation, or leaked active request remains."
       ],
       "required_evidence_kinds": [

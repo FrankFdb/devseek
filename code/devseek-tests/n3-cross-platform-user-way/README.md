@@ -8,16 +8,18 @@
 - Shared、Bridge、CLI、Headless、Extension 的 Phase 10 编译、类型检查和测试：PASS。
 - exact candidate identity：11/11 PASS；本机只有一个 stable Bridge。
 - 本测试包 contract/攻击测试：14/14 PASS。
+- 本地授权真实 Provider 波次：最终 exact candidate 的 headed VS Code natural UI 前台任务 3/3 PASS；C13 和 R3-08A 全空闲，R3-09A 前台完成时仍有 2 个无写入的后台记忆请求，故只记“前台通过”，不记 full-idle 通过。
 - 外部真实用户结果：0 份；`windows-x64-v1`、`wsl2-linux-x64-v1`、`macos-arm64-v1` 尚未执行，因此 N3 matrix 当前应为 `accepted=false`，不能写成跨平台通过。
 
 测试包 SHA-256 通过 `result-tool.mjs packet` 现场计算；每个结果必须绑定同一 hash，避免后续修改 case 后混用旧结果。
 
 ## 固定候选
 
-- VSIX：`devseek-netai-latest.vsix`
-- SHA-256：`8386445523df3b550d9a9edda07e59b594cc3c766e2aecc0a367b9ef5084a854`
-- Extension：`devseek-netai.devseek-netai@2.0.32-debug.20260820.t172525.ga47ffe3`
-- Source commit：`a47ffe37f01817d14358b0ef4040e885b7867c8f`
+- VSIX：`devseek-netai-2.0.32-debug.20260824.t170937.g2db5768.vsix`
+- SHA-256：`236d45d9ad7559e82912435e3f47bd0633e4259617e8bb2cda235a1b96875951`
+- Packaged Bridge SHA-256：`8add0a5912cd4c70ed107a459b32881af8b1086ee18e0083a90058dcd93a5ef7`
+- Extension：`devseek-netai.devseek-netai@2.0.32-debug.20260824.t170937.g2db5768`
+- Source commit：`2db5768a70ebd53aea6c279328e2c87a9ad1aab2`
 - VS Code engine：`^1.85.0`
 
 测试者应拿到本目录和 exact VSIX，但不应查看 DevSeek 实现、历史失败答案或隐藏 oracle。结果必须按 `cases.json` 中的八个 case 顺序执行；失败、阻塞和中断同样是有效发现，不能通过选择性补跑覆盖。
@@ -56,19 +58,19 @@
 先核对 VSIX。Windows PowerShell：
 
 ```powershell
-(Get-FileHash .\devseek-netai-latest.vsix -Algorithm SHA256).Hash.ToLower()
+(Get-FileHash .\devseek-netai-2.0.32-debug.20260824.t170937.g2db5768.vsix -Algorithm SHA256).Hash.ToLower()
 ```
 
 Linux/WSL：
 
 ```bash
-sha256sum devseek-netai-latest.vsix
+sha256sum devseek-netai-2.0.32-debug.20260824.t170937.g2db5768.vsix
 ```
 
 macOS：
 
 ```bash
-shasum -a 256 devseek-netai-latest.vsix
+shasum -a 256 devseek-netai-2.0.32-debug.20260824.t170937.g2db5768.vsix
 ```
 
 从仓库根目录创建一次 append-only 结果。把 `<profile>` 换成平台矩阵中的 ID：
@@ -88,7 +90,7 @@ node code/devseek-tests/n3-cross-platform-user-way/result-tool.mjs init \
 
 ```powershell
 code --user-data-dir <fresh-user-data> --extensions-dir <fresh-extensions> `
-  --install-extension <path-to-devseek-netai-latest.vsix> --force
+  --install-extension <path-to-devseek-netai-2.0.32-debug.20260824.t170937.g2db5768.vsix> --force
 code --user-data-dir <fresh-user-data> --extensions-dir <fresh-extensions> <workspace>
 ```
 
@@ -96,7 +98,7 @@ Linux 与 macOS：
 
 ```bash
 code --user-data-dir <fresh-user-data> --extensions-dir <fresh-extensions> \
-  --install-extension <path-to-devseek-netai-latest.vsix> --force
+  --install-extension <path-to-devseek-netai-2.0.32-debug.20260824.t170937.g2db5768.vsix> --force
 code --user-data-dir <fresh-user-data> --extensions-dir <fresh-extensions> <workspace>
 ```
 

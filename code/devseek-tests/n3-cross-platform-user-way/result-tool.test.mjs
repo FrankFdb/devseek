@@ -22,7 +22,7 @@ const packetHash = packetSha256(packetPath);
 
 test('packet fixes one candidate, ordered user journeys, and non-qualifying evidence', () => {
   assert.deepEqual(validatePacket(packet), []);
-  assert.equal(packet.candidate.vsix_sha256, '8386445523df3b550d9a9edda07e59b594cc3c766e2aecc0a367b9ef5084a854');
+  assert.equal(packet.candidate.vsix_sha256, '236d45d9ad7559e82912435e3f47bd0633e4259617e8bb2cda235a1b96875951');
   assert.equal(packet.qualification_effect, 'NONE');
   assert.equal(packet.claims_permitted, false);
   assert.equal(packet.asserts_gate_pass, false);
