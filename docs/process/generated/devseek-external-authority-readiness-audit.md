@@ -53,11 +53,11 @@
 ## Source Bindings
 
 - `external_authority_requests`: `docs/process/devseek-external-authority-requests.json` -> `2ed7e87a36b90259108face7150f4291bf60a12fadc444322ab4964569286cef`
-- `r4_live_qualification_request_packet`: `docs/process/devseek-r4-live-qualification-request-packet.json` -> `32444f1d7ae3412ee05940beeca6662616ec98b4d1c3e76dfa80e5d4dc6c2d98`
+- `r4_live_qualification_request_packet`: `docs/process/devseek-r4-live-qualification-request-packet.json` -> `34afdf16808799a3b4e96633d5408a7aba20c6b4cb6feeca924a78f7d8769084`
 - `r4_live_user_way_holdout_matrix`: `docs/process/devseek-r4-live-user-way-holdout-matrix.json` -> `14e21571c58fab259734ad6ae11e8f2a2a765d2f0ced25e81e15c0d831d9db30`
 - `r4_real_provider_failure_taxonomy`: `docs/process/devseek-r4-real-provider-failure-taxonomy.json` -> `668480c985d6dbfb21261b5ba6f193a7be055160140da6772add34bf57bbfa64`
 - `r4_authorization_and_permission_guide`: `docs/process/devseek-r4-authorization-and-permission-guide.md` -> `826240c4a2cfcae0c6fb1068ed199b1ffed99d64857fd8053d70e3790f40ada5`
-- `r4_process_artifacts_aggregate`: `docs/process/devseek-r4-process-artifacts-aggregate.json` -> `8905921ecfc3edd1c9432207ecc938174ffe3621dcac6a2d880e5c88b78668d9`
+- `r4_process_artifacts_aggregate`: `docs/process/devseek-r4-process-artifacts-aggregate.json` -> `bebb8e991fcc619fccae31f10c9d10ad06e2b0c8afb82166ecb90b2ebe94a1f4`
 - `gate0_decision`: `docs/process/devseek-gate0-decision-report.json` -> `c7e404419313e14e7e3e0cac34d0f8ceac7db1d7807e2745e4bc97045703e41a`
 - `package_scripts`: `package.json` -> `78b73a27359272a57f99b0209e652921150f8a9a1ea37fd057141eb817b9b21f`
 - `phase_gate_source`: `scripts/devseek-phase0-12-verify.mjs` -> `f9e850451a613301bd1b7fe2218174b33013693887f04f7b80236bdaffc3038d`
@@ -66,4 +66,4 @@
 
 ## Audit Identity
 
-- Audit SHA-256: `e4ab5a71e0dca3b221569a3746ca3e446304cbdecd8f6a2708718d0531eda6e3`
+- Audit SHA-256: `f3076b52e65900481c3550e4cab5466dbd7b1aff164ebcf4cffd8df81dc17d52`

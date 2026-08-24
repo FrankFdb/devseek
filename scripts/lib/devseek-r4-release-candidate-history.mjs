@@ -30,6 +30,19 @@ const ARCHIVED_CANDIDATES = [
     generated_view_path: 'docs/process/archive/r4-release-candidates/v2-4f8a567/manifest.md',
     generated_view_file_sha256: '56ac05c11e2f25c6e84066066eac06286cee13a154c9683b9a2eabfb49614e46',
   },
+  {
+    manifest_id: 'R4-RELEASE-CANDIDATE-MANIFEST/v3',
+    manifest_version: 3,
+    candidate_source_commit: 'a47ffe37f01817d14358b0ef4040e885b7867c8f',
+    candidate_vsix_sha256: '8386445523df3b550d9a9edda07e59b594cc3c766e2aecc0a367b9ef5084a854',
+    manifest_sha256: '345f01d8bcb35c9bafac781cf2b035fa8d348b1bee9c370e095e10a689fd6976',
+    manifest_path: 'docs/process/archive/r4-release-candidates/v3-a47ffe3/manifest.json',
+    manifest_file_sha256: 'e01dd51a1643e164309f5de95a5ec51c449950965445d6e468d05159743c0d8b',
+    schema_path: 'docs/process/archive/r4-release-candidates/v3-a47ffe3/manifest.schema.json',
+    schema_file_sha256: '107edec646955f1f05fd511c4cdc9ddc32ff98e91ceaa5febffe7b66092758f5',
+    generated_view_path: 'docs/process/archive/r4-release-candidates/v3-a47ffe3/manifest.md',
+    generated_view_file_sha256: '3e2fc76344c2fa4302af62f04e865a4c856a19f3d300ac954f1ae304c5f88e6a',
+  },
 ];
 
 export const R4_RELEASE_CANDIDATE_HISTORY = Object.freeze(

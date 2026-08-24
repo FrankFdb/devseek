@@ -22,12 +22,12 @@
     "secret_observation": "FORBIDDEN"
   },
   "source_boundaries": {
-    "product_implementation_commit": "a47ffe37f01817d14358b0ef4040e885b7867c8f",
-    "artifact_source_commit": "a47ffe37f01817d14358b0ef4040e885b7867c8f",
+    "product_implementation_commit": "2db5768a70ebd53aea6c279328e2c87a9ad1aab2",
+    "artifact_source_commit": "2db5768a70ebd53aea6c279328e2c87a9ad1aab2",
     "verification_record_path": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md",
-    "verification_record_commit": "fa682086eb28c0a9ff15093de27dbb3518c4a89f",
+    "verification_record_commit": "fb2db0efe4271907b28b3063e10be7a710b5aaae",
     "release_candidate_manifest_path": "docs/process/devseek-r4-release-candidate-manifest.json",
-    "release_candidate_manifest_sha256": "345f01d8bcb35c9bafac781cf2b035fa8d348b1bee9c370e095e10a689fd6976",
+    "release_candidate_manifest_sha256": "2a450c921832baaf3ec2d4c0687e9bf9a079e72447f582040dbaaac30e9825cd",
     "identity_reconciliation_commit_bound": false
   },
   "identity_artifacts": {
@@ -36,14 +36,14 @@
       "generated_view_path": "docs/process/generated/devseek-current-candidate-identity.md",
       "status": "tracked-current-clean-runtime",
       "archive_status": "not-archived",
-      "file_sha256": "b722dd9cc6d49d0292b5ea37df68acebfd3baca2ac28d4e56ac6d3ffc0d807dd",
-      "generated_view_sha256": "aedca64d33bae7a6eb14fb7ad1696896a02e341809ea13ea1c3b30afc46875c2",
-      "artifact_git_commit": "a47ffe3",
-      "candidate_source_commit": "a47ffe37f01817d14358b0ef4040e885b7867c8f",
-      "vsix_sha256": "8386445523df3b550d9a9edda07e59b594cc3c766e2aecc0a367b9ef5084a854",
-      "build_id": "20260820-t172525",
+      "file_sha256": "d23332ad4994a3e58ff494b491f1308a7625322d4d9e5cb61c52651981c9fe51",
+      "generated_view_sha256": "722830eb8bd5706697c9261336a4f08e158af6bbcfb586504b3b72bc504d2ad9",
+      "artifact_git_commit": "2db5768",
+      "candidate_source_commit": "2db5768a70ebd53aea6c279328e2c87a9ad1aab2",
+      "vsix_sha256": "236d45d9ad7559e82912435e3f47bd0633e4259617e8bb2cda235a1b96875951",
+      "build_id": "20260824-t170937",
       "observe_status": "passed",
-      "identity_probe_sha256": "a7b347561b042ac426595291526d7d29f1f1cd62410bfff3c5131f059703ea91",
+      "identity_probe_sha256": "1f1a0ff45cfcdef73dfb47bbf4915209f57e97264511f03625e99b5c6fea15d8",
       "usable_for_qualification": false,
       "qualification_effect": "NONE"
     },
@@ -66,9 +66,9 @@
     "release_candidate_identity": {
       "path": "docs/process/devseek-r4-release-candidate-manifest.json",
       "status": "current-local-release-smoke-reference",
-      "artifact_source_commit": "a47ffe37f01817d14358b0ef4040e885b7867c8f",
-      "vsix_sha256": "8386445523df3b550d9a9edda07e59b594cc3c766e2aecc0a367b9ef5084a854",
-      "manifest_sha256": "345f01d8bcb35c9bafac781cf2b035fa8d348b1bee9c370e095e10a689fd6976",
+      "artifact_source_commit": "2db5768a70ebd53aea6c279328e2c87a9ad1aab2",
+      "vsix_sha256": "236d45d9ad7559e82912435e3f47bd0633e4259617e8bb2cda235a1b96875951",
+      "manifest_sha256": "2a450c921832baaf3ec2d4c0687e9bf9a079e72447f582040dbaaac30e9825cd",
       "usable_for_qualification": false,
       "qualification_effect": "NONE"
     },
@@ -148,5 +148,5 @@
     "tracked_current_identity_usable_for_qualification": 0,
     "qualification_claims": 0
   },
-  "reconciliation_sha256": "5c3ae69a0ec71116466c69a4d13a6977692644abeba8d6a28fad815d8d364274"
+  "reconciliation_sha256": "230d71fbdb4f24fb55514cbf2434b3e30822dca1e0311a8846b5838ae2f39e44"
 }

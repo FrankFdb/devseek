@@ -1,11 +1,11 @@
 {
-  "schema_version": "devseek.r4-release-candidate-manifest/v3",
+  "schema_version": "devseek.r4-release-candidate-manifest/v4",
   "integrity": {
     "hash_algorithm": "sha256",
     "canonicalization_version": "devseek-canonical-json/v1"
   },
-  "manifest_id": "R4-RELEASE-CANDIDATE-MANIFEST/v3",
-  "manifest_version": 3,
+  "manifest_id": "R4-RELEASE-CANDIDATE-MANIFEST/v4",
+  "manifest_version": 4,
   "source_status": "user-authorized-versioned-local-candidate-freeze",
   "integrity_scope": "local-r4-release-candidate-manifest",
   "local_evidence_class": "local-protocol-conformance",
@@ -32,67 +32,67 @@
     "secret_observation": "FORBIDDEN"
   },
   "version_lineage": {
-    "predecessor_manifest_id": "R4-RELEASE-CANDIDATE-MANIFEST/v2",
-    "predecessor_manifest_version": 2,
-    "predecessor_candidate_source_commit": "4f8a56797090079914b4d921b56d9c34fe4d2abc",
-    "predecessor_candidate_vsix_sha256": "68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc",
-    "predecessor_manifest_sha256": "0fda85f4ad71f13d6410d61f5249e327b299642cfee17226f708f979e12bed1b",
-    "predecessor_manifest_path": "docs/process/archive/r4-release-candidates/v2-4f8a567/manifest.json",
-    "predecessor_manifest_file_sha256": "8c051ecfbb718820332804f4cc690f26a54d2e243e26f91d030acbde5b94ea82",
-    "predecessor_schema_path": "docs/process/archive/r4-release-candidates/v2-4f8a567/manifest.schema.json",
-    "predecessor_schema_file_sha256": "face1ace312bdf8478301c8357222a697f750a210a58ddab769a50e4e5206b7f",
-    "predecessor_generated_view_path": "docs/process/archive/r4-release-candidates/v2-4f8a567/manifest.md",
-    "predecessor_generated_view_file_sha256": "56ac05c11e2f25c6e84066066eac06286cee13a154c9683b9a2eabfb49614e46",
+    "predecessor_manifest_id": "R4-RELEASE-CANDIDATE-MANIFEST/v3",
+    "predecessor_manifest_version": 3,
+    "predecessor_candidate_source_commit": "a47ffe37f01817d14358b0ef4040e885b7867c8f",
+    "predecessor_candidate_vsix_sha256": "8386445523df3b550d9a9edda07e59b594cc3c766e2aecc0a367b9ef5084a854",
+    "predecessor_manifest_sha256": "345f01d8bcb35c9bafac781cf2b035fa8d348b1bee9c370e095e10a689fd6976",
+    "predecessor_manifest_path": "docs/process/archive/r4-release-candidates/v3-a47ffe3/manifest.json",
+    "predecessor_manifest_file_sha256": "e01dd51a1643e164309f5de95a5ec51c449950965445d6e468d05159743c0d8b",
+    "predecessor_schema_path": "docs/process/archive/r4-release-candidates/v3-a47ffe3/manifest.schema.json",
+    "predecessor_schema_file_sha256": "107edec646955f1f05fd511c4cdc9ddc32ff98e91ceaa5febffe7b66092758f5",
+    "predecessor_generated_view_path": "docs/process/archive/r4-release-candidates/v3-a47ffe3/manifest.md",
+    "predecessor_generated_view_file_sha256": "3e2fc76344c2fa4302af62f04e865a4c856a19f3d300ac954f1ae304c5f88e6a",
     "predecessor_status": "immutable-history",
     "supersession_reason": "explicit-user-authorized-versioned-candidate-freeze",
     "mutation_policy": "byte-for-byte-predecessor-preservation"
   },
   "source_identity": {
-    "artifact_source_commit": "a47ffe37f01817d14358b0ef4040e885b7867c8f",
-    "artifact_source_short": "a47ffe3",
+    "artifact_source_commit": "2db5768a70ebd53aea6c279328e2c87a9ad1aab2",
+    "artifact_source_short": "2db5768",
     "artifact_source_resolution": "git rev-parse <vsix.devseekBuild.gitCommit>^{commit}",
     "verification_record_path": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md",
-    "verification_record_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-20-2032-t12-模型主导语义与动作回执收敛最新",
-    "verification_record_commit": "fa682086eb28c0a9ff15093de27dbb3518c4a89f",
+    "verification_record_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-24-n4-最终候选-provider-authority-与原始-turn-收敛",
+    "verification_record_commit": "fb2db0efe4271907b28b3063e10be7a710b5aaae",
     "current_candidate_identity_path": "docs/process/devseek-current-candidate-identity.json",
-    "current_candidate_identity_file_sha256": "b722dd9cc6d49d0292b5ea37df68acebfd3baca2ac28d4e56ac6d3ffc0d807dd",
-    "current_candidate_identity_probe_sha256": "a7b347561b042ac426595291526d7d29f1f1cd62410bfff3c5131f059703ea91",
+    "current_candidate_identity_file_sha256": "d23332ad4994a3e58ff494b491f1308a7625322d4d9e5cb61c52651981c9fe51",
+    "current_candidate_identity_probe_sha256": "1f1a0ff45cfcdef73dfb47bbf4915209f57e97264511f03625e99b5c6fea15d8",
     "artifact_source_matches_current_identity": true
   },
   "artifact_identity": {
     "primary_vsix": {
-      "path": "devseek-netai-2.0.32-debug.20260820.t172525.ga47ffe3.vsix",
-      "sha256": "8386445523df3b550d9a9edda07e59b594cc3c766e2aecc0a367b9ef5084a854",
+      "path": "devseek-netai-2.0.32-debug.20260824.t170937.g2db5768.vsix",
+      "sha256": "236d45d9ad7559e82912435e3f47bd0633e4259617e8bb2cda235a1b96875951",
       "package_identity": {
         "publisher": "devseek-netai",
         "name": "devseek-netai",
-        "version": "2.0.32-debug.20260820.t172525.ga47ffe3",
+        "version": "2.0.32-debug.20260824.t170937.g2db5768",
         "devseekBuild": {
           "baseVersion": "2.0.32",
           "channel": "debug",
-          "buildId": "20260820-t172525",
-          "gitCommit": "a47ffe3",
-          "packagedAt": "2026-08-20T09:25:25.020Z"
+          "buildId": "20260824-t170937",
+          "gitCommit": "2db5768",
+          "packagedAt": "2026-08-24T09:09:37.126Z"
         }
       },
-      "packaged_bridge_server_sha256": "9e0b4b79ba528266089ddd472e52deae1186288937a40f12496ac5bd5d28a332"
+      "packaged_bridge_server_sha256": "8add0a5912cd4c70ed107a459b32881af8b1086ee18e0083a90058dcd93a5ef7"
     },
     "package_copy_vsix": {
-      "path": "packages/vscode-extension/devseek-netai-2.0.32-debug.20260820.t172525.ga47ffe3.vsix",
-      "sha256": "8386445523df3b550d9a9edda07e59b594cc3c766e2aecc0a367b9ef5084a854",
+      "path": "packages/vscode-extension/devseek-netai-2.0.32-debug.20260824.t170937.g2db5768.vsix",
+      "sha256": "236d45d9ad7559e82912435e3f47bd0633e4259617e8bb2cda235a1b96875951",
       "package_identity": {
         "publisher": "devseek-netai",
         "name": "devseek-netai",
-        "version": "2.0.32-debug.20260820.t172525.ga47ffe3",
+        "version": "2.0.32-debug.20260824.t170937.g2db5768",
         "devseekBuild": {
           "baseVersion": "2.0.32",
           "channel": "debug",
-          "buildId": "20260820-t172525",
-          "gitCommit": "a47ffe3",
-          "packagedAt": "2026-08-20T09:25:25.020Z"
+          "buildId": "20260824-t170937",
+          "gitCommit": "2db5768",
+          "packagedAt": "2026-08-24T09:09:37.126Z"
         }
       },
-      "packaged_bridge_server_sha256": "9e0b4b79ba528266089ddd472e52deae1186288937a40f12496ac5bd5d28a332"
+      "packaged_bridge_server_sha256": "8add0a5912cd4c70ed107a459b32881af8b1086ee18e0083a90058dcd93a5ef7"
     },
     "exact_match": true
   },
@@ -103,8 +103,8 @@
       "verification_scope": "shared-full-suite",
       "evidence": "PASS; 366/366 tests",
       "status": "recorded-passed",
-      "source_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-20-2032-t12-模型主导语义与动作回执收敛最新",
-      "source_commit": "fa682086eb28c0a9ff15093de27dbb3518c4a89f",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-24-n4-最终候选-provider-authority-与原始-turn-收敛",
+      "source_commit": "fb2db0efe4271907b28b3063e10be7a710b5aaae",
       "qualification_effect": "NONE"
     },
     {
@@ -113,8 +113,8 @@
       "verification_scope": "bridge-full-suite",
       "evidence": "PASS; 42/42 tests",
       "status": "recorded-passed",
-      "source_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-20-2032-t12-模型主导语义与动作回执收敛最新",
-      "source_commit": "fa682086eb28c0a9ff15093de27dbb3518c4a89f",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-24-n4-最终候选-provider-authority-与原始-turn-收敛",
+      "source_commit": "fb2db0efe4271907b28b3063e10be7a710b5aaae",
       "qualification_effect": "NONE"
     },
     {
@@ -123,8 +123,8 @@
       "verification_scope": "cli-full-suite",
       "evidence": "PASS; 84/84 tests",
       "status": "recorded-passed",
-      "source_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-20-2032-t12-模型主导语义与动作回执收敛最新",
-      "source_commit": "fa682086eb28c0a9ff15093de27dbb3518c4a89f",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-24-n4-最终候选-provider-authority-与原始-turn-收敛",
+      "source_commit": "fb2db0efe4271907b28b3063e10be7a710b5aaae",
       "qualification_effect": "NONE"
     },
     {
@@ -133,18 +133,18 @@
       "verification_scope": "headless-full-suite",
       "evidence": "PASS; 25/25 tests",
       "status": "recorded-passed",
-      "source_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-20-2032-t12-模型主导语义与动作回执收敛最新",
-      "source_commit": "fa682086eb28c0a9ff15093de27dbb3518c4a89f",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-24-n4-最终候选-provider-authority-与原始-turn-收敛",
+      "source_commit": "fb2db0efe4271907b28b3063e10be7a710b5aaae",
       "qualification_effect": "NONE"
     },
     {
       "receipt_id": "extension-full-unit-runner",
       "receipt_kind": "recorded-local-test",
       "verification_scope": "vscode-extension-full-unit-runner",
-      "evidence": "PASS; 174/174 suites",
+      "evidence": "PASS; 175/175 suites",
       "status": "recorded-passed",
-      "source_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-20-2032-t12-模型主导语义与动作回执收敛最新",
-      "source_commit": "fa682086eb28c0a9ff15093de27dbb3518c4a89f",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-24-n4-最终候选-provider-authority-与原始-turn-收敛",
+      "source_commit": "fb2db0efe4271907b28b3063e10be7a710b5aaae",
       "qualification_effect": "NONE"
     },
     {
@@ -153,27 +153,37 @@
       "verification_scope": "phase10-and-architecture-drift",
       "evidence": "PASS; Phase 10; architecture drift 0 violation",
       "status": "recorded-passed",
-      "source_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-20-2032-t12-模型主导语义与动作回执收敛最新",
-      "source_commit": "fa682086eb28c0a9ff15093de27dbb3518c4a89f",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-24-n4-最终候选-provider-authority-与原始-turn-收敛",
+      "source_commit": "fb2db0efe4271907b28b3063e10be7a710b5aaae",
       "qualification_effect": "NONE"
     },
     {
       "receipt_id": "vsix-release-loop",
       "receipt_kind": "recorded-local-install",
       "verification_scope": "package-bridge-install-and-exactly-one-runtime",
-      "evidence": "PASS; devseek-netai-2.0.32-debug.20260820.t172525.ga47ffe3.vsix; sha256 8386445523df3b550d9a9edda07e59b594cc3c766e2aecc0a367b9ef5084a854",
+      "evidence": "PASS; devseek-netai-2.0.32-debug.20260824.t170937.g2db5768.vsix; sha256 236d45d9ad7559e82912435e3f47bd0633e4259617e8bb2cda235a1b96875951",
       "status": "recorded-passed",
-      "source_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-20-2032-t12-模型主导语义与动作回执收敛最新",
-      "source_commit": "fa682086eb28c0a9ff15093de27dbb3518c4a89f",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-24-n4-最终候选-provider-authority-与原始-turn-收敛",
+      "source_commit": "fb2db0efe4271907b28b3063e10be7a710b5aaae",
+      "qualification_effect": "NONE"
+    },
+    {
+      "receipt_id": "real-provider-natural-ui-canary",
+      "receipt_kind": "recorded-local-user-simulation",
+      "verification_scope": "headed-vscode-natural-ui-real-deepseek-web",
+      "evidence": "FOREGROUND PASS; 3/3 tasks; 22/22 provider requests terminal; 26 raw tool events; 3 committed mutations; replay 0; R3-09A background full-idle not observed",
+      "status": "recorded-passed",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-24-n4-最终候选-provider-authority-与原始-turn-收敛",
+      "source_commit": "fb2db0efe4271907b28b3063e10be7a710b5aaae",
       "qualification_effect": "NONE"
     }
   ],
   "current_identity_probe_boundary": {
     "path": "docs/process/devseek-current-candidate-identity.json",
     "status": "verified-current-candidate",
-    "identity_probe_sha256": "a7b347561b042ac426595291526d7d29f1f1cd62410bfff3c5131f059703ea91",
-    "identity_source_sha256": "b722dd9cc6d49d0292b5ea37df68acebfd3baca2ac28d4e56ac6d3ffc0d807dd",
-    "candidate_source_commit": "a47ffe37f01817d14358b0ef4040e885b7867c8f",
+    "identity_probe_sha256": "1f1a0ff45cfcdef73dfb47bbf4915209f57e97264511f03625e99b5c6fea15d8",
+    "identity_source_sha256": "d23332ad4994a3e58ff494b491f1308a7625322d4d9e5cb61c52651981c9fe51",
+    "candidate_source_commit": "2db5768a70ebd53aea6c279328e2c87a9ad1aab2",
     "artifact_source_matches_current_identity": true,
     "stable_runtime_count": 1,
     "observe_status": "passed",
@@ -187,10 +197,10 @@
   },
   "counts": {
     "vsix_artifacts": 2,
-    "historical_candidates": 2,
-    "verification_receipts": 7,
+    "historical_candidates": 3,
+    "verification_receipts": 8,
     "remaining_r4_leaves_at_freeze": 0,
     "qualification_claims": 0
   },
-  "manifest_sha256": "345f01d8bcb35c9bafac781cf2b035fa8d348b1bee9c370e095e10a689fd6976"
+  "manifest_sha256": "2a450c921832baaf3ec2d4c0687e9bf9a079e72447f582040dbaaac30e9825cd"
 }

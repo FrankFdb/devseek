@@ -11,15 +11,15 @@
 
 ## 身份边界
 
-- Product implementation commit: `a47ffe37f01817d14358b0ef4040e885b7867c8f`
-- Artifact source commit: `a47ffe37f01817d14358b0ef4040e885b7867c8f`
-- Verification record: `docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md` @ `fa682086eb28c0a9ff15093de27dbb3518c4a89f`
+- Product implementation commit: `2db5768a70ebd53aea6c279328e2c87a9ad1aab2`
+- Artifact source commit: `2db5768a70ebd53aea6c279328e2c87a9ad1aab2`
+- Verification record: `docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md` @ `fb2db0efe4271907b28b3063e10be7a710b5aaae`
 
 | Identity | Status | Artifact | VSIX SHA-256 | Observe | Usable For Qualification |
 | --- | --- | --- | --- | --- | --- |
-| tracked-current-candidate: `docs/process/devseek-current-candidate-identity.json` | `tracked-current-clean-runtime` | `a47ffe3` | `8386445523df3b550d9a9edda07e59b594cc3c766e2aecc0a367b9ef5084a854` | `passed` | `false` |
+| tracked-current-candidate: `docs/process/devseek-current-candidate-identity.json` | `tracked-current-clean-runtime` | `2db5768` | `236d45d9ad7559e82912435e3f47bd0633e4259617e8bb2cda235a1b96875951` | `passed` | `false` |
 | archived-failed-observe: `docs/process/archive/devseek-current-candidate-identity-failed-observe-20260723-t185546.json` | `archived-failed-observe` | `6b09d67` | `49a0479c8c436dac7a5eb6e5b68c71e42b30e3e8dae05973b65f864c9813c086` | `failed` | `false` |
-| release-candidate-manifest: `docs/process/devseek-r4-release-candidate-manifest.json` | `current-local-release-smoke-reference` | `a47ffe37f01817d14358b0ef4040e885b7867c8f` | `8386445523df3b550d9a9edda07e59b594cc3c766e2aecc0a367b9ef5084a854` | `n/a` | `false` |
+| release-candidate-manifest: `docs/process/devseek-r4-release-candidate-manifest.json` | `current-local-release-smoke-reference` | `2db5768a70ebd53aea6c279328e2c87a9ad1aab2` | `236d45d9ad7559e82912435e3f47bd0633e4259617e8bb2cda235a1b96875951` | `n/a` | `false` |
 
 - Tracked current matches release candidate: `true`
 - Archived failed snapshot matches release candidate: `false`
@@ -41,4 +41,4 @@
 
 ## Reconciliation Identity
 
-- Reconciliation SHA-256: `5c3ae69a0ec71116466c69a4d13a6977692644abeba8d6a28fad815d8d364274`
+- Reconciliation SHA-256: `230d71fbdb4f24fb55514cbf2434b3e30822dca1e0311a8846b5838ae2f39e44`

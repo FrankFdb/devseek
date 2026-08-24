@@ -56,12 +56,12 @@
 | `NP-06` | `packages/vscode-extension/src/diagnostics/run-log-replay.ts` | settlement-replay-oracle | `566007f515ed03e6826545a12f445738a7846cc91c45c2d2d1905d5cb3d11495` |
 | `NP-06` | `packages/vscode-extension/test/unit/run-context.test.mjs` | run-context-recovery-oracle | `801f6ea1a445c48b875a15e3e0004e02580e27bc3aa0990643cc44d0caa419bf` |
 | `NP-06` | `packages/vscode-extension/test/unit/run-context-settlement.test.mjs` | settlement-contract-oracle | `1c864f6f64812be4cb7241bd2fe323e9d8aa111894597bb81aa4ee75f68969ef` |
-| `NP-06` | `packages/vscode-extension/test/unit/workflow-compliance.test.mjs` | workflow-static-contract-oracle | `60971e85248c4df15675748b4bdbad7e9e7794b918f0c04785b185151401eed9` |
+| `NP-06` | `packages/vscode-extension/test/unit/workflow-compliance.test.mjs` | workflow-static-contract-oracle | `962e62a6accd835ba6e42f7cbab7b0ec678897408f09e7850a499a121166bd61` |
 | `NP-07` | `packages/vscode-extension/src/agent/task-contract.ts` | source-claim-task-contract | `9a1d57519950cbf02a1cdd8d0d2bcb12e2afde4396c569d32e1db04a296eac31` |
 | `NP-07` | `packages/vscode-extension/src/agent/completion-evidence.ts` | artifact-evidence-settlement | `8bb10531ca68ba97ae5dd44127992c003dfdd405ee6a99aaaa3d63e93abc708a` |
 | `NP-07` | `packages/vscode-extension/test/unit/completion-evidence.test.mjs` | completion-evidence-tests | `f12ee6cc3b867053d5934a35ba763f4aca1c0e69288ad556fdd5605c712c00c6` |
 | `NP-07` | `packages/vscode-extension/test/unit/agent-auto-validation.test.mjs` | report-readback-validation-tests | `ce7f5b10f038e9852c14b62e033804b3228725fdd8ca9da9c645710c109b2302` |
-| `NP-07` | `packages/vscode-extension/test/unit/workflow-compliance.test.mjs` | artifact-owner-architecture-guard | `60971e85248c4df15675748b4bdbad7e9e7794b918f0c04785b185151401eed9` |
+| `NP-07` | `packages/vscode-extension/test/unit/workflow-compliance.test.mjs` | artifact-owner-architecture-guard | `962e62a6accd835ba6e42f7cbab7b0ec678897408f09e7850a499a121166bd61` |
 
 ## Anchor Checks
 
@@ -87,4 +87,4 @@
 
 ## Manifest Identity
 
-- Manifest SHA-256: `c9a80b8f7dd5442410423bd4ca4b01d55acbd1c5e36b247608f87f7d894fdab8`
+- Manifest SHA-256: `324d50e17953e47652fa007702eb65e331297d6dbf731324b04873481637b3fe`

@@ -32,7 +32,7 @@ const execFile = promisify(execFileCallback);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const expected = buildR4ReleaseCandidateManifest({ repoRoot });
 
-test('R4 v3 manifest freezes a47ffe3 as local protocol conformance without qualification effect', () => {
+test('R4 v4 manifest freezes 2db5768 as local protocol conformance without qualification effect', () => {
   const actual = readJson('docs/process/devseek-r4-release-candidate-manifest.json');
   const activeCurrentIdentity = readJson('docs/process/devseek-current-candidate-identity.json');
 
@@ -71,14 +71,14 @@ test('R4 v3 manifest freezes a47ffe3 as local protocol conformance without quali
   assert.equal(validation.ok, true, JSON.stringify(validation.errors, null, 2));
 });
 
-test('archived v1 and v2 candidates remain byte-for-byte immutable and lineage-consistent', () => {
+test('archived v1 through v3 candidates remain byte-for-byte immutable and lineage-consistent', () => {
   const validation = validateArchivedR4ReleaseCandidate({ repoRoot });
   assert.equal(validation.ok, true, JSON.stringify(validation.errors, null, 2));
   assert.deepEqual(validation.summary, {
     historical_candidates: R4_RELEASE_CANDIDATE_HISTORY.length,
-    predecessor_manifest_id: 'R4-RELEASE-CANDIDATE-MANIFEST/v2',
-    predecessor_candidate_source_commit: '4f8a56797090079914b4d921b56d9c34fe4d2abc',
-    predecessor_manifest_sha256: '0fda85f4ad71f13d6410d61f5249e327b299642cfee17226f708f979e12bed1b',
+    predecessor_manifest_id: 'R4-RELEASE-CANDIDATE-MANIFEST/v3',
+    predecessor_candidate_source_commit: 'a47ffe37f01817d14358b0ef4040e885b7867c8f',
+    predecessor_manifest_sha256: '345f01d8bcb35c9bafac781cf2b035fa8d348b1bee9c370e095e10a689fd6976',
     archive_status: 'immutable-history',
     artifact_retention: 'manifest-identity-only',
   });
@@ -86,6 +86,7 @@ test('archived v1 and v2 candidates remain byte-for-byte immutable and lineage-c
   const archiveBindings = [
     ['v1-a034e5e', 'eb93f971f1dcd877dbde75a032919c7d02389661aaaed6429b0bd34943091c66', '6adf54c38b9fb0b8ae7c95a721dee9815f6a9a9b96edac2416d62b6b1256977f', 'b8c684c959545dd8bd6c0228e59df09f036416a2edc5b6b9db35f17d4fc2f3eb'],
     ['v2-4f8a567', '8c051ecfbb718820332804f4cc690f26a54d2e243e26f91d030acbde5b94ea82', 'face1ace312bdf8478301c8357222a697f750a210a58ddab769a50e4e5206b7f', '56ac05c11e2f25c6e84066066eac06286cee13a154c9683b9a2eabfb49614e46'],
+    ['v3-a47ffe3', 'e01dd51a1643e164309f5de95a5ec51c449950965445d6e468d05159743c0d8b', '107edec646955f1f05fd511c4cdc9ddc32ff98e91ceaa5febffe7b66092758f5', '3e2fc76344c2fa4302af62f04e865a4c856a19f3d300ac954f1ae304c5f88e6a'],
   ];
   for (const [directory, manifestSha256, schemaSha256, viewSha256] of archiveBindings) {
     const archiveRoot = path.join(repoRoot, 'docs/process/archive/r4-release-candidates', directory);

@@ -28,8 +28,8 @@ import {
 
 export { validateArchivedR4ReleaseCandidate };
 
-export const R4_RELEASE_CANDIDATE_MANIFEST_SCHEMA_VERSION = 'devseek.r4-release-candidate-manifest/v3';
-export const R4_RELEASE_CANDIDATE_MANIFEST_ID = 'R4-RELEASE-CANDIDATE-MANIFEST/v3';
+export const R4_RELEASE_CANDIDATE_MANIFEST_SCHEMA_VERSION = 'devseek.r4-release-candidate-manifest/v4';
+export const R4_RELEASE_CANDIDATE_MANIFEST_ID = 'R4-RELEASE-CANDIDATE-MANIFEST/v4';
 export const R4_RELEASE_CANDIDATE_INTEGRITY_SCOPE = 'local-r4-release-candidate-manifest';
 export const R4_RELEASE_CANDIDATE_QUALIFICATION_EFFECT = 'NONE';
 

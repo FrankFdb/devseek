@@ -680,7 +680,7 @@ const SOURCE_CHECKS = Object.freeze([
     'return classifyCodingMemoryWrite({',
   ], ['readLegacyMarkdown(']),
   check('vscode-canonical-checkpoint-store', SOURCE_PATHS.taskCheckpointStore, [
-    "TASK_CHECKPOINT_RESUME_PROTOCOL = 'devseek.checkpoint-resume/v2'",
+    "TASK_CHECKPOINT_RESUME_PROTOCOL = 'devseek.checkpoint-resume/v3'",
     'canonicalCheckpoint: CodingCheckpoint',
     'CHECKPOINT.snapshot(record.canonicalCheckpoint)',
     "canonicalCheckpoint.originSurface !== 'vscode'",
@@ -690,7 +690,7 @@ const SOURCE_CHECKS = Object.freeze([
   ]),
   check('vscode-provider-recovery-checkpoint-owner', SOURCE_PATHS.providerRecoveryCheckpoint, [
     'buildProviderRecoveryCheckpointRecord(',
-    'buildProviderRecoveryCheckpointTasks(input)',
+    'buildProviderRecoveryCheckpointTasks(input.recoveryKind)',
     'input.error.checkpoint.create({',
     'evidenceRefs: input.evidenceRefs ?? input.error.settlement.evidenceRefs',
     'isCheckpointableProviderRecoveryError(',
@@ -1268,7 +1268,7 @@ const SOURCE_CHECKS = Object.freeze([
     'memoryContextText: request.memoryContextText,',
     'const kernel = new CanonicalCodingKernel(runtime)',
     "surface: 'vscode'",
-    'const taskContract = projectVsCodeCodingKernelTaskContract({',
+    'const taskContract = resolveVsCodeCodingKernelTaskContract({',
     'environment: createCodingKernelEnvironmentSync({',
     'provider: request.providerType,',
     'contextSeed: projectVsCodeCodingContextSeed(request.contextFiles, request.semanticContract)',

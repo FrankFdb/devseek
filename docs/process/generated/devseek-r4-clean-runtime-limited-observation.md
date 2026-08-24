@@ -25,14 +25,14 @@
 
 ## 候选身份
 
-- Expected candidate source commit: `a47ffe37f01817d14358b0ef4040e885b7867c8f`
-- Expected VSIX SHA-256: `8386445523df3b550d9a9edda07e59b594cc3c766e2aecc0a367b9ef5084a854`
-- Expected bridge path: `/home/ff/.vscode/extensions/devseek-netai.devseek-netai-2.0.32-debug.20260820.t172525.ga47ffe3/bridge/server.js`
+- Expected candidate source commit: `2db5768a70ebd53aea6c279328e2c87a9ad1aab2`
+- Expected VSIX SHA-256: `236d45d9ad7559e82912435e3f47bd0633e4259617e8bb2cda235a1b96875951`
+- Expected bridge path: `/home/ff/.vscode/extensions/devseek-netai.devseek-netai-2.0.32-debug.20260824.t170937.g2db5768/bridge/server.js`
 - Matches release candidate manifest: `true`
 
 ## Tracked Registry 对比
 
-- Tracked artifact git commit: `a47ffe3`
+- Tracked artifact git commit: `2db5768`
 - Tracked observe status: `passed`
 - Tracked matches expected identity: `true`
 
@@ -53,4 +53,4 @@
 
 ## Observation Identity
 
-- Observation SHA-256: `83d3a1fb7b78fafb9494ede929ebb72b5cdb0b7a6b789d5fefed435c1ab14433`
+- Observation SHA-256: `8ced36e83cfa9cdf4b1697c8a067315de16250563bffb98426998447d94ceb63`

@@ -41,8 +41,8 @@
     },
     "r4_iteration_status_rollup": {
       "path": "docs/process/devseek-r4-iteration-status-rollup.json",
-      "source_sha256": "833359a751f83210ef0eaa55910af71352abea25dcb38ad0ab009a72dd0c5e20",
-      "rollup_sha256": "e0e85cb5e8ec0045e0b2ee5e750182b311ac9854b4f17599ff9a22fb8b1abbd0",
+      "source_sha256": "f2954c72c49377bb50d2ea932c99e295f177cc7c14e9c0ff395a3849c4aa26d7",
+      "rollup_sha256": "ae1143c1ea58f16fac8c70eaab9ee999db7d21f43ff4ab19ce592e5209fa103b",
       "clean_runtime_leaf_terminal_state": "COMPLETED"
     },
     "r4_authorization_and_permission_guide": {
@@ -51,21 +51,21 @@
     },
     "r4_clean_runtime_limited_observation": {
       "path": "docs/process/devseek-r4-clean-runtime-limited-observation.json",
-      "source_sha256": "129638973c1b23d8d357c1e8f9de4cbf3b036ea804eb269eca6bb1a9502722cc",
-      "observation_sha256": "83d3a1fb7b78fafb9494ede929ebb72b5cdb0b7a6b789d5fefed435c1ab14433",
+      "source_sha256": "a1f509be71ad8e6cf2bfc321fbe801fe71a6a9bae632a5d6a06c87dd68f5d491",
+      "observation_sha256": "8ced36e83cfa9cdf4b1697c8a067315de16250563bffb98426998447d94ceb63",
       "terminal_state": "COMPLETED",
       "stable_runtime_count": 1
     },
     "r4_process_artifacts_aggregate": {
       "path": "docs/process/devseek-r4-process-artifacts-aggregate.json",
-      "source_sha256": "8905921ecfc3edd1c9432207ecc938174ffe3621dcac6a2d880e5c88b78668d9",
-      "aggregate_sha256": "b967bd901f813dbeb461660407e4499e559f25f159f40a7e76e738bae7c8509b",
+      "source_sha256": "bebb8e991fcc619fccae31f10c9d10ad06e2b0c8afb82166ecb90b2ebe94a1f4",
+      "aggregate_sha256": "8fcc950434f30aded6448f02b55e674ea6804abbd4b7da6466e5e0cd64d68185",
       "artifact_errors": 0
     },
     "post_r4_local_regression_manifest": {
       "path": "docs/process/devseek-post-r4-local-regression-manifest.json",
-      "source_sha256": "f1087858c9fad066dc77e584926eb82099178001c07e438f62855aff8e6bf8d4",
-      "manifest_sha256": "c9a80b8f7dd5442410423bd4ca4b01d55acbd1c5e36b247608f87f7d894fdab8",
+      "source_sha256": "5d36f484c9388fcf547c13550bf8c9eca7046f344e7e7c12f441dbb457d93ae8",
+      "manifest_sha256": "324d50e17953e47652fa007702eb65e331297d6dbf731324b04873481637b3fe",
       "covered_nonpermission_items": [
         "NP-05",
         "NP-06",
@@ -86,8 +86,8 @@
     },
     "r4_live_qualification_request_packet": {
       "path": "docs/process/devseek-r4-live-qualification-request-packet.json",
-      "source_sha256": "32444f1d7ae3412ee05940beeca6662616ec98b4d1c3e76dfa80e5d4dc6c2d98",
-      "packet_sha256": "a3fdcb7cc14df292b5973ca9b4a8b1096c8db97d1c3f01b0c6cf66e02f797241",
+      "source_sha256": "34afdf16808799a3b4e96633d5408a7aba20c6b4cb6feeca924a78f7d8769084",
+      "packet_sha256": "ccbdafeb110f0b32312589e4c439e65d69d0e20b625dfe49810c518d2c9fcc1b",
       "blocked_requests": 5
     },
     "package_scripts": {
@@ -441,5 +441,5 @@
     "gate_pass_assertions": 0,
     "bypasses": 0
   },
-  "index_sha256": "5975b919e8b07c42c0f63527c3e51bce041f757e80cd0b53276ec28af3ffde85"
+  "index_sha256": "6f080c320b523609ea155a8a277b7620f288986d05df160d905039743ff30409"
 }

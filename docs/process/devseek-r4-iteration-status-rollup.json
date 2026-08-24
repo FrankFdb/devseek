@@ -30,20 +30,20 @@
     },
     "release_candidate_manifest": {
       "path": "docs/process/devseek-r4-release-candidate-manifest.json",
-      "source_sha256": "e01dd51a1643e164309f5de95a5ec51c449950965445d6e468d05159743c0d8b",
-      "manifest_sha256": "345f01d8bcb35c9bafac781cf2b035fa8d348b1bee9c370e095e10a689fd6976",
-      "artifact_source_commit": "a47ffe37f01817d14358b0ef4040e885b7867c8f"
+      "source_sha256": "33579b1bb6c7845c6a9503136acbab65600977fff008e927730b80102e014cc9",
+      "manifest_sha256": "2a450c921832baaf3ec2d4c0687e9bf9a079e72447f582040dbaaac30e9825cd",
+      "artifact_source_commit": "2db5768a70ebd53aea6c279328e2c87a9ad1aab2"
     },
     "doc_process_identity_reconciliation": {
       "path": "docs/process/devseek-r4-doc-process-identity-reconciliation.json",
-      "source_sha256": "fbd3ab16582366448874a4f219ecf4b41318136a59d27e02408a0f6d7e323fee",
-      "reconciliation_sha256": "5c3ae69a0ec71116466c69a4d13a6977692644abeba8d6a28fad815d8d364274",
+      "source_sha256": "55911a8d65e35236c555f58a58d493e0c0e1a009cfee4eeebffee58d49c4832c",
+      "reconciliation_sha256": "230d71fbdb4f24fb55514cbf2434b3e30822dca1e0311a8846b5838ae2f39e44",
       "current_candidate_identity_status": "clean-runtime-identity-established"
     },
     "live_qualification_request_packet": {
       "path": "docs/process/devseek-r4-live-qualification-request-packet.json",
-      "source_sha256": "32444f1d7ae3412ee05940beeca6662616ec98b4d1c3e76dfa80e5d4dc6c2d98",
-      "packet_sha256": "a3fdcb7cc14df292b5973ca9b4a8b1096c8db97d1c3f01b0c6cf66e02f797241",
+      "source_sha256": "34afdf16808799a3b4e96633d5408a7aba20c6b4cb6feeca924a78f7d8769084",
+      "packet_sha256": "ccbdafeb110f0b32312589e4c439e65d69d0e20b625dfe49810c518d2c9fcc1b",
       "blocked_requests": 5
     },
     "live_user_way_holdout_matrix": {
@@ -64,26 +64,26 @@
     },
     "clean_runtime_limited_observation": {
       "path": "docs/process/devseek-r4-clean-runtime-limited-observation.json",
-      "source_sha256": "129638973c1b23d8d357c1e8f9de4cbf3b036ea804eb269eca6bb1a9502722cc",
-      "observation_sha256": "83d3a1fb7b78fafb9494ede929ebb72b5cdb0b7a6b789d5fefed435c1ab14433",
+      "source_sha256": "a1f509be71ad8e6cf2bfc321fbe801fe71a6a9bae632a5d6a06c87dd68f5d491",
+      "observation_sha256": "8ced36e83cfa9cdf4b1697c8a067315de16250563bffb98426998447d94ceb63",
       "terminal_state": "COMPLETED",
       "clean_runtime_identity_established": true,
       "stable_runtime_count": 1
     }
   },
   "r4_scope": {
-    "product_implementation_commit": "a47ffe37f01817d14358b0ef4040e885b7867c8f",
+    "product_implementation_commit": "2db5768a70ebd53aea6c279328e2c87a9ad1aab2",
     "handoff_doc_commit": "02cb792b4fe86df523c7f88eb106f13394e6f3fd",
     "total_leaf_count": 6,
     "local_process_artifacts_complete_except_clean_runtime": true,
     "clean_runtime_leaf_terminal_state": "COMPLETED",
     "clean_runtime_limited_observation_terminal_state": "COMPLETED",
-    "clean_runtime_limited_observation_sha256": "83d3a1fb7b78fafb9494ede929ebb72b5cdb0b7a6b789d5fefed435c1ab14433",
+    "clean_runtime_limited_observation_sha256": "8ced36e83cfa9cdf4b1697c8a067315de16250563bffb98426998447d94ceb63",
     "clean_runtime_stable_runtime_count": 1,
     "current_candidate_identity_status": "clean-runtime-identity-established",
     "gate0_status": "NOT_PASSED",
     "r1_qualification_status": "NOT_STARTED",
-    "release_candidate_vsix_sha256": "8386445523df3b550d9a9edda07e59b594cc3c766e2aecc0a367b9ef5084a854",
+    "release_candidate_vsix_sha256": "236d45d9ad7559e82912435e3f47bd0633e4259617e8bb2cda235a1b96875951",
     "scenario_language_source": "scenario-contract"
   },
   "clean_runtime_boundary": {
@@ -102,7 +102,7 @@
     {
       "leaf_id": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
       "terminal_state": "COMPLETED",
-      "implementation_commit": "a47ffe37f01817d14358b0ef4040e885b7867c8f",
+      "implementation_commit": "2db5768a70ebd53aea6c279328e2c87a9ad1aab2",
       "artifact_path": "docs/process/devseek-current-candidate-identity.json",
       "blocker_reason": null,
       "next_required_authority": null,
@@ -174,5 +174,5 @@
     "live_runs_authorized": 0,
     "qualification_claims": 0
   },
-  "rollup_sha256": "e0e85cb5e8ec0045e0b2ee5e750182b311ac9854b4f17599ff9a22fb8b1abbd0"
+  "rollup_sha256": "ae1143c1ea58f16fac8c70eaab9ee999db7d21f43ff4ab19ce592e5209fa103b"
 }

@@ -24,33 +24,33 @@
   "source_bindings": {
     "release_candidate_manifest": {
       "path": "docs/process/devseek-r4-release-candidate-manifest.json",
-      "source_sha256": "e01dd51a1643e164309f5de95a5ec51c449950965445d6e468d05159743c0d8b",
-      "manifest_sha256": "345f01d8bcb35c9bafac781cf2b035fa8d348b1bee9c370e095e10a689fd6976",
-      "artifact_source_commit": "a47ffe37f01817d14358b0ef4040e885b7867c8f",
-      "vsix_sha256": "8386445523df3b550d9a9edda07e59b594cc3c766e2aecc0a367b9ef5084a854"
+      "source_sha256": "33579b1bb6c7845c6a9503136acbab65600977fff008e927730b80102e014cc9",
+      "manifest_sha256": "2a450c921832baaf3ec2d4c0687e9bf9a079e72447f582040dbaaac30e9825cd",
+      "artifact_source_commit": "2db5768a70ebd53aea6c279328e2c87a9ad1aab2",
+      "vsix_sha256": "236d45d9ad7559e82912435e3f47bd0633e4259617e8bb2cda235a1b96875951"
     },
     "doc_process_identity_reconciliation": {
       "path": "docs/process/devseek-r4-doc-process-identity-reconciliation.json",
-      "source_sha256": "fbd3ab16582366448874a4f219ecf4b41318136a59d27e02408a0f6d7e323fee",
-      "reconciliation_sha256": "5c3ae69a0ec71116466c69a4d13a6977692644abeba8d6a28fad815d8d364274",
+      "source_sha256": "55911a8d65e35236c555f58a58d493e0c0e1a009cfee4eeebffee58d49c4832c",
+      "reconciliation_sha256": "230d71fbdb4f24fb55514cbf2434b3e30822dca1e0311a8846b5838ae2f39e44",
       "current_candidate_identity_status": "clean-runtime-identity-established"
     },
     "external_authority_requests": {
       "path": "docs/process/devseek-external-authority-requests.json",
-      "source_sha256": "97744c8bb9bbab4ef4972e24706397f945bf18ea1b22fb3597f4f86ba6ed3367",
+      "source_sha256": "2ed7e87a36b90259108face7150f4291bf60a12fadc444322ab4964569286cef",
       "request_set_id": "DEVSEEK-GATE0-EXTERNAL-AUTHORITY-REQUESTS/v1",
       "external_authority_blockers": 6
     },
     "external_authority_adapter": {
       "path": "docs/process/devseek-external-authority-adapter.json",
-      "source_sha256": "bd1eec1d8554bd4067479c0371fc8d6a8ee40dae005d905871eecb80b9d03d6f",
+      "source_sha256": "ed4686fccced7eff6430921e3ba37bf3bbf016d2fc07f58a035c4ad66c91dd8d",
       "adapter_id": "DEVSEEK-GATE0-EXTERNAL-AUTHORITY-ADAPTER/v1",
       "source_status": "unconfigured",
       "trust_roots": 0
     },
     "gate0_decision": {
       "path": "docs/process/devseek-gate0-decision-report.json",
-      "source_sha256": "22a12c6e53702cc58a939bb208ff0d7c5c43f39a846d8e0497b897f958eb1bce",
+      "source_sha256": "c7e404419313e14e7e3e0cac34d0f8ceac7db1d7807e2745e4bc97045703e41a",
       "decision_id": "DEVSEEK-GATE0-INFRASTRUCTURE-DECISION/v1",
       "status": "NOT_PASSED",
       "observed_claims": 0
@@ -76,9 +76,9 @@
     }
   },
   "candidate_scope": {
-    "release_candidate_manifest_sha256": "345f01d8bcb35c9bafac781cf2b035fa8d348b1bee9c370e095e10a689fd6976",
-    "artifact_source_commit": "a47ffe37f01817d14358b0ef4040e885b7867c8f",
-    "vsix_sha256": "8386445523df3b550d9a9edda07e59b594cc3c766e2aecc0a367b9ef5084a854",
+    "release_candidate_manifest_sha256": "2a450c921832baaf3ec2d4c0687e9bf9a079e72447f582040dbaaac30e9825cd",
+    "artifact_source_commit": "2db5768a70ebd53aea6c279328e2c87a9ad1aab2",
+    "vsix_sha256": "236d45d9ad7559e82912435e3f47bd0633e4259617e8bb2cda235a1b96875951",
     "current_candidate_identity_status": "clean-runtime-identity-established",
     "clean_runtime_identity_required": true,
     "clean_runtime_identity_authority": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
@@ -180,5 +180,5 @@
     "live_runs_authorized": 0,
     "qualification_claims": 0
   },
-  "packet_sha256": "a3fdcb7cc14df292b5973ca9b4a8b1096c8db97d1c3f01b0c6cf66e02f797241"
+  "packet_sha256": "ccbdafeb110f0b32312589e4c439e65d69d0e20b625dfe49810c518d2c9fcc1b"
 }

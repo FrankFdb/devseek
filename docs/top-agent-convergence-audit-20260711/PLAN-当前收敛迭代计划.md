@@ -103,6 +103,7 @@ devseek_governance:
 - 2026-08-24 完成：当前身份与 `2db5768` exact VSIX/安装/Bridge 一致，identity 11/11、stable runtime=1；R4 process artifacts 保持本地可复算。Gate 0=`NOT_PASSED`、external blockers=6、claims=0，正式 live qualification runs 仍为 0。
 - 2026-08-24 所有权清理：删除只消费已退役 `generated-file-resolver` 的旧 artifact verifier/self-loop，根 `verify:artifacts` 改验 parser 展示边界、completion evidence 和普通模型文本不可写盘，206/206 通过；Kernel baseline 移除四个 `a47ffe3` 前 owner，改由 normalized model action、canonical receipt、Kernel recovery 和逐动作 workspace transaction 持责，55/55 semantic domains、149/149 source checks 通过。
 - Phase 0～12 首次运行 `2026-08-24T01-56-55-975Z` 因旧 source binding 正确失败并保留；按依赖拓扑重生成 C0/Gate0 外部权限证据后，`2026-08-24T02-20-48-762Z` 全部通过、findings=0。两次均为 dirty-worktree deterministic evidence，不产生 candidate/stable 或 qualification claim。
+- 最终 `2db5768` 候选的 Phase 0～12 首轮 `2026-08-24T09-35-17-139Z` 因三个旧 API 静态锚点及其 Post-R4/外部授权 source binding 正确失败；更新 checkpoint v3、recovery kind 和 task-contract resolver 的真实 owner 锚点并按依赖拓扑重生成后，第二轮 `2026-08-24T09-44-59-021Z` 全部通过、findings=0。失败报告与成功报告都保留，仍不产生 qualification claim。
 
 ### N3～N5 独立环境与真实用户仿真
 

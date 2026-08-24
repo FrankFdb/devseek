@@ -1,0 +1,196 @@
+{
+  "schema_version": "devseek.r4-release-candidate-manifest/v3",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "manifest_id": "R4-RELEASE-CANDIDATE-MANIFEST/v3",
+  "manifest_version": 3,
+  "source_status": "user-authorized-versioned-local-candidate-freeze",
+  "integrity_scope": "local-r4-release-candidate-manifest",
+  "local_evidence_class": "local-protocol-conformance",
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "selection_boundary": {
+    "authorization": "explicit-user-authorization",
+    "scope": "local-versioned-r4-candidate-freeze-only",
+    "predecessor_mutation": "FORBIDDEN",
+    "protected_release_candidate": false,
+    "artifact_channel": "debug",
+    "external_qualification_authority": false,
+    "qualification_effect": "NONE"
+  },
+  "observation_authority": {
+    "semantic_authority": "R4ReleaseCandidateManifest",
+    "writes_product_state": false,
+    "provider_actions": "FORBIDDEN",
+    "live_holdout_actions": "FORBIDDEN",
+    "runtime_process_observation": "FORBIDDEN",
+    "install_or_window_actions": "FORBIDDEN",
+    "secret_observation": "FORBIDDEN"
+  },
+  "version_lineage": {
+    "predecessor_manifest_id": "R4-RELEASE-CANDIDATE-MANIFEST/v2",
+    "predecessor_manifest_version": 2,
+    "predecessor_candidate_source_commit": "4f8a56797090079914b4d921b56d9c34fe4d2abc",
+    "predecessor_candidate_vsix_sha256": "68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc",
+    "predecessor_manifest_sha256": "0fda85f4ad71f13d6410d61f5249e327b299642cfee17226f708f979e12bed1b",
+    "predecessor_manifest_path": "docs/process/archive/r4-release-candidates/v2-4f8a567/manifest.json",
+    "predecessor_manifest_file_sha256": "8c051ecfbb718820332804f4cc690f26a54d2e243e26f91d030acbde5b94ea82",
+    "predecessor_schema_path": "docs/process/archive/r4-release-candidates/v2-4f8a567/manifest.schema.json",
+    "predecessor_schema_file_sha256": "face1ace312bdf8478301c8357222a697f750a210a58ddab769a50e4e5206b7f",
+    "predecessor_generated_view_path": "docs/process/archive/r4-release-candidates/v2-4f8a567/manifest.md",
+    "predecessor_generated_view_file_sha256": "56ac05c11e2f25c6e84066066eac06286cee13a154c9683b9a2eabfb49614e46",
+    "predecessor_status": "immutable-history",
+    "supersession_reason": "explicit-user-authorized-versioned-candidate-freeze",
+    "mutation_policy": "byte-for-byte-predecessor-preservation"
+  },
+  "source_identity": {
+    "artifact_source_commit": "a47ffe37f01817d14358b0ef4040e885b7867c8f",
+    "artifact_source_short": "a47ffe3",
+    "artifact_source_resolution": "git rev-parse <vsix.devseekBuild.gitCommit>^{commit}",
+    "verification_record_path": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md",
+    "verification_record_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-20-2032-t12-模型主导语义与动作回执收敛最新",
+    "verification_record_commit": "fa682086eb28c0a9ff15093de27dbb3518c4a89f",
+    "current_candidate_identity_path": "docs/process/devseek-current-candidate-identity.json",
+    "current_candidate_identity_file_sha256": "b722dd9cc6d49d0292b5ea37df68acebfd3baca2ac28d4e56ac6d3ffc0d807dd",
+    "current_candidate_identity_probe_sha256": "a7b347561b042ac426595291526d7d29f1f1cd62410bfff3c5131f059703ea91",
+    "artifact_source_matches_current_identity": true
+  },
+  "artifact_identity": {
+    "primary_vsix": {
+      "path": "devseek-netai-2.0.32-debug.20260820.t172525.ga47ffe3.vsix",
+      "sha256": "8386445523df3b550d9a9edda07e59b594cc3c766e2aecc0a367b9ef5084a854",
+      "package_identity": {
+        "publisher": "devseek-netai",
+        "name": "devseek-netai",
+        "version": "2.0.32-debug.20260820.t172525.ga47ffe3",
+        "devseekBuild": {
+          "baseVersion": "2.0.32",
+          "channel": "debug",
+          "buildId": "20260820-t172525",
+          "gitCommit": "a47ffe3",
+          "packagedAt": "2026-08-20T09:25:25.020Z"
+        }
+      },
+      "packaged_bridge_server_sha256": "9e0b4b79ba528266089ddd472e52deae1186288937a40f12496ac5bd5d28a332"
+    },
+    "package_copy_vsix": {
+      "path": "packages/vscode-extension/devseek-netai-2.0.32-debug.20260820.t172525.ga47ffe3.vsix",
+      "sha256": "8386445523df3b550d9a9edda07e59b594cc3c766e2aecc0a367b9ef5084a854",
+      "package_identity": {
+        "publisher": "devseek-netai",
+        "name": "devseek-netai",
+        "version": "2.0.32-debug.20260820.t172525.ga47ffe3",
+        "devseekBuild": {
+          "baseVersion": "2.0.32",
+          "channel": "debug",
+          "buildId": "20260820-t172525",
+          "gitCommit": "a47ffe3",
+          "packagedAt": "2026-08-20T09:25:25.020Z"
+        }
+      },
+      "packaged_bridge_server_sha256": "9e0b4b79ba528266089ddd472e52deae1186288937a40f12496ac5bd5d28a332"
+    },
+    "exact_match": true
+  },
+  "verification_receipts": [
+    {
+      "receipt_id": "shared-full-suite",
+      "receipt_kind": "recorded-local-test",
+      "verification_scope": "shared-full-suite",
+      "evidence": "PASS; 366/366 tests",
+      "status": "recorded-passed",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-20-2032-t12-模型主导语义与动作回执收敛最新",
+      "source_commit": "fa682086eb28c0a9ff15093de27dbb3518c4a89f",
+      "qualification_effect": "NONE"
+    },
+    {
+      "receipt_id": "bridge-full-suite",
+      "receipt_kind": "recorded-local-test",
+      "verification_scope": "bridge-full-suite",
+      "evidence": "PASS; 42/42 tests",
+      "status": "recorded-passed",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-20-2032-t12-模型主导语义与动作回执收敛最新",
+      "source_commit": "fa682086eb28c0a9ff15093de27dbb3518c4a89f",
+      "qualification_effect": "NONE"
+    },
+    {
+      "receipt_id": "cli-full-suite",
+      "receipt_kind": "recorded-local-test",
+      "verification_scope": "cli-full-suite",
+      "evidence": "PASS; 84/84 tests",
+      "status": "recorded-passed",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-20-2032-t12-模型主导语义与动作回执收敛最新",
+      "source_commit": "fa682086eb28c0a9ff15093de27dbb3518c4a89f",
+      "qualification_effect": "NONE"
+    },
+    {
+      "receipt_id": "headless-full-suite",
+      "receipt_kind": "recorded-local-test",
+      "verification_scope": "headless-full-suite",
+      "evidence": "PASS; 25/25 tests",
+      "status": "recorded-passed",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-20-2032-t12-模型主导语义与动作回执收敛最新",
+      "source_commit": "fa682086eb28c0a9ff15093de27dbb3518c4a89f",
+      "qualification_effect": "NONE"
+    },
+    {
+      "receipt_id": "extension-full-unit-runner",
+      "receipt_kind": "recorded-local-test",
+      "verification_scope": "vscode-extension-full-unit-runner",
+      "evidence": "PASS; 174/174 suites",
+      "status": "recorded-passed",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-20-2032-t12-模型主导语义与动作回执收敛最新",
+      "source_commit": "fa682086eb28c0a9ff15093de27dbb3518c4a89f",
+      "qualification_effect": "NONE"
+    },
+    {
+      "receipt_id": "phase10-and-architecture-drift",
+      "receipt_kind": "recorded-local-regression",
+      "verification_scope": "phase10-and-architecture-drift",
+      "evidence": "PASS; Phase 10; architecture drift 0 violation",
+      "status": "recorded-passed",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-20-2032-t12-模型主导语义与动作回执收敛最新",
+      "source_commit": "fa682086eb28c0a9ff15093de27dbb3518c4a89f",
+      "qualification_effect": "NONE"
+    },
+    {
+      "receipt_id": "vsix-release-loop",
+      "receipt_kind": "recorded-local-install",
+      "verification_scope": "package-bridge-install-and-exactly-one-runtime",
+      "evidence": "PASS; devseek-netai-2.0.32-debug.20260820.t172525.ga47ffe3.vsix; sha256 8386445523df3b550d9a9edda07e59b594cc3c766e2aecc0a367b9ef5084a854",
+      "status": "recorded-passed",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-20-2032-t12-模型主导语义与动作回执收敛最新",
+      "source_commit": "fa682086eb28c0a9ff15093de27dbb3518c4a89f",
+      "qualification_effect": "NONE"
+    }
+  ],
+  "current_identity_probe_boundary": {
+    "path": "docs/process/devseek-current-candidate-identity.json",
+    "status": "verified-current-candidate",
+    "identity_probe_sha256": "a7b347561b042ac426595291526d7d29f1f1cd62410bfff3c5131f059703ea91",
+    "identity_source_sha256": "b722dd9cc6d49d0292b5ea37df68acebfd3baca2ac28d4e56ac6d3ffc0d807dd",
+    "candidate_source_commit": "a47ffe37f01817d14358b0ef4040e885b7867c8f",
+    "artifact_source_matches_current_identity": true,
+    "stable_runtime_count": 1,
+    "observe_status": "passed",
+    "qualification_effect": "NONE",
+    "reason": "Tracked current identity already proves artifact, stable install, and exactly-one local runtime for this candidate; the manifest performs no live observation."
+  },
+  "r4_leaf_context": {
+    "current_leaf": "R4-RELEASE-CANDIDATE-MANIFEST",
+    "closure_effect": "version-selects the local R4 candidate without adding qualification authority",
+    "remaining_leaves_at_freeze": []
+  },
+  "counts": {
+    "vsix_artifacts": 2,
+    "historical_candidates": 2,
+    "verification_receipts": 7,
+    "remaining_r4_leaves_at_freeze": 0,
+    "qualification_claims": 0
+  },
+  "manifest_sha256": "345f01d8bcb35c9bafac781cf2b035fa8d348b1bee9c370e095e10a689fd6976"
+}

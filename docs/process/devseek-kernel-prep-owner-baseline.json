@@ -2035,7 +2035,7 @@
       "check_id": "vscode-canonical-checkpoint-store",
       "path": "packages/vscode-extension/src/app/task-checkpoint-store.ts",
       "includes": [
-        "TASK_CHECKPOINT_RESUME_PROTOCOL = 'devseek.checkpoint-resume/v2'",
+        "TASK_CHECKPOINT_RESUME_PROTOCOL = 'devseek.checkpoint-resume/v3'",
         "canonicalCheckpoint: CodingCheckpoint",
         "CHECKPOINT.snapshot(record.canonicalCheckpoint)",
         "canonicalCheckpoint.originSurface !== 'vscode'",
@@ -2051,7 +2051,7 @@
       "path": "packages/vscode-extension/src/app/provider-recovery-checkpoint.ts",
       "includes": [
         "buildProviderRecoveryCheckpointRecord(",
-        "buildProviderRecoveryCheckpointTasks(input)",
+        "buildProviderRecoveryCheckpointTasks(input.recoveryKind)",
         "input.error.checkpoint.create({",
         "evidenceRefs: input.evidenceRefs ?? input.error.settlement.evidenceRefs",
         "isCheckpointableProviderRecoveryError("
@@ -3045,7 +3045,7 @@
         "memoryContextText: request.memoryContextText,",
         "const kernel = new CanonicalCodingKernel(runtime)",
         "surface: 'vscode'",
-        "const taskContract = projectVsCodeCodingKernelTaskContract({",
+        "const taskContract = resolveVsCodeCodingKernelTaskContract({",
         "environment: createCodingKernelEnvironmentSync({",
         "provider: request.providerType,",
         "contextSeed: projectVsCodeCodingContextSeed(request.contextFiles, request.semanticContract)",
@@ -3834,5 +3834,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "a8a7fa5f0b4ed56a73ae5560d384aebaa9641286dcd8c1deb541d5f75ea81bcf"
+  "baseline_sha256": "c5ceff1ff755a419064ab0bfd570231364843f35cee2cc72bcf6f6948c08a575"
 }
