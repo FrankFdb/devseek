@@ -2959,6 +2959,7 @@ test('Agentic loop: visible correction and context convergence are owned by Agen
   assertContains(textProtocol, 'QuarantinedTextToolProtocol', 'text protocol boundary must expose quarantine evidence separately from authorized calls');
   assertContains(agenticLoop, 'settleOrRecoverProviderFailureInsideCurrentTask({', 'all provider failures must settle completed evidence before entering recovery');
   assertContains(agenticLoop, "'incomplete-tool-block'", 'damaged authorized envelopes must get a stable recoverable failure status');
+  assertContains(agenticLoop, "'invalid-tool-block'", 'empty or malformed authorized envelopes must get a stable recoverable failure status');
   assertContains(agenticLoop, "'out-of-envelope-tool-block'", 'quarantined provider actions must get a distinct recoverable failure status');
   assertContains(agenticLoop, 'AGENTIC_CONTEXT_GATHERING_ROUND_LIMIT_BEFORE_WRITE', 'context-gathering convergence must be bounded');
   assertContains(agenticLoop, 'contextGatheringOnlyRoundsWithoutWrite', 'agentic loop must track read/search-only rounds');

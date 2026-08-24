@@ -151,6 +151,31 @@ test('Agent provider recovery quarantines out-of-envelope actions and reissues t
   assert.match(display.detail, /已隔离且未执行/);
 });
 
+test('Agent provider recovery reissues malformed authorized envelopes in bounded chunks', () => {
+  const failure = parseAgentProviderFailure(
+    new Error('RESPONSE_CORRUPTED:invalid-tool-block:authorized envelope had no registered tool.'),
+  );
+  const prompt = buildAgentProviderRecoveryPrompt({
+    userPrompt: '创建 docs/report.md',
+    failure,
+    recoveryAttempt: 1,
+    maxRecoveryAttempts: 3,
+    promptRequiresTools: true,
+    currentTodos: [],
+    readEvidencePaths: ['README.md'],
+    writtenFiles: [],
+    terminalEvidence: [],
+    textToolProtocol: {
+      version: 'devseek.text-tools/v1',
+      channelId: 'invalid-envelope-channel',
+    },
+  }).content;
+
+  assert.equal(failure.recoverable, true);
+  assert.match(prompt, /channel="invalid-envelope-channel"/);
+  assert.match(prompt, /不超过 1800 字符/);
+});
+
 test('Agent provider recovery resets browser state after every rejected response', () => {
   const failure = parseAgentProviderFailure(
     new Error('RESPONSE_CORRUPTED:incomplete-tool-block:Tool block is incomplete.'),

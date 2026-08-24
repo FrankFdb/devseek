@@ -33,6 +33,7 @@ import {
   createTextToolProtocolSession,
   findFirstAuthorizedTextToolEnvelopeStart,
   hasIncompleteAuthorizedTextToolEnvelope,
+  inspectInvalidAuthorizedTextToolProtocol,
   inspectOutOfEnvelopeTextToolProtocol,
   parseAuthorizedTextToolCalls,
   stripAuthorizedTextToolEnvelopes,
@@ -195,6 +196,7 @@ export async function runAgenticLoop(
   let lastRoundToolRequestCount = 0;
   let executedToolRoundCount = 0;
   let providerRecoveryAttempts = 0;
+  let unresolvedProviderToolProtocol = false;
   let forceProviderNewSessionNextTurn = false;
   const resetProviderRecoveryAttemptsAfterProgress = () => {
     providerRecoveryAttempts = 0;
@@ -290,6 +292,7 @@ export async function runAgenticLoop(
     partialResponseLength = 0,
   ): Promise<'completed' | 'recovered' | 'unrecoverable'> => {
     const providerSettlement = settleProviderFailureFromCompletedEvidence({
+      providerFailureStatus: providerFailure?.status,
       promptRequiresTools,
       sawWorkTool,
       aborted: callbacks.signal?.aborted,
@@ -493,6 +496,7 @@ export async function runAgenticLoop(
       promptRequiresTools = true;
       if (tools.some(tool => tool.purpose === 'workspace-mutation')) promptRequiresFileChange = true;
     }
+    if (tools.length > 0) unresolvedProviderToolProtocol = false;
 
     messages.push({ role: 'assistant', content: text }, ...postProviderSteerMessages);
     lastProviderText = text;
@@ -519,25 +523,51 @@ export async function runAgenticLoop(
 
     if (!tools.length) {
       const incompleteAuthorizedEnvelope = hasIncompleteAuthorizedTextToolEnvelope(text, textToolProtocol);
+      const invalidAuthorizedProtocol = inspectInvalidAuthorizedTextToolProtocol(text, textToolProtocol);
       const quarantinedProtocol = inspectOutOfEnvelopeTextToolProtocol(text, textToolProtocol);
-      if (!callbacks.signal?.aborted && (incompleteAuthorizedEnvelope || quarantinedProtocol.found)) {
+      if (!callbacks.signal?.aborted && (
+        incompleteAuthorizedEnvelope
+        || invalidAuthorizedProtocol.found
+        || quarantinedProtocol.found
+      )) {
         noToolRounds++;
+        const status = quarantinedProtocol.found
+          ? 'out-of-envelope-tool-block'
+          : incompleteAuthorizedEnvelope
+            ? 'incomplete-tool-block'
+            : 'invalid-tool-block';
         const disposition = await settleOrRecoverProviderFailureInsideCurrentTask({
-          status: quarantinedProtocol.found
-            ? 'out-of-envelope-tool-block'
-            : 'incomplete-tool-block',
+          status,
           reason: quarantinedProtocol.found
             ? `检测到授权信封外的结构化工具动作（${quarantinedProtocol.dialects.join(', ')}）；已隔离且未执行。`
-            : '工具协议痕迹存在，但没有形成可安全执行的工具参数。',
+            : incompleteAuthorizedEnvelope
+              ? '工具协议信封没有完整闭合，未形成可安全执行的工具参数。'
+              : `检测到 ${invalidAuthorizedProtocol.invalidEnvelopeCount} 个不含已注册工具的授权信封；已隔离且未执行。`,
+          rawMessage: text,
+          recoverable: true,
+        }, text.trim().length);
+        if (disposition === 'completed') break;
+        if (disposition === 'recovered') {
+          unresolvedProviderToolProtocol = true;
+          continue;
+        }
+        failedReason = 'Provider 连续输出损坏工具协议，未形成可执行工具调用。';
+        break;
+      }
+      const stripped = stripAuthorizedTextToolEnvelopes(text, textToolProtocol).trim();
+      if (!callbacks.signal?.aborted && unresolvedProviderToolProtocol) {
+        noToolRounds++;
+        const disposition = await settleOrRecoverProviderFailureInsideCurrentTask({
+          status: 'incomplete-tool-block',
+          reason: '安全恢复后仍未形成有效工具调用，上一轮结构化动作尚未解决。',
           rawMessage: text,
           recoverable: true,
         }, text.trim().length);
         if (disposition === 'completed') break;
         if (disposition === 'recovered') continue;
-        failedReason = 'Provider 连续输出损坏工具协议，未形成可执行工具调用。';
+        failedReason = 'Provider 安全恢复后仍未形成有效工具调用。';
         break;
       }
-      const stripped = stripAuthorizedTextToolEnvelopes(text, textToolProtocol).trim();
       const reviewRecovery = recoverRequirementReviewNoToolCompletion(requirementReview, noToolRounds + 1, text);
       if (!callbacks.signal?.aborted && reviewRecovery) {
         noToolRounds++;

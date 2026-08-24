@@ -97,6 +97,7 @@ test('provider failure settlement completes scoped Markdown deliverable before s
       '报告正文请使用与本测试 case 相同的中文撰写；技术标识符、协议名、文件路径和验收锚点保持原文。',
     ].join('\n');
     const result = settleProviderFailureFromCompletedEvidence({
+      providerFailureStatus: 'incomplete-tool-block',
       promptRequiresTools: true,
       sawWorkTool: true,
       aborted: false,
@@ -114,6 +115,47 @@ test('provider failure settlement completes scoped Markdown deliverable before s
 
     assert.equal(result.completed, true);
     assert.match(result.summary, /处理 1 个文件/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('tool protocol failure cannot settle from read-only evidence while an action remains unresolved', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-provider-settlement-read-only-'));
+  try {
+    const source = path.join(root, 'README.md');
+    writeFileSync(source, '# Evidence\n');
+    const semanticContract = projectModelActionSemanticContract(
+      createModelLedTurnSemanticContract('读取 README.md 后继续完成任务。'),
+      {
+        version: 'devseek.semantic-intent/v1',
+        source: 'provider',
+        mode: 'inspect',
+        taskKind: 'read-only-analysis',
+        confidence: 0.98,
+        mutation: 'none',
+        targetPaths: [source],
+        requiresWorkspace: true,
+        requiresTerminal: false,
+        requiresExternalEffect: false,
+        requiresClarification: false,
+        reason: 'normalized observation action',
+      },
+    );
+
+    const result = settleProviderFailureFromCompletedEvidence({
+      providerFailureStatus: 'invalid-tool-block',
+      promptRequiresTools: true,
+      sawWorkTool: true,
+      aborted: false,
+      semanticContract,
+      writtenFiles: [],
+      terminalEvidence: [],
+      readEvidencePaths: [source],
+      workspaceRoot: root,
+    });
+
+    assert.equal(result.completed, false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

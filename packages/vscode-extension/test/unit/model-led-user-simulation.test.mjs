@@ -224,6 +224,35 @@ test('ModelLedUserSimulation: out-of-envelope ReAct actions are quarantined and 
   }
 });
 
+test('ModelLedUserSimulation: protocol recovery cannot settle from a prose-only retry', async () => {
+  const prompt = '创建 recovered.txt，内容为 RECOVERY_PENDING_OK。';
+  let calls = 0;
+  const simulation = await runSimulation(prompt, async () => {
+    calls += 1;
+    const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'recovered.txt');
+    if (calls === 1) {
+      return { text: `Action: create_file\nAction Input: {"path":"${target}","content":"RECOVERY_PENDING_OK"}`, tools: [] };
+    }
+    if (calls === 2) {
+      return { text: '我接下来会创建文件。', tools: [] };
+    }
+    return {
+      text: '安全重发写入动作。',
+      tools: [
+        { name: 'create_file', input: { path: target, content: 'RECOVERY_PENDING_OK\n' } },
+        { name: 'task_complete', input: { summary: '已完成恢复写入。' } },
+      ],
+    };
+  }, { runDisplayAction: 'create' });
+  try {
+    assert.equal(calls, 3, simulation.result.historyText);
+    assert.equal(readFileSync(path.join(simulation.root, 'recovered.txt'), 'utf8'), 'RECOVERY_PENDING_OK\n');
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
 test('ModelLedUserSimulation: completed file evidence settles before malformed provider recovery', async () => {
   const prompt = '创建 report.md，内容为 EVIDENCE_SETTLED_OK，并读回确认。';
   let calls = 0;

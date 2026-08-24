@@ -24,6 +24,7 @@ import {
   pushUiSettings,
 } from './generated-artifact-ui';
 import { postWebviewMessage } from './webview-event-adapter';
+import { resolveFileMentionInput } from './file-mention-input';
 import { getChatHtml } from './webview-html';
 import type { WebviewInboundMessage, WebviewOutboundMessage } from './webview-protocol';
 import {
@@ -580,10 +581,7 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     const content = await readWorkspaceFile(filePath, this.deps.getLastConversationFiles());
-    const injection = content
-      ? `\n\n**文件内容 \`${filePath}\`：**\n\`\`\`\n${content.slice(0, 4000)}\n\`\`\``
-      : `（找不到文件：${filePath}）`;
-    const resolvedText = (msg.text as string).replace(`@${filePath}`, injection);
+    const resolvedText = resolveFileMentionInput(msg.text as string, filePath, content);
     await this.deps.runChat(wv, resolvedText, resolvedText, msg.newSession ?? false);
   }
 

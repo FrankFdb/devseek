@@ -17,6 +17,12 @@ export interface QuarantinedTextToolProtocol {
   readonly dialects: readonly string[];
 }
 
+export interface InvalidAuthorizedTextToolProtocol {
+  readonly found: boolean;
+  readonly envelopeCount: number;
+  readonly invalidEnvelopeCount: number;
+}
+
 const CHANNEL_ID_RE = /^[A-Za-z0-9_-]{16,96}$/;
 
 export function createTextToolProtocolSession(channelId = crypto.randomBytes(18).toString('base64url')): TextToolProtocolSession {
@@ -60,6 +66,23 @@ export function inspectOutOfEnvelopeTextToolProtocol(
   });
 }
 
+/** Rejects authenticated envelopes that do not contain any recognized tool. */
+export function inspectInvalidAuthorizedTextToolProtocol(
+  text: string,
+  session: TextToolProtocolSession | undefined,
+): InvalidAuthorizedTextToolProtocol {
+  if (!session) {
+    return Object.freeze({ found: false, envelopeCount: 0, invalidEnvelopeCount: 0 });
+  }
+  const payloads = extractAuthorizedTextToolPayloads(text, session);
+  const invalidEnvelopeCount = payloads.filter(payload => parseFakeToolCalls(payload).length === 0).length;
+  return Object.freeze({
+    found: invalidEnvelopeCount > 0,
+    envelopeCount: payloads.length,
+    invalidEnvelopeCount,
+  });
+}
+
 export function extractAuthorizedTextToolPayloads(
   text: string,
   session: TextToolProtocolSession,
@@ -73,10 +96,10 @@ export function extractAuthorizedTextToolPayloads(
     const start = raw.indexOf(open, cursor);
     if (start < 0) break;
     const payloadStart = start + open.length;
-    const end = raw.indexOf(close, payloadStart);
-    if (end < 0) break;
-    payloads.push(raw.slice(payloadStart, end).trim());
-    cursor = end + close.length;
+    const envelopeClose = findEnvelopeClose(raw, payloadStart, close);
+    if (!envelopeClose) break;
+    payloads.push(raw.slice(payloadStart, envelopeClose.start).trim());
+    cursor = envelopeClose.end;
   }
   return payloads;
 }
@@ -105,13 +128,13 @@ export function stripAuthorizedTextToolEnvelopes(
       visible += raw.slice(cursor);
       break;
     }
-    const end = raw.indexOf(close, start + open.length);
-    if (end < 0) {
+    const envelopeClose = findEnvelopeClose(raw, start + open.length, close);
+    if (!envelopeClose) {
       visible += raw.slice(cursor, start);
       break;
     }
     visible += raw.slice(cursor, start);
-    cursor = end + close.length;
+    cursor = envelopeClose.end;
   }
   return visible.replace(/\n{3,}/g, '\n\n');
 }
@@ -128,9 +151,9 @@ export function hasIncompleteAuthorizedTextToolEnvelope(
   while (cursor < raw.length) {
     const start = raw.indexOf(open, cursor);
     if (start < 0) return false;
-    const end = raw.indexOf(close, start + open.length);
-    if (end < 0) return true;
-    cursor = end + close.length;
+    const envelopeClose = findEnvelopeClose(raw, start + open.length, close);
+    if (!envelopeClose) return true;
+    cursor = envelopeClose.end;
   }
   return false;
 }
@@ -141,4 +164,18 @@ function openMarker(session: TextToolProtocolSession): string {
 
 function closeMarker(session: TextToolProtocolSession): string {
   return `</devseek_tool_calls channel="${session.channelId}">`;
+}
+
+function findEnvelopeClose(
+  text: string,
+  from: number,
+  canonicalClose: string,
+): { start: number; end: number } | undefined {
+  const compatibleClose = '</devseek_tool_calls>';
+  const candidates = [canonicalClose, compatibleClose]
+    .map(marker => ({ marker, start: text.indexOf(marker, from) }))
+    .filter(candidate => candidate.start >= 0)
+    .sort((left, right) => left.start - right.start);
+  const first = candidates[0];
+  return first ? { start: first.start, end: first.start + first.marker.length } : undefined;
 }

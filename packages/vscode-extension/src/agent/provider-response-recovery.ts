@@ -41,6 +41,7 @@ const RECOVERABLE_RESPONSE_CORRUPTION_STATUSES = new Set([
   'mixed-tool-protocol',
   'unclosed-markdown-fence',
   'incomplete-tool-block',
+  'invalid-tool-block',
   'out-of-envelope-tool-block',
   'incomplete-assistant-intent',
   'invalid-json-response',
@@ -127,7 +128,11 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
     input.currentTodos.map(todo => `${todo.status}: ${todo.title}`),
     8,
   );
-  const sideEffectLine = input.promptRequiresTools
+  const failureStatus = input.failure.status.toLowerCase();
+  const unresolvedToolAction = failureStatus.endsWith('tool-block');
+  const sideEffectLine = unresolvedToolAction
+    ? '上一轮包含未解决的结构化动作；必须通过当前授权信封安全重发，不能把已有只读证据当作任务完成。'
+    : input.promptRequiresTools
     ? '当前任务需要真实工具证据；不得只输出说明、计划或自然语言完成摘要。'
     : '当前任务可以只读分析，但最终必须给出完整结论和依据。';
   const finalAttempt = input.recoveryAttempt >= input.maxRecoveryAttempts;
@@ -135,10 +140,12 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
     ? '- 这是最后一次恢复：只能输出最小下一步。最多 3 个只读工具或 1 个写入工具；不能重新做全量项目探索。'
     : '- 恢复轮必须小步推进：最多 6 个只读工具；如需写入，最多 1 个写入工具，content 控制在 6000 字符以内。';
   const resetProviderSession = shouldResetProviderSessionForRecovery(input.failure);
-  const failureStatus = input.failure.status.toLowerCase();
   const toolSerializationLine = failureStatus === 'incomplete-tool-block'
+    && input.writtenFiles.length > 0
     ? buildReplaceInFileRecoveryPrompt(input.textToolProtocol)
-    : failureStatus === 'out-of-envelope-tool-block'
+    : failureStatus === 'incomplete-tool-block'
+      || failureStatus === 'invalid-tool-block'
+      || failureStatus === 'out-of-envelope-tool-block'
       ? buildTextToolEnvelopeRecoveryPrompt(input.textToolProtocol)
       : '';
 

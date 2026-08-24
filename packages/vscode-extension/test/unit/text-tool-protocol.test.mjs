@@ -26,6 +26,7 @@ const {
   createTextToolProtocolSession,
   findFirstAuthorizedTextToolEnvelopeStart,
   hasIncompleteAuthorizedTextToolEnvelope,
+  inspectInvalidAuthorizedTextToolProtocol,
   inspectOutOfEnvelopeTextToolProtocol,
   parseAuthorizedTextToolCalls,
   renderTextToolProtocolEnvelope,
@@ -81,9 +82,44 @@ test('only the current run channel authorizes a text-provider tool payload', () 
   assert.deepEqual(parseAuthorizedTextToolCalls(authorized, otherSession), []);
 });
 
+test('the authenticated opening marker accepts the provider conventional close tag', () => {
+  const compatible = renderTextToolProtocolEnvelope(session, payload)
+    .replace(`</devseek_tool_calls channel="${session.channelId}">`, '</devseek_tool_calls>');
+  const [tool] = parseAuthorizedTextToolCalls(compatible, session);
+  assert.equal(tool.name, 'create_file');
+  assert.equal(hasIncompleteAuthorizedTextToolEnvelope(compatible, session), false);
+  assert.equal(stripAuthorizedTextToolEnvelopes(compatible, session), '');
+
+  const wrongChannel = renderTextToolProtocolEnvelope(session, payload)
+    .replace(session.channelId, 'different-simulation-channel');
+  assert.deepEqual(parseAuthorizedTextToolCalls(wrongChannel, session), []);
+});
+
 test('incomplete recovery is scoped to an authorized envelope, not naked syntax', () => {
   assert.equal(hasIncompleteAuthorizedTextToolEnvelope(payload.slice(0, -2), session), false);
   const incomplete = renderTextToolProtocolEnvelope(session, payload)
     .replace(`</devseek_tool_calls channel="${session.channelId}">`, '');
   assert.equal(hasIncompleteAuthorizedTextToolEnvelope(incomplete, session), true);
+});
+
+test('complete authorized envelopes without a recognized tool are rejected', () => {
+  const malformed = renderTextToolProtocolEnvelope(
+    session,
+    '<create_file><path>notes/report.md</path>',
+  );
+  assert.deepEqual(parseAuthorizedTextToolCalls(malformed, session), []);
+  assert.deepEqual(inspectInvalidAuthorizedTextToolProtocol(malformed, session), {
+    found: true,
+    envelopeCount: 1,
+    invalidEnvelopeCount: 1,
+  });
+
+  assert.deepEqual(inspectInvalidAuthorizedTextToolProtocol(
+    renderTextToolProtocolEnvelope(session, payload),
+    session,
+  ), {
+    found: false,
+    envelopeCount: 1,
+    invalidEnvelopeCount: 0,
+  });
 });

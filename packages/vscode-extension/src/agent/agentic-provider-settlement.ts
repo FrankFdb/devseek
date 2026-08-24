@@ -10,6 +10,7 @@ import type { TaskSemanticContract } from '../task-semantic-contract';
 import type { CodingKernelTaskContract } from '@devseek-netai/shared';
 
 export interface ProviderFailureSettlementInput {
+  providerFailureStatus?: string;
   promptRequiresTools: boolean;
   sawWorkTool: boolean;
   aborted: boolean | undefined;
@@ -29,6 +30,11 @@ export function settleProviderFailureFromCompletedEvidence(
   input: ProviderFailureSettlementInput,
 ): ProviderFailureSettlement {
   if (input.aborted || !input.promptRequiresTools || !input.sawWorkTool) {
+    return { completed: false };
+  }
+  if (isToolProtocolFailure(input.providerFailureStatus)
+    && input.writtenFiles.length === 0
+    && !hasSettledEffectRequirement(input.semanticContract)) {
     return { completed: false };
   }
   const missingEvidence = assessMissingCompletionEvidence({
@@ -51,6 +57,16 @@ export function settleProviderFailureFromCompletedEvidence(
     completed: true,
     summary: buildCompletedEvidenceSummary(input.writtenFiles, input.terminalEvidence, input.workspaceRoot),
   };
+}
+
+function isToolProtocolFailure(status: string | undefined): boolean {
+  return String(status || '').toLowerCase().endsWith('tool-block');
+}
+
+function hasSettledEffectRequirement(contract: TaskSemanticContract): boolean {
+  return contract.mutation.requested
+    || contract.validation.requested
+    || contract.intent.context.externalEffect === 'requested';
 }
 
 function buildCompletedEvidenceSummary(
