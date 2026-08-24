@@ -69,7 +69,7 @@ devseek_governance:
 | 1 | 关闭 T12 本地候选 | `completed` | Codex/Claude 责任审计、模型动作合同、跨 Surface 仿真、全量门禁、一个提交、最终 VSIX 安装和一次 push 已完成 |
 | 2 | N1 修复 legacy 文档库存 | `completed` | 逐份核对 60 份受治理文档 provenance，把缺失 29 条真实记录加入 inventory；`verify:doc-governance` 达到 4/4，且不改变 Gate 0 结论 |
 | 3 | N2 当前候选与 C14 流程身份对齐 | `completed` | `a47ffe3`、exact debug VSIX、稳定安装、单一 Bridge 和派生 source bindings 已一致；manifest v3 建立本地版本化后继，v1/v2 历史保持不可变，protected RC 仍留给 N5～N7 |
-| 4 | N3 跨平台产品证据 | `pending_scope` | 当前机器事实只覆盖 `linux-x64-v1`；由 profile owner 明确新增平台后，在独立主机验证安装、路径/symlink、shell、权限、Bridge 生命周期、session/restart 和编译测试，失败按根因回流 |
+| 4 | N3 跨平台产品证据 | `ready_external_execution` | 本地平台 owner 与故障矩阵已验证，独立人工测试包已就绪；在 Linux、Windows、WSL2 和 macOS 主机按 exact VSIX 执行安装、路径/symlink、shell、权限、Bridge 生命周期、steering/cancel、session/restart、断网恢复和交付清理，通过 matrix verifier 后完成 |
 | 5 | N4 真实 Provider reliability wave | `blocked_external` | 取得 `R4-LIVE-AUTH-01/02` 后，冻结候选和干净 runtime，执行多用户、多语言、中大型编程、长任务、网络中断、取消、steering、重启与恢复波次；保留完整运行证据和资源回收结果 |
 | 6 | N5 受保护 profile 与 sealed holdout | `blocked_external` | 取得 `R4-LIVE-AUTH-03/04`；独立 owner 在候选冻结前封存与开发集不重叠的 case、retry budget、failure taxonomy 和证据策略，失败不得选择性补跑或改 case 适配实现 |
 | 7 | N6 Gate 0 外部 authority 与资格导入 | `blocked_external` | `EXT-01`～`EXT-05` 提供受信 source registry、独立 attestation、protected policy、角色/密钥、WORM retention 与 trusted time；再由 `R4-LIVE-AUTH-05` 独立导入 exact claims |
@@ -116,6 +116,14 @@ devseek_governance:
 | Provider 可靠性 | 慢首包、半截 Markdown/JSON/XML、重复响应、网页验证、断流、恢复后继续 | 半截工具被执行、错误会话串线、等待无反馈、资源不回收 |
 | 平台 | profile 明确批准的每个 OS/架构/VS Code 版本 | 用 Linux 结果外推其他平台，或路径/shell/权限差异未被发现 |
 | 独立性 | 实现外 case author、冻结前 sealed、开发集 disjoint、统一 retry/failure taxonomy | 看实现后改答案、只保留成功样本、失败后选择性补跑覆盖 |
+
+本轮 2026-08-24 本地执行审计：
+
+- N3 平台唯一 owner `packages/shared/src/coding-platform-conformance.ts` 及 Linux、Windows/WSL、macOS 故障矩阵 40/40 通过；Phase 10 的 Shared、Bridge、CLI、Headless、Extension 编译、类型检查和测试全部通过。这些只是本地实现与故障 oracle 证据，不替代 Windows/WSL/macOS 独立主机执行。
+- exact 候选身份 11/11 通过，仍为 `a47ffe37f01817d14358b0ef4040e885b7867c8f` 与 VSIX SHA-256 `8386445523df3b550d9a9edda07e59b594cc3c766e2aecc0a367b9ef5084a854`；只有一个 stable Bridge，认证 `/status` 显示 `idle=true`、`browserReady=false`、active request=0，本轮未执行 Provider 或窗口动作。
+- N4～N7 仓库内协议复算全部通过：R4 process artifact errors=0，外部请求 10/10 具有可执行恢复语句，local-unblockable=0，qualification protocol 12/12，evidence manifest 41/41，runner 6/6。Gate 0 仍为 `NOT_PASSED`，仓库 blocker=0、外部 blocker=6、授权=0、claim=0。
+- 2026-08-24 增加 `code/devseek-tests/n3-cross-platform-user-way/`：固定 exact VSIX 和 8 个顺序用户旅程，覆盖 `linux-x64-v1`、`windows-x64-v1`、`wsl2-linux-x64-v1`、`macos-arm64-v1` 必需 profile 与 `macos-x64-v1` 补充 profile；提供 result schema、`init`、evidence `seal`、单结果 `verify` 和全平台 `matrix` 复算。Contract/攻击测试 14/14 通过，当前外部结果=0，N3 只是可执行而非已通过。
+- 因此必需本地代码与治理迭代已用尽；N3 等待独立人工按测试包回传证据，N4～N7 等待 `R4-LIVE-AUTH-01`～`05`、`EXT-01`～`05` 及 protected release authority 提供新事实。不得为“全部完成”人工把状态改绿。
 
 任何产品失败必须先保留原始 prompt、Provider transcript、run log、工具/权限/变更/验证 receipt、工作区前后状态和进程资源证据。随后定位 defect class 与唯一 owner；必要时重构并删除旧责任。修复会使当前 RC 与 holdout 结果全部失效，必须生成新候选并重新执行完整门禁。
 

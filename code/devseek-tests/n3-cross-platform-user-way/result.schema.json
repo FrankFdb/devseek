@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-cross-platform-user-way-result-v1.json",
+  "title": "DevSeek Cross-platform User-way Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "packet_id",
+    "packet_sha256",
+    "run_id",
+    "platform_profile",
+    "candidate",
+    "tester",
+    "environment",
+    "started_at",
+    "completed_at",
+    "case_results",
+    "qualification_effect",
+    "claims_permitted",
+    "asserts_gate_pass"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.cross-platform-user-way-result/v1" },
+    "packet_id": { "$ref": "#/$defs/safeId" },
+    "packet_sha256": { "$ref": "#/$defs/sha256" },
+    "run_id": { "$ref": "#/$defs/safeId" },
+    "platform_profile": { "$ref": "#/$defs/safeId" },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_commit", "artifact_filename", "vsix_sha256", "packaged_bridge_sha256", "extension_id", "extension_version", "vscode_engine"],
+      "properties": {
+        "source_commit": { "$ref": "#/$defs/gitCommit" },
+        "artifact_filename": { "type": "string", "minLength": 1 },
+        "vsix_sha256": { "$ref": "#/$defs/sha256" },
+        "packaged_bridge_sha256": { "$ref": "#/$defs/sha256" },
+        "extension_id": { "$ref": "#/$defs/safeId" },
+        "extension_version": { "$ref": "#/$defs/safeId" },
+        "vscode_engine": { "type": "string", "minLength": 1 }
+      }
+    },
+    "tester": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tester_id", "organization", "implementation_contributor", "saw_implementation_or_hidden_oracles_before_execution", "case_order_preserved", "selective_rerun_performed", "consent_to_share_redacted_evidence"],
+      "properties": {
+        "tester_id": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "organization": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "implementation_contributor": { "const": false },
+        "saw_implementation_or_hidden_oracles_before_execution": { "const": false },
+        "case_order_preserved": { "const": true },
+        "selective_rerun_performed": { "const": false },
+        "consent_to_share_redacted_evidence": { "const": true }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os", "architecture", "host_kind", "os_version", "vscode_version", "vscode_commit", "shell", "node_version", "workspace_path", "extension_version", "vsix_sha256"],
+      "properties": {
+        "os": { "enum": ["linux", "win32", "darwin"] },
+        "architecture": { "enum": ["x64", "arm64"] },
+        "host_kind": { "enum": ["native", "wsl2"] },
+        "os_version": { "type": "string", "minLength": 1 },
+        "vscode_version": { "type": "string", "minLength": 1 },
+        "vscode_commit": { "type": "string", "minLength": 1 },
+        "shell": { "type": "string", "minLength": 1 },
+        "node_version": { "type": "string", "minLength": 1 },
+        "workspace_path": { "type": "string", "minLength": 1 },
+        "extension_version": { "$ref": "#/$defs/safeId" },
+        "vsix_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "started_at": { "type": "string", "format": "date-time" },
+    "completed_at": { "type": "string", "format": "date-time" },
+    "case_results": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["case_id", "status", "started_at", "completed_at", "observations", "blocker", "evidence"],
+        "properties": {
+          "case_id": { "$ref": "#/$defs/safeId" },
+          "status": { "enum": ["NOT_RUN", "PASS", "FAIL", "BLOCKED"] },
+          "started_at": { "type": "string" },
+          "completed_at": { "type": "string" },
+          "observations": { "type": "string" },
+          "blocker": { "type": "string" },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "path", "sha256"],
+              "properties": {
+                "kind": { "$ref": "#/$defs/safeId" },
+                "path": { "type": "string", "minLength": 1 },
+                "sha256": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "qualification_effect": { "const": "NONE" },
+    "claims_permitted": { "const": false },
+    "asserts_gate_pass": { "const": false }
+  },
+  "$defs": {
+    "safeId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "gitCommit": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    }
+  }
+}
