@@ -18,38 +18,49 @@ import {
   validateArchivedR4ReleaseCandidate,
   validateR4ReleaseCandidateManifest,
 } from '../lib/devseek-r4-release-candidate-manifest.mjs';
+import {
+  R4_ACTIVE_CANDIDATE,
+  R4_CANDIDATE_VERIFICATION_RECEIPTS,
+  R4_REMAINING_LEAVES_AT_FREEZE,
+} from '../lib/devseek-r4-release-candidate-freeze.mjs';
+import {
+  R4_RELEASE_CANDIDATE_HISTORY,
+  R4_RELEASE_CANDIDATE_PREDECESSOR,
+} from '../lib/devseek-r4-release-candidate-history.mjs';
 
 const execFile = promisify(execFileCallback);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const expected = buildR4ReleaseCandidateManifest({ repoRoot });
 
-test('R4 v2 manifest freezes 4f8a567 and binds current identity without qualification effect', () => {
+test('R4 v3 manifest freezes a47ffe3 as local protocol conformance without qualification effect', () => {
   const actual = readJson('docs/process/devseek-r4-release-candidate-manifest.json');
   const activeCurrentIdentity = readJson('docs/process/devseek-current-candidate-identity.json');
 
   assert.equal(canonicalJson(actual), canonicalJson(expected));
-  assert.notEqual(
+  assert.equal(
     activeCurrentIdentity.source_identity.candidate_source_commit,
     actual.source_identity.artifact_source_commit,
-    'the active development identity must be allowed to advance without rewriting the frozen candidate',
   );
   assert.deepEqual(actual.counts, {
     vsix_artifacts: 2,
-    historical_candidates: 1,
-    verification_receipts: 6,
-    remaining_r4_leaves_at_freeze: 1,
+    historical_candidates: R4_RELEASE_CANDIDATE_HISTORY.length,
+    verification_receipts: R4_CANDIDATE_VERIFICATION_RECEIPTS.length,
+    remaining_r4_leaves_at_freeze: R4_REMAINING_LEAVES_AT_FREEZE.length,
     qualification_claims: 0,
   });
-  assert.equal(actual.manifest_version, 2);
-  assert.equal(actual.source_identity.artifact_source_commit, '4f8a56797090079914b4d921b56d9c34fe4d2abc');
+  assert.equal(actual.manifest_version, R4_ACTIVE_CANDIDATE.manifest_version);
+  assert.equal(actual.local_evidence_class, R4_ACTIVE_CANDIDATE.local_evidence_class);
+  assert.equal(actual.selection_boundary.protected_release_candidate, false);
+  assert.equal(actual.selection_boundary.artifact_channel, 'debug');
+  assert.equal(actual.source_identity.artifact_source_commit, R4_ACTIVE_CANDIDATE.source_commit);
   assert.equal(actual.source_identity.artifact_source_matches_current_identity, true);
-  assert.equal(actual.artifact_identity.primary_vsix.sha256, '68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc');
-  assert.equal(actual.artifact_identity.primary_vsix.path, 'devseek-netai-1.0.0-debug.20260804.t093020.g4f8a567.vsix');
-  assert.equal(actual.artifact_identity.package_copy_vsix.path, 'packages/vscode-extension/devseek-netai-1.0.0-debug.20260804.t093020.g4f8a567.vsix');
+  assert.equal(actual.artifact_identity.primary_vsix.sha256, R4_ACTIVE_CANDIDATE.vsix_sha256);
+  assert.equal(actual.artifact_identity.primary_vsix.path, R4_ACTIVE_CANDIDATE.vsix_name);
+  assert.equal(actual.artifact_identity.package_copy_vsix.path, `packages/vscode-extension/${R4_ACTIVE_CANDIDATE.vsix_name}`);
   assert.equal(actual.artifact_identity.exact_match, true);
   assert.equal(actual.current_identity_probe_boundary.status, 'verified-current-candidate');
   assert.equal(actual.current_identity_probe_boundary.stable_runtime_count, 1);
-  assert.equal(actual.version_lineage.predecessor_candidate_source_commit, 'a034e5e050c044460fb07705639d9d41e6b193c0');
+  assert.equal(actual.version_lineage.predecessor_candidate_source_commit, R4_RELEASE_CANDIDATE_PREDECESSOR.candidate_source_commit);
   assert.equal(actual.version_lineage.predecessor_status, 'immutable-history');
   assert.equal(actual.qualification_eligible, false);
   assert.equal(actual.qualification_effect, 'NONE');
@@ -60,21 +71,28 @@ test('R4 v2 manifest freezes 4f8a567 and binds current identity without qualific
   assert.equal(validation.ok, true, JSON.stringify(validation.errors, null, 2));
 });
 
-test('archived a034e5e v1 candidate remains byte-for-byte immutable and self-consistent', () => {
+test('archived v1 and v2 candidates remain byte-for-byte immutable and lineage-consistent', () => {
   const validation = validateArchivedR4ReleaseCandidate({ repoRoot });
   assert.equal(validation.ok, true, JSON.stringify(validation.errors, null, 2));
   assert.deepEqual(validation.summary, {
-    manifest_id: 'R4-RELEASE-CANDIDATE-MANIFEST/v1',
-    candidate_source_commit: 'a034e5e050c044460fb07705639d9d41e6b193c0',
-    manifest_sha256: '67e4025b2743012648c36312870130a3773f0b79dc44ce9abbc4200c4dab50b3',
-    manifest_file_sha256: 'eb93f971f1dcd877dbde75a032919c7d02389661aaaed6429b0bd34943091c66',
+    historical_candidates: R4_RELEASE_CANDIDATE_HISTORY.length,
+    predecessor_manifest_id: 'R4-RELEASE-CANDIDATE-MANIFEST/v2',
+    predecessor_candidate_source_commit: '4f8a56797090079914b4d921b56d9c34fe4d2abc',
+    predecessor_manifest_sha256: '0fda85f4ad71f13d6410d61f5249e327b299642cfee17226f708f979e12bed1b',
     archive_status: 'immutable-history',
+    artifact_retention: 'manifest-identity-only',
   });
 
-  const archiveRoot = path.join(repoRoot, 'docs/process/archive/r4-release-candidates/v1-a034e5e');
-  assert.equal(fileSha256(path.join(archiveRoot, 'manifest.json')), 'eb93f971f1dcd877dbde75a032919c7d02389661aaaed6429b0bd34943091c66');
-  assert.equal(fileSha256(path.join(archiveRoot, 'manifest.schema.json')), '6adf54c38b9fb0b8ae7c95a721dee9815f6a9a9b96edac2416d62b6b1256977f');
-  assert.equal(fileSha256(path.join(archiveRoot, 'manifest.md')), 'b8c684c959545dd8bd6c0228e59df09f036416a2edc5b6b9db35f17d4fc2f3eb');
+  const archiveBindings = [
+    ['v1-a034e5e', 'eb93f971f1dcd877dbde75a032919c7d02389661aaaed6429b0bd34943091c66', '6adf54c38b9fb0b8ae7c95a721dee9815f6a9a9b96edac2416d62b6b1256977f', 'b8c684c959545dd8bd6c0228e59df09f036416a2edc5b6b9db35f17d4fc2f3eb'],
+    ['v2-4f8a567', '8c051ecfbb718820332804f4cc690f26a54d2e243e26f91d030acbde5b94ea82', 'face1ace312bdf8478301c8357222a697f750a210a58ddab769a50e4e5206b7f', '56ac05c11e2f25c6e84066066eac06286cee13a154c9683b9a2eabfb49614e46'],
+  ];
+  for (const [directory, manifestSha256, schemaSha256, viewSha256] of archiveBindings) {
+    const archiveRoot = path.join(repoRoot, 'docs/process/archive/r4-release-candidates', directory);
+    assert.equal(fileSha256(path.join(archiveRoot, 'manifest.json')), manifestSha256);
+    assert.equal(fileSha256(path.join(archiveRoot, 'manifest.schema.json')), schemaSha256);
+    assert.equal(fileSha256(path.join(archiveRoot, 'manifest.md')), viewSha256);
+  }
 });
 
 test('generated R4 manifest view is source-bound and Chinese-readable', () => {
@@ -130,7 +148,7 @@ test('runtime validation fails closed on artifact, lineage, leaf, or receipt mut
   const promotedReceipt = structuredClone(expected);
   promotedReceipt.verification_receipts[0].qualification_effect = 'PROMOTE_GATE0';
   promotedReceipt.manifest_sha256 = '0'.repeat(64);
-  assertHasManifestError(promotedReceipt, 'verification_receipts.extension-full-unit-runner.qualification_effect:must-be-NONE');
+  assertHasManifestError(promotedReceipt, 'verification_receipts.shared-full-suite.qualification_effect:must-be-NONE');
 });
 
 test('checker command validates R4 release candidate manifest and generated view', async () => {
@@ -143,16 +161,18 @@ test('checker command validates R4 release candidate manifest and generated view
   assert.equal(result.ok, true, JSON.stringify(result.errors, null, 2));
   assert.deepEqual(result.summary, {
     manifest_sha256: expected.manifest_sha256,
-    manifest_version: 2,
-    artifact_source_commit: '4f8a56797090079914b4d921b56d9c34fe4d2abc',
-    primary_vsix_sha256: '68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc',
+    manifest_version: R4_ACTIVE_CANDIDATE.manifest_version,
+    artifact_source_commit: R4_ACTIVE_CANDIDATE.source_commit,
+    primary_vsix_sha256: R4_ACTIVE_CANDIDATE.vsix_sha256,
     package_copy_exact_match: true,
-    predecessor_candidate_source_commit: 'a034e5e050c044460fb07705639d9d41e6b193c0',
+    predecessor_candidate_source_commit: R4_RELEASE_CANDIDATE_PREDECESSOR.candidate_source_commit,
     predecessor_status: 'immutable-history',
-    verification_receipts: 6,
+    verification_receipts: R4_CANDIDATE_VERIFICATION_RECEIPTS.length,
     current_identity_status: 'verified-current-candidate',
     current_leaf: 'R4-RELEASE-CANDIDATE-MANIFEST',
-    remaining_r4_leaves_at_freeze: 1,
+    remaining_r4_leaves_at_freeze: R4_REMAINING_LEAVES_AT_FREEZE.length,
+    local_evidence_class: R4_ACTIVE_CANDIDATE.local_evidence_class,
+    protected_release_candidate: false,
     qualification_effect: 'NONE',
     claims_permitted: false,
     asserts_gate_pass: false,

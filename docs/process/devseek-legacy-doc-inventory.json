@@ -254,6 +254,209 @@
       "rationale": "External capability reference snapshot supporting REQ-02, not a DevSeek backlog or source owner."
     },
     {
+      "path": "docs/top-agent-convergence-audit-20260711/DEVSEEK-2.0.25-CODEX-ASSISTANT-MESSAGE-INTENT-SETTLEMENT-20260817.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as 2.0.25 assistant-message settlement evidence; current execution authority remains the convergence plan."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/DEVSEEK-2.0.26-CODEX-VISIBLE-DELIVERY-AND-SIMULATION-QUALITY-20260817.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as 2.0.26 visible-delivery and simulation-quality evidence; it does not issue current work."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/DEVSEEK-2.0.27-CODEX-TERMINAL-AUTHORITY-AND-MEMORY-ISOLATION-20260817.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as 2.0.27 terminal-authority and memory-isolation evidence under the current plan."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "handoff-entry",
+      "rationale": "Retained as the T1-T12 continuation record and redirect; the current convergence plan is the sole task authority."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/INDEPENDENT-USER-SIMULATION-ACCEPTANCE-20260814.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as independent local user-simulation acceptance evidence without C14 qualification authority."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/INTENT-CANCELLATION-REPLACEMENT-2.0.11-20260813.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as 2.0.11 cancellation-replacement defect-class evidence; it is not an active backlog."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/INTENT-CORRECTIVE-SCOPE-REPLACEMENT-2.0.10-20260813.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as 2.0.10 corrective-scope replacement evidence; it is not an active backlog."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/INTENT-LOCAL-PARAPHRASE-MATRIX-2.0.2-20260813.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as the 2.0.2 provider-free paraphrase regression record under the active requirement baseline."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/INTENT-PARAPHRASE-CONTRACT-2.0.1-20260813.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as the 2.0.1 natural-language paraphrase contract record; current semantics are owned by active baselines and code."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/INTENT-PRIOR-TASK-CONTINUATION-2.0.9-20260813.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as 2.0.9 prior-task continuation evidence; it does not independently authorize execution."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/INTENT-PROJECT-HEALTH-REPAIR-2.0.5-20260813.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as 2.0.5 project-health repair evidence for historical defect coverage."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/INTENT-RECOVERED-REPAIR-SETTLEMENT-2.0.8-20260813.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as 2.0.8 recovered-repair settlement evidence for historical defect coverage."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/INTENT-RUN-TO-REPAIR-2.0.3-20260813.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as 2.0.3 run-to-repair semantic-contract evidence; it is not current task authority."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/INTENT-RUNTIME-ERROR-REPAIR-2.0.6-20260813.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as 2.0.6 runtime-error repair evidence for historical defect coverage."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/INTENT-SEMANTIC-ARBITER-REFACTOR-2.0.0-20260813.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as the 2.0.0 semantic-arbiter refactor record; later model-led architecture remains authoritative."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/INTENT-SEMANTIC-CODE-REVIEW-2.0.15-20260813.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as 2.0.15 semantic code-review routing evidence under the current model-led contract."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/INTENT-SEMANTIC-DESTRUCTIVE-2.0.16-20260814.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as 2.0.16 destructive-intent fail-closed evidence; current approval and sandbox owners remain authoritative."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/INTENT-SEMANTIC-EFFECT-PROPOSAL-2.0.13-20260813.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as 2.0.13 external-effect proposal evidence under the current action-arbitration architecture."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/INTENT-SEMANTIC-PROPOSAL-ROUTE-CONSISTENCY-2.0.12-20260813.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as 2.0.12 proposal-route consistency evidence; it does not own current routing."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/INTENT-SEMANTIC-WORKSPACE-READ-2.0.14-20260813.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as 2.0.14 workspace-read scope evidence under current workspace authority boundaries."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/INTENT-USER-SYMPTOM-REPAIR-2.0.7-20260813.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as 2.0.7 user-symptom repair evidence for historical defect coverage."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/INTENT-VALIDATION-HEALTH-REPAIR-2.0.4-20260813.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as 2.0.4 validation-health repair evidence for historical defect coverage."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/INTENT-VALIDATION-NO-RUN-2.0.17-20260814.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as 2.0.17 no-run validation-boundary evidence; current user constraints remain authoritative."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/MEMORY-ENGINEERING-DECISION-RATIONALE-20260817.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as engineering rationale for the memory architecture and its validation choices."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/T3-DEEPSEEK-WEB-COMPAT-CODEX-ALIGNMENT-20260814.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as T3 DeepSeek web compatibility and Codex-responsibility alignment evidence."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/T4-PERMISSION-WRITE-BOUNDARY-CODEX-ALIGNMENT-20260814.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as T4 permission and workspace-write boundary alignment evidence."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/T5-MEMORY-CODEX-ALIGNMENT-ARCHITECTURE-IMPLEMENTATION-20260817.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as T5 memory architecture, implementation, and acceptance evidence under active baselines."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/T7-T8-TYPE-ARCHITECTURE-EFFICIENCY-CODEX-ALIGNMENT-20260818.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as T7/T8 type, architecture-debt, and efficiency convergence evidence."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/UPSTREAM-AGENT-SOURCE-AUDIT-20260813.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as source-provenance evidence for Codex responsibility mapping and Claude Code supplementary comparison."
+    },
+    {
       "path": "docs/top-agent-convergence-audit-20260711/README.md",
       "source_group": "handoff",
       "decision": "keep",
@@ -264,5 +467,5 @@
       "rationale": "G0-01 selector marks this as supporting REQ-02 audit entry and applicability boundary."
     }
   ],
-  "inventory_sha256": "3b668b1c55ca02e63147e2e4b42095363d8fa4e9498f06568b58f8b1b3e526f8"
+  "inventory_sha256": "e3dd5538e5ef584f5e4be899b246bbdaff7c5250ea325c84fb7625e993f1ef6d"
 }

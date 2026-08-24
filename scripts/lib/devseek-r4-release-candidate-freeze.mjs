@@ -1,73 +1,78 @@
 import { currentCandidateIdentityHash } from './devseek-current-candidate-identity.mjs';
 
-export const R4_FROZEN_CANDIDATE = Object.freeze({
-  source_commit: '4f8a56797090079914b4d921b56d9c34fe4d2abc',
-  source_short: '4f8a567',
-  vsix_sha256: '68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc',
-  vsix_name: 'devseek-netai-1.0.0-debug.20260804.t093020.g4f8a567.vsix',
+export const R4_ACTIVE_CANDIDATE = Object.freeze({
+  manifest_version: 3,
+  source_commit: 'a47ffe37f01817d14358b0ef4040e885b7867c8f',
+  source_short: 'a47ffe3',
+  vsix_sha256: '8386445523df3b550d9a9edda07e59b594cc3c766e2aecc0a367b9ef5084a854',
+  vsix_name: 'devseek-netai-2.0.32-debug.20260820.t172525.ga47ffe3.vsix',
   current_identity_path: 'docs/process/devseek-current-candidate-identity.json',
-  current_identity_commit: '8f30f1b79285c2e2141cbbcacf69b30969487768',
-  current_identity_file_sha256: '80a68b5207f65625458b18320c15e1b89514125d7e77d1b3f7f2928c585b294e',
-  current_identity_probe_sha256: 'c629bfa4bdf1c7a1843a34e6c5e1277c6260dc5829072510c933b5a14664eafd',
+  current_identity_file_sha256: 'b722dd9cc6d49d0292b5ea37df68acebfd3baca2ac28d4e56ac6d3ffc0d807dd',
+  current_identity_probe_sha256: 'a7b347561b042ac426595291526d7d29f1f1cd62410bfff3c5131f059703ea91',
+  local_evidence_class: 'local-protocol-conformance',
 });
 
 export const R4_VERIFICATION_RECORD = Object.freeze({
-  path: 'docs/top-agent-convergence-audit-20260711/README.md',
-  ref: 'docs/top-agent-convergence-audit-20260711/README.md#5-本轮验证记录',
-  commit: '8f30f1b79285c2e2141cbbcacf69b30969487768',
+  path: 'docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md',
+  ref: 'docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md#2026-08-20-2032-t12-模型主导语义与动作回执收敛最新',
+  commit: 'fa682086eb28c0a9ff15093de27dbb3518c4a89f',
 });
 
-export const R4_REMAINING_LEAVES_AT_FREEZE = Object.freeze([
-  'R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME',
-]);
+export const R4_REMAINING_LEAVES_AT_FREEZE = Object.freeze([]);
 
 export const R4_CANDIDATE_VERIFICATION_RECEIPTS = Object.freeze([
+  {
+    receipt_id: 'shared-full-suite',
+    receipt_kind: 'recorded-local-test',
+    verification_scope: 'shared-full-suite',
+    evidence: 'PASS; 366/366 tests',
+  },
+  {
+    receipt_id: 'bridge-full-suite',
+    receipt_kind: 'recorded-local-test',
+    verification_scope: 'bridge-full-suite',
+    evidence: 'PASS; 42/42 tests',
+  },
+  {
+    receipt_id: 'cli-full-suite',
+    receipt_kind: 'recorded-local-test',
+    verification_scope: 'cli-full-suite',
+    evidence: 'PASS; 84/84 tests',
+  },
+  {
+    receipt_id: 'headless-full-suite',
+    receipt_kind: 'recorded-local-test',
+    verification_scope: 'headless-full-suite',
+    evidence: 'PASS; 25/25 tests',
+  },
   {
     receipt_id: 'extension-full-unit-runner',
     receipt_kind: 'recorded-local-test',
     verification_scope: 'vscode-extension-full-unit-runner',
-    evidence: 'PASS; 158/158 suites',
+    evidence: 'PASS; 174/174 suites',
   },
   {
-    receipt_id: 'intent-routing-focused-matrix',
-    receipt_kind: 'recorded-local-test',
-    verification_scope: 'intent-routing-focused-matrix',
-    evidence: 'PASS; 524/524 tests',
-  },
-  {
-    receipt_id: 'natural-intent-ui-corpus',
-    receipt_kind: 'recorded-local-user-simulation',
-    verification_scope: 'natural-intent-ui-corpus',
-    evidence: 'PASS; 48/48 scenarios',
-  },
-  {
-    receipt_id: 'architecture-static-suites',
-    receipt_kind: 'recorded-local-test',
-    verification_scope: 'affected-architecture-static-suites',
-    evidence: 'PASS; 325/325 tests',
+    receipt_id: 'phase10-and-architecture-drift',
+    receipt_kind: 'recorded-local-regression',
+    verification_scope: 'phase10-and-architecture-drift',
+    evidence: 'PASS; Phase 10; architecture drift 0 violation',
   },
   {
     receipt_id: 'vsix-release-loop',
     receipt_kind: 'recorded-local-install',
     verification_scope: 'package-bridge-install-and-exactly-one-runtime',
-    evidence: `PASS; ${R4_FROZEN_CANDIDATE.vsix_name}; sha256 ${R4_FROZEN_CANDIDATE.vsix_sha256}`,
-  },
-  {
-    receipt_id: 'phase0-12-local-regression',
-    receipt_kind: 'recorded-local-regression',
-    verification_scope: 'phase0-12-deterministic-and-local-gates',
-    evidence: 'PASS; 32/32; Gate 0 remains NOT_PASSED',
+    evidence: `PASS; ${R4_ACTIVE_CANDIDATE.vsix_name}; sha256 ${R4_ACTIVE_CANDIDATE.vsix_sha256}`,
   },
 ]);
 
-export function assertR4FrozenCandidateIdentity({
+export function assertR4ActiveCandidateIdentity({
   artifactSourceCommit,
   primaryVsix,
   packageCopyVsix,
   currentIdentity,
   currentIdentityFileSha256,
 }) {
-  const expected = R4_FROZEN_CANDIDATE;
+  const expected = R4_ACTIVE_CANDIDATE;
   const errors = [];
   if (artifactSourceCommit !== expected.source_commit) errors.push('artifact-source-commit-mismatch');
   if (primaryVsix.sha256 !== expected.vsix_sha256) errors.push('primary-vsix-sha256-mismatch');
@@ -93,11 +98,12 @@ export function assertR4FrozenCandidateIdentity({
     errors.push('current-identity-install-or-runtime-mismatch');
   }
   if (currentIdentity.qualification_effect !== 'NONE'
+    || currentIdentity.qualification_eligible !== false
     || currentIdentity.claims_permitted !== false
     || currentIdentity.asserts_gate_pass !== false) {
     errors.push('current-identity-qualification-boundary-invalid');
   }
-  if (errors.length > 0) throw new Error(`frozen-candidate:${errors.join(',')}`);
+  if (errors.length > 0) throw new Error(`active-candidate:${errors.join(',')}`);
 }
 
 export function buildR4ReleaseCandidateVersionLineage(predecessor) {
@@ -121,15 +127,16 @@ export function buildR4ReleaseCandidateVersionLineage(predecessor) {
 
 export function validateR4VerificationRecordSource(recordText, manifest) {
   const requiredSnippets = [
-    '当前 Extension 行为候选：`4f8a567`',
-    '158/158',
-    '524/524',
-    '48/48',
-    '325/325',
-    manifest.artifact_identity.primary_vsix.package_identity.version,
-    R4_FROZEN_CANDIDATE.vsix_sha256,
-    '32/32',
-    'Gate 0 仍为 `NOT_PASSED`',
+    '`2.0.32`',
+    'T12',
+    '366/366',
+    '42/42',
+    '84/84',
+    '25/25',
+    '174/174 suites',
+    'Phase 10',
+    'architecture drift',
+    'devseek-netai-latest.vsix',
     manifest.source_identity.artifact_source_short,
   ];
   return requiredSnippets

@@ -1,3 +1,24 @@
+---
+devseek_governance:
+  generator: "devseek-doc-governance/v1"
+  status: "historical"
+  path: "docs/top-agent-convergence-audit-20260711/INTENT-VALIDATION-NO-RUN-2.0.17-20260814.md"
+  source_group: "handoff"
+  decision: "keep"
+  relationship: "legacy-audit-report"
+  active_baselines:
+    - "docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md"
+  machine_sources:
+    active_selector: "docs/process/devseek-active-baseline-selector.json"
+    legacy_inventory: "docs/process/devseek-legacy-doc-inventory.json"
+  asserts_gate_pass: false
+---
+
+<!-- DEVSEEK-GOVERNANCE-BANNER:START -->
+> [!NOTE]
+> DevSeek governance: this document is `historical` with decision `keep` and relationship `legacy-audit-report`. Current authority: `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md`. Machine source: `docs/process/devseek-legacy-doc-inventory.json`.
+<!-- DEVSEEK-GOVERNANCE-BANNER:END -->
+
 # DevSeek Intent 2.0.17: No-Run Validation Boundary Consistency
 
 日期：2026-08-14

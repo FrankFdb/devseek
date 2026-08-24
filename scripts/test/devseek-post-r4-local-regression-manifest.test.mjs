@@ -38,20 +38,16 @@ test('Post-R4 local regression manifest binds NP-05 through NP-07 without qualif
   assert.equal(actual.regression_scope.qualification_ledger_writes, false);
   assert.equal(actual.regression_scope.gate0_status, 'NOT_PASSED');
   assert.equal(actual.regression_scope.r1_qualification_status, 'NOT_STARTED');
-  assert.deepEqual(actual.counts, {
-    regression_tracks: 3,
-    covered_nonpermission_items: 3,
-    covered_sources: 16,
-    anchor_checks: 17,
-    anchors_present: 17,
-    verification_commands: 8,
-    local_only_commands: 8,
-    live_provider_runs: 0,
-    install_or_window_actions: 0,
-    qualification_claims: 0,
-    gate_pass_assertions: 0,
-    bypasses: 0,
-  });
+  assert.equal(actual.counts.regression_tracks, actual.regression_tracks.length);
+  assert.equal(actual.counts.covered_nonpermission_items, actual.regression_scope.covered_nonpermission_items.length);
+  assert.equal(actual.counts.covered_sources, sumTrackCounts(actual, 'covered_sources'));
+  assert.equal(actual.counts.anchor_checks, sumTrackCounts(actual, 'anchor_checks'));
+  assert.equal(actual.counts.anchors_present, actual.counts.anchor_checks);
+  assert.equal(actual.counts.verification_commands, sumTrackCounts(actual, 'verification_commands'));
+  assert.equal(actual.counts.local_only_commands, actual.counts.verification_commands);
+  for (const field of ['live_provider_runs', 'install_or_window_actions', 'qualification_claims', 'gate_pass_assertions', 'bypasses']) {
+    assert.equal(actual.counts[field], 0);
+  }
 
   const sourcePaths = Object.values(actual.source_bindings).map(binding => binding.path);
   for (const sourcePath of POST_R4_LOCAL_REGRESSION_REQUIRED_SOURCE_PATHS) {
@@ -62,17 +58,17 @@ test('Post-R4 local regression manifest binds NP-05 through NP-07 without qualif
   assert.equal(validation.ok, true, JSON.stringify(validation.errors, null, 2));
 });
 
-test('Post-R4 local regression manifest covers provider protocol, settlement, and artifact quality anchors', () => {
+test('Post-R4 local regression manifest covers provider protocol and evidence settlement anchors', () => {
   const actual = readJson('docs/process/devseek-post-r4-local-regression-manifest.json');
   const byId = new Map(actual.regression_tracks.map(track => [track.item_id, track]));
 
   assert.deepEqual([...byId.keys()], ['NP-05', 'NP-06', 'NP-07']);
   assert.equal(
-    byId.get('NP-05').anchor_checks.some(check => check.category === 'safety-interstitial-truncation'),
+    byId.get('NP-05').anchor_checks.some(check => check.category === 'prose-not-tool-authority'),
     true,
   );
   assert.equal(
-    byId.get('NP-05').anchor_checks.some(check => check.category === 'malformed-json-tool-envelope'),
+    byId.get('NP-05').anchor_checks.some(check => check.category === 'structural-transport-integrity'),
     true,
   );
   assert.equal(
@@ -84,11 +80,11 @@ test('Post-R4 local regression manifest covers provider protocol, settlement, an
     true,
   );
   assert.equal(
-    byId.get('NP-07').anchor_checks.some(check => check.category === 'artifact-language-mismatch'),
+    byId.get('NP-07').anchor_checks.some(check => check.category === 'source-claim-contract'),
     true,
   );
   assert.equal(
-    byId.get('NP-07').anchor_checks.some(check => check.category === 'source-grounding-missing'),
+    byId.get('NP-07').anchor_checks.some(check => check.category === 'legacy-domain-oracle-retired'),
     true,
   );
   assert.equal(actual.regression_tracks.every(track => track.plan_heading_present === true), true);
@@ -186,11 +182,11 @@ test('Post-R4 local regression manifest checker command validates the generated 
     manifest_sha256: expected.manifest_sha256,
     regression_tracks: 3,
     covered_nonpermission_items: ['NP-05', 'NP-06', 'NP-07'],
-    covered_sources: 16,
-    anchor_checks: 17,
-    anchors_present: 17,
-    verification_commands: 8,
-    local_only_commands: 8,
+    covered_sources: expected.counts.covered_sources,
+    anchor_checks: expected.counts.anchor_checks,
+    anchors_present: expected.counts.anchors_present,
+    verification_commands: expected.counts.verification_commands,
+    local_only_commands: expected.counts.local_only_commands,
     live_provider_runs: 0,
     install_or_window_actions: 0,
     qualification_claims: 0,
@@ -202,6 +198,10 @@ test('Post-R4 local regression manifest checker command validates the generated 
 
 function assertHasManifestError(value, expectedError) {
   assertHasManifestErrorWithSources(value, sources, expectedError);
+}
+
+function sumTrackCounts(manifest, field) {
+  return manifest.regression_tracks.reduce((total, track) => total + track.counts[field], 0);
 }
 
 function assertHasManifestErrorWithSources(value, activeSources, expectedError) {

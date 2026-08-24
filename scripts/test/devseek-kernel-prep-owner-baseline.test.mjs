@@ -50,7 +50,7 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     cross_surface_kernel_routes: 4,
     semantic_domains: 55,
     converged_semantic_domains: 55,
-    source_checks: 150,
+    source_checks: 149,
     failed_source_checks: 0,
   });
   assert.deepEqual(
@@ -96,7 +96,7 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
     'surface-adapter-conformance',
     'orientation-decision',
     'canonical-task-contract',
-    'task-path-intent',
+    'model-action-task-contract',
     'engineering-orientation',
     'codebase-exploration',
     'context-graph',
@@ -166,12 +166,12 @@ test('kernel prep owner baseline is source-bound and discloses converged and rem
   assert.equal(taskContractDomain.current_owners[0].owner_id, 'shared-CanonicalTaskContractService');
   assert.deepEqual(taskContractDomain.current_owners[0].surfaces, ['vscode', 'cli', 'headless']);
   assert.deepEqual(taskContractDomain.missing_surfaces, []);
-  const pathIntentDomain = actual.semantic_domains.find(domain => domain.domain_id === 'task-path-intent');
-  assert.equal(pathIntentDomain.current_owner_count, 1);
-  assert.equal(pathIntentDomain.current_owners[0].owner_id, 'shared-CanonicalTaskPathIntentService');
-  assert.deepEqual(pathIntentDomain.current_owners[0].surfaces, ['vscode', 'cli', 'headless']);
-  assert.deepEqual(pathIntentDomain.missing_surfaces, []);
-  assert.equal(pathIntentDomain.convergence_status, 'converged');
+  const modelActionDomain = actual.semantic_domains.find(domain => domain.domain_id === 'model-action-task-contract');
+  assert.equal(modelActionDomain.current_owner_count, 1);
+  assert.equal(modelActionDomain.current_owners[0].owner_id, 'shared-projectCodingModelActionTaskContract');
+  assert.deepEqual(modelActionDomain.current_owners[0].surfaces, ['vscode', 'cli', 'headless']);
+  assert.deepEqual(modelActionDomain.missing_surfaces, []);
+  assert.equal(modelActionDomain.convergence_status, 'converged');
   for (const [domainId, ownerId] of [
     ['engineering-orientation', 'shared-CanonicalEngineeringOrientationService'],
     ['codebase-exploration', 'shared-CanonicalCodebaseExplorationService'],

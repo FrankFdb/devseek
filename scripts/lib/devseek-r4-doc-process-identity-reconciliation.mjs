@@ -1,5 +1,4 @@
 import crypto from 'node:crypto';
-import cp from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -9,8 +8,8 @@ import {
   SUPPORTED_INTEGRITY,
 } from './devseek-capability-ledger.mjs';
 
-export const R4_DOC_PROCESS_IDENTITY_RECONCILIATION_SCHEMA_VERSION = 'devseek.r4-doc-process-identity-reconciliation/v1';
-export const R4_DOC_PROCESS_IDENTITY_RECONCILIATION_ID = 'R4-DOC-PROCESS-IDENTITY-RECONCILIATION/v1';
+export const R4_DOC_PROCESS_IDENTITY_RECONCILIATION_SCHEMA_VERSION = 'devseek.r4-doc-process-identity-reconciliation/v2';
+export const R4_DOC_PROCESS_IDENTITY_RECONCILIATION_ID = 'R4-DOC-PROCESS-IDENTITY-RECONCILIATION/v2';
 export const R4_DOC_PROCESS_IDENTITY_RECONCILIATION_SCOPE = 'local-r4-doc-process-identity-reconciliation';
 
 const CURRENT_IDENTITY_JSON = 'docs/process/devseek-current-candidate-identity.json';
@@ -44,10 +43,6 @@ export function buildR4DocProcessIdentityReconciliation({ repoRoot } = {}) {
   if (!repoRoot) throw new Error('repoRoot is required');
 
   const releaseManifest = readJson(path.join(repoRoot, R4_RELEASE_MANIFEST_JSON));
-  const predecessorManifest = readJson(path.join(
-    repoRoot,
-    releaseManifest.version_lineage.predecessor_manifest_path,
-  ));
   const trackedCurrentIdentity = readIdentityArtifact({
     repoRoot,
     jsonPath: CURRENT_IDENTITY_JSON,
@@ -94,7 +89,7 @@ export function buildR4DocProcessIdentityReconciliation({ repoRoot } = {}) {
     schema_version: R4_DOC_PROCESS_IDENTITY_RECONCILIATION_SCHEMA_VERSION,
     integrity: SUPPORTED_INTEGRITY,
     reconciliation_id: R4_DOC_PROCESS_IDENTITY_RECONCILIATION_ID,
-    reconciliation_version: 1,
+    reconciliation_version: 2,
     source_status: 'verified-local-doc-process-boundary',
     integrity_scope: R4_DOC_PROCESS_IDENTITY_RECONCILIATION_SCOPE,
     qualification_eligible: false,
@@ -113,9 +108,9 @@ export function buildR4DocProcessIdentityReconciliation({ repoRoot } = {}) {
     source_boundaries: {
       product_implementation_commit: releaseManifest.source_identity.artifact_source_commit,
       artifact_source_commit: releaseManifest.source_identity.artifact_source_commit,
-      handoff_doc_commit: predecessorManifest.source_identity.handoff_doc_commit,
+      verification_record_path: releaseManifest.source_identity.verification_record_path,
+      verification_record_commit: releaseManifest.source_identity.verification_record_commit,
       release_candidate_manifest_path: R4_RELEASE_MANIFEST_JSON,
-      release_candidate_manifest_commit: resolveLastCommitForPath(repoRoot, R4_RELEASE_MANIFEST_JSON),
       release_candidate_manifest_sha256: releaseManifest.manifest_sha256,
       identity_reconciliation_commit_bound: false,
     },
@@ -210,8 +205,7 @@ export function renderR4DocProcessIdentityReconciliationMarkdown(report) {
     '',
     `- Product implementation commit: \`${report.source_boundaries.product_implementation_commit}\``,
     `- Artifact source commit: \`${report.source_boundaries.artifact_source_commit}\``,
-    `- Handoff doc commit: \`${report.source_boundaries.handoff_doc_commit}\``,
-    `- Release manifest commit: \`${report.source_boundaries.release_candidate_manifest_commit}\``,
+    `- Verification record: \`${report.source_boundaries.verification_record_path}\` @ \`${report.source_boundaries.verification_record_commit}\``,
     '',
     '| Identity | Status | Artifact | VSIX SHA-256 | Observe | Usable For Qualification |',
     '| --- | --- | --- | --- | --- | --- |',
@@ -250,8 +244,8 @@ export function summarizeR4DocProcessIdentityReconciliation(report) {
   return {
     reconciliation_sha256: report.reconciliation_sha256,
     artifact_source_commit: report.source_boundaries.artifact_source_commit,
-    handoff_doc_commit: report.source_boundaries.handoff_doc_commit,
-    release_candidate_manifest_commit: report.source_boundaries.release_candidate_manifest_commit,
+    verification_record_path: report.source_boundaries.verification_record_path,
+    verification_record_commit: report.source_boundaries.verification_record_commit,
     tracked_current_identity_artifact: report.identity_artifacts.tracked_current_candidate_identity.artifact_git_commit,
     archived_failed_identity_artifact: report.identity_artifacts.archived_failed_observe_identity.artifact_git_commit,
     release_candidate_artifact: report.identity_artifacts.release_candidate_identity.artifact_source_commit,
@@ -317,7 +311,7 @@ function readHandoffDocument({
 function semanticValidate(report, errors) {
   if (report.schema_version !== R4_DOC_PROCESS_IDENTITY_RECONCILIATION_SCHEMA_VERSION) errors.push('schema_version:invalid');
   if (report.reconciliation_id !== R4_DOC_PROCESS_IDENTITY_RECONCILIATION_ID) errors.push('reconciliation_id:invalid');
-  if (report.reconciliation_version !== 1) errors.push('reconciliation_version:must-be-1');
+  if (report.reconciliation_version !== 2) errors.push('reconciliation_version:must-be-2');
   if (report.source_status !== 'verified-local-doc-process-boundary') errors.push('source_status:invalid');
   if (report.integrity_scope !== R4_DOC_PROCESS_IDENTITY_RECONCILIATION_SCOPE) errors.push('integrity_scope:invalid');
   if (report.qualification_eligible !== false) errors.push('qualification_eligible:must-be-false');
@@ -397,18 +391,6 @@ function identityMatchesReleaseCandidate(identity, releaseManifest) {
 
 function identityRow(label, identity) {
   return `| ${label}: \`${identity.path}\` | \`${identity.status}\` | \`${identity.artifact_git_commit}\` | \`${identity.vsix_sha256}\` | \`${identity.observe_status}\` | \`${identity.usable_for_qualification}\` |`;
-}
-
-function resolveLastCommitForPath(repoRoot, relativePath) {
-  const result = cp.spawnSync('git', ['log', '-1', '--format=%H', '--', relativePath], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    maxBuffer: 16 * 1024 * 1024,
-  });
-  if (result.status !== 0) {
-    throw new Error(`git:log:${relativePath}:${String(result.stderr ?? '').trim() || result.status}`);
-  }
-  return result.stdout.trim();
 }
 
 function sha256File(filePath) {

@@ -148,7 +148,7 @@ const LOCAL_STATUS_OBSERVATIONS = Object.freeze({
   'NP-07': {
     status_kind: 'source-bound-local-regression-manifest',
     evidence_path: POST_R4_LOCAL_REGRESSION_MANIFEST_PATH,
-    note: 'Artifact quality oracle coverage is bound to local deliverable, source-grounding, and language anchors.',
+    note: 'Artifact completion is bound to TaskContract targets, source-claim verification, canonical writes, and readback evidence.',
   },
   'NP-08': {
     status_kind: 'this-generated-index',

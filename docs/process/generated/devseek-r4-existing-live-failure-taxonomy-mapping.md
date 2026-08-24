@@ -30,13 +30,13 @@
 
 ## Source Bindings
 
-- `failure_taxonomy`: `docs/process/devseek-r4-real-provider-failure-taxonomy.json` -> `459dc5765664166f33d2c59f051b6da980e84be3edddd5052b6c95555b522f23`
-- `post_r4_nonpermission_iteration_plan`: `docs/process/devseek-post-r4-nonpermission-iteration-plan.md` -> `51623b1c2267f8d3f6fcb09b800396e5da12ea083dad5c5ed98f331b8b735555`
+- `failure_taxonomy`: `docs/process/devseek-r4-real-provider-failure-taxonomy.json` -> `668480c985d6dbfb21261b5ba6f193a7be055160140da6772add34bf57bbfa64`
+- `post_r4_nonpermission_iteration_plan`: `docs/process/devseek-post-r4-nonpermission-iteration-plan.md` -> `ec35cf6e7bf5bf80a089138af799027d3e180b3871a10021647fe568c33adc67`
 - `report_20260722T105032Z`: `artifacts/agent-self-loop/2026-07-22T10-50-32-582Z/report.json` -> `e561b87ecaec153a5296bbf0b1c2d95cbbd3ebe3a8a3abad594ed2c7e361a361`
 - `report_20260722T113416Z`: `artifacts/agent-self-loop/2026-07-22T11-34-16-309Z/report.json` -> `8f248b6aed7d15e67ea94075bf527b8d335dd137b2b8698044d7e304c47678f8`
 - `archived_manual_tests`: `docs/archive/reports/phase0-12-overall-audit-sources/local/docs/testing/vscode-phase-manual-test-cases.md` -> `ef21e55f469a33b9ffc61411bc127112dd854275d3e77877d76617c54333f1ce`
-- `top_agent_change_gate`: `docs/process/TOP_AGENT_CHANGE_GATE.md` -> `75bfb58990fede62a43102899d5a0464bb56722d217992714547feea05321254`
+- `top_agent_change_gate`: `docs/process/TOP_AGENT_CHANGE_GATE.md` -> `2c86f315254bba82ba66904464909e072375b71b8057febc250bc4b3b0256f27`
 
 ## Mapping Identity
 
-- Mapping SHA-256: `c11a8ee163b7c83a9c5017da080858a059e7569559584a5c5ed778b66ef36a84`
+- Mapping SHA-256: `1209a2097619ec1c1222400aa3c8d8ff592336dd7c7e9a914e440c2ca5092b3b`

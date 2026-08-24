@@ -24,18 +24,18 @@
   "source_bindings": {
     "live_qualification_request_packet": {
       "path": "docs/process/devseek-r4-live-qualification-request-packet.json",
-      "source_sha256": "92e2868a57c050c3c23561327d932656b662f1196e9f323a5901deb054a32296",
-      "packet_sha256": "2cec877865500676f03f94075f73288aa811a98a8ad18f1297b16d8344860b3c",
+      "source_sha256": "32444f1d7ae3412ee05940beeca6662616ec98b4d1c3e76dfa80e5d4dc6c2d98",
+      "packet_sha256": "a3fdcb7cc14df292b5973ca9b4a8b1096c8db97d1c3f01b0c6cf66e02f797241",
       "live_runs_authorized": 0,
       "request_terminal_state": "ALL_BLOCKED"
     },
     "real_plugin_harness": {
       "path": "packages/vscode-extension/test/devseek-real-plugin-deepseek-harness.mjs",
-      "source_sha256": "38743a611c09ffafe41552e701a0d06bfafe6c12080ff7d6bf30f50f1342b7f0"
+      "source_sha256": "6cb08b7cc5907aecf7dd18dd017de6963b77b2f0d66703be2b3911fcb3b7d336"
     },
     "controlled_scenario_contract_oracle": {
       "path": "packages/vscode-extension/test/unit/controlled-vsix-scenario-contract.test.mjs",
-      "source_sha256": "a0982f1fda235c8412e9c12d5d78908d09f4c1eebd312bcdbc07989a57800a18"
+      "source_sha256": "2144d6aea1d2de756a62bd9faec8fdc5d27d6f2bc2a3121a63b5f6a4d5ee41ff"
     }
   },
   "matrix_policy": {
@@ -243,5 +243,5 @@
     "product_fixed_language_cases": 0,
     "qualification_claims": 0
   },
-  "matrix_sha256": "083cfc5a922afe1e571f3d46bc099c0343ff49224c8ae6ae0e461a11d420f38e"
+  "matrix_sha256": "5aad313f200d8577b58e51208c3932a1fd0f23f2a1470f4c72635299505294af"
 }

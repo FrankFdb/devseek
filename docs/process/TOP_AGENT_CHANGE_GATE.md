@@ -911,3 +911,16 @@
 - **后续迭代登记**：迁移 `simple-file-task`、`deterministic-task-executor`、`tool-loop`、legacy `agent-loop`、`workspace-applier` 和 Pending Edit Undo/Hunk Undo；移除 `auto-validation` 隐藏写盘；封存 legacy write API；补 direct-fs 静态守卫、Windows/macOS anchored-directory 方案及 ENOSPC/rename/fsync/symlink/ABA fault injection。
 - **文档更新**：ARCH-18、ARCH-05、根 CHANGELOG、release CHANGELOG、本文件。
 - **备份/发布动作**：已生成并安装 `devseek-netai-1.0.0-debug.20260711.t205615.g368cacf.vsix`；packaged Bridge 校验通过；SHA-256 `8bfd219312ed3fa59d8eacb7b63bb8d79a6c813786e40984bf143ba2b0cbb560`。
+
+---
+
+**变更标题**：生成内容边界所有权收敛与旧 self-loop 退役（2026-08-24）
+- **需求归因**：架构债务清理 — `generated-file-resolver` 已随 `a47ffe3` 退役，但根验证脚本仍引用已删除模块，并保留一条与当前主循环无调用关系的旧 self-loop。
+- **影响能力层**：展示解析、完成证据、工作区写入门禁、验证入口。
+- **架构影响**：`generated-file-parser` 仅负责展示提取；执行动作只接受主模型提出的结构化工具调用，并由本地约束、授权、TaskContract、canonical write 与 read-back 结算。普通最终文本、代码围栏和说明文字不得成为工作区 mutation authority。
+- **方案选择理由**：按 Codex 的 model-led loop 与本地 action arbitration 责任边界收敛；Claude Code 仅作为公开行为和文档补充证据。删除失去语义所有者的 resolver 验证器与独立 self-loop，不保留兼容分支。
+- **主链路验证**：根 `verify:artifacts` 改为聚合 parser 展示契约、completion evidence 和 workflow compliance。
+- **回退/攻击链路验证**：静态与行为测试共同证明 extension 不能解析普通最终文本并据此写盘，旧 resolver/self-loop 名称不再出现在活动代码和根命令中。
+- **结果判据变化**：不新增产品能力或发布身份；只修复验证所有权并删除退役代码。
+- **文档更新**：运行形态需求、本文件、当前收敛计划及生成证据链。
+- **备份/发布动作**：不重打 VSIX；当前精确候选 `a47ffe3` 保持不变。

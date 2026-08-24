@@ -46,6 +46,8 @@ test('current candidate identity binds source, VSIX, stable install, and runtime
     actual.release_state.rollback.target_artifact.sha256,
     actual.release_state.current_artifact.sha256,
   );
+  assert.match(actual.release_state.rollback.target_artifact.path, /^devseek-netai-.+\.vsix$/u);
+  assert.doesNotMatch(actual.release_state.rollback.target_artifact.path, /^devseek-netai-1\.0\.0-debug\./u);
   assert.equal(actual.release_state.mixed_kernel.detected, false);
   assert.equal(actual.observation_authority.caller_identity_trusted, false);
   assert.equal(actual.observation_authority.caller_identity_effect, 'IGNORED');

@@ -29,7 +29,7 @@
 | surface-adapter-conformance | shared-CanonicalSurfaceAdapterConformanceService | - | 1 | converged |
 | orientation-decision | shared-CanonicalOrientationDecisionService | - | 1 | converged |
 | canonical-task-contract | shared-CanonicalTaskContractService | - | 1 | converged |
-| task-path-intent | shared-CanonicalTaskPathIntentService | - | 1 | converged |
+| model-action-task-contract | shared-projectCodingModelActionTaskContract | - | 1 | converged |
 | engineering-orientation | shared-CanonicalEngineeringOrientationService | - | 1 | converged |
 | codebase-exploration | shared-CanonicalCodebaseExplorationService | - | 1 | converged |
 | context-graph | shared-CanonicalContextGraphService | - | 1 | converged |

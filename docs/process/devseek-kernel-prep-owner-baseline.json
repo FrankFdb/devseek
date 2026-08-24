@@ -154,19 +154,19 @@
       "convergence_status": "converged"
     },
     {
-      "domain_id": "task-path-intent",
-      "target_port": "TaskPathIntentPort",
+      "domain_id": "model-action-task-contract",
+      "target_port": "CodingModelActionObservation",
       "target_owner_count": 1,
       "current_owner_count": 1,
       "current_owners": [
         {
-          "owner_id": "shared-CanonicalTaskPathIntentService",
+          "owner_id": "shared-projectCodingModelActionTaskContract",
           "surfaces": [
             "vscode",
             "cli",
             "headless"
           ],
-          "source_ref": "packages/shared/src/coding-task-path-intent.ts"
+          "source_ref": "packages/shared/src/coding-model-action-contract.ts"
         }
       ],
       "missing_surfaces": [],
@@ -1134,7 +1134,7 @@
     "cross_surface_kernel_routes": 4,
     "semantic_domains": 55,
     "converged_semantic_domains": 55,
-    "source_checks": 150,
+    "source_checks": 149,
     "failed_source_checks": 0
   },
   "source_checks": [
@@ -1220,7 +1220,7 @@
         "new CanonicalReleaseGateService()",
         "new CanonicalCiDeployObserveService()",
         "new CanonicalRollbackService()",
-        "new CanonicalStructuralAcceptanceEvidenceService()",
+        "new CanonicalReceiptAcceptanceEvidenceService()",
         "new CanonicalProviderEventService()",
         "new CanonicalToolSchemaRegistry()",
         "new CanonicalToolDispatchService(TOOL_SCHEMAS)",
@@ -1245,7 +1245,7 @@
         "assertCodingOrientationPrompt(taskContract.orientation, request.userPrompt)",
         "lifecycle.beginExecution()",
         "const verification = VERIFICATION.bind({",
-        "const verificationAcceptance = Object.freeze(taskContract.acceptance",
+        "const verificationAcceptance = projectCodingVerificationAcceptance(taskContract)",
         "acceptance: verificationAcceptance,",
         "const verifierSelection = VERIFIER_SELECTION.bind({",
         "const buildOrchestration = BUILD_ORCHESTRATION.bind({ runId: request.runId })",
@@ -1274,17 +1274,18 @@
         "const gate = releaseGate.assess({",
         "const deployment = ciDeployObserve.assess({",
         "const rollbackDecision = rollback.assess({",
-        "const structuralAcceptanceEvidence = STRUCTURAL_ACCEPTANCE.project({",
-        "...structuralAcceptanceEvidence,",
+        "const receiptAcceptanceEvidence = RECEIPT_ACCEPTANCE.project({",
+        "...receiptAcceptanceEvidence,",
         "const completion = this.completion.decide({",
-        "verificationRequired: codingTaskContractRequiresVerification(taskContract)",
+        "verificationRequired: codingTaskContractRequiresVerification(settledTaskContract)",
         "verifications: verification.receipts()",
         "lifecycle.settle(completion.status)",
         "completion,",
         "lifecycle: lifecycleSnapshot",
         "status: settlement.status",
         "settlement,",
-        "orientation: taskContract.orientation",
+        "orientation: settledTaskContract.orientation",
+        "taskContractRevisions: taskContractRevision.revisions()",
         "if (request.route !== 'canonical')",
         "coding-kernel-execution:unsupported-route"
       ],
@@ -1707,20 +1708,21 @@
       "check_id": "shared-canonical-orientation-decision-owner",
       "path": "packages/shared/src/coding-orientation.ts",
       "includes": [
-        "CODING_ORIENTATION_DECISION_VERSION = 'devseek.coding-orientation-decision/v1'",
+        "CODING_ORIENTATION_DECISION_VERSION = 'devseek.coding-orientation-decision/v2'",
         "export interface OrientationDecisionPort",
         "export class CanonicalOrientationDecisionService implements OrientationDecisionPort",
         "isUnsafeSecretHarvestingImplementationRequest(prompt)",
-        "resolved('release', 'prompt', 'explicit-external-effect-action')",
-        "resolved('change', 'prompt', 'explicit-change-action')",
-        "resolved('review', 'prompt', 'explicit-review-action')",
+        "readonly modeHint?: CodingTaskMode;",
+        "readonly confirmedWorkspaceMutation?: boolean;",
+        "if (hint) return resolved(hint, 'mode-hint', `mode-hint:${hint}`)",
         "resolved('explain', 'read-only-default', 'default-read-only')",
         "coding-orientation:"
       ],
       "excludes": [
         "from 'vscode'",
         "TaskIntentRoute",
-        "ExecutionMode"
+        "ExecutionMode",
+        "EXPLICIT_CHANGE_RE"
       ],
       "passed": true
     },
@@ -1740,17 +1742,37 @@
       "passed": true
     },
     {
-      "check_id": "vscode-canonical-orientation-projection",
-      "path": "packages/vscode-extension/src/intent/orientation-decision.ts",
+      "check_id": "vscode-model-led-pre-action-semantic-boundary",
+      "path": "packages/vscode-extension/src/intent/model-led-semantic-contract.ts",
       "includes": [
-        "const canonicalDecision = resolveCodingOrientationDecision({",
-        "modeHint: projectCodingTaskMode(route)",
-        "kind: 'canonical-coding-orientation'",
-        "codingMode: canonicalDecision.mode",
-        "canonicalDecision,"
+        "export function createModelLedTurnSemanticContract(",
+        "taskShapes: [],",
+        "deliverableTargets: [],",
+        "externalEffect: 'none',",
+        "mode: 'model-led',",
+        "signals: ['model-led-unclassified-turn']"
       ],
       "excludes": [
-        "new CanonicalOrientationDecisionService"
+        "resolveCodingOrientationDecision(",
+        "projectModelActionSemanticContract("
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-normalized-model-action-semantic-projection",
+      "path": "packages/vscode-extension/src/intent/model-action-semantic-contract.ts",
+      "includes": [
+        "export function projectModelActionSemanticContract(",
+        "if (action.confidence < MIN_MODEL_ACTION_CONFIDENCE) return current",
+        "const targets = uniquePaths(action.targetPaths)",
+        "action.mutation === 'create-file' || action.mutation === 'modify-source'",
+        "requiresConfirmation: destructive || externalEffect",
+        "const obligations = buildTaskSemanticObligationContracts({",
+        "'model-action-proposal'"
+      ],
+      "excludes": [
+        "resolveCodingOrientationDecision(",
+        "userPrompt"
       ],
       "passed": true
     },
@@ -1957,7 +1979,7 @@
         "export * from './coding-context-provenance';",
         "export * from './coding-instruction-precedence';",
         "export * from './coding-task-contract-resolver';",
-        "export * from './coding-task-path-intent';",
+        "export * from './coding-model-action-contract';",
         "export * from './coding-terminal-effects';",
         "export * from './coding-kernel';",
         "export * from './coding-orientation';",
@@ -1986,7 +2008,7 @@
         "export * from './coding-artifact-identity';",
         "export * from './coding-delivery';",
         "export * from './coding-release';",
-        "export * from './coding-structural-acceptance';",
+        "export * from './coding-receipt-acceptance';",
         "export * from './coding-completion';",
         "export * from './surface-adapter-conformance';"
       ],
@@ -2000,7 +2022,8 @@
         "new CanonicalMemoryPolicyService()",
         "retrieveCodingMemoryCandidates(",
         "const policyDecision = this.policy.selectContext({",
-        "return renderCodingMemoryContext(policyDecision) || null",
+        "const rendered = renderCodingMemoryContext(policyDecision)",
+        "return [summaryContext, rendered].filter(Boolean).join('\\n\\n') || null",
         "return classifyCodingMemoryWrite({"
       ],
       "excludes": [
@@ -2054,7 +2077,8 @@
       "includes": [
         "renderCodingContextCompactionReceipt(options.receipt)",
         "redactAgentMessageHistory(messages)",
-        "replaceAllAssistantToolHistory(messages)",
+        "replaceAllAssistantToolHistory(",
+        "textToolProtocol: TextToolProtocolSession",
         "CONTEXT_COMPACTION_RECEIPT_PROTOCOL = CODING_CONTEXT_COMPACTION_VERSION"
       ],
       "excludes": [
@@ -2185,8 +2209,11 @@
       "includes": [
         "export function resolveCodingKernelTaskContract(",
         "export function resolveCodingKernelAcceptance(",
-        "resolveCodingTaskPathIntent({ prompt, targetPaths: input.targetPaths })",
-        "const orientation = resolveCodingOrientationDecision({ prompt, modeHint: input.modeHint })",
+        "readonly targetPathsAuthoritative?: boolean;",
+        "readonly confirmedWorkspaceMutation?: boolean;",
+        "const orientation = resolveCodingOrientationDecision({",
+        "confirmedWorkspaceMutation: input.confirmedWorkspaceMutation,",
+        "const authoritativeTargets = input.targetPathsAuthoritative !== false",
         "buildSecretHarvestingRefusalTaskContract(input.surface, orientation)",
         "'dependency-change-requires-approval'",
         "'verification-before-completion'"
@@ -2199,23 +2226,21 @@
       "passed": true
     },
     {
-      "check_id": "shared-canonical-task-path-intent-owner",
-      "path": "packages/shared/src/coding-task-path-intent.ts",
+      "check_id": "shared-normalized-model-action-task-contract-owner",
+      "path": "packages/shared/src/coding-model-action-contract.ts",
       "includes": [
-        "export interface TaskPathIntentPort",
-        "export class CanonicalTaskPathIntentService implements TaskPathIntentPort",
-        "export function resolveCodingTaskPathIntent(",
-        "export function extractCodingWorkspacePaths(prompt: string)",
-        "if (DATA_PREFIX_RE.test(before)) continue",
-        "const intent = classifyMutationIntent(mention)",
-        "function resolvePrecedingAction(before: string)",
-        "function resolvePostfixAction(after: string)",
-        "mutationDirectoryTargets"
+        "export interface CodingModelActionObservation",
+        "export function projectCodingModelActionTaskContract(",
+        "export function reconcileSettledCodingModelAction(",
+        "action.purpose === 'workspace-mutation'",
+        "action.effects.includes('workspace-mutation')",
+        "const committedTargetPaths = uniquePaths(matchingChanges.flatMap(receipt => (",
+        "receipt.inputSha256 === codingSemanticDigest(action.input)"
       ],
       "excludes": [
         "from 'vscode'",
-        "CliCodingKernelRuntimeAdapter",
-        "VsCodeCodingKernelRuntimeAdapter"
+        "RegExp",
+        "extractCodingWorkspacePaths"
       ],
       "passed": true
     },
@@ -2318,7 +2343,8 @@
         "CODING_CODE_CHANGE_DECISION_VERSION = 'devseek.coding-code-change-decision/v1'",
         "export interface CodeChangePort",
         "export class CanonicalCodeChangeService implements CodeChangeServicePort",
-        "planned-change-committed-and-read-back",
+        "required-change-committed-and-read-back",
+        "authorized-change-committed-and-read-back",
         "unplanned-path-mutated",
         "coding-code-change:"
       ],
@@ -2396,7 +2422,8 @@
         "export interface VerificationPort",
         "export interface CodingVerificationSessionPort extends VerificationPort",
         "export class CanonicalVerificationService implements VerificationServicePort",
-        "return new CanonicalVerificationSession(this, input.runId, input.acceptance)",
+        "return new CanonicalVerificationSession(",
+        "input.taskContractSource,",
         "coding-verification:session-run-mismatch",
         "coding-verification:session-acceptance-mismatch",
         "receipts(): readonly CodingVerificationReceipt[]",
@@ -2555,13 +2582,14 @@
       "passed": true
     },
     {
-      "check_id": "shared-structural-acceptance-evidence-owner",
-      "path": "packages/shared/src/coding-structural-acceptance.ts",
+      "check_id": "shared-receipt-acceptance-evidence-owner",
+      "path": "packages/shared/src/coding-receipt-acceptance.ts",
       "includes": [
-        "export class CanonicalStructuralAcceptanceEvidenceService implements StructuralAcceptanceEvidencePort",
-        "criterion.oracle.kind === 'workspace-readback'",
+        "export class CanonicalReceiptAcceptanceEvidenceService implements ReceiptAcceptanceEvidencePort",
+        "criterion.oracle.kind !== 'workspace-readback'",
         "receipt.status === 'committed'",
         "receipt.readbackRef",
+        "authorityReceiptMatchesExecution(receipt)",
         "return requiredPaths.every(requiredPath => receipts.some(receipt => ("
       ],
       "excludes": [
@@ -2760,7 +2788,7 @@
         "adapterId: 'cli-canonical-real-workspace-product-route'",
         "new CliWorkspaceMutationHostAdapter()",
         "new CliVerificationAdapter(new CliVerificationHostAdapter())",
-        "projection: projectSettledCodingConformanceRun({",
+        "const projection = projectSettledCodingConformanceRun({",
         "surface.evidenceClass, 'product-route'",
         "changedUserPaths(before, snapshotUserFiles(cwd, scenario.trackedPaths))"
       ],
@@ -2901,11 +2929,12 @@
     },
     {
       "check_id": "vscode-session-persistence-boundary",
-      "path": "packages/vscode-extension/src/extension.ts",
+      "path": "packages/vscode-extension/src/app/session-persistence-coordinator.ts",
       "includes": [
-        "sessionService.saveSessionHistory(activeSessionId, history)",
-        "const state = sessionService.loadSessionState(id)",
-        "stripSessionContextPrefix(nonBridgeChatHistory).slice(-40)"
+        "export class SessionPersistenceCoordinator",
+        "const durableHistory = stripSessionContextPrefix(history)",
+        "service.saveSessionHistory(sessionId, durableHistory.slice(-40))",
+        "service.saveSessionFiles(sessionId, files)"
       ],
       "excludes": [
         "deepseek.session."
@@ -2918,10 +2947,14 @@
       "includes": [
         "export function projectSessionContinuationFromState",
         "if (input.newSession) return { mode: 'none', restoreFiles: [], contextText: '' }",
-        "shouldInjectSessionContinuationForIntent(",
+        "const currentFilePaths = [...(input.currentFilePaths ?? [])]",
+        "const contextText = buildAgenticSessionContextFromState({",
         "mode: projectionMode("
       ],
-      "excludes": [],
+      "excludes": [
+        "shouldInjectSessionContinuationForIntent(",
+        "classifyIntent"
+      ],
       "passed": true
     },
     {
@@ -2975,8 +3008,8 @@
         "const agentChangedPathScope = runChangedPathRecorder.openScope(agentWorkspaceRoot)",
         "agentChangedPathScope.add(agResult.changedPaths)",
         "const agRunChangedPaths = agentChangedPathScope.commit()",
-        "const chatRunChangedPaths = runChangedPathRecorder.openScope(chatWorkspaceRoot)",
-        "currentChatRunChangedPaths = chatRunChangedPaths.commit();"
+        "agentChangedPathScope.add(loopResult?.changedPaths ?? [])",
+        "const failedRunChangedPaths = agentChangedPathScope.commit()"
       ],
       "excludes": [
         "settleAgentLoopResult(agResult, lastAgentChangedPaths)",
@@ -3113,7 +3146,8 @@
         "renderCodingContextGraphSummary(kernelRequest.contextGraph)",
         "canonicalVerifierSelection: kernelRequest.verifierSelection",
         "canonicalBuildOrchestration: kernelRequest.buildOrchestration",
-        "canonicalVerificationAcceptance: kernelRequest.verificationAcceptance",
+        "get canonicalVerificationAcceptance() {",
+        "return kernelRequest.verificationAcceptance",
         "canonicalVerification: kernelRequest.verification",
         "verificationReceipts: [...kernelRequest.verification.receipts()]",
         "const completionEvidence = this.completionEvidence.project({",
@@ -3140,7 +3174,8 @@
         "export function projectVsCodeCodingKernelOutput(",
         "output.completion.status !== output.settlement.status",
         "const toolActionIds = new Set(output.toolExecutionReceipts.map(receipt => receipt.actionId))",
-        "const actionOwnedVerifications = output.verificationReceipts.filter(",
+        "const verificationAuditReceipts = output.result.agentResult.verificationReceipts",
+        "const actionOwnedVerifications = verificationAuditReceipts.filter(",
         "projectSettledCodingConformanceRun({",
         "toolExecutions: output.toolExecutionReceipts",
         "changeReceipts: output.workspaceMutationReceipts",
@@ -3176,8 +3211,9 @@
         "export function projectVsCodeCodingKernelTaskContract(",
         "return resolveCodingKernelTaskContract({",
         "surface: 'vscode'",
-        "const explicitlyRequiresVerification = input.taskContract.qualityObligations.length > 0",
-        "...(explicitlyRequiresVerification ? { verificationRequired: true } : {})"
+        "input.taskContract.qualityObligations.includes('validation')",
+        "verificationRequired,",
+        "verificationRequirementAuthoritative: verificationRequired !== undefined"
       ],
       "excludes": [
         "export class",
@@ -3230,26 +3266,12 @@
       "path": "packages/vscode-extension/src/agent/agentic-loop.ts",
       "includes": [
         "from './agentic-execution-context';",
+        "callbacks = copyAgentLoopCallbacks(callbacks, { executionMode: 'model-led' })",
         "const recoveryContextText = executionContext.recoveryContextText?.trim() ??",
-        "if (!recoveryContextText) {",
         "createAgenticInitialPromptContext(systemPrompt, userPrompt, sessionContextText, recoveryContextText)",
         "let totalChars = initialPromptContext.totalChars"
       ],
       "excludes": [],
-      "passed": true
-    },
-    {
-      "check_id": "vscode-local-validation-canonical-recovery",
-      "path": "packages/vscode-extension/src/local-execution-chat-runner.ts",
-      "includes": [
-        "agentKernelService: Pick<AgentKernelService, 'executeCanonicalTask'>;",
-        "input.agentKernelService.executeCanonicalTask({",
-        "recovery: createLocalValidationKernelRecovery({",
-        "failedCommand: localPlan.command,"
-      ],
-      "excludes": [
-        "executeLegacyPlannedTask"
-      ],
       "passed": true
     },
     {
@@ -3264,12 +3286,19 @@
       "passed": true
     },
     {
-      "check_id": "vscode-task-contract-builder",
+      "check_id": "vscode-task-contract-data-boundary",
       "path": "packages/vscode-extension/src/agent/task-contract.ts",
       "includes": [
-        "export function buildTaskContract("
+        "export interface TaskContract",
+        "Structured task facts accumulated from normalized model actions and local",
+        "export function hasSourceClaimArtifactContract(",
+        "contract.verificationContract.requireSourceClaimGrounding"
       ],
-      "excludes": [],
+      "excludes": [
+        "buildTaskContract(",
+        "RegExp",
+        "userPrompt"
+      ],
       "passed": true
     },
     {
@@ -3349,18 +3378,6 @@
         "return input.transaction.execute(",
         "executeTextFileWrite(",
         "executeTextFileDelete(",
-        "rollbackTextFileCommit("
-      ],
-      "excludes": [],
-      "passed": true
-    },
-    {
-      "check_id": "vscode-workspace-batch-mutation",
-      "path": "packages/vscode-extension/src/workspace/coding-workspace-batch-mutation-adapter.ts",
-      "includes": [
-        "export class VsCodeWorkspaceBatchMutationAdapter",
-        "readonly transaction: WorkspaceMutationTransactionPort",
-        "return input.transaction.execute(",
         "rollbackTextFileCommit("
       ],
       "excludes": [],
@@ -3455,8 +3472,8 @@
       "path": "packages/vscode-extension/src/app/coding-completion-adapter.ts",
       "includes": [
         "export class VsCodeCompletionEvidenceAdapter",
-        "codingTaskContractRequiresVerification(input.taskContract)",
         "const acceptanceEvidence = buildDirectAcceptanceEvidence({",
+        "explicitEvidence: input.result.acceptanceEvidence ?? []",
         "pendingRefs,",
         "adverseEvidenceRefs: failedArtifactRefs"
       ],
@@ -3464,6 +3481,7 @@
         "CanonicalCompletionDecisionService",
         "CompletionDecisionPort",
         "completion.decide",
+        "codingTaskContractRequiresVerification(",
         "resolvedVerificationActionIds",
         "verificationSupersedes"
       ],
@@ -3696,7 +3714,7 @@
         "export interface DirtyWorktreePolicyPort",
         "export class CanonicalDirtyWorktreePolicyService implements DirtyWorktreePolicyPort",
         "export function observeGitWorktreeSync",
-        "const reason = decideReason(snapshot, conflicts)",
+        "const reason = decideReason(snapshot, conflicts, paths, overlapProtection)",
         "reason === 'overlapping-user-changes' || reason === 'worktree-unavailable'"
       ],
       "excludes": [],
@@ -3816,5 +3834,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "9ffbf8fbe7523fc8bf446a6765b4985871038a48059e9e01f9f4c34d445b5ed3"
+  "baseline_sha256": "a8a7fa5f0b4ed56a73ae5560d384aebaa9641286dcd8c1deb541d5f75ea81bcf"
 }

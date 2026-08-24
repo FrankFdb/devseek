@@ -55,7 +55,7 @@
     },
     "run_evidence_wiring_source": {
       "path": "docs/process/devseek-c0-run-evidence-wiring.json",
-      "source_sha256": "93573dcbf4ed641a2c29c74f289707b09162d9fecab36323fa3cb28dab0c23d1"
+      "source_sha256": "8eb7d0c46fef126ea9341812efd7ca9732401cbd20f133525a920514b0734040"
     },
     "qualification_evidence_manifest_source": {
       "path": "scripts/lib/devseek-qualification-evidence-manifest.mjs",
@@ -71,7 +71,7 @@
     },
     "package_scripts": {
       "path": "package.json",
-      "source_sha256": "d31cab51401797bdb7f501f833a396f2fbdf23172e67623025bd9e1180a05ffa"
+      "source_sha256": "78b73a27359272a57f99b0209e652921150f8a9a1ea37fd057141eb817b9b21f"
     },
     "phase_gate_source": {
       "path": "scripts/devseek-phase0-12-verify.mjs",
@@ -413,5 +413,5 @@
     "bypasses": 0,
     "qualification_claims": 0
   },
-  "wiring_sha256": "806a0d504686205214bc74974da53930c4b33de5d69edf16d31e691e134d81fe"
+  "wiring_sha256": "2d3de54b469f50f0bb9f166c3b6b41a304cd3cde0334c197469305ceab8f25dc"
 }

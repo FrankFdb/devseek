@@ -48,8 +48,8 @@ devseek_governance:
 | 用户仿真 | `completed` | T11 保留 17 套 60 个不重复产品流程、真实 DeepSeek Web 中型编程任务和实现外独立 CLI holdout；T12 增补短问答、追问、错字、多语言、标识符子串、动作拒绝、失败恢复、steering、session/restart 和 todo/completion 一致性；成功与失败样本均保留 |
 | C14 正式顶级资格 | `blocked_external` | Gate 0=`NOT_PASSED`，6 个外部 authority blocker、7 个 exact claims 尚未满足；RC、真实 Provider wave 与 sealed holdout 不得本地伪造 |
 | 本轮 release loop | `completed` | `a47ffe3` 提交已推送；最终 VSIX 按提交身份重新打包、包内 Bridge HTTP 200、SHA-256 复算并覆盖安装，本地与远端分支一致 |
-| C14 候选流程资产 | `pending_scope` | 当前 `devseek-r4-release-candidate-manifest.json` 仍绑定历史 `1.0.0`/`4f8a567` 候选，且明确 `qualification_eligible=false`；下一阶段必须为当前候选建立版本化后继，不能覆盖历史身份或把本地 manifest 当资格回执 |
-| 文档治理 | `pending_scope` | 产品文档正文已更新；既有 legacy inventory 仍仅登记 31/60 份受治理文档，`verify:doc-governance` 保持历史 2/4，缺 29 条库存记录，未伪造回执掩盖 |
+| C14 候选流程资产 | `completed` | manifest v3 已绑定 `a47ffe3`、exact VSIX、安装和单一稳定 Bridge；v1/v2 清单按 byte hash 保留为不可变历史。当前证据仍是 `local-protocol-conformance`、debug channel、`protected_release_candidate=false`，不构成资格回执 |
+| 文档治理 | `completed` | 60/60 legacy 文档均有逐份 provenance、decision、relationship 和 rationale；受治理文档 63、active 3、legacy 60，`verify:doc-governance` 4/4，Gate 0 与 claims 未变化 |
 
 ## 非活跃能力
 
@@ -67,8 +67,8 @@ devseek_governance:
 | 顺序 | 任务 | 状态 | 完成条件 |
 | ---: | --- | --- | --- |
 | 1 | 关闭 T12 本地候选 | `completed` | Codex/Claude 责任审计、模型动作合同、跨 Surface 仿真、全量门禁、一个提交、最终 VSIX 安装和一次 push 已完成 |
-| 2 | N1 修复 legacy 文档库存 | `pending_scope` | 逐份核对 60 份受治理文档 provenance，把缺失 29 条真实记录加入 inventory；`verify:doc-governance` 达到 4/4，且不改变 Gate 0 结论 |
-| 3 | N2 当前候选与 C14 流程身份对齐 | `pending_scope` | 核对 `a47ffe3`、远端、release-channel VSIX、Bridge、安装身份和所有 source bindings；通过受支持生成器建立版本化候选后继，历史 RC manifest 保持不可变 |
+| 2 | N1 修复 legacy 文档库存 | `completed` | 逐份核对 60 份受治理文档 provenance，把缺失 29 条真实记录加入 inventory；`verify:doc-governance` 达到 4/4，且不改变 Gate 0 结论 |
+| 3 | N2 当前候选与 C14 流程身份对齐 | `completed` | `a47ffe3`、exact debug VSIX、稳定安装、单一 Bridge 和派生 source bindings 已一致；manifest v3 建立本地版本化后继，v1/v2 历史保持不可变，protected RC 仍留给 N5～N7 |
 | 4 | N3 跨平台产品证据 | `pending_scope` | 当前机器事实只覆盖 `linux-x64-v1`；由 profile owner 明确新增平台后，在独立主机验证安装、路径/symlink、shell、权限、Bridge 生命周期、session/restart 和编译测试，失败按根因回流 |
 | 5 | N4 真实 Provider reliability wave | `blocked_external` | 取得 `R4-LIVE-AUTH-01/02` 后，冻结候选和干净 runtime，执行多用户、多语言、中大型编程、长任务、网络中断、取消、steering、重启与恢复波次；保留完整运行证据和资源回收结果 |
 | 6 | N5 受保护 profile 与 sealed holdout | `blocked_external` | 取得 `R4-LIVE-AUTH-03/04`；独立 owner 在候选冻结前封存与开发集不重叠的 case、retry budget、failure taxonomy 和证据策略，失败不得选择性补跑或改 case 适配实现 |
@@ -92,13 +92,17 @@ devseek_governance:
 - 只使用 `docs/process/devseek-legacy-doc-inventory.schema.json` 允许的结构，并由治理生成器更新受管 front matter/status view。
 - 验收：`npm run verify:doc-governance` 4/4、active selector 不分叉、Gate 0 与 qualification claim 数不变化。
 - 该任务是治理清账，不应顺手修改智能体行为；发现正文错误时另建有 owner 的专题。
+- 2026-08-24 完成：29 条缺失记录逐份归类后全部作为历史证据保留；inventory 60/60、missing 0、unresolved 0，治理测试 4/4。
 
 ### N2 候选身份与本地资格协议预备
 
-- 当前 debug VSIX 是 T12 本地验收制品，不是 protected RC。正式候选应使用 release channel，并在测试、提交、打包后绑定精确 commit、VSIX/Bridge digest、安装身份和 source binding。
-- 审计 R4 manifest 生成器的 lineage/versioning；为 `a47ffe3` 或其后继 release commit 建新版本，禁止静默改写 `4f8a567`/`1.0.0` 历史候选。
+- 当前 debug VSIX 是 T12 本地验收制品，不是 protected RC。manifest v3 只把它登记为可复算的本地流程候选；正式候选仍须使用 release channel，并在测试、提交、打包后绑定精确 commit、VSIX/Bridge digest、安装身份和 source binding。
+- R4 manifest lineage/versioning 已审计：`a47ffe3` 建立 v3 后继，`4f8a567` v2 与 `a034e5e` v1 以 manifest/schema/view byte hash 保持不可变，不要求永久保留已按策略清理的历史二进制。
 - 本地可以验证协议/schema/fail-closed 行为，但结果仍须标记 `local-protocol-conformance`、`qualification_eligible=false`、`claims_permitted=false`。
 - 建议聚焦门禁：`verify:current-candidate-identity`、`verify:r4-process-artifacts`、`verify:external-authority-readiness-audit`、`verify:qualification-protocol`、`verify:qualification-evidence-manifest`、`verify:qualification-runner`、`verify:gate0-decision`。不要为了变绿伪造外部签名、时间锚或 claim。
+- 2026-08-24 完成：当前身份与 exact VSIX/安装/Bridge 一致，stable runtime=1、R4 leaves=6/6、process artifact errors=0；Gate 0=`NOT_PASSED`、external blockers=6、claims=0、live runs=0。
+- 2026-08-24 所有权清理：删除只消费已退役 `generated-file-resolver` 的旧 artifact verifier/self-loop，根 `verify:artifacts` 改验 parser 展示边界、completion evidence 和普通模型文本不可写盘，206/206 通过；Kernel baseline 移除四个 `a47ffe3` 前 owner，改由 normalized model action、canonical receipt、Kernel recovery 和逐动作 workspace transaction 持责，55/55 semantic domains、149/149 source checks 通过。
+- Phase 0～12 首次运行 `2026-08-24T01-56-55-975Z` 因旧 source binding 正确失败并保留；按依赖拓扑重生成 C0/Gate0 外部权限证据后，`2026-08-24T02-20-48-762Z` 全部通过、findings=0。两次均为 dirty-worktree deterministic evidence，不产生 candidate/stable 或 qualification claim。
 
 ### N3～N5 独立环境与真实用户仿真
 
@@ -124,11 +128,13 @@ devseek_governance:
 
 ## 对标与开发规则
 
-1. 产品代码缺陷继续以本地 Codex 源码 `code/upstream-agent-sources/openai-codex` @ `fe614a6304ef804be74a622e482fdd75977abcba` 为主要实现基线，按责任映射而不是照搬 Rust；Claude Code 公开归档 @ `be90077c6a353f292fa612d97173865a9ab21b83` 只作为 hooks、权限和可观察行为补充。
+1. 产品代码缺陷继续以本地 Codex 源码 `code/upstream-agent-sources/openai-codex` @ `fe614a6304ef804be74a622e482fdd75977abcba` 为主要实现基线，按责任映射而不是照搬 Rust；同时对照 Claude Code 公开归档 @ `be90077c6a353f292fa612d97173865a9ab21b83` 可验证的 hooks、权限、工具结果回注和实施方式。记录源码事实、官方公开事实与行为推断的证据等级，不推测闭源内部循环。
 2. 不把 Codex/Claude 的优秀确定性 parser、tool registry、approval 或 sandbox 误删为“关键词逻辑”；只禁止自然语言子串直接决定意图、权限、effect 或完成。
-3. 代码修改遵循单一语义 owner、依赖方向和可测试边界；修复 defect class，审计 sibling Surface/状态流/协议/恢复/UI，不做 case patch。
-4. 同一专题测试通过后一个提交、最后一次 push；不打 tag，除非用户另行明确要求。Extension/Bridge 变化必须 compile、package、校验 Bridge、安装 exact VSIX。
-5. 外部 authority、sealed holdout、trusted time、WORM storage 和 qualification claim 不能由本地 fixture、自签测试 key、Markdown 结论或人工改 JSON 代替。
+3. 代码修改遵循单一语义 owner、单一职责、清晰依赖方向和可测试边界，以高效、精简、可维护为目标；修复 defect class，审计 sibling Surface/状态流/协议/恢复/UI，不做 case patch，也不在错误边界叠加兼容分支。
+4. 现有实现不符合前述设计原则或代码风格时，必须先重构责任边界并迁移全部调用方，再实现目标行为；不得保留补丁式双轨、空转 wrapper 或无真实消费者的抽象。
+5. 重构后必须通过静态引用、生产调用链、行为回归和发布制品验证确认旧代码不再承担责任；确认无用后连同专属测试、配置和死分支彻底删除，不以“可能以后使用”为由保留。
+6. 同一专题测试通过后一个提交、最后一次 push；不打 tag，除非用户另行明确要求。Extension/Bridge 变化必须 compile、package、校验 Bridge、安装 exact VSIX。
+7. 外部 authority、sealed holdout、trusted time、WORM storage 和 qualification claim 不能由本地 fixture、自签测试 key、Markdown 结论或人工改 JSON 代替。
 
 ## 完成口径
 

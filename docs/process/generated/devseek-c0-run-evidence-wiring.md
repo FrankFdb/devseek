@@ -10,7 +10,7 @@
 - Qualification effect: `NONE`
 - Claims permitted: `false`
 - Gate pass assertion: `false`
-- Wiring SHA-256: `95cecb046a3ba880e98b13c220344f261f0c21c5b2957850c3ef63b1fc54691b`
+- Wiring SHA-256: `d77b3b32f4b8f6c59b224f20b6afe600335bda6d26de54a8c16a34e0e5c28e30`
 
 ## Owner
 

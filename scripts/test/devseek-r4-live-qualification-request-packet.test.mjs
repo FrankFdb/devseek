@@ -16,11 +16,12 @@ import {
   renderR4LiveQualificationRequestPacketMarkdown,
   validateR4LiveQualificationRequestPacket,
 } from '../lib/devseek-r4-live-qualification-request-packet.mjs';
+import { R4_ACTIVE_CANDIDATE } from '../lib/devseek-r4-release-candidate-freeze.mjs';
 
 const execFile = promisify(execFileCallback);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const expected = buildR4LiveQualificationRequestPacket({ repoRoot });
-const currentCandidateCommit = '4f8a56797090079914b4d921b56d9c34fe4d2abc';
+const currentCandidateCommit = R4_ACTIVE_CANDIDATE.source_commit;
 
 test('R4 live qualification request packet blocks qualification until explicit live, candidate, profile, evidence, and import authority exist', () => {
   const actual = readJson('docs/process/devseek-r4-live-qualification-request-packet.json');

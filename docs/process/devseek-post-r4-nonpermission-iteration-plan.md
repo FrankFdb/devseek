@@ -180,27 +180,26 @@
 - RunContext/completion evidence/workflow compliance focused tests。
 - 不新增 live run。
 
-### NP-07 Artifact quality local oracle expansion
+### NP-07 Artifact evidence settlement convergence
 
-目标：强化生成文件质量本地 oracle，降低 live/Provider 输出质量问题进入假完成的概率。
+目标：生成文件只可由模型归一化后的 TaskContract、声明目标、源码 claim 验证和真实 readback 证据结算，降低假完成概率。
 
 覆盖：
 
-- stale domain anchor。
-- missing literal anchor。
-- source path 被误当作 output target。
-- required deliverable mismatch。
-- generic warranty false positive。
-- artifact language mismatch。
+- 声明的交付目标必须真实写入，无关文件不能代替目标。
+- 非代码交付物必须具有匹配目标的 readback 证据。
+- 源码事实型交付物必须具有结构化 claim 契约和逐项验证结果。
+- Markdown 与源码写入统一经过 canonical tool、mutation 和 completion settlement 边界。
+- 旧 domain/language 关键词 artifact oracle 保持彻底退役。
 
 验证：
 
-- local quality gate tests。
-- replay/report generated artifact quality section。
+- completion evidence、auto validation 与 workflow compliance 本地测试。
+- controlled VSIX harness 的 generated artifact quality 回执保持独立 live 证据边界。
 
 不允许：
 
-- 不把质量 oracle 变成宽松通过门。
+- 不恢复按任务领域、关键词或语言猜测完成条件的旁路 oracle。
 - 不用 Markdown 自评替代机器检查。
 
 ### NP-08 Doc/process governance compact index

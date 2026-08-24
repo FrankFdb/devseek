@@ -7,8 +7,8 @@
 - Qualification effect: `NONE`
 - Claims permitted: `false`
 - Gate assertion: `false`
-- R4 leaves: `5/6` completed, `1` blocked
-- Clean runtime: `BLOCKED`, stable runtime count `1`
+- R4 leaves: `6/6` completed, `0` blocked
+- Clean runtime: `COMPLETED`, stable runtime count `1`
 - Live authorization requests: `5/5` blocked
 - External authority requests: `5/5` blocked
 
@@ -27,7 +27,7 @@
 
 ## R4 当前状态
 
-- Current blocked leaf: `R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME`
+- Current blocked leaf: `null`
 - Gate0: `NOT_PASSED`
 - R1 qualification: `NOT_STARTED`
 - Live runs authorized: `0`
@@ -35,8 +35,8 @@
 
 ## 挂起授权支线
 
-- Clean runtime terminal state: `BLOCKED`
-- Clean runtime blockers: `1`
+- Clean runtime terminal state: `COMPLETED`
+- Clean runtime blockers: `0`
 
 | R4 live request | Owner | State |
 | --- | --- | --- |
@@ -64,7 +64,7 @@
 | `NP-04` | Scenario language contract replay corpus | `source-bound-local-process-artifact` | `docs/process/devseek-r4-scenario-language-replay-corpus.json` |
 | `NP-05` | Provider protocol replay hardening | `source-bound-local-regression-manifest` | `docs/process/devseek-post-r4-local-regression-manifest.json` |
 | `NP-06` | Terminal settlement and recovered-write regression pack | `source-bound-local-regression-manifest` | `docs/process/devseek-post-r4-local-regression-manifest.json` |
-| `NP-07` | Artifact quality local oracle expansion | `source-bound-local-regression-manifest` | `docs/process/devseek-post-r4-local-regression-manifest.json` |
+| `NP-07` | Artifact evidence settlement convergence | `source-bound-local-regression-manifest` | `docs/process/devseek-post-r4-local-regression-manifest.json` |
 | `NP-08` | Doc/process governance compact index | `this-generated-index` | `docs/process/devseek-post-r4-compact-index.json` |
 | `NP-09` | Local full regression checkpoint | `local-full-regression-checkpoint` | `docs/process/devseek-post-r4-local-full-regression-checkpoint.md` |
 | `NP-10` | External authority packet readiness audit | `companion-readiness-audit-track` | `docs/process/devseek-external-authority-readiness-audit.json` |
@@ -80,20 +80,20 @@
 - `top_agent_followup_plan_14`: `docs/top-agent-convergence-audit-20260711/archive/14-未完成事项与后续整体迭代计划.md` -> `e9923917a087d39581e7e1c03eb3e3546e9b6a04de1d68b314be33b004a8d8f9`
 - `top_agent_quality_principles_16`: `docs/top-agent-convergence-audit-20260711/archive/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md` -> `ccd5818be7a37b5a12aa1e9f297a29a8153e96529270f5bb78b4cc692d3c1727`
 - `r3_closeout_next_phase_20`: `docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md` -> `712e09e938fa8718f44ab32c320f1937e28d8d635f736a936346494099dfc10e`
-- `post_r4_nonpermission_plan`: `docs/process/devseek-post-r4-nonpermission-iteration-plan.md` -> `51623b1c2267f8d3f6fcb09b800396e5da12ea083dad5c5ed98f331b8b735555`
-- `r4_iteration_status_rollup`: `docs/process/devseek-r4-iteration-status-rollup.json` -> `ecb6862254dfa14a146cbebe6f5ac0d1eef43ad0bdabe24c810123ab9d89ded0`
+- `post_r4_nonpermission_plan`: `docs/process/devseek-post-r4-nonpermission-iteration-plan.md` -> `ec35cf6e7bf5bf80a089138af799027d3e180b3871a10021647fe568c33adc67`
+- `r4_iteration_status_rollup`: `docs/process/devseek-r4-iteration-status-rollup.json` -> `833359a751f83210ef0eaa55910af71352abea25dcb38ad0ab009a72dd0c5e20`
 - `r4_authorization_and_permission_guide`: `docs/process/devseek-r4-authorization-and-permission-guide.md` -> `826240c4a2cfcae0c6fb1068ed199b1ffed99d64857fd8053d70e3790f40ada5`
-- `r4_clean_runtime_limited_observation`: `docs/process/devseek-r4-clean-runtime-limited-observation.json` -> `cd68a2eef3282a1608f3c8ec69d5dacd96ced043cd58510bc517377e7b5ea50e`
-- `r4_process_artifacts_aggregate`: `docs/process/devseek-r4-process-artifacts-aggregate.json` -> `373b8688ef2b130ce879d807d229f401597ca9bbadf3d2cfa84fdc5eeeb98067`
-- `post_r4_local_regression_manifest`: `docs/process/devseek-post-r4-local-regression-manifest.json` -> `2dd4e612e94b6689d42a63ea60247d2deda21ad90ac5d03923031733339c2e7c`
+- `r4_clean_runtime_limited_observation`: `docs/process/devseek-r4-clean-runtime-limited-observation.json` -> `129638973c1b23d8d357c1e8f9de4cbf3b036ea804eb269eca6bb1a9502722cc`
+- `r4_process_artifacts_aggregate`: `docs/process/devseek-r4-process-artifacts-aggregate.json` -> `8905921ecfc3edd1c9432207ecc938174ffe3621dcac6a2d880e5c88b78668d9`
+- `post_r4_local_regression_manifest`: `docs/process/devseek-post-r4-local-regression-manifest.json` -> `f1087858c9fad066dc77e584926eb82099178001c07e438f62855aff8e6bf8d4`
 - `post_r4_local_full_regression_checkpoint`: `docs/process/devseek-post-r4-local-full-regression-checkpoint.md` -> `a907249f6f69635b05942ad4061a8e13863cd127d35885a9f248c1fec8aa5509`
-- `external_authority_requests`: `docs/process/devseek-external-authority-requests.json` -> `97744c8bb9bbab4ef4972e24706397f945bf18ea1b22fb3597f4f86ba6ed3367`
-- `r4_live_qualification_request_packet`: `docs/process/devseek-r4-live-qualification-request-packet.json` -> `8efb7b899a44b81ab3965e757ec5a38549da4369512a9150f4c2628f6dba4fc7`
-- `package_scripts`: `package.json` -> `d31cab51401797bdb7f501f833a396f2fbdf23172e67623025bd9e1180a05ffa`
+- `external_authority_requests`: `docs/process/devseek-external-authority-requests.json` -> `2ed7e87a36b90259108face7150f4291bf60a12fadc444322ab4964569286cef`
+- `r4_live_qualification_request_packet`: `docs/process/devseek-r4-live-qualification-request-packet.json` -> `32444f1d7ae3412ee05940beeca6662616ec98b4d1c3e76dfa80e5d4dc6c2d98`
+- `package_scripts`: `package.json` -> `78b73a27359272a57f99b0209e652921150f8a9a1ea37fd057141eb817b9b21f`
 - `phase_gate_source`: `scripts/devseek-phase0-12-verify.mjs` -> `f9e850451a613301bd1b7fe2218174b33013693887f04f7b80236bdaffc3038d`
 - `checker_source`: `scripts/devseek-post-r4-compact-index-check.mjs` -> `1842d2a17af0d91a5bfd8bbb2ca042acf52b45c88c0e89872589e5300a1ce9d1`
 - `oracle_source`: `scripts/test/devseek-post-r4-compact-index.test.mjs` -> `664e5552e93e579adf9ac22c125f7c7191e22dd29020c2c8ceca8360991cd87f`
 
 ## Index Identity
 
-- Index SHA-256: `3f6e47f65dcf0a5c7402de2b6e9850f6b7ef5be55862f361ae0bb5ba5f4cba5d`
+- Index SHA-256: `5975b919e8b07c42c0f63527c3e51bce041f757e80cd0b53276ec28af3ffde85`

@@ -16,12 +16,16 @@ import {
   renderR4DocProcessIdentityReconciliationMarkdown,
   validateR4DocProcessIdentityReconciliation,
 } from '../lib/devseek-r4-doc-process-identity-reconciliation.mjs';
+import {
+  R4_ACTIVE_CANDIDATE,
+  R4_VERIFICATION_RECORD,
+} from '../lib/devseek-r4-release-candidate-freeze.mjs';
 
 const execFile = promisify(execFileCallback);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const expected = buildR4DocProcessIdentityReconciliation({ repoRoot });
-const archivedR3HandoffCommit = '2ef99cfbf0ded6d064633cf2f0f96336d9c6a88a';
-const currentCandidateCommit = '4f8a56797090079914b4d921b56d9c34fe4d2abc';
+const verificationRecordCommit = R4_VERIFICATION_RECORD.commit;
+const currentCandidateCommit = R4_ACTIVE_CANDIDATE.source_commit;
 
 test('R4 doc process identity reconciliation separates implementation, artifact, handoff, and current identity facts', () => {
   const actual = readJson('docs/process/devseek-r4-doc-process-identity-reconciliation.json');
@@ -36,7 +40,7 @@ test('R4 doc process identity reconciliation separates implementation, artifact,
   });
   assert.equal(actual.source_boundaries.product_implementation_commit, currentCandidateCommit);
   assert.equal(actual.source_boundaries.artifact_source_commit, currentCandidateCommit);
-  assert.equal(actual.source_boundaries.handoff_doc_commit, archivedR3HandoffCommit);
+  assert.equal(actual.source_boundaries.verification_record_commit, verificationRecordCommit);
   assert.equal(
     actual.identity_artifacts.tracked_current_candidate_identity.artifact_git_commit,
     expected.identity_artifacts.tracked_current_candidate_identity.artifact_git_commit,
@@ -131,8 +135,8 @@ test('checker command validates R4 doc process identity reconciliation and gener
   assert.deepEqual(result.summary, {
     reconciliation_sha256: expected.reconciliation_sha256,
     artifact_source_commit: currentCandidateCommit,
-    handoff_doc_commit: archivedR3HandoffCommit,
-    release_candidate_manifest_commit: expected.source_boundaries.release_candidate_manifest_commit,
+    verification_record_path: expected.source_boundaries.verification_record_path,
+    verification_record_commit: verificationRecordCommit,
     tracked_current_identity_artifact: expected.identity_artifacts.tracked_current_candidate_identity.artifact_git_commit,
     archived_failed_identity_artifact: '6b09d67',
     release_candidate_artifact: currentCandidateCommit,

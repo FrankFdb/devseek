@@ -339,7 +339,7 @@ function buildReleaseState({
   stableInstall,
 }) {
   const currentArtifact = releaseArtifactSummary(primaryVsix);
-  const rollbackTarget = findPreviousCompleteArtifact(repoRoot, primaryVsix.sha256);
+  const rollbackTarget = findPreviousCompleteArtifact(repoRoot, primaryVsix);
   return {
     version: RELEASE_STATE_SCHEMA_VERSION,
     state: 'observed-local-install',
@@ -406,25 +406,39 @@ function releaseObservePassed(stableInstall) {
     && classified.unreadable_runtime_identity.length === 0;
 }
 
-function findPreviousCompleteArtifact(repoRoot, currentSha256) {
+function findPreviousCompleteArtifact(repoRoot, currentArtifact) {
   const candidates = fs.readdirSync(repoRoot, { withFileTypes: true })
     .filter(entry => entry.isFile())
     .map(entry => entry.name)
-    .filter(name => /^devseek-netai-1\.0\.0-debug\..+\.vsix$/u.test(name))
-    .sort((left, right) => right.localeCompare(left));
+    .filter(name => name.startsWith('devseek-netai-') && name.endsWith('.vsix'));
 
+  const compatibleArtifacts = [];
   for (const candidate of candidates) {
     const candidatePath = path.join(repoRoot, candidate);
-    let identity = null;
     try {
-      identity = readVsixIdentity(candidatePath, repoRoot);
+      const identity = readVsixIdentity(candidatePath, repoRoot);
+      const packageIdentity = identity.package_identity;
+      const currentPackageIdentity = currentArtifact.package_identity;
+      if (identity.sha256 === currentArtifact.sha256) continue;
+      if (packageIdentity.publisher !== currentPackageIdentity.publisher
+        || packageIdentity.name !== currentPackageIdentity.name) continue;
+      compatibleArtifacts.push(identity);
     } catch {
       continue;
     }
-    if (identity.sha256 !== currentSha256) return releaseArtifactSummary(identity);
   }
 
-  return null;
+  compatibleArtifacts.sort(compareArtifactsNewestFirst);
+  return compatibleArtifacts[0] ? releaseArtifactSummary(compatibleArtifacts[0]) : null;
+}
+
+function compareArtifactsNewestFirst(left, right) {
+  const leftTime = Date.parse(left.package_identity.devseekBuild.packagedAt);
+  const rightTime = Date.parse(right.package_identity.devseekBuild.packagedAt);
+  if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+    return rightTime - leftTime;
+  }
+  return right.path.localeCompare(left.path, 'en');
 }
 
 function releaseArtifactSummary(vsixIdentity) {

@@ -24,29 +24,29 @@
   "source_bindings": {
     "live_user_way_holdout_matrix": {
       "path": "docs/process/devseek-r4-live-user-way-holdout-matrix.json",
-      "source_sha256": "000a82523ebeb1047518c7ca32f232d1416cfccf8ec6418599428b642ed783cf",
-      "matrix_sha256": "083cfc5a922afe1e571f3d46bc099c0343ff49224c8ae6ae0e461a11d420f38e",
+      "source_sha256": "14e21571c58fab259734ad6ae11e8f2a2a765d2f0ced25e81e15c0d831d9db30",
+      "matrix_sha256": "5aad313f200d8577b58e51208c3932a1fd0f23f2a1470f4c72635299505294af",
       "live_runs_authorized": 0
     },
     "live_qualification_request_packet": {
       "path": "docs/process/devseek-r4-live-qualification-request-packet.json",
-      "source_sha256": "2b7bc6e3aecb20f7b2303c9a13a5d19eb1d943e28f55cf4aef52e9c30492dfc6",
-      "packet_sha256": "e83c0f536ecfc7b0704b2186fe9a9f81ea7f7642b6ebd0b5d38c8b88db47b37c",
+      "source_sha256": "32444f1d7ae3412ee05940beeca6662616ec98b4d1c3e76dfa80e5d4dc6c2d98",
+      "packet_sha256": "a3fdcb7cc14df292b5973ca9b4a8b1096c8db97d1c3f01b0c6cf66e02f797241",
       "blocked_requests": 5
     },
     "doc_process_identity_reconciliation": {
       "path": "docs/process/devseek-r4-doc-process-identity-reconciliation.json",
-      "source_sha256": "5cbf35c83de806d842d5e9aebbcfd2d3411f19d0f4cc6752f4f82484ed8f8403",
-      "reconciliation_sha256": "a4e7923166980b25f4866182c0b64e56113c9f9241b3835152f131a3083b81ce",
-      "current_candidate_identity_status": "deferred-unusable-until-clean-runtime"
+      "source_sha256": "fbd3ab16582366448874a4f219ecf4b41318136a59d27e02408a0f6d7e323fee",
+      "reconciliation_sha256": "5c3ae69a0ec71116466c69a4d13a6977692644abeba8d6a28fad815d8d364274",
+      "current_candidate_identity_status": "clean-runtime-identity-established"
     },
     "r3_live_receipts_doc": {
       "path": "docs/top-agent-convergence-audit-20260711/archive/14-未完成事项与后续整体迭代计划.md",
-      "source_sha256": "5aaf1e3eb1c6613e0cda53bdac6f4341ec8930992ec5c244b219a3a114fa0352"
+      "source_sha256": "e9923917a087d39581e7e1c03eb3e3546e9b6a04de1d68b314be33b004a8d8f9"
     },
     "real_plugin_harness": {
       "path": "packages/vscode-extension/test/devseek-real-plugin-deepseek-harness.mjs",
-      "source_sha256": "31d375ceb4b8e8fa5c1db3dc0a10693cf32c432e5a487e33db59f141f353d3e3"
+      "source_sha256": "6cb08b7cc5907aecf7dd18dd017de6963b77b2f0d66703be2b3911fcb3b7d336"
     }
   },
   "rerun_policy": {
@@ -317,5 +317,5 @@
     "categories_allowing_rerun_without_analysis": 0,
     "qualification_claims": 0
   },
-  "taxonomy_sha256": "716ba020f4137ac0565a45ff1ef46aaa63338c07af4aed1d07ed70527798c4c5"
+  "taxonomy_sha256": "dd94dcc9eab8cf75fc6c224470cdcf86823bc891d71b53b21d29a5b6660165a6"
 }

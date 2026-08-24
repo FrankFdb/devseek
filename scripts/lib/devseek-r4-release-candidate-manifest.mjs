@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import cp from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import {
   canonicalJson,
@@ -7,16 +8,17 @@ import {
   SUPPORTED_INTEGRITY,
 } from './devseek-capability-ledger.mjs';
 import {
-  assertR4FrozenCandidateIdentity,
+  assertR4ActiveCandidateIdentity,
   buildR4ReleaseCandidateVersionLineage,
+  R4_ACTIVE_CANDIDATE,
   R4_CANDIDATE_VERIFICATION_RECEIPTS,
-  R4_FROZEN_CANDIDATE,
   R4_REMAINING_LEAVES_AT_FREEZE,
   R4_VERIFICATION_RECORD,
   validateR4VerificationRecordSource,
 } from './devseek-r4-release-candidate-freeze.mjs';
 import {
   R4_RELEASE_CANDIDATE_PREDECESSOR,
+  R4_RELEASE_CANDIDATE_HISTORY,
   validateArchivedR4ReleaseCandidate,
 } from './devseek-r4-release-candidate-history.mjs';
 import {
@@ -26,13 +28,13 @@ import {
 
 export { validateArchivedR4ReleaseCandidate };
 
-export const R4_RELEASE_CANDIDATE_MANIFEST_SCHEMA_VERSION = 'devseek.r4-release-candidate-manifest/v2';
-export const R4_RELEASE_CANDIDATE_MANIFEST_ID = 'R4-RELEASE-CANDIDATE-MANIFEST/v2';
+export const R4_RELEASE_CANDIDATE_MANIFEST_SCHEMA_VERSION = 'devseek.r4-release-candidate-manifest/v3';
+export const R4_RELEASE_CANDIDATE_MANIFEST_ID = 'R4-RELEASE-CANDIDATE-MANIFEST/v3';
 export const R4_RELEASE_CANDIDATE_INTEGRITY_SCOPE = 'local-r4-release-candidate-manifest';
 export const R4_RELEASE_CANDIDATE_QUALIFICATION_EFFECT = 'NONE';
 
-const PRIMARY_VSIX_PATH = R4_FROZEN_CANDIDATE.vsix_name;
-const PACKAGE_COPY_VSIX_PATH = `packages/vscode-extension/${R4_FROZEN_CANDIDATE.vsix_name}`;
+const PRIMARY_VSIX_PATH = R4_ACTIVE_CANDIDATE.vsix_name;
+const PACKAGE_COPY_VSIX_PATH = `packages/vscode-extension/${R4_ACTIVE_CANDIDATE.vsix_name}`;
 
 export function r4ReleaseCandidateManifestHash(manifest) {
   return sha256Object(withoutKeys(manifest, ['manifest_sha256']), manifest?.integrity);
@@ -50,12 +52,9 @@ export function buildR4ReleaseCandidateManifest({ repoRoot } = {}) {
   const packageCopyVsix = readVsixIdentity(path.join(repoRoot, PACKAGE_COPY_VSIX_PATH), repoRoot);
   const artifactGitCommit = primaryVsix.package_identity.devseekBuild.gitCommit;
   const artifactSourceCommit = resolveGitCommit(repoRoot, artifactGitCommit);
-  // A frozen candidate consumes the identity bytes from its freeze commit,
-  // while the live current-candidate file remains free to advance.
-  const currentIdentityText = readGitFile(
-    repoRoot,
-    R4_FROZEN_CANDIDATE.current_identity_commit,
-    R4_FROZEN_CANDIDATE.current_identity_path,
+  const currentIdentityText = fs.readFileSync(
+    path.join(repoRoot, R4_ACTIVE_CANDIDATE.current_identity_path),
+    'utf8',
   );
   const currentIdentity = JSON.parse(currentIdentityText);
   const currentIdentityFileSha256 = sha256Buffer(Buffer.from(currentIdentityText, 'utf8'));
@@ -65,7 +64,7 @@ export function buildR4ReleaseCandidateManifest({ repoRoot } = {}) {
     R4_VERIFICATION_RECORD.path,
   );
 
-  assertR4FrozenCandidateIdentity({
+  assertR4ActiveCandidateIdentity({
     artifactSourceCommit,
     primaryVsix,
     packageCopyVsix,
@@ -79,9 +78,10 @@ export function buildR4ReleaseCandidateManifest({ repoRoot } = {}) {
     schema_version: R4_RELEASE_CANDIDATE_MANIFEST_SCHEMA_VERSION,
     integrity: SUPPORTED_INTEGRITY,
     manifest_id: R4_RELEASE_CANDIDATE_MANIFEST_ID,
-    manifest_version: 2,
+    manifest_version: R4_ACTIVE_CANDIDATE.manifest_version,
     source_status: 'user-authorized-versioned-local-candidate-freeze',
     integrity_scope: R4_RELEASE_CANDIDATE_INTEGRITY_SCOPE,
+    local_evidence_class: R4_ACTIVE_CANDIDATE.local_evidence_class,
     qualification_eligible: false,
     qualification_effect: R4_RELEASE_CANDIDATE_QUALIFICATION_EFFECT,
     claims_permitted: false,
@@ -90,6 +90,8 @@ export function buildR4ReleaseCandidateManifest({ repoRoot } = {}) {
       authorization: 'explicit-user-authorization',
       scope: 'local-versioned-r4-candidate-freeze-only',
       predecessor_mutation: 'FORBIDDEN',
+      protected_release_candidate: false,
+      artifact_channel: 'debug',
       external_qualification_authority: false,
       qualification_effect: 'NONE',
     },
@@ -110,7 +112,7 @@ export function buildR4ReleaseCandidateManifest({ repoRoot } = {}) {
       verification_record_path: R4_VERIFICATION_RECORD.path,
       verification_record_ref: R4_VERIFICATION_RECORD.ref,
       verification_record_commit: R4_VERIFICATION_RECORD.commit,
-      current_candidate_identity_path: R4_FROZEN_CANDIDATE.current_identity_path,
+      current_candidate_identity_path: R4_ACTIVE_CANDIDATE.current_identity_path,
       current_candidate_identity_file_sha256: currentIdentityFileSha256,
       current_candidate_identity_probe_sha256: currentIdentity.identity_probe_sha256,
       artifact_source_matches_current_identity: artifactSourceCommit === currentIdentity.source_identity.candidate_source_commit,
@@ -128,7 +130,7 @@ export function buildR4ReleaseCandidateManifest({ repoRoot } = {}) {
       qualification_effect: 'NONE',
     })),
     current_identity_probe_boundary: {
-      path: R4_FROZEN_CANDIDATE.current_identity_path,
+      path: R4_ACTIVE_CANDIDATE.current_identity_path,
       status: 'verified-current-candidate',
       identity_probe_sha256: currentIdentity.identity_probe_sha256,
       identity_source_sha256: currentIdentityFileSha256,
@@ -146,7 +148,7 @@ export function buildR4ReleaseCandidateManifest({ repoRoot } = {}) {
     },
     counts: {
       vsix_artifacts: 2,
-      historical_candidates: 1,
+      historical_candidates: R4_RELEASE_CANDIDATE_HISTORY.length,
       verification_receipts: R4_CANDIDATE_VERIFICATION_RECEIPTS.length,
       remaining_r4_leaves_at_freeze: R4_REMAINING_LEAVES_AT_FREEZE.length,
       qualification_claims: 0,
@@ -198,7 +200,10 @@ export function renderR4ReleaseCandidateManifestMarkdown(report) {
     '',
     `- Manifest ID: \`${report.manifest_id}\``,
     `- Source status: \`${report.source_status}\``,
+    `- Local evidence class: \`${report.local_evidence_class}\``,
     `- Selection scope: \`${report.selection_boundary.scope}\``,
+    `- Protected release candidate: \`${report.selection_boundary.protected_release_candidate}\``,
+    `- Artifact channel: \`${report.selection_boundary.artifact_channel}\``,
     `- Qualification effect: \`${report.qualification_effect}\``,
     `- Claims permitted: \`${report.claims_permitted}\``,
     `- Gate assertion: \`${report.asserts_gate_pass}\``,
@@ -274,6 +279,8 @@ export function summarizeR4ReleaseCandidateManifest(report) {
     current_identity_status: report.current_identity_probe_boundary.status,
     current_leaf: report.r4_leaf_context.current_leaf,
     remaining_r4_leaves_at_freeze: report.r4_leaf_context.remaining_leaves_at_freeze.length,
+    local_evidence_class: report.local_evidence_class,
+    protected_release_candidate: report.selection_boundary.protected_release_candidate,
     qualification_effect: report.qualification_effect,
     claims_permitted: report.claims_permitted,
     asserts_gate_pass: report.asserts_gate_pass,
@@ -283,9 +290,10 @@ export function summarizeR4ReleaseCandidateManifest(report) {
 function semanticValidate(report, errors) {
   if (report.schema_version !== R4_RELEASE_CANDIDATE_MANIFEST_SCHEMA_VERSION) errors.push('schema_version:invalid');
   if (report.manifest_id !== R4_RELEASE_CANDIDATE_MANIFEST_ID) errors.push('manifest_id:invalid');
-  if (report.manifest_version !== 2) errors.push('manifest_version:must-be-2');
+  if (report.manifest_version !== R4_ACTIVE_CANDIDATE.manifest_version) errors.push(`manifest_version:must-be-${R4_ACTIVE_CANDIDATE.manifest_version}`);
   if (report.source_status !== 'user-authorized-versioned-local-candidate-freeze') errors.push('source_status:invalid');
   if (report.integrity_scope !== R4_RELEASE_CANDIDATE_INTEGRITY_SCOPE) errors.push('integrity_scope:invalid');
+  if (report.local_evidence_class !== R4_ACTIVE_CANDIDATE.local_evidence_class) errors.push('local_evidence_class:invalid');
   if (report.qualification_eligible !== false) errors.push('qualification_eligible:must-be-false');
   if (report.qualification_effect !== R4_RELEASE_CANDIDATE_QUALIFICATION_EFFECT) errors.push('qualification_effect:must-be-NONE');
   if (report.claims_permitted !== false) errors.push('claims_permitted:must-be-false');
@@ -293,6 +301,8 @@ function semanticValidate(report, errors) {
   if (report.selection_boundary?.authorization !== 'explicit-user-authorization') errors.push('selection_boundary.authorization:invalid');
   if (report.selection_boundary?.scope !== 'local-versioned-r4-candidate-freeze-only') errors.push('selection_boundary.scope:invalid');
   if (report.selection_boundary?.predecessor_mutation !== 'FORBIDDEN') errors.push('selection_boundary.predecessor_mutation:must-be-FORBIDDEN');
+  if (report.selection_boundary?.protected_release_candidate !== false) errors.push('selection_boundary.protected_release_candidate:must-be-false');
+  if (report.selection_boundary?.artifact_channel !== 'debug') errors.push('selection_boundary.artifact_channel:must-be-debug');
   if (report.selection_boundary?.external_qualification_authority !== false) errors.push('selection_boundary.external_qualification_authority:must-be-false');
   if (report.selection_boundary?.qualification_effect !== 'NONE') errors.push('selection_boundary.qualification_effect:must-be-NONE');
   if (report.observation_authority?.semantic_authority !== 'R4ReleaseCandidateManifest') {
@@ -310,7 +320,7 @@ function semanticValidate(report, errors) {
   if (canonicalJson(report.version_lineage) !== canonicalJson(expectedLineage)) {
     errors.push('version_lineage:invalid-or-predecessor-mutated');
   }
-  if (report.source_identity?.artifact_source_commit !== R4_FROZEN_CANDIDATE.source_commit) {
+  if (report.source_identity?.artifact_source_commit !== R4_ACTIVE_CANDIDATE.source_commit) {
     errors.push('source_identity.artifact_source_commit:invalid');
   }
   if (report.source_identity?.verification_record_path !== R4_VERIFICATION_RECORD.path
@@ -318,16 +328,16 @@ function semanticValidate(report, errors) {
     || report.source_identity?.verification_record_commit !== R4_VERIFICATION_RECORD.commit) {
     errors.push('source_identity.verification_record:invalid');
   }
-  if (report.source_identity?.current_candidate_identity_path !== R4_FROZEN_CANDIDATE.current_identity_path
-    || report.source_identity?.current_candidate_identity_file_sha256 !== R4_FROZEN_CANDIDATE.current_identity_file_sha256
-    || report.source_identity?.current_candidate_identity_probe_sha256 !== R4_FROZEN_CANDIDATE.current_identity_probe_sha256
+  if (report.source_identity?.current_candidate_identity_path !== R4_ACTIVE_CANDIDATE.current_identity_path
+    || report.source_identity?.current_candidate_identity_file_sha256 !== R4_ACTIVE_CANDIDATE.current_identity_file_sha256
+    || report.source_identity?.current_candidate_identity_probe_sha256 !== R4_ACTIVE_CANDIDATE.current_identity_probe_sha256
     || report.source_identity?.artifact_source_matches_current_identity !== true) {
     errors.push('source_identity.current_candidate_identity:invalid');
   }
   if (report.artifact_identity?.primary_vsix?.path !== PRIMARY_VSIX_PATH
     || report.artifact_identity?.package_copy_vsix?.path !== PACKAGE_COPY_VSIX_PATH
-    || report.artifact_identity?.primary_vsix?.sha256 !== R4_FROZEN_CANDIDATE.vsix_sha256
-    || report.artifact_identity?.package_copy_vsix?.sha256 !== R4_FROZEN_CANDIDATE.vsix_sha256
+    || report.artifact_identity?.primary_vsix?.sha256 !== R4_ACTIVE_CANDIDATE.vsix_sha256
+    || report.artifact_identity?.package_copy_vsix?.sha256 !== R4_ACTIVE_CANDIDATE.vsix_sha256
     || report.artifact_identity?.exact_match !== true) {
     errors.push('artifact_identity:frozen-candidate-mismatch');
   }
@@ -338,9 +348,9 @@ function semanticValidate(report, errors) {
   }
   const identityBoundary = report.current_identity_probe_boundary;
   if (identityBoundary?.status !== 'verified-current-candidate'
-    || identityBoundary?.identity_probe_sha256 !== R4_FROZEN_CANDIDATE.current_identity_probe_sha256
-    || identityBoundary?.identity_source_sha256 !== R4_FROZEN_CANDIDATE.current_identity_file_sha256
-    || identityBoundary?.candidate_source_commit !== R4_FROZEN_CANDIDATE.source_commit
+    || identityBoundary?.identity_probe_sha256 !== R4_ACTIVE_CANDIDATE.current_identity_probe_sha256
+    || identityBoundary?.identity_source_sha256 !== R4_ACTIVE_CANDIDATE.current_identity_file_sha256
+    || identityBoundary?.candidate_source_commit !== R4_ACTIVE_CANDIDATE.source_commit
     || identityBoundary?.artifact_source_matches_current_identity !== true
     || identityBoundary?.stable_runtime_count !== 1
     || identityBoundary?.observe_status !== 'passed'
@@ -355,7 +365,9 @@ function semanticValidate(report, errors) {
     errors.push('r4_leaf_context.remaining_leaves_at_freeze:invalid');
   }
   if (report.counts?.vsix_artifacts !== 2) errors.push('counts.vsix_artifacts:must-be-2');
-  if (report.counts?.historical_candidates !== 1) errors.push('counts.historical_candidates:must-be-1');
+  if (report.counts?.historical_candidates !== R4_RELEASE_CANDIDATE_HISTORY.length) {
+    errors.push(`counts.historical_candidates:must-be-${R4_RELEASE_CANDIDATE_HISTORY.length}`);
+  }
   if (report.counts?.verification_receipts !== R4_CANDIDATE_VERIFICATION_RECEIPTS.length) errors.push('counts.verification_receipts:invalid');
   if (report.counts?.remaining_r4_leaves_at_freeze !== R4_REMAINING_LEAVES_AT_FREEZE.length) {
     errors.push('counts.remaining_r4_leaves_at_freeze:invalid');

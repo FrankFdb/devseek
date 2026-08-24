@@ -6,10 +6,10 @@
 
 - generator: `devseek-doc-governance/v1`
 - active selector sha256: `a313e81e91c0a7a0d8e1190c3b18d7b3e47ee3b642a155144544bd09db046ad3`
-- legacy inventory sha256: `3b668b1c55ca02e63147e2e4b42095363d8fa4e9498f06568b58f8b1b3e526f8`
-- governed documents: `34`
+- legacy inventory sha256: `e3dd5538e5ef584f5e4be899b246bbdaff7c5250ea325c84fb7625e993f1ef6d`
+- governed documents: `63`
 - active baselines: `3`
-- legacy documents: `31`
+- legacy documents: `60`
 - asserts Gate 0 pass: `false`
 
 ## Active Baselines
@@ -25,7 +25,7 @@
 | Decision | Count |
 | --- | ---: |
 | active | 3 |
-| keep | 25 |
+| keep | 54 |
 | revise | 0 |
 | supersede | 2 |
 | archive | 0 |
@@ -65,4 +65,33 @@
 | `docs/requirements/references/02-openai-codex.md` | requirements | reference | not-applicable | external-reference | `docs/requirements/02-顶级编程智能体需求基线.md` |
 | `docs/requirements/references/03-github-copilot.md` | requirements | reference | not-applicable | external-reference | `docs/requirements/02-顶级编程智能体需求基线.md` |
 | `docs/requirements/references/04-other-coding-agents.md` | requirements | reference | not-applicable | external-reference | `docs/requirements/02-顶级编程智能体需求基线.md` |
+| `docs/top-agent-convergence-audit-20260711/DEVSEEK-2.0.25-CODEX-ASSISTANT-MESSAGE-INTENT-SETTLEMENT-20260817.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/DEVSEEK-2.0.26-CODEX-VISIBLE-DELIVERY-AND-SIMULATION-QUALITY-20260817.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/DEVSEEK-2.0.27-CODEX-TERMINAL-AUTHORITY-AND-MEMORY-ISOLATION-20260817.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/HANDOFF-20260813-意图识别与真实用户仿真迭代.md` | handoff | historical | keep | handoff-entry | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/INDEPENDENT-USER-SIMULATION-ACCEPTANCE-20260814.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/INTENT-CANCELLATION-REPLACEMENT-2.0.11-20260813.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/INTENT-CORRECTIVE-SCOPE-REPLACEMENT-2.0.10-20260813.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/INTENT-LOCAL-PARAPHRASE-MATRIX-2.0.2-20260813.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/INTENT-PARAPHRASE-CONTRACT-2.0.1-20260813.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/INTENT-PRIOR-TASK-CONTINUATION-2.0.9-20260813.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/INTENT-PROJECT-HEALTH-REPAIR-2.0.5-20260813.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/INTENT-RECOVERED-REPAIR-SETTLEMENT-2.0.8-20260813.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/INTENT-RUN-TO-REPAIR-2.0.3-20260813.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/INTENT-RUNTIME-ERROR-REPAIR-2.0.6-20260813.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/INTENT-SEMANTIC-ARBITER-REFACTOR-2.0.0-20260813.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/INTENT-SEMANTIC-CODE-REVIEW-2.0.15-20260813.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/INTENT-SEMANTIC-DESTRUCTIVE-2.0.16-20260814.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/INTENT-SEMANTIC-EFFECT-PROPOSAL-2.0.13-20260813.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/INTENT-SEMANTIC-PROPOSAL-ROUTE-CONSISTENCY-2.0.12-20260813.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/INTENT-SEMANTIC-WORKSPACE-READ-2.0.14-20260813.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/INTENT-USER-SYMPTOM-REPAIR-2.0.7-20260813.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/INTENT-VALIDATION-HEALTH-REPAIR-2.0.4-20260813.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/INTENT-VALIDATION-NO-RUN-2.0.17-20260814.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/MEMORY-ENGINEERING-DECISION-RATIONALE-20260817.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
 | `docs/top-agent-convergence-audit-20260711/README.md` | handoff | historical | keep | supporting-ref | `docs/requirements/02-顶级编程智能体需求基线.md` |
+| `docs/top-agent-convergence-audit-20260711/T3-DEEPSEEK-WEB-COMPAT-CODEX-ALIGNMENT-20260814.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/T4-PERMISSION-WRITE-BOUNDARY-CODEX-ALIGNMENT-20260814.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/T5-MEMORY-CODEX-ALIGNMENT-ARCHITECTURE-IMPLEMENTATION-20260817.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/T7-T8-TYPE-ARCHITECTURE-EFFICIENCY-CODEX-ALIGNMENT-20260818.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/UPSTREAM-AGENT-SOURCE-AUDIT-20260813.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |

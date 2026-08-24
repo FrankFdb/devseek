@@ -26,8 +26,8 @@ devseek_governance:
 
 - generator: `devseek-doc-governance/v1`
 - active selector: `docs/process/devseek-active-baseline-selector.json` sha256=`a313e81e91c0a7a0d8e1190c3b18d7b3e47ee3b642a155144544bd09db046ad3`
-- legacy inventory: `docs/process/devseek-legacy-doc-inventory.json` sha256=`3b668b1c55ca02e63147e2e4b42095363d8fa4e9498f06568b58f8b1b3e526f8`
-- governed documents: `34`; active baselines: `3`; legacy/reference: `31`
+- legacy inventory: `docs/process/devseek-legacy-doc-inventory.json` sha256=`e3dd5538e5ef584f5e4be899b246bbdaff7c5250ea325c84fb7625e993f1ef6d`
+- governed documents: `63`; active baselines: `3`; legacy/reference: `60`
 - status view: `docs/process/generated/devseek-doc-governance-status.md`
 - Gate 0 / claims effect: `NONE`; this generated status does not assert qualification.
 <!-- DEVSEEK-GOVERNANCE-STATUS:END -->

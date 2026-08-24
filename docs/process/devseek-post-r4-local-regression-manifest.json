@@ -25,11 +25,11 @@
   "source_bindings": {
     "post_r4_nonpermission_plan": {
       "path": "docs/process/devseek-post-r4-nonpermission-iteration-plan.md",
-      "source_sha256": "51623b1c2267f8d3f6fcb09b800396e5da12ea083dad5c5ed98f331b8b735555"
+      "source_sha256": "ec35cf6e7bf5bf80a089138af799027d3e180b3871a10021647fe568c33adc67"
     },
     "package_scripts": {
       "path": "package.json",
-      "source_sha256": "d31cab51401797bdb7f501f833a396f2fbdf23172e67623025bd9e1180a05ffa",
+      "source_sha256": "78b73a27359272a57f99b0209e652921150f8a9a1ea37fd057141eb817b9b21f",
       "required_script": "verify:post-r4-local-regression-manifest",
       "required_script_present": true
     },
@@ -45,7 +45,7 @@
     },
     "oracle_source": {
       "path": "scripts/test/devseek-post-r4-local-regression-manifest.test.mjs",
-      "source_sha256": "d28f218abbc4450944dcf0ef4c2a58730cc2c381f3176f9992db0246dc97405b"
+      "source_sha256": "98d1484e5e65a7f86f0b7c3404407fb913f039b55059cc8d399a8fc555a682a9"
     }
   },
   "regression_scope": {
@@ -75,32 +75,32 @@
         {
           "path": "packages/vscode-extension/src/agent/fake-tool-parser.ts",
           "role": "provider-tool-text-parser",
-          "source_sha256": "a7288a6a28f8ab165d485c3c5a97f84604a0b252a252fa337d354e9ecc84e936"
+          "source_sha256": "7cdf0e1a2c43adbf6d72da9ada201f187a58510ef1382f45a1c71a1ff9621aff"
         },
         {
           "path": "packages/vscode-extension/src/agent/provider-output-integrity.ts",
           "role": "provider-integrity-classifier",
-          "source_sha256": "15ded0c664875f97fe9664525540bb01efbbaee53e88c5ecb2877faec7333614"
+          "source_sha256": "f255215692cbc7b7661da3d8a46d94843907d51620249c6cbda03756e469cf0d"
         },
         {
           "path": "packages/vscode-extension/src/diagnostics/run-log-replay.ts",
           "role": "run-log-failure-oracle",
-          "source_sha256": "5194693e8b17a4626f08a083d312e9a14c7f346281f3dc90296a11ba3b8fc534"
+          "source_sha256": "566007f515ed03e6826545a12f445738a7846cc91c45c2d2d1905d5cb3d11495"
         },
         {
           "path": "packages/vscode-extension/test/unit/fake-tool-parser.test.mjs",
           "role": "fake-tool-parser-replay-oracle",
-          "source_sha256": "a85b5f29791527848a200fd7cdd955384e20797423c0ee95e2b3e7598d348f8d"
+          "source_sha256": "8320c70451c0b984e651587febda9732f926d28b485e584b47735eaebc16166c"
         },
         {
           "path": "packages/vscode-extension/test/unit/provider-output-integrity.test.mjs",
           "role": "provider-integrity-replay-oracle",
-          "source_sha256": "c18dcbd5872004f13dcf44822d027a631b69ac8415ce7ced58c41545fba97ce5"
+          "source_sha256": "22228a98e56b5ef6f814e3fb8610487228f1728d71f4ef49cb42f9c94a030fda"
         },
         {
           "path": "packages/vscode-extension/test/unit/run-log-replay.test.mjs",
           "role": "run-log-replay-oracle",
-          "source_sha256": "929dcabf13afc594f40edbabe2bdf3a133b50d36a25ee3003abc36de5b8cf65e"
+          "source_sha256": "6622f6e50a171971bdcfdf0a38d1f319c52e8b657bc8d0dd117ac4e0c7233e19"
         }
       ],
       "anchor_checks": [
@@ -112,14 +112,14 @@
         },
         {
           "path": "packages/vscode-extension/test/unit/provider-output-integrity.test.mjs",
-          "anchor": "rejects safety-interstitial interrupted tool blocks as truncated",
-          "category": "safety-interstitial-truncation",
+          "anchor": "tool-like prose remains ordinary text without a structural provider event",
+          "category": "prose-not-tool-authority",
           "present": true
         },
         {
           "path": "packages/vscode-extension/test/unit/provider-output-integrity.test.mjs",
-          "anchor": "classifies malformed DeepSeek function envelopes as executable tool calls",
-          "category": "malformed-json-tool-envelope",
+          "anchor": "transport observations detect incomplete and mixed protocols without parsing answer prose",
+          "category": "structural-transport-integrity",
           "present": true
         },
         {
@@ -189,7 +189,7 @@
         {
           "path": "packages/vscode-extension/src/app/run-context.ts",
           "role": "durable-run-settlement-owner",
-          "source_sha256": "0cf22248c92e98e4059595b364db5b0ac7289714831afdc3ed7df470872d4f7e"
+          "source_sha256": "a6366333742eb375161777da4c4cd604320742e506ef86ca9bf20adc7593c331"
         },
         {
           "path": "packages/vscode-extension/src/app/settlement-state.ts",
@@ -199,12 +199,12 @@
         {
           "path": "packages/vscode-extension/src/diagnostics/run-log-replay.ts",
           "role": "settlement-replay-oracle",
-          "source_sha256": "5194693e8b17a4626f08a083d312e9a14c7f346281f3dc90296a11ba3b8fc534"
+          "source_sha256": "566007f515ed03e6826545a12f445738a7846cc91c45c2d2d1905d5cb3d11495"
         },
         {
           "path": "packages/vscode-extension/test/unit/run-context.test.mjs",
           "role": "run-context-recovery-oracle",
-          "source_sha256": "1ef4a5cb5a44e303e3544c7f3ad12ee37ff95d49138391757cf610371b55e004"
+          "source_sha256": "801f6ea1a445c48b875a15e3e0004e02580e27bc3aa0990643cc44d0caa419bf"
         },
         {
           "path": "packages/vscode-extension/test/unit/run-context-settlement.test.mjs",
@@ -214,7 +214,7 @@
         {
           "path": "packages/vscode-extension/test/unit/workflow-compliance.test.mjs",
           "role": "workflow-static-contract-oracle",
-          "source_sha256": "7f6edb6da92bcbe0a991c00384a3096a3affc6934e5141de3abffa48cb3a49f0"
+          "source_sha256": "60971e85248c4df15675748b4bdbad7e9e7794b918f0c04785b185151401eed9"
         }
       ],
       "anchor_checks": [
@@ -244,7 +244,7 @@
         },
         {
           "path": "packages/vscode-extension/src/app/run-context.ts",
-          "anchor": "completeLateProviderFailuresFromVerifiedLocalResult",
+          "anchor": "completeProviderFailuresFromVerifiedLocalResult",
           "category": "late-provider-failure-recovery-boundary",
           "present": true
         },
@@ -299,75 +299,80 @@
     },
     {
       "item_id": "NP-07",
-      "title": "Artifact quality local oracle expansion",
+      "title": "Artifact evidence settlement convergence",
       "source_status": "source-bound-local-regression-track",
       "terminal_state": "COVERED_LOCALLY",
-      "plan_heading": "### NP-07 Artifact quality local oracle expansion",
+      "plan_heading": "### NP-07 Artifact evidence settlement convergence",
       "plan_heading_present": true,
-      "product_risk": "Generated artifacts must be checked against concrete deliverables, source anchors, domain anchors, and scenario language.",
+      "product_risk": "Generated artifacts must close from the normalized task contract, declared targets, source-claim verification, and real readback evidence.",
       "covered_sources": [
         {
-          "path": "packages/vscode-extension/src/agent/artifact-quality-oracle.ts",
-          "role": "markdown-artifact-quality-oracle",
-          "source_sha256": "870e91b5a4d2288a60d92c9e4c0cdee89362e431cad44ca8ff8029b72638d196"
+          "path": "packages/vscode-extension/src/agent/task-contract.ts",
+          "role": "source-claim-task-contract",
+          "source_sha256": "9a1d57519950cbf02a1cdd8d0d2bcb12e2afde4396c569d32e1db04a296eac31"
         },
         {
           "path": "packages/vscode-extension/src/agent/completion-evidence.ts",
-          "role": "completion-evidence-deliverable-contract",
-          "source_sha256": "9ba3a82e37bae309857e0ae913476dbae6d96b1b3504740f1e871174467d83ef"
-        },
-        {
-          "path": "packages/vscode-extension/test/unit/artifact-quality-oracle.test.mjs",
-          "role": "artifact-quality-oracle-tests",
-          "source_sha256": "3c56c09899c4684eed0fa3cc4742cfde860f6b04b7a2a45ee01091ffb1320620"
+          "role": "artifact-evidence-settlement",
+          "source_sha256": "8bb10531ca68ba97ae5dd44127992c003dfdd405ee6a99aaaa3d63e93abc708a"
         },
         {
           "path": "packages/vscode-extension/test/unit/completion-evidence.test.mjs",
           "role": "completion-evidence-tests",
-          "source_sha256": "8af307e968cd6dd387e91b8d76796a6e09ea90227d2ff7bbefac7bcee589aaa6"
+          "source_sha256": "f12ee6cc3b867053d5934a35ba763f4aca1c0e69288ad556fdd5605c712c00c6"
+        },
+        {
+          "path": "packages/vscode-extension/test/unit/agent-auto-validation.test.mjs",
+          "role": "report-readback-validation-tests",
+          "source_sha256": "ce7f5b10f038e9852c14b62e033804b3228725fdd8ca9da9c645710c109b2302"
+        },
+        {
+          "path": "packages/vscode-extension/test/unit/workflow-compliance.test.mjs",
+          "role": "artifact-owner-architecture-guard",
+          "source_sha256": "60971e85248c4df15675748b4bdbad7e9e7794b918f0c04785b185151401eed9"
         }
       ],
       "anchor_checks": [
         {
-          "path": "packages/vscode-extension/test/unit/artifact-quality-oracle.test.mjs",
-          "anchor": "missing literal anchors fail the generated artifact gate",
-          "category": "missing-literal-anchor",
+          "path": "packages/vscode-extension/test/unit/completion-evidence.test.mjs",
+          "anchor": "non-code file action closes from write plus matching readback, not compilation",
+          "category": "artifact-readback-required",
           "present": true
         },
         {
-          "path": "packages/vscode-extension/test/unit/artifact-quality-oracle.test.mjs",
-          "anchor": "stale warranty domain anchors fail DevSeek process artifacts",
-          "category": "stale-domain-anchor",
+          "path": "packages/vscode-extension/test/unit/completion-evidence.test.mjs",
+          "anchor": "an unrelated written file cannot satisfy a declared target",
+          "category": "declared-deliverable-target",
           "present": true
         },
         {
-          "path": "packages/vscode-extension/test/unit/artifact-quality-oracle.test.mjs",
-          "anchor": "writing an input source path does not satisfy the requested output deliverable",
-          "category": "source-path-is-not-output-target",
+          "path": "packages/vscode-extension/src/agent/completion-evidence.ts",
+          "anchor": "hasSourceClaimArtifactContract",
+          "category": "source-claim-contract",
           "present": true
         },
         {
-          "path": "packages/vscode-extension/test/unit/artifact-quality-oracle.test.mjs",
-          "anchor": "generic warranty advice cannot replace source-backed warranty facts",
-          "category": "generic-warranty-false-positive",
+          "path": "packages/vscode-extension/src/agent/completion-evidence.ts",
+          "anchor": "hasFileArtifactReadbackEvidence",
+          "category": "artifact-readback-settlement",
           "present": true
         },
         {
-          "path": "packages/vscode-extension/test/unit/artifact-quality-oracle.test.mjs",
-          "anchor": "explicit Chinese report requirement rejects English-only prose",
-          "category": "artifact-language-mismatch",
+          "path": "packages/vscode-extension/test/unit/agent-auto-validation.test.mjs",
+          "anchor": "treats report-only Markdown without verifier ports as readback evidence",
+          "category": "report-readback-verification",
           "present": true
         },
         {
-          "path": "packages/vscode-extension/src/agent/artifact-quality-oracle.ts",
-          "anchor": "source-grounding-missing",
-          "category": "source-grounding-missing",
+          "path": "packages/vscode-extension/test/unit/workflow-compliance.test.mjs",
+          "anchor": "domain-specific artifact oracle must stay retired",
+          "category": "legacy-domain-oracle-retired",
           "present": true
         }
       ],
       "verification_commands": [
         {
-          "command": "node packages/vscode-extension/test/unit/artifact-quality-oracle.test.mjs",
+          "command": "node packages/vscode-extension/test/unit/completion-evidence.test.mjs",
           "execution_scope": "local-node-unit-test",
           "live_provider_actions": "FORBIDDEN",
           "install_or_window_actions": "FORBIDDEN",
@@ -375,7 +380,15 @@
           "command_is_local_only": true
         },
         {
-          "command": "node packages/vscode-extension/test/unit/completion-evidence.test.mjs",
+          "command": "node packages/vscode-extension/test/unit/agent-auto-validation.test.mjs",
+          "execution_scope": "local-node-unit-test",
+          "live_provider_actions": "FORBIDDEN",
+          "install_or_window_actions": "FORBIDDEN",
+          "qualification_effect": "NONE",
+          "command_is_local_only": true
+        },
+        {
+          "command": "node packages/vscode-extension/test/unit/workflow-compliance.test.mjs",
           "execution_scope": "local-node-unit-test",
           "live_provider_actions": "FORBIDDEN",
           "install_or_window_actions": "FORBIDDEN",
@@ -392,27 +405,27 @@
         "gate0_or_r1_status_changed": false
       },
       "counts": {
-        "covered_sources": 4,
+        "covered_sources": 5,
         "anchor_checks": 6,
         "anchors_present": 6,
-        "verification_commands": 2,
-        "local_only_commands": 2
+        "verification_commands": 3,
+        "local_only_commands": 3
       }
     }
   ],
   "counts": {
     "regression_tracks": 3,
     "covered_nonpermission_items": 3,
-    "covered_sources": 16,
+    "covered_sources": 17,
     "anchor_checks": 17,
     "anchors_present": 17,
-    "verification_commands": 8,
-    "local_only_commands": 8,
+    "verification_commands": 9,
+    "local_only_commands": 9,
     "live_provider_runs": 0,
     "install_or_window_actions": 0,
     "qualification_claims": 0,
     "gate_pass_assertions": 0,
     "bypasses": 0
   },
-  "manifest_sha256": "7f6fe126ba41ae5bf333129be119887a824ec18808fed058622fe049150ac52c"
+  "manifest_sha256": "c9a80b8f7dd5442410423bd4ca4b01d55acbd1c5e36b247608f87f7d894fdab8"
 }

@@ -23,11 +23,15 @@ const baseInventory = readJson(inventoryPath);
 
 test('legacy document inventory covers every governed non-active document once', () => {
   const result = validateLegacyDocInventory(baseInventory, repoRoot);
+  const governedDocumentCount = collectGovernedMarkdownPaths(repoRoot).length;
+  const activeBaselineCount = baseInventory.active_selector.active_baseline_paths.length;
+  const expectedInventoryCount = governedDocumentCount - activeBaselineCount;
   assert.deepEqual(result.errors, []);
-  assert.equal(result.summary.governed_document_count, 34);
-  assert.equal(result.summary.active_baseline_count, 3);
-  assert.equal(result.summary.expected_inventory_count, 31);
-  assert.equal(result.summary.inventoried_document_count, 31);
+  assert.equal(result.summary.governed_document_count, governedDocumentCount);
+  assert.equal(result.summary.active_baseline_count, activeBaselineCount);
+  assert.equal(result.summary.expected_inventory_count, expectedInventoryCount);
+  assert.equal(result.summary.inventoried_document_count, baseInventory.entries.length);
+  assert.equal(baseInventory.entries.length, expectedInventoryCount);
   assert.equal(result.summary.missing_coverage_count, 0);
   assert.equal(result.summary.unexpected_coverage_count, 0);
   assert.equal(result.summary.unresolved_count, 0);

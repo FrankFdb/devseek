@@ -1,0 +1,185 @@
+{
+  "schema_version": "devseek.r4-release-candidate-manifest/v2",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "manifest_id": "R4-RELEASE-CANDIDATE-MANIFEST/v2",
+  "manifest_version": 2,
+  "source_status": "user-authorized-versioned-local-candidate-freeze",
+  "integrity_scope": "local-r4-release-candidate-manifest",
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "selection_boundary": {
+    "authorization": "explicit-user-authorization",
+    "scope": "local-versioned-r4-candidate-freeze-only",
+    "predecessor_mutation": "FORBIDDEN",
+    "external_qualification_authority": false,
+    "qualification_effect": "NONE"
+  },
+  "observation_authority": {
+    "semantic_authority": "R4ReleaseCandidateManifest",
+    "writes_product_state": false,
+    "provider_actions": "FORBIDDEN",
+    "live_holdout_actions": "FORBIDDEN",
+    "runtime_process_observation": "FORBIDDEN",
+    "install_or_window_actions": "FORBIDDEN",
+    "secret_observation": "FORBIDDEN"
+  },
+  "version_lineage": {
+    "predecessor_manifest_id": "R4-RELEASE-CANDIDATE-MANIFEST/v1",
+    "predecessor_manifest_version": 1,
+    "predecessor_candidate_source_commit": "a034e5e050c044460fb07705639d9d41e6b193c0",
+    "predecessor_candidate_vsix_sha256": "027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d",
+    "predecessor_manifest_sha256": "67e4025b2743012648c36312870130a3773f0b79dc44ce9abbc4200c4dab50b3",
+    "predecessor_manifest_path": "docs/process/archive/r4-release-candidates/v1-a034e5e/manifest.json",
+    "predecessor_manifest_file_sha256": "eb93f971f1dcd877dbde75a032919c7d02389661aaaed6429b0bd34943091c66",
+    "predecessor_schema_path": "docs/process/archive/r4-release-candidates/v1-a034e5e/manifest.schema.json",
+    "predecessor_schema_file_sha256": "6adf54c38b9fb0b8ae7c95a721dee9815f6a9a9b96edac2416d62b6b1256977f",
+    "predecessor_generated_view_path": "docs/process/archive/r4-release-candidates/v1-a034e5e/manifest.md",
+    "predecessor_generated_view_file_sha256": "b8c684c959545dd8bd6c0228e59df09f036416a2edc5b6b9db35f17d4fc2f3eb",
+    "predecessor_status": "immutable-history",
+    "supersession_reason": "explicit-user-authorized-versioned-candidate-freeze",
+    "mutation_policy": "byte-for-byte-predecessor-preservation"
+  },
+  "source_identity": {
+    "artifact_source_commit": "4f8a56797090079914b4d921b56d9c34fe4d2abc",
+    "artifact_source_short": "4f8a567",
+    "artifact_source_resolution": "git rev-parse <vsix.devseekBuild.gitCommit>^{commit}",
+    "verification_record_path": "docs/top-agent-convergence-audit-20260711/README.md",
+    "verification_record_ref": "docs/top-agent-convergence-audit-20260711/README.md#5-本轮验证记录",
+    "verification_record_commit": "8f30f1b79285c2e2141cbbcacf69b30969487768",
+    "current_candidate_identity_path": "docs/process/devseek-current-candidate-identity.json",
+    "current_candidate_identity_file_sha256": "80a68b5207f65625458b18320c15e1b89514125d7e77d1b3f7f2928c585b294e",
+    "current_candidate_identity_probe_sha256": "c629bfa4bdf1c7a1843a34e6c5e1277c6260dc5829072510c933b5a14664eafd",
+    "artifact_source_matches_current_identity": true
+  },
+  "artifact_identity": {
+    "primary_vsix": {
+      "path": "devseek-netai-1.0.0-debug.20260804.t093020.g4f8a567.vsix",
+      "sha256": "68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc",
+      "package_identity": {
+        "publisher": "devseek-netai",
+        "name": "devseek-netai",
+        "version": "1.0.0-debug.20260804.t093020.g4f8a567",
+        "devseekBuild": {
+          "baseVersion": "1.0.0",
+          "channel": "debug",
+          "buildId": "20260804-t093020",
+          "gitCommit": "4f8a567",
+          "packagedAt": "2026-08-04T01:30:20.682Z"
+        }
+      },
+      "packaged_bridge_server_sha256": "c3b99805a6e63636a735d74477ba98648741d485ab0c3fc720b4de8d778d572f"
+    },
+    "package_copy_vsix": {
+      "path": "packages/vscode-extension/devseek-netai-1.0.0-debug.20260804.t093020.g4f8a567.vsix",
+      "sha256": "68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc",
+      "package_identity": {
+        "publisher": "devseek-netai",
+        "name": "devseek-netai",
+        "version": "1.0.0-debug.20260804.t093020.g4f8a567",
+        "devseekBuild": {
+          "baseVersion": "1.0.0",
+          "channel": "debug",
+          "buildId": "20260804-t093020",
+          "gitCommit": "4f8a567",
+          "packagedAt": "2026-08-04T01:30:20.682Z"
+        }
+      },
+      "packaged_bridge_server_sha256": "c3b99805a6e63636a735d74477ba98648741d485ab0c3fc720b4de8d778d572f"
+    },
+    "exact_match": true
+  },
+  "verification_receipts": [
+    {
+      "receipt_id": "extension-full-unit-runner",
+      "receipt_kind": "recorded-local-test",
+      "verification_scope": "vscode-extension-full-unit-runner",
+      "evidence": "PASS; 158/158 suites",
+      "status": "recorded-passed",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/README.md#5-本轮验证记录",
+      "source_commit": "8f30f1b79285c2e2141cbbcacf69b30969487768",
+      "qualification_effect": "NONE"
+    },
+    {
+      "receipt_id": "intent-routing-focused-matrix",
+      "receipt_kind": "recorded-local-test",
+      "verification_scope": "intent-routing-focused-matrix",
+      "evidence": "PASS; 524/524 tests",
+      "status": "recorded-passed",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/README.md#5-本轮验证记录",
+      "source_commit": "8f30f1b79285c2e2141cbbcacf69b30969487768",
+      "qualification_effect": "NONE"
+    },
+    {
+      "receipt_id": "natural-intent-ui-corpus",
+      "receipt_kind": "recorded-local-user-simulation",
+      "verification_scope": "natural-intent-ui-corpus",
+      "evidence": "PASS; 48/48 scenarios",
+      "status": "recorded-passed",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/README.md#5-本轮验证记录",
+      "source_commit": "8f30f1b79285c2e2141cbbcacf69b30969487768",
+      "qualification_effect": "NONE"
+    },
+    {
+      "receipt_id": "architecture-static-suites",
+      "receipt_kind": "recorded-local-test",
+      "verification_scope": "affected-architecture-static-suites",
+      "evidence": "PASS; 325/325 tests",
+      "status": "recorded-passed",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/README.md#5-本轮验证记录",
+      "source_commit": "8f30f1b79285c2e2141cbbcacf69b30969487768",
+      "qualification_effect": "NONE"
+    },
+    {
+      "receipt_id": "vsix-release-loop",
+      "receipt_kind": "recorded-local-install",
+      "verification_scope": "package-bridge-install-and-exactly-one-runtime",
+      "evidence": "PASS; devseek-netai-1.0.0-debug.20260804.t093020.g4f8a567.vsix; sha256 68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc",
+      "status": "recorded-passed",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/README.md#5-本轮验证记录",
+      "source_commit": "8f30f1b79285c2e2141cbbcacf69b30969487768",
+      "qualification_effect": "NONE"
+    },
+    {
+      "receipt_id": "phase0-12-local-regression",
+      "receipt_kind": "recorded-local-regression",
+      "verification_scope": "phase0-12-deterministic-and-local-gates",
+      "evidence": "PASS; 32/32; Gate 0 remains NOT_PASSED",
+      "status": "recorded-passed",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/README.md#5-本轮验证记录",
+      "source_commit": "8f30f1b79285c2e2141cbbcacf69b30969487768",
+      "qualification_effect": "NONE"
+    }
+  ],
+  "current_identity_probe_boundary": {
+    "path": "docs/process/devseek-current-candidate-identity.json",
+    "status": "verified-current-candidate",
+    "identity_probe_sha256": "c629bfa4bdf1c7a1843a34e6c5e1277c6260dc5829072510c933b5a14664eafd",
+    "identity_source_sha256": "80a68b5207f65625458b18320c15e1b89514125d7e77d1b3f7f2928c585b294e",
+    "candidate_source_commit": "4f8a56797090079914b4d921b56d9c34fe4d2abc",
+    "artifact_source_matches_current_identity": true,
+    "stable_runtime_count": 1,
+    "observe_status": "passed",
+    "qualification_effect": "NONE",
+    "reason": "Tracked current identity already proves artifact, stable install, and exactly-one local runtime for this candidate; the manifest performs no live observation."
+  },
+  "r4_leaf_context": {
+    "current_leaf": "R4-RELEASE-CANDIDATE-MANIFEST",
+    "closure_effect": "version-selects the local R4 candidate without adding qualification authority",
+    "remaining_leaves_at_freeze": [
+      "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME"
+    ]
+  },
+  "counts": {
+    "vsix_artifacts": 2,
+    "historical_candidates": 1,
+    "verification_receipts": 6,
+    "remaining_r4_leaves_at_freeze": 1,
+    "qualification_claims": 0
+  },
+  "manifest_sha256": "0fda85f4ad71f13d6410d61f5249e327b299642cfee17226f708f979e12bed1b"
+}

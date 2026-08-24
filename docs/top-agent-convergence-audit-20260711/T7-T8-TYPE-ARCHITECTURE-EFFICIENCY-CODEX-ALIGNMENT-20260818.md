@@ -1,13 +1,23 @@
 ---
 devseek_governance:
-  generator: "manual-codex-audit/v1"
-  status: "completed-local-iteration"
+  generator: "devseek-doc-governance/v1"
+  status: "historical"
   path: "docs/top-agent-convergence-audit-20260711/T7-T8-TYPE-ARCHITECTURE-EFFICIENCY-CODEX-ALIGNMENT-20260818.md"
-  source_group: "top-agent-convergence-audit"
-  decision: "local-acceptance-pass"
-  relationship: "t7-t8-type-architecture-efficiency"
+  source_group: "handoff"
+  decision: "keep"
+  relationship: "legacy-audit-report"
+  active_baselines:
+    - "docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md"
+  machine_sources:
+    active_selector: "docs/process/devseek-active-baseline-selector.json"
+    legacy_inventory: "docs/process/devseek-legacy-doc-inventory.json"
   asserts_gate_pass: false
 ---
+
+<!-- DEVSEEK-GOVERNANCE-BANNER:START -->
+> [!NOTE]
+> DevSeek governance: this document is `historical` with decision `keep` and relationship `legacy-audit-report`. Current authority: `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md`. Machine source: `docs/process/devseek-legacy-doc-inventory.json`.
+<!-- DEVSEEK-GOVERNANCE-BANNER:END -->
 
 # T7/T8 类型、架构债务与效率 Codex 对标
 
