@@ -59,6 +59,18 @@ export function buildReplaceInFileRecoveryPrompt(session?: TextToolProtocolSessi
   ].join('\n');
 }
 
+export function buildTextToolEnvelopeRecoveryPrompt(session: TextToolProtocolSession): string {
+  return [
+    '- 上一轮把结构化动作输出在授权信封之外，因此没有执行。不要使用 Action/Action Input、裸 XML、裸 JSON 或无信封的 [TOOL:...]。',
+    '- 若要调用工具，只能使用本轮当前信封；若只是解释工具语法，请改用自然语言说明，不要输出可解析动作块。',
+    renderTextToolProtocolEnvelope(
+      session,
+      '[TOOL:read_file {"path":"/absolute/path/to/file"}]',
+    ),
+    '- 输出闭合信封后立即停止并等待真实工具结果。',
+  ].join('\n');
+}
+
 function renderProtocolExample(payload: string, session?: TextToolProtocolSession): string {
   return session ? renderTextToolProtocolEnvelope(session, payload) : payload;
 }

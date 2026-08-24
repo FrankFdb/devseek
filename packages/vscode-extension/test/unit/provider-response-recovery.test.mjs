@@ -123,6 +123,34 @@ test('Agent provider recovery prompt tightens the last retry', () => {
   assert.doesNotMatch(prompt, /实现一个正式项目功能.{1800}/s);
 });
 
+test('Agent provider recovery quarantines out-of-envelope actions and reissues the current channel', () => {
+  const failure = parseAgentProviderFailure(
+    new Error('RESPONSE_CORRUPTED:out-of-envelope-tool-block:react-action was quarantined.'),
+  );
+  const prompt = buildAgentProviderRecoveryPrompt({
+    userPrompt: '读取 README.md 后创建 report.md',
+    failure,
+    recoveryAttempt: 1,
+    maxRecoveryAttempts: 3,
+    promptRequiresTools: true,
+    currentTodos: [],
+    readEvidencePaths: [],
+    writtenFiles: [],
+    terminalEvidence: [],
+    textToolProtocol: {
+      version: 'devseek.text-tools/v1',
+      channelId: 'provider-recovery-channel',
+    },
+  }).content;
+  const display = describeAgentProviderRecoveryForUser(failure, 1, 3);
+
+  assert.equal(failure.recoverable, true);
+  assert.match(prompt, /不要使用 Action\/Action Input/);
+  assert.match(prompt, /channel="provider-recovery-channel"/);
+  assert.match(display.title, /工具请求未通过协议门禁/);
+  assert.match(display.detail, /已隔离且未执行/);
+});
+
 test('Agent provider recovery resets browser state after every rejected response', () => {
   const failure = parseAgentProviderFailure(
     new Error('RESPONSE_CORRUPTED:incomplete-tool-block:Tool block is incomplete.'),

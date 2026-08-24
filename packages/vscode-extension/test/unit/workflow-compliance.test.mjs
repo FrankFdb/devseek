@@ -2949,9 +2949,12 @@ test('Agentic loop: visible correction and context convergence are owned by Agen
   assertContains(agenticLoop, 'emitAgenticCorrectionStatus', 'agentic loop must surface internal recovery as user-visible status');
   assertContains(agenticProviderRecoveryBoundary, "'provider-response-corruption'", 'provider response recovery must have a stable evidence reason');
   assertContains(agenticLoop, 'hasIncompleteAuthorizedTextToolEnvelope(text, textToolProtocol)', 'damaged current-channel tool envelopes must not fall through as ordinary prose');
+  assertContains(agenticLoop, 'inspectOutOfEnvelopeTextToolProtocol(text, textToolProtocol)', 'out-of-envelope model actions must be quarantined without execution authority');
   assertContains(textProtocol, 'channelId', 'text-provider tool authority must be scoped to a run channel');
+  assertContains(textProtocol, 'QuarantinedTextToolProtocol', 'text protocol boundary must expose quarantine evidence separately from authorized calls');
   assertContains(agenticLoop, 'recoverProviderFailureInsideCurrentTask({', 'agentic loop must reuse the provider recovery boundary for malformed tool blocks');
-  assertContains(agenticLoop, "status: 'incomplete-tool-block'", 'malformed provider tool blocks must get a stable recoverable failure status');
+  assertContains(agenticLoop, "'incomplete-tool-block'", 'damaged authorized envelopes must get a stable recoverable failure status');
+  assertContains(agenticLoop, "'out-of-envelope-tool-block'", 'quarantined provider actions must get a distinct recoverable failure status');
   assertContains(agenticLoop, 'AGENTIC_CONTEXT_GATHERING_ROUND_LIMIT_BEFORE_WRITE', 'context-gathering convergence must be bounded');
   assertContains(agenticLoop, 'contextGatheringOnlyRoundsWithoutWrite', 'agentic loop must track read/search-only rounds');
   assertContains(agenticLoop, '项目证据已收集，正在切换到交付落盘', 'formal project work must visibly transition from investigation to delivery');

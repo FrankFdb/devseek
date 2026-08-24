@@ -186,6 +186,44 @@ test('ModelLedUserSimulation: noisy Chinese is understood by the main model and 
   }
 });
 
+test('ModelLedUserSimulation: out-of-envelope ReAct actions are quarantined and safely reissued', async () => {
+  const prompt = '创建 result.txt，内容为 AUTHORIZED_REISSUE_OK，并读回确认。';
+  let calls = 0;
+  const simulation = await runSimulation(prompt, async messages => {
+    calls += 1;
+    const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'result.txt');
+    if (calls === 1) {
+      return {
+        text: `我先读取目标文件。Action: read_fileAction Input: {"path":"${target}"}`,
+        tools: [],
+      };
+    }
+
+    assert.match(messages.at(-1).content, /授权信封之外/u);
+    return {
+      text: '按当前授权协议重新发出动作。',
+      tools: [
+        { name: 'create_file', input: { path: target, content: 'AUTHORIZED_REISSUE_OK\n' } },
+        { name: 'read_file', input: { path: target } },
+        { name: 'task_complete', input: { summary: `已创建并读回 ${target}。` } },
+      ],
+    };
+  }, { runDisplayAction: 'create' });
+  try {
+    assert.equal(calls, 2, simulation.result.historyText);
+    assert.equal(readFileSync(path.join(simulation.root, 'result.txt'), 'utf8'), 'AUTHORIZED_REISSUE_OK\n');
+    assert.equal(
+      simulation.harness.statuses.some(status => (
+        status.phase === 'repair'
+        && status.recoveryReason === 'provider-response-corruption'
+      )),
+      true,
+    );
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
 test('ModelLedUserSimulation: exact simple-file input cannot bypass the main model or predeclare a side effect', async () => {
   const prompt = '创建 result.txt，内容为：MODEL_FIRST_OK';
   let calls = 0;

@@ -33,6 +33,7 @@ import {
   createTextToolProtocolSession,
   findFirstAuthorizedTextToolEnvelopeStart,
   hasIncompleteAuthorizedTextToolEnvelope,
+  inspectOutOfEnvelopeTextToolProtocol,
   parseAuthorizedTextToolCalls,
   stripAuthorizedTextToolEnvelopes,
 } from './text-tool-protocol';
@@ -511,11 +512,17 @@ export async function runAgenticLoop(
     }
 
     if (!tools.length) {
-      if (!callbacks.signal?.aborted && hasIncompleteAuthorizedTextToolEnvelope(text, textToolProtocol)) {
+      const incompleteAuthorizedEnvelope = hasIncompleteAuthorizedTextToolEnvelope(text, textToolProtocol);
+      const quarantinedProtocol = inspectOutOfEnvelopeTextToolProtocol(text, textToolProtocol);
+      if (!callbacks.signal?.aborted && (incompleteAuthorizedEnvelope || quarantinedProtocol.found)) {
         noToolRounds++;
         const recovered = await recoverProviderFailureInsideCurrentTask({
-          status: 'incomplete-tool-block',
-          reason: '工具协议痕迹存在，但没有形成可安全执行的工具参数。',
+          status: quarantinedProtocol.found
+            ? 'out-of-envelope-tool-block'
+            : 'incomplete-tool-block',
+          reason: quarantinedProtocol.found
+            ? `检测到授权信封外的结构化工具动作（${quarantinedProtocol.dialects.join(', ')}）；已隔离且未执行。`
+            : '工具协议痕迹存在，但没有形成可安全执行的工具参数。',
           rawMessage: text,
           recoverable: true,
         }, text.trim().length);

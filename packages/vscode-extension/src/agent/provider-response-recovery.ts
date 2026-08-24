@@ -2,7 +2,10 @@ import type { ChatMessage } from '../llm/types';
 import type { TerminalEvidence, WrittenFileEvidence } from './completion-evidence';
 import type { TodoItem } from './evidence-recovery';
 import type { TextToolProtocolSession } from './text-tool-protocol';
-import { buildReplaceInFileRecoveryPrompt } from './tool-protocol-prompt';
+import {
+  buildReplaceInFileRecoveryPrompt,
+  buildTextToolEnvelopeRecoveryPrompt,
+} from './tool-protocol-prompt';
 
 export interface AgentProviderFailure {
   status: string;
@@ -38,6 +41,7 @@ const RECOVERABLE_RESPONSE_CORRUPTION_STATUSES = new Set([
   'mixed-tool-protocol',
   'unclosed-markdown-fence',
   'incomplete-tool-block',
+  'out-of-envelope-tool-block',
   'incomplete-assistant-intent',
   'invalid-json-response',
   'stream-timeout',
@@ -83,14 +87,19 @@ export function describeAgentProviderRecoveryForUser(
 ): AgentProviderRecoveryDisplay {
   const step = `${recoveryAttempt}/${maxRecoveryAttempts}`;
   const isSubmitFailure = failure.status.toLowerCase() === 'prompt-submit-failed';
+  const isToolProtocolFailure = failure.status.toLowerCase().endsWith('tool-block');
   const resetProviderSession = shouldResetProviderSessionForRecovery(failure);
   return {
     title: isSubmitFailure
       ? `Provider 请求未送达，正在安全重试（${step}）`
+      : isToolProtocolFailure
+        ? `Provider 工具请求未通过协议门禁，正在安全重试（${step}）`
       : `Provider 响应被截断，正在安全续跑（${step}）`,
     detail: [
       isSubmitFailure
         ? '上一轮请求没有被网页确认接收，DevSeek 已保留已完成工具事实并准备重新提交。'
+        : isToolProtocolFailure
+          ? '上一轮结构化动作没有通过当前工具授权协议，DevSeek 已隔离且未执行，并准备要求模型安全重发。'
         : '上一轮模型回复没有通过完整性门禁，DevSeek 已阻止执行其中任何未验证内容。',
       `类型：${failure.status}`,
       failure.reason ? `原因：${failure.reason}` : '',
@@ -99,7 +108,11 @@ export function describeAgentProviderRecoveryForUser(
     ].filter(Boolean).join('\n'),
     activityLabel: resetProviderSession
       ? `重建模型会话，安全恢复 ${step}`
-      : isSubmitFailure ? `请求未送达，安全重试 ${step}` : `响应被截断，安全续跑 ${step}`,
+      : isSubmitFailure
+        ? `请求未送达，安全重试 ${step}`
+        : isToolProtocolFailure
+          ? `工具请求未授权，安全重试 ${step}`
+          : `响应被截断，安全续跑 ${step}`,
   };
 }
 
@@ -122,9 +135,12 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
     ? '- 这是最后一次恢复：只能输出最小下一步。最多 3 个只读工具或 1 个写入工具；不能重新做全量项目探索。'
     : '- 恢复轮必须小步推进：最多 6 个只读工具；如需写入，最多 1 个写入工具，content 控制在 6000 字符以内。';
   const resetProviderSession = shouldResetProviderSessionForRecovery(input.failure);
-  const toolSerializationLine = input.failure.status.toLowerCase() === 'incomplete-tool-block'
+  const failureStatus = input.failure.status.toLowerCase();
+  const toolSerializationLine = failureStatus === 'incomplete-tool-block'
     ? buildReplaceInFileRecoveryPrompt(input.textToolProtocol)
-    : '';
+    : failureStatus === 'out-of-envelope-tool-block'
+      ? buildTextToolEnvelopeRecoveryPrompt(input.textToolProtocol)
+      : '';
 
   return {
     role: 'user',

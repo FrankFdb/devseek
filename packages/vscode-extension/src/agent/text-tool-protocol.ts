@@ -1,11 +1,20 @@
 import * as crypto from 'crypto';
-import { parseFakeToolCalls, type FakeTool } from './fake-tool-parser';
+import {
+  analyzeFakeToolCallProtocol,
+  parseFakeToolCalls,
+  type FakeTool,
+} from './fake-tool-parser';
 
 export const TEXT_TOOL_PROTOCOL_VERSION = 'devseek.text-tools/v1' as const;
 
 export interface TextToolProtocolSession {
   readonly version: typeof TEXT_TOOL_PROTOCOL_VERSION;
   readonly channelId: string;
+}
+
+export interface QuarantinedTextToolProtocol {
+  readonly found: boolean;
+  readonly dialects: readonly string[];
 }
 
 const CHANNEL_ID_RE = /^[A-Za-z0-9_-]{16,96}$/;
@@ -31,6 +40,24 @@ export function parseAuthorizedTextToolCalls(
   if (!session) return [];
   return extractAuthorizedTextToolPayloads(text, session)
     .flatMap(payload => parseFakeToolCalls(payload));
+}
+
+/** Detects executable-looking provider output without granting it tool authority. */
+export function inspectOutOfEnvelopeTextToolProtocol(
+  text: string,
+  session: TextToolProtocolSession | undefined,
+): QuarantinedTextToolProtocol {
+  const outsideAuthorizedEnvelopes = stripAuthorizedTextToolEnvelopes(text, session);
+  const analysis = analyzeFakeToolCallProtocol(outsideAuthorizedEnvelopes);
+  const dialects = [...new Set(
+    analysis.matches
+      .filter(match => match.tools.length > 0)
+      .map(match => match.dialect),
+  )];
+  return Object.freeze({
+    found: dialects.length > 0,
+    dialects: Object.freeze(dialects),
+  });
 }
 
 export function extractAuthorizedTextToolPayloads(

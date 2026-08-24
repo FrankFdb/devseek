@@ -26,6 +26,7 @@ const {
   createTextToolProtocolSession,
   findFirstAuthorizedTextToolEnvelopeStart,
   hasIncompleteAuthorizedTextToolEnvelope,
+  inspectOutOfEnvelopeTextToolProtocol,
   parseAuthorizedTextToolCalls,
   renderTextToolProtocolEnvelope,
   stripAuthorizedTextToolEnvelopes,
@@ -46,6 +47,26 @@ test('ordinary assistant text never gains execution authority from tool-looking 
     assert.deepEqual(parseAuthorizedTextToolCalls(answer, session), [], answer);
     assert.equal(stripAuthorizedTextToolEnvelopes(answer, session), answer, answer);
   }
+});
+
+test('out-of-envelope structured actions are observable only as quarantined protocol', () => {
+  const action = [
+    '我先读取目标文件。',
+    'Action: read_file',
+    'Action Input: {"path":"/tmp/workspace/README.md"}',
+  ].join('\n');
+
+  assert.deepEqual(parseAuthorizedTextToolCalls(action, session), []);
+  assert.deepEqual(inspectOutOfEnvelopeTextToolProtocol(action, session), {
+    found: true,
+    dialects: ['react-action'],
+  });
+
+  const authorized = renderTextToolProtocolEnvelope(session, payload);
+  assert.deepEqual(inspectOutOfEnvelopeTextToolProtocol(authorized, session), {
+    found: false,
+    dialects: [],
+  });
 });
 
 test('only the current run channel authorizes a text-provider tool payload', () => {
