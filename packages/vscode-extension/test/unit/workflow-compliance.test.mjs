@@ -1056,8 +1056,13 @@ test('Agentic loop: provider failure after satisfied local evidence does not ove
   assertContains(settlement, 'findBlockingTerminalFailureEvidence', 'provider failure settlement must preserve terminal failure authority');
   assert.match(
     code,
-    /catch \(error\) \{[\s\S]*?settleProviderFailureFromCompletedEvidence[\s\S]*?if \(providerSettlement\.completed\) \{[\s\S]*?break;[\s\S]*?const providerFailure = parseAgentProviderFailure\(error\)/,
-    'provider errors must be checked against completed local evidence before provider recovery/failure handling',
+    /const settleOrRecoverProviderFailureInsideCurrentTask[\s\S]*?settleProviderFailureFromCompletedEvidence[\s\S]*?if \(providerSettlement\.completed\)/,
+    'the shared provider-failure entry must settle completed local evidence before recovery',
+  );
+  assert.match(
+    code,
+    /catch \(error\) \{[\s\S]*?parseAgentProviderFailure\(error\)[\s\S]*?settleOrRecoverProviderFailureInsideCurrentTask/,
+    'transport provider failures must use the shared settle-or-recover entry',
   );
 });
 
@@ -2952,7 +2957,7 @@ test('Agentic loop: visible correction and context convergence are owned by Agen
   assertContains(agenticLoop, 'inspectOutOfEnvelopeTextToolProtocol(text, textToolProtocol)', 'out-of-envelope model actions must be quarantined without execution authority');
   assertContains(textProtocol, 'channelId', 'text-provider tool authority must be scoped to a run channel');
   assertContains(textProtocol, 'QuarantinedTextToolProtocol', 'text protocol boundary must expose quarantine evidence separately from authorized calls');
-  assertContains(agenticLoop, 'recoverProviderFailureInsideCurrentTask({', 'agentic loop must reuse the provider recovery boundary for malformed tool blocks');
+  assertContains(agenticLoop, 'settleOrRecoverProviderFailureInsideCurrentTask({', 'all provider failures must settle completed evidence before entering recovery');
   assertContains(agenticLoop, "'incomplete-tool-block'", 'damaged authorized envelopes must get a stable recoverable failure status');
   assertContains(agenticLoop, "'out-of-envelope-tool-block'", 'quarantined provider actions must get a distinct recoverable failure status');
   assertContains(agenticLoop, 'AGENTIC_CONTEXT_GATHERING_ROUND_LIMIT_BEFORE_WRITE', 'context-gathering convergence must be bounded');

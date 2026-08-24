@@ -32,8 +32,10 @@ export function reconcileObservedTaskContract(
     receipt.status === 'committed' && actionIds.has(receipt.actionId)
   ));
   const committedPaths = unique(committedChanges.flatMap(receipt => [...receipt.paths]));
-  const allowedTargets = unique([
-    ...input.current.scope.include,
+  const observedDeliverableTargets = unique([
+    ...input.current.deliverables
+      .filter(deliverable => deliverable.kind === 'source-change' || deliverable.kind === 'report')
+      .flatMap(deliverable => deliverable.path ? [deliverable.path] : []),
     ...committedPaths,
   ]).filter(target => !isExcluded(target, input.current.scope.exclude));
   const projected = projectVsCodeCodingKernelTaskContract({
@@ -43,11 +45,11 @@ export function reconcileObservedTaskContract(
     workspaceRoot: input.workspaceRoot,
     taskContract: input.semanticContract.taskContract,
     externalEffectIntent: input.semanticContract.intent.context.externalEffect,
-    targetPaths: allowedTargets,
+    targetPaths: observedDeliverableTargets,
     prohibitedTargets: input.current.scope.exclude,
     strictTargetScope: input.current.constraints.includes('no-other-files')
       || input.semanticContract.signals.includes('scoped-target-write-boundary')
-      || allowedTargets.length > 0,
+      || observedDeliverableTargets.length > 0,
   });
   const taskContract = preserveUserContractBoundaries(
     input.current,

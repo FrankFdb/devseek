@@ -285,10 +285,25 @@ export async function runAgenticLoop(
       detail,
     });
   };
-  const recoverProviderFailureInsideCurrentTask = async (
+  const settleOrRecoverProviderFailureInsideCurrentTask = async (
     providerFailure: ReturnType<typeof parseAgentProviderFailure>,
     partialResponseLength = 0,
-  ): Promise<boolean> => {
+  ): Promise<'completed' | 'recovered' | 'unrecoverable'> => {
+    const providerSettlement = settleProviderFailureFromCompletedEvidence({
+      promptRequiresTools,
+      sawWorkTool,
+      aborted: callbacks.signal?.aborted,
+      writtenFiles: allWrittenFiles,
+      terminalEvidence: allTerminalEvidence,
+      readEvidencePaths: [...allReadEvidencePaths],
+      workspaceRoot,
+      semanticContract: writeAuthority.completionSemanticContract,
+      canonicalTaskContract: callbacks.canonicalTaskContract,
+    });
+    if (providerSettlement.completed) {
+      completeSummary = completeSummary || providerSettlement.summary;
+      return 'completed';
+    }
     const recovery = await recoverAgenticProviderFailure({
       failure: providerFailure,
       recoveryAttempts: providerRecoveryAttempts,
@@ -314,7 +329,7 @@ export async function runAgenticLoop(
     providerRecoveryAttempts = recovery.recoveryAttempts;
     totalChars = recovery.totalChars;
     if (recovery.forceFreshProviderSession) forceProviderNewSessionNextTurn = true;
-    return recovery.recovered;
+    return recovery.recovered ? 'recovered' : 'unrecoverable';
   };
   await callbacks.onAgentStatus({
     type: 'agentStatus',
@@ -445,22 +460,13 @@ export async function runAgenticLoop(
       text = providerTurn.text;
       tools = providerTurn.tools;
     } catch (error) {
-      const providerSettlement = settleProviderFailureFromCompletedEvidence({
-        promptRequiresTools, sawWorkTool, aborted: callbacks.signal?.aborted,
-        writtenFiles: allWrittenFiles,
-        terminalEvidence: allTerminalEvidence, readEvidencePaths: [...allReadEvidencePaths],
-        workspaceRoot,
-        semanticContract: writeAuthority.completionSemanticContract,
-        canonicalTaskContract: callbacks.canonicalTaskContract,
-      });
-      if (providerSettlement.completed) {
-        completeSummary = completeSummary || providerSettlement.summary;
-        break;
-      }
       const providerFailure = parseAgentProviderFailure(error);
-      if (await recoverProviderFailureInsideCurrentTask(providerFailure, sAccum.trim().length)) {
-        continue;
-      }
+      const disposition = await settleOrRecoverProviderFailureInsideCurrentTask(
+        providerFailure,
+        sAccum.trim().length,
+      );
+      if (disposition === 'completed') break;
+      if (disposition === 'recovered') continue;
       throw error;
     } finally {
       providerWaitFeedback.stop();
@@ -516,7 +522,7 @@ export async function runAgenticLoop(
       const quarantinedProtocol = inspectOutOfEnvelopeTextToolProtocol(text, textToolProtocol);
       if (!callbacks.signal?.aborted && (incompleteAuthorizedEnvelope || quarantinedProtocol.found)) {
         noToolRounds++;
-        const recovered = await recoverProviderFailureInsideCurrentTask({
+        const disposition = await settleOrRecoverProviderFailureInsideCurrentTask({
           status: quarantinedProtocol.found
             ? 'out-of-envelope-tool-block'
             : 'incomplete-tool-block',
@@ -526,7 +532,8 @@ export async function runAgenticLoop(
           rawMessage: text,
           recoverable: true,
         }, text.trim().length);
-        if (recovered) continue;
+        if (disposition === 'completed') break;
+        if (disposition === 'recovered') continue;
         failedReason = 'Provider 连续输出损坏工具协议，未形成可执行工具调用。';
         break;
       }

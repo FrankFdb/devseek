@@ -224,6 +224,39 @@ test('ModelLedUserSimulation: out-of-envelope ReAct actions are quarantined and 
   }
 });
 
+test('ModelLedUserSimulation: completed file evidence settles before malformed provider recovery', async () => {
+  const prompt = '创建 report.md，内容为 EVIDENCE_SETTLED_OK，并读回确认。';
+  let calls = 0;
+  const simulation = await runSimulation(prompt, async () => {
+    calls += 1;
+    const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'report.md');
+    if (calls === 1) {
+      return {
+        text: '创建并读回报告。',
+        tools: [
+          { name: 'create_file', input: { path: target, content: 'EVIDENCE_SETTLED_OK\n' } },
+          { name: 'read_file', input: { path: target } },
+        ],
+      };
+    }
+    return {
+      text: `Action: read_fileAction Input: {"path":"${target}"}`,
+      tools: [],
+    };
+  }, { runDisplayAction: 'create' });
+  try {
+    assert.equal(calls, 2, simulation.result.historyText);
+    assert.equal(readFileSync(path.join(simulation.root, 'report.md'), 'utf8'), 'EVIDENCE_SETTLED_OK\n');
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+    assert.equal(
+      simulation.harness.statuses.some(status => status.recoveryReason === 'provider-response-corruption'),
+      false,
+    );
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
 test('ModelLedUserSimulation: exact simple-file input cannot bypass the main model or predeclare a side effect', async () => {
   const prompt = '创建 result.txt，内容为：MODEL_FIRST_OK';
   let calls = 0;

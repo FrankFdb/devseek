@@ -229,7 +229,7 @@ test('ModelLedIntentBoundary: model interpretation reaches completion only throu
   assert.match(runtimeSource, /reconcileObservedTaskContract\(/u);
   assert.match(runtimeSource, /kernelRequest\.taskContractRevision\.revise\(candidate\)/u);
   assert.match(reconcilerSource, /receipt\.status === 'committed'/u);
-  assert.match(reconcilerSource, /allowedTargets/u);
+  assert.match(reconcilerSource, /observedDeliverableTargets/u);
   assert.match(reconcilerSource, /current\.scope\.exclude/u);
   assert.doesNotMatch(reconcilerSource, /semanticContract\.mutation\.targets/u);
 });

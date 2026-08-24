@@ -75,13 +75,14 @@ function changeReceipt(paths, overrides = {}) {
   };
 }
 
-function reconcile(prompt, proposal, receipts, changeReceipts = []) {
+function reconcile(prompt, proposal, receipts, changeReceipts = [], options = {}) {
   const authority = createWriteAuthority(prompt, {});
   const canonical = authority.canonicalSemanticContract;
+  const contextFiles = options.contextFiles ?? [];
   const current = projectVsCodeCodingKernelTaskContract({
     userPrompt: canonical.prompt,
     executionMode: canonical.intent.mode,
-    contextFiles: [],
+    contextFiles,
     workspaceRoot: '/workspace',
     taskContract: canonical.taskContract,
     externalEffectIntent: canonical.intent.context.externalEffect,
@@ -105,7 +106,7 @@ function reconcile(prompt, proposal, receipts, changeReceipts = []) {
     candidate: reconcileObservedTaskContract({
       current,
       semanticContract: settled.semanticContract,
-      contextFiles: [],
+      contextFiles,
       workspaceRoot: '/workspace',
       toolReceipts: settled.toolReceipts,
       changeReceipts,
@@ -162,6 +163,30 @@ test('model-proposed paths never enter the task contract without a matching comm
   assert.ok(candidate);
   assert.deepEqual(candidate.taskContract.scope.include, ['notes/ready.txt']);
   assert.equal(candidate.taskContract.scope.include.includes('src/unrequested.ts'), false);
+});
+
+test('read-only context scope never becomes a report deliverable after a committed write', () => {
+  const contextFiles = [
+    '/workspace/docs/input-matrix.md',
+    '/workspace/src/input-contract.ts',
+  ];
+  const report = '/workspace/docs/audit-report.md';
+  const { candidate } = reconcile(
+    '读取两份输入并创建唯一审计报告。',
+    mutationProposal([report]),
+    [toolReceipt()],
+    [changeReceipt([report])],
+    { contextFiles },
+  );
+
+  assert.ok(candidate);
+  assert.deepEqual(candidate.taskContract.scope.include, ['docs/audit-report.md']);
+  assert.deepEqual(
+    candidate.taskContract.deliverables
+      .filter(deliverable => deliverable.kind === 'report')
+      .map(deliverable => deliverable.path),
+    ['docs/audit-report.md'],
+  );
 });
 
 test('symptom-style repair gains verification acceptance from settled edit evidence', () => {
