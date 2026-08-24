@@ -2629,7 +2629,10 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   const resume = src('src/app/resume-context-builder.ts');
   const recovery = src('src/app/provider-recovery-service.ts');
   const recoveryCheckpoint = src('src/app/provider-recovery-checkpoint.ts');
+  const kernelRecovery = src('src/app/coding-kernel-recovery.ts');
   const routeDecision = src('src/app/coding-kernel-route-decision.ts');
+  const taskContractProjection = src('src/app/coding-kernel-task-contract.ts');
+  const productKernelExecutor = src('src/product-coding-kernel-executor.ts');
   const agentProviderRecovery = src('src/agent/provider-response-recovery.ts');
   const agenticProviderRecoveryBoundary = src('src/agent/agentic-provider-recovery-boundary.ts');
   const agentHistoryCompaction = src('src/agent/agent-history-compaction.ts');
@@ -2644,6 +2647,8 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   const extension = src('src/extension.ts');
 
   assertContains(checkpoint, 'class TaskCheckpointStore', 'Phase 7 checkpoint store must exist');
+  assertContains(checkpoint, 'devseek.checkpoint-resume/v3', 'checkpoint resume must persist the canonical task contract protocol');
+  assertContains(checkpoint, 'task-contract-binding-mismatch', 'checkpoint load must reject task contract substitution');
   assertContains(history, 'class TaskHistoryStore', 'Phase 7 task history store must exist');
   assertContains(resume, 'class ResumeContextBuilder', 'Phase 7 resume context builder must exist');
   assertContains(resume, '只使用下面的本地任务事实恢复', 'resume context must not inject raw chat history');
@@ -2691,11 +2696,16 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   assertContains(extension, 'buildProviderRecoveryCheckpointRecord', 'provider recovery must save a canonical resumable record');
   assertContains(recoveryCheckpoint, 'buildProviderRecoveryCheckpointTasks', 'provider recovery checkpoint must derive pending work from task facts');
   assertContains(recoveryCheckpoint, 'input.error.checkpoint.create', 'provider recovery checkpoint must be sealed by the failed kernel run');
+  assertContains(recoveryCheckpoint, 'canonicalTaskContract: input.error.taskContract', 'provider recovery must persist the failed Kernel task identity');
   assertContains(extension, 'buildAgentRunDisplayProfile', 'free-explore UI copy must be selected by the display classifier');
   assertDoesNotContain(extension, 'shouldResumeCheckpointFromPrompt', 'checkpoint recovery must not be selected by natural-language resume keywords');
   assertContains(extension, 'projectCodingKernelCheckpointResume(resumeCheckpoint, lastAnalysisText)', 'explicit checkpoint state must use the checkpoint projector');
   assertContains(routeDecision, 'if (!input.checkpoint)', 'route selection must depend on a typed checkpoint object');
   assertContains(routeDecision, 'canonicalCheckpoint: checkpoint.canonicalCheckpoint', 'agent resume routing must carry the sealed canonical checkpoint');
+  assertContains(routeDecision, 'canonicalTaskContract: checkpoint.canonicalTaskContract', 'agent resume routing must carry the bound canonical task contract');
+  assertContains(kernelRecovery, 'coding-kernel-recovery:task-contract-binding-mismatch', 'recovery must reject checkpoint and task contract substitution');
+  assertContains(taskContractProjection, 'resolveVsCodeCodingKernelTaskContract', 'task contract projection owner must select new or resumed identity');
+  assertContains(productKernelExecutor, 'request.recovery.taskContract', 'product resume must use the persisted canonical task contract');
   assert.doesNotMatch(extension, /!resumeFromIndex\b/, 'resume index 0 must not be treated as no checkpoint resume');
   assert.match(
     extension,

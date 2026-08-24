@@ -373,31 +373,33 @@ test('resumed progress retains the completed prefix across rebased pending queue
     { id: 'stage-3', file: 'stage-3.ts', action: 'modify', desc: 'finish stage 3' },
     { id: 'stage-4', file: 'stage-4.ts', action: 'modify', desc: 'finish stage 4' },
   ];
+  const resumeTaskContract = buildCodingKernelTaskContract({
+    goal: 'finish the task',
+    mode: 'change',
+    include: [],
+    deliverables: [{ id: 'result', kind: 'source-change' }],
+    acceptance: [{
+      id: 'completed',
+      statement: 'The requested work is complete.',
+      deliverableIds: ['result'],
+      oracle: verificationOracle('workspace'),
+      externalBoundaryRefs: [],
+    }],
+    provenanceRefs: ['vscode-test'],
+  });
   const recovery = {
     version: 'devseek.coding-kernel-recovery/v1',
     kind: 'checkpoint-resume',
     tasks,
     startFromIndex: 0,
+    taskContract: resumeTaskContract,
     checkpoint: createCanonicalCheckpointFixture({
       tasks,
       completedUnitCount: 2,
       workspaceRoot: '/workspace',
       runId: 'vscode-test-run',
       userPrompt: 'finish the task',
-      taskContract: buildCodingKernelTaskContract({
-        goal: 'finish the task',
-        mode: 'change',
-        include: [],
-        deliverables: [{ id: 'result', kind: 'source-change' }],
-        acceptance: [{
-          id: 'completed',
-          statement: 'The requested work is complete.',
-          deliverableIds: ['result'],
-          oracle: verificationOracle('workspace'),
-          externalBoundaryRefs: [],
-        }],
-        provenanceRefs: ['vscode-test'],
-      }),
+      taskContract: resumeTaskContract,
     }),
   };
   const kernel = createKernel({
@@ -469,6 +471,7 @@ function execute(kernel, runtimeContext) {
   const recovery = runtimeContext.recovery?.kind === 'checkpoint-resume'
     ? {
         ...runtimeContext.recovery,
+        taskContract: runtimeContext.recovery.taskContract ?? taskContract,
         checkpoint: runtimeContext.recovery.checkpoint ?? createCanonicalCheckpointFixture({
           tasks: runtimeContext.recovery.tasks,
           startFromIndex: runtimeContext.recovery.startFromIndex,
@@ -527,6 +530,7 @@ function assertCheckpointCall(calls, firstUnfinishedIndex, tasks, reason, comple
   assert.equal(calls[0][3].reason, reason);
   assert.equal(calls[0][3].completedUnitCount, completedUnitCount);
   assert.deepEqual(calls[0][3].pendingUnits.map(unit => unit.id), tasks.map(task => task.id));
+  assert.equal(calls[0][4].version, 'devseek.coding-kernel-task-contract/v2');
 }
 
 function checkpointRecovery(startFromIndex) {

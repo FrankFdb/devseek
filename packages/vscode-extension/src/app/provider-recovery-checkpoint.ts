@@ -12,7 +12,6 @@ export interface ProviderRecoveryCheckpointInput {
   readonly prompt: string;
   readonly displayPrompt: string;
   readonly mode?: 'fast' | 'r1';
-  readonly files?: string[];
   readonly workspaceRootFsPath: string;
   readonly savedAt: number;
   readonly sessionId: string;
@@ -24,7 +23,7 @@ export interface ProviderRecoveryCheckpointInput {
 export function buildProviderRecoveryCheckpointRecord(
   input: ProviderRecoveryCheckpointInput,
 ): TaskCheckpointRecord<ProviderRecoveryCheckpointTask> {
-  const allTasks = buildProviderRecoveryCheckpointTasks(input);
+  const allTasks = buildProviderRecoveryCheckpointTasks(input.recoveryKind);
   const canonicalCheckpoint = input.error.checkpoint.create({
     epoch: 1,
     completedUnitCount: 0,
@@ -51,6 +50,7 @@ export function buildProviderRecoveryCheckpointRecord(
     recoveryKind: input.recoveryKind,
     pauseReason: input.pauseReason,
     canonicalCheckpoint,
+    canonicalTaskContract: input.error.taskContract,
   };
 }
 

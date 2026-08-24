@@ -72,6 +72,7 @@ test('ProviderRecoveryCheckpoint seals provider failure facts into a scoped resu
     {},
     { evidenceRefs: ['provider:ResponseCorrupted'] },
     checkpoint,
+    taskContract,
   );
 
   assert.equal(isCheckpointableProviderRecoveryError(error), true);
@@ -82,7 +83,6 @@ test('ProviderRecoveryCheckpoint seals provider failure facts into a scoped resu
     prompt: taskContract.goal,
     displayPrompt: taskContract.goal,
     mode: 'r1',
-    files: ['/repo/src/main.ts'],
     workspaceRootFsPath: '/repo',
     savedAt: 1_000,
     sessionId: 'session-1',
@@ -97,6 +97,7 @@ test('ProviderRecoveryCheckpoint seals provider failure facts into a scoped resu
   assert.deepEqual(record.canonicalCheckpoint.pendingUnits.map(unit => unit.id), record.allTasks.map(task => task.id));
   assert.equal(record.canonicalCheckpoint.workspaceRoot, '/repo');
   assert.equal(record.canonicalCheckpoint.originSurface, 'vscode');
+  assert.deepEqual(record.canonicalTaskContract, taskContract);
   assert.deepEqual(record.canonicalCheckpoint.evidenceRefs, ['provider:ResponseCorrupted']);
   assert.match(record.canonicalCheckpoint.sealSha256, /^[a-f0-9]{64}$/u);
 });

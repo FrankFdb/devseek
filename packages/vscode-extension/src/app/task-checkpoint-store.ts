@@ -1,6 +1,9 @@
 import {
   CanonicalCheckpointService,
+  CanonicalTaskContractService,
+  codingSemanticDigest,
   type CodingCheckpoint,
+  type CodingKernelTaskContract,
 } from '@devseek-netai/shared';
 import { stableSha256 } from './stable-hash';
 
@@ -9,7 +12,7 @@ export interface TaskCheckpointStorage {
   update(key: string, value: unknown): PromiseLike<void> | Promise<void> | void;
 }
 
-export const TASK_CHECKPOINT_RESUME_PROTOCOL = 'devseek.checkpoint-resume/v2';
+export const TASK_CHECKPOINT_RESUME_PROTOCOL = 'devseek.checkpoint-resume/v3';
 
 export interface TaskCheckpointRecord<TTask = unknown> {
   userPrompt: string;
@@ -28,6 +31,7 @@ export interface TaskCheckpointRecord<TTask = unknown> {
   taskFingerprint?: string;
   resumeReceipt?: string;
   canonicalCheckpoint: CodingCheckpoint;
+  canonicalTaskContract: CodingKernelTaskContract;
 }
 
 interface SealedTaskCheckpointRecord<TTask = unknown> extends TaskCheckpointRecord<TTask> {
@@ -49,6 +53,7 @@ export interface TaskCheckpointScope {
 
 export const DEFAULT_TASK_CHECKPOINT_KEY = 'devseek.agentTaskCheckpoint';
 const CHECKPOINT = new CanonicalCheckpointService();
+const TASK_CONTRACT = new CanonicalTaskContractService();
 
 export interface ScopedTaskCheckpointServiceOptions {
   readonly storage: TaskCheckpointStorage;
@@ -194,11 +199,15 @@ function normalizeCheckpointRecord<TTask>(record: TaskCheckpointRecord<TTask>): 
   const completedCount = clampInteger(record.completedCount, 0, startFromIndex);
   const wsRootFsPath = normalizeFsPath(record.wsRootFsPath);
   const canonicalCheckpoint = CHECKPOINT.snapshot(record.canonicalCheckpoint);
+  const canonicalTaskContract = TASK_CONTRACT.snapshot(record.canonicalTaskContract);
   if (canonicalCheckpoint.originSurface !== 'vscode') {
     throw new Error('task-checkpoint:surface-mismatch');
   }
   if (normalizeFsPath(canonicalCheckpoint.workspaceRoot) !== wsRootFsPath) {
     throw new Error('task-checkpoint:workspace-binding-mismatch');
+  }
+  if (codingSemanticDigest(canonicalTaskContract) !== canonicalCheckpoint.taskContractSha256) {
+    throw new Error('task-checkpoint:task-contract-binding-mismatch');
   }
   assertPendingTaskBinding(allTasks.slice(startFromIndex), canonicalCheckpoint);
   return {
@@ -210,6 +219,7 @@ function normalizeCheckpointRecord<TTask>(record: TaskCheckpointRecord<TTask>): 
     sessionId: String(record.sessionId || ''),
     wsRootFsPath,
     canonicalCheckpoint,
+    canonicalTaskContract,
     ...(record.checkpointProtocol === TASK_CHECKPOINT_RESUME_PROTOCOL
       ? { checkpointProtocol: TASK_CHECKPOINT_RESUME_PROTOCOL }
       : {}),
@@ -306,6 +316,7 @@ function buildCheckpointTaskFingerprint<TTask>(checkpoint: TaskCheckpointRecord<
     userPrompt: checkpoint.userPrompt,
     wsRootFsPath: normalizeFsPath(checkpoint.wsRootFsPath),
     canonicalCheckpointSealSha256: checkpoint.canonicalCheckpoint.sealSha256,
+    canonicalTaskContractSha256: codingSemanticDigest(checkpoint.canonicalTaskContract),
   });
 }
 

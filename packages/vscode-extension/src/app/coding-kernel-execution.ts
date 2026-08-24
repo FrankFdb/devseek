@@ -180,7 +180,13 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
               })
             : undefined;
           if (checkpoint) parentCheckpointId = checkpoint.checkpointId;
-          await originalCheckpoint(firstUnfinishedIndex, remainingTasks, reason, checkpoint);
+          await originalCheckpoint(
+            firstUnfinishedIndex,
+            remainingTasks,
+            reason,
+            checkpoint,
+            kernelRequest.taskContract,
+          );
         },
       } : {}),
     };
@@ -238,6 +244,7 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
       : [];
     const recoveryFallback = pendingRecoveryTasks.length > 0 ? {
       pendingTasks: pendingRecoveryTasks,
+      taskContract: kernelRequest.taskContract,
       checkpoint: kernelRequest.checkpoint.create({
         epoch: ++checkpointEpoch,
         completedUnitCount: completedUnitBase,

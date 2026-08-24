@@ -12,7 +12,7 @@ import {
   VsCodeCodingKernelRuntimeAdapter,
   type CodingKernelExecutionPort,
 } from './app/coding-kernel-execution';
-import { projectVsCodeCodingKernelTaskContract } from './app/coding-kernel-task-contract';
+import { resolveVsCodeCodingKernelTaskContract } from './app/coding-kernel-task-contract';
 import { projectVsCodeCodingContextSeed } from './app/coding-kernel-context-seed';
 import { retainVsCodeCodingRunLifecycle } from './app/coding-run-evidence-retention';
 import { MemoryService } from './app/memory-service';
@@ -69,14 +69,16 @@ export const productCodingKernelExecutor: CodingKernelExecutionPort = {
           relatedPaths: [...request.contextFiles, ...(request.memoryRelatedPaths ?? [])],
           requireContextMatch: true,
         });
-      const taskContract = projectVsCodeCodingKernelTaskContract({
+      const taskContract = resolveVsCodeCodingKernelTaskContract({
         userPrompt: request.userPrompt,
         executionMode: request.semanticContract.intent.mode,
         contextFiles: request.contextFiles,
         workspaceRoot: request.workspaceRoot,
         taskContract: request.semanticContract.taskContract,
         externalEffectIntent: request.semanticContract.intent.context.externalEffect,
-      });
+      }, request.recovery?.kind === 'checkpoint-resume'
+        ? request.recovery.taskContract
+        : undefined);
       const output = await kernel.execute({
         version: CODING_KERNEL_REQUEST_VERSION,
         route: 'canonical',

@@ -4,7 +4,10 @@ import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { createCanonicalCheckpointFixture } from '../helpers/canonical-checkpoint-fixture.mjs';
+import {
+  createCanonicalCheckpointFixture,
+  createCanonicalTaskContractFixture,
+} from '../helpers/canonical-checkpoint-fixture.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
@@ -48,14 +51,19 @@ function checkpoint(overrides = {}) {
   const canonicalStart = record.startFromIndex >= 0 && record.startFromIndex < record.allTasks.length
     ? record.startFromIndex
     : 0;
+  const canonicalTaskContract = overrides.canonicalTaskContract ?? createCanonicalTaskContractFixture({
+    userPrompt: record.userPrompt,
+  });
   return {
     ...record,
+    canonicalTaskContract,
     canonicalCheckpoint: overrides.canonicalCheckpoint ?? createCanonicalCheckpointFixture({
       tasks: record.allTasks,
       startFromIndex: canonicalStart,
       completedUnitCount: Math.max(0, canonicalStart),
       workspaceRoot: record.wsRootFsPath,
       userPrompt: record.userPrompt,
+      taskContract: canonicalTaskContract,
     }),
   };
 }
@@ -217,6 +225,18 @@ test('R3-02 TaskCheckpointStore: tampered checkpoint cannot replay committed pre
   });
 
   assert.equal(fresh, undefined);
+  assert.equal(store.load(), undefined);
+});
+
+test('TaskCheckpointStore: checkpoint and canonical task contract must share one identity', async () => {
+  const storage = new MemoryStorage();
+  const store = new TaskCheckpointStore(storage);
+  const record = checkpoint();
+
+  await assert.rejects(store.save({
+    ...record,
+    canonicalTaskContract: createCanonicalTaskContractFixture({ userPrompt: 'substituted task' }),
+  }), /task-checkpoint:task-contract-binding-mismatch/u);
   assert.equal(store.load(), undefined);
 });
 

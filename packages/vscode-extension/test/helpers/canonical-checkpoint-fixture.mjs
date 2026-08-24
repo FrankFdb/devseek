@@ -5,18 +5,12 @@ import {
   buildCodingKernelTaskContract,
 } from '../../../shared/dist/index.js';
 
-export function createCanonicalCheckpointFixture({
-  tasks,
-  startFromIndex = 0,
-  completedUnitCount = startFromIndex,
-  workspaceRoot = '/workspace',
-  runId = 'checkpoint-fixture-run',
-  surface = 'vscode',
+export function createCanonicalTaskContractFixture({
   userPrompt = 'finish the task',
   mode = 'change',
   contextFiles = [],
-  contextSeed = { files: contextFiles.map(path => ({ path })) },
-  taskContract = buildCodingKernelTaskContract({
+} = {}) {
+  return buildCodingKernelTaskContract({
     goal: userPrompt,
     mode,
     include: contextFiles,
@@ -34,7 +28,21 @@ export function createCanonicalCheckpointFixture({
       externalBoundaryRefs: [],
     }],
     provenanceRefs: ['checkpoint-fixture'],
-  }),
+  });
+}
+
+export function createCanonicalCheckpointFixture({
+  tasks,
+  startFromIndex = 0,
+  completedUnitCount = startFromIndex,
+  workspaceRoot = '/workspace',
+  runId = 'checkpoint-fixture-run',
+  surface = 'vscode',
+  userPrompt = 'finish the task',
+  mode = 'change',
+  contextFiles = [],
+  contextSeed = { files: contextFiles.map(path => ({ path })) },
+  taskContract = createCanonicalTaskContractFixture({ userPrompt, mode, contextFiles }),
   contextGraph = new CanonicalContextGraphService().build({
     workspaceRoot,
     userPrompt,

@@ -337,6 +337,7 @@ export class CodingKernelExecutionError extends Error {
   readonly lifecycle: CodingRunLifecycleSnapshot;
   readonly settlement: CodingSettlementDecision;
   readonly checkpoint: CodingCheckpointSessionPort;
+  readonly taskContract: CodingKernelTaskContract;
   readonly contextCompactions: readonly CodingContextCompactionReceipt[];
   readonly toolAuthorizations: readonly CodingToolAuthorization[];
   readonly toolExecutionReceipts: readonly CodingToolExecutionReceipt<unknown>[];
@@ -368,6 +369,7 @@ export class CodingKernelExecutionError extends Error {
     lifecycle: CodingRunLifecycleSnapshot,
     settlement: CodingSettlementDecision,
     checkpoint: CodingCheckpointSessionPort,
+    taskContract: CodingKernelTaskContract,
     contextCompactions: readonly CodingContextCompactionReceipt[],
     toolAuthorizations: readonly CodingToolAuthorization[],
     toolExecutionReceipts: readonly CodingToolExecutionReceipt<unknown>[],
@@ -399,6 +401,7 @@ export class CodingKernelExecutionError extends Error {
     this.lifecycle = lifecycle;
     this.settlement = settlement;
     this.checkpoint = checkpoint;
+    this.taskContract = TASK_CONTRACT.snapshot(taskContract);
     this.contextCompactions = contextCompactions;
     this.toolAuthorizations = toolAuthorizations;
     this.toolExecutionReceipts = toolExecutionReceipts;
@@ -1064,6 +1067,7 @@ function lifecycleError(
     snapshot,
     settlement,
     context.checkpoint,
+    context.taskContract,
     context.contextCompaction.receipts(),
     context.toolAuthority.authorizations(),
     context.toolExecution.receipts(),

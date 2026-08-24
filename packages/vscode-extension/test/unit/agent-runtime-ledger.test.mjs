@@ -4,7 +4,10 @@ import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { createCanonicalCheckpointFixture } from '../helpers/canonical-checkpoint-fixture.mjs';
+import {
+  createCanonicalCheckpointFixture,
+  createCanonicalTaskContractFixture,
+} from '../helpers/canonical-checkpoint-fixture.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
@@ -87,6 +90,7 @@ test('AgentRuntimeLedger: checkpoint refs are stable audit handles', async () =>
   });
 
   const tasks = [{ id: 't1' }];
+  const canonicalTaskContract = createCanonicalTaskContractFixture({ userPrompt: 'continue task' });
   const ref = await ledger.saveCheckpoint({
     userPrompt: 'continue task',
     displayPrompt: 'continue task',
@@ -96,10 +100,12 @@ test('AgentRuntimeLedger: checkpoint refs are stable audit handles', async () =>
     completedCount: 0,
     savedAt: 123,
     sessionId: 'session-1',
+    canonicalTaskContract,
     canonicalCheckpoint: createCanonicalCheckpointFixture({
       tasks,
       workspaceRoot: '/tmp/ws',
       userPrompt: 'continue task',
+      taskContract: canonicalTaskContract,
     }),
   });
 

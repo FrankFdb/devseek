@@ -1,12 +1,16 @@
 import * as nodePath from 'path';
 import {
   CanonicalCheckpointService,
+  CanonicalTaskContractService,
+  codingSemanticDigest,
   type CodingCheckpoint,
+  type CodingKernelTaskContract,
 } from '@devseek-netai/shared';
 import type { AgentTask } from '../agent/agent-task';
 
 export const CODING_KERNEL_RECOVERY_VERSION = 'devseek.coding-kernel-recovery/v1';
 const CHECKPOINT = new CanonicalCheckpointService();
+const TASK_CONTRACT = new CanonicalTaskContractService();
 
 interface CodingKernelRecoveryBase {
   readonly version: typeof CODING_KERNEL_RECOVERY_VERSION;
@@ -17,6 +21,7 @@ interface CodingKernelRecoveryBase {
 export interface CheckpointKernelRecovery extends CodingKernelRecoveryBase {
   readonly kind: 'checkpoint-resume';
   readonly checkpoint: CodingCheckpoint;
+  readonly taskContract: CodingKernelTaskContract;
   readonly analysisContext?: string;
 }
 
@@ -32,10 +37,15 @@ export function createCheckpointKernelRecovery(input: {
   readonly tasks: readonly AgentTask[];
   readonly startFromIndex: number;
   readonly canonicalCheckpoint: CodingCheckpoint;
+  readonly canonicalTaskContract: CodingKernelTaskContract;
   readonly analysisContext?: string;
 }): CheckpointKernelRecovery {
   assertRecoveryTasks(input.tasks, input.startFromIndex);
   const checkpoint = CHECKPOINT.snapshot(input.canonicalCheckpoint);
+  const taskContract = TASK_CONTRACT.snapshot(input.canonicalTaskContract);
+  if (codingSemanticDigest(taskContract) !== checkpoint.taskContractSha256) {
+    throw new Error('coding-kernel-recovery:task-contract-binding-mismatch');
+  }
   const pendingTaskIds = input.tasks.slice(input.startFromIndex).map(task => task.id);
   if (checkpoint.pendingUnits.map(unit => unit.id).join('\n') !== pendingTaskIds.join('\n')) {
     throw new Error('coding-kernel-recovery:checkpoint-task-binding-mismatch');
@@ -46,6 +56,7 @@ export function createCheckpointKernelRecovery(input: {
     tasks: cloneTasks(input.tasks),
     startFromIndex: input.startFromIndex,
     checkpoint,
+    taskContract,
     ...(input.analysisContext?.trim() ? { analysisContext: input.analysisContext.trim() } : {}),
   };
 }
@@ -149,6 +160,10 @@ export function assertCodingKernelRecovery(recovery: CodingKernelRecovery): void
     }
   } else {
     CHECKPOINT.snapshot(recovery.checkpoint);
+    const taskContract = TASK_CONTRACT.snapshot(recovery.taskContract);
+    if (codingSemanticDigest(taskContract) !== recovery.checkpoint.taskContractSha256) {
+      throw new Error('coding-kernel-recovery:task-contract-binding-mismatch');
+    }
   }
 }
 

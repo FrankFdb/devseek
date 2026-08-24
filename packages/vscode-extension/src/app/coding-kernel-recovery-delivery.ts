@@ -1,9 +1,14 @@
-import type { CodingCheckpoint, CodingTerminalStatus } from '@devseek-netai/shared';
+import type {
+  CodingCheckpoint,
+  CodingKernelTaskContract,
+  CodingTerminalStatus,
+} from '@devseek-netai/shared';
 import type { AgentTask } from '../agent/agent-task';
 import type { AgentLoopCallbacks } from '../agent/loop-types';
 
 export interface VsCodeRecoveryFallback {
   readonly pendingTasks: readonly AgentTask[];
+  readonly taskContract: CodingKernelTaskContract;
   readonly checkpoint?: CodingCheckpoint;
 }
 
@@ -22,5 +27,6 @@ export async function deliverVsCodeRecoverySettlement(input: {
     [...input.fallback.pendingTasks],
     'paused',
     input.fallback.checkpoint,
+    input.fallback.taskContract,
   );
 }

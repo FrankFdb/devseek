@@ -197,6 +197,7 @@ function routeInput(recovery, fixture) {
         tasks,
         startFromIndex: 0,
         checkpoint: canonicalCheckpoint,
+        taskContract,
       },
     } : {}),
   };

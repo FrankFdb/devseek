@@ -1,5 +1,5 @@
 import type { AgentTask } from '../agent/agent-task';
-import type { CodingCheckpoint } from '@devseek-netai/shared';
+import type { CodingCheckpoint, CodingKernelTaskContract } from '@devseek-netai/shared';
 import {
   createCheckpointKernelRecovery,
   type CheckpointKernelRecovery,
@@ -11,6 +11,7 @@ export interface CodingKernelCheckpointResume {
   readonly tasks: readonly AgentTask[];
   readonly startFromIndex: number;
   readonly canonicalCheckpoint: CodingCheckpoint;
+  readonly canonicalTaskContract: CodingKernelTaskContract;
   readonly analysisContext?: string;
 }
 
@@ -18,6 +19,7 @@ export interface CodingKernelStoredCheckpointResume {
   readonly allTasks: readonly AgentTask[];
   readonly startFromIndex: number;
   readonly canonicalCheckpoint: CodingCheckpoint;
+  readonly canonicalTaskContract: CodingKernelTaskContract;
 }
 
 export function projectCodingKernelCheckpointResume(
@@ -29,6 +31,7 @@ export function projectCodingKernelCheckpointResume(
     tasks: checkpoint.allTasks,
     startFromIndex: checkpoint.startFromIndex,
     canonicalCheckpoint: checkpoint.canonicalCheckpoint,
+    canonicalTaskContract: checkpoint.canonicalTaskContract,
     ...(analysisContext?.trim() ? { analysisContext: analysisContext.trim() } : {}),
   };
 }

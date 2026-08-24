@@ -665,7 +665,13 @@ async function runActiveChat(
               signal: chatSignal,
             }),
             signal: chatSignal,
-            onTaskCheckpoint: async (firstUnfinishedIndex, remainingTasks, reason = 'progress', canonicalCheckpoint) => {
+            onTaskCheckpoint: async (
+              firstUnfinishedIndex,
+              remainingTasks,
+              reason = 'progress',
+              canonicalCheckpoint,
+              canonicalTaskContract,
+            ) => {
               agentRunContext?.recordCheckpoint(firstUnfinishedIndex, remainingTasks.length, reason);
               return createAgentCheckpointCallback({
                 userPrompt: prompt,
@@ -675,7 +681,13 @@ async function runActiveChat(
                 sessionId: activeSessionId,
                 save: agentCheckpointService.save,
                 postMessage: message => { webview.postMessage(message); },
-              })(firstUnfinishedIndex, remainingTasks, reason, canonicalCheckpoint);
+              })(
+                firstUnfinishedIndex,
+                remainingTasks,
+                reason,
+                canonicalCheckpoint,
+                canonicalTaskContract,
+              );
             },
             autopilot: vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false),
           },
@@ -768,7 +780,6 @@ async function runActiveChat(
             prompt,
             displayPrompt: userDisplay,
             mode,
-            files: effectiveFiles,
             workspaceRootFsPath: wsRootFsPath,
             savedAt,
             sessionId: activeSessionId || 'provider-recovery',

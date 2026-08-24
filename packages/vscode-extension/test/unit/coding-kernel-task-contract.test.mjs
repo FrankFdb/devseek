@@ -15,7 +15,10 @@ execSync(
   { cwd: rootDir, stdio: 'pipe' },
 );
 
-const { projectVsCodeCodingKernelTaskContract } = createRequire(import.meta.url)(bundlePath);
+const {
+  projectVsCodeCodingKernelTaskContract,
+  resolveVsCodeCodingKernelTaskContract,
+} = createRequire(import.meta.url)(bundlePath);
 
 test('plan-mode projection cannot turn a stale source-change hint into mutation or verification', () => {
   const contract = projectVsCodeCodingKernelTaskContract({
@@ -136,6 +139,27 @@ test('an explicit external action retains a generic effect boundary until a conc
   assert.deepEqual(contract.externalBoundaries.map(boundary => boundary.id), [
     'external-effect',
   ]);
+});
+
+test('checkpoint resume preserves the original canonical task contract when current context files drift', () => {
+  const initialInput = {
+    userPrompt: 'Create docs/result.md from src/math.js.',
+    executionMode: 'edit',
+    contextFiles: ['src/math.js'],
+    workspaceRoot: '/workspace',
+    taskContract: semanticTaskContract(['source-change']),
+    externalEffectIntent: 'none',
+    targetPaths: ['docs/result.md'],
+  };
+  const original = projectVsCodeCodingKernelTaskContract(initialInput);
+  const resumed = resolveVsCodeCodingKernelTaskContract({
+    ...initialInput,
+    contextFiles: ['src/math.js', 'docs/result.md'],
+  }, original);
+
+  assert.deepEqual(resumed, original);
+  assert.notEqual(resumed, original, 'resume receives a validated immutable snapshot');
+  assert.deepEqual(resumed.scope.include, ['docs/result.md']);
 });
 
 function semanticTaskContract(deliverables) {

@@ -1,6 +1,6 @@
 import type { AgentTask } from '../agent/agent-task';
 import type { AgentLoopCallbacks } from '../agent/loop-types';
-import type { CodingCheckpoint } from '@devseek-netai/shared';
+import type { CodingCheckpoint, CodingKernelTaskContract } from '@devseek-netai/shared';
 import type { TaskCheckpointRecord } from './task-checkpoint-store';
 
 interface AgentCheckpointCallbackInput {
@@ -16,7 +16,13 @@ interface AgentCheckpointCallbackInput {
 export function createAgentCheckpointCallback(
   input: AgentCheckpointCallbackInput,
 ): NonNullable<AgentLoopCallbacks['onTaskCheckpoint']> {
-  return async (firstUnfinishedIndex, remainingTasks, reason = 'progress', canonicalCheckpoint?: CodingCheckpoint) => {
+  return async (
+    firstUnfinishedIndex,
+    remainingTasks,
+    reason = 'progress',
+    canonicalCheckpoint?: CodingCheckpoint,
+    canonicalTaskContract?: CodingKernelTaskContract,
+  ) => {
     if (firstUnfinishedIndex === null) {
       await input.save(null);
       input.postMessage({ type: 'agentCheckpointCleared' });
@@ -30,6 +36,9 @@ export function createAgentCheckpointCallback(
     }
     if (!canonicalCheckpoint) {
       throw new Error('agent-checkpoint:missing-canonical-checkpoint');
+    }
+    if (!canonicalTaskContract) {
+      throw new Error('agent-checkpoint:missing-canonical-task-contract');
     }
     if (canonicalCheckpoint.pendingUnits.map(unit => unit.id).join('\n') !== pendingTasks.map(task => task.id).join('\n')) {
       throw new Error('agent-checkpoint:pending-task-binding-mismatch');
@@ -54,6 +63,7 @@ export function createAgentCheckpointCallback(
       savedAt,
       sessionId: input.sessionId,
       canonicalCheckpoint,
+      canonicalTaskContract,
       ...(pauseReason ? { pauseReason } : {}),
     });
     if (reason === 'paused') {

@@ -276,6 +276,7 @@ test('CanonicalCodingKernel blocks incompatible providers and unsupported platfo
   })), error => {
     assert.equal(error instanceof CodingKernelExecutionError, true);
     assert.equal(error.lifecycle.status, 'blocked');
+    assert.deepEqual(error.taskContract, request().taskContract);
     assert.equal(error.environment.providerCapabilityDecision.reason, 'missing-capability');
     assert.deepEqual(error.environment.providerCapabilityDecision.missingCapabilities, ['native-tools|text-tools']);
     return true;

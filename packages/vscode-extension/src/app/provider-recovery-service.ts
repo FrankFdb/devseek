@@ -104,13 +104,10 @@ export function buildProviderRecoveryDisplay(plan: ProviderRecoveryPlan, rawMess
  * Recovery restores the sealed task contract; it never reinterprets the user
  * prompt into local file actions. The main model must propose fresh typed calls.
  */
-export function buildProviderRecoveryCheckpointTasks(input: {
-  prompt: string;
-  files?: string[];
-  workspaceRootFsPath?: string;
-  recoveryKind?: ProviderRecoveryKind;
-}): ProviderRecoveryCheckpointTask[] {
-  if (input.recoveryKind === 'ResponseCorrupted' || input.recoveryKind === 'StreamTimeout') {
+export function buildProviderRecoveryCheckpointTasks(
+  recoveryKind?: ProviderRecoveryKind,
+): ProviderRecoveryCheckpointTask[] {
+  if (recoveryKind === 'ResponseCorrupted' || recoveryKind === 'StreamTimeout') {
     return [{
       id: 'provider-recovery-response',
       file: '',

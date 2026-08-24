@@ -1,5 +1,6 @@
 import * as nodePath from 'path';
 import {
+  CanonicalTaskContractService,
   resolveCodingKernelTaskContract,
   type CodingDeliverableKind,
   type CodingKernelTaskContract,
@@ -8,6 +9,8 @@ import {
 import type { TaskContract } from '../agent/task-contract';
 import type { ExecutionMode } from '../intent/intent-types';
 import type { TaskExternalEffectIntent } from '../task-semantic-contract';
+
+const TASK_CONTRACT = new CanonicalTaskContractService();
 
 export interface VsCodeCodingKernelTaskContractInput {
   readonly userPrompt: string;
@@ -63,6 +66,15 @@ export function projectVsCodeCodingKernelTaskContract(
     verificationRequirementAuthoritative: verificationRequired !== undefined,
     externalEffectIntent: input.externalEffectIntent,
   });
+}
+
+export function resolveVsCodeCodingKernelTaskContract(
+  input: VsCodeCodingKernelTaskContractInput,
+  canonicalResumeTaskContract?: CodingKernelTaskContract,
+): CodingKernelTaskContract {
+  return canonicalResumeTaskContract
+    ? TASK_CONTRACT.snapshot(canonicalResumeTaskContract)
+    : projectVsCodeCodingKernelTaskContract(input);
 }
 
 function resolveVsCodeVerificationRequirement(input: {

@@ -6,7 +6,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { createCanonicalCheckpointFixture } from '../helpers/canonical-checkpoint-fixture.mjs';
+import {
+  createCanonicalCheckpointFixture,
+  createCanonicalTaskContractFixture,
+} from '../helpers/canonical-checkpoint-fixture.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
@@ -39,10 +42,16 @@ test('checkpoint recovery preserves only pending work and projects bounded host 
     task('done', 'src/done.ts', 'finished work'),
     task('pending', 'src/pending.ts', 'finish pending work'),
   ];
+  const canonicalTaskContract = createCanonicalTaskContractFixture();
   const recovery = createCheckpointKernelRecovery({
     tasks,
     startFromIndex: 1,
-    canonicalCheckpoint: createCanonicalCheckpointFixture({ tasks, startFromIndex: 1 }),
+    canonicalCheckpoint: createCanonicalCheckpointFixture({
+      tasks,
+      startFromIndex: 1,
+      taskContract: canonicalTaskContract,
+    }),
+    canonicalTaskContract,
     analysisContext: 'Prior finding must be rechecked.',
   });
 
@@ -88,10 +97,12 @@ test('recovery context files cannot escape the workspace root', () => {
     task('inside', 'src/main.ts', 'inside'),
     task('outside', '../secret.txt', 'outside'),
   ];
+  const canonicalTaskContract = createCanonicalTaskContractFixture();
   const recovery = createCheckpointKernelRecovery({
     tasks,
     startFromIndex: 0,
-    canonicalCheckpoint: createCanonicalCheckpointFixture({ tasks }),
+    canonicalCheckpoint: createCanonicalCheckpointFixture({ tasks, taskContract: canonicalTaskContract }),
+    canonicalTaskContract,
   });
 
   assert.deepEqual(getKernelRecoveryContextFiles(recovery, '/workspace'), ['/workspace/src/main.ts']);
