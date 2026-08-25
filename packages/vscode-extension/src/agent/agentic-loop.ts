@@ -27,7 +27,10 @@ import {
 } from './completion-evidence';
 import type { AgenticHistoryQualityGate } from './agentic-history';
 import { runAgentAutoValidationForWrites, type AgentAutoValidationResult } from './auto-validation';
-import { shouldDeferAgentAutoValidation } from './auto-validation-scheduler';
+import {
+  advanceAutoValidationFailureFence,
+  shouldDeferAgentAutoValidation,
+} from './auto-validation-scheduler';
 import { normalizeAgenticAutoValidation } from './agentic-auto-validation-settlement';
 import { buildMissingEvidenceRecoveryInstruction, type TodoItem } from './evidence-recovery';
 import {
@@ -232,6 +235,7 @@ export async function runAgenticLoop(
   const allChangeReceipts: CodingWorkspaceMutationReceipt<unknown>[] = [];
   const allToolExecutionReceipts: CodingToolExecutionReceipt<unknown>[] = [];
   let autoValidatedWriteCount = 0;
+  let failedTerminalWriteCount: number | undefined;
   const currentVerificationReceipts = (): readonly CodingVerificationReceipt[] => (
     callbacks.canonicalVerification?.receipts() ?? allVerificationReceipts
   );
@@ -792,7 +796,10 @@ export async function runAgenticLoop(
       || toolsToExecute.some(tool => tool.purpose === 'workspace-mutation');
     const roundHasTerminalProgress = (loopRes.terminalCommands?.length ?? 0) > 0
       || (loopRes.terminalEvidence?.length ?? 0) > 0;
-    const roundHasFailedTerminalProgress = loopRes.terminalEvidence?.some(evidence => !evidence.ok) === true;
+    failedTerminalWriteCount = advanceAutoValidationFailureFence(failedTerminalWriteCount, {
+      writeCount: allWrittenFiles.length,
+      terminalOutcomes: (loopRes.terminalEvidence ?? []).map(evidence => evidence.ok),
+    });
     const roundHasOnlyContextGathering = toolsToExecute.length > 0
       && toolsToExecute.some(tool => isContextGatheringToolName(tool.name))
       && toolsToExecute.every(tool => (
@@ -821,9 +828,8 @@ export async function runAgenticLoop(
     }
     const deferAutoValidation = shouldDeferAgentAutoValidation({
       pendingWriteCount: pendingAutoValidationWrites.length,
-      roundHasWriteProgress,
       roundHasTerminalProgress,
-      roundHasFailedTerminalProgress,
+      pendingCohortHasUnrepairedTerminalFailure: failedTerminalWriteCount === allWrittenFiles.length,
       completionSignaled: Boolean(loopRes.taskComplete || loopRes.allTodosCompleted),
     });
     const autoValidation: AgentAutoValidationResult = deferAutoValidation

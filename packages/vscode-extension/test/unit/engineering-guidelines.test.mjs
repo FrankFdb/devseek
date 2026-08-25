@@ -37,6 +37,8 @@ test('EngineeringGuidelines: agent prompt carries file and function size constra
   assert.match(prompt, new RegExp(`${COMPLEX_FUNCTION_LINE_LIMIT} 行`));
   assert.match(prompt, /SOLID、DRY、KISS、单一职责/);
   assert.match(prompt, /修复缺陷类别而非单一复现/);
+  assert.match(prompt, /不得生成未声明的 include\/import/);
+  assert.match(prompt, /公共头文件和模块应能独立解析/);
   assert.match(prompt, /重复规则应归并到唯一责任方/);
   assert.match(prompt, /不得为了展示流程而创建无关设计、报告、Markdown/);
   assert.match(prompt, /完成声明必须由真实文件、工具回执和验证结果支持/);

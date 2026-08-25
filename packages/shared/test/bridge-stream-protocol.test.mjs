@@ -23,6 +23,7 @@ const req = createRequire(import.meta.url);
 const {
   BridgeStreamCorrelator,
   DEEPSEEK_WEB_STREAM_PROTOCOL_VERSION,
+  canAgentRecoverDeepSeekStreamError,
   classifyDeepSeekStreamErrorMessage,
   parseDeepSeekStreamFrameData,
 } = req(bundlePath);
@@ -143,6 +144,14 @@ test('parseDeepSeekStreamFrameData: malformed SSE data fails closed', () => {
 test('DeepSeek stream errors distinguish rate limiter code from provider throttling', () => {
   assert.equal(classifyDeepSeekStreamErrorMessage('HTTP 429 rate limited'), 'rate-limited');
   assert.equal(classifyDeepSeekStreamErrorMessage('rate limiter.cpp failed to compile'), 'provider-error');
+});
+
+test('DeepSeek stream errors expose the categories safe for checkpoint recovery', () => {
+  assert.equal(canAgentRecoverDeepSeekStreamError('provider-error'), true);
+  assert.equal(canAgentRecoverDeepSeekStreamError('browser-session-lost'), true);
+  assert.equal(canAgentRecoverDeepSeekStreamError('rate-limited'), false);
+  assert.equal(canAgentRecoverDeepSeekStreamError('login-required'), false);
+  assert.equal(canAgentRecoverDeepSeekStreamError('cancelled'), false);
 });
 
 console.log('\nBridge stream protocol tests passed.\n');

@@ -1,4 +1,5 @@
 import type { ChatMessage } from '../llm/types';
+import { canAgentRecoverDeepSeekStreamError } from '@devseek-netai/shared';
 import type { TerminalEvidence, WrittenFileEvidence } from './completion-evidence';
 import type { TodoItem } from './evidence-recovery';
 import type { TextToolProtocolSession } from './text-tool-protocol';
@@ -69,8 +70,20 @@ export function parseAgentProviderFailure(error: unknown): AgentProviderFailure 
     status,
     reason,
     rawMessage,
-    recoverable: RECOVERABLE_RESPONSE_CORRUPTION_STATUSES.has(status.toLowerCase()),
+    recoverable: isRecoverableAgentProviderCorruption(status, reason),
   };
+}
+
+function isRecoverableAgentProviderCorruption(status: string, reason: string): boolean {
+  const normalizedStatus = status.toLowerCase();
+  if (RECOVERABLE_RESPONSE_CORRUPTION_STATUSES.has(normalizedStatus)) {
+    return true;
+  }
+  if (normalizedStatus !== 'stream-error') {
+    return false;
+  }
+  const category = reason.split(':', 1)[0].trim();
+  return canAgentRecoverDeepSeekStreamError(category);
 }
 
 export function canRecoverAgentProviderFailure(
@@ -182,7 +195,10 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
 
 export function shouldResetProviderSessionForRecovery(failure: AgentProviderFailure | undefined): boolean {
   const status = failure?.status?.toLowerCase();
-  return Boolean(status && RECOVERABLE_RESPONSE_CORRUPTION_STATUSES.has(status));
+  return Boolean(failure?.recoverable && status && (
+    RECOVERABLE_RESPONSE_CORRUPTION_STATUSES.has(status)
+    || status === 'stream-error'
+  ));
 }
 
 function summarizeList(values: readonly string[], limit: number): string {

@@ -61,6 +61,18 @@ test('Agent provider recovery: response corruption is recoverable but login is n
   assert.equal(login.recoverable, false);
   assert.equal(canRecoverAgentProviderFailure(login, 0, 3), false);
   assert.equal(shouldResetProviderSessionForRecovery(login), false);
+
+  const transientStreamError = parseAgentProviderFailure(
+    new Error('RESPONSE_CORRUPTED:stream-error:provider-error:Bridge stream failed; retryAfterMs=1000.'),
+  );
+  assert.equal(transientStreamError.recoverable, true);
+  assert.equal(shouldResetProviderSessionForRecovery(transientStreamError), true);
+
+  const rateLimitedStream = parseAgentProviderFailure(
+    new Error('RESPONSE_CORRUPTED:stream-error:rate-limited:Bridge stream failed; retryAfterMs=30000.'),
+  );
+  assert.equal(rateLimitedStream.recoverable, false);
+  assert.equal(shouldResetProviderSessionForRecovery(rateLimitedStream), false);
 });
 
 test('Agent provider recovery prompt keeps only durable facts and forces small tool batches', () => {

@@ -128,6 +128,10 @@ export function deepSeekStreamBackoffMs(category: DeepSeekStreamErrorCategory, a
   return 1_000 * normalizedAttempt;
 }
 
+export function canAgentRecoverDeepSeekStreamError(category: string): boolean {
+  return category === 'provider-error' || category === 'browser-session-lost';
+}
+
 export class BridgeStreamCorrelator {
   private nextSequence = 1;
   private readonly seenFrames = new Map<number, string>();
