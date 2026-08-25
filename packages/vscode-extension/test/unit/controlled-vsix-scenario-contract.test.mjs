@@ -673,6 +673,9 @@ test('real plugin VSIX harness keeps visible DeepSeek pages for user inspection'
   );
   assert.match(source, /keepVisible: keepDeepSeekPage/, 'login report must disclose whether the DeepSeek page was intentionally kept');
   assert.match(source, /if \(keepDeepSeekPage\) \{\s*child\.unref\(\);/s, 'kept relogin browser must not be killed during cleanup');
+  assert.match(source, /fetchJson\([\s\S]*?60_000\)/u, 'relogin request must have a bounded response wait');
+  assert.match(source, /await terminateChild\(child, 5_000\)/u, 'failed relogin must reclaim its bridge process');
+  assert.match(source, /child\.kill\('SIGKILL'\)/u, 'bridge cleanup must close a child that ignores graceful termination');
 });
 
 for (const scenario of REQUIRED_SCENARIOS) {

@@ -1359,7 +1359,7 @@ async function prepareDeepSeekLogin() {
     const reloginResponse = await fetchJson(`${baseUrl}/relogin`, {
       method: 'POST',
       headers: { 'X-DevSeek-Token': token },
-    });
+    }, 60_000);
     const loginStatus = await waitForDeepSeekLoginReady(baseUrl, token, 320000);
     return { ok: true, port, logPath, pid: child.pid, keepVisible: keepDeepSeekPage, reloginResponse, loginStatus };
   } finally {
@@ -1367,7 +1367,7 @@ async function prepareDeepSeekLogin() {
       child.unref();
     } else {
       await shutdownBridge(baseUrl, token);
-      if (child.exitCode === null) child.kill('SIGTERM');
+      await terminateChild(child, 5_000);
     }
     fs.closeSync(logFd);
   }
@@ -1425,14 +1425,17 @@ async function waitForDeepSeekLoginReady(baseUrl, token, waitMs) {
 
 async function shutdownBridge(baseUrl, token) {
   try {
-    await fetch(`${baseUrl}/shutdown`, { method: 'POST', headers: { 'X-DevSeek-Token': token } });
+    await fetchWithTimeout(`${baseUrl}/shutdown`, {
+      method: 'POST',
+      headers: { 'X-DevSeek-Token': token },
+    }, 3_000);
   } catch {
     // The process may already be down.
   }
 }
 
-async function fetchJson(url, options) {
-  const res = await fetch(url, options);
+async function fetchJson(url, options, timeoutMs) {
+  const res = await fetchWithTimeout(url, options, timeoutMs);
   const text = await res.text();
   let body = null;
   try {
@@ -1442,6 +1445,26 @@ async function fetchJson(url, options) {
   }
   if (!res.ok) throw new Error(`${url} failed ${res.status}: ${text}`);
   return body;
+}
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function terminateChild(child, waitMs) {
+  if (child.exitCode !== null) return;
+  child.kill('SIGTERM');
+  await waitForChildExit(child, waitMs);
+  if (child.exitCode === null) {
+    child.kill('SIGKILL');
+    await waitForChildExit(child, waitMs);
+  }
 }
 
 function installVsixIntoTempExtensions() {

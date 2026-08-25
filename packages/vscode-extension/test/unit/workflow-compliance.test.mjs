@@ -1354,6 +1354,8 @@ test('Real DeepSeek harness: visible relogin waits for authenticated page state'
   assertContains(harness, 'waitForDeepSeekLoginReady', 'relogin harness must wait on a DeepSeek login readiness boundary');
   assertContains(harness, 'lastStatus.browserReady && lastStatus.loggedInLikely', 'visible relogin must not treat an opened browser as an authenticated session');
   assertContains(harness, 'loginStatus', 'relogin report must disclose the authenticated status evidence used before running the scenario');
+  assertContains(harness, 'await terminateChild(child, 5_000)', 'failed relogin must reclaim its bridge process');
+  assertContains(harness, '}, 60_000)', 'relogin request must not wait forever for a failed provider navigation');
 });
 
 test('Agentic session continuation: one projection owner gates every execution path', () => {
