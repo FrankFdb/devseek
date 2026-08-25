@@ -208,6 +208,17 @@ test('RequirementReviewLedger closes an eligible cohort without creating hidden 
   assert.equal(ledger.completionBlocker(), undefined);
 });
 
+test('RequirementReviewPolicy excludes deleted source tombstones from the final cohort', () => {
+  const writtenFiles = [
+    sourceWrite('src/x11_window.cpp'),
+    sourceWrite('src/x11_app.cpp'),
+    sourceWrite('src/x11_window.cpp', 'delete'),
+  ];
+  const decision = evaluate({ writtenFiles });
+
+  assert.deepEqual(decision.sourcePaths, ['src/x11_app.cpp']);
+});
+
 function mergeContract(base, overrides) {
   const merged = structuredClone(base);
   for (const [key, value] of Object.entries(overrides)) {

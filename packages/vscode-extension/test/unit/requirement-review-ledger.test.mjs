@@ -445,3 +445,28 @@ test('requirement review follows observed source writes and ignores non-code wor
   }), undefined);
   assert.equal(nonCodeLedger.beforeNoToolCompletion(), undefined);
 });
+
+test('requirement review keeps mutation history but snapshots only the current source cohort', () => {
+  const ledger = new RequirementReviewLedger();
+  const writes = [
+    { ...sourceWrite('src/x11_window.cpp'), action: 'create' },
+    { ...sourceWrite('src/x11_app.cpp'), action: 'create' },
+    { ...sourceWrite('src/x11_window.cpp'), action: 'delete' },
+  ];
+  const feedback = ledger.request({
+    qualityGate: passedGate,
+    writtenFiles: writes,
+    roundReadFiles: [],
+    hostFinalSourceEvidenceReady: true,
+  }, {
+    strategy: 'independent-provider',
+    reason: 'source-set-out-of-bounds',
+    sourcePaths: ['src/x11_app.cpp'],
+  });
+
+  assert.match(feedback, /src\/x11_app\.cpp/);
+  assert.doesNotMatch(feedback, /最终源码证据：src\/x11_window\.cpp/);
+  assert.deepEqual(ledger.takeIndependentReviewCandidate(), {
+    sourcePaths: ['src/x11_app.cpp'],
+  });
+});

@@ -1,5 +1,9 @@
 import type { AgenticHistoryQualityGate } from './agentic-history';
-import { isCodeArtifactPath, type WrittenFileEvidence } from './completion-evidence';
+import {
+  coalesceWrittenFileEvidence,
+  isCodeArtifactPath,
+  type WrittenFileEvidence,
+} from './completion-evidence';
 import type { RequirementReviewPolicyDecision } from './requirement-review-policy';
 
 export interface RequirementReviewInput {
@@ -51,25 +55,35 @@ interface PendingRequirementReview {
 
 /** Owns requirement-review state; provider invocation belongs to its adapter. */
 export class RequirementReviewLedger {
-  private scheduledSourceWriteCount = 0;
+  private scheduledSourceMutationCount = 0;
   private pending?: PendingRequirementReview;
 
   request(
     input: RequirementReviewInput,
     policyDecision?: RequirementReviewPolicyDecision,
   ): string | undefined {
-    const sourceWrites = input.writtenFiles.filter(file => isCodeArtifactPath(file.path));
-    if (sourceWrites.length > this.scheduledSourceWriteCount) {
-      const changedSourcePaths = Array.from(new Set(sourceWrites
-        .slice(this.scheduledSourceWriteCount)
-        .map(file => file.path)));
-      const reviewSourcePaths = Array.from(new Set(sourceWrites.map(file => file.path)));
+    const sourceMutations = input.writtenFiles.filter(file => isCodeArtifactPath(file.path));
+    if (sourceMutations.length > this.scheduledSourceMutationCount) {
+      const currentSourcePaths = policyDecision?.sourcePaths
+        ?? coalesceWrittenFileEvidence(sourceMutations)
+          .filter(file => file.action !== 'delete')
+          .map(file => file.path);
+      const reviewSourcePaths = Array.from(new Set(currentSourcePaths));
+      const changedSourcePaths = Array.from(new Set(sourceMutations
+        .slice(this.scheduledSourceMutationCount)
+        .map(file => file.path)))
+        .filter(path => reviewSourcePaths.some(current => sameWorkspacePath(path, current)));
+      if (reviewSourcePaths.length === 0) {
+        this.scheduledSourceMutationCount = sourceMutations.length;
+        this.pending = undefined;
+        return undefined;
+      }
       if (input.qualityGate?.status !== 'pass') {
         this.pending = undefined;
         return renderValidationPendingReviewPause(changedSourcePaths, reviewSourcePaths, input.qualityGate);
       }
       const hostFinalSourceEvidenceReady = input.hostFinalSourceEvidenceReady === true;
-      this.scheduledSourceWriteCount = sourceWrites.length;
+      this.scheduledSourceMutationCount = sourceMutations.length;
       if (policyDecision?.strategy === 'host-evidence') {
         this.pending = undefined;
         return undefined;

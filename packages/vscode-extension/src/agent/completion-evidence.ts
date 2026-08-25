@@ -99,6 +99,10 @@ export function coalesceWrittenFileEvidence(
       byPath.set(key, { ...file });
       continue;
     }
+    if (file.action === 'delete') {
+      byPath.set(key, { ...file });
+      continue;
+    }
     const wasCreatedInThisRun = previous.action === 'create';
     byPath.set(key, {
       ...file,

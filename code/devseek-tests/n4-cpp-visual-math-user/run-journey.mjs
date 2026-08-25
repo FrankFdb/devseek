@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { selectAuthoritativeProductRun } from '../shared/product-run-selection.mjs';
 import { prepareWorkspace, protectedWorkspacePaths } from './prepare-workspace.mjs';
 import { verifyWorkspace } from './verify-workspace.mjs';
 
@@ -206,9 +207,7 @@ function copyHarnessEvidence(harnessRoot, roundRoot) {
 }
 
 function selectedProductRun(productReport) {
-  const logs = Array.isArray(productReport?.runLogs?.logs) ? productReport.runLogs.logs : [];
-  const run = logs.find(log => log.workloadRole !== 'background-maintenance'
-    && log.terminal?.event === 'agent-run-completed') || logs[0];
+  const run = selectAuthoritativeProductRun(productReport);
   if (!run) return null;
   return {
     runId: run.runId,

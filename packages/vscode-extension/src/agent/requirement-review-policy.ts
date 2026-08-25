@@ -53,7 +53,7 @@ const HOST_EVIDENCE_ORACLES = new Set(['workspace-readback', 'verification']);
 export class RequirementReviewPolicy {
   evaluate(input: RequirementReviewPolicyInput): RequirementReviewPolicyDecision {
     const sourceWrites = coalesceWrittenFileEvidence(input.writtenFiles, input.workspaceRoot)
-      .filter(file => isCodeArtifactPath(file.path));
+      .filter(file => file.action !== 'delete' && isCodeArtifactPath(file.path));
     const sourcePaths = sourceWrites.map(file => normalizeWorkspacePath(file.path, input.workspaceRoot));
     const providerReview = (reason: RequirementReviewPolicyReason): RequirementReviewPolicyDecision => ({
       strategy: 'independent-provider',

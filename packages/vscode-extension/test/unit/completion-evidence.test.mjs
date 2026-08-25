@@ -183,6 +183,13 @@ test('written evidence coalescing preserves creation identity and latest counter
   ]), [writeEvidence('./src/app.ts', 'create', 4, 0)]);
 });
 
+test('written evidence coalescing retains a delete tombstone after a same-run create', () => {
+  assert.deepEqual(coalesceWrittenFileEvidence([
+    writeEvidence('src/obsolete.cpp', 'create', 10, 0),
+    writeEvidence('./src/obsolete.cpp', 'delete', 0, 10),
+  ]), [writeEvidence('./src/obsolete.cpp', 'delete', 0, 10)]);
+});
+
 function contractAfterAction(prompt, overrides) {
   return projectModelActionSemanticContract(
     createModelLedTurnSemanticContract(prompt),
