@@ -156,6 +156,10 @@ test('CanonicalToolDispatchService projects artifact paths and terminal effects 
       command: 'cd /workspace && ./test.sh 2>&1 && cmake -S . -B build 2>&1 && cmake --build build -j2 2>&1',
     },
   }, { source: 'surface', workspaceRoot: '/workspace' });
+  const shellWrappedValidation = dispatch.dispatch({
+    name: 'run_terminal',
+    input: { command: 'cd /workspace && bash test.sh' },
+  }, { source: 'surface', workspaceRoot: '/workspace' });
 
   assert.equal(workspace.decision, 'accepted');
   assert.deepEqual(workspace.call.targetPaths, ['src/new.ts', '/workspace/config/.env.local']);
@@ -171,6 +175,9 @@ test('CanonicalToolDispatchService projects artifact paths and terminal effects 
   assert.equal(projectValidation.call.risk, 'medium');
   assert.equal(projectValidation.call.purpose, 'verify');
   assert.deepEqual(projectValidation.call.effects, ['process']);
+  assert.equal(shellWrappedValidation.call.risk, 'medium');
+  assert.equal(shellWrappedValidation.call.purpose, 'verify');
+  assert.deepEqual(shellWrappedValidation.call.effects, ['process']);
 });
 
 test('CanonicalProviderEventService validates and snapshots provider output', () => {

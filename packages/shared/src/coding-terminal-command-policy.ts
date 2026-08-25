@@ -383,6 +383,9 @@ function isValidationSegment(rawSegment: string, workspaceRoot?: string, workdir
     return /\bnode\s+(?:--test\b|(?:\.\/)?test\/|[\w./-]+\.test\.(?:mjs|cjs|js))\b/i.test(segment)
       || isNodeInlineValidationSegment(segment);
   }
+  if (command === 'bash' || command === 'sh') {
+    return isWorkspaceShellValidationSegment(segment, workspaceRoot, workdir);
+  }
   if (command === 'cmake') return isCmakeValidationSegment(segment);
   if (/^python3?$/.test(command)) return isPythonValidationSegment(segment, workspaceRoot, workdir);
   if (['pytest', 'ctest'].includes(command)) return true;
@@ -393,6 +396,20 @@ function isValidationSegment(rawSegment: string, workspaceRoot?: string, workdir
   if (isCppCompilerCommand(command)) return isCppCompilerValidationSegment(segment);
   if (isWorkspaceExecutableValidationSegment(token, workspaceRoot, workdir)) return true;
   return false;
+}
+
+function isWorkspaceShellValidationSegment(
+  segment: string,
+  workspaceRoot?: string,
+  workdir?: string,
+): boolean {
+  const words = splitShellWords(stripLeadingAssignments(segment));
+  if (words.length !== 2) return false;
+  const script = cleanToken(words[1]);
+  if (!/^(?:test|tests|check|verify)(?:[-_.][A-Za-z0-9_.-]+)?\.sh$/i.test(nodePath.basename(script))) {
+    return false;
+  }
+  return isWorkspacePath(script, workspaceRoot, workdir);
 }
 
 function isCmakeValidationSegment(segment: string): boolean {
@@ -455,6 +472,12 @@ function isNodeInlineValidationSegment(segment: string): boolean {
 function isWorkspacePythonPath(rawPath: string, workspaceRoot?: string, workdir?: string): boolean {
   const cleaned = cleanToken(rawPath);
   if (!cleaned || !/\.py$/i.test(cleaned)) return false;
+  return isWorkspacePath(cleaned, workspaceRoot, workdir);
+}
+
+function isWorkspacePath(rawPath: string, workspaceRoot?: string, workdir?: string): boolean {
+  const cleaned = cleanToken(rawPath);
+  if (!cleaned) return false;
   if (!workspaceRoot) return !nodePath.isAbsolute(cleaned);
   const baseDir = workdir && nodePath.isAbsolute(workdir) ? workdir : workspaceRoot;
   const resolved = nodePath.isAbsolute(cleaned) ? cleaned : nodePath.resolve(baseDir, cleaned);

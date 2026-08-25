@@ -274,6 +274,8 @@ test('TerminalCommandPolicy: C++ compile-run inside workspace is validation evid
 test('TerminalCommandPolicy: project scripts and bounded CMake builds remain validation with fd merging', () => {
   for (const command of [
     'cd /workspace/devseek && ./test.sh 2>&1',
+    'cd /workspace/devseek && bash test.sh',
+    'cd /workspace/devseek && sh ./verify-project.sh',
     'cd /workspace/devseek && cmake -S . -B build 2>&1 && cmake --build build -j2 2>&1 && ctest --test-dir build --output-on-failure',
   ]) {
     const decision = decideTerminalCommandPermission({ command, workspaceRoot });
@@ -288,6 +290,9 @@ test('TerminalCommandPolicy: project scripts and bounded CMake builds remain val
     decideTerminalCommandPermission({ command: './test.sh > validation.log', workspaceRoot }).risk,
     'mutating',
   );
+  for (const command of ['bash release.sh', "bash -c './test.sh'", 'sh arbitrary.sh']) {
+    assert.equal(decideTerminalCommandPermission({ command, workspaceRoot }).risk, 'unknown', command);
+  }
 });
 
 test('TerminalCommandPolicy: canonical workspace paths reject symlink escapes for reads and workdirs', t => {
