@@ -165,7 +165,7 @@ test('strict JSON remains lossless inside a paired XML tool tag', () => {
   assert.equal(tool.input.content, content);
 });
 
-test('fenced CDATA grants lossless source mutation authority but naked XML does not', () => {
+test('labeled or plain fenced CDATA grants mutation authority but naked XML does not', () => {
   const cppContent = '#include "lesson_controller.hpp"\nstd::string escaped = "\\\\n";\n';
   const xmlPayload = [
     '```xml',
@@ -181,6 +181,14 @@ test('fenced CDATA grants lossless source mutation authority but naked XML does 
   );
   assert.equal(tool.name, 'create_file');
   assert.equal(tool.input.content, cppContent);
+
+  const plainFence = xmlPayload.replace('```xml', '```');
+  const [plainFenceTool] = parseAuthorizedTextToolCalls(
+    renderTextToolProtocolEnvelope(session, plainFence),
+    session,
+  );
+  assert.equal(plainFenceTool.name, 'create_file');
+  assert.equal(plainFenceTool.input.content, cppContent);
 
   const nakedXml = xmlPayload.replace(/^```xml\n|\n```$/g, '');
   assert.deepEqual(parseAuthorizedTextToolCalls(

@@ -141,7 +141,7 @@ function strictJsonXmlMutationIdentities(payload: string): string[] {
 
 function losslessFencedXmlMutationIdentities(payload: string): string[] {
   const identities: string[] = [];
-  const fencedXml = /```xml[ \t]*\r?\n([\s\S]*?)```/gi;
+  const fencedXml = /```(?:xml)?[ \t]*\r?\n([\s\S]*?)```/gi;
   let match: RegExpExecArray | null;
   while ((match = fencedXml.exec(payload)) !== null) {
     const block = match[1] || '';
