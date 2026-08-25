@@ -187,7 +187,7 @@ function parseStrictReviewJson(text: string): RawReviewResult | undefined {
 function unwrapSingleJsonDocument(text: string): string | undefined {
   const trimmed = text.trim();
   if (trimmed.startsWith('{')) return trimmed;
-  const fenced = /^```json[ \t]*\r?\n([\s\S]*?)\r?\n```$/iu.exec(trimmed);
+  const fenced = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/iu.exec(trimmed);
   return fenced?.[1]?.trim() || undefined;
 }
 

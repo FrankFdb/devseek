@@ -26,7 +26,8 @@ import {
   type WrittenFileEvidence,
 } from './completion-evidence';
 import type { AgenticHistoryQualityGate } from './agentic-history';
-import { runAgentAutoValidationForWrites } from './auto-validation';
+import { runAgentAutoValidationForWrites, type AgentAutoValidationResult } from './auto-validation';
+import { shouldDeferAgentAutoValidation } from './auto-validation-scheduler';
 import { normalizeAgenticAutoValidation } from './agentic-auto-validation-settlement';
 import { buildMissingEvidenceRecoveryInstruction, type TodoItem } from './evidence-recovery';
 import {
@@ -795,27 +796,38 @@ export async function runAgenticLoop(
     if (pendingAutoValidationWrites.length > 0) {
       sourceValidation.beginWriteCohort(allWrittenFiles.length);
     }
-    const autoValidation = await runAgentAutoValidationForWrites(
-      pendingAutoValidationWrites,
-      workspaceRoot,
-      writeAuthority.currentPrompt,
-      writeAuthority.callbacks,
-      {
-        verificationScopeWrittenFiles: allWrittenFiles,
-        verificationAcceptance: callbacks.canonicalVerificationAcceptance
-          ?? projectAgenticVerificationAcceptance(writeAuthority.completionSemanticContract.taskContract),
-        priorVerificationReceipts: currentVerificationReceipts(),
-        changeReceipts: allChangeReceipts,
-      },
-    );
-    if (autoValidation.verificationReceipt) allVerificationReceipts.push(autoValidation.verificationReceipt);
-    autoValidatedWriteCount = allWrittenFiles.length;
+    const deferAutoValidation = shouldDeferAgentAutoValidation({
+      pendingWriteCount: pendingAutoValidationWrites.length,
+      roundHasWriteProgress,
+      roundHasTerminalProgress,
+      completionSignaled: Boolean(loopRes.taskComplete || loopRes.allTodosCompleted),
+      todos: currentTodos,
+    });
+    const autoValidation: AgentAutoValidationResult = deferAutoValidation
+      ? {}
+      : await runAgentAutoValidationForWrites(
+          pendingAutoValidationWrites,
+          workspaceRoot,
+          writeAuthority.currentPrompt,
+          writeAuthority.callbacks,
+          {
+            verificationScopeWrittenFiles: allWrittenFiles,
+            verificationAcceptance: callbacks.canonicalVerificationAcceptance
+              ?? projectAgenticVerificationAcceptance(writeAuthority.completionSemanticContract.taskContract),
+            priorVerificationReceipts: currentVerificationReceipts(),
+            changeReceipts: allChangeReceipts,
+          },
+        );
+    if (!deferAutoValidation) {
+      if (autoValidation.verificationReceipt) allVerificationReceipts.push(autoValidation.verificationReceipt);
+      autoValidatedWriteCount = allWrittenFiles.length;
+    }
     const normalizedAutoValidation = normalizeAgenticAutoValidation({
       autoValidation,
       userPrompt: writeAuthority.currentPrompt,
       writtenFiles: allWrittenFiles,
     });
-    if (pendingAutoValidationWrites.length > 0) {
+    if (pendingAutoValidationWrites.length > 0 && !deferAutoValidation) {
       sourceValidation.settleWriteCohort(allWrittenFiles.length, normalizedAutoValidation.qualityGate);
     }
     if (normalizedAutoValidation.evidence.length) {

@@ -35,7 +35,10 @@ test('N4 C++ visual math workspace starts nontrivial and protects the user contr
     assert.match(cmake, /find_package\(X11 REQUIRED\)/u);
     assert.match(cmake, /\$\{X11_INCLUDE_DIR\}/u);
     assert.doesNotMatch(cmake, /\\\$\{X11_INCLUDE_DIR\}/u);
-    assert.match(fs.readFileSync(path.join(workspace, 'USER_STORY.md'), 'utf8'), /same raster renderer/iu);
+    const userStory = fs.readFileSync(path.join(workspace, 'USER_STORY.md'), 'utf8');
+    assert.match(userStory, /same raster renderer/iu);
+    assert.match(userStory, /handledActions[\s\S]*integer count/iu);
+    assert.match(userStory, /quiz\.answered[\s\S]*integer counts/iu);
     assert.match(fs.readFileSync(path.join(workspace, 'assets/quiz.actions'), 'utf8'), /answer 7[\s\S]*answer 5/u);
     assert.deepEqual(hashPaths(workspace, module.protectedWorkspacePaths), before);
   } finally {
@@ -51,8 +54,11 @@ test('N4 C++ visual math journey and verifier scripts parse', () => {
     }));
   }
   const runner = fs.readFileSync(path.join(journeyRoot, 'run-journey.mjs'), 'utf8');
+  const verifier = fs.readFileSync(path.join(journeyRoot, 'verify-workspace.mjs'), 'utf8');
   assert.match(runner, /--wait-background-idle/u);
   assert.match(runner, /inputMode = .*natural-ui/u);
+  assert.match(verifier, /-fsanitize=address,undefined/u);
+  assert.match(verifier, /sanitizer-x11-repeated-frame/u);
 });
 
 test('N4 C++ visual math verifier measures binary PPM pixels instead of file existence', async () => {

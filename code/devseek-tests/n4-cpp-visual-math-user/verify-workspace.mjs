@@ -77,6 +77,12 @@ export function verifyWorkspace(workspace, stage, evidenceDir) {
     artifacts.x11Smoke = recordCommand(evidence, 'x11-smoke', smoke);
     check(checks, 'real-x11-window-smoke', smoke.status === 0, commandSummary(smoke));
 
+    const sanitizer = runSanitizerSmoke(root, evidence);
+    artifacts.sanitizer = sanitizer.artifacts;
+    check(checks, 'sanitizer-configure', sanitizer.configure.status === 0, commandSummary(sanitizer.configure));
+    check(checks, 'sanitizer-build', sanitizer.build?.status === 0, commandSummary(sanitizer.build));
+    check(checks, 'sanitizer-x11-repeated-frame', sanitizer.smoke?.status === 0, commandSummary(sanitizer.smoke));
+
     const sourceText = sourcePaths.map(rel => fs.readFileSync(path.join(root, rel), 'utf8')).join('\n');
     check(checks, 'source-hygiene', !/(?:TODO|FIXME)|\bsystem\s*\(/u.test(sourceText), {
       todoOrFixme: /(?:TODO|FIXME)/u.test(sourceText),
@@ -99,6 +105,35 @@ export function verifyWorkspace(workspace, stage, evidenceDir) {
   };
   fs.writeFileSync(path.join(evidence, 'verification.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   return report;
+}
+
+function runSanitizerSmoke(root, evidence) {
+  const buildDir = path.join(evidence, 'sanitizer-build');
+  const configure = run('cmake', [
+    '-S', root,
+    '-B', buildDir,
+    '-DCMAKE_BUILD_TYPE=Debug',
+    '-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer',
+    '-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined',
+  ], root, 60_000);
+  const artifacts = {
+    configure: recordCommand(evidence, 'sanitizer-configure', configure),
+  };
+  if (configure.status !== 0) return { configure, artifacts };
+
+  const build = run('cmake', ['--build', buildDir, '--parallel', '2'], root, 180_000);
+  artifacts.build = recordCommand(evidence, 'sanitizer-build', build);
+  if (build.status !== 0) return { configure, build, artifacts };
+
+  const smoke = run(path.join(buildDir, 'math_visual_lab'), [
+    '--smoke-frames', '3', '--width', '800', '--height', '600',
+  ], root, 30_000, {
+    ASAN_OPTIONS: 'detect_leaks=0:halt_on_error=1',
+    UBSAN_OPTIONS: 'halt_on_error=1:print_stacktrace=1',
+    DISPLAY: process.env.DISPLAY || ':0',
+  });
+  artifacts.smoke = recordCommand(evidence, 'sanitizer-x11-smoke', smoke);
+  return { configure, build, smoke, artifacts };
 }
 
 function runVisualCase(root, evidence, name, actionsRel, width, height) {
@@ -224,6 +259,15 @@ function recordCommand(evidence, name, result) {
 }
 
 function commandSummary(result) {
+  if (!result) {
+    return {
+      status: null,
+      signal: null,
+      error: 'Skipped because an earlier sanitizer step failed.',
+      stdoutTail: '',
+      stderrTail: '',
+    };
+  }
   return {
     status: result.status,
     signal: result.signal,

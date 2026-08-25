@@ -73,6 +73,7 @@ export function buildIndependentReviewMessages(
         'Mark a check violated only when the supplied final source has a concrete execution path that contradicts the request. Every violated check must have one or more findings; satisfied checks must have none.',
         'Report only discrete, actionable defects that affect correctness, complexity requirements, or maintainability. Do not propose or perform edits and do not emit tool calls.',
         'Visible tests are incomplete evidence. Trace concrete uncovered inputs, boundaries, state transitions, data ownership, failure paths, and repeated or concurrent operations when they are relevant to the request and source.',
+        'For native or external resources, trace acquisition, partial initialization, ownership transfer, repeated use, resize or reallocation, and teardown as one lifecycle; a passing first-use test does not settle later uses.',
         'Judge caller-observable behavior from actual declarations and control flow. A failure path must remain distinguishable from legitimate success whenever the requested contract requires rejection or error reporting.',
         'Check user-specified performance, data-structure, compatibility, and scope constraints against the actual implementation; do not invent constraints absent from the request.',
         'For each finding, copy its requirement quote exactly, state observed and expected behavior separately, and give a reachable counterexample with actual and required results.',

@@ -22,7 +22,7 @@
       "id": "N4-CPP-MATH-03",
       "title": "加入可操作测验和儿童友好反馈",
       "verificationStage": 3,
-      "prompt": "学生反馈只看图还不够，请在现有架构内加入“测验”课程，不要复制新的状态机。固定两题 3+4 和 8-3，支持键盘数字输入、退格、提交、下一题，也支持画面按钮；答对显示清晰正反馈，答错保留重试机会。脚本动作 lesson quiz、answer、submit、next-question 必须走与真实 UI 相同的 LessonController 动作入口。最终 state JSON 的 quiz 要包含 answered、correct、feedback。使用高对比但不刺眼的多色界面，焦点状态不能只靠颜色表达。运行公开测试，并用 assets/quiz.actions 验证两题得分和非空反馈。"
+      "prompt": "学生反馈只看图还不够，请在现有架构内加入“测验”课程，不要复制新的状态机。固定两题 3+4 和 8-3，支持键盘数字输入、退格、提交、下一题，也支持画面按钮；答对显示清晰正反馈，答错保留重试机会。脚本动作 lesson quiz、answer、submit、next-question 必须走与真实 UI 相同的 LessonController 动作入口。最终 state JSON 的 quiz 要按 USER_STORY.md 用数字 answered、correct 记录已提交数和答对数，并包含非空 feedback。使用高对比但不刺眼的多色界面，焦点状态不能只靠颜色表达。运行公开测试，并用 assets/quiz.actions 验证两题得分和非空反馈。"
     },
     {
       "id": "N4-CPP-MATH-04",

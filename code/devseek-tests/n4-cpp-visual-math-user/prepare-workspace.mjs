@@ -109,8 +109,12 @@ Actions are one per line:
 - next-question
 
 State JSON contains lesson, handledActions, fraction.selected, fraction.total,
-numberLine.marker, and quiz.answered, quiz.correct, quiz.feedback. PPM output is
-at least 640x480 and contains the complete rendered UI, not a placeholder image.
+numberLine.marker, and quiz.answered, quiz.correct, quiz.feedback. handledActions
+is the integer count of accepted actions. quiz.answered and quiz.correct are the
+integer counts of submitted and correct answers across the current quiz session;
+quiz.feedback is the latest non-empty learner-facing result after submission.
+PPM output is at least 640x480 and contains the complete rendered UI, not a
+placeholder image.
 
 Quiz questions are deterministic: 3+4 and 8-3. Bounds are total 1..12,
 selected 0..total, and marker -10..10. Unknown actions and invalid values return
