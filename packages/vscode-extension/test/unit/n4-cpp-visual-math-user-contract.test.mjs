@@ -31,7 +31,10 @@ test('N4 C++ visual math workspace starts nontrivial and protects the user contr
     const before = hashPaths(workspace, module.protectedWorkspacePaths);
 
     assert.equal(fs.existsSync(path.join(workspace, 'src/main.cpp')), false);
-    assert.match(fs.readFileSync(path.join(workspace, 'CMakeLists.txt'), 'utf8'), /find_package\(X11 REQUIRED\)/u);
+    const cmake = fs.readFileSync(path.join(workspace, 'CMakeLists.txt'), 'utf8');
+    assert.match(cmake, /find_package\(X11 REQUIRED\)/u);
+    assert.match(cmake, /\$\{X11_INCLUDE_DIR\}/u);
+    assert.doesNotMatch(cmake, /\\\$\{X11_INCLUDE_DIR\}/u);
     assert.match(fs.readFileSync(path.join(workspace, 'USER_STORY.md'), 'utf8'), /same raster renderer/iu);
     assert.match(fs.readFileSync(path.join(workspace, 'assets/quiz.actions'), 'utf8'), /answer 7[\s\S]*answer 5/u);
     assert.deepEqual(hashPaths(workspace, module.protectedWorkspacePaths), before);

@@ -103,6 +103,17 @@ test('accepts a structurally valid pass without locally interpreting prompt word
   }
 });
 
+test('accepts one JSON code fence when it contains the complete review document', () => {
+  const source = snapshot();
+  const prompt = 'Keep the implementation correct.';
+  const fenced = `\`\`\`json\n${JSON.stringify(passBody(prompt), null, 2)}\n\`\`\``;
+
+  const decision = parseIndependentReviewResponse({ text: fenced, toolCount: 0 }, [source], prompt);
+
+  assert.equal(decision.status, 'passed');
+  assert.deepEqual(decision.findings, []);
+});
+
 test('accepts one or more model findings tied to the aggregate raw request', () => {
   const source = snapshot('src/main.ts', 'export const first = 1;\nexport const second = 1;\n');
   const prompt = 'Return 2 from both exported values.';
@@ -136,6 +147,7 @@ test('malformed model proposals remain indeterminate and never trigger source ke
   const malformed = [
     { text: 'not json', toolCount: 0 },
     { text: '```json\n{}\n```', toolCount: 0 },
+    { text: `\`\`\`json\n${JSON.stringify(passBody(prompt))}\n\`\`\`\nextra prose`, toolCount: 0 },
     { text: `${JSON.stringify(passBody(prompt))}\nextra prose`, toolCount: 0 },
     { text: '[]', toolCount: 0 },
   ];

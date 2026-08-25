@@ -41,7 +41,7 @@ export function prepareWorkspace(workspace) {
 }
 
 function cmakeContract() {
-  return String.raw`cmake_minimum_required(VERSION 3.16)
+  return `cmake_minimum_required(VERSION 3.16)
 project(math_visual_lab LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)

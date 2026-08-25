@@ -171,7 +171,8 @@ function requirementInventory(userPrompt: string): RequirementClause[] {
 }
 
 function parseStrictReviewJson(text: string): RawReviewResult | undefined {
-  const candidate = text.trim();
+  const candidate = unwrapSingleJsonDocument(text);
+  if (!candidate) return undefined;
   if (!candidate.startsWith('{') || !candidate.endsWith('}')) return undefined;
   try {
     const parsed = JSON.parse(candidate);
@@ -181,6 +182,13 @@ function parseStrictReviewJson(text: string): RawReviewResult | undefined {
   } catch {
     return undefined;
   }
+}
+
+function unwrapSingleJsonDocument(text: string): string | undefined {
+  const trimmed = text.trim();
+  if (trimmed.startsWith('{')) return trimmed;
+  const fenced = /^```json[ \t]*\r?\n([\s\S]*?)\r?\n```$/iu.exec(trimmed);
+  return fenced?.[1]?.trim() || undefined;
 }
 
 function normalizeRequirementChecks(
