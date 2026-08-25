@@ -21,15 +21,12 @@ const { shouldDeferAgentAutoValidation } = createRequire(import.meta.url)(bundle
 
 after(() => rmSync(tempRoot, { recursive: true, force: true }));
 
-const pendingTodo = Object.freeze({ id: 1, title: 'Implement sources', status: 'in-progress' });
-
-test('defers validation while a planned multi-file write cohort is still open', () => {
+test('defers validation while a pure-write mutation cohort is still open', () => {
   assert.equal(shouldDeferAgentAutoValidation({
     pendingWriteCount: 4,
     roundHasWriteProgress: true,
     roundHasTerminalProgress: false,
     completionSignaled: false,
-    todos: [pendingTodo],
   }), true);
 });
 
@@ -39,22 +36,22 @@ test('runs validation at explicit validation and completion boundaries', () => {
     roundHasWriteProgress: true,
     roundHasTerminalProgress: false,
     completionSignaled: false,
-    todos: [pendingTodo],
   };
   assert.equal(shouldDeferAgentAutoValidation({ ...base, roundHasTerminalProgress: true }), false);
   assert.equal(shouldDeferAgentAutoValidation({ ...base, completionSignaled: true }), false);
-  assert.equal(shouldDeferAgentAutoValidation({
-    ...base,
-    todos: [{ ...pendingTodo, status: 'completed' }],
-  }), false);
 });
 
-test('preserves immediate validation when the model did not establish a plan', () => {
+test('does not defer when there is no pending write or the round is not writing', () => {
   assert.equal(shouldDeferAgentAutoValidation({
-    pendingWriteCount: 1,
+    pendingWriteCount: 0,
     roundHasWriteProgress: true,
     roundHasTerminalProgress: false,
     completionSignaled: false,
-    todos: [],
+  }), false);
+  assert.equal(shouldDeferAgentAutoValidation({
+    pendingWriteCount: 1,
+    roundHasWriteProgress: false,
+    roundHasTerminalProgress: false,
+    completionSignaled: false,
   }), false);
 });

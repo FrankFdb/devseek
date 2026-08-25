@@ -819,7 +819,6 @@ export async function runAgenticLoop(
       roundHasWriteProgress,
       roundHasTerminalProgress,
       completionSignaled: Boolean(loopRes.taskComplete || loopRes.allTodosCompleted),
-      todos: currentTodos,
     });
     const autoValidation: AgentAutoValidationResult = deferAutoValidation
       ? {}
