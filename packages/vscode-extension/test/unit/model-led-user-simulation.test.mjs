@@ -314,6 +314,41 @@ test('ModelLedUserSimulation: exact simple-file input cannot bypass the main mod
   }
 });
 
+test('ModelLedUserSimulation: a deferred action announcement must continue into real work', async () => {
+  const prompt = '创建 math-visual.txt，内容为 MATH_VISUAL_READY，并读回确认。';
+  let calls = 0;
+  const simulation = await runSimulation(prompt, async () => {
+    calls += 1;
+    const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'math-visual.txt');
+    if (calls === 1) {
+      return {
+        text: '我将阅读用户故事并实现 Math Visual Lab 的第一版。让我先了解需求。',
+        tools: [],
+      };
+    }
+    return {
+      text: '落实上一轮行动并读回交付文件。',
+      tools: [
+        { name: 'create_file', input: { path: target, content: 'MATH_VISUAL_READY\n' } },
+        { name: 'read_file', input: { path: target } },
+        { name: 'task_complete', input: { summary: '已创建并读回 math-visual.txt。' } },
+      ],
+    };
+  }, { runDisplayAction: 'create' });
+  try {
+    assert.equal(calls, 2, simulation.result.historyText);
+    assert.equal(readFileSync(path.join(simulation.root, 'math-visual.txt'), 'utf8'), 'MATH_VISUAL_READY\n');
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+    assert.equal(
+      simulation.harness.statuses.some(status => status.title === '等待行动提案落地'),
+      true,
+      simulation.result.historyText,
+    );
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
 test('ModelLedUserSimulation: inline historical wording cannot resurrect a superseded target', async () => {
   const prompt = '这是一次多轮需求的最终轮：前面曾说写 INITIAL_REQUIREMENT，但现在改为 FINAL_REQUIREMENT_OK。请只按最新要求创建 journey-result.txt，文件内容必须精确包含一行 FINAL_REQUIREMENT_OK。完成写入和读回验证后结束任务，不要创建旧要求文件。';
   let calls = 0;

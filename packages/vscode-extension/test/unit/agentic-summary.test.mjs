@@ -26,6 +26,9 @@ test('recognizes bounded Chinese and English future tool-action announcements', 
     '我将阅读需求文档，然后实现程序。让我先获取项目文件。',
   ), true);
   assert.equal(isDeferredAgentActionAnnouncement(
+    '我将阅读用户故事并实现 Math Visual Lab 的第一版。让我先了解需求。',
+  ), true);
+  assert.equal(isDeferredAgentActionAnnouncement(
     'I will implement the request. Let me first inspect the project files.',
   ), true);
 });
@@ -33,5 +36,6 @@ test('recognizes bounded Chinese and English future tool-action announcements', 
 test('does not reinterpret complete answers or quoted action language', () => {
   assert.equal(isDeferredAgentActionAnnouncement('CPU 和 GPU 的主要区别是并行度与延迟取向。'), false);
   assert.equal(isDeferredAgentActionAnnouncement('“I will read the file” 的中文是“我会读取文件”。'), false);
+  assert.equal(isDeferredAgentActionAnnouncement('“我将读取文件”是一种未来时表达。'), false);
   assert.equal(isDeferredAgentActionAnnouncement(''), false);
 });
