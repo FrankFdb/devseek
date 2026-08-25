@@ -2451,6 +2451,11 @@ test('Architecture: validated source changes require fresh source review before 
     'failed requirement-review findings must have a bounded repair window separate from ordinary exploration rounds',
   );
   assertContains(
+    reviewRepairWindow,
+    'AGENTIC_REQUIREMENT_REVIEW_MAX_GRACE_ROUNDS',
+    'successive independent-review waves must renew repair capacity under one hard upper bound',
+  );
+  assertContains(
     agenticLoop,
     'updateRequirementReviewRepairWindow(requirementReviewRepairGraceRounds, reviewFeedback)',
     'agent loop must delegate requirement-review repair budgeting to the review repair window owner',
