@@ -2,6 +2,7 @@ import * as nodePath from 'path';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import {
+  codingSemanticDigest,
   codingToolExecutionFailureReason,
   createDevSeekTraceLogger,
   decideTerminalCommandPermission,
@@ -226,12 +227,14 @@ export async function executeFakeToolsForLoop(
     kind: ToolFailureEvidence['kind'],
     rawPath: string | undefined,
     reason: string,
+    strategyFingerprint?: string,
   ): void => {
     toolFailures.push({
       tool: toolName,
       kind,
       ...(rawPath ? { path: rawPath } : {}),
       reason,
+      ...(strategyFingerprint ? { strategyFingerprint } : {}),
     });
   };
 
@@ -255,7 +258,13 @@ export async function executeFakeToolsForLoop(
     canonical: canonicalTools,
     reporter: {
       feedback: message => parts.push(message),
-      failure: (toolName, rawPath, reason) => recordToolFailure(toolName, 'write', rawPath, reason),
+      failure: (toolName, rawPath, reason, strategyFingerprint) => recordToolFailure(
+        toolName,
+        'write',
+        rawPath,
+        reason,
+        strategyFingerprint,
+      ),
       cancellation: (toolName, rawPath) => recordCancellationFeedback(toolName, rawPath),
       written: file => writtenFiles.push(file),
       evidence: ref => evidenceRefs.push(ref),
@@ -917,32 +926,39 @@ export async function executeFakeToolsForLoop(
       const oldStr = typeof input.old_str === 'string' ? input.old_str : '';
       const newStr = typeof input.new_str === 'string' ? input.new_str : '';
       const replaceAll = input.replaceAll === true;
+      const strategyFingerprint = codingSemanticDigest({
+        tool: 'replace_in_file',
+        path: rawPath,
+        oldStr,
+        newStr,
+        replaceAll,
+      });
       markToolCall();
       if (!rawPath) {
         const reason = '缺少 path，未修改任何文件。';
         await canonicalTools.fail(toolPlan, canonicalContext, 'missing-replace-path');
-        recordToolFailure('replace_in_file', 'replace', undefined, reason);
+        recordToolFailure('replace_in_file', 'replace', undefined, reason, strategyFingerprint);
         parts.push(`[replace_in_file] 错误: ${reason}`);
         continue;
       }
       if (!oldStr) {
         const reason = 'old_str 为空，不能执行不确定替换。请先 read_file 后提供精确原文。';
         await canonicalTools.fail(toolPlan, canonicalContext, 'missing-replace-search-text');
-        recordToolFailure('replace_in_file', 'replace', rawPath, reason);
+        recordToolFailure('replace_in_file', 'replace', rawPath, reason, strategyFingerprint);
         parts.push(`[replace_in_file: ${rawPath}] 错误: ${reason}`);
         continue;
       }
       if (hasPollutedReplaceArgument(oldStr) || hasPollutedReplaceArgument(newStr)) {
         const reason = 'old_str/new_str 混入工具标签或不可见控制字符，无法作为可信补丁执行。请基于最新文件快照重新生成结构化替换参数。';
         await canonicalTools.fail(toolPlan, canonicalContext, 'polluted-replace-argument');
-        recordToolFailure('replace_in_file', 'replace', rawPath, reason);
+        recordToolFailure('replace_in_file', 'replace', rawPath, reason, strategyFingerprint);
         parts.push(`[replace_in_file: ${rawPath}] 错误: ${reason}`);
         continue;
       }
       if (oldStr === newStr) {
         const reason = 'old_str 与 new_str 完全相同，不会产生任何修改。请重新 read_file 后给出真正变化的替换内容。';
         await canonicalTools.fail(toolPlan, canonicalContext, 'replace-no-op');
-        recordToolFailure('replace_in_file', 'replace', rawPath, reason);
+        recordToolFailure('replace_in_file', 'replace', rawPath, reason, strategyFingerprint);
         parts.push(`[replace_in_file: ${rawPath}] 错误: ${reason}`);
         continue;
       }
@@ -951,13 +967,13 @@ export async function executeFakeToolsForLoop(
         if (!absPath || !fs.existsSync(absPath)) {
           const reason = '目标文件不存在，无法替换。请先 list_dir/read_file 确认路径。';
           await canonicalTools.fail(toolPlan, canonicalContext, 'replace-target-missing');
-          recordToolFailure('replace_in_file', 'replace', rawPath, reason);
+          recordToolFailure('replace_in_file', 'replace', rawPath, reason, strategyFingerprint);
           parts.push(`[replace_in_file: ${rawPath}] 错误: ${reason}`);
           continue;
         }
         if (fs.statSync(absPath).isDirectory()) {
           await canonicalTools.fail(toolPlan, canonicalContext, 'replace-target-is-directory');
-          recordToolFailure('replace_in_file', 'replace', rawPath, `目标是目录，不是文件：${absPath}`);
+          recordToolFailure('replace_in_file', 'replace', rawPath, `目标是目录，不是文件：${absPath}`, strategyFingerprint);
           parts.push(`[replace_in_file: ${rawPath}] 错误: 目标是目录，不是文件：${absPath}`);
           continue;
         }
@@ -970,7 +986,7 @@ export async function executeFakeToolsForLoop(
             ? 'old_str 忽略行首空白后匹配到多个位置，无法确定唯一修改点。请缩小到包含唯一上下文的片段。'
             : 'old_str 未在当前文件中找到。请重新 read_file 读取最新内容后再精确替换。';
           await canonicalTools.fail(toolPlan, canonicalContext, 'replace-search-text-stale');
-          recordToolFailure('replace_in_file', 'replace', rawPath, reason);
+          recordToolFailure('replace_in_file', 'replace', rawPath, reason, strategyFingerprint);
           const snapshotKey = nodePath.normalize(absPath);
           const snapshot = replaceMissSnapshots.has(snapshotKey)
             ? '当前文件快照已在本轮前一个失败结果中提供，请不要继续猜测 old_str。'
@@ -983,7 +999,7 @@ export async function executeFakeToolsForLoop(
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         await canonicalTools.fail(toolPlan, canonicalContext, 'replace-preflight-failed');
-        recordToolFailure('replace_in_file', 'replace', rawPath, msg);
+        recordToolFailure('replace_in_file', 'replace', rawPath, msg, strategyFingerprint);
         parts.push(`[replace_in_file: ${rawPath}] 错误: ${msg}`);
       }
     } else if (isFileWriteToolName(tool.name)) {

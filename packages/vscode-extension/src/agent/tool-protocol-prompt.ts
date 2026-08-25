@@ -67,6 +67,8 @@ export function buildTextToolEnvelopeRecoveryPrompt(session: TextToolProtocolSes
       session,
       '[TOOL:read_file {"path":"/absolute/path/to/file"}]',
     ),
+    '- create_file/write_file 的源码 content 含双引号、反斜杠或真实换行时，损坏 JSON 不会获得写入权；必须在当前信封内使用以下 fenced CDATA：',
+    renderProtocolExample(FULL_FILE_WRITE_RAW_EXAMPLE, session),
     '- 创建较大文件时先写入不超过 1800 字符的完整最小版本，等待真实写盘结果后再分轮扩充；不要在一个回复中粘贴长产物。',
     '- 输出闭合信封后立即停止并等待真实工具结果。',
   ].join('\n');

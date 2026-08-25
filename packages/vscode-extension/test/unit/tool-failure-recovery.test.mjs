@@ -23,6 +23,7 @@ const staleReplaceFailure = {
   kind: 'replace',
   path: '/repo/src/verify.sh',
   reason: 'old_str 未在当前文件中找到。请重新 read_file 读取最新内容后再精确替换。',
+  strategyFingerprint: 'same-concrete-replace-proposal',
 };
 
 test('ToolFailureRecoveryLedger: duplicate failures in one provider response count as one round', () => {
@@ -49,6 +50,16 @@ test('ToolFailureRecoveryLedger: stops only after the same strategy fails across
   const result = ledger.recordRound([staleReplaceFailure]);
 
   assert.match(result.stopReason, /连续 4 轮失败/);
+});
+
+test('ToolFailureRecoveryLedger: changed mutation parameters are distinct recovery strategies', () => {
+  const ledger = new ToolFailureRecoveryLedger();
+  let result;
+  for (const strategyFingerprint of ['proposal-a', 'proposal-b', 'proposal-c', 'proposal-d']) {
+    result = ledger.recordRound([{ ...staleReplaceFailure, strategyFingerprint }]);
+  }
+
+  assert.equal(result.stopReason, undefined);
 });
 
 test('ToolFailureRecoveryLedger: a successful write clears stale failure history for that path', () => {

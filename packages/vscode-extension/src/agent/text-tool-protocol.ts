@@ -1,4 +1,5 @@
 import * as crypto from 'crypto';
+import { codingSemanticDigest } from '@devseek-netai/shared';
 import {
   analyzeFakeToolCallProtocol,
   parseFakeToolCalls,
@@ -24,6 +25,12 @@ export interface InvalidAuthorizedTextToolProtocol {
 }
 
 const CHANNEL_ID_RE = /^[A-Za-z0-9_-]{16,96}$/;
+const FILE_CONTENT_MUTATION_TOOLS = new Set([
+  'create_file',
+  'write_file',
+  'replace_file',
+  'replace_in_file',
+]);
 
 export function createTextToolProtocolSession(channelId = crypto.randomBytes(18).toString('base64url')): TextToolProtocolSession {
   if (!CHANNEL_ID_RE.test(channelId)) {
@@ -45,7 +52,7 @@ export function parseAuthorizedTextToolCalls(
 ): FakeTool[] {
   if (!session) return [];
   return extractAuthorizedTextToolPayloads(text, session)
-    .flatMap(payload => parseFakeToolCalls(payload));
+    .flatMap(parseAuthorizedTextToolPayload);
 }
 
 /** Detects executable-looking provider output without granting it tool authority. */
@@ -66,7 +73,7 @@ export function inspectOutOfEnvelopeTextToolProtocol(
   });
 }
 
-/** Rejects authenticated envelopes that do not contain any recognized tool. */
+/** Rejects authenticated envelopes that do not contain a safely executable tool. */
 export function inspectInvalidAuthorizedTextToolProtocol(
   text: string,
   session: TextToolProtocolSession | undefined,
@@ -75,12 +82,109 @@ export function inspectInvalidAuthorizedTextToolProtocol(
     return Object.freeze({ found: false, envelopeCount: 0, invalidEnvelopeCount: 0 });
   }
   const payloads = extractAuthorizedTextToolPayloads(text, session);
-  const invalidEnvelopeCount = payloads.filter(payload => parseFakeToolCalls(payload).length === 0).length;
+  const invalidEnvelopeCount = payloads.filter(payload => parseAuthorizedTextToolPayload(payload).length === 0).length;
   return Object.freeze({
     found: invalidEnvelopeCount > 0,
     envelopeCount: payloads.length,
     invalidEnvelopeCount,
   });
+}
+
+/**
+ * Compatibility parsers may recognize malformed provider JSON for quarantine and
+ * transcript cleanup. File mutations need a lossless serialization before they
+ * can cross the execution boundary: strict JSON or one fenced CDATA XML call.
+ */
+function parseAuthorizedTextToolPayload(payload: string): FakeTool[] {
+  const tools = parseFakeToolCalls(payload);
+  const mutations = tools.filter(tool => FILE_CONTENT_MUTATION_TOOLS.has(tool.name));
+  if (mutations.length === 0) return tools;
+
+  const analysis = analyzeFakeToolCallProtocol(payload);
+  const losslessIdentities = new Set(
+    analysis.matches
+      .filter(match => match.dialect === 'bare-json-tool-call')
+      .flatMap(match => match.tools)
+      .filter(tool => FILE_CONTENT_MUTATION_TOOLS.has(tool.name))
+      .map(toolIdentity),
+  );
+  for (const identity of strictJsonXmlMutationIdentities(payload)) {
+    losslessIdentities.add(identity);
+  }
+  for (const identity of losslessFencedXmlMutationIdentities(payload)) {
+    losslessIdentities.add(identity);
+  }
+
+  return mutations.every(tool => losslessIdentities.has(toolIdentity(tool))) ? tools : [];
+}
+
+function strictJsonXmlMutationIdentities(payload: string): string[] {
+  const identities: string[] = [];
+  const mutationNames = [...FILE_CONTENT_MUTATION_TOOLS].map(escapeRegExp).join('|');
+  const pairedTool = new RegExp(
+    `<\\s*(${mutationNames})\\b[^>]*>([\\s\\S]*?)<\\/\\s*\\1\\s*>`,
+    'gi',
+  );
+  let match: RegExpExecArray | null;
+  while ((match = pairedTool.exec(payload)) !== null) {
+    const name = match[1].toLowerCase();
+    const body = String(match[2] || '').trim();
+    try {
+      const parsed = JSON.parse(body) as unknown;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
+      const tools = parseFakeToolCalls(`${name} ${body}`);
+      if (tools.length === 1 && tools[0].name === name) identities.push(toolIdentity(tools[0]));
+    } catch { /* Mutation authority requires strict, lossless JSON. */ }
+  }
+  return identities;
+}
+
+function losslessFencedXmlMutationIdentities(payload: string): string[] {
+  const identities: string[] = [];
+  const fencedXml = /```xml[ \t]*\r?\n([\s\S]*?)```/gi;
+  let match: RegExpExecArray | null;
+  while ((match = fencedXml.exec(payload)) !== null) {
+    const block = match[1] || '';
+    const mutations = parseFakeToolCalls(block)
+      .filter(tool => FILE_CONTENT_MUTATION_TOOLS.has(tool.name));
+    if (mutations.length !== 1 || !hasRequiredCdataParameters(block, mutations[0].name)) continue;
+    identities.push(toolIdentity(mutations[0]));
+  }
+  return identities;
+}
+
+function hasRequiredCdataParameters(block: string, toolName: string): boolean {
+  const escapedName = escapeRegExp(toolName);
+  const outer = new RegExp(
+    `<\\s*${escapedName}\\b[^>]*>([\\s\\S]*?)<\\/\\s*${escapedName}\\s*>`,
+    'i',
+  ).exec(block);
+  if (!outer) return false;
+  const body = outer[1] || '';
+  if (toolName === 'replace_in_file') {
+    return hasCdataField(body, ['old_str', 'oldString', 'old_string', 'oldText', 'old_text'])
+      && hasCdataField(body, ['new_str', 'newString', 'new_string', 'newText', 'new_text']);
+  }
+  return hasCdataField(body, [
+    'content', 'contents', 'text', 'body', 'fileContent', 'file_content',
+    'source', 'code', 'newContent', 'new_content',
+  ]);
+}
+
+function hasCdataField(body: string, names: readonly string[]): boolean {
+  const pattern = names.map(escapeRegExp).join('|');
+  return new RegExp(
+    `<\\s*(?:${pattern})\\b[^>]*>\\s*<!\\[CDATA\\[[\\s\\S]*?\\]\\]>\\s*<\\/\\s*(?:${pattern})\\s*>`,
+    'i',
+  ).test(body);
+}
+
+function toolIdentity(tool: FakeTool): string {
+  return codingSemanticDigest({ name: tool.name, input: tool.input });
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export function extractAuthorizedTextToolPayloads(

@@ -38,8 +38,9 @@ function resolveUniqueLineWhitespaceReplacement(
 ): TextReplacementResolution {
   const oldLines = trimBoundaryBlankLines(normalizeLines(oldText));
   const newLines = trimBoundaryBlankLines(normalizeLines(newText));
-  if (oldLines.length < 2 || oldLines.length !== newLines.length) return { status: 'not-found' };
-  if (oldLines.every((line, index) => normalizeTransportLine(line) === normalizeTransportLine(newLines[index]))) {
+  if (oldLines.length < 2) return { status: 'not-found' };
+  if (oldLines.length === newLines.length
+    && oldLines.every((line, index) => normalizeTransportLine(line) === normalizeTransportLine(newLines[index]))) {
     return { status: 'not-found' };
   }
 
@@ -60,10 +61,12 @@ function resolveUniqueLineWhitespaceReplacement(
   for (const start of [...selected].reverse()) {
     const matchedLines = sourceLines.slice(start, start + oldLines.length);
     const rendered = newLines.map((line, index) => {
-      if (normalizeTransportLine(line) === normalizeTransportLine(oldLines[index])) {
+      if (index < oldLines.length
+        && normalizeTransportLine(line) === normalizeTransportLine(oldLines[index])) {
         return matchedLines[index];
       }
-      const indentation = /^[\t ]*/u.exec(matchedLines[index])?.[0] ?? '';
+      const indentationSource = matchedLines[Math.min(index, matchedLines.length - 1)] ?? '';
+      const indentation = /^[\t ]*/u.exec(indentationSource)?.[0] ?? '';
       return indentation + line.replace(/^[\t ]*/u, '');
     });
     sourceLines.splice(start, oldLines.length, ...rendered);

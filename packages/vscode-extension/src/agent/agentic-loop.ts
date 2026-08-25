@@ -549,7 +549,7 @@ export async function runAgenticLoop(
             ? `检测到授权信封外的结构化工具动作（${quarantinedProtocol.dialects.join(', ')}）；已隔离且未执行。`
             : incompleteAuthorizedEnvelope
               ? '工具协议信封没有完整闭合，未形成可安全执行的工具参数。'
-              : `检测到 ${invalidAuthorizedProtocol.invalidEnvelopeCount} 个不含已注册工具的授权信封；已隔离且未执行。`,
+              : `检测到 ${invalidAuthorizedProtocol.invalidEnvelopeCount} 个未形成无损可执行工具参数的授权信封；已隔离且未执行。`,
           rawMessage: text,
           recoverable: true,
         }, text.trim().length);

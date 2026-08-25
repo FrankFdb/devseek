@@ -123,3 +123,68 @@ test('complete authorized envelopes without a recognized tool are rejected', () 
     invalidEnvelopeCount: 0,
   });
 });
+
+test('lossy JSON source mutations are quarantined while strict JSON preserves exact bytes', () => {
+  const cppContent = [
+    '#include "lesson_controller.hpp"',
+    "if (c == '\\\\') {",
+    '  result += "\\\\\\\\";',
+    '}',
+  ].join('\n');
+  const lossyPayload = `[TOOL:create_file {"path":"src/lesson_controller.cpp","content":"${cppContent.replace(/\n/g, '\\n')}"}]`;
+  const lossyEnvelope = renderTextToolProtocolEnvelope(session, lossyPayload);
+
+  assert.deepEqual(parseAuthorizedTextToolCalls(lossyEnvelope, session), []);
+  assert.deepEqual(inspectInvalidAuthorizedTextToolProtocol(lossyEnvelope, session), {
+    found: true,
+    envelopeCount: 1,
+    invalidEnvelopeCount: 1,
+  });
+
+  const strictPayload = `[TOOL:create_file ${JSON.stringify({
+    path: 'src/lesson_controller.cpp',
+    content: cppContent,
+  })}]`;
+  const [strictTool] = parseAuthorizedTextToolCalls(
+    renderTextToolProtocolEnvelope(session, strictPayload),
+    session,
+  );
+  assert.equal(strictTool.name, 'create_file');
+  assert.equal(strictTool.input.content, cppContent);
+});
+
+test('strict JSON remains lossless inside a paired XML tool tag', () => {
+  const content = '#include <string>\nconst char* value = "a\\\\b";\n';
+  const payload = `<create_file>${JSON.stringify({ path: '/repo/main.cpp', content })}</create_file>`;
+  const [tool] = parseAuthorizedTextToolCalls(
+    renderTextToolProtocolEnvelope(session, payload),
+    session,
+  );
+
+  assert.equal(tool.name, 'create_file');
+  assert.equal(tool.input.content, content);
+});
+
+test('fenced CDATA grants lossless source mutation authority but naked XML does not', () => {
+  const cppContent = '#include "lesson_controller.hpp"\nstd::string escaped = "\\\\n";\n';
+  const xmlPayload = [
+    '```xml',
+    '<create_file>',
+    '<path>src/lesson_controller.cpp</path>',
+    `<content><![CDATA[${cppContent}]]></content>`,
+    '</create_file>',
+    '```',
+  ].join('\n');
+  const [tool] = parseAuthorizedTextToolCalls(
+    renderTextToolProtocolEnvelope(session, xmlPayload),
+    session,
+  );
+  assert.equal(tool.name, 'create_file');
+  assert.equal(tool.input.content, cppContent);
+
+  const nakedXml = xmlPayload.replace(/^```xml\n|\n```$/g, '');
+  assert.deepEqual(parseAuthorizedTextToolCalls(
+    renderTextToolProtocolEnvelope(session, nakedXml),
+    session,
+  ), []);
+});

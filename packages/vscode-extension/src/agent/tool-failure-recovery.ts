@@ -1,5 +1,5 @@
 import * as nodePath from 'path';
-import type { ToolFailureEvidence } from './tool-loop';
+import type { ToolFailureEvidence } from './tool-loop-result';
 
 export interface ToolFailureRoundResult {
   warnings: string[];
@@ -111,6 +111,7 @@ function makeToolFailureSignature(failure: ToolFailureEvidence): string {
     failure.tool,
     failure.kind,
     normalizeToolFailurePath(failure.path),
+    failure.strategyFingerprint ?? 'unspecified-strategy',
     failure.reason.slice(0, 220),
   ].join('::');
 }

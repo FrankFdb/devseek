@@ -34,6 +34,8 @@ export interface ToolFailureEvidence {
   kind: 'write' | 'replace' | 'terminal-guard' | 'terminal-capability' | 'tool-host';
   path?: string;
   reason: string;
+  /** Digest of the concrete proposal; changed parameters are a new strategy. */
+  strategyFingerprint?: string;
 }
 
 export interface ToolSuppressionEvidence {

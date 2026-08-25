@@ -1347,6 +1347,7 @@ test('ToolLoop replace_in_file fails clearly when old_str is stale', async () =>
     assert.equal(result.writtenFiles, undefined);
     assert.equal(result.toolFailures?.[0]?.tool, 'replace_in_file');
     assert.equal(result.toolFailures?.[0]?.kind, 'replace');
+    assert.match(result.toolFailures?.[0]?.strategyFingerprint ?? '', /^[0-9a-f]{64}$/);
     assert.match(result.feedbackForAI, /old_str 未在当前文件中找到/);
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });
@@ -1420,6 +1421,7 @@ test('ToolLoop records blocking source sanity failures as structured tool failur
     assert.equal(result.writtenFiles, undefined);
     assert.equal(result.toolFailures?.[0]?.tool, 'create_file');
     assert.equal(result.toolFailures?.[0]?.kind, 'write');
+    assert.match(result.toolFailures?.[0]?.strategyFingerprint ?? '', /^[0-9a-f]{64}$/);
     assert.match(result.toolFailures?.[0]?.reason ?? '', /源码语法护栏/);
     assert.match(result.toolFailures?.[0]?.reason ?? '', /第 1 行附近.*字符串字面量/);
   } finally {

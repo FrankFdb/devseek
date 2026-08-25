@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
 import {
+  codingSemanticDigest,
   codingToolExecutionFailureReason,
   type CodingWorkspaceMutationReceipt,
 } from '@devseek-netai/shared';
@@ -35,7 +36,7 @@ export interface ToolLoopWrittenFile {
 
 export interface ToolLoopFileWriteReporter {
   feedback(message: string): void;
-  failure(toolName: string, rawPath: string | undefined, reason: string): void;
+  failure(toolName: string, rawPath: string | undefined, reason: string, strategyFingerprint?: string): void;
   cancellation(toolName: string, rawPath: string): void;
   written(file: ToolLoopWrittenFile): void;
   evidence(ref: EvidenceRef): void;
@@ -70,11 +71,12 @@ export class ToolLoopFileWriter {
     content: string,
   ): Promise<boolean> {
     const { callbacks, canonical, reporter } = this.options;
+    const strategyFingerprint = codingSemanticDigest({ tool: toolName, path: rawPath, content });
     let canonicalSettled = false;
     const failBeforeEffect = async (errorCode: string, reason: string): Promise<boolean> => {
       await canonical.fail(toolPlan, canonicalContext, errorCode);
       canonicalSettled = true;
-      reporter.failure(toolName, rawPath || undefined, reason);
+      reporter.failure(toolName, rawPath || undefined, reason, strategyFingerprint);
       reporter.feedback(`[${toolName}${rawPath ? `: ${rawPath}` : ''}] 错误: ${reason}`);
       return false;
     };
@@ -154,7 +156,7 @@ export class ToolLoopFileWriter {
         const reason = `缺少写入授权边界：${absPath}`;
         await canonical.deny(toolPlan, canonicalContext, reason);
         canonicalSettled = true;
-        reporter.failure(toolName, rawPath, reason);
+        reporter.failure(toolName, rawPath, reason, strategyFingerprint);
         reporter.feedback(`[${toolName}: ${rawPath}] 跳过（缺少写入授权边界）`);
         return false;
       }
@@ -216,7 +218,7 @@ export class ToolLoopFileWriter {
         const reason = mutationReceipt?.errorCode === 'workspace-proposal-invalid'
           ? `源码语法护栏阻止写入：${mutationReceipt.errorDetail ?? terminalReason}`
           : `工作区写入事务未提交：${terminalReason}`;
-        reporter.failure(toolName, rawPath, reason);
+        reporter.failure(toolName, rawPath, reason, strategyFingerprint);
         reporter.feedback(`[${toolName}: ${rawPath}] 错误: ${reason}`);
         return false;
       }
@@ -224,14 +226,14 @@ export class ToolLoopFileWriter {
       const persistedContent = fs.readFileSync(absPath, 'utf8');
       if (persistedContent !== writeResult.newContent) {
         const reason = `写入后读回内容不一致：${absPath}`;
-        reporter.failure(toolName, rawPath, reason);
+        reporter.failure(toolName, rawPath, reason, strategyFingerprint);
         reporter.feedback(`[${toolName}: ${rawPath}] 错误: ${reason}`);
         return false;
       }
       const stat = fs.statSync(absPath);
       if (!stat.isFile() || stat.size === 0) {
         const reason = `写入后校验失败（不是有效文件或文件为空）：${absPath}`;
-        reporter.failure(toolName, rawPath, reason);
+        reporter.failure(toolName, rawPath, reason, strategyFingerprint);
         reporter.feedback(this.repeatedFailureMessage(toolName, rawPath, reason, false));
         return false;
       }
@@ -240,7 +242,7 @@ export class ToolLoopFileWriter {
       }
       if (writeResult.existed && writeResult.oldContent === writeResult.newContent) {
         const reason = `未发生内容变化：${normalized.path}`;
-        reporter.failure(toolName, rawPath, reason);
+        reporter.failure(toolName, rawPath, reason, strategyFingerprint);
         reporter.feedback(`[${toolName}: ${rawPath}] 未发生内容变化，未计入本轮修改证据：${normalized.path}`);
         return false;
       }
@@ -266,7 +268,7 @@ export class ToolLoopFileWriter {
       if (!canonicalSettled) {
         await canonical.fail(toolPlan, canonicalContext, 'file-write-preflight-or-projection-failed');
       }
-      reporter.failure(toolName, rawPath, message);
+      reporter.failure(toolName, rawPath, message, strategyFingerprint);
       reporter.feedback(this.repeatedFailureMessage(toolName, rawPath, message, true));
       return false;
     }

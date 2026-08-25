@@ -63,6 +63,25 @@ test('line-whitespace fallback refuses ambiguous and single-line fuzzy matches',
   );
 });
 
+test('line-whitespace fallback can repair a unique block while changing its line count', () => {
+  const source = [
+    'void repair() {',
+    '  call(',
+    '    value);',
+    '}',
+    '',
+  ].join('\n');
+
+  const result = resolveTextReplacement(source, 'call(\nvalue);', 'call(value);', false);
+
+  assert.deepEqual(result, {
+    status: 'matched',
+    content: 'void repair() {\n  call(value);\n}\n',
+    matchMode: 'line-whitespace',
+    replacementCount: 1,
+  });
+});
+
 test('exact replacement behavior remains unchanged', () => {
   const result = resolveTextReplacement('a\na\n', 'a', 'b', true);
   assert.deepEqual(result, {

@@ -117,6 +117,7 @@ test('§1 Agent loop: repeated blocking tool failures are stateful', () => {
   assertContains(recovery, 'DEFAULT_WARN_AFTER_ROUNDS', 'recovery ledger must warn on repeated blocking failures');
   assertContains(recovery, 'DEFAULT_STOP_AFTER_ROUNDS', 'recovery ledger must stop no-progress repeated failures');
   assertContains(recovery, 'current.occurrences > 1', 'same-response duplicate failures must be grouped');
+  assertContains(recovery, 'failure.strategyFingerprint', 'failure identity must distinguish changed mutation parameters');
   assertContains(recovery, 'buildRepeatedToolFailureFeedback', 'recovery ledger must tell the model how to change strategy');
   assertContains(toolLoop, "from './tool-loop-result'", 'tool loop must delegate its result contract to one owner');
   assertContains(toolLoopResult, 'toolFailures?: ToolFailureEvidence[]', 'tool loop result must expose structured blocking failure evidence');
@@ -2985,6 +2986,8 @@ test('Agentic loop: visible correction and context convergence are owned by Agen
   assertContains(agenticLoop, 'inspectOutOfEnvelopeTextToolProtocol(text, textToolProtocol)', 'out-of-envelope model actions must be quarantined without execution authority');
   assertContains(textProtocol, 'channelId', 'text-provider tool authority must be scoped to a run channel');
   assertContains(textProtocol, 'QuarantinedTextToolProtocol', 'text protocol boundary must expose quarantine evidence separately from authorized calls');
+  assertContains(textProtocol, "match.dialect === 'bare-json-tool-call'", 'strict JSON must remain a lossless mutation authority path');
+  assertContains(textProtocol, 'losslessFencedXmlMutationIdentities', 'fenced CDATA must own text-provider source mutation authority');
   assertContains(agenticLoop, 'settleOrRecoverProviderFailureInsideCurrentTask({', 'all provider failures must settle completed evidence before entering recovery');
   assertContains(agenticLoop, "'incomplete-tool-block'", 'damaged authorized envelopes must get a stable recoverable failure status');
   assertContains(agenticLoop, "'invalid-tool-block'", 'empty or malformed authorized envelopes must get a stable recoverable failure status');
