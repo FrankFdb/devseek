@@ -1,3 +1,4 @@
+import cp from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,6 +36,8 @@ export function prepareWorkspace(workspace) {
     'submit',
   ].join('\n'));
   write(path.join(workspace, 'assets/invalid.actions'), 'set-total 0\n');
+  const gitInit = cp.spawnSync('git', ['init', '--quiet'], { cwd: workspace, encoding: 'utf8' });
+  if (gitInit.status !== 0) throw new Error(`Could not initialize isolated fixture repository: ${gitInit.stderr || gitInit.stdout}`);
 }
 
 function cmakeContract() {

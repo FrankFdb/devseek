@@ -2751,13 +2751,15 @@ async function submitPromptThroughDomFrame(found) {
   } catch {
     userTurnObserved = false;
   }
+  const foregroundDispatch = await waitForNaturalUiForegroundDispatch(30_000);
   const result = {
-    ok: true,
+    ok: userTurnObserved && foregroundDispatch.observed,
     route: 'vscode-webview-textarea-click',
     naturalUi: true,
     commandInjected: false,
     entryMethod,
     userTurnObserved,
+    foregroundDispatch,
     inputSelector: '#input',
     sendSelector: '#send-btn',
     frameUrl: found.frame.url(),
@@ -2795,25 +2797,66 @@ async function submitPromptThroughScreenCoordinates(context, domFallbackError) {
   const screenshotBeforeSend = path.join(tmpRoot, 'natural-ui-input-before-send.png');
   await page.screenshot({ path: screenshotBeforeSend, fullPage: false }).catch(() => {});
   await page.mouse.click(sendPoint.x, sendPoint.y);
+  const foregroundDispatch = await waitForNaturalUiForegroundDispatch(30_000);
+  const screenshotAfterSend = path.join(tmpRoot, 'natural-ui-input-after-send.png');
+  await page.screenshot({ path: screenshotAfterSend, fullPage: false }).catch(() => {});
 
   const result = {
-    ok: true,
+    ok: foregroundDispatch.observed,
     route: 'vscode-webview-screen-coordinate-keyboard',
     naturalUi: true,
     commandInjected: false,
     entryMethod: 'screen-coordinate-click-keyboard-insertText',
-    userTurnObserved: null,
+    userTurnObserved: foregroundDispatch.observed,
+    foregroundDispatch,
     domFallbackError,
     inputPoint,
     sendPoint,
     viewport,
     screenshotBeforeSend,
+    screenshotAfterSend,
     debugPort: vscodeDebugPort,
     promptLength: prompt.length,
     promptSha256: crypto.createHash('sha256').update(prompt).digest('hex'),
   };
   appendHarnessProgress('natural-ui-submitted', result);
   return result;
+}
+
+async function waitForNaturalUiForegroundDispatch(timeoutMs) {
+  const runsDir = path.join(workspaceDir, '.devseek', 'runs');
+  const expectedPrompt = {
+    length: prompt.length,
+    sha256: crypto.createHash('sha256').update(prompt).digest('hex'),
+  };
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(runsDir)) {
+      for (const name of fs.readdirSync(runsDir).filter(item => item.endsWith('.log'))) {
+        const events = fs.readFileSync(path.join(runsDir, name), 'utf8')
+          .split(/\r?\n/)
+          .map(parseHarnessJsonLine)
+          .filter(Boolean);
+        const started = events.find(event => event.event === 'agent-run-started'
+          && event.data?.workloadRole !== 'background-maintenance'
+          && event.data?.prompt?.length === expectedPrompt.length
+          && event.data?.prompt?.sha256 === expectedPrompt.sha256);
+        if (started) {
+          return { observed: true, runId: started.runId, ts: started.ts, prompt: expectedPrompt };
+        }
+      }
+    }
+    await delay(250);
+  }
+  return { observed: false, runId: '', ts: '', prompt: expectedPrompt };
+}
+
+function parseHarnessJsonLine(line) {
+  try {
+    return JSON.parse(line);
+  } catch {
+    return null;
+  }
 }
 
 async function findDevSeekInputFrame(context, waitMs) {

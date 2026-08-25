@@ -623,6 +623,17 @@ test('real plugin VSIX harness timeout reports are report-time snapshots, not br
   );
 });
 
+test('real plugin natural UI submission requires prompt-bound foreground dispatch evidence', () => {
+  const source = readFileSync(realPluginHarnessPath, 'utf8');
+
+  assert.match(source, /waitForNaturalUiForegroundDispatch\(30_000\)/u);
+  assert.match(source, /\.map\(parseHarnessJsonLine\)/u);
+  assert.match(source, /function parseHarnessJsonLine\(line\)/u);
+  assert.match(source, /event\.data\?\.prompt\?\.sha256 === expectedPrompt\.sha256/u);
+  assert.match(source, /ok: foregroundDispatch\.observed/u);
+  assert.doesNotMatch(source, /route: 'vscode-webview-screen-coordinate-keyboard',[\s\S]{0,120}ok: true/u);
+});
+
 test('real plugin VSIX harness parses product and bridge run-log timestamps', () => {
   const source = readFileSync(realPluginHarnessPath, 'utf8');
   const { parseRunLogStartedAtMs } = evaluateHarnessFunctions(

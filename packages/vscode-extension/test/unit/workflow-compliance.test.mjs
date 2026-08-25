@@ -1168,6 +1168,14 @@ test('Real DeepSeek harness: timeout reports are marked as report-time snapshots
   assertContains(harness, '此 report.json 只代表报告写入时刻的快照', 'timeout failures must explain that post-report product evidence needs separate review');
 });
 
+test('Real DeepSeek harness: natural UI cannot claim success without foreground prompt evidence', () => {
+  const harness = src('test/devseek-real-plugin-deepseek-harness.mjs');
+  assertContains(harness, 'waitForNaturalUiForegroundDispatch(30_000)', 'natural UI must wait for product dispatch evidence');
+  assertContains(harness, '.map(parseHarnessJsonLine)', 'natural UI must use an outer-scope log parser');
+  assertContains(harness, 'event.data?.prompt?.sha256 === expectedPrompt.sha256', 'natural UI evidence must bind the exact prompt');
+  assertContains(harness, 'ok: foregroundDispatch.observed', 'coordinate fallback must fail closed when dispatch is absent');
+});
+
 test('Real DeepSeek harness: quality gates are scenario-driven and task-specific', () => {
   const harness = src('test/devseek-real-plugin-deepseek-harness.mjs');
   assertContains(harness, 'buildRealPluginQualityProfile', 'real harness must select canary/medium/formal quality profiles');
