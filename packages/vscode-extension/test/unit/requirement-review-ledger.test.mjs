@@ -128,6 +128,27 @@ test('host final-source evidence can trigger isolated review without provider re
   assert.equal(ledger.completionBlocker(), undefined);
 });
 
+test('independent review candidate retains non-source files actually read during implementation', () => {
+  const ledger = new RequirementReviewLedger();
+  const writes = [sourceWrite('src/main.cpp')];
+  ledger.request({
+    qualityGate: passedGate,
+    writtenFiles: writes,
+    roundReadFiles: [],
+    readEvidencePaths: [
+      'USER_STORY.md',
+      '/workspace/USER_STORY.md',
+      '/workspace/src/main.cpp',
+    ],
+    hostFinalSourceEvidenceReady: true,
+  });
+
+  assert.deepEqual(ledger.takeIndependentReviewCandidate(), {
+    sourcePaths: ['src/main.cpp'],
+    contextPaths: ['USER_STORY.md'],
+  });
+});
+
 test('host final-source evidence never bypasses failed validation', () => {
   const ledger = new RequirementReviewLedger();
   const feedback = ledger.request({

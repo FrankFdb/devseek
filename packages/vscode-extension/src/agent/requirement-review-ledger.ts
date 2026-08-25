@@ -6,6 +6,7 @@ export interface RequirementReviewInput {
   qualityGate?: AgenticHistoryQualityGate;
   writtenFiles: readonly WrittenFileEvidence[];
   roundReadFiles: readonly string[];
+  readEvidencePaths?: readonly string[];
   hostFinalSourceEvidenceReady?: boolean;
 }
 
@@ -30,6 +31,7 @@ export interface RequirementReviewDecision {
 
 export interface RequirementReviewCandidate {
   sourcePaths: readonly string[];
+  contextPaths?: readonly string[];
 }
 
 export type RequirementReviewNoToolRecovery =
@@ -39,6 +41,7 @@ export type RequirementReviewNoToolRecovery =
 interface PendingRequirementReview {
   changedSourcePaths: string[];
   reviewSourcePaths: string[];
+  contextPaths: string[];
   freshSourceEvidenceReady: boolean;
   hostFinalSourceEvidenceReady: boolean;
   reviewerRequested: boolean;
@@ -74,6 +77,7 @@ export class RequirementReviewLedger {
       this.pending = {
         changedSourcePaths,
         reviewSourcePaths,
+        contextPaths: uniqueContextPaths(input.readEvidencePaths ?? [], reviewSourcePaths),
         freshSourceEvidenceReady: hostFinalSourceEvidenceReady,
         hostFinalSourceEvidenceReady,
         reviewerRequested: false,
@@ -148,7 +152,12 @@ export class RequirementReviewLedger {
   takeIndependentReviewCandidate(): RequirementReviewCandidate | undefined {
     if (!this.pending?.freshSourceEvidenceReady || this.pending.reviewerRequested) return undefined;
     this.pending.reviewerRequested = true;
-    return { sourcePaths: [...this.pending.reviewSourcePaths] };
+    return {
+      sourcePaths: [...this.pending.reviewSourcePaths],
+      ...(this.pending.contextPaths.length > 0
+        ? { contextPaths: [...this.pending.contextPaths] }
+        : {}),
+    };
   }
 
   settleIndependentReview(decision: RequirementReviewDecision): string | undefined {
@@ -233,6 +242,18 @@ export class RequirementReviewLedger {
         : feedback,
     };
   }
+}
+
+function uniqueContextPaths(
+  paths: readonly string[],
+  sourcePaths: readonly string[],
+): string[] {
+  const unique: string[] = [];
+  for (const candidate of paths) {
+    if (sourcePaths.some(sourcePath => sameWorkspacePath(candidate, sourcePath))) continue;
+    if (!unique.some(existing => sameWorkspacePath(candidate, existing))) unique.push(candidate);
+  }
+  return unique;
 }
 
 function renderBlockingDecision(decision: RequirementReviewDecision): string {

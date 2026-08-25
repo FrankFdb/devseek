@@ -2466,6 +2466,11 @@ test('Architecture: validated source changes require fresh source review before 
     'review evidence must come from the current tool round',
   );
   assertContains(
+    agenticLoop,
+    'readEvidencePaths: [...allReadEvidencePaths]',
+    'isolated review must retain project context the implementing agent actually read',
+  );
+  assertContains(
     reviewLedger,
     'freshSourceEvidenceReady',
     'the review owner must distinguish scheduled review from fresh-source evidence',
@@ -2549,6 +2554,11 @@ test('Architecture: validated source changes require fresh source review before 
     independentReview,
     'Return one exact JSON object matching the schema',
     'semantic review must return a machine-checkable verdict',
+  );
+  assertContains(
+    independentReview,
+    '[WORKSPACE CONTEXT READ BY IMPLEMENTING AGENT]',
+    'semantic review must receive bounded project context separately from final source',
   );
   assertContains(
     providerTranscriptRecovery,

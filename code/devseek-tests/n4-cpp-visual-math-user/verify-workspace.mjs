@@ -14,6 +14,11 @@ const sourcePaths = Object.freeze([
   'src/raster_canvas.cpp',
   'src/x11_app.cpp',
 ]);
+const unfinishedSource = /(?:\bTODO\b|\bFIXME\b|\bplaceholder\b|\bfuture implementation\b|\bnot implemented\b)/iu;
+
+export function hasUnfinishedImplementation(sourceText) {
+  return unfinishedSource.test(sourceText);
+}
 
 export function verifyWorkspace(workspace, stage, evidenceDir) {
   const checks = [];
@@ -29,9 +34,9 @@ export function verifyWorkspace(workspace, stage, evidenceDir) {
     .filter(rel => fileHasContent(root, rel))
     .map(rel => fs.readFileSync(path.join(root, rel), 'utf8'))
     .join('\n');
-  const unfinishedSource = /(?:TODO|FIXME|placeholder|future implementation|not implemented)/iu;
-  check(checks, 'source-hygiene', !unfinishedSource.test(sourceText) && !/\bsystem\s*\(/u.test(sourceText), {
-    unfinishedImplementation: unfinishedSource.test(sourceText),
+  const unfinishedImplementation = hasUnfinishedImplementation(sourceText);
+  check(checks, 'source-hygiene', !unfinishedImplementation && !/\bsystem\s*\(/u.test(sourceText), {
+    unfinishedImplementation,
     systemCall: /\bsystem\s*\(/u.test(sourceText),
   });
 

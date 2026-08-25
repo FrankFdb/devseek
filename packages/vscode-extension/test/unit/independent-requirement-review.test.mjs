@@ -125,6 +125,20 @@ test('accepts one unlabeled code fence when it contains the complete review docu
   assert.deepEqual(decision.findings, []);
 });
 
+test('accepts one isolated JSON fence while ignoring non-structural surrounding prose', () => {
+  const source = snapshot();
+  const prompt = 'Keep the implementation correct.';
+  const fenced = [
+    'Re-evaluated the final source against the supplied requirement.',
+    `\`\`\`json\n${JSON.stringify(passBody(prompt), null, 2)}\n\`\`\``,
+  ].join('\n\n');
+
+  const decision = parseIndependentReviewResponse({ text: fenced, toolCount: 0 }, [source], prompt);
+
+  assert.equal(decision.status, 'passed');
+  assert.deepEqual(decision.findings, []);
+});
+
 test('accepts one or more model findings tied to the aggregate raw request', () => {
   const source = snapshot('src/main.ts', 'export const first = 1;\nexport const second = 1;\n');
   const prompt = 'Return 2 from both exported values.';
@@ -158,7 +172,8 @@ test('malformed model proposals remain indeterminate and never trigger source ke
   const malformed = [
     { text: 'not json', toolCount: 0 },
     { text: '```json\n{}\n```', toolCount: 0 },
-    { text: `\`\`\`json\n${JSON.stringify(passBody(prompt))}\n\`\`\`\nextra prose`, toolCount: 0 },
+    { text: `\`\`\`json\n${JSON.stringify(passBody(prompt))}\n\`\`\`\n{"second":"document"}`, toolCount: 0 },
+    { text: `\`\`\`json\n${JSON.stringify(passBody(prompt))}\n\`\`\`\n\`\`\`\n{}\n\`\`\``, toolCount: 0 },
     { text: `\`\`\`javascript\n${JSON.stringify(passBody(prompt))}\n\`\`\``, toolCount: 0 },
     { text: `${JSON.stringify(passBody(prompt))}\nextra prose`, toolCount: 0 },
     { text: '[]', toolCount: 0 },
@@ -300,6 +315,23 @@ test('review prompt delegates semantics to the model and keeps raw multilingual 
   assert.match(messages[1].content, new RegExp(JSON.stringify(prompt).slice(1, -1).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });
 
+test('review prompt carries bounded workspace context only as user-delegated evidence', () => {
+  const prompt = 'Read USER_STORY.md and implement its exact public contract.';
+  const source = snapshot('src/main.cpp', 'int main() { return 0; }\n');
+  const context = snapshot('USER_STORY.md', 'Fixed header: include/math_model.hpp\n');
+  const messages = buildIndependentReviewMessages({
+    userPrompt: prompt,
+    workspaceRoot: '/workspace',
+    sourcePaths: [source.path],
+    contextPaths: [context.path],
+  }, [source], [context]);
+
+  assert.match(messages[0].content, /files the implementing agent actually read/u);
+  assert.match(messages[0].content, /original user request explicitly delegates to or references that file/u);
+  assert.match(messages[1].content, /\[WORKSPACE CONTEXT READ BY IMPLEMENTING AGENT\]/u);
+  assert.match(messages[1].content, /include\/math_model\.hpp/u);
+});
+
 test('isolated reviewer retries a rejected proposal and accepts the corrected contract', async () => {
   const workspace = path.join(tempRoot, 'retry-workspace');
   mkdirSync(path.join(workspace, 'src'), { recursive: true });
@@ -321,6 +353,27 @@ test('isolated reviewer retries a rejected proposal and accepts the corrected co
     validationSummary: 'typecheck passed',
   });
   assert.equal(calls, 2);
+  assert.equal(decision.status, 'passed');
+});
+
+test('isolated reviewer captures safe in-workspace files read by the implementing agent', async () => {
+  const workspace = path.join(tempRoot, 'context-workspace');
+  mkdirSync(path.join(workspace, 'src'), { recursive: true });
+  writeFileSync(path.join(workspace, 'src/main.cpp'), 'int main() { return 0; }\n');
+  writeFileSync(path.join(workspace, 'USER_STORY.md'), 'Fixed header: include/math_model.hpp\n');
+  const prompt = 'Read USER_STORY.md and implement its exact public contract.';
+  const reviewer = new IndependentRequirementReviewer(async messages => {
+    assert.match(messages[1].content, /Fixed header: include\/math_model\.hpp/u);
+    return response(passBody(prompt));
+  });
+
+  const decision = await reviewer.review({
+    userPrompt: prompt,
+    workspaceRoot: workspace,
+    sourcePaths: ['src/main.cpp'],
+    contextPaths: ['USER_STORY.md', '/etc/passwd', 'missing.txt'],
+  });
+
   assert.equal(decision.status, 'passed');
 });
 

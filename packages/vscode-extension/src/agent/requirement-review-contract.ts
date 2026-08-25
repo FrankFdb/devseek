@@ -187,8 +187,13 @@ function parseStrictReviewJson(text: string): RawReviewResult | undefined {
 function unwrapSingleJsonDocument(text: string): string | undefined {
   const trimmed = text.trim();
   if (trimmed.startsWith('{')) return trimmed;
-  const fenced = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/iu.exec(trimmed);
-  return fenced?.[1]?.trim() || undefined;
+  const fences = [...trimmed.matchAll(/```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```/giu)];
+  if (fences.length !== 1) return undefined;
+  const fence = fences[0];
+  const start = fence.index ?? 0;
+  const outside = `${trimmed.slice(0, start)}${trimmed.slice(start + fence[0].length)}`;
+  if (/```|[\[\]{}]/u.test(outside)) return undefined;
+  return fence[1]?.trim() || undefined;
 }
 
 function normalizeRequirementChecks(

@@ -955,6 +955,7 @@ export async function runAgenticLoop(
         qualityGate: sourceValidation.qualityGateForCurrentSource(),
         writtenFiles: allWrittenFiles,
         roundReadFiles: loopRes.readFiles ?? [],
+        readEvidencePaths: [...allReadEvidencePaths],
         hostFinalSourceEvidenceReady: sourceValidation.currentSourceIsValidated(),
       });
       if (reviewOutcome.kind === 'feedback') {

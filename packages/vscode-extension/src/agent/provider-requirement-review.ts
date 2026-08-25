@@ -91,6 +91,7 @@ export function createProviderRequirementReviewService(
         userPrompt: input.userPrompt(),
         workspaceRoot: input.workspaceRoot,
         sourcePaths: candidate.sourcePaths,
+        contextPaths: candidate.contextPaths,
         validationSummary: reviewInput.qualityGate?.summary,
       });
       const feedback = ledger.settleIndependentReview(decision);

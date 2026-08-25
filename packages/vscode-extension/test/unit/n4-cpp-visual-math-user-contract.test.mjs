@@ -89,6 +89,14 @@ test('N4 C++ visual math verifier measures binary PPM pixels instead of file exi
   }
 });
 
+test('N4 C++ visual math hygiene distinguishes TODO markers from valid identifiers', async () => {
+  const verifier = await import(pathToFileURL(path.join(journeyRoot, 'verify-workspace.mjs')));
+
+  assert.equal(verifier.hasUnfinishedImplementation('double toDouble() const;\n'), false);
+  assert.equal(verifier.hasUnfinishedImplementation('// TODO: implement renderer\n'), true);
+  assert.equal(verifier.hasUnfinishedImplementation('/* not implemented */\n'), true);
+});
+
 function hashPaths(root, paths) {
   return Object.fromEntries(paths.map(rel => [
     rel,
