@@ -107,7 +107,10 @@ import { executeScheduledToolLoop } from './tool-loop-scheduler';
 import { createSemanticExecutionWriteAuthority } from './semantic-execution-context';
 import { createAgenticInitialPromptContext, type AgenticLoopExecutionContext } from './agentic-execution-context';
 import { classifyAgenticManualReviewEvidence } from './terminal-evidence-settlement';
-import { updateRequirementReviewRepairWindow } from './requirement-review-repair-window';
+import {
+  renewRequirementReviewRepairWindow,
+  updateRequirementReviewRepairWindow,
+} from './requirement-review-repair-window';
 import { renewExecutionConvergenceRoundLimit } from './execution-convergence-window';
 import { settleAgenticLoopFinal } from './agentic-final-settlement';
 import {
@@ -930,6 +933,15 @@ export async function runAgenticLoop(
     const missingAfterTools = evidenceAfterTools.missingEvidence;
     const blockingFailureAfterTools = evidenceAfterTools.blockingTerminalFailure;
     lastMissingEvidence = missingAfterTools;
+    requirementReviewRepairGraceRounds = renewRequirementReviewRepairWindow({
+      currentGraceRounds: requirementReviewRepairGraceRounds,
+      baseRoundLimit: maxAgenticRounds,
+      roundCount,
+      concreteProgress: (loopRes.readFiles?.length ?? 0) > 0
+        || (loopRes.writtenFiles?.length ?? 0) > 0
+        || roundHasValidationTerminalProgress,
+      reviewPending: Boolean(requirementReview.completionBlocker()),
+    });
     executionConvergenceRoundLimit = renewExecutionConvergenceRoundLimit({
       currentRoundLimit: executionConvergenceRoundLimit,
       roundCount,

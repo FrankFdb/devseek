@@ -14,7 +14,10 @@ execSync(
   { cwd: rootDir, stdio: 'pipe' },
 );
 
-const { updateRequirementReviewRepairWindow } = createRequire(import.meta.url)(bundlePath);
+const {
+  renewRequirementReviewRepairWindow,
+  updateRequirementReviewRepairWindow,
+} = createRequire(import.meta.url)(bundlePath);
 const failedReview = '【独立需求审查：未通过】\nA distinct final-source defect remains.';
 
 test('each failed review wave renews a bounded local repair cohort', () => {
@@ -29,4 +32,50 @@ test('non-finding review feedback opens one cohort without repeatedly growing it
   const evidenceFeedback = '【系统反馈：完成前需求覆盖复核】';
   assert.equal(updateRequirementReviewRepairWindow(0, evidenceFeedback).graceRounds, 6);
   assert.equal(updateRequirementReviewRepairWindow(6, evidenceFeedback).graceRounds, 6);
+});
+
+test('accepted review repair progress renews a moving lease inside the hard cap', () => {
+  let graceRounds = renewRequirementReviewRepairWindow({
+    currentGraceRounds: 6,
+    baseRoundLimit: 55,
+    roundCount: 60,
+    concreteProgress: true,
+    reviewPending: true,
+  });
+  assert.equal(graceRounds, 11);
+
+  graceRounds = renewRequirementReviewRepairWindow({
+    currentGraceRounds: graceRounds,
+    baseRoundLimit: 55,
+    roundCount: 65,
+    concreteProgress: true,
+    reviewPending: true,
+  });
+  assert.equal(graceRounds, 16);
+
+  assert.equal(renewRequirementReviewRepairWindow({
+    currentGraceRounds: 23,
+    baseRoundLimit: 55,
+    roundCount: 78,
+    concreteProgress: true,
+    reviewPending: true,
+  }), 24);
+});
+
+test('review repair lease ignores prose, stalled actions, and settled reviews', () => {
+  const base = {
+    currentGraceRounds: 6,
+    baseRoundLimit: 55,
+    roundCount: 60,
+  };
+  assert.equal(renewRequirementReviewRepairWindow({
+    ...base,
+    concreteProgress: false,
+    reviewPending: true,
+  }), 6);
+  assert.equal(renewRequirementReviewRepairWindow({
+    ...base,
+    concreteProgress: true,
+    reviewPending: false,
+  }), 6);
 });

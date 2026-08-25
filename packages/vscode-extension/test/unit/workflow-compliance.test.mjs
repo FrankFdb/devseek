@@ -2474,6 +2474,21 @@ test('Architecture: validated source changes require fresh source review before 
   );
   assertContains(
     agenticLoop,
+    'renewRequirementReviewRepairWindow({',
+    'accepted review repair evidence must renew its moving deadline through the review window owner',
+  );
+  assertContains(
+    agenticLoop,
+    'reviewPending: Boolean(requirementReview.completionBlocker())',
+    'ordinary execution progress must not consume or renew requirement-review repair capacity',
+  );
+  assertContains(
+    reviewRepairWindow,
+    '!input.concreteProgress || !input.reviewPending',
+    'review repair renewal must require both an unresolved review and observable progress',
+  );
+  assertContains(
+    agenticLoop,
     'noToolRounds = 0;',
     'new requirement-review feedback must reset stale no-tool recovery state before targeted repair',
   );

@@ -283,12 +283,12 @@ function renderBlockingDecision(decision: RequirementReviewDecision): string {
     '【独立需求审查：未通过】',
     decision.explanation,
     ...findings,
-    '下一轮不要从头重做完整任务；先选第一个 P0/P1/P2 finding，把 counterexample 转成最小本地 probe、精确源码检查或等价的针对性验证。',
+    '不要从头重做完整任务；把本轮全部 finding 作为一个有界修复队列，先把最高优先级 counterexample 转成最小本地 probe、精确源码检查或等价的针对性验证。',
     primaryFinding
       ? `优先验证反例：${primaryFinding.counterexample}`
       : undefined,
-    '修复时围绕该缺陷类别审查相邻状态流、边界值和同类入口；不要只改当前一行，也不要用公开测试通过替代反例验证。',
-    '针对性验证通过后，再运行项目既有验证作为大 case 回归。',
+    '核实其余 finding，并围绕共同责任边界合并修复相邻状态流、边界值和同类入口；不要只改当前一行，也不要处理首条后就停止。',
+    '全部成立的反例都取得针对性验证后，再运行项目既有验证作为大 case 回归。',
     '必须根据上述独立结论修复生产源码并重新运行项目验证；不要修改受保护测试，也不要仅用解释否定审查结果。',
   ].filter(Boolean).join('\n');
 }

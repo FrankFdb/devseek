@@ -243,9 +243,11 @@ test('failed independent review blocks completion until repaired source is reval
   assert.match(failed, /可复现反例/);
   assert.match(failed, /counterexample 转成最小本地 probe/);
   assert.match(failed, /优先验证反例：Complete id A and submit A again/);
-  assert.match(failed, /围绕该缺陷类别审查相邻状态流、边界值和同类入口/);
+  assert.match(failed, /全部 finding 作为一个有界修复队列/);
+  assert.match(failed, /围绕共同责任边界合并修复相邻状态流、边界值和同类入口/);
+  assert.match(failed, /不要处理首条后就停止/);
   assert.doesNotMatch(failed, /定点修复协议|std::invalid_argument/);
-  assert.match(failed, /针对性验证通过后，再运行项目既有验证作为大 case 回归/);
+  assert.match(failed, /全部成立的反例都取得针对性验证后，再运行项目既有验证作为大 case 回归/);
   assert.match(ledger.beforeNoToolCompletion(), /必须根据上述独立结论修复生产源码/);
   assert.match(ledger.completionBlocker(), /独立需求审查未通过：A used identity can be submitted again/);
 
@@ -291,7 +293,7 @@ test('failed independent review renders a domain-neutral counterexample protocol
 
   assert.match(failed, /优先验证反例：Submit an unmatched buy with quantity 5/);
   assert.doesNotMatch(failed, /定点修复协议|OrderNode node/);
-  assert.match(failed, /针对性验证通过后，再运行项目既有验证作为大 case 回归/);
+  assert.match(failed, /全部成立的反例都取得针对性验证后，再运行项目既有验证作为大 case 回归/);
 });
 
 test('indeterminate independent review retries through final-source evidence instead of blind source edits', () => {
