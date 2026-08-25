@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
 import * as vscode from 'vscode';
+import { flushMemoryPipelineWork } from '../app/memory-pipeline-service';
 import type { DeepSeekViewProvider } from './deepseek-view-provider';
 
 type HarnessViewProvider = Pick<
@@ -89,6 +90,15 @@ export function registerRealPluginDeepSeekHarnessCommand(
         intentConfirmed: true,
       });
       recordRealPluginHarnessProgress('extension-command-submit-chat-completed', { route: 'webview-message' });
+    },
+  ));
+
+  context.subscriptions.push(vscode.commands.registerCommand(
+    '_devseek.harnessFlushMemoryPipelineWork',
+    async () => {
+      recordRealPluginHarnessProgress('extension-command-memory-flush-started');
+      await flushMemoryPipelineWork();
+      recordRealPluginHarnessProgress('extension-command-memory-flush-completed');
     },
   ));
 

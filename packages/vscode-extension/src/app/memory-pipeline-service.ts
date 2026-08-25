@@ -104,19 +104,28 @@ interface QueuedMemoryPipelineWork {
   readonly onError?: (error: unknown) => void;
 }
 
-class MemoryBackgroundWorkCoordinator {
+export interface MemoryBackgroundWorkCoordinatorOptions {
+  readonly foregroundPreemptionTimeoutMs?: number;
+}
+
+export class MemoryBackgroundWorkCoordinator {
   private readonly queue: QueuedMemoryPipelineWork[] = [];
+  private readonly foregroundPreemptionTimeoutMs: number;
   private foregroundDepth = 0;
   private forceDrain = false;
   private active?: { controller: AbortController; promise: Promise<void> };
   private shuttingDown = false;
+
+  constructor(options: MemoryBackgroundWorkCoordinatorOptions = {}) {
+    this.foregroundPreemptionTimeoutMs = Math.max(0, options.foregroundPreemptionTimeoutMs ?? 3_000);
+  }
 
   async beginForeground(): Promise<void> {
     this.foregroundDepth += 1;
     const active = this.active;
     if (!active) return;
     active.controller.abort(new Error('memory-pipeline:foreground-run-started'));
-    await active.promise;
+    await settleWithin(active.promise, this.foregroundPreemptionTimeoutMs);
   }
 
   endForeground(): void {

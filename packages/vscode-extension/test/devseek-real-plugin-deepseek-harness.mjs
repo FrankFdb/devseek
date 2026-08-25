@@ -49,6 +49,8 @@ const relogin = hasFlag('--relogin') || process.env.DEVSEEK_REAL_PLUGIN_RELOGIN 
 const headed = hasFlag('--headed') || process.env.DEVSEEK_REAL_PLUGIN_HEADED === '1' || relogin;
 const keepTmp = hasFlag('--keep') || process.env.DEVSEEK_REAL_PLUGIN_KEEP === '1';
 const keepWindow = hasFlag('--keep-window') || process.env.DEVSEEK_REAL_PLUGIN_KEEP_WINDOW === '1';
+const waitBackgroundIdle = hasFlag('--wait-background-idle')
+  || process.env.DEVSEEK_REAL_PLUGIN_WAIT_BACKGROUND_IDLE === '1';
 const keepDeepSeekPage = hasFlag('--keep-deepseek-page')
   || process.env.DEVSEEK_REAL_PLUGIN_KEEP_DEEPSEEK_PAGE === '1'
   || (headed && keepWindow);
@@ -247,6 +249,7 @@ report.harness = {
   relogin,
   headed,
   keepWindow,
+  waitBackgroundIdle,
   keepDeepSeekPage,
   autopilot,
   pluginPort,
@@ -1488,6 +1491,7 @@ const timeoutMs = __TIMEOUT_MS__;
 const pluginPort = __PLUGIN_PORT__;
 const autopilot = __AUTOPILOT__;
 const keepWindow = __KEEP_WINDOW__;
+const waitBackgroundIdle = __WAIT_BACKGROUND_IDLE__;
 const scenario = __SCENARIO__;
 const harnessMode = __HARNESS_MODE__;
 const inputMode = __INPUT_MODE__;
@@ -1516,6 +1520,18 @@ try {
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withinDeadline(promise, timeoutMs, message) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), timeoutMs); }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function writeReport(payload) {
@@ -2297,6 +2313,7 @@ async function activate() {
     commandName: '',
     commandCompleted: false,
     reportTiming: {},
+    backgroundIdle: { requested: waitBackgroundIdle, completed: !waitBackgroundIdle },
     errors: [],
     artifacts: [],
     runLogs: { logs: [], terminal: null },
@@ -2384,6 +2401,27 @@ async function activate() {
         break;
       }
       if (evaluation.ok) {
+        if (waitBackgroundIdle && !baseReport.backgroundIdle.completed) {
+          const command = '_devseek.harnessFlushMemoryPipelineWork';
+          if (!await waitForCommand(command, 30_000)) {
+            throw new Error('DevSeek memory-idle harness command was not registered within 30s');
+          }
+          const flushStartedAt = Date.now();
+          logProgress('memory-flush-started', { command });
+          const remainingMs = Math.max(1, deadline - Date.now());
+          await withinDeadline(
+            vscode.commands.executeCommand(command),
+            remainingMs,
+            'DevSeek memory pipeline did not become idle before the harness deadline',
+          );
+          baseReport.backgroundIdle = {
+            requested: true,
+            completed: true,
+            durationMs: Date.now() - flushStartedAt,
+          };
+          logProgress('memory-flush-completed', { durationMs: baseReport.backgroundIdle.durationMs });
+          continue;
+        }
         pollExitReason = 'success';
         break;
       }
@@ -2411,7 +2449,11 @@ async function activate() {
       reportFinalizedAt: new Date(reportFinalizedAtMs).toISOString(),
       commandCompletedAt: commandCompletedAt ? new Date(commandCompletedAt).toISOString() : null,
       inputMode,
-      reportScope: pollExitReason === 'timeout' ? 'report-time-snapshot' : 'terminal-or-success-snapshot',
+      reportScope: pollExitReason === 'timeout'
+        ? 'report-time-snapshot'
+        : (baseReport.backgroundIdle.completed && waitBackgroundIdle
+            ? 'foreground-terminal-and-background-idle-snapshot'
+            : 'terminal-or-success-snapshot'),
     };
     if (!baseReport.ok) {
       if (baseReport.reportTiming.pollTimedOut) {
@@ -2458,6 +2500,7 @@ module.exports = { activate };
     .replace('__PLUGIN_PORT__', JSON.stringify(pluginPort))
     .replace('__AUTOPILOT__', JSON.stringify(autopilot))
     .replace('__KEEP_WINDOW__', JSON.stringify(keepWindow))
+    .replace('__WAIT_BACKGROUND_IDLE__', JSON.stringify(waitBackgroundIdle))
     .replace('__SCENARIO__', JSON.stringify(scenario))
     .replace('__HARNESS_MODE__', JSON.stringify(harnessMode))
     .replace('__INPUT_MODE__', JSON.stringify(inputMode))

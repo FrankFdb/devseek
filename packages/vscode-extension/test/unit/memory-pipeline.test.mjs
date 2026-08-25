@@ -51,6 +51,7 @@ const {
   createProviderMemoryModel,
   endMemoryForegroundRun,
   flushMemoryPipelineWork,
+  MemoryBackgroundWorkCoordinator,
   shutdownMemoryPipelineWork,
   MemoryPipelineService,
   scheduleMemoryPipelineWork,
@@ -887,6 +888,24 @@ test('T5 foreground user work cancels active memory processing and defers queued
   endMemoryForegroundRun();
   await flushMemoryPipelineWork();
   assert.equal(deferredStarted, true);
+});
+
+test('T5 foreground admission remains bounded when detached maintenance ignores abort', async () => {
+  const coordinator = new MemoryBackgroundWorkCoordinator({ foregroundPreemptionTimeoutMs: 20 });
+  let aborted = false;
+  coordinator.schedule(signal => new Promise(resolve => {
+    signal.addEventListener('abort', () => { aborted = true; }, { once: true });
+    setTimeout(resolve, 250);
+  }));
+  await new Promise(resolve => setImmediate(resolve));
+
+  const startedAt = Date.now();
+  await coordinator.beginForeground();
+
+  assert.equal(aborted, true);
+  assert.equal(Date.now() - startedAt < 150, true);
+  coordinator.endForeground();
+  await coordinator.shutdown(20);
 });
 
 test('T6 extension shutdown aborts memory inference and returns within a bounded deadline', async () => {

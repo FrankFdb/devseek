@@ -588,8 +588,13 @@ test('real plugin VSIX harness timeout reports are report-time snapshots, not br
   );
   assert.match(
     source,
-    /reportScope:\s*pollExitReason === 'timeout' \? 'report-time-snapshot' : 'terminal-or-success-snapshot'/,
+    /reportScope:\s*pollExitReason === 'timeout'[\s\S]*\? 'report-time-snapshot'[\s\S]*'foreground-terminal-and-background-idle-snapshot'[\s\S]*'terminal-or-success-snapshot'/,
     'timeout reports must mark their scope as a report-time snapshot',
+  );
+  assert.match(
+    source,
+    /_devseek\.harnessFlushMemoryPipelineWork/,
+    'full-idle scope must be grounded in an explicit extension-owned memory flush',
   );
   assert.match(
     source,

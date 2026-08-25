@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "devseek.n4-simulated-user-journey/v1",
+  "id": "n4-cpp-visual-math-user",
+  "title": "C++ 小学数学图形学习程序连续用户迭代",
+  "language": "C++17",
+  "providerScenario": "canary-live-programming-maintenance",
+  "inputMode": "natural-ui",
+  "rounds": [
+    {
+      "id": "N4-CPP-MATH-01",
+      "title": "从空实现到可编译图形程序",
+      "verificationStage": 1,
+      "prompt": "我是小学数学老师，想做一个课堂演示程序。请阅读 USER_STORY.md，在这个工作区内用 C++17 实现第一版 Math Visual Lab。构建文件和 test.sh 是验收合同，不能修改。请创建 include/ 与 src/ 下约定的分层代码：数学模型、课程控制器、软件光栅画布、X11 窗口适配器和 main。第一版至少能打开 800x600 图形窗口，显示标题、分数图和数轴，并支持 --self-test 在无窗口环境验证模型和控制器。不要把所有逻辑塞进 main.cpp，不留 TODO/FIXME。运行 ./test.sh，依据真实编译错误修好后再结束。"
+    },
+    {
+      "id": "N4-CPP-MATH-02",
+      "title": "根据教师试用反馈补齐交互与确定性渲染",
+      "verificationStage": 2,
+      "prompt": "我试用了第一版，能启动，但课堂上需要真正操作。请继续修改现有 C++ 程序：支持鼠标点击课程标签和键盘 1/2 切换“分数/数轴”；分数课可调 selected/total，数轴课可移动 marker，并在画面中即时反馈。增加同一控制器与渲染器驱动的确定性验收入口：--script <actions> --snapshot <ppm> --state <json>，动作语法和 JSON 字段严格按 USER_STORY.md。不能另写一套假的测试渲染逻辑。执行 ./test.sh，并用 assets/fraction-number-line.actions 生成快照和状态文件检查。注意窗口缩放后文字、按钮和图形不得重叠。"
+    },
+    {
+      "id": "N4-CPP-MATH-03",
+      "title": "加入可操作测验和儿童友好反馈",
+      "verificationStage": 3,
+      "prompt": "学生反馈只看图还不够，请在现有架构内加入“测验”课程，不要复制新的状态机。固定两题 3+4 和 8-3，支持键盘数字输入、退格、提交、下一题，也支持画面按钮；答对显示清晰正反馈，答错保留重试机会。脚本动作 lesson quiz、answer、submit、next-question 必须走与真实 UI 相同的 LessonController 动作入口。最终 state JSON 的 quiz 要包含 answered、correct、feedback。使用高对比但不刺眼的多色界面，焦点状态不能只靠颜色表达。运行公开测试，并用 assets/quiz.actions 验证两题得分和非空反馈。"
+    },
+    {
+      "id": "N4-CPP-MATH-04",
+      "title": "课堂交付前的真实窗口与边界验收",
+      "verificationStage": 4,
+      "prompt": "准备课堂交付前再完善一轮。请修复边界输入：total 只能为 1..12，selected 自动限制在 0..total，数轴 marker 只能为 -10..10，非法脚本动作必须非零退出并给出可读错误。加入 --width、--height 和 --smoke-frames N：后者必须实际创建 X11 窗口、处理事件并渲染 N 帧后正常退出，不能降级成只写文件。检查 640x480 和 1024x640 布局，清理不再使用的旧函数/分支，补全 README 的构建、操作和验收命令。运行 ./test.sh 和你新增的边界测试；不要修改 CMakeLists.txt、test.sh、USER_STORY.md 或 assets。"
+    }
+  ]
+}

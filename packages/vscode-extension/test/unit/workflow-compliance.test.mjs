@@ -1162,7 +1162,9 @@ test('Real DeepSeek harness: timeout reports are marked as report-time snapshots
   const harness = src('test/devseek-real-plugin-deepseek-harness.mjs');
   assertContains(harness, "let pollExitReason = 'timeout'", 'real harness must keep timeout as an explicit poll exit reason');
   assertContains(harness, "pollTimedOut: pollExitReason === 'timeout'", 'real harness report must expose a machine-readable timeout bit');
-  assertContains(harness, "reportScope: pollExitReason === 'timeout' ? 'report-time-snapshot' : 'terminal-or-success-snapshot'", 'timeout reports must declare snapshot scope');
+  assertContains(harness, "? 'report-time-snapshot'", 'timeout reports must declare snapshot scope');
+  assertContains(harness, "? 'foreground-terminal-and-background-idle-snapshot'", 'full-idle reports must use a distinct scope');
+  assertContains(harness, "'_devseek.harnessFlushMemoryPipelineWork'", 'full-idle reports must invoke the extension-owned memory flush');
   assertContains(harness, '此 report.json 只代表报告写入时刻的快照', 'timeout failures must explain that post-report product evidence needs separate review');
 });
 
