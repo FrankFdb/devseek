@@ -165,6 +165,19 @@ test('model-proposed paths never enter the task contract without a matching comm
   assert.equal(candidate.taskContract.scope.include.includes('src/unrequested.ts'), false);
 });
 
+test('a committed path does not close a broader multi-file task to later model actions', () => {
+  const { candidate } = reconcile(
+    'Read USER_STORY.md and build the requested layered C++ application across include and src.',
+    mutationProposal(['include/math_model.hpp'], { taskKind: 'existing-project-edit' }),
+    [toolReceipt()],
+    [changeReceipt(['include/math_model.hpp'])],
+  );
+
+  assert.ok(candidate);
+  assert.deepEqual(candidate.taskContract.scope.include, ['include/math_model.hpp']);
+  assert.equal(candidate.taskContract.constraints.includes('no-other-files'), false);
+});
+
 test('read-only context scope never becomes a report deliverable after a committed write', () => {
   const contextFiles = [
     '/workspace/docs/input-matrix.md',

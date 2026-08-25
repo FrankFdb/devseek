@@ -47,9 +47,9 @@ export function reconcileObservedTaskContract(
     externalEffectIntent: input.semanticContract.intent.context.externalEffect,
     targetPaths: observedDeliverableTargets,
     prohibitedTargets: input.current.scope.exclude,
-    strictTargetScope: input.current.constraints.includes('no-other-files')
-      || input.semanticContract.signals.includes('scoped-target-write-boundary')
-      || observedDeliverableTargets.length > 0,
+    // Settled paths refine completion evidence; they do not become a new user
+    // prohibition for later actions in a broader multi-file task.
+    strictTargetScope: input.current.constraints.includes('no-other-files'),
   });
   const taskContract = preserveUserContractBoundaries(
     input.current,
