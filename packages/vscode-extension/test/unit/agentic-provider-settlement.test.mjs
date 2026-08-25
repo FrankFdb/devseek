@@ -79,6 +79,35 @@ test('provider failure settlement completes only after local file-check evidence
   }
 });
 
+test('completed local evidence cannot bypass an independent completion blocker', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-provider-settlement-gated-'));
+  try {
+    const file = path.join(root, 'ui-r1a1b-clean2-4a148c.txt');
+    writeFileSync(file, 'UI_R1A1B_CLEAN2_OK\n');
+    const result = settleProviderFailureFromCompletedEvidence({
+      providerFailureStatus: 'invalid-tool-block',
+      promptRequiresTools: true,
+      sawWorkTool: true,
+      aborted: false,
+      semanticContract: fileArtifactContract(filePrompt(), file),
+      writtenFiles: [{ path: file, basename: path.basename(file), linesAdded: 1, linesRemoved: 0, action: 'create' }],
+      terminalEvidence: [{
+        command: "test -f 'ui-r1a1b-clean2-4a148c.txt'",
+        kind: 'other',
+        ok: true,
+        exitCode: 0,
+      }],
+      readEvidencePaths: [],
+      workspaceRoot: root,
+      completionBlockers: ['independent requirement review still has blocking findings'],
+    });
+
+    assert.equal(result.completed, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('provider failure settlement completes scoped Markdown deliverable before starting another recovery', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-provider-settlement-scoped-md-'));
   try {

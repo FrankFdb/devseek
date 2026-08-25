@@ -1073,6 +1073,8 @@ test('Agentic loop: provider failure after satisfied local evidence does not ove
   assertContains(code, 'settleProviderFailureFromCompletedEvidence', 'agent loop must delegate completed-evidence provider-failure settlement');
   assertContains(settlement, 'assessMissingCompletionEvidence', 'provider failure settlement must use the shared semantic completion evidence boundary');
   assertContains(settlement, 'findBlockingTerminalFailureEvidence', 'provider failure settlement must preserve terminal failure authority');
+  assertContains(settlement, 'input.completionBlockers?.some', 'provider failure settlement must preserve independent completion gates');
+  assertContains(code, 'completionBlockers: [requirementReview.completionBlocker()]', 'stale local evidence must not bypass pending independent requirement review');
   assert.match(
     code,
     /const settleOrRecoverProviderFailureInsideCurrentTask[\s\S]*?settleProviderFailureFromCompletedEvidence[\s\S]*?if \(providerSettlement\.completed\)/,

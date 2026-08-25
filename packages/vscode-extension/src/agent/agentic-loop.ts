@@ -328,6 +328,7 @@ export async function runAgenticLoop(
       workspaceRoot,
       semanticContract: writeAuthority.completionSemanticContract,
       canonicalTaskContract: callbacks.canonicalTaskContract,
+      completionBlockers: [requirementReview.completionBlocker()],
     });
     if (providerSettlement.completed) {
       completeSummary = completeSummary || providerSettlement.summary;

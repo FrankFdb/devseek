@@ -20,6 +20,7 @@ export interface ProviderFailureSettlementInput {
   workspaceRoot?: string;
   semanticContract: TaskSemanticContract;
   canonicalTaskContract?: CodingKernelTaskContract;
+  completionBlockers?: readonly (string | undefined)[];
 }
 
 export type ProviderFailureSettlement =
@@ -30,6 +31,9 @@ export function settleProviderFailureFromCompletedEvidence(
   input: ProviderFailureSettlementInput,
 ): ProviderFailureSettlement {
   if (input.aborted || !input.promptRequiresTools || !input.sawWorkTool) {
+    return { completed: false };
+  }
+  if (input.completionBlockers?.some(blocker => Boolean(blocker?.trim()))) {
     return { completed: false };
   }
   if (isToolProtocolFailure(input.providerFailureStatus)
