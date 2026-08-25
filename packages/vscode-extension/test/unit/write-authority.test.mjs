@@ -211,7 +211,7 @@ test('a mixed round promotes each successful semantic fragment from its own rece
   ]);
 });
 
-test('denied external action records attempted semantics without changing canonical user input', () => {
+test('pre-effect denial cannot poison later completed model semantics', () => {
   const authority = createWriteAuthority('安装依赖。', {});
   authority.applyModelSemanticProposal(createProposal({
     mode: 'run',
@@ -229,9 +229,22 @@ test('denied external action records attempted semantics without changing canoni
     permission: permission('deny', 'denied'),
     effectStarted: false,
   })]);
-  assert.equal(settled.semanticContract.intent.context.externalEffect, 'requested');
+  assert.equal(settled, undefined);
+  assert.equal(authority.semanticContract.intent.context.externalEffect, 'requested');
+  assert.equal(authority.completionSemanticContract.intent.context.externalEffect, 'none');
   assert.equal(authority.canonicalSemanticContract.intent.context.externalEffect, 'none');
   assert.equal(authority.canonicalSemanticContract.mutation.requested, false);
+
+  authority.applyModelSemanticProposal(createProposal({
+    taskKind: 'existing-project-edit',
+    mutation: 'modify-source',
+    targetPaths: ['src/value.ts'],
+    requiresWorkspace: true,
+  }));
+  const completed = authority.settleModelSemanticProposal([toolReceipt()]);
+  assert.ok(completed);
+  assert.equal(completed.semanticContract.intent.context.externalEffect, 'none');
+  assert.deepEqual(completed.semanticContract.mutation.targets, ['src/value.ts']);
 });
 
 test('live steering is delivered verbatim and invalidates every stale proposal', () => {

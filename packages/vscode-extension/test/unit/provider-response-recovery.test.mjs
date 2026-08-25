@@ -102,6 +102,8 @@ test('Agent provider recovery prompt keeps only durable facts and forces small t
   assert.match(prompt, /不要重复已读取路径/);
   assert.match(prompt, /最多 6 个只读工具/);
   assert.match(prompt, /content 控制在 6000 字符以内/);
+  assert.match(prompt, /可验证、可继续扩展的完整责任切片/);
+  assert.match(prompt, /不得用占位骨架、近似接口或“最小可编译版本”冒充原始契约已经完成/);
   assert.match(prompt, /本轮只输出 1 个工具调用/);
   assert.match(prompt, /不要再次把含源码双引号或多行文本的 old_str\/new_str 手写进 JSON/);
   assert.match(prompt, /<replace_in_file>/);

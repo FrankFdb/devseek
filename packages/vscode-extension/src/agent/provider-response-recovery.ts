@@ -187,7 +187,7 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
       '- 先用 manage_todo_list 校正当前步骤；未完成项保持 in-progress 或 not-started。',
       '- 不要重复已读取路径、相同 list_dir、相同 grep_search 或相同 file_search；如确实缺少内容，只读取更精确的新文件或行范围。',
       '- 需要上下文时，只输出具体 read_file/list_dir/grep_search/file_search/只读 run_terminal 工具调用，不要同时输出长篇分析。',
-      '- 需要创建或修改文件时，只使用 create_file 或 replace_in_file；大产物先写最小骨架，再分轮补充。',
+      '- 需要创建或修改文件时，只使用 create_file 或 replace_in_file；大产物应分轮交付可验证、可继续扩展的完整责任切片。不得用占位骨架、近似接口或“最小可编译版本”冒充原始契约已经完成。',
       toolSerializationLine,
       readLimitLine,
       '- 不要在自然语言里粘贴大段 Markdown/源码代码块，不要一次性输出长报告；大产物分多轮通过工具落盘。',

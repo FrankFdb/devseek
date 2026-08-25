@@ -8,6 +8,7 @@ import {
   type CodingTaskContractRevisionCandidate,
 } from '@devseek-netai/shared';
 import type { TaskSemanticContract } from '../task-semantic-contract';
+import { canToolReceiptPromoteModelSemantics } from '../agent/model-tool-semantic-proposal';
 import { projectVsCodeCodingKernelTaskContract } from './coding-kernel-task-contract';
 
 export interface ObservedTaskContractReconciliationInput {
@@ -26,8 +27,9 @@ export interface ObservedTaskContractReconciliationInput {
 export function reconcileObservedTaskContract(
   input: ObservedTaskContractReconciliationInput,
 ): CodingTaskContractRevisionCandidate | undefined {
-  if (input.toolReceipts.length === 0) return undefined;
-  const actionIds = new Set(input.toolReceipts.map(receipt => receipt.actionId));
+  const semanticReceipts = input.toolReceipts.filter(canToolReceiptPromoteModelSemantics);
+  if (semanticReceipts.length === 0) return undefined;
+  const actionIds = new Set(semanticReceipts.map(receipt => receipt.actionId));
   const committedChanges = input.changeReceipts.filter(receipt => (
     receipt.status === 'committed' && actionIds.has(receipt.actionId)
   ));
@@ -54,12 +56,12 @@ export function reconcileObservedTaskContract(
   const taskContract = preserveUserContractBoundaries(
     input.current,
     projected,
-    input.toolReceipts,
+    semanticReceipts,
     committedChanges,
   );
   if (codingSemanticDigest(taskContract) === codingSemanticDigest(input.current)) return undefined;
 
-  const lastReceipt = [...input.toolReceipts]
+  const lastReceipt = [...semanticReceipts]
     .sort((left, right) => left.sequence - right.sequence)
     .at(-1)!;
   return {
@@ -67,7 +69,7 @@ export function reconcileObservedTaskContract(
     taskContract,
     evidenceRefs: unique([
       `settled-model-semantic:${lastReceipt.actionId}`,
-      ...input.toolReceipts.flatMap(receipt => [...receipt.evidenceRefs]),
+      ...semanticReceipts.flatMap(receipt => [...receipt.evidenceRefs]),
       ...committedChanges.flatMap(receipt => [...receipt.evidenceRefs]),
     ]),
   };

@@ -14,9 +14,10 @@ import {
   consumeUserSteerCompletionFenceTexts,
   consumeUserSteerTexts,
 } from './user-steer';
-import type {
-  ModelToolSemanticProposal,
-  ModelToolSemanticSettlementFragment,
+import {
+  canToolReceiptPromoteModelSemantics,
+  type ModelToolSemanticProposal,
+  type ModelToolSemanticSettlementFragment,
 } from './model-tool-semantic-proposal';
 
 export interface WriteAuthority {
@@ -197,7 +198,7 @@ function receiptMatchesSemanticBinding(
     && binding.purpose === receipt.purpose
     && binding.inputSha256 === receipt.inputSha256
     && sameEffects(binding.effects, receipt.effects);
-  if (!operationMatches) return false;
+  if (!operationMatches || !canToolReceiptPromoteModelSemantics(receipt)) return false;
 
   if (proposal.mutation === 'create-file'
     || proposal.mutation === 'modify-source'

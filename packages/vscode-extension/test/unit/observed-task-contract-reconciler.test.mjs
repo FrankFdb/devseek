@@ -265,7 +265,7 @@ test('a settled memory effect replaces stale source and verification obligations
   assert.deepEqual(candidate.taskContract.acceptance.map(item => item.id), ['grounded-response', 'authority']);
 });
 
-test('a denied external action can refine blocked intent but cannot manufacture workspace scope', () => {
+test('a pre-effect denial cannot revise the canonical task contract', () => {
   const denied = toolReceipt({
     tool: 'run_terminal',
     purpose: 'external-effect',
@@ -280,22 +280,26 @@ test('a denied external action can refine blocked intent but cannot manufacture 
     effectStarted: false,
     evidenceRefs: ['tool:observed-action-5:denied'],
   });
-  const { current, candidate } = reconcile(
-    '请安装缺少的依赖，然后告诉我是否成功。',
-    mutationProposal([], {
-      mode: 'run',
-      taskKind: 'external-effect',
-      mutation: 'external-effect',
-      requiresWorkspace: false,
-      requiresTerminal: true,
-      requiresExternalEffect: true,
-    }),
-    [denied],
-  );
+  const prompt = '请安装缺少的依赖，然后告诉我是否成功。';
+  const authority = createWriteAuthority(prompt, {});
+  const current = projectVsCodeCodingKernelTaskContract({
+    userPrompt: prompt,
+    executionMode: authority.canonicalSemanticContract.intent.mode,
+    contextFiles: [],
+    workspaceRoot: '/workspace',
+    taskContract: authority.canonicalSemanticContract.taskContract,
+    externalEffectIntent: authority.canonicalSemanticContract.intent.context.externalEffect,
+    targetPaths: [],
+    prohibitedTargets: [],
+  });
+  const candidate = reconcileObservedTaskContract({
+    current,
+    semanticContract: authority.semanticContract,
+    contextFiles: [],
+    workspaceRoot: '/workspace',
+    toolReceipts: [denied],
+    changeReceipts: [],
+  });
 
-  assert.ok(candidate);
-  assert.equal(candidate.taskContract.mode, 'change');
-  assert.deepEqual(candidate.taskContract.scope.include, current.scope.include);
-  assert.equal(candidate.taskContract.deliverables.some(item => item.kind === 'source-change'), false);
-  assert.equal(candidate.taskContract.externalBoundaries.length > 0, true);
+  assert.equal(candidate, undefined);
 });
