@@ -116,6 +116,23 @@ test('validation terminal action requests command evidence without implying muta
   assert.equal(contract.mutation.requested, false);
 });
 
+test('mixed tool rounds preserve independently settleable observation, validation, and mutation semantics', () => {
+  const initial = createModelLedTurnSemanticContract('修改源码，读回并验证。');
+  const semanticIntent = projectModelToolSemanticProposal([
+    tool('create_file', 'edit', 'workspace-mutation', ['src/math.cpp']),
+    tool('read_file', 'read', 'observe', ['src/math.cpp']),
+    tool('run_terminal', 'terminal', 'verify'),
+  ], initial);
+
+  assert.equal(semanticIntent.taskKind, 'existing-project-edit');
+  assert.equal(semanticIntent.requiresTerminal, true);
+  assert.deepEqual(
+    semanticIntent.settlementFragments.map(fragment => fragment.taskKind),
+    ['read-only-analysis', 'terminal-validation', 'existing-project-edit'],
+  );
+  assert.equal(semanticIntent.evidenceBindings.length, 3);
+});
+
 test('external and destructive effects remain explicit local arbitration boundaries', () => {
   const initial = createModelLedTurnSemanticContract('Do the requested work.');
   const external = projectModelToolSemanticProposal([

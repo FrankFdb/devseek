@@ -307,6 +307,7 @@ export async function runAgenticLoop(
     });
     if (providerSettlement.completed) {
       completeSummary = completeSummary || providerSettlement.summary;
+      hadTaskComplete = true;
       return 'completed';
     }
     const recovery = await recoverAgenticProviderFailure({
@@ -776,6 +777,9 @@ export async function runAgenticLoop(
     if (semanticSettlement.settled) {
       refreshPromptRequirements();
       allVerificationReceipts.push(...semanticSettlement.verificationReceipts);
+      for (const observedPath of semanticSettlement.observationPaths) {
+        allReadEvidencePaths.add(observedPath);
+      }
     }
     if ((loopRes.readFiles?.length ?? 0) > 0
       || (loopRes.writtenFiles?.length ?? 0) > 0
@@ -788,6 +792,7 @@ export async function runAgenticLoop(
       || toolsToExecute.some(tool => tool.purpose === 'workspace-mutation');
     const roundHasTerminalProgress = (loopRes.terminalCommands?.length ?? 0) > 0
       || (loopRes.terminalEvidence?.length ?? 0) > 0;
+    const roundHasFailedTerminalProgress = loopRes.terminalEvidence?.some(evidence => !evidence.ok) === true;
     const roundHasOnlyContextGathering = toolsToExecute.length > 0
       && toolsToExecute.some(tool => isContextGatheringToolName(tool.name))
       && toolsToExecute.every(tool => (
@@ -818,6 +823,7 @@ export async function runAgenticLoop(
       pendingWriteCount: pendingAutoValidationWrites.length,
       roundHasWriteProgress,
       roundHasTerminalProgress,
+      roundHasFailedTerminalProgress,
       completionSignaled: Boolean(loopRes.taskComplete || loopRes.allTodosCompleted),
     });
     const autoValidation: AgentAutoValidationResult = deferAutoValidation

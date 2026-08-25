@@ -213,7 +213,7 @@ test('ModelLedIntentBoundary: model interpretation reaches completion only throu
   );
 
   assert.match(authoritySource, /settleModelSemanticProposal\(receipts\)/u);
-  assert.match(authoritySource, /receiptMatchesSemanticProposal/u);
+  assert.match(authoritySource, /receiptMatchesSemanticBinding/u);
   assert.match(
     authoritySource,
     /get completionSemanticContract\(\)\s*\{\s*return settledModelSemanticContract\s*\?\?\s*turnSemanticContract;/u,

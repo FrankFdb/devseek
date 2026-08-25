@@ -17,6 +17,7 @@ export interface ModelSemanticSettlementRound {
 export interface ModelSemanticSettlementResult {
   readonly settled: boolean;
   readonly verificationReceipts: readonly CodingVerificationReceipt[];
+  readonly observationPaths: readonly string[];
 }
 
 export interface ModelSemanticSettlementService {
@@ -39,7 +40,7 @@ export function createModelSemanticSettlementService(
     async observe(round) {
       const toolReceipts = round.toolExecutionReceipts ?? [];
       const settlement = input.authority.settleModelSemanticProposal(toolReceipts);
-      if (!settlement) return { settled: false, verificationReceipts: [] };
+      if (!settlement) return { settled: false, verificationReceipts: [], observationPaths: [] };
 
       input.authority.callbacks.onSettledModelSemanticContract?.({
         semanticContract: settlement.semanticContract,
@@ -49,7 +50,11 @@ export function createModelSemanticSettlementService(
       const verification = input.callbacks.canonicalVerification;
       const acceptance = input.callbacks.canonicalVerificationAcceptance ?? [];
       if (!verification || acceptance.length === 0 || !round.terminalEvidence?.length) {
-        return { settled: true, verificationReceipts: [] };
+        return {
+          settled: true,
+          verificationReceipts: [],
+          observationPaths: [...(settlement.observationPaths ?? [])],
+        };
       }
       const verificationReceipts = await recordNewlyAcceptedTerminalVerifications({
         toolReceipts,
@@ -60,7 +65,11 @@ export function createModelSemanticSettlementService(
         acceptance,
         verification,
       });
-      return { settled: true, verificationReceipts };
+      return {
+        settled: true,
+        verificationReceipts,
+        observationPaths: [...(settlement.observationPaths ?? [])],
+      };
     },
   };
 }

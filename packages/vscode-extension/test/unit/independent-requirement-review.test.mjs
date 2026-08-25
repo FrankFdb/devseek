@@ -291,6 +291,10 @@ test('review prompt delegates semantics to the model and keeps raw multilingual 
   assert.match(messages[0].content, /likely spelling or homophone errors/);
   assert.match(messages[0].content, /ownership transfer/);
   assert.match(messages[0].content, /passing first-use test/);
+  assert.match(messages[0].content, /alternate default value/);
+  assert.match(messages[0].content, /do not choose one and fail the others/);
+  assert.match(messages[0].content, /blank, placeholder, misleading mathematical result/);
+  assert.match(messages[0].content, /directly traceable to words in the exact requirement/);
   assert.doesNotMatch(messages[0].content, /order book|best bid|FIFO\/LIFO|std::invalid_argument/i);
   assert.match(messages[1].content, /MODEL_LATEST_OK/);
   assert.match(messages[1].content, new RegExp(JSON.stringify(prompt).slice(1, -1).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));

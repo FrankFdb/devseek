@@ -1603,8 +1603,9 @@ test('R1-A2K: model proposals and local receipts form the semantic authority bou
   assertContains(modelLed, "mode: 'model-led'", 'raw natural language must remain model-owned');
   assertContains(modelAction, 'projectModelActionSemanticContract', 'normalized model actions must project semantic proposals');
   assertContains(modelAction, 'No user-language token', 'action projection must not parse user-language tokens');
-  assertContains(writeAuthority, 'receiptMatchesSemanticProposal', 'a matching local tool receipt must settle a model proposal');
-  assertContains(writeAuthority, 'settledModelSemanticContract = modelSemanticContract', 'completion semantics must only advance after receipt matching');
+  assertContains(writeAuthority, 'receiptMatchesSemanticBinding', 'a matching local tool receipt must settle a model proposal fragment');
+  assertContains(writeAuthority, 'settledModelSemanticContract = projectSemanticFragments', 'completion semantics must advance only from receipt-backed fragments');
+  assertContains(writeAuthority, 'settledFragments', 'partial mixed-tool settlement must retain only receipt-backed semantic fragments');
   assertContains(semanticObligations, 'buildTaskSemanticObligationContracts', 'semantic obligations must own done_iff derivation');
   assertContains(semanticContract, 'completion: TaskSemanticCompletionContract', 'semantic contract must carry done_iff');
   assertContains(classifier, 'const local = contract.intent', 'classifier must project the canonical local interpretation');

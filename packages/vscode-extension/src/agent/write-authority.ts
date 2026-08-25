@@ -14,7 +14,10 @@ import {
   consumeUserSteerCompletionFenceTexts,
   consumeUserSteerTexts,
 } from './user-steer';
-import type { ModelToolSemanticProposal } from './model-tool-semantic-proposal';
+import type {
+  ModelToolSemanticProposal,
+  ModelToolSemanticSettlementFragment,
+} from './model-tool-semantic-proposal';
 
 export interface WriteAuthority {
   readonly callbacks: AgentLoopCallbacks;
@@ -39,6 +42,7 @@ export interface WriteAuthority {
 export interface SettledModelSemanticProposal {
   readonly semanticContract: TaskSemanticContract;
   readonly toolReceipts: readonly CodingToolExecutionReceipt<unknown>[];
+  readonly observationPaths: readonly string[];
 }
 
 export interface WriteAuthorityOptions {
@@ -102,8 +106,8 @@ export function createWriteAuthority(
       return turnSemanticContract.context.projectInstructions.content;
     },
     applyModelSemanticProposal(proposal) {
-      const current = modelSemanticContract ?? turnSemanticContract;
-      const next = projectModelActionSemanticContract(current, proposal);
+      const current = settledModelSemanticContract ?? turnSemanticContract;
+      const next = projectSemanticFragments(current, proposalFragments(proposal));
       if (next.signals.includes('semantic-intent-constrained')) return false;
       if (JSON.stringify(next) === JSON.stringify(current)) return false;
       modelSemanticContract = next;
@@ -112,15 +116,25 @@ export function createWriteAuthority(
     },
     settleModelSemanticProposal(receipts) {
       if (!modelSemanticContract || !pendingModelSemanticProposal) return undefined;
-      const matchingReceipts = receipts.filter(receipt => (
-        receiptMatchesSemanticProposal(receipt, pendingModelSemanticProposal!)
-      ));
+      const settledFragments = proposalFragments(pendingModelSemanticProposal)
+        .map(fragment => settleSemanticFragment(fragment, receipts))
+        .filter((fragment): fragment is ModelToolSemanticSettlementFragment => Boolean(fragment));
+      const matchingReceipts = receipts.filter(receipt => settledFragments.some(fragment => (
+        fragment.evidenceBindings.some(binding => receiptMatchesSemanticBinding(receipt, binding, fragment))
+      )));
       if (matchingReceipts.length === 0) return undefined;
-      settledModelSemanticContract = modelSemanticContract;
+      settledModelSemanticContract = projectSemanticFragments(
+        settledModelSemanticContract ?? turnSemanticContract,
+        settledFragments,
+      );
+      modelSemanticContract = settledModelSemanticContract;
       pendingModelSemanticProposal = undefined;
       return {
         semanticContract: settledModelSemanticContract,
         toolReceipts: Object.freeze([...matchingReceipts]),
+        observationPaths: Object.freeze(uniquePaths(settledFragments
+          .filter(fragment => fragment.mutation === 'none')
+          .flatMap(fragment => [...fragment.targetPaths]))),
       };
     },
     drainAfterProvider: drain,
@@ -133,6 +147,39 @@ export function createWriteAuthority(
   };
 }
 
+function proposalFragments(
+  proposal: ModelToolSemanticProposal,
+): readonly ModelToolSemanticSettlementFragment[] {
+  return proposal.settlementFragments?.length ? proposal.settlementFragments : [proposal];
+}
+
+function projectSemanticFragments(
+  current: TaskSemanticContract,
+  fragments: readonly ModelToolSemanticSettlementFragment[],
+): TaskSemanticContract {
+  return fragments.reduce(projectModelActionSemanticContract, current);
+}
+
+function settleSemanticFragment(
+  fragment: ModelToolSemanticSettlementFragment,
+  receipts: readonly CodingToolExecutionReceipt<unknown>[],
+): ModelToolSemanticSettlementFragment | undefined {
+  const matchingBindings = fragment.evidenceBindings.filter(binding => (
+    receipts.some(receipt => receiptMatchesSemanticBinding(receipt, binding, fragment))
+  ));
+  if (matchingBindings.length === 0) return undefined;
+  const matchedTargets = uniquePaths(matchingBindings.flatMap(binding => [...(binding.targetPaths ?? [])]));
+  return {
+    ...fragment,
+    targetPaths: matchedTargets.length > 0
+      ? matchedTargets
+      : matchingBindings.length === fragment.evidenceBindings.length
+        ? fragment.targetPaths
+        : [],
+    evidenceBindings: matchingBindings,
+  };
+}
+
 function createInitialTurnContract(
   prompt: string,
   options: WriteAuthorityOptions,
@@ -141,16 +188,15 @@ function createInitialTurnContract(
   return bindTaskSemanticProjectInstructions(supplied, options.projectInstructions);
 }
 
-function receiptMatchesSemanticProposal(
+function receiptMatchesSemanticBinding(
   receipt: CodingToolExecutionReceipt<unknown>,
-  proposal: ModelToolSemanticProposal,
+  binding: ModelToolSemanticProposal['evidenceBindings'][number],
+  proposal: ModelToolSemanticSettlementFragment,
 ): boolean {
-  const operationMatches = proposal.evidenceBindings.some(binding => (
-    binding.tool === receipt.tool
-      && binding.purpose === receipt.purpose
-      && binding.inputSha256 === receipt.inputSha256
-      && sameEffects(binding.effects, receipt.effects)
-  ));
+  const operationMatches = binding.tool === receipt.tool
+    && binding.purpose === receipt.purpose
+    && binding.inputSha256 === receipt.inputSha256
+    && sameEffects(binding.effects, receipt.effects);
   if (!operationMatches) return false;
 
   if (proposal.mutation === 'create-file'
@@ -175,4 +221,13 @@ function sameEffects(left: readonly string[], right: readonly string[]): boolean
   const normalizedRight = [...new Set(right)].sort();
   return normalizedLeft.length === normalizedRight.length
     && normalizedLeft.every((effect, index) => effect === normalizedRight[index]);
+}
+
+function uniquePaths(values: readonly string[]): string[] {
+  const result = new Map<string, string>();
+  for (const value of values) {
+    const normalized = String(value || '').trim().replace(/\\/g, '/').replace(/^\.\//, '');
+    if (normalized && !result.has(normalized)) result.set(normalized, normalized);
+  }
+  return [...result.values()];
 }

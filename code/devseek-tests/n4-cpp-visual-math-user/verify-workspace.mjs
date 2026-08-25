@@ -25,6 +25,15 @@ export function verifyWorkspace(workspace, stage, evidenceDir) {
   check(checks, 'source-contract', sourcePaths.every(rel => fileHasContent(root, rel)), {
     missing: sourcePaths.filter(rel => !fileHasContent(root, rel)),
   });
+  const sourceText = sourcePaths
+    .filter(rel => fileHasContent(root, rel))
+    .map(rel => fs.readFileSync(path.join(root, rel), 'utf8'))
+    .join('\n');
+  const unfinishedSource = /(?:TODO|FIXME|placeholder|future implementation|not implemented)/iu;
+  check(checks, 'source-hygiene', !unfinishedSource.test(sourceText) && !/\bsystem\s*\(/u.test(sourceText), {
+    unfinishedImplementation: unfinishedSource.test(sourceText),
+    systemCall: /\bsystem\s*\(/u.test(sourceText),
+  });
 
   const publicTest = run('./test.sh', [], root, 180_000);
   artifacts.publicTest = recordCommand(evidence, 'public-test', publicTest);
@@ -83,11 +92,6 @@ export function verifyWorkspace(workspace, stage, evidenceDir) {
     check(checks, 'sanitizer-build', sanitizer.build?.status === 0, commandSummary(sanitizer.build));
     check(checks, 'sanitizer-x11-repeated-frame', sanitizer.smoke?.status === 0, commandSummary(sanitizer.smoke));
 
-    const sourceText = sourcePaths.map(rel => fs.readFileSync(path.join(root, rel), 'utf8')).join('\n');
-    check(checks, 'source-hygiene', !/(?:TODO|FIXME)|\bsystem\s*\(/u.test(sourceText), {
-      todoOrFixme: /(?:TODO|FIXME)/u.test(sourceText),
-      systemCall: /\bsystem\s*\(/u.test(sourceText),
-    });
     const readme = fileText(root, 'README.md');
     check(checks, 'operator-readme', /(?:build|cmake)/iu.test(readme)
       && /(?:keyboard|mouse|键盘|鼠标)/iu.test(readme)

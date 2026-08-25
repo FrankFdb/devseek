@@ -26,6 +26,7 @@ test('defers validation while a pure-write mutation cohort is still open', () =>
     pendingWriteCount: 4,
     roundHasWriteProgress: true,
     roundHasTerminalProgress: false,
+    roundHasFailedTerminalProgress: false,
     completionSignaled: false,
   }), true);
 });
@@ -35,10 +36,21 @@ test('runs validation at explicit validation and completion boundaries', () => {
     pendingWriteCount: 4,
     roundHasWriteProgress: true,
     roundHasTerminalProgress: false,
+    roundHasFailedTerminalProgress: false,
     completionSignaled: false,
   };
   assert.equal(shouldDeferAgentAutoValidation({ ...base, roundHasTerminalProgress: true }), false);
   assert.equal(shouldDeferAgentAutoValidation({ ...base, completionSignaled: true }), false);
+});
+
+test('does not duplicate validation after a failed terminal result', () => {
+  assert.equal(shouldDeferAgentAutoValidation({
+    pendingWriteCount: 4,
+    roundHasWriteProgress: true,
+    roundHasTerminalProgress: true,
+    roundHasFailedTerminalProgress: true,
+    completionSignaled: false,
+  }), true);
 });
 
 test('does not defer when there is no pending write or the round is not writing', () => {
@@ -46,12 +58,14 @@ test('does not defer when there is no pending write or the round is not writing'
     pendingWriteCount: 0,
     roundHasWriteProgress: true,
     roundHasTerminalProgress: false,
+    roundHasFailedTerminalProgress: false,
     completionSignaled: false,
   }), false);
   assert.equal(shouldDeferAgentAutoValidation({
     pendingWriteCount: 1,
     roundHasWriteProgress: false,
     roundHasTerminalProgress: false,
+    roundHasFailedTerminalProgress: false,
     completionSignaled: false,
   }), false);
 });

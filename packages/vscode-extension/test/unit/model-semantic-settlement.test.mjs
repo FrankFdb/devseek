@@ -40,7 +40,7 @@ test('model semantic settlement publishes nothing without a matching local recei
 
   const result = await service.observe({ toolExecutionReceipts: [] });
 
-  assert.deepEqual(result, { settled: false, verificationReceipts: [] });
+  assert.deepEqual(result, { settled: false, verificationReceipts: [], observationPaths: [] });
   assert.equal(published, 0);
 });
 
@@ -56,6 +56,7 @@ test('model semantic settlement publishes evidence and rebinds same-batch termin
     authority: authority({
       semanticContract: { kind: 'code-change', taskContract: {} },
       toolReceipts: [toolReceipt],
+      observationPaths: [],
     }, settlement => { publication = settlement; }),
     callbacks: {
       canonicalVerification: verification,
@@ -93,7 +94,27 @@ test('model semantic settlement publishes evidence and rebinds same-batch termin
   assert.equal(result.verificationReceipts.length, 1);
   assert.equal(result.verificationReceipts[0].status, 'passed');
   assert.equal(result.verificationReceipts[0].actionId, toolReceipt.actionId);
+  assert.deepEqual(result.observationPaths, []);
   assert.equal(publication.toolReceipts[0], toolReceipt);
+});
+
+test('model semantic settlement returns successful observation paths', async () => {
+  const service = createModelSemanticSettlementService({
+    authority: authority({
+      semanticContract: { kind: 'read-only', taskContract: {} },
+      toolReceipts: [],
+      observationPaths: ['src/', 'README.md'],
+    }, () => {}),
+    callbacks: {},
+    workspaceRoot: '/workspace',
+    writtenFiles: () => [],
+    verificationReceipts: () => [],
+  });
+
+  const result = await service.observe({ toolExecutionReceipts: [] });
+
+  assert.equal(result.settled, true);
+  assert.deepEqual(result.observationPaths, ['src/', 'README.md']);
 });
 
 function authority(settlement, publish) {

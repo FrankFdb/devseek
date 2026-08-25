@@ -104,6 +104,113 @@ test('unrelated or effectful receipt cannot settle an observation proposal', () 
   assert.equal(authority.completionSemanticContract.read.requested, false);
 });
 
+test('a failed observation cannot leak into the next settled contract', () => {
+  const authority = createWriteAuthority('检查项目并修复问题。', {});
+  authority.applyModelSemanticProposal(createProposal({
+    mode: 'inspect',
+    taskKind: 'read-only-analysis',
+    mutation: 'none',
+    targetPaths: ['build/missing.log'],
+    requiresWorkspace: true,
+    evidenceBindings: [observationBinding('a', ['build/missing.log'])],
+  }));
+  assert.equal(authority.settleModelSemanticProposal([toolReceipt({
+    tool: 'read_file',
+    purpose: 'observe',
+    effects: ['read'],
+    inputSha256: 'a'.repeat(64),
+    status: 'failed',
+  })]), undefined);
+
+  authority.applyModelSemanticProposal(createProposal({
+    mode: 'inspect',
+    taskKind: 'read-only-analysis',
+    mutation: 'none',
+    targetPaths: ['src/main.ts'],
+    requiresWorkspace: true,
+    evidenceBindings: [observationBinding('b', ['src/main.ts'])],
+  }));
+  const settled = authority.settleModelSemanticProposal([toolReceipt({
+    tool: 'read_file',
+    purpose: 'observe',
+    effects: ['read'],
+    inputSha256: 'b'.repeat(64),
+  })]);
+
+  assert.deepEqual(settled.semanticContract.read.targets, ['src/main.ts']);
+  assert.deepEqual(settled.observationPaths, ['src/main.ts']);
+});
+
+test('a partial observation batch settles only receipt-backed targets', () => {
+  const authority = createWriteAuthority('检查两个路径。', {});
+  authority.applyModelSemanticProposal(createProposal({
+    mode: 'inspect',
+    taskKind: 'read-only-analysis',
+    mutation: 'none',
+    targetPaths: ['src/', 'missing.txt'],
+    requiresWorkspace: true,
+    evidenceBindings: [
+      observationBinding('a', ['src/']),
+      observationBinding('b', ['missing.txt']),
+    ],
+  }));
+
+  const settled = authority.settleModelSemanticProposal([toolReceipt({
+    tool: 'list_dir',
+    purpose: 'observe',
+    effects: ['read'],
+    inputSha256: 'a'.repeat(64),
+  })]);
+
+  assert.deepEqual(settled.semanticContract.read.targets, ['src/']);
+  assert.deepEqual(settled.observationPaths, ['src/']);
+});
+
+test('a mixed round promotes each successful semantic fragment from its own receipt', () => {
+  const authority = createWriteAuthority('创建并读回 report.md。', {});
+  const mutation = createProposal({
+    taskKind: 'file-artifact',
+    mutation: 'create-file',
+    targetPaths: ['report.md'],
+    requiresWorkspace: true,
+  });
+  const observation = createProposal({
+    mode: 'inspect',
+    taskKind: 'read-only-analysis',
+    mutation: 'none',
+    targetPaths: ['report.md'],
+    requiresWorkspace: true,
+    evidenceBindings: [observationBinding('b', ['report.md'])],
+  });
+  authority.applyModelSemanticProposal({
+    ...mutation,
+    evidenceBindings: [...observation.evidenceBindings, ...mutation.evidenceBindings],
+    settlementFragments: [observation, mutation],
+  });
+
+  const settled = authority.settleModelSemanticProposal([
+    toolReceipt({ inputSha256: 'a'.repeat(64) }),
+    toolReceipt({
+      actionId: 'semantic-action-4',
+      sequence: 4,
+      tool: 'read_file',
+      purpose: 'observe',
+      effects: ['read'],
+      inputSha256: 'b'.repeat(64),
+    }),
+  ]);
+
+  assert.equal(settled.semanticContract.mutation.requested, true);
+  assert.deepEqual(settled.semanticContract.mutation.targets, ['report.md']);
+  assert.equal(settled.semanticContract.read.requested, true);
+  assert.deepEqual(settled.semanticContract.read.targets, ['report.md']);
+  assert.deepEqual(settled.observationPaths, ['report.md']);
+  assert.deepEqual(settled.toolReceipts.map(receipt => receipt.actionId), [
+    'semantic-action-3',
+    'semantic-action-4',
+  ]);
+});
+
 test('denied external action records attempted semantics without changing canonical user input', () => {
   const authority = createWriteAuthority('安装依赖。', {});
   authority.applyModelSemanticProposal(createProposal({
@@ -229,6 +336,7 @@ function proposalBinding(proposal) {
       purpose: 'workspace-mutation',
       effects: ['workspace-mutation'],
       inputSha256: 'a'.repeat(64),
+      targetPaths: proposal.targetPaths,
     };
   }
   if (proposal.mutation === 'external-effect' || proposal.requiresExternalEffect) {
@@ -237,6 +345,7 @@ function proposalBinding(proposal) {
       purpose: 'external-effect',
       effects: ['process', 'network'],
       inputSha256: 'a'.repeat(64),
+      targetPaths: proposal.targetPaths,
     };
   }
   return {
@@ -244,6 +353,17 @@ function proposalBinding(proposal) {
     purpose: 'observe',
     effects: ['process'],
     inputSha256: 'a'.repeat(64),
+    targetPaths: proposal.targetPaths,
+  };
+}
+
+function observationBinding(hashPrefix, targetPaths) {
+  return {
+    tool: targetPaths[0]?.endsWith('/') ? 'list_dir' : 'read_file',
+    purpose: 'observe',
+    effects: ['read'],
+    inputSha256: hashPrefix.repeat(64),
+    targetPaths,
   };
 }
 
