@@ -922,6 +922,13 @@ test('Execution failures remain in the canonical model-tool-result repair loop',
     assert.equal(existsSync(path.join(root, retired)), false, `${retired} must stay retired`);
   }
   assertContains(agenticLoop, 'buildTerminalFailureRepairFeedback', 'failed terminal evidence must return to the main model loop');
+  assertContains(agenticLoop, 'recoverBlockingTerminalFailure', 'all no-tool exits must share one terminal-failure recovery owner');
+  assertContains(agenticLoop, 'evidenceWithoutTools.blockingTerminalFailure', 'completion prose must not suppress an unresolved terminal failure');
+  assert.match(
+    agenticLoop,
+    /if \(await recoverBlockingTerminalFailure\([\s\S]*?evidenceWithoutTools\.blockingTerminalFailure[\s\S]*?\)\) \{[\s\S]*?continue;/,
+    'a no-tool response with adverse terminal evidence must continue the repair loop',
+  );
   assertContains(agenticLoop, 'getTerminalRecoveryProtocol', 'repeated failures must enter bounded root-cause recovery');
   assertContains(agenticLoop, 'runAgentAutoValidationForWrites', 'writes must re-enter canonical verification before completion');
   assertContains(writeGuard, 'read_file / grep_search / get_errors', 'repair feedback must ask the model to gather concrete local evidence');

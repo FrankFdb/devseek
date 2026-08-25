@@ -298,6 +298,21 @@ export async function runAgenticLoop(
       detail,
     });
   };
+  const recoverBlockingTerminalFailure = async (
+    failure: TerminalEvidence | undefined,
+    missingEvidence: readonly string[],
+    maxNoToolRounds: number,
+  ): Promise<boolean> => {
+    if (!failure || callbacks.signal?.aborted || noToolRounds >= maxNoToolRounds) return false;
+    noToolRounds++;
+    await emitAgenticCorrectionStatus(
+      '验证失败，继续依据证据修复',
+      describeBlockingTerminalFailure(failure),
+      '回流未清除的验证失败',
+    );
+    appendUserFeedback(buildTerminalFailureRepairFeedback(failure, missingEvidence));
+    return true;
+  };
   const settleOrRecoverProviderFailureInsideCurrentTask = async (
     providerFailure: ReturnType<typeof parseAgentProviderFailure>,
     partialResponseLength = 0,
@@ -584,6 +599,14 @@ export async function runAgenticLoop(
         failedReason = 'Provider 安全恢复后仍未形成有效工具调用。';
         break;
       }
+      const evidenceWithoutTools = assessCurrentEvidenceClosure();
+      if (await recoverBlockingTerminalFailure(
+        evidenceWithoutTools.blockingTerminalFailure,
+        evidenceWithoutTools.missingEvidence,
+        4,
+      )) {
+        continue;
+      }
       const reviewRecovery = recoverRequirementReviewNoToolCompletion(requirementReview, noToolRounds + 1, text);
       if (!callbacks.signal?.aborted && reviewRecovery) {
         noToolRounds++;
@@ -638,7 +661,7 @@ export async function runAgenticLoop(
         appendUserFeedback(retryMessage);
         continue;
       }
-      const missingWithoutTools = assessCurrentEvidenceClosure().missingEvidence;
+      const missingWithoutTools = evidenceWithoutTools.missingEvidence;
       if (!callbacks.signal?.aborted && missingWithoutTools.length > 0 && noToolRounds < 4) {
         noToolRounds++;
         await emitAgenticCorrectionStatus(
@@ -1054,10 +1077,7 @@ export async function runAgenticLoop(
       const evidenceNow = assessCurrentEvidenceClosure();
       const missingNow = evidenceNow.missingEvidence;
       const blockingFailureNow = evidenceNow.blockingTerminalFailure;
-      if (blockingFailureNow && noToolRounds < 2 && !callbacks.signal?.aborted) {
-        noToolRounds++;
-        const retryMessage = buildTerminalFailureRepairFeedback(blockingFailureNow, missingNow);
-        appendUserFeedback(retryMessage);
+      if (await recoverBlockingTerminalFailure(blockingFailureNow, missingNow, 2)) {
         continue;
       }
       break;
