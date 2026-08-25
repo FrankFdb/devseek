@@ -39,6 +39,9 @@ test('EngineeringGuidelines: agent prompt carries file and function size constra
   assert.match(prompt, /修复缺陷类别而非单一复现/);
   assert.match(prompt, /不得生成未声明的 include\/import/);
   assert.match(prompt, /公共头文件和模块应能独立解析/);
+  assert.match(prompt, /读取已落盘的直接依赖声明/);
+  assert.match(prompt, /先执行项目声明的公开构建\/测试入口/);
+  assert.match(prompt, /搜索并审计该符号的声明和所有调用点/);
   assert.match(prompt, /生产实现不得留下 TODO、FIXME、placeholder/);
   assert.match(prompt, /重复规则应归并到唯一责任方/);
   assert.match(prompt, /不得为了展示流程而创建无关设计、报告、Markdown/);

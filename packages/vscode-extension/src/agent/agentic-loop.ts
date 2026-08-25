@@ -108,6 +108,7 @@ import { createSemanticExecutionWriteAuthority } from './semantic-execution-cont
 import { createAgenticInitialPromptContext, type AgenticLoopExecutionContext } from './agentic-execution-context';
 import { classifyAgenticManualReviewEvidence } from './terminal-evidence-settlement';
 import { updateRequirementReviewRepairWindow } from './requirement-review-repair-window';
+import { renewExecutionConvergenceRoundLimit } from './execution-convergence-window';
 import { settleAgenticLoopFinal } from './agentic-final-settlement';
 import {
   buildRepeatedContextToolFeedback,
@@ -122,9 +123,10 @@ const AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS = 3;
 // New tasks share one executor regardless of attached context shape.
 // ----------------------------------------------------------------
 
-/** Normal mode ≈ Copilot's toolCallLimit ~25; autopilot mode ≈ Copilot's ~200. */
+/** Normal mode starts near Copilot's ~25 and renews only on bounded execution progress. */
 const AGENTIC_ROUNDS_NORMAL   = 25;
 const AGENTIC_ROUNDS_AUTOPILOT = 200;
+const AGENTIC_ROUNDS_NORMAL_CONVERGENCE_MAX = 80;
 const AGENTIC_CONTEXT_GATHERING_ROUND_LIMIT_BEFORE_WRITE = 2;
 const AGENTIC_CONTEXT_GATHERING_EVIDENCE_LIMIT_BEFORE_WRITE = 6;
 const AGENTIC_CONTEXT_CONVERGENCE_MAX_WARNINGS = 2;
@@ -355,13 +357,17 @@ export async function runAgenticLoop(
   });
 
   const maxAgenticRounds = callbacks.autopilot ? AGENTIC_ROUNDS_AUTOPILOT : AGENTIC_ROUNDS_NORMAL;
+  let executionConvergenceRoundLimit = maxAgenticRounds;
   let requirementReviewRepairGraceRounds = 0;
   let steeringRevisionGraceRounds = 0;
   // Track terminal command signatures across rounds to detect and break stuck loops
   const seenTerminalCmdSignatures = new Map<string, { count: number; lastProgressEpoch: number }>();
   const seenContextToolSignatures = new Map<string, { count: number; lastProgressEpoch: number }>();
   for (;;) {
-  while (roundCount < maxAgenticRounds + requirementReviewRepairGraceRounds + steeringRevisionGraceRounds) {
+  while (roundCount < Math.max(
+    executionConvergenceRoundLimit,
+    maxAgenticRounds + requirementReviewRepairGraceRounds + steeringRevisionGraceRounds,
+  )) {
     if (callbacks.signal?.aborted) break;
     roundCount++;
 
@@ -924,6 +930,15 @@ export async function runAgenticLoop(
     const missingAfterTools = evidenceAfterTools.missingEvidence;
     const blockingFailureAfterTools = evidenceAfterTools.blockingTerminalFailure;
     lastMissingEvidence = missingAfterTools;
+    executionConvergenceRoundLimit = renewExecutionConvergenceRoundLimit({
+      currentRoundLimit: executionConvergenceRoundLimit,
+      roundCount,
+      maxRoundLimit: callbacks.autopilot
+        ? AGENTIC_ROUNDS_AUTOPILOT
+        : AGENTIC_ROUNDS_NORMAL_CONVERGENCE_MAX,
+      concreteProgress: (loopRes.writtenFiles?.length ?? 0) > 0 || roundHasValidationTerminalProgress,
+      unresolvedExecution: missingAfterTools.length > 0 || Boolean(blockingFailureAfterTools),
+    });
     const gatheredEvidenceCount = allReadEvidencePaths.size + allEvidenceRefs.length;
     if (!callbacks.signal?.aborted
       && promptRequiresFileChange

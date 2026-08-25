@@ -107,6 +107,17 @@ test('§1 Agent loop: AGENTIC_ROUNDS_AUTOPILOT constant exists', () => {
   assertContains(code, 'AGENTIC_ROUNDS_AUTOPILOT', '§1 autopilot round limit');
 });
 
+test('§1 Agent loop: concrete execution progress renews a bounded convergence window', () => {
+  const code = src('src/agent/agentic-loop.ts');
+  const convergence = src('src/agent/execution-convergence-window.ts');
+  assertContains(code, 'renewExecutionConvergenceRoundLimit({', 'agent loop must delegate convergence renewal');
+  assertContains(code, 'AGENTIC_ROUNDS_NORMAL_CONVERGENCE_MAX', 'normal convergence must have an absolute cap');
+  assertContains(code, 'loopRes.writtenFiles', 'only receipt-backed writes may renew convergence');
+  assertContains(code, 'roundHasValidationTerminalProgress', 'validation evidence may renew repair convergence');
+  assertContains(convergence, '!input.concreteProgress || !input.unresolvedExecution', 'idle rounds must not renew convergence');
+  assertContains(convergence, 'Math.min(', 'convergence renewal must remain bounded');
+});
+
 test('§1 Agent loop: repeated blocking tool failures are stateful', () => {
   const code = src('src/agent/agentic-loop.ts');
   const recovery = src('src/agent/tool-failure-recovery.ts');
