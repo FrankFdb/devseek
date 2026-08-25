@@ -3,6 +3,7 @@ import { canAgentRecoverDeepSeekStreamError } from '@devseek-netai/shared';
 import type { TerminalEvidence, WrittenFileEvidence } from './completion-evidence';
 import type { TodoItem } from './evidence-recovery';
 import type { TextToolProtocolSession } from './text-tool-protocol';
+import { projectDiagnosticOutputExcerpt } from '../app/diagnostic-output-projection';
 import {
   buildReplaceInFileRecoveryPrompt,
   buildTextToolEnvelopeRecoveryPrompt,
@@ -134,7 +135,10 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
   const readPaths = summarizeList(input.readEvidencePaths, 12);
   const writtenPaths = summarizeList(input.writtenFiles.map(file => file.path), 12);
   const terminalFacts = summarizeList(
-    input.terminalEvidence.map(evidence => `${evidence.ok ? 'ok' : 'failed'}: ${evidence.command}`),
+    input.terminalEvidence.slice(-6).map(evidence => [
+      `${evidence.ok ? 'ok' : 'failed'}: ${evidence.command}`,
+      evidence.detail ? projectDiagnosticOutputExcerpt(evidence.detail, 600) : '',
+    ].filter(Boolean).join('\n')),
     6,
   );
   const todos = summarizeList(

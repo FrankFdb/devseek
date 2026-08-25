@@ -27,7 +27,7 @@ after(() => rmSync(tempRoot, { recursive: true, force: true }));
 test('defers validation while a pure-write mutation cohort is still open', () => {
   assert.equal(shouldDeferAgentAutoValidation({
     pendingWriteCount: 4,
-    roundHasTerminalProgress: false,
+    roundHasValidationTerminalProgress: false,
     pendingCohortHasUnrepairedTerminalFailure: false,
     completionSignaled: false,
   }), true);
@@ -36,18 +36,18 @@ test('defers validation while a pure-write mutation cohort is still open', () =>
 test('runs validation at explicit validation and completion boundaries', () => {
   const base = {
     pendingWriteCount: 4,
-    roundHasTerminalProgress: false,
+    roundHasValidationTerminalProgress: false,
     pendingCohortHasUnrepairedTerminalFailure: false,
     completionSignaled: false,
   };
-  assert.equal(shouldDeferAgentAutoValidation({ ...base, roundHasTerminalProgress: true }), false);
+  assert.equal(shouldDeferAgentAutoValidation({ ...base, roundHasValidationTerminalProgress: true }), false);
   assert.equal(shouldDeferAgentAutoValidation({ ...base, completionSignaled: true }), false);
 });
 
 test('does not duplicate validation after a failed terminal result', () => {
   assert.equal(shouldDeferAgentAutoValidation({
     pendingWriteCount: 4,
-    roundHasTerminalProgress: true,
+    roundHasValidationTerminalProgress: true,
     pendingCohortHasUnrepairedTerminalFailure: true,
     completionSignaled: false,
   }), true);
@@ -56,13 +56,13 @@ test('does not duplicate validation after a failed terminal result', () => {
 test('keeps a pending cohort open during context-only rounds', () => {
   assert.equal(shouldDeferAgentAutoValidation({
     pendingWriteCount: 0,
-    roundHasTerminalProgress: false,
+    roundHasValidationTerminalProgress: false,
     pendingCohortHasUnrepairedTerminalFailure: false,
     completionSignaled: false,
   }), false);
   assert.equal(shouldDeferAgentAutoValidation({
     pendingWriteCount: 1,
-    roundHasTerminalProgress: false,
+    roundHasValidationTerminalProgress: false,
     pendingCohortHasUnrepairedTerminalFailure: false,
     completionSignaled: false,
   }), true);

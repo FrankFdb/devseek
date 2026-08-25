@@ -88,7 +88,12 @@ test('Agent provider recovery prompt keeps only durable facts and forces small t
     currentTodos: [{ id: 1, title: '分析既有入口', status: 'in-progress' }],
     readEvidencePaths: ['src/main.cpp', 'src/lifting/lifting_manager.hpp'],
     writtenFiles: [{ path: 'docs/01-design.md', basename: '01-design.md', linesAdded: 10, linesRemoved: 0, action: 'create' }],
-    terminalEvidence: [{ command: 'npm test', ok: false, exitCode: 1, detail: 'failed' }],
+    terminalEvidence: [{
+      command: 'npm test',
+      ok: false,
+      exitCode: 1,
+      detail: 'FAIL: quiz state incorrect',
+    }],
     partialResponseLength: 46000,
   }).content;
 
@@ -107,6 +112,7 @@ test('Agent provider recovery prompt keeps only durable facts and forces small t
   assert.match(prompt, /command 必须是合法 JSON 字符串/);
   assert.match(prompt, /输出工具块后立即停止/);
   assert.match(prompt, /正式既有工程任务必须继续沿既有入口/);
+  assert.match(prompt, /FAIL: quiz state incorrect/);
   assert.match(prompt, /src\/lifting\/lifting_manager\.hpp/);
   assert.equal(prompt.match(/```xml/g)?.length, 1);
 });

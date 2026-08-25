@@ -796,6 +796,9 @@ export async function runAgenticLoop(
       || toolsToExecute.some(tool => tool.purpose === 'workspace-mutation');
     const roundHasTerminalProgress = (loopRes.terminalCommands?.length ?? 0) > 0
       || (loopRes.terminalEvidence?.length ?? 0) > 0;
+    const roundHasValidationTerminalProgress = loopRes.terminalEvidence?.some(
+      evidence => evidence.kind !== 'other',
+    ) === true;
     failedTerminalWriteCount = advanceAutoValidationFailureFence(failedTerminalWriteCount, {
       writeCount: allWrittenFiles.length,
       terminalOutcomes: (loopRes.terminalEvidence ?? []).map(evidence => evidence.ok),
@@ -828,7 +831,7 @@ export async function runAgenticLoop(
     }
     const deferAutoValidation = shouldDeferAgentAutoValidation({
       pendingWriteCount: pendingAutoValidationWrites.length,
-      roundHasTerminalProgress,
+      roundHasValidationTerminalProgress,
       pendingCohortHasUnrepairedTerminalFailure: failedTerminalWriteCount === allWrittenFiles.length,
       completionSignaled: Boolean(loopRes.taskComplete || loopRes.allTodosCompleted),
     });

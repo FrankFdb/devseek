@@ -28,6 +28,7 @@ import {
 } from './run-context';
 import type { ExecutionMode } from '../intent/intent-types';
 import type { ValidationCommandRunner } from '../workspace/validation-service';
+import { projectDiagnosticOutputExcerpt } from './diagnostic-output-projection';
 
 type TerminalConfirmResolver = (allow: boolean, alwaysAllow?: boolean) => void;
 
@@ -904,7 +905,7 @@ export class TerminalPermissionCoordinator {
     if (terminalEvidenceType !== 'side_effect.committed') {
       this.trackAdverseCommandOperation(input, runEvidence.operationId);
     }
-    const outputPreview = result.output.slice(0, 4000);
+    const outputPreview = projectDiagnosticOutputExcerpt(result.output, 4000);
     trace?.info('terminal', 'command-complete', {
       command: summarizeTraceText(normalizedCommand),
       workdir,

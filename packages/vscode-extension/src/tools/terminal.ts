@@ -22,6 +22,7 @@ import {
 } from '../execution-outcome-classifier';
 import { getWorkspaceRootFsPath } from '../workspace-roots';
 import { CapturedProcessRegistry } from './captured-process-registry';
+import { projectDiagnosticOutputExcerpt } from '../app/diagnostic-output-projection';
 
 export interface TerminalRunOptions {
   /** 要执行的 shell 命令 */
@@ -261,8 +262,8 @@ export function runCommand(opts: TerminalRunOptions): Promise<TerminalRunResult>
       const summary = outcome.timedOut
         ? outcome.reviewRequired
           ? formatManualReviewTerminalDetail(outcome.reviewReason || INTERACTIVE_RUN_MANUAL_REVIEW_DETAIL)
-          : `[超时 ${timeoutMs}ms] 命令: ${command}\n${outcome.output.slice(0, 800)}`
-        : `[exitCode=${outcome.exitCode}] ${outcome.output.slice(0, 1500)}`;
+          : `[超时 ${timeoutMs}ms] 命令: ${command}\n${projectDiagnosticOutputExcerpt(outcome.output, 800)}`
+        : `[exitCode=${outcome.exitCode}] ${projectDiagnosticOutputExcerpt(outcome.output, 1500)}`;
 
       resolveOnce({
         ok: outcome.ok,
@@ -307,8 +308,8 @@ export function runInVisibleTerminal(command: string, terminalName = 'DeepSeek')
 /** 将终端输出格式化为 prompt 可注入的文本块 */
 export function formatTerminalOutputForPrompt(cmd: string, result: TerminalRunResult): string {
   const lines = [`[终端命令] ${cmd}`, `[退出码] ${result.exitCode}`];
-  if (result.stdout) lines.push(`[stdout]\n${result.stdout.slice(0, 1200)}`);
-  if (result.stderr) lines.push(`[stderr]\n${result.stderr.slice(0, 800)}`);
+  if (result.stdout) lines.push(`[stdout]\n${projectDiagnosticOutputExcerpt(result.stdout, 2400)}`);
+  if (result.stderr) lines.push(`[stderr]\n${projectDiagnosticOutputExcerpt(result.stderr, 1400)}`);
   if (result.reviewRequired) {
     lines.push(formatManualReviewTerminalDetail(result.reviewReason || INTERACTIVE_RUN_MANUAL_REVIEW_DETAIL));
   }

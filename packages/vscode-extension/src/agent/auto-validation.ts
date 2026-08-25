@@ -44,6 +44,7 @@ import { workspaceRelativeVerificationPaths } from './verification-scope';
 import { CanonicalValidationCommandRunner } from './canonical-validation-command-runner';
 import { buildStructuralCompileFailureRecoveryProtocol } from '../app/structural-compile-failure';
 import { isCodeArtifactPathValue } from '../artifact-path-kind';
+import { projectDiagnosticOutputExcerpt } from '../app/diagnostic-output-projection';
 
 export interface AgentAutoValidationCallbacks {
   onAgentStatus: (status: AgentStatusEvent) => void | Promise<void>;
@@ -218,7 +219,7 @@ function formatAutoValidationFeedback(
     `cwd=${result.cwd}`,
     `exitCode=${result.exitCode ?? 'unknown'}`,
     result.reason ? `reason=${result.reason}` : '',
-    result.output ? result.output.slice(0, 4000) : '',
+    result.output ? projectDiagnosticOutputExcerpt(result.output, 4000) : '',
     result.risks?.length ? `risks:\n${result.risks.map((risk) => `- ${risk}`).join('\n')}` : '',
     result.alternativeChecks?.length ? `alternativeChecks:\n${result.alternativeChecks.map((check) => `- ${check}`).join('\n')}` : '',
     result.ok ? '' : '自动验证命令未通过，不能把编译/运行/测试标记为完成。',
@@ -243,7 +244,7 @@ function formatBlockedAutoValidationFeedback(result: AutoValidationResult): stri
     `[verification_result: ${verification.status}]`,
     '[auto_validation: blocked]',
     `reason=${verification.reason ?? result.reason ?? 'no-auto-validation-target'}`,
-    result.output ? result.output.slice(0, 1600) : '',
+    result.output ? projectDiagnosticOutputExcerpt(result.output, 1600) : '',
     result.risks?.length ? `risks:\n${result.risks.map((risk) => `- ${risk}`).join('\n')}` : '',
     result.alternativeChecks?.length ? `alternativeChecks:\n${result.alternativeChecks.map((check) => `- ${check}`).join('\n')}` : '',
     'QualityGate 阻塞：没有可自动运行的验证目标，不能把结果标记为已验证通过；不要发明 build/test 脚本或用失败命令反复修复。',
@@ -473,7 +474,7 @@ export async function runAgentAutoValidationForWrites(
         evidenceOperationId,
         verificationScopePaths: changedPaths,
         title: policyQualityTitle ?? '已复用终端验证结果',
-        detail: feedbackForAI.slice(0, 1200),
+        detail: projectDiagnosticOutputExcerpt(feedbackForAI, 1200),
       });
       await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, changedPaths, qualityGate);
       return {
@@ -495,7 +496,7 @@ export async function runAgentAutoValidationForWrites(
         evidenceOperationId,
         verificationScopePaths: changedPaths,
         title: policyQualityTitle ?? '文件读回验证通过',
-        detail: feedbackForAI.slice(0, 1200),
+        detail: projectDiagnosticOutputExcerpt(feedbackForAI, 1200),
       });
       await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, changedPaths, qualityGate);
       const settled: AgentAutoValidationResult = {
@@ -579,7 +580,10 @@ export async function runAgentAutoValidationForWrites(
         evidenceOperationId,
         verificationScopePaths: changedPaths,
         title: policyQualityTitle ?? '未识别到自动验证目标',
-        detail: [changedPaths.join('\n'), policyQuality?.feedbackForAI].filter(Boolean).join('\n\n').slice(0, 1200),
+        detail: projectDiagnosticOutputExcerpt(
+          [changedPaths.join('\n'), policyQuality?.feedbackForAI].filter(Boolean).join('\n\n'),
+          1200,
+        ),
       });
       await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, changedPaths, unavailableQuality);
       const settled = {
@@ -602,7 +606,10 @@ export async function runAgentAutoValidationForWrites(
         evidenceOperationId,
         verificationScopePaths: changedPaths,
         title: policyQualityTitle ?? '自动验证阻塞',
-        detail: [feedbackForAI, policyQuality?.feedbackForAI].filter(Boolean).join('\n\n').slice(0, 1200),
+        detail: projectDiagnosticOutputExcerpt(
+          [feedbackForAI, policyQuality?.feedbackForAI].filter(Boolean).join('\n\n'),
+          1200,
+        ),
       });
       await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, changedPaths, qualityGate);
       const settled = {
@@ -631,7 +638,7 @@ export async function runAgentAutoValidationForWrites(
         : policyQuality
           ? policyQualityTitle ?? '需求质量门禁未通过'
           : '自动验证失败',
-      detail: finalFeedbackForAI.slice(0, 1200),
+      detail: projectDiagnosticOutputExcerpt(finalFeedbackForAI, 1200),
     });
     await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, changedPaths, finalQualityGate);
     const settled = {

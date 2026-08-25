@@ -106,5 +106,6 @@ test('settled terminal observation preserves failed execution and repair feedbac
   assert.equal(result.terminalEvidence[0].ok, false);
   assert.equal(result.verificationReceipts[0].status, 'failed');
   assert.equal(result.evidenceRef.exitCode, 1);
+  assert.match(result.terminalEvidence[0].detail, /SyntaxError: Unexpected token/);
   assert.match(result.feedbackParts[1], /验证命令未通过/);
 });
