@@ -2602,6 +2602,11 @@ test('Architecture: validated source changes require fresh source review before 
     'semantic review must receive bounded project context separately from final source',
   );
   assertContains(
+    independentReview,
+    'Respect staged delivery boundaries',
+    'semantic review must not promote deferred context requirements into the current delivery stage',
+  );
+  assertContains(
     providerTranscriptRecovery,
     '[DevSeek 已执行工具请求摘要]',
     'provider-authored transcript recovery must recognize DevSeek internal summary echoes',
@@ -2747,6 +2752,7 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   assertContains(agentProviderRecovery, '最多 6 个只读工具', 'provider recovery must force small context batches');
   assertContains(agentProviderRecovery, '最多 1 个写入工具', 'provider recovery must force small write batches');
   assertContains(agentProviderRecovery, '不要引用、续写或执行上一轮损坏文本', 'provider recovery must never trust corrupted response text');
+  assertContains(agentProviderRecovery, 'projectCurrentTerminalEvidence', 'provider recovery must not replay validation failures cleared by newer evidence');
   assertContains(agentProviderRecovery, 'shouldResetProviderSessionForRecovery', 'provider recovery must decide when a web session is wedged');
   assertContains(agenticLoop, 'parseAgentProviderFailure(error)', 'agentic loop must catch provider corruption before extension-level failure');
   assertContains(agenticProviderRecoveryBoundary, 'buildAgentProviderRecoveryPrompt', 'agentic provider recovery boundary must recover inside the current task from safe facts');

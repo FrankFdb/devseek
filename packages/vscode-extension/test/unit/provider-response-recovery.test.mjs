@@ -119,6 +119,36 @@ test('Agent provider recovery prompt keeps only durable facts and forces small t
   assert.equal(prompt.match(/```xml/g)?.length, 1);
 });
 
+test('Agent provider recovery omits validation failures cleared by newer success', () => {
+  const failure = parseAgentProviderFailure(
+    new Error('RESPONSE_CORRUPTED:invalid-tool-block:authorized envelope was malformed.'),
+  );
+  const prompt = buildAgentProviderRecoveryPrompt({
+    userPrompt: '修复并验证当前项目',
+    failure,
+    recoveryAttempt: 1,
+    maxRecoveryAttempts: 3,
+    promptRequiresTools: true,
+    currentTodos: [],
+    readEvidencePaths: ['src/lesson_controller.cpp'],
+    writtenFiles: [],
+    terminalEvidence: [
+      { command: 'cmake --build build', kind: 'compile', ok: false, exitCode: 2, detail: 'duplicate definition' },
+      { command: 'cmake --build build2', kind: 'compile', ok: true, exitCode: 0 },
+      { command: './build2/math_visual_lab --self-test', kind: 'test', ok: true, exitCode: 0 },
+    ],
+    textToolProtocol: {
+      version: 'devseek.text-tools/v1',
+      channelId: 'current-state-channel',
+    },
+  }).content;
+
+  assert.doesNotMatch(prompt, /duplicate definition/);
+  assert.doesNotMatch(prompt, /failed: cmake --build build/);
+  assert.match(prompt, /ok: cmake --build build2/);
+  assert.match(prompt, /ok: \.\/build2\/math_visual_lab --self-test/);
+});
+
 test('Agent provider recovery prompt tightens the last retry', () => {
   const failure = parseAgentProviderFailure(
     new Error('RESPONSE_CORRUPTED:stream-timeout:timeout'),

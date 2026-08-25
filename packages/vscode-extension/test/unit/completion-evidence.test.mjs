@@ -34,6 +34,7 @@ const {
   getBlockingTerminalFailure,
   hasReadOnlyAnswerEvidence,
   isBlockingTerminalFailureEvidence,
+  projectCurrentTerminalEvidence,
   requiresCodeArtifactForEvidence,
   requiresCommandEvidence,
   requiresFileChangeEvidence,
@@ -139,6 +140,23 @@ test('failed validation remains blocking until a compatible success follows', ()
   assert.equal(getBlockingTerminalFailure([failure, success], contract), undefined);
   assert.equal(findBlockingTerminalFailureEvidence([failure, success]), undefined);
   assert.match(describeBlockingTerminalFailure(failure), /exitCode=2/);
+});
+
+test('current terminal projection removes failures cleared by later validation', () => {
+  const staleFailure = terminal('cmake --build build', 'compile', false, 2, 'duplicate definition');
+  const buildSuccess = terminal('cmake --build build2', 'compile', true, 0);
+  const testSuccess = terminal('./build2/app --self-test', 'test', true, 0);
+
+  assert.deepEqual(
+    projectCurrentTerminalEvidence([staleFailure, buildSuccess, testSuccess]),
+    [buildSuccess, testSuccess],
+  );
+
+  const activeFailure = terminal('./build2/app --smoke-frames 1', 'run', false, 1, 'X11 failure');
+  assert.deepEqual(
+    projectCurrentTerminalEvidence([staleFailure, buildSuccess, testSuccess, activeFailure]),
+    [buildSuccess, testSuccess, activeFailure],
+  );
 });
 
 test('an unrelated written file cannot satisfy a declared target', () => {

@@ -1,6 +1,11 @@
 import type { ChatMessage } from '../llm/types';
 import { canAgentRecoverDeepSeekStreamError } from '@devseek-netai/shared';
-import type { TerminalEvidence, WrittenFileEvidence } from './completion-evidence';
+import {
+  findBlockingTerminalFailureEvidence,
+  projectCurrentTerminalEvidence,
+  type TerminalEvidence,
+  type WrittenFileEvidence,
+} from './completion-evidence';
 import type { TodoItem } from './evidence-recovery';
 import type { TextToolProtocolSession } from './text-tool-protocol';
 import { projectDiagnosticOutputExcerpt } from '../app/diagnostic-output-projection';
@@ -134,12 +139,13 @@ export function describeAgentProviderRecoveryForUser(
 export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPromptInput): ChatMessage {
   const readPaths = summarizeList(input.readEvidencePaths, 12);
   const writtenPaths = summarizeList(input.writtenFiles.map(file => file.path), 12);
+  const blockingTerminalFailure = findBlockingTerminalFailureEvidence(input.terminalEvidence);
   const terminalFacts = summarizeList(
-    input.terminalEvidence.slice(-6).map(evidence => [
-      `${evidence.ok ? 'ok' : 'failed'}: ${evidence.command}`,
+    projectCurrentTerminalEvidence(input.terminalEvidence).map(evidence => [
+      `${evidence === blockingTerminalFailure ? 'active-failure' : 'ok'}: ${evidence.command}`,
       evidence.detail ? projectDiagnosticOutputExcerpt(evidence.detail, 600) : '',
     ].filter(Boolean).join('\n')),
-    6,
+    4,
   );
   const todos = summarizeList(
     input.currentTodos.map(todo => `${todo.status}: ${todo.title}`),

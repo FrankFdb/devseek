@@ -328,6 +328,8 @@ test('review prompt carries bounded workspace context only as user-delegated evi
 
   assert.match(messages[0].content, /files the implementing agent actually read/u);
   assert.match(messages[0].content, /original user request explicitly delegates to or references that file/u);
+  assert.match(messages[0].content, /Respect staged delivery boundaries/u);
+  assert.match(messages[0].content, /out of scope until the user requests that stage/u);
   assert.match(messages[1].content, /\[WORKSPACE CONTEXT READ BY IMPLEMENTING AGENT\]/u);
   assert.match(messages[1].content, /include\/math_model\.hpp/u);
 });

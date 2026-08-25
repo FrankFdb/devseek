@@ -221,6 +221,18 @@ export function findBlockingTerminalFailureEvidence(
   return blockingFailure;
 }
 
+/** Projects current durable state without replaying failures cleared by later validation. */
+export function projectCurrentTerminalEvidence(
+  evidence: readonly TerminalEvidence[],
+  maxSuccessfulFacts = 3,
+): TerminalEvidence[] {
+  const blockingFailure = findBlockingTerminalFailureEvidence(evidence);
+  const successfulFacts = evidence.filter(item => item.ok).slice(-maxSuccessfulFacts);
+  const selected = new Set<TerminalEvidence>(successfulFacts);
+  if (blockingFailure) selected.add(blockingFailure);
+  return evidence.filter(item => selected.has(item));
+}
+
 function terminalSuccessClearsFailure(success: TerminalEvidence, failure: TerminalEvidence): boolean {
   if (!success.ok) return false;
   if (success.kind === 'compile-run') return isCommandTerminalEvidenceKind(failure.kind);
