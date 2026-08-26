@@ -5,6 +5,7 @@ import {
   parseFakeToolCalls,
   type FakeTool,
 } from './fake-tool-parser';
+import { inspectProviderTextToolTranscript } from './provider-text-tool-transcript';
 
 export const TEXT_TOOL_PROTOCOL_VERSION = 'devseek.text-tools/v1' as const;
 
@@ -67,9 +68,16 @@ export function inspectOutOfEnvelopeTextToolProtocol(
   const outsideAuthorizedEnvelopes = stripAuthorizedTextToolEnvelopes(text, session);
   const analysis = analyzeFakeToolCallProtocol(outsideAuthorizedEnvelopes);
   const actionableMatches = analysis.matches.filter(match => match.tools.length > 0);
-  const dialects = [...new Set(actionableMatches.map(match => match.dialect))];
+  const transcript = inspectProviderTextToolTranscript(outsideAuthorizedEnvelopes);
+  const dialects = [...new Set([
+    ...actionableMatches.map(match => match.dialect),
+    ...(transcript.found ? ['provider-text-content-block'] : []),
+  ])];
   const observedToolNames = [...new Set(
-    actionableMatches.flatMap(match => match.tools.map(tool => tool.name)),
+    [
+      ...actionableMatches.flatMap(match => match.tools.map(tool => tool.name)),
+      ...transcript.observedToolNames,
+    ],
   )];
   return Object.freeze({
     found: dialects.length > 0,
@@ -93,9 +101,10 @@ export function inspectInvalidAuthorizedTextToolProtocol(
   }
   const payloads = extractAuthorizedTextToolPayloads(text, session);
   const invalidPayloads = payloads.filter(payload => parseAuthorizedTextToolPayload(payload).length === 0);
-  const observedToolNames = [...new Set(invalidPayloads.flatMap(payload => (
-    analyzeFakeToolCallProtocol(payload).matches.flatMap(match => match.tools.map(tool => tool.name))
-  )))];
+  const observedToolNames = [...new Set(invalidPayloads.flatMap(payload => [
+    ...analyzeFakeToolCallProtocol(payload).matches.flatMap(match => match.tools.map(tool => tool.name)),
+    ...inspectProviderTextToolTranscript(payload).observedToolNames,
+  ]))];
   return Object.freeze({
     found: invalidPayloads.length > 0,
     envelopeCount: payloads.length,

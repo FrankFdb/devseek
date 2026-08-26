@@ -3121,12 +3121,14 @@ test('Agentic loop: visible correction and context convergence are owned by Agen
   assertContains(agenticLoop, "'invalid-tool-block'", 'empty or malformed authorized envelopes must get a stable recoverable failure status');
   assertContains(agenticLoop, "'out-of-envelope-tool-block'", 'quarantined provider actions must get a distinct recoverable failure status');
   const contextConvergence = src('src/agent/context-convergence-feedback.ts');
+  const providerTextTranscript = src('src/agent/provider-text-tool-transcript.ts');
   assertContains(agenticLoop, 'new DeliveryConvergenceLedger()', 'agent loop must delegate delivery convergence ownership');
   assertContains(agenticLoop, 'resolveDeliveryConvergencePending({', 'agent loop must delegate current-turn delivery debt ownership');
   assertContains(agenticLoop, 'deliveryConvergence.observe({', 'each executed round must report facts to the convergence owner');
   assertContains(agenticLoop, "deliveryConvergenceResult.kind === 'stop'", 'non-delivering autonomous investigation must fail closed');
   assertContains(contextConvergence, '项目证据已收集，正在切换到交付落盘', 'formal project work must visibly transition from investigation to delivery');
   assertContains(contextConvergence, '项目调查证据已足够，必须从调查阶段切换到交付阶段', 'model feedback must force delivery after enough evidence');
+  assertContains(providerTextTranscript, 'arguments remain untrusted', 'provider text transcripts must remain quarantine-only evidence');
   assert.equal(existsSync(path.join(root, 'src/agent/no-tool-intent.ts')), false, 'keyword promise detector must stay retired');
   assert.equal(existsSync(path.join(root, 'src/agent/artifact-quality-oracle.ts')), false, 'domain-specific artifact oracle must stay retired');
 });

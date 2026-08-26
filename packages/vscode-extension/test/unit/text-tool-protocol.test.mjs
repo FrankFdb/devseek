@@ -73,6 +73,46 @@ test('out-of-envelope structured actions are observable only as quarantined prot
   });
 });
 
+test('provider text content blocks are quarantined and reissued instead of becoming no-tool prose', () => {
+  const transcript = [
+    '需要读取精确范围。',
+    '```',
+    JSON.stringify([
+      { type: 'text', text: 'read_file path=/tmp/workspace/main.cpp startLine=60 endLine=180' },
+      { type: 'text', text: 'read_file path=/tmp/workspace/include/app.hpp' },
+    ], null, 2),
+    '```',
+  ].join('\n');
+
+  assert.deepEqual(parseAuthorizedTextToolCalls(transcript, session), []);
+  assert.deepEqual(inspectOutOfEnvelopeTextToolProtocol(transcript, session), {
+    found: true,
+    dialects: ['provider-text-content-block'],
+    observedToolNames: ['read_file'],
+  });
+});
+
+test('ordinary provider content blocks remain prose and authenticated transcripts fail closed', () => {
+  const prose = `\`\`\`json\n${JSON.stringify([{ type: 'text', text: 'This is an explanation.' }])}\n\`\`\``;
+  assert.deepEqual(inspectOutOfEnvelopeTextToolProtocol(prose, session), {
+    found: false,
+    dialects: [],
+    observedToolNames: [],
+  });
+
+  const invalid = renderTextToolProtocolEnvelope(
+    session,
+    JSON.stringify([{ type: 'text', text: 'read_file path=/tmp/workspace/main.cpp' }]),
+  );
+  assert.deepEqual(parseAuthorizedTextToolCalls(invalid, session), []);
+  assert.deepEqual(inspectInvalidAuthorizedTextToolProtocol(invalid, session), {
+    found: true,
+    envelopeCount: 1,
+    invalidEnvelopeCount: 1,
+    observedToolNames: ['read_file'],
+  });
+});
+
 test('only the current run channel authorizes a text-provider tool payload', () => {
   const authorized = `准备创建文件。\n${renderTextToolProtocolEnvelope(session, payload)}\n等待结果。`;
   const [tool] = parseAuthorizedTextToolCalls(authorized, session);
