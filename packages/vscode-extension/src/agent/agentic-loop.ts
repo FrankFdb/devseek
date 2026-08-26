@@ -480,6 +480,7 @@ export async function runAgenticLoop(
       textToolProtocol,
     });
     let providerTurn: Awaited<ReturnType<typeof chatWithMessages>>;
+    let providerRecoveryCompletedThisRound = false;
     const useFreshProviderSession = roundCount === 1 || forceProviderNewSessionNextTurn;
     if (forceProviderNewSessionNextTurn) {
       callbacks.onToolActivity?.('label', '重建模型会话并从任务事实恢复');
@@ -541,7 +542,10 @@ export async function runAgenticLoop(
       if (tools.some(tool => tool.purpose === 'workspace-mutation')) promptRequiresFileChange = true;
     }
     if (tools.length > 0) {
-      await providerRecovery.completeAcceptedResponse('tool-protocol', providerOperationId);
+      providerRecoveryCompletedThisRound = await providerRecovery.completeAcceptedResponse(
+        'tool-protocol',
+        providerOperationId,
+      );
       unresolvedProviderToolProtocol = false;
     }
 
@@ -843,9 +847,6 @@ export async function runAgenticLoop(
       || (loopRes.evidenceRefs?.length ?? 0) > 0) {
       resetProviderRecoveryAttemptsAfterProgress();
     }
-    const roundHasWriteProgress = hasFileWriteIntentThisRound
-      || (loopRes.writtenFiles?.length ?? 0) > 0
-      || toolsToExecute.some(tool => tool.purpose === 'workspace-mutation');
     const roundHasTerminalProgress = (loopRes.terminalCommands?.length ?? 0) > 0
       || (loopRes.terminalEvidence?.length ?? 0) > 0;
     const roundHasValidationTerminalProgress = loopRes.terminalEvidence?.some(
@@ -1006,7 +1007,7 @@ export async function runAgenticLoop(
           || requirementReviewSourceRepairPending,
       actionableRepairPending: requirementReviewSourceRepairPending,
       gatheredEvidenceCount,
-      investigationActivity: roundHasInvestigationActivity,
+      investigationActivity: roundHasInvestigationActivity && !providerRecoveryCompletedThisRound,
     });
     if (!callbacks.signal?.aborted && deliveryConvergenceResult.kind === 'correct') {
       await emitAgenticCorrectionStatus(

@@ -107,7 +107,8 @@ test('Agent provider recovery prompt keeps only durable facts and forces small t
   assert.match(prompt, /重建会话不包含先前只读工具返回的文件内容/);
   assert.match(prompt, /每个必要路径只重放一次/);
   assert.doesNotMatch(prompt, /不要重复已读取路径/);
-  assert.match(prompt, /活动失败恢复轮只允许一个精确只读工具或一个写入工具/);
+  assert.match(prompt, /未执行动作恢复轮只允许 1 个写入工具/);
+  assert.match(prompt, /仅当当前参数无法从可信上下文重建时，才允许 1 个精确只读工具/);
   assert.match(prompt, /活动失败是下一轮最高优先级/);
   assert.match(prompt, /不要在恢复轮重新规划 Todo/);
   assert.doesNotMatch(prompt, /先用 manage_todo_list 校正当前步骤/);
@@ -293,6 +294,7 @@ test('Agent provider recovery rebuilds the session after forged tool transcripts
   assert.match(prompt, /上一轮包含未解决的结构化动作/);
   assert.match(prompt, /channel="transcript-recovery-channel"/);
   assert.match(prompt, /本轮只输出 1 个工具调用/);
+  assert.match(prompt, /不得用重复验证或横向读取代替动作重发/);
   assert.match(prompt, /LessonType.*has not been declared/);
 });
 

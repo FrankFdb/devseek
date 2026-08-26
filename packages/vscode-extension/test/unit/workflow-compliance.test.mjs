@@ -2467,6 +2467,11 @@ test('Architecture: validated source changes require fresh source review before 
     'every quarantined tool-action response must receive the authorized reissue protocol',
   );
   assertContains(
+    agenticLoop,
+    'roundHasInvestigationActivity && !providerRecoveryCompletedThisRound',
+    'the accepted recovery result must not consume a normal delivery investigation round',
+  );
+  assertContains(
     reviewNoToolRecovery,
     'requirementReview.completionBlocker()',
     'no-tool requirement review recovery must keep the current review blocker instead of restarting the task',

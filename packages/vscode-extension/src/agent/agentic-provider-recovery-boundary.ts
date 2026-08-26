@@ -64,8 +64,8 @@ export class AgenticProviderRecoveryLifecycle {
   async completeAcceptedResponse(
     kind: 'tool-protocol' | 'plain-response',
     resultOperationId?: string,
-  ): Promise<void> {
-    await this.settle(
+  ): Promise<boolean> {
+    return this.settle(
       'completed',
       'Provider 安全恢复完成',
       kind === 'tool-protocol'
@@ -88,8 +88,8 @@ export class AgenticProviderRecoveryLifecycle {
     title: string,
     detail: string,
     resultOperationId?: string,
-  ): Promise<void> {
-    if (!this.pending) return;
+  ): Promise<boolean> {
+    if (!this.pending) return false;
     if (!this.callbacks.signal?.aborted) {
       await this.callbacks.onAgentStatus({
         type: 'agentStatus',
@@ -109,6 +109,7 @@ export class AgenticProviderRecoveryLifecycle {
     }
     this.pending = false;
     this.targetOperationIds.clear();
+    return true;
   }
 }
 

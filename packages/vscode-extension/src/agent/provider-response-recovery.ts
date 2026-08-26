@@ -180,7 +180,9 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
     ? '当前任务需要真实工具证据；不得只输出说明、计划或自然语言完成摘要。'
     : '当前任务可以只读分析，但最终必须给出完整结论和依据。';
   const finalAttempt = input.recoveryAttempt >= input.maxRecoveryAttempts;
-  const readLimitLine = blockingTerminalFailure
+  const readLimitLine = unresolvedToolAction
+    ? '- 未执行动作恢复轮只允许 1 个写入工具；仅当当前参数无法从可信上下文重建时，才允许 1 个精确只读工具。不得用重复验证或横向读取代替动作重发。'
+    : blockingTerminalFailure
     ? '- 活动失败恢复轮只允许一个精确只读工具或一个写入工具；不得重新做全量项目探索。写入后下一轮立即原样重跑公开失败命令。'
     : finalAttempt
     ? '- 这是最后一次恢复：只能输出最小下一步。最多 3 个只读工具或 1 个写入工具；不能重新做全量项目探索。'
