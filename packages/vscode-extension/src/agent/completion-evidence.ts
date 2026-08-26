@@ -7,7 +7,10 @@ import type {
 import { isCodeArtifactPathValue } from '../artifact-path-kind';
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import { hasTaskSemanticDoneCondition } from '../intent/task-semantic-obligations';
-import { classifyShellCommandEvidence } from '../tools/shell-command-analysis';
+import {
+  classifyShellCommandEvidence,
+  isDiagnosticProjectionCommand,
+} from '../tools/shell-command-analysis';
 import type { VerificationResult } from './evidence-grounding';
 import { hasSourceClaimArtifactContract } from './task-contract';
 
@@ -193,7 +196,9 @@ function lastUnclearedTerminalFailure(
       blockingFailure = undefined;
       continue;
     }
-    if (!evidence.ok && failureKinds.has(evidence.kind)) blockingFailure = evidence;
+    if (!evidence.ok && failureKinds.has(evidence.kind)) {
+      blockingFailure = mergeDiagnosticProjection(blockingFailure, evidence);
+    }
   }
   return blockingFailure;
 }
@@ -216,7 +221,9 @@ export function findBlockingTerminalFailureEvidence(
     if (blockingFailure && terminalSuccessClearsFailure(item, blockingFailure)) {
       blockingFailure = undefined;
     }
-    if (isBlockingTerminalFailureEvidence(item)) blockingFailure = item;
+    if (isBlockingTerminalFailureEvidence(item)) {
+      blockingFailure = mergeDiagnosticProjection(blockingFailure, item);
+    }
   }
   return blockingFailure;
 }
@@ -228,13 +235,11 @@ export function projectCurrentTerminalEvidence(
 ): TerminalEvidence[] {
   const blockingFailure = findBlockingTerminalFailureEvidence(evidence);
   const successfulFacts = evidence.filter(item => item.ok).slice(-maxSuccessfulFacts);
-  const selected = new Set<TerminalEvidence>(successfulFacts);
-  if (blockingFailure) selected.add(blockingFailure);
-  return evidence.filter(item => selected.has(item));
+  return blockingFailure ? [...successfulFacts, blockingFailure] : successfulFacts;
 }
 
 function terminalSuccessClearsFailure(success: TerminalEvidence, failure: TerminalEvidence): boolean {
-  if (!success.ok) return false;
+  if (!success.ok || isDiagnosticProjectionCommand(success.command)) return false;
   if (success.kind === 'compile-run') return isCommandTerminalEvidenceKind(failure.kind);
   if (success.kind === 'run' || success.kind === 'test') {
     return failure.kind === 'compile'
@@ -246,6 +251,17 @@ function terminalSuccessClearsFailure(success: TerminalEvidence, failure: Termin
   return success.kind === 'other'
     && failure.kind === 'other'
     && looksLikeValidationShellCommand(success.command);
+}
+
+function mergeDiagnosticProjection(
+  blockingFailure: TerminalEvidence | undefined,
+  nextFailure: TerminalEvidence,
+): TerminalEvidence {
+  if (!blockingFailure || !isDiagnosticProjectionCommand(nextFailure.command)) return nextFailure;
+  return {
+    ...blockingFailure,
+    ...(nextFailure.detail ? { detail: nextFailure.detail } : {}),
+  };
 }
 
 function isCommandTerminalEvidenceKind(kind: TerminalEvidenceKind): boolean {
@@ -287,18 +303,6 @@ export function describeBlockingTerminalFailure(failure: TerminalEvidence): stri
   ].filter(Boolean).join('。');
 }
 
-export function buildTerminalFailureRepairFeedback(failure: TerminalEvidence, missing: readonly string[]): string {
-  return [
-    '【系统反馈】刚才的终端验证没有通过，不能结束任务。',
-    missing.length > 0 ? `缺少: ${missing.join('、')}` : '',
-    `失败命令: ${failure.command}`,
-    `exitCode: ${failure.exitCode ?? 'unknown'}`,
-    failure.detail ? `诊断: ${failure.detail}` : '',
-    '',
-    '请继续执行真实修复流程：read_file / grep_search / get_errors 定位根因，使用 create_file / write_file 或 SEARCH/REPLACE 修改文件，然后重新 run_terminal 编译/运行/测试。',
-  ].filter(Boolean).join('\n');
-}
-
 export interface CompletionEvidenceAssessmentInput {
   writtenFiles: readonly WrittenFileEvidence[];
   terminalEvidence: readonly TerminalEvidence[];
@@ -325,7 +329,9 @@ export function assessMissingCompletionEvidence(input: CompletionEvidenceAssessm
   const existingWrittenFiles = coalesceWrittenFileEvidence(writtenFiles, workspaceRoot)
     .filter(file => writtenEvidenceExists(file, workspaceRoot));
   const existingCodeWrites = existingWrittenFiles.filter(file => isCodeArtifactPath(file.path));
-  const successfulTerminalEvidence = terminalEvidence.filter(evidence => evidence.ok);
+  const successfulTerminalEvidence = terminalEvidence.filter(evidence => (
+    evidence.ok && !isDiagnosticProjectionCommand(evidence.command)
+  ));
   const hasPassedVerificationReceipt = hasPassedCompletionVerification(verificationReceipts);
   const hasSuccessfulValidationEvidence = hasPassedVerificationReceipt
     || successfulTerminalEvidence.some(evidence => (

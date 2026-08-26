@@ -13,7 +13,7 @@ import type { EvidenceRef } from './evidence-grounding';
 import { recordTerminalVerification } from './terminal-verification-adapter';
 import { ToolReadEvidenceRecorder } from './tool-read-evidence';
 import { analyzeTerminalEvidence } from './tool-loop-terminal-evidence';
-import { projectDiagnosticOutputExcerpt } from '../app/diagnostic-output-projection';
+import { projectActionableDiagnosticExcerpt } from '../app/diagnostic-output-projection';
 
 export interface SettledTerminalObservationInput {
   readonly command: string;
@@ -43,7 +43,7 @@ export async function observeSettledTerminalExecution(
   const analyzed = analyzeTerminalEvidence(input.command, input.output, input.workdir);
   const failureDetail = analyzed.evidence.ok
     ? analyzed.evidence.detail
-    : analyzed.evidence.detail ?? projectDiagnosticOutputExcerpt(input.output, 1200);
+    : analyzed.evidence.detail ?? projectActionableDiagnosticExcerpt(input.output, 1800);
   const canonicalEvidence: TerminalEvidence = {
     ...analyzed.evidence,
     ...(failureDetail ? { detail: failureDetail } : {}),

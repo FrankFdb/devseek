@@ -159,6 +159,72 @@ test('current terminal projection removes failures cleared by later validation',
   );
 });
 
+test('diagnostic filter commands enrich but cannot replace or clear the public validation failure', () => {
+  const publicFailure = terminal('./test.sh', 'run', false, 2, 'build failed');
+  const filteredFailure = terminal(
+    './test.sh 2>&1 | grep -E "(error:|warning:)" | head -30',
+    'run',
+    false,
+    0,
+    'src/raster_canvas.cpp:252:15: error: unused variable x1',
+  );
+  const filteredSuccess = terminal(
+    './test.sh 2>&1 | grep -E "(error:|warning:)"',
+    'run',
+    true,
+    0,
+  );
+
+  const active = findBlockingTerminalFailureEvidence([
+    publicFailure,
+    filteredFailure,
+    filteredSuccess,
+  ]);
+  assert.equal(active.command, './test.sh');
+  assert.equal(active.exitCode, 2);
+  assert.match(active.detail, /raster_canvas\.cpp:252/);
+  assert.deepEqual(
+    projectCurrentTerminalEvidence([publicFailure, filteredFailure, filteredSuccess]),
+    [filteredSuccess, active],
+  );
+});
+
+test('expected-output pipeline remains validation while diagnostic projections cannot complete alone', () => {
+  const contract = contractAfterAction('Run the program and verify output.', {
+    taskKind: 'existing-project-edit',
+    mutation: 'none',
+    targetPaths: [],
+    requiresWorkspace: true,
+  });
+  contract.completion.doneIff = [{ kind: 'run-passed' }];
+  const expectedOutputAssertion = terminal('./app | grep -Fx EXPECTED', 'run', true, 0);
+  const diagnosticNamedAssertion = terminal(
+    `./app | grep -q '{"ERROR": 0, "WARN": 0}'`,
+    'run',
+    true,
+    0,
+  );
+  const diagnosticProjection = terminal('./test.sh 2>&1 | grep -E "error|warning"', 'run', true, 0);
+
+  const assertionMissing = assessMissingCompletionEvidence({
+    writtenFiles: [],
+    terminalEvidence: [expectedOutputAssertion],
+    semanticContract: contract,
+  });
+  const projectionMissing = assessMissingCompletionEvidence({
+    writtenFiles: [],
+    terminalEvidence: [diagnosticProjection],
+    semanticContract: contract,
+  });
+  assert.equal(assertionMissing.includes('成功的程序运行结果'), false);
+  assert.equal(assessMissingCompletionEvidence({
+    writtenFiles: [],
+    terminalEvidence: [diagnosticNamedAssertion],
+    semanticContract: contract,
+  }).includes('成功的程序运行结果'), false);
+  assert.equal(projectionMissing.includes('成功的程序运行结果'), true);
+});
+
 test('an unrelated written file cannot satisfy a declared target', () => {
   withWorkspace(root => {
     const target = 'src/required.ts';

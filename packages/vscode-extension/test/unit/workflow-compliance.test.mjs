@@ -912,6 +912,7 @@ test('Agent parser: malformed file tool JSON is recovered for code payloads', ()
 
 test('Execution failures remain in the canonical model-tool-result repair loop', () => {
   const agenticLoop = src('src/agent/agentic-loop.ts');
+  const terminalRepair = src('src/agent/terminal-failure-repair.ts');
   const writeGuard = src('src/agent/write-guard.ts');
   for (const retired of [
     'src/execution-planner.ts',
@@ -922,6 +923,9 @@ test('Execution failures remain in the canonical model-tool-result repair loop',
     assert.equal(existsSync(path.join(root, retired)), false, `${retired} must stay retired`);
   }
   assertContains(agenticLoop, 'buildTerminalFailureRepairFeedback', 'failed terminal evidence must return to the main model loop');
+  assertContains(terminalRepair, '该活动失败是下一轮最高优先级', 'active failures must constrain every continuing tool round');
+  assertContains(terminalRepair, '原样重跑上面的失败命令', 'a successful repair write must return to the public validation command');
+  assertContains(terminalRepair, '过滤结果只能补充诊断，不能作为通过证据', 'diagnostic filters must not impersonate public validation');
   assertContains(agenticLoop, 'recoverBlockingTerminalFailure', 'all no-tool exits must share one terminal-failure recovery owner');
   assertContains(agenticLoop, 'evidenceWithoutTools.blockingTerminalFailure', 'completion prose must not suppress an unresolved terminal failure');
   assert.match(
@@ -993,10 +997,10 @@ test('Agentic loop: terminal completion evidence requires successful validation 
     /canonicalAction:\s*\{[\s\S]*?actionId: input\.toolReceipt\.actionId[\s\S]*?evidenceRefs: input\.toolReceipt\.evidenceRefs[\s\S]*?terminalEvidence:[\s\S]*?\[canonicalEvidence\]/,
     'terminal evidence must retain its canonical action receipt and be recorded separately from raw terminal commands',
   );
-  assert.match(
+  assertContains(
     evidence,
-    /const successfulTerminalEvidence = terminalEvidence\.filter\(evidence => evidence\.ok\);[\s\S]*?requiresRunEvidence/,
-    'completion evidence must require successful terminal evidence, not merely any command execution',
+    'evidence.ok && !isDiagnosticProjectionCommand(evidence.command)',
+    'completion evidence must require a successful public validation command, not a diagnostic projection',
   );
 });
 

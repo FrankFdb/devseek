@@ -18,6 +18,13 @@ const NON_RUNTIME_COMMANDS = new Set([
 ]);
 
 const CONTROL_COMMAND_TOKENS = new Set(['then', 'else', 'do']);
+const OUTPUT_TRUNCATION_COMMANDS = new Set([
+  'head',
+  'sed',
+  'tail',
+]);
+const DIAGNOSTIC_FILTER_COMMANDS = new Set(['grep', 'rg']);
+const DIAGNOSTIC_FILTER_TERM = /\b(?:diagnostic|error|exception|fail(?:ed|ure)?|fatal|note|warning)\b/i;
 
 export function classifyShellCommandEvidence(command: string): ShellCommandEvidenceKind {
   const c = String(command || '').trim();
@@ -49,6 +56,27 @@ export function runtimeExecutableTokens(command: string): string[] {
     }
   }
   return out;
+}
+
+/**
+ * A filtered diagnostic command may explain a failure, but it is not a rerun of
+ * the public validation entry point and cannot clear or replace that failure.
+ */
+export function isDiagnosticProjectionCommand(command: string): boolean {
+  const pipeline = splitUnquotedShellPipeline(String(command || ''));
+  if (pipeline.length < 2) return false;
+  return pipeline.slice(1).some(stage => {
+    const words = shellWords(stage);
+    const commandToken = firstCommandTokenFrom(words, 0);
+    if (!commandToken) return false;
+    const basename = nodePath.basename(commandToken).toLowerCase();
+    const filterIsAssertion = DIAGNOSTIC_FILTER_COMMANDS.has(basename)
+      && words.slice(1).some(word => /^-[a-z]*[fq][a-z]*$/i.test(word) || word === '--fixed-strings' || word === '--quiet');
+    return OUTPUT_TRUNCATION_COMMANDS.has(basename)
+      || (DIAGNOSTIC_FILTER_COMMANDS.has(basename)
+        && !filterIsAssertion
+        && DIAGNOSTIC_FILTER_TERM.test(stage));
+  });
 }
 
 function commandPositionTokens(words: string[]): string[] {
@@ -139,6 +167,44 @@ function splitShellSegments(command: string): string[] {
   }
   segments.push(current);
   return segments;
+}
+
+function splitUnquotedShellPipeline(command: string): string[] {
+  const stages: string[] = [];
+  let current = '';
+  let quote = '';
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i];
+    const next = command[i + 1] ?? '';
+    if (ch === '\\') {
+      current += ch;
+      if (next) current += command[++i];
+      continue;
+    }
+    if (quote) {
+      current += ch;
+      if (ch === quote) quote = '';
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === '|' && next === '|') {
+      current += '||';
+      i++;
+      continue;
+    }
+    if (ch === '|') {
+      stages.push(current);
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  stages.push(current);
+  return stages.map(stage => stage.trim()).filter(Boolean);
 }
 
 function shellWords(segment: string): string[] {

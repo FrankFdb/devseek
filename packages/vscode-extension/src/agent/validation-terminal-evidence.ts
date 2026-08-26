@@ -8,7 +8,10 @@ import {
   normalizeVerificationResult,
   shouldEmitTerminalEvidenceForVerification,
 } from '../app/verification-result-authority';
-import { projectDiagnosticOutputExcerpt } from '../app/diagnostic-output-projection';
+import {
+  projectActionableDiagnosticExcerpt,
+  projectDiagnosticOutputExcerpt,
+} from '../app/diagnostic-output-projection';
 
 export function validationResultToTerminalEvidence(
   result: AutoValidationResult,
@@ -16,10 +19,10 @@ export function validationResultToTerminalEvidence(
   const verification = normalizeVerificationResult(result);
   if (!shouldEmitTerminalEvidenceForVerification(verification)) return undefined;
   const command = result.command || (result.mode === 'readback' ? 'file-readback' : '');
-  const detail = projectDiagnosticOutputExcerpt(
-    [result.reason, result.output].filter(Boolean).join('\n'),
-    1200,
-  );
+  const rawDetail = [result.reason, result.output].filter(Boolean).join('\n');
+  const detail = result.ok
+    ? projectDiagnosticOutputExcerpt(rawDetail, 1200)
+    : projectActionableDiagnosticExcerpt(rawDetail, 1800);
   return {
     command,
     kind: validationModeToTerminalEvidenceKind(result.mode, command),

@@ -100,8 +100,10 @@ test('Agent provider recovery prompt keeps only durable facts and forces small t
   assert.match(prompt, /已阻止执行损坏内容/);
   assert.match(prompt, /不要引用、续写或执行上一轮损坏文本/);
   assert.match(prompt, /不要重复已读取路径/);
-  assert.match(prompt, /最多 6 个只读工具/);
-  assert.match(prompt, /content 控制在 6000 字符以内/);
+  assert.match(prompt, /活动失败恢复轮只允许一个精确只读工具或一个写入工具/);
+  assert.match(prompt, /活动失败是下一轮最高优先级/);
+  assert.match(prompt, /不要在恢复轮重新规划 Todo/);
+  assert.doesNotMatch(prompt, /先用 manage_todo_list 校正当前步骤/);
   assert.match(prompt, /可验证、可继续扩展的完整责任切片/);
   assert.match(prompt, /不得用占位骨架、近似接口或“最小可编译版本”冒充原始契约已经完成/);
   assert.match(prompt, /本轮只输出 1 个工具调用/);

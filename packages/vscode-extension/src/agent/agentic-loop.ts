@@ -20,11 +20,11 @@ import {
   hasUnsafeSecretHarvestingRefusalEvidence,
 } from '../intent/safety-intent';
 import {
-  buildTerminalFailureRepairFeedback,
   describeBlockingTerminalFailure,
   type TerminalEvidence,
   type WrittenFileEvidence,
 } from './completion-evidence';
+import { buildTerminalFailureRepairFeedback } from './terminal-failure-repair';
 import type { AgenticHistoryQualityGate } from './agentic-history';
 import { runAgentAutoValidationForWrites, type AgentAutoValidationResult } from './auto-validation';
 import {
@@ -1040,6 +1040,18 @@ export async function runAgenticLoop(
         : `【系统反馈】不能结束任务。当前仍缺少可验证的${missingAfterTools.join('、')}。请继续调用实际工具完成缺失项：需要读取时用 read_file/list_dir/只读 run_terminal；需要代码时用 create_file/write_file 写入源码；需要验证时用合适的验证命令，文档/配置只需文件存在和内容证据，代码才需要编译/运行/测试。完成后再调用 task_complete，summary 必须只基于真实工具结果。${autoValidationFeedback ? `\n\n${autoValidationFeedback}` : ''}`;
       appendUserFeedback(retryMessage);
       continue;
+    }
+
+    if (blockingFailureAfterTools && loopRes.toolCallsMade && !callbacks.signal?.aborted) {
+      const repairPhase = (loopRes.writtenFiles?.length ?? 0) > 0
+        && !roundHasValidationTerminalProgress
+        ? 'rerun'
+        : 'repair';
+      loopWarnings.push(buildTerminalFailureRepairFeedback(
+        blockingFailureAfterTools,
+        missingAfterTools,
+        repairPhase,
+      ));
     }
 
     if (loopRes.taskComplete && !reviewFeedback) {

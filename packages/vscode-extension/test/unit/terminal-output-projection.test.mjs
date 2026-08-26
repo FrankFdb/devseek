@@ -17,7 +17,10 @@ execSync(
   { cwd: rootDir, stdio: 'pipe' },
 );
 
-const { projectDiagnosticOutputExcerpt } = createRequire(import.meta.url)(bundlePath);
+const {
+  projectActionableDiagnosticExcerpt,
+  projectDiagnosticOutputExcerpt,
+} = createRequire(import.meta.url)(bundlePath);
 
 after(() => rmSync(tempRoot, { recursive: true, force: true }));
 
@@ -43,4 +46,24 @@ test('keeps command context and trailing compiler diagnostics when output is lon
 
 test('uses trailing evidence when the budget is smaller than the marker', () => {
   assert.equal(projectDiagnosticOutputExcerpt('0123456789', 4), '6789');
+});
+
+test('preserves compiler diagnostics buried between parallel build progress', () => {
+  const output = [
+    'cmake: configuring project',
+    ...Array.from({ length: 80 }, (_, index) => `[ ${index}%] Building dependency_${index}.cpp`),
+    'src/raster_canvas.cpp:252:15: error: unused variable ‘x1’ [-Werror=unused-variable]',
+    '  252 |     const int x1 = centerX + radius;',
+    '      |               ^~',
+    ...Array.from({ length: 80 }, (_, index) => `[ ${index}%] Building adapter_${index}.cpp`),
+    'src/raster_canvas.cpp:270:15: error: unused variable ‘centerX’ [-Werror=unused-variable]',
+    'ninja: build stopped: subcommand failed.',
+  ].join('\n');
+  const projected = projectActionableDiagnosticExcerpt(output, 900);
+
+  assert.match(projected, /^cmake: configuring project/);
+  assert.match(projected, /raster_canvas\.cpp:252:15: error: unused variable/);
+  assert.match(projected, /raster_canvas\.cpp:270:15: error: unused variable/);
+  assert.match(projected, /ninja: build stopped/);
+  assert.doesNotMatch(projected, /dependency_40/);
 });
