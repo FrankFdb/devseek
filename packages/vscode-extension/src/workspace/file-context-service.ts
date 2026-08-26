@@ -42,6 +42,18 @@ const DEFAULT_MAX_FULL_LINES = 2000;
 const DEFAULT_PREVIEW_LINES = 240;
 const DEFAULT_MAX_RANGE_LINES = 600;
 const SYMBOL_OUTLINE_LIMIT = 80;
+const MAX_MISSING_PATH_SUGGESTIONS = 5;
+const MAX_MISSING_PATH_SEARCH_DEPTH = 8;
+const MAX_MISSING_PATH_SEARCH_ENTRIES = 2000;
+const MISSING_PATH_SEARCH_IGNORED_DIRECTORIES = new Set([
+  '.devseek',
+  '.git',
+  'backups',
+  'build',
+  'coverage',
+  'dist',
+  'node_modules',
+]);
 
 type SourceIntegrity = 'full' | 'range' | 'preview' | 'generated-full' | 'generated-range' | 'generated-preview';
 
@@ -79,7 +91,13 @@ export class FileContextService {
 
     const candidates = this.buildCandidatePaths(filePath, request.workDir);
     const resolved = await this.resolveContent(filePath, candidates);
-    if (!resolved) throw new Error(`找不到文件：${filePath}`);
+    if (!resolved) {
+      const suggestions = this.findMissingPathSuggestions(filePath);
+      const hint = suggestions.length > 0
+        ? `。工作区同名候选：${suggestions.join('、')}`
+        : '';
+      throw new Error(`找不到文件：${filePath}${hint}`);
+    }
 
     return formatFileContext({
       requestedPath: filePath,
@@ -143,6 +161,61 @@ export class FileContextService {
     const content = await fallback(filePath, candidates);
     return content === null ? null : { content, resolvedPath: filePath, source: 'fallback' };
   }
+
+  private findMissingPathSuggestions(filePath: string): string[] {
+    const workspaceRoot = this.options.workspaceRoot;
+    if (!workspaceRoot) return [];
+
+    const root = nodePath.resolve(workspaceRoot);
+    const requestedBasename = nodePath.basename(filePath).toLowerCase();
+    if (!requestedBasename) return [];
+
+    const pending: Array<{ directory: string; depth: number }> = [{ directory: root, depth: 0 }];
+    const suggestions: string[] = [];
+    let visitedEntries = 0;
+
+    while (
+      pending.length > 0
+      && visitedEntries < MAX_MISSING_PATH_SEARCH_ENTRIES
+      && suggestions.length < MAX_MISSING_PATH_SUGGESTIONS
+    ) {
+      const current = pending.shift()!;
+      let entries: fs.Dirent[];
+      try {
+        entries = fs.readdirSync(current.directory, { withFileTypes: true })
+          .sort((left, right) => left.name.localeCompare(right.name, 'en'));
+      } catch {
+        continue;
+      }
+
+      for (const entry of entries) {
+        if (visitedEntries >= MAX_MISSING_PATH_SEARCH_ENTRIES) break;
+        visitedEntries += 1;
+
+        const absolutePath = nodePath.join(current.directory, entry.name);
+        if (entry.isDirectory()) {
+          if (
+            current.depth < MAX_MISSING_PATH_SEARCH_DEPTH
+            && !MISSING_PATH_SEARCH_IGNORED_DIRECTORIES.has(entry.name.toLowerCase())
+          ) {
+            pending.push({ directory: absolutePath, depth: current.depth + 1 });
+          }
+          continue;
+        }
+        if (!entry.isFile() || entry.name.toLowerCase() !== requestedBasename) continue;
+        if (!decideFileContextReadBoundary(absolutePath, root).allowed) continue;
+
+        suggestions.push(toWorkspaceDisplayPath(root, absolutePath));
+        if (suggestions.length >= MAX_MISSING_PATH_SUGGESTIONS) break;
+      }
+    }
+
+    return suggestions;
+  }
+}
+
+function toWorkspaceDisplayPath(workspaceRoot: string, candidate: string): string {
+  return nodePath.relative(workspaceRoot, candidate).split(nodePath.sep).join('/');
 }
 
 /** The only local-file boundary used before content can enter an AI prompt. */

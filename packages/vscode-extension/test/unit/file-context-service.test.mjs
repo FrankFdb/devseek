@@ -104,6 +104,56 @@ test('FileContextService: never exposes the internal bridge credential', async (
   }
 });
 
+test('FileContextService: suggests bounded workspace paths when a guessed file location is missing', async () => {
+  const workspace = tempProject();
+  try {
+    mkdirSync(path.join(workspace, 'include'), { recursive: true });
+    mkdirSync(path.join(workspace, 'src', 'detail'), { recursive: true });
+    mkdirSync(path.join(workspace, '.devseek'), { recursive: true });
+    mkdirSync(path.join(workspace, 'node_modules', 'hidden'), { recursive: true });
+    writeFileSync(path.join(workspace, 'include', 'lesson_controller.hpp'), '// public header', 'utf8');
+    writeFileSync(path.join(workspace, 'src', 'detail', 'lesson_controller.hpp'), '// detail header', 'utf8');
+    writeFileSync(path.join(workspace, '.devseek', 'lesson_controller.hpp'), '// internal', 'utf8');
+    writeFileSync(path.join(workspace, 'node_modules', 'hidden', 'lesson_controller.hpp'), '// dependency', 'utf8');
+    const service = new FileContextService({ workspaceRoot: workspace });
+
+    await assert.rejects(
+      service.readFileForAi('src/lesson_controller.hpp', { workDir: workspace }),
+      (error) => {
+        assert.match(error.message, /工作区同名候选：include\/lesson_controller\.hpp、src\/detail\/lesson_controller\.hpp/);
+        assert.doesNotMatch(error.message, /\.devseek|node_modules/);
+        return true;
+      },
+    );
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('FileContextService: limits missing-path suggestions deterministically', async () => {
+  const workspace = tempProject();
+  try {
+    for (let index = 0; index < 7; index += 1) {
+      const candidateDir = path.join(workspace, `candidate-${index}`);
+      mkdirSync(candidateDir, { recursive: true });
+      writeFileSync(path.join(candidateDir, 'shared.hpp'), `// candidate ${index}`, 'utf8');
+    }
+    const service = new FileContextService({ workspaceRoot: workspace });
+
+    await assert.rejects(
+      service.readFileForAi('missing/shared.hpp', { workDir: workspace }),
+      (error) => {
+        assert.match(error.message, /candidate-0\/shared\.hpp/);
+        assert.match(error.message, /candidate-4\/shared\.hpp/);
+        assert.doesNotMatch(error.message, /candidate-[56]\/shared\.hpp/);
+        return true;
+      },
+    );
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 test('FileContextService: previews oversized files and tells the model how to continue', async () => {
   const dir = tempProject();
   try {
