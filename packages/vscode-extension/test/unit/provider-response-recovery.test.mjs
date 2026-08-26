@@ -257,12 +257,43 @@ test('Agent provider recovery rebuilds the session after forged tool transcripts
     new Error('RESPONSE_CORRUPTED:provider-authored-tool-transcript:reserved transcript marker'),
   );
   const display = describeAgentProviderRecoveryForUser(failure, 1, 3);
+  const prompt = buildAgentProviderRecoveryPrompt({
+    userPrompt: '修复当前编译错误并重新验证',
+    failure,
+    recoveryAttempt: 1,
+    maxRecoveryAttempts: 3,
+    promptRequiresTools: true,
+    currentTodos: [],
+    readEvidencePaths: ['src/x11_app.cpp'],
+    writtenFiles: [{
+      path: 'src/x11_app.cpp',
+      basename: 'x11_app.cpp',
+      linesAdded: 2,
+      linesRemoved: 2,
+      action: 'replace',
+    }],
+    terminalEvidence: [{
+      command: 'bash test.sh',
+      kind: 'compile',
+      ok: false,
+      exitCode: 2,
+      detail: "src/x11_app.cpp:145: error: 'LessonType' has not been declared",
+    }],
+    textToolProtocol: {
+      version: 'devseek.text-tools/v1',
+      channelId: 'transcript-recovery-channel',
+    },
+  }).content;
 
   assert.equal(failure.recoverable, true);
   assert.equal(shouldResetProviderSessionForRecovery(failure), true);
   assert.match(display.title, /工具记录污染/);
   assert.match(display.detail, /没有对应的宿主执行事实/);
   assert.match(display.activityLabel, /重建模型会话/);
+  assert.match(prompt, /上一轮包含未解决的结构化动作/);
+  assert.match(prompt, /channel="transcript-recovery-channel"/);
+  assert.match(prompt, /本轮只输出 1 个工具调用/);
+  assert.match(prompt, /LessonType.*has not been declared/);
 });
 
 test('Agent provider recovery display tells the user a safe retry is running', () => {

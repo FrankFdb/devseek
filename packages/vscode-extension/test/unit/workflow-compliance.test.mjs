@@ -2462,6 +2462,11 @@ test('Architecture: validated source changes require fresh source review before 
     'provider recovery must treat internal tool transcript pollution as recoverable corruption',
   );
   assertContains(
+    providerResponseRecovery,
+    'UNRESOLVED_TOOL_ACTION_STATUSES.has(failureStatus)',
+    'every quarantined tool-action response must receive the authorized reissue protocol',
+  );
+  assertContains(
     reviewNoToolRecovery,
     'requirementReview.completionBlocker()',
     'no-tool requirement review recovery must keep the current review blocker instead of restarting the task',

@@ -328,6 +328,10 @@ test('ModelLedUserSimulation: provider transcript pollution rebuilds the session
         'RESPONSE_CORRUPTED:provider-authored-tool-transcript:reserved transcript marker',
       );
     }
+    const recoveryPrompt = _messages.at(-1).content;
+    assert.match(recoveryPrompt, /上一轮包含未解决的结构化动作/u);
+    assert.match(recoveryPrompt, /本轮只输出 1 个工具调用/u);
+    assert.match(recoveryPrompt, /devseek_tool_calls/u);
     return {
       text: 'README.md 的标题是 Trusted title。',
       tools: [{ name: 'task_complete', input: { summary: '已基于读回内容确认标题为 Trusted title。' } }],

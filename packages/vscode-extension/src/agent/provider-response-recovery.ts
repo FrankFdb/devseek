@@ -59,6 +59,14 @@ const RECOVERABLE_RESPONSE_CORRUPTION_STATUSES = new Set([
   'provider-authored-tool-transcript',
 ]);
 
+const UNRESOLVED_TOOL_ACTION_STATUSES = new Set([
+  'mixed-tool-protocol',
+  'incomplete-tool-block',
+  'invalid-tool-block',
+  'out-of-envelope-tool-block',
+  'provider-authored-tool-transcript',
+]);
+
 export function parseAgentProviderFailure(error: unknown): AgentProviderFailure | undefined {
   const rawMessage = error instanceof Error ? error.message : String(error || '');
   const operationId = providerRunEvidenceOperationId(error);
@@ -113,7 +121,7 @@ export function describeAgentProviderRecoveryForUser(
 ): AgentProviderRecoveryDisplay {
   const step = `${recoveryAttempt}/${maxRecoveryAttempts}`;
   const isSubmitFailure = failure.status.toLowerCase() === 'prompt-submit-failed';
-  const isToolProtocolFailure = failure.status.toLowerCase().endsWith('tool-block');
+  const isToolProtocolFailure = UNRESOLVED_TOOL_ACTION_STATUSES.has(failure.status.toLowerCase());
   const isToolTranscriptPollution = failure.status.toLowerCase() === 'provider-authored-tool-transcript';
   const resetProviderSession = shouldResetProviderSessionForRecovery(failure);
   return {
@@ -165,7 +173,7 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
     8,
   );
   const failureStatus = input.failure.status.toLowerCase();
-  const unresolvedToolAction = failureStatus.endsWith('tool-block');
+  const unresolvedToolAction = UNRESOLVED_TOOL_ACTION_STATUSES.has(failureStatus);
   const sideEffectLine = unresolvedToolAction
     ? '上一轮包含未解决的结构化动作；必须通过当前授权信封安全重发，不能把已有只读证据当作任务完成。'
     : input.promptRequiresTools
@@ -184,9 +192,7 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
   const contextReplayLine = resetProviderSession
     ? '- 重建会话不包含先前只读工具返回的文件内容；若下一步依赖这些内容，先精确重读必要路径。每个必要路径只重放一次，不做全量探索。'
     : '- 不要重复已读取路径、相同 list_dir、相同 grep_search 或相同 file_search；如确实缺少内容，只读取更精确的新文件或行范围。';
-  const toolSerializationLine = failureStatus === 'incomplete-tool-block'
-    || failureStatus === 'invalid-tool-block'
-    || failureStatus === 'out-of-envelope-tool-block'
+  const toolSerializationLine = unresolvedToolAction
     ? buildTextToolEnvelopeRecoveryPrompt(input.textToolProtocol, {
       observedToolNames: input.failure.observedToolNames,
     })
