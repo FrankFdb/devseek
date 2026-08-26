@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 import { selectAuthoritativeProductRun } from '../shared/product-run-selection.mjs';
 import {
-  requiredResumePreflightStage,
+  buildRepairContinuationPrompt,
+  planResumePreflight,
   selectJourneyRounds,
 } from './journey-resume-policy.mjs';
 import { prepareWorkspace, protectedWorkspacePaths } from './prepare-workspace.mjs';
@@ -21,6 +22,7 @@ const inputMode = args.includes('--command-input') ? 'command' : 'natural-ui';
 const timeoutMs = Number(argValue('--timeout-ms') || 900_000);
 const vsixPath = path.resolve(argValue('--vsix') || path.join(repoRoot, 'devseek-netai-latest.vsix'));
 const requestedWorkspace = argValue('--workspace');
+const repairCurrent = args.includes('--repair-current');
 const journey = JSON.parse(fs.readFileSync(path.join(here, 'journey.json'), 'utf8'));
 const selectedRounds = selectJourneyRounds(
   argValue('--rounds'),
@@ -40,6 +42,7 @@ if (!runRequested) {
 }
 if (!fs.existsSync(vsixPath)) throw new Error(`VSIX not found: ${vsixPath}`);
 if (!Number.isFinite(timeoutMs) || timeoutMs < 120_000) throw new Error('--timeout-ms must be at least 120000');
+if (repairCurrent && !requestedWorkspace) throw new Error('--repair-current requires --workspace');
 
 const attemptRoot = path.join(here, 'runs', attemptId());
 const workspace = requestedWorkspace
@@ -54,9 +57,10 @@ if (requestedWorkspace) {
   prepareWorkspace(workspace);
 }
 const protectedBaseline = hashWorkspacePaths(workspace, protectedWorkspacePaths);
-const resumePreflightStage = requestedWorkspace
-  ? requiredResumePreflightStage(selectedRounds)
-  : 0;
+const resumePlan = requestedWorkspace
+  ? planResumePreflight(selectedRounds, repairCurrent)
+  : { stage: 0, allowFailure: false, skipFirstRoundWhenPassed: false };
+const resumePreflightStage = resumePlan.stage;
 const resumePreflight = resumePreflightStage > 0
   ? verifyWorkspace(
     workspace,
@@ -69,7 +73,7 @@ const report = {
   journeyId: journey.id,
   startedAt: new Date().toISOString(),
   workspace,
-  workspaceMode: requestedWorkspace ? 'existing' : 'fresh',
+  workspaceMode: repairCurrent ? 'existing-repair' : requestedWorkspace ? 'existing' : 'fresh',
   attemptRoot,
   candidate: {
     vsixPath,
@@ -79,11 +83,12 @@ const report = {
   waitBackgroundIdle: true,
   requestedRounds: selectedRounds,
   ...(resumePreflight ? { resumePreflight } : {}),
+  skippedVerifiedRounds: [],
   rounds: [],
   ok: false,
 };
 writeJourneyReport(report);
-if (resumePreflight && !resumePreflight.ok) {
+if (resumePreflight && !resumePreflight.ok && !resumePlan.allowFailure) {
   report.completedAt = new Date().toISOString();
   writeJourneyReport(report);
   console.log(JSON.stringify({
@@ -95,7 +100,13 @@ if (resumePreflight && !resumePreflight.ok) {
   process.exit(1);
 }
 
-for (const roundNumber of selectedRounds) {
+const roundsToExecute = [...selectedRounds];
+if (resumePreflight?.ok && resumePlan.skipFirstRoundWhenPassed) {
+  report.skippedVerifiedRounds.push(roundsToExecute.shift());
+  writeJourneyReport(report);
+}
+
+for (const roundNumber of roundsToExecute) {
   const round = journey.rounds[roundNumber - 1];
   const roundRoot = path.join(attemptRoot, `round-${roundNumber}-${round.id.toLowerCase()}`);
   const evidenceDir = path.join(roundRoot, 'verification');
@@ -105,6 +116,12 @@ for (const roundNumber of selectedRounds) {
   const harnessStderrPath = path.join(roundRoot, 'harness.stderr.log');
   const stdout = fs.openSync(harnessStdoutPath, 'w');
   const stderr = fs.openSync(harnessStderrPath, 'w');
+  const repairingInterruptedRound = repairCurrent
+    && resumePreflight?.ok === false
+    && roundNumber === selectedRounds[0];
+  const effectivePrompt = repairingInterruptedRound
+    ? buildRepairContinuationPrompt(round.prompt)
+    : round.prompt;
   const harnessArgs = [
     path.join(repoRoot, 'packages/vscode-extension/test/devseek-real-plugin-deepseek-harness.mjs'),
     '--run',
@@ -112,7 +129,7 @@ for (const roundNumber of selectedRounds) {
     '--keep',
     '--wait-background-idle',
     '--workspace-dir', workspace,
-    '--prompt', round.prompt,
+    '--prompt', effectivePrompt,
     '--scenario', journey.providerScenario,
     '--mode', 'fast',
     '--input-mode', inputMode,
@@ -147,6 +164,7 @@ for (const roundNumber of selectedRounds) {
     id: round.id,
     title: round.title,
     verificationStage: round.verificationStage,
+    repairingInterruptedRound,
     startedAt: new Date(startedAt).toISOString(),
     completedAt: new Date().toISOString(),
     durationMs: Date.now() - startedAt,
@@ -178,12 +196,13 @@ for (const roundNumber of selectedRounds) {
 }
 
 report.completedAt = new Date().toISOString();
-report.ok = report.rounds.length === selectedRounds.length && report.rounds.every(round => round.ok);
+report.ok = report.rounds.length === roundsToExecute.length && report.rounds.every(round => round.ok);
 writeJourneyReport(report);
 console.log(JSON.stringify({
   ok: report.ok,
   journeyId: report.journeyId,
   attemptRoot,
+  skippedVerifiedRounds: report.skippedVerifiedRounds,
   rounds: report.rounds.map(round => ({ id: round.id, ok: round.ok, durationMs: round.durationMs })),
 }, null, 2));
 process.exitCode = report.ok ? 0 : 1;

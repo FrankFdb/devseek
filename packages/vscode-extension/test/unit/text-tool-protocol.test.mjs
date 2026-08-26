@@ -62,12 +62,14 @@ test('out-of-envelope structured actions are observable only as quarantined prot
   assert.deepEqual(inspectOutOfEnvelopeTextToolProtocol(action, session), {
     found: true,
     dialects: ['react-action'],
+    observedToolNames: ['read_file'],
   });
 
   const authorized = renderTextToolProtocolEnvelope(session, payload);
   assert.deepEqual(inspectOutOfEnvelopeTextToolProtocol(authorized, session), {
     found: false,
     dialects: [],
+    observedToolNames: [],
   });
 });
 

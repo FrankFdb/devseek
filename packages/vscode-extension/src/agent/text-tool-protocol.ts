@@ -16,6 +16,8 @@ export interface TextToolProtocolSession {
 export interface QuarantinedTextToolProtocol {
   readonly found: boolean;
   readonly dialects: readonly string[];
+  /** Registered names are recovery hints only; their arguments remain untrusted. */
+  readonly observedToolNames: readonly string[];
 }
 
 export interface InvalidAuthorizedTextToolProtocol {
@@ -62,14 +64,15 @@ export function inspectOutOfEnvelopeTextToolProtocol(
 ): QuarantinedTextToolProtocol {
   const outsideAuthorizedEnvelopes = stripAuthorizedTextToolEnvelopes(text, session);
   const analysis = analyzeFakeToolCallProtocol(outsideAuthorizedEnvelopes);
-  const dialects = [...new Set(
-    analysis.matches
-      .filter(match => match.tools.length > 0)
-      .map(match => match.dialect),
+  const actionableMatches = analysis.matches.filter(match => match.tools.length > 0);
+  const dialects = [...new Set(actionableMatches.map(match => match.dialect))];
+  const observedToolNames = [...new Set(
+    actionableMatches.flatMap(match => match.tools.map(tool => tool.name)),
   )];
   return Object.freeze({
     found: dialects.length > 0,
     dialects: Object.freeze(dialects),
+    observedToolNames: Object.freeze(observedToolNames),
   });
 }
 

@@ -1,3 +1,8 @@
+import {
+  renderTextToolProtocolEnvelope,
+  type TextToolProtocolSession,
+} from './text-tool-protocol';
+
 export const REPLACE_IN_FILE_JSON_EXAMPLE =
   '[TOOL:replace_in_file {"path":"src/foo.cpp","old_str":"原始文本","new_str":"替换后文本"}]';
 
@@ -48,36 +53,63 @@ export function buildReplaceInFileToolPrompt(session?: TextToolProtocolSession):
   ].join('\n');
 }
 
-export function buildReplaceInFileRecoveryPrompt(session?: TextToolProtocolSession): string {
-  return [
-    '- 上一轮工具参数序列化损坏：本轮只输出 1 个工具调用，输出工具块后立即停止。',
-    '- 不要再次把含源码双引号或多行文本的 old_str/new_str 手写进 JSON 或裸 XML；改用以下 fenced CDATA XML 格式：',
-    renderProtocolExample(REPLACE_IN_FILE_RAW_EXAMPLE, session),
-    '- 每轮只修复 1 个多行替换，输出工具块后立即停止并等待执行结果。',
-    '- 这是既有文件的局部修复；不要升级为 write_file 整文件覆写。先 read_file 读取精确行范围，再缩小 old_str 到唯一最小片段。',
-    '- 若调用 run_terminal，command 必须是合法 JSON 字符串；shell 文本优先使用单引号。',
-  ].join('\n');
+export interface TextToolEnvelopeRecoveryPromptOptions {
+  readonly observedToolNames?: readonly string[];
 }
 
-export function buildTextToolEnvelopeRecoveryPrompt(session: TextToolProtocolSession): string {
+const SIMPLE_RECOVERY_EXAMPLES: Readonly<Record<string, string>> = Object.freeze({
+  read_file: '[TOOL:read_file {"path":"/absolute/path/to/file"}]',
+  list_dir: '[TOOL:list_dir {"path":"/absolute/path/to/directory"}]',
+  grep_search: '[TOOL:grep_search {"pattern":"symbol","path":"src/","isRegexp":false}]',
+  file_search: '[TOOL:file_search {"glob":"src/**/*.ts"}]',
+  run_terminal: '[TOOL:run_terminal {"command":"git status --short"}]',
+  manage_todo_list: '[TOOL:manage_todo_list {"todoList":[{"id":1,"title":"继续当前步骤","status":"in-progress"}]}]',
+});
+
+export function buildTextToolEnvelopeRecoveryPrompt(
+  session: TextToolProtocolSession,
+  options: TextToolEnvelopeRecoveryPromptOptions = {},
+): string {
+  const observedToolName = selectObservedRecoveryTool(options.observedToolNames);
+  const example = recoveryExampleForTool(observedToolName);
+  const mutationGuidance = mutationRecoveryGuidance(observedToolName);
   return [
     '- 上一轮结构化动作位于授权信封之外，或信封不完整/无有效工具，因此没有执行。不要使用 Action/Action Input、裸 XML、裸 JSON 或无信封的 [TOOL:...]。',
-    '- 若要调用工具，只能使用本轮当前信封；若只是解释工具语法，请改用自然语言说明，不要输出可解析动作块。',
-    renderTextToolProtocolEnvelope(
-      session,
-      '[TOOL:read_file {"path":"/absolute/path/to/file"}]',
-    ),
-    '- create_file/write_file 的源码 content 含双引号、反斜杠或真实换行时，损坏 JSON 不会获得写入权；必须在当前信封内使用以下 fenced CDATA：',
-    renderProtocolExample(FULL_FILE_WRITE_RAW_EXAMPLE, session),
-    '- 创建较大文件时先写入不超过 1800 字符的完整最小版本，等待真实写盘结果后再分轮扩充；不要在一个回复中粘贴长产物。',
+    observedToolName
+      ? `- 仅识别到上一轮尝试调用 ${observedToolName}；其参数没有获得授权、不会复用。请依据当前任务事实重新决定参数。`
+      : '- 上一轮没有留下可复用的完整工具参数；请依据当前任务事实重新决定一个最小下一步。',
+    '- 本轮只输出 1 个工具调用，并完整包在以下当前信封中。示例参数只说明序列化格式，必须替换为任务所需的真实参数：',
+    renderTextToolProtocolEnvelope(session, example),
+    mutationGuidance,
     '- 输出闭合信封后立即停止并等待真实工具结果。',
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }
 
 function renderProtocolExample(payload: string, session?: TextToolProtocolSession): string {
   return session ? renderTextToolProtocolEnvelope(session, payload) : payload;
 }
-import {
-  renderTextToolProtocolEnvelope,
-  type TextToolProtocolSession,
-} from './text-tool-protocol';
+
+function selectObservedRecoveryTool(observedToolNames: readonly string[] | undefined): string | undefined {
+  return observedToolNames?.find(name => (
+    Object.prototype.hasOwnProperty.call(SIMPLE_RECOVERY_EXAMPLES, name)
+    || name === 'replace_in_file'
+    || name === 'create_file'
+    || name === 'write_file'
+  ));
+}
+
+function recoveryExampleForTool(toolName: string | undefined): string {
+  if (toolName === 'replace_in_file') return REPLACE_IN_FILE_RAW_EXAMPLE;
+  if (toolName === 'create_file' || toolName === 'write_file') return FULL_FILE_WRITE_RAW_EXAMPLE;
+  return SIMPLE_RECOVERY_EXAMPLES[toolName || 'read_file'] || SIMPLE_RECOVERY_EXAMPLES.read_file;
+}
+
+function mutationRecoveryGuidance(toolName: string | undefined): string {
+  if (toolName === 'replace_in_file') {
+    return '- 多行 old_str/new_str 必须保持 fenced CDATA；只修复一个唯一匹配片段，不得升级为整文件覆写。';
+  }
+  if (toolName === 'create_file' || toolName === 'write_file') {
+    return '- 多行源码 content 必须保持 fenced CDATA；每轮只交付一个可验证的完整责任切片。';
+  }
+  return '';
+}

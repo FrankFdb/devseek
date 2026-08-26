@@ -11,16 +11,14 @@ import type { TextToolProtocolSession } from './text-tool-protocol';
 import { projectActionableDiagnosticExcerpt } from '../app/diagnostic-output-projection';
 import { isDiagnosticProjectionCommand } from '../tools/shell-command-analysis';
 import { buildTerminalFailureRepairFeedback } from './terminal-failure-repair';
-import {
-  buildReplaceInFileRecoveryPrompt,
-  buildTextToolEnvelopeRecoveryPrompt,
-} from './tool-protocol-prompt';
+import { buildTextToolEnvelopeRecoveryPrompt } from './tool-protocol-prompt';
 
 export interface AgentProviderFailure {
   status: string;
   reason: string;
   rawMessage: string;
   recoverable: boolean;
+  readonly observedToolNames?: readonly string[];
 }
 
 export interface AgentProviderRecoveryPromptInput {
@@ -182,13 +180,12 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
     ? '- 重建会话不包含先前只读工具返回的文件内容；若下一步依赖这些内容，先精确重读必要路径。每个必要路径只重放一次，不做全量探索。'
     : '- 不要重复已读取路径、相同 list_dir、相同 grep_search 或相同 file_search；如确实缺少内容，只读取更精确的新文件或行范围。';
   const toolSerializationLine = failureStatus === 'incomplete-tool-block'
-    && input.writtenFiles.length > 0
-    ? buildReplaceInFileRecoveryPrompt(input.textToolProtocol)
-    : failureStatus === 'incomplete-tool-block'
-      || failureStatus === 'invalid-tool-block'
-      || failureStatus === 'out-of-envelope-tool-block'
-      ? buildTextToolEnvelopeRecoveryPrompt(input.textToolProtocol)
-      : '';
+    || failureStatus === 'invalid-tool-block'
+    || failureStatus === 'out-of-envelope-tool-block'
+    ? buildTextToolEnvelopeRecoveryPrompt(input.textToolProtocol, {
+      observedToolNames: input.failure.observedToolNames,
+    })
+    : '';
 
   return {
     role: 'user',

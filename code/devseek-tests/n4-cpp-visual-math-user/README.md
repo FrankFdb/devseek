@@ -37,6 +37,19 @@ node code/devseek-tests/n4-cpp-visual-math-user/run-journey.mjs --run \
   --vsix /absolute/path/to/candidate.vsix
 ```
 
+Resume an interrupted current round with validation first. If the current stage
+already passes, the runner skips that round and starts the next follow-up. If it
+fails, the failure is retained as preflight evidence and DevSeek repairs the
+same workspace before the stage is verified again:
+
+```bash
+node code/devseek-tests/n4-cpp-visual-math-user/run-journey.mjs --run \
+  --workspace /absolute/path/to/retained/workspace \
+  --rounds 2,3,4 \
+  --repair-current \
+  --vsix /absolute/path/to/candidate.vsix
+```
+
 Run validation only, with no Provider request or source generation:
 
 ```bash

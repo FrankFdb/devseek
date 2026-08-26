@@ -596,6 +596,7 @@ export async function runAgenticLoop(
               : `检测到 ${invalidAuthorizedProtocol.invalidEnvelopeCount} 个未形成无损可执行工具参数的授权信封；已隔离且未执行。`,
           rawMessage: text,
           recoverable: true,
+          observedToolNames: quarantinedProtocol.observedToolNames,
         }, text.trim().length);
         if (disposition === 'completed') break;
         if (disposition === 'recovered') {
