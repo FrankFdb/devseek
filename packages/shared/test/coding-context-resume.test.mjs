@@ -9,6 +9,7 @@ import {
   CanonicalContextGraphService,
   CanonicalMemoryPolicyService,
   CanonicalResumeIdempotencyService,
+  CanonicalTaskContractRevisionService,
   CanonicalTaskContractService,
   CodingKernelExecutionError,
   codingSemanticDigest,
@@ -133,6 +134,119 @@ test('ContextCompactionPort preserves canonical task, provenance, progress, and 
   assert.throws(
     () => compaction.snapshot({ ...second, completedUnitCount: 3 }),
     /coding-context-compaction:checkpoint-progress-mismatch/u,
+  );
+});
+
+test('ContextCompactionPort and checkpoints snapshot the current revised semantic state', () => {
+  const tasks = new CanonicalTaskContractService();
+  const initialTask = tasks.build({
+    goal: 'Repair the existing implementation and run its tests',
+    mode: 'explain',
+    deliverables: [{ id: 'response', kind: 'report' }],
+    constraints: ['no-workspace-mutation'],
+    acceptance: [{
+      id: 'grounded-response',
+      statement: 'The response addresses the request without effects.',
+      deliverableIds: ['response'],
+      oracle: {
+        kind: 'response-evidence',
+        verifier: 'response-grounding',
+        scope: ['response'],
+        evidenceKinds: ['response-evidence'],
+      },
+      externalBoundaryRefs: [],
+    }],
+    provenanceRefs: ['user:current'],
+  });
+  const revisedTask = tasks.build({
+    goal: initialTask.goal,
+    mode: 'change',
+    include: ['src/main.cpp'],
+    deliverables: [{ id: 'source', kind: 'source-change', path: 'src/main.cpp' }],
+    constraints: ['verification-before-completion'],
+    acceptance: [{
+      id: 'tests',
+      statement: 'The repaired implementation passes its tests.',
+      deliverableIds: ['source'],
+      oracle: {
+        kind: 'verification',
+        verifier: 'project-tests',
+        scope: ['src/main.cpp'],
+        evidenceKinds: ['verification-receipt'],
+      },
+      externalBoundaryRefs: [],
+    }],
+    provenanceRefs: ['user:current', 'settled-model-action'],
+  });
+  const contexts = new CanonicalContextGraphService();
+  const initialGraph = contexts.build({
+    workspaceRoot: '/repo',
+    userPrompt: initialTask.goal,
+    taskContract: initialTask,
+  });
+  let currentGraph = initialGraph;
+  const contextGraphSource = { currentContextGraph: () => currentGraph };
+  const taskContractSource = new CanonicalTaskContractRevisionService().bind({
+    taskContract: initialTask,
+  });
+  const memoryPolicy = new CanonicalMemoryPolicyService().selectContext({
+    candidates: [],
+    workspaceRoot: '/repo',
+  });
+  const checkpoint = new CanonicalCheckpointService().bind({
+    runId: 'revised-context-run',
+    surface: 'headless',
+    workspaceRoot: '/repo',
+    taskContract: initialTask,
+    taskContractSource,
+    contextGraph: initialGraph,
+    contextGraphSource,
+    memoryPolicySha256: memoryPolicy.decisionSha256,
+  });
+  const compaction = new CanonicalContextCompactionService().bind({
+    taskContract: initialTask,
+    taskContractSource,
+    contextGraph: initialGraph,
+    contextGraphSource,
+    memoryPolicy,
+    checkpoint,
+  });
+
+  taskContractSource.revise({
+    revisionId: 'settled-model-write-1',
+    taskContract: revisedTask,
+    evidenceRefs: ['workspace-apply:src/main.cpp'],
+  });
+  currentGraph = contexts.build({
+    workspaceRoot: '/repo',
+    userPrompt: revisedTask.goal,
+    taskContract: revisedTask,
+    seed: { files: [{ path: 'src/main.cpp', contentSample: 'int main() {}' }] },
+  });
+  const receipt = compaction.compact({
+    observedChars: 20_000,
+    maxChars: 10_000,
+    completedUnitCount: 0,
+    pendingUnits: [{
+      id: 'verify',
+      description: 'Run project tests',
+      action: 'verify',
+      target: 'src/main.cpp',
+      effectClass: 'verification',
+    }],
+    evidenceRefs: ['workspace-apply:src/main.cpp'],
+    createdAt: 2_000,
+  });
+
+  assert.equal(receipt.taskContract.mode, 'change');
+  assert.deepEqual(receipt.taskContract.scope.include, ['src/main.cpp']);
+  assert.equal(receipt.taskContractSha256, codingSemanticDigest(revisedTask));
+  assert.equal(receipt.contextGraphSha256, codingSemanticDigest(currentGraph));
+  assert.equal(receipt.checkpoint.taskContractSha256, receipt.taskContractSha256);
+  assert.equal(receipt.checkpoint.contextGraphSha256, receipt.contextGraphSha256);
+  assert.equal(
+    receipt.provenance.find(record => record.sourceId === 'task-contract:current')?.locator,
+    revisedTask.version,
   );
 });
 

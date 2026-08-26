@@ -532,7 +532,9 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       surface: request.surface,
       workspaceRoot: request.workspaceRoot,
       taskContract,
+      taskContractSource: taskContractRevision,
       contextGraph,
+      contextGraphSource: changePlanRevision,
       memoryPolicySha256: memoryPolicy.decisionSha256,
     });
     const resume = request.resumeCheckpoint
@@ -546,7 +548,9 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       : undefined;
     const contextCompaction = CONTEXT_COMPACTION.bind({
       taskContract,
+      taskContractSource: taskContractRevision,
       contextGraph,
+      contextGraphSource: changePlanRevision,
       memoryPolicy,
       checkpoint,
       ...(request.resumeCheckpoint ? { resumeCheckpoint: request.resumeCheckpoint } : {}),

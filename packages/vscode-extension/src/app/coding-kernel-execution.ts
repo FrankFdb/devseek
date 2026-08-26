@@ -151,7 +151,10 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
           toolReceipts: settlement.toolReceipts,
           changeReceipts: settlement.changeReceipts,
         });
-        if (candidate) kernelRequest.taskContractRevision.revise(candidate);
+        if (candidate) {
+          kernelRequest.taskContractRevision.revise(candidate);
+          kernelRequest.changePlanRevision.reconcile({ actionId: candidate.revisionId });
+        }
         originalSettledModelSemanticContract?.(settlement);
       },
       ...(originalCheckpoint ? {
@@ -185,7 +188,7 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
             remainingTasks,
             reason,
             checkpoint,
-            kernelRequest.taskContract,
+            kernelRequest.taskContractRevision.current(),
           );
         },
       } : {}),
@@ -199,12 +202,7 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
         workspaceRoot: kernelRequest.workspaceRoot,
         mode: request.mode,
         callbacks,
-        sessionContextText: mergeContextText(
-          request.sessionContextText,
-          renderCodingContextGraphSummary(kernelRequest.contextGraph),
-          renderCodingRequirementDecisionSummary(kernelRequest.requirementDecision),
-          renderCodingChangePlanSummary(kernelRequest.changePlan),
-        ),
+        sessionContextText: buildKernelSessionContext(kernelRequest, request.sessionContextText),
         memoryRelatedPaths: request.memoryRelatedPaths ?? [],
         semanticContract: request.semanticContract,
         recoveryContextText,
@@ -280,6 +278,25 @@ function mergeVerificationAuditReceipts(
     receipts.set(`${receipt.runId}:${receipt.actionId}`, receipt);
   }
   return [...receipts.values()];
+}
+
+function buildKernelSessionContext(
+  kernelRequest: Pick<
+    CodingKernelRuntimeRequest<VsCodeCodingKernelRuntimeContext>,
+    'toolAuthorityStrategy' | 'contextGraph' | 'requirementDecision' | 'changePlan'
+  >,
+  sessionContextText?: string,
+): string {
+  const engineeringContext = renderCodingContextGraphSummary(kernelRequest.contextGraph);
+  if (kernelRequest.toolAuthorityStrategy === 'model-led') {
+    return mergeContextText(sessionContextText, engineeringContext);
+  }
+  return mergeContextText(
+    sessionContextText,
+    engineeringContext,
+    renderCodingRequirementDecisionSummary(kernelRequest.requirementDecision),
+    renderCodingChangePlanSummary(kernelRequest.changePlan),
+  );
 }
 
 function mergeContextText(...values: readonly (string | undefined)[]): string {

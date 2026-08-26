@@ -188,6 +188,7 @@ test('ModelLedIntentBoundary: ordered steering invalidates stale actions before 
   assert.match(runtimeSource, /onSettledModelSemanticContract:\s*settlement\s*=>/u);
   assert.match(runtimeSource, /reconcileObservedTaskContract\(/u);
   assert.match(runtimeSource, /taskContractRevision\.revise\(candidate\)/u);
+  assert.match(runtimeSource, /changePlanRevision\.reconcile\(\{ actionId: candidate\.revisionId \}\)/u);
   assert.match(runControlSource, /invalidatesPendingActions:\s*true/u);
   assert.match(runControlSource, /requiresModelReinterpretation:\s*true/u);
   assert.match(reconcilerSource, /reconcileSettledCodingModelAction\(/u);
@@ -237,6 +238,7 @@ test('ModelLedIntentBoundary: model interpretation reaches completion only throu
   );
   assert.match(runtimeSource, /reconcileObservedTaskContract\(/u);
   assert.match(runtimeSource, /kernelRequest\.taskContractRevision\.revise\(candidate\)/u);
+  assert.match(runtimeSource, /kernelRequest\.changePlanRevision\.reconcile\(\{ actionId: candidate\.revisionId \}\)/u);
   assert.match(reconcilerSource, /matchingReceipts\(binding, input\.toolReceipts\)/u);
   assert.match(reconcilerSource, /normalizeWorkspacePaths\(/u);
   assert.match(reconcilerSource, /reconcileSettledCodingModelAction\(/u);

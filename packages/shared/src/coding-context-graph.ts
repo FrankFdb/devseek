@@ -99,6 +99,11 @@ export interface CodingContextGraph {
   readonly provenanceRefs: readonly string[];
 }
 
+/** Supplies the semantic context graph that is current for an active run. */
+export interface CodingContextGraphSourcePort {
+  currentContextGraph(): CodingContextGraph;
+}
+
 export interface BuildCodingContextGraphInput {
   readonly workspaceRoot: string;
   readonly userPrompt: string;

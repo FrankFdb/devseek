@@ -1,7 +1,11 @@
-import type { CodingContextGraph } from './coding-context-graph';
+import type {
+  CodingContextGraph,
+  CodingContextGraphSourcePort,
+} from './coding-context-graph';
 import type { CodingKernelSurface } from './coding-kernel';
 import { codingSemanticDigest } from './coding-semantic-digest';
 import type { CodingKernelTaskContract } from './coding-task-contract';
+import type { CodingTaskContractSourcePort } from './coding-task-contract-revision';
 
 export const CODING_CHECKPOINT_VERSION = 'devseek.coding-checkpoint/v1' as const;
 
@@ -73,7 +77,9 @@ export interface CheckpointPort {
     readonly surface: CodingKernelSurface;
     readonly workspaceRoot: string;
     readonly taskContract: CodingKernelTaskContract;
+    readonly taskContractSource?: CodingTaskContractSourcePort;
     readonly contextGraph: CodingContextGraph;
+    readonly contextGraphSource?: CodingContextGraphSourcePort;
     readonly memoryPolicySha256?: string;
   }): CodingCheckpointSessionPort;
   snapshot(checkpoint: CodingCheckpoint): CodingCheckpoint;
@@ -93,13 +99,15 @@ export class CanonicalCheckpointService implements CheckpointPort {
     readonly surface: CodingKernelSurface;
     readonly workspaceRoot: string;
     readonly taskContract: CodingKernelTaskContract;
+    readonly taskContractSource?: CodingTaskContractSourcePort;
     readonly contextGraph: CodingContextGraph;
+    readonly contextGraphSource?: CodingContextGraphSourcePort;
     readonly memoryPolicySha256?: string;
   }): CodingCheckpointSessionPort {
     const binding = snapshotBinding(input);
     return Object.freeze({
       create: (progress: Parameters<CodingCheckpointSessionPort['create']>[0]) => (
-        createCheckpoint(binding, progress)
+        createCheckpoint(refreshSemanticBinding(binding, input), progress)
       ),
     });
   }
@@ -198,6 +206,19 @@ function snapshotBinding(input: Parameters<CheckpointPort['bind']>[0]): Checkpoi
     ...(input.memoryPolicySha256
       ? { memoryPolicySha256: requireSha256(input.memoryPolicySha256, 'invalid-memory-policy-sha256') }
       : {}),
+  });
+}
+
+function refreshSemanticBinding(
+  binding: CheckpointBinding,
+  input: Parameters<CheckpointPort['bind']>[0],
+): CheckpointBinding {
+  return Object.freeze({
+    ...binding,
+    taskContractSha256: codingSemanticDigest(input.taskContractSource?.current() ?? input.taskContract),
+    contextGraphSha256: codingSemanticDigest(
+      input.contextGraphSource?.currentContextGraph() ?? input.contextGraph,
+    ),
   });
 }
 

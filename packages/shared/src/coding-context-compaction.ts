@@ -1,4 +1,7 @@
-import type { CodingContextGraph } from './coding-context-graph';
+import type {
+  CodingContextGraph,
+  CodingContextGraphSourcePort,
+} from './coding-context-graph';
 import type { CodingContextProvenanceRecord } from './coding-context-provenance';
 import {
   type CodingCheckpoint,
@@ -14,6 +17,7 @@ import {
   CanonicalTaskContractService,
   type CodingKernelTaskContract,
 } from './coding-task-contract';
+import type { CodingTaskContractSourcePort } from './coding-task-contract-revision';
 
 export const CODING_CONTEXT_COMPACTION_VERSION = 'devseek.coding-context-compaction/v1' as const;
 
@@ -63,7 +67,9 @@ export interface CodingContextCompactionSessionPort {
 export interface ContextCompactionPort {
   bind(input: {
     readonly taskContract: CodingKernelTaskContract;
+    readonly taskContractSource?: CodingTaskContractSourcePort;
     readonly contextGraph: CodingContextGraph;
+    readonly contextGraphSource?: CodingContextGraphSourcePort;
     readonly memoryPolicy: CodingMemoryContextDecision;
     readonly checkpoint: CodingCheckpointSessionPort;
     readonly resumeCheckpoint?: CodingCheckpoint;
@@ -72,15 +78,22 @@ export interface ContextCompactionPort {
 }
 
 interface CompactionBinding {
-  readonly taskContract: ReturnType<CanonicalTaskContractService['project']>;
-  readonly taskContractSha256: string;
-  readonly contextGraphSha256: string;
+  readonly initialTaskContract: CodingKernelTaskContract;
+  readonly taskContractSource?: CodingTaskContractSourcePort;
+  readonly initialContextGraph: CodingContextGraph;
+  readonly contextGraphSource?: CodingContextGraphSourcePort;
   readonly memoryPolicySha256: string;
-  readonly provenance: readonly CodingContextProvenanceRecord[];
   readonly rejectedMemoryIds: readonly string[];
   readonly checkpoint: CodingCheckpointSessionPort;
   readonly initialEpoch: number;
   readonly initialParentCheckpointId?: string;
+}
+
+interface CompactionSemanticSnapshot {
+  readonly taskContract: ReturnType<CanonicalTaskContractService['project']>;
+  readonly taskContractSha256: string;
+  readonly contextGraphSha256: string;
+  readonly provenance: readonly CodingContextProvenanceRecord[];
   readonly taskRedactionCount: number;
 }
 
@@ -92,16 +105,15 @@ export class CanonicalContextCompactionService implements ContextCompactionPort 
   bind(input: Parameters<ContextCompactionPort['bind']>[0]): CodingContextCompactionSessionPort {
     if (!input || typeof input !== 'object') compactionFailure('invalid-binding');
     const taskContract = this.taskContracts.snapshot(input.taskContract);
-    const redactedTask = redactValue(this.taskContracts.project(taskContract));
     const resumeCheckpoint = input.resumeCheckpoint
       ? this.checkpoints.snapshot(input.resumeCheckpoint)
       : undefined;
     const binding: CompactionBinding = Object.freeze({
-      taskContract: deepFreeze(redactedTask.value),
-      taskContractSha256: codingSemanticDigest(taskContract),
-      contextGraphSha256: codingSemanticDigest(input.contextGraph),
+      initialTaskContract: taskContract,
+      ...(input.taskContractSource ? { taskContractSource: input.taskContractSource } : {}),
+      initialContextGraph: input.contextGraph,
+      ...(input.contextGraphSource ? { contextGraphSource: input.contextGraphSource } : {}),
       memoryPolicySha256: requireSha256(input.memoryPolicy?.decisionSha256, 'invalid-memory-policy'),
-      provenance: deepFreeze(structuredClone(input.contextGraph?.provenance ?? [])),
       rejectedMemoryIds: Object.freeze(uniqueText(
         input.memoryPolicy?.rejected?.map(item => item.memoryId) ?? [],
         'invalid-rejected-memory-id',
@@ -109,7 +121,6 @@ export class CanonicalContextCompactionService implements ContextCompactionPort 
       checkpoint: input.checkpoint,
       initialEpoch: resumeCheckpoint?.epoch ?? 0,
       ...(resumeCheckpoint ? { initialParentCheckpointId: resumeCheckpoint.checkpointId } : {}),
-      taskRedactionCount: redactedTask.count,
     });
     let epoch = binding.initialEpoch;
     let parentCheckpointId = binding.initialParentCheckpointId;
@@ -125,7 +136,8 @@ export class CanonicalContextCompactionService implements ContextCompactionPort 
           compactionFailure('prior-receipt-not-latest');
         }
         const prior = suppliedPrior ?? latest;
-        const receipt = createCompactionReceipt(binding, compactInput, {
+        const semantic = snapshotCompactionSemantics(this.taskContracts, binding);
+        const receipt = createCompactionReceipt(binding, semantic, compactInput, {
           epoch: ++epoch,
           parentCheckpointId,
           prior,
@@ -202,6 +214,7 @@ export function renderCodingContextCompactionReceipt(receipt: CodingContextCompa
 
 function createCompactionReceipt(
   binding: CompactionBinding,
+  semantic: CompactionSemanticSnapshot,
   input: Parameters<CodingContextCompactionSessionPort['compact']>[0],
   state: {
     readonly epoch: number;
@@ -235,16 +248,22 @@ function createCompactionReceipt(
     createdAt: input.createdAt,
     ...(state.parentCheckpointId ? { parentCheckpointId: state.parentCheckpointId } : {}),
   });
+  if (checkpoint.taskContractSha256 !== semantic.taskContractSha256) {
+    compactionFailure('checkpoint-task-contract-drift');
+  }
+  if (checkpoint.contextGraphSha256 !== semantic.contextGraphSha256) {
+    compactionFailure('checkpoint-context-graph-drift');
+  }
   const payload = {
     version: CODING_CONTEXT_COMPACTION_VERSION,
     pass: (state.prior?.pass ?? 0) + 1,
     trigger: requireTrigger(input.trigger ?? 'budget-exceeded'),
     budget,
-    taskContract: binding.taskContract,
-    taskContractSha256: binding.taskContractSha256,
-    contextGraphSha256: binding.contextGraphSha256,
+    taskContract: semantic.taskContract,
+    taskContractSha256: semantic.taskContractSha256,
+    contextGraphSha256: semantic.contextGraphSha256,
     memoryPolicySha256: binding.memoryPolicySha256,
-    provenance: binding.provenance,
+    provenance: semantic.provenance,
     rejectedMemoryIds: binding.rejectedMemoryIds,
     completedUnitCount,
     pendingUnits: checkpoint.pendingUnits,
@@ -252,7 +271,7 @@ function createCompactionReceipt(
     redactedSecretCount: Math.max(
       state.prior?.redactedSecretCount ?? 0,
       nonNegativeInteger(input.redactedSecretCount ?? 0, 'invalid-redacted-secret-count')
-        + binding.taskRedactionCount
+        + semantic.taskRedactionCount
         + redactedPending.count
         + redactedEvidence.count,
     ),
@@ -261,6 +280,25 @@ function createCompactionReceipt(
     ...(state.prior ? { parentReceiptSha256: state.prior.receiptSha256 } : {}),
   };
   return deepFreeze({ ...payload, receiptSha256: codingSemanticDigest(payload) });
+}
+
+function snapshotCompactionSemantics(
+  taskContracts: CanonicalTaskContractService,
+  binding: CompactionBinding,
+): CompactionSemanticSnapshot {
+  const taskContract = taskContracts.snapshot(
+    binding.taskContractSource?.current() ?? binding.initialTaskContract,
+  );
+  const contextGraph = binding.contextGraphSource?.currentContextGraph()
+    ?? binding.initialContextGraph;
+  const redactedTask = redactValue(taskContracts.project(taskContract));
+  return Object.freeze({
+    taskContract: deepFreeze(redactedTask.value),
+    taskContractSha256: codingSemanticDigest(taskContract),
+    contextGraphSha256: codingSemanticDigest(contextGraph),
+    provenance: deepFreeze(structuredClone(contextGraph?.provenance ?? [])),
+    taskRedactionCount: redactedTask.count,
+  });
 }
 
 function assertProgressContinuity(

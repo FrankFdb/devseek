@@ -11,6 +11,7 @@ import {
 import {
   CanonicalContextGraphService,
   type CodingContextGraph,
+  type CodingContextGraphSourcePort,
   type CodingContextSeed,
   type ContextGraphPort,
 } from './coding-context-graph';
@@ -47,8 +48,8 @@ export interface CodingChangePlanSourcePort {
   currentPlan(): CodingChangePlan;
 }
 
-export interface CodingChangePlanRevisionSessionPort extends CodingChangePlanSourcePort {
-  currentContextGraph(): CodingContextGraph;
+export interface CodingChangePlanRevisionSessionPort
+  extends CodingChangePlanSourcePort, CodingContextGraphSourcePort {
   currentRequirements(): CodingRequirementDecision;
   currentDesign(): CodingDesignDecision;
   reconcile(input: { readonly actionId: string }): CodingChangePlanRevisionDecision;

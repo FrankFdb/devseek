@@ -90,6 +90,28 @@ test('canonical Kernel sends VS Code work through its runtime adapter', async ()
   );
 });
 
+test('model-led runtime does not present pre-action policy snapshots as model instructions', async () => {
+  const calls = [];
+  const kernel = createKernel({
+    async runCanonical(request) {
+      calls.push(request);
+      return result('canonical');
+    },
+  });
+
+  await execute(kernel, {
+    ...baseRequest(),
+    callbacks: { executionMode: 'edit' },
+    toolAuthorityStrategy: 'model-led',
+    sessionContextText: 'same-session facts',
+  });
+
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].sessionContextText, /^same-session facts\n\n\[DevSeek Engineering Context\]/u);
+  assert.doesNotMatch(calls[0].sessionContextText, /\[DevSeek Requirement Contract\]/u);
+  assert.doesNotMatch(calls[0].sessionContextText, /\[DevSeek Change Plan\]/u);
+});
+
 test('runtime keeps verification audit history separate from current-contract settlement', async () => {
   const kernel = createKernel({
     async runCanonical(request) {
@@ -497,6 +519,9 @@ function execute(kernel, runtimeContext) {
     contextSeed,
     operationJournal: new InMemoryCodingOperationJournal(),
     environment: createFixtureCodingKernelEnvironment(runtimeContext.workspaceRoot, runtimeContext.providerType ?? 'bridge'),
+    ...(runtimeContext.toolAuthorityStrategy
+      ? { toolAuthorityStrategy: runtimeContext.toolAuthorityStrategy }
+      : {}),
     ...(runtimeContext.memoryCandidates ? { memoryCandidates: runtimeContext.memoryCandidates } : {}),
     ...(recovery?.kind === 'checkpoint-resume' ? { resumeCheckpoint: recovery.checkpoint } : {}),
     runtimeContext: effectiveRuntimeContext,
