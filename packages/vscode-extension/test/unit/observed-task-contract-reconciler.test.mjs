@@ -233,6 +233,95 @@ test('symptom-style repair gains verification acceptance from settled edit evide
   assert.equal(candidate.taskContract.constraints.includes('verification-before-completion'), true);
 });
 
+test('post-change observations cannot downgrade accumulated source work to review', () => {
+  const prompt = 'Read USER_STORY.md and build the requested layered C++ application across include and src.';
+  const authority = createWriteAuthority(prompt, {});
+  const initial = projectVsCodeCodingKernelTaskContract({
+    userPrompt: prompt,
+    executionMode: authority.canonicalSemanticContract.intent.mode,
+    contextFiles: [],
+    workspaceRoot: '/workspace',
+    taskContract: authority.canonicalSemanticContract.taskContract,
+    externalEffectIntent: authority.canonicalSemanticContract.intent.context.externalEffect,
+    targetPaths: [],
+    prohibitedTargets: [],
+  });
+  const write = toolReceipt({
+    actionId: 'write-math-model',
+    inputSha256: 'c'.repeat(64),
+  });
+  assert.equal(authority.applyModelSemanticProposal(mutationProposal(['include/math_model.hpp'], {
+    taskKind: 'existing-project-edit',
+    evidenceBindings: [{
+      tool: write.tool,
+      purpose: write.purpose,
+      effects: write.effects,
+      inputSha256: write.inputSha256,
+      targetPaths: ['include/math_model.hpp'],
+    }],
+  })), true);
+  const settledWrite = authority.settleModelSemanticProposal([write]);
+  assert.ok(settledWrite);
+  const first = reconcileObservedTaskContract({
+    current: initial,
+    semanticContract: settledWrite.semanticContract,
+    contextFiles: [],
+    workspaceRoot: '/workspace',
+    toolReceipts: settledWrite.toolReceipts,
+    changeReceipts: [changeReceipt(['include/math_model.hpp'], {
+      actionId: 'write-math-model',
+    })],
+  });
+  assert.ok(first);
+  assert.equal(first.taskContract.mode, 'change');
+
+  const read = toolReceipt({
+    sequence: 6,
+    actionId: 'read-math-model',
+    tool: 'read_file',
+    purpose: 'observe',
+    effects: ['read'],
+    inputSha256: 'd'.repeat(64),
+    evidenceRefs: ['tool:read-math-model:completed'],
+  });
+  assert.equal(authority.applyModelSemanticProposal({
+    version: 'devseek.semantic-intent/v1',
+    source: 'provider',
+    mode: 'inspect',
+    taskKind: 'read-only-analysis',
+    confidence: 0.98,
+    mutation: 'none',
+    targetPaths: ['include/math_model.hpp'],
+    requiresWorkspace: true,
+    requiresTerminal: false,
+    requiresExternalEffect: false,
+    requiresClarification: false,
+    reason: 'provider reviews the committed source change',
+    evidenceBindings: [{
+      tool: read.tool,
+      purpose: read.purpose,
+      effects: read.effects,
+      inputSha256: read.inputSha256,
+      targetPaths: ['include/math_model.hpp'],
+    }],
+  }), true);
+  const settledRead = authority.settleModelSemanticProposal([read]);
+  assert.ok(settledRead);
+  const second = reconcileObservedTaskContract({
+    current: first.taskContract,
+    semanticContract: settledRead.semanticContract,
+    contextFiles: [],
+    workspaceRoot: '/workspace',
+    toolReceipts: settledRead.toolReceipts,
+    changeReceipts: [],
+  });
+  const finalContract = second?.taskContract ?? first.taskContract;
+
+  assert.equal(finalContract.mode, 'change');
+  assert.equal(finalContract.deliverables.some(item => item.kind === 'source-change'), true);
+  assert.equal(finalContract.constraints.includes('no-workspace-mutation'), false);
+});
+
 test('a settled memory effect replaces stale source and verification obligations', () => {
   const prompt = '记一下这个项目的习惯：处理 src/bridge.ts 后，用 npm run test:bridge 做聚焦验证；现在只记录，不改文件也不运行。';
   const memoryReceipt = toolReceipt({

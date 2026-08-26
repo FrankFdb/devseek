@@ -8,6 +8,7 @@ import {
   type CodingTaskContractRevisionCandidate,
 } from '@devseek-netai/shared';
 import type { TaskSemanticContract } from '../task-semantic-contract';
+import type { ExecutionMode } from '../intent/intent-types';
 import { canToolReceiptPromoteModelSemantics } from '../agent/model-tool-semantic-proposal';
 import { projectVsCodeCodingKernelTaskContract } from './coding-kernel-task-contract';
 
@@ -42,7 +43,7 @@ export function reconcileObservedTaskContract(
   ]).filter(target => !isExcluded(target, input.current.scope.exclude));
   const projected = projectVsCodeCodingKernelTaskContract({
     userPrompt: input.semanticContract.prompt,
-    executionMode: input.semanticContract.intent.mode,
+    executionMode: resolveObservedExecutionMode(input, committedChanges),
     contextFiles: [...input.contextFiles],
     workspaceRoot: input.workspaceRoot,
     taskContract: input.semanticContract.taskContract,
@@ -56,8 +57,6 @@ export function reconcileObservedTaskContract(
   const taskContract = preserveUserContractBoundaries(
     input.current,
     projected,
-    semanticReceipts,
-    committedChanges,
   );
   if (codingSemanticDigest(taskContract) === codingSemanticDigest(input.current)) return undefined;
 
@@ -78,13 +77,12 @@ export function reconcileObservedTaskContract(
 function preserveUserContractBoundaries(
   current: CodingKernelTaskContract,
   projected: CodingKernelTaskContract,
-  toolReceipts: readonly CodingToolExecutionReceipt<unknown>[],
-  changeReceipts: readonly CodingWorkspaceMutationReceipt<unknown>[],
 ): CodingKernelTaskContract {
+  const preserveRelease = current.mode === 'release' && projected.mode !== 'release';
   return buildCodingKernelTaskContract({
     goal: projected.goal,
-    mode: projected.mode,
-    orientation: projected.orientation,
+    mode: preserveRelease ? current.mode : projected.mode,
+    orientation: preserveRelease ? current.orientation : projected.orientation,
     include: projected.scope.include,
     exclude: unique([...current.scope.exclude, ...projected.scope.exclude]),
     // Deliverables, verification obligations, and acceptance criteria are a
@@ -100,10 +98,32 @@ function preserveUserContractBoundaries(
     provenanceRefs: unique([
       ...projected.provenanceRefs,
       ...current.provenanceRefs,
-      ...toolReceipts.flatMap(receipt => [...receipt.evidenceRefs]),
-      ...changeReceipts.flatMap(receipt => [...receipt.evidenceRefs]),
     ]),
   });
+}
+
+/**
+ * Settled effects accumulate for the turn. A later read or verification action
+ * cannot downgrade an already committed change into a read-only task.
+ */
+function resolveObservedExecutionMode(
+  input: Pick<ObservedTaskContractReconciliationInput, 'current' | 'semanticContract'>,
+  committedChanges: readonly CodingWorkspaceMutationReceipt<unknown>[],
+): ExecutionMode {
+  const { current, semanticContract } = input;
+  if (semanticContract.kind === 'destructive'
+    || semanticContract.intent.mode === 'destructive') {
+    return 'destructive';
+  }
+  if (current.mode === 'change'
+    || current.mode === 'release'
+    || committedChanges.length > 0
+    || semanticContract.mutation.requested
+    || semanticContract.intent.context.externalEffect === 'requested') {
+    return 'edit';
+  }
+  if (semanticContract.validation.requested) return 'run';
+  return semanticContract.intent.mode;
 }
 
 function mergeById<T extends { readonly id: string }>(

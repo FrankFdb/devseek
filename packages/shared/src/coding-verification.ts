@@ -7,6 +7,10 @@ import {
 import type { CodingToolExecutionReceipt } from './coding-tool-execution';
 import type { CodingKernelTaskContract } from './coding-task-contract';
 import type { CodingTaskContractSourcePort } from './coding-task-contract-revision';
+import type {
+  CodingWorkspaceMutationReceipt,
+  CodingWorkspaceMutationReceiptSourcePort,
+} from './coding-workspace-mutation';
 import { codingSemanticDigest } from './coding-semantic-digest';
 
 export const CODING_VERIFICATION_PLAN_VERSION = 'devseek.coding-verification-plan/v1' as const;
@@ -106,6 +110,7 @@ export interface VerificationServicePort extends VerificationPort {
     readonly runId: string;
     readonly acceptance: readonly CodingVerificationCriterion[];
     readonly taskContractSource?: CodingTaskContractSourcePort;
+    readonly mutationSource?: CodingWorkspaceMutationReceiptSourcePort;
   }): CodingVerificationSessionPort;
 }
 
@@ -186,12 +191,14 @@ export class CanonicalVerificationService implements VerificationServicePort {
     readonly runId: string;
     readonly acceptance: readonly CodingVerificationCriterion[];
     readonly taskContractSource?: CodingTaskContractSourcePort;
+    readonly mutationSource?: CodingWorkspaceMutationReceiptSourcePort;
   }): CodingVerificationSessionPort {
     return new CanonicalVerificationSession(
       this,
       input.runId,
       input.acceptance,
       input.taskContractSource,
+      input.mutationSource,
     );
   }
 
@@ -219,6 +226,7 @@ class CanonicalVerificationSession implements CodingVerificationSessionPort {
   private readonly acceptance: readonly CodingVerificationCriterion[];
   private readonly settledReceipts = new Map<string, {
     readonly contractSha256: string;
+    readonly mutationReceiptCount: number;
     readonly receipt: CodingVerificationReceipt;
   }>();
 
@@ -227,6 +235,7 @@ class CanonicalVerificationSession implements CodingVerificationSessionPort {
     runId: string,
     acceptance: readonly CodingVerificationCriterion[],
     private readonly taskContractSource?: CodingTaskContractSourcePort,
+    private readonly mutationSource?: CodingWorkspaceMutationReceiptSourcePort,
   ) {
     this.runId = normalizedCodingId(runId, 'verification-session-run-id');
     this.acceptance = Object.freeze(acceptance.map(criterion => Object.freeze({
@@ -248,21 +257,32 @@ class CanonicalVerificationSession implements CodingVerificationSessionPort {
     if (plan.runId !== this.runId) throw new Error('coding-verification:session-run-mismatch');
     const currentAcceptance = this.currentAcceptance();
     const contractSha256 = this.currentContractSha256(currentAcceptance);
+    const mutationReceiptCount = this.mutationSource?.receipts().length ?? 0;
     if (canonicalCodingJson(plan.acceptance) !== canonicalCodingJson(currentAcceptance)) {
       throw new Error('coding-verification:session-acceptance-mismatch');
     }
     const outcome = await this.service.verify(plan, host);
-    this.settledReceipts.set(outcome.receipt.actionId, {
-      contractSha256,
-      receipt: outcome.receipt,
-    });
+    if (!this.settledReceipts.has(outcome.receipt.actionId)) {
+      this.settledReceipts.set(outcome.receipt.actionId, {
+        contractSha256,
+        mutationReceiptCount,
+        receipt: outcome.receipt,
+      });
+    }
     return outcome;
   }
 
   receipts(): readonly CodingVerificationReceipt[] {
     const contractSha256 = this.currentContractSha256(this.currentAcceptance());
+    const mutations = this.mutationSource?.receipts() ?? [];
     return Object.freeze([...this.settledReceipts.values()]
-      .filter(value => value.contractSha256 === contractSha256)
+      .filter(value => (
+        value.contractSha256 === contractSha256
+          && !passedVerificationWasSupersededByMutation(
+            value.receipt,
+            mutations.slice(value.mutationReceiptCount),
+          )
+      ))
       .map(value => value.receipt));
   }
 
@@ -274,9 +294,59 @@ class CanonicalVerificationSession implements CodingVerificationSessionPort {
 
   private currentContractSha256(acceptance: readonly CodingVerificationCriterion[]): string {
     return this.taskContractSource
-      ? codingSemanticDigest(this.taskContractSource.current())
+      ? codingVerificationContractDigest(this.taskContractSource.current())
       : codingSemanticDigest(acceptance);
   }
+}
+
+function codingVerificationContractDigest(taskContract: CodingKernelTaskContract): string {
+  return codingSemanticDigest({
+    version: taskContract.version,
+    goal: taskContract.goal,
+    mode: taskContract.mode,
+    scope: taskContract.scope,
+    deliverables: taskContract.deliverables,
+    constraints: taskContract.constraints,
+    nonGoals: taskContract.nonGoals,
+    assumptions: taskContract.assumptions,
+    conflicts: taskContract.conflicts,
+    externalBoundaries: taskContract.externalBoundaries,
+    acceptance: taskContract.acceptance,
+  });
+}
+
+function passedVerificationWasSupersededByMutation(
+  receipt: CodingVerificationReceipt,
+  mutations: readonly CodingWorkspaceMutationReceipt<unknown>[],
+): boolean {
+  if (receipt.status !== 'passed') return false;
+  return mutations.some(mutation => (
+    mutationMayHaveChangedWorkspace(mutation)
+      && mutationOverlapsVerificationScope(mutation.paths, receipt.scopePaths)
+  ));
+}
+
+function mutationMayHaveChangedWorkspace(
+  mutation: CodingWorkspaceMutationReceipt<unknown>,
+): boolean {
+  return mutation.status === 'committed'
+    || mutation.status === 'indeterminate'
+    || (mutation.status === 'failed' && !mutation.rollbackRef);
+}
+
+function mutationOverlapsVerificationScope(
+  mutationPaths: readonly string[],
+  verificationPaths: readonly string[],
+): boolean {
+  const scopes = verificationPaths.map(normalizeVerificationPath);
+  if (scopes.includes('workspace') || mutationPaths.length === 0) return true;
+  return mutationPaths.map(normalizeVerificationPath).some(mutationPath => (
+    scopes.some(scope => pathsOverlap(scope, mutationPath))
+  ));
+}
+
+function pathsOverlap(left: string, right: string): boolean {
+  return left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
 }
 
 export function projectCodingVerificationAcceptance(

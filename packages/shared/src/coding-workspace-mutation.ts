@@ -162,9 +162,12 @@ export interface WorkspaceMutationTransactionPort {
   ): Promise<CodingWorkspaceMutationOutcome<TResult>>;
 }
 
-export interface WorkspaceMutationTransactionSessionPort extends WorkspaceMutationTransactionPort {
+export interface CodingWorkspaceMutationReceiptSourcePort {
   receipts(): readonly CodingWorkspaceMutationReceipt<unknown>[];
 }
+
+export interface WorkspaceMutationTransactionSessionPort
+  extends WorkspaceMutationTransactionPort, CodingWorkspaceMutationReceiptSourcePort {}
 
 interface ActiveMutation {
   readonly canonicalPlan: string;

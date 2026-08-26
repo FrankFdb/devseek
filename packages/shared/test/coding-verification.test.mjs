@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   CanonicalVerificationService,
   buildCodingVerificationPlan,
+  resolveCodingKernelTaskContract,
 } from '../dist/index.js';
 
 function plan(overrides = {}) {
@@ -162,4 +163,74 @@ test('bound verification sessions reject foreign runs and drifted acceptance con
   assert.equal(replay.replayed, true);
   assert.deepEqual(session.receipts(), [first.receipt]);
   assert.equal(capability.calls, 1);
+});
+
+test('bound verification survives provenance-only review and expires after a later overlapping mutation', async () => {
+  let current = resolveCodingKernelTaskContract({
+    prompt: 'Implement and verify src/value.ts',
+    surface: 'vscode',
+    modeHint: 'change',
+    targetPaths: ['src/value.ts'],
+    targetPathsAuthoritative: true,
+    deliverableKinds: ['source-change', 'verification-result'],
+    confirmedWorkspaceMutation: true,
+    verificationRequired: true,
+    verificationRequirementAuthoritative: true,
+  });
+  const acceptance = current.acceptance
+    .filter(criterion => criterion.oracle.kind === 'verification')
+    .map(criterion => ({ id: criterion.id, statement: criterion.statement }));
+  const mutations = [];
+  const session = new CanonicalVerificationService().bind({
+    runId: 'verify-run-1',
+    acceptance,
+    taskContractSource: { current: () => current },
+    mutationSource: { receipts: () => mutations },
+  });
+  const capability = host([{
+    checkId: 'project-test',
+    status: 'passed',
+    acceptanceIds: acceptance.map(criterion => criterion.id),
+    summary: 'project test passed',
+    exitCode: 0,
+    evidenceRefs: ['project-test:exit-0'],
+  }]);
+  const verification = await session.verify(plan({
+    sequence: 10,
+    acceptance,
+  }), capability);
+
+  current = {
+    ...current,
+    provenanceRefs: [...current.provenanceRefs, 'settled-read:src/value.ts'],
+  };
+  assert.deepEqual(session.receipts(), [verification.receipt]);
+
+  mutations.push({
+    version: 'devseek.coding-workspace-mutation-receipt/v1',
+    runId: 'verify-run-1',
+    sequence: 11,
+    actionId: 'write-unrelated-notes',
+    idempotencyKey: 'verify-run-1:write-unrelated-notes',
+    status: 'committed',
+    paths: ['docs/notes.md'],
+    baselineRef: 'baseline:notes',
+    readbackRef: 'readback:notes',
+    evidenceRefs: ['workspace-mutation:notes:committed'],
+  });
+  assert.deepEqual(session.receipts(), [verification.receipt]);
+
+  mutations.push({
+    version: 'devseek.coding-workspace-mutation-receipt/v1',
+    runId: 'verify-run-1',
+    sequence: 12,
+    actionId: 'rewrite-value-after-verification',
+    idempotencyKey: 'verify-run-1:rewrite-value-after-verification',
+    status: 'committed',
+    paths: ['src/value.ts'],
+    baselineRef: 'baseline:value',
+    readbackRef: 'readback:value',
+    evidenceRefs: ['workspace-mutation:value:committed'],
+  });
+  assert.deepEqual(session.receipts(), []);
 });

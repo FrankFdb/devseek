@@ -580,6 +580,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
       runId: request.runId,
       acceptance: verificationAcceptance,
       taskContractSource: taskContractRevision,
+      mutationSource: workspaceMutations,
     });
     const verifierSelection = VERIFIER_SELECTION.bind({
       runId: request.runId,
