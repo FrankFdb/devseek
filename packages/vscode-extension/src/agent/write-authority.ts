@@ -1,4 +1,7 @@
-import type { CodingToolExecutionReceipt } from '@devseek-netai/shared';
+import {
+  codingToolReceiptCanSettleModelAction,
+  type CodingToolExecutionReceipt,
+} from '@devseek-netai/shared';
 import type { ChatMessage } from '../llm/types';
 import { createModelLedTurnSemanticContract } from '../intent/model-led-semantic-contract';
 import { projectModelActionSemanticContract } from '../intent/model-action-semantic-contract';
@@ -15,7 +18,6 @@ import {
   consumeUserSteerTexts,
 } from './user-steer';
 import {
-  canToolReceiptPromoteModelSemantics,
   type ModelToolSemanticProposal,
   type ModelToolSemanticSettlementFragment,
 } from './model-tool-semantic-proposal';
@@ -42,6 +44,7 @@ export interface WriteAuthority {
 
 export interface SettledModelSemanticProposal {
   readonly semanticContract: TaskSemanticContract;
+  readonly semanticFragments: readonly ModelToolSemanticSettlementFragment[];
   readonly toolReceipts: readonly CodingToolExecutionReceipt<unknown>[];
   readonly observationPaths: readonly string[];
 }
@@ -132,6 +135,7 @@ export function createWriteAuthority(
       pendingModelSemanticProposal = undefined;
       return {
         semanticContract: settledModelSemanticContract,
+        semanticFragments: Object.freeze([...settledFragments]),
         toolReceipts: Object.freeze([...matchingReceipts]),
         observationPaths: Object.freeze(uniquePaths(settledFragments
           .filter(fragment => fragment.mutation === 'none')
@@ -198,7 +202,7 @@ function receiptMatchesSemanticBinding(
     && binding.purpose === receipt.purpose
     && binding.inputSha256 === receipt.inputSha256
     && sameEffects(binding.effects, receipt.effects);
-  if (!operationMatches || !canToolReceiptPromoteModelSemantics(receipt)) return false;
+  if (!operationMatches || !codingToolReceiptCanSettleModelAction(receipt)) return false;
 
   if (proposal.mutation === 'create-file'
     || proposal.mutation === 'modify-source'

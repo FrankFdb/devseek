@@ -44,6 +44,7 @@ export function createModelSemanticSettlementService(
 
       input.authority.callbacks.onSettledModelSemanticContract?.({
         semanticContract: settlement.semanticContract,
+        semanticFragments: settlement.semanticFragments,
         toolReceipts: settlement.toolReceipts,
         changeReceipts: round.changeReceipts ?? [],
       });

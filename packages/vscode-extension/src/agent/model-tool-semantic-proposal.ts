@@ -4,7 +4,6 @@ import {
   normalizeCodingFileWriteInputs,
   type CodingToolCall,
   type CodingToolEffect,
-  type CodingToolExecutionReceipt,
   type CodingToolPurpose,
 } from '@devseek-netai/shared';
 import type { SemanticIntentInterpretation } from '../intent/semantic-intent';
@@ -36,22 +35,6 @@ export interface ModelToolSemanticProposal extends SemanticIntentInterpretation 
   readonly evidenceBindings: readonly ModelToolSemanticEvidenceBinding[];
   /** Independent semantic units promoted only by their own local receipts. */
   readonly settlementFragments?: readonly ModelToolSemanticSettlementFragment[];
-}
-
-/** Pre-effect denials are attempt evidence, never completion semantics. */
-export function canToolReceiptPromoteModelSemantics(
-  receipt: CodingToolExecutionReceipt<unknown>,
-): boolean {
-  if (receipt.status === 'completed') return true;
-  if (receipt.status === 'denied') return false;
-  if (receipt.status === 'failed'
-    && receipt.purpose === 'workspace-mutation'
-    && receipt.permission.decision === 'allow') {
-    // An authorized write that failed before commit establishes an outstanding
-    // mutation obligation. The failed receipt remains non-delivery evidence.
-    return true;
-  }
-  return receipt.effectStarted !== false;
 }
 
 /** Projects a normalized model action into loop semantics, never authority. */

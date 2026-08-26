@@ -177,6 +177,10 @@ test('ModelLedIntentBoundary: ordered steering invalidates stale actions before 
     path.join(rootDir, 'src/app/observed-task-contract-reconciler.ts'),
     'utf8',
   );
+  const actionContractSource = readFileSync(
+    path.join(rootDir, '../shared/src/coding-model-action-contract.ts'),
+    'utf8',
+  );
 
   assert.match(steerSource, /role:\s*'user'/u);
   assert.match(runtimeSource, /runControl\.consumeSteering\(\)/u);
@@ -186,7 +190,8 @@ test('ModelLedIntentBoundary: ordered steering invalidates stale actions before 
   assert.match(runtimeSource, /taskContractRevision\.revise\(candidate\)/u);
   assert.match(runControlSource, /invalidatesPendingActions:\s*true/u);
   assert.match(runControlSource, /requiresModelReinterpretation:\s*true/u);
-  assert.match(reconcilerSource, /receipt\.status === 'committed'/u);
+  assert.match(reconcilerSource, /reconcileSettledCodingModelAction\(/u);
+  assert.match(actionContractSource, /receipt\.status === 'committed'/u);
   assert.doesNotMatch(steerSource, /REAUTHORIZE_RE|REPLACE_SCOPE_RE/u);
 });
 
@@ -211,6 +216,10 @@ test('ModelLedIntentBoundary: model interpretation reaches completion only throu
     path.join(rootDir, 'src/agent/model-semantic-settlement.ts'),
     'utf8',
   );
+  const actionContractSource = readFileSync(
+    path.join(rootDir, '../shared/src/coding-model-action-contract.ts'),
+    'utf8',
+  );
 
   assert.match(authoritySource, /settleModelSemanticProposal\(receipts\)/u);
   assert.match(authoritySource, /receiptMatchesSemanticBinding/u);
@@ -228,8 +237,11 @@ test('ModelLedIntentBoundary: model interpretation reaches completion only throu
   );
   assert.match(runtimeSource, /reconcileObservedTaskContract\(/u);
   assert.match(runtimeSource, /kernelRequest\.taskContractRevision\.revise\(candidate\)/u);
-  assert.match(reconcilerSource, /receipt\.status === 'committed'/u);
-  assert.match(reconcilerSource, /observedDeliverableTargets/u);
-  assert.match(reconcilerSource, /current\.scope\.exclude/u);
+  assert.match(reconcilerSource, /matchingReceipts\(binding, input\.toolReceipts\)/u);
+  assert.match(reconcilerSource, /normalizeWorkspacePaths\(/u);
+  assert.match(reconcilerSource, /reconcileSettledCodingModelAction\(/u);
+  assert.match(actionContractSource, /receipt\.status === 'committed'/u);
+  assert.match(actionContractSource, /current\.scope\.exclude/u);
+  assert.match(actionContractSource, /committedTargetPaths/u);
   assert.doesNotMatch(reconcilerSource, /semanticContract\.mutation\.targets/u);
 });

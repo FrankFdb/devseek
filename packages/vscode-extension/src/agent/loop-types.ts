@@ -6,6 +6,7 @@ import type { AgentStatusEvent } from './events';
 import type { TodoItem } from './evidence-recovery';
 import type { ExecutionMode } from '../intent/intent-types';
 import type { TaskSemanticContract } from '../task-semantic-contract';
+import type { ModelToolSemanticSettlementFragment } from './model-tool-semantic-proposal';
 import type { AgentFileWriteContext } from '../app/agent-file-write-policy';
 import type { ArtifactClaim, EvidenceRef, VerificationResult } from './evidence-grounding';
 import type { ValidationCommandRunner } from '../workspace/validation-service';
@@ -60,6 +61,7 @@ export interface AgentDirectoryCreationResult {
  */
 export interface SettledModelSemanticContract {
   readonly semanticContract: TaskSemanticContract;
+  readonly semanticFragments: readonly ModelToolSemanticSettlementFragment[];
   readonly toolReceipts: readonly CodingToolExecutionReceipt<unknown>[];
   readonly changeReceipts: readonly CodingWorkspaceMutationReceipt<unknown>[];
 }

@@ -59,6 +59,28 @@ test('model action semantics cannot revise completion authority without an exact
   }), undefined);
 });
 
+test('a denied canonical receipt cannot settle model action semantics', () => {
+  const current = defaultContract('Update src/value.ts');
+  const denied = toolReceipt({
+    status: 'denied',
+    effectStarted: false,
+    permission: {
+      ...authorityReceipt(),
+      decision: 'deny',
+      status: 'denied',
+      reason: 'workspace-write-denied',
+    },
+  });
+
+  assert.equal(reconcileSettledCodingModelAction({
+    current,
+    surface: 'cli',
+    action,
+    toolReceipts: [denied],
+    changeReceipts: [],
+  }), undefined);
+});
+
 test('an explicit review contract cannot be widened by a model workspace proposal', () => {
   const current = resolveCodingKernelTaskContract({
     prompt: 'Review src/value.ts and report findings only.',

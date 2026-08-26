@@ -1,20 +1,20 @@
 import {
-  buildCodingKernelTaskContract,
   codingSemanticDigest,
-  codingWorkspaceTargetMatchesScope,
+  reconcileSettledCodingModelAction,
   type CodingKernelTaskContract,
+  type CodingTaskContractRevisionCandidate,
   type CodingToolExecutionReceipt,
   type CodingWorkspaceMutationReceipt,
-  type CodingTaskContractRevisionCandidate,
 } from '@devseek-netai/shared';
-import type { TaskSemanticContract } from '../task-semantic-contract';
-import type { ExecutionMode } from '../intent/intent-types';
-import { canToolReceiptPromoteModelSemantics } from '../agent/model-tool-semantic-proposal';
-import { projectVsCodeCodingKernelTaskContract } from './coding-kernel-task-contract';
+import path from 'node:path';
+import type {
+  ModelToolSemanticEvidenceBinding,
+  ModelToolSemanticSettlementFragment,
+} from '../agent/model-tool-semantic-proposal';
 
 export interface ObservedTaskContractReconciliationInput {
   readonly current: CodingKernelTaskContract;
-  readonly semanticContract: TaskSemanticContract;
+  readonly semanticFragments: readonly ModelToolSemanticSettlementFragment[];
   readonly contextFiles: readonly string[];
   readonly workspaceRoot: string;
   readonly toolReceipts: readonly CodingToolExecutionReceipt<unknown>[];
@@ -22,130 +22,89 @@ export interface ObservedTaskContractReconciliationInput {
 }
 
 /**
- * Refines completion semantics from locally settled model actions. It cannot
- * authorize an uncommitted model-proposed path or remove a user prohibition.
+ * Revises the turn contract from receipt-settled actions. An observation can
+ * refine evidence, but it cannot reinterpret an outstanding user deliverable
+ * as the goal of the whole turn.
  */
 export function reconcileObservedTaskContract(
   input: ObservedTaskContractReconciliationInput,
 ): CodingTaskContractRevisionCandidate | undefined {
-  const semanticReceipts = input.toolReceipts.filter(canToolReceiptPromoteModelSemantics);
-  if (semanticReceipts.length === 0) return undefined;
-  const actionIds = new Set(semanticReceipts.map(receipt => receipt.actionId));
-  const committedChanges = input.changeReceipts.filter(receipt => (
-    receipt.status === 'committed' && actionIds.has(receipt.actionId)
-  ));
-  const committedPaths = unique(committedChanges.flatMap(receipt => [...receipt.paths]));
-  const observedDeliverableTargets = unique([
-    ...input.current.deliverables
-      .filter(deliverable => deliverable.kind === 'source-change' || deliverable.kind === 'report')
-      .flatMap(deliverable => deliverable.path ? [deliverable.path] : []),
-    ...committedPaths,
-  ]).filter(target => !isExcluded(target, input.current.scope.exclude));
-  const projected = projectVsCodeCodingKernelTaskContract({
-    userPrompt: input.semanticContract.prompt,
-    executionMode: resolveObservedExecutionMode(input, committedChanges),
-    contextFiles: [...input.contextFiles],
-    workspaceRoot: input.workspaceRoot,
-    taskContract: input.semanticContract.taskContract,
-    externalEffectIntent: input.semanticContract.intent.context.externalEffect,
-    targetPaths: observedDeliverableTargets,
-    prohibitedTargets: input.current.scope.exclude,
-    // Settled paths refine completion evidence; they do not become a new user
-    // prohibition for later actions in a broader multi-file task.
-    strictTargetScope: input.current.constraints.includes('no-other-files'),
-  });
-  const taskContract = preserveUserContractBoundaries(
-    input.current,
-    projected,
-  );
-  if (codingSemanticDigest(taskContract) === codingSemanticDigest(input.current)) return undefined;
+  let current = input.current;
+  let revisionId = '';
+  const evidenceRefs: string[] = [];
+  const contextFiles = normalizeWorkspacePaths(input.contextFiles, input.workspaceRoot);
+  const changeReceipts = input.changeReceipts.map(receipt => ({
+    ...receipt,
+    paths: normalizeWorkspacePaths(receipt.paths, input.workspaceRoot),
+  }));
 
-  const lastReceipt = [...semanticReceipts]
-    .sort((left, right) => left.sequence - right.sequence)
-    .at(-1)!;
+  for (const fragment of input.semanticFragments) {
+    for (const binding of fragment.evidenceBindings) {
+      const receipts = matchingReceipts(binding, input.toolReceipts);
+      for (const receipt of receipts) {
+        const candidate = reconcileSettledCodingModelAction({
+          current,
+          surface: 'vscode',
+          action: {
+            actionId: receipt.actionId,
+            tool: binding.tool,
+            purpose: binding.purpose,
+            effects: binding.effects,
+            inputSha256: binding.inputSha256,
+            targetPaths: normalizeWorkspacePaths(
+              binding.targetPaths.length > 0 ? binding.targetPaths : fragment.targetPaths,
+              input.workspaceRoot,
+            ),
+          },
+          contextFiles,
+          toolReceipts: [receipt],
+          changeReceipts,
+        });
+        if (!candidate) continue;
+        current = candidate.taskContract;
+        revisionId = candidate.revisionId;
+        evidenceRefs.push(...candidate.evidenceRefs);
+      }
+    }
+  }
+
+  if (!revisionId || codingSemanticDigest(current) === codingSemanticDigest(input.current)) {
+    return undefined;
+  }
   return {
-    revisionId: `settled-model-${lastReceipt.sequence}-${sanitizeId(lastReceipt.actionId)}`,
-    taskContract,
-    evidenceRefs: unique([
-      `settled-model-semantic:${lastReceipt.actionId}`,
-      ...semanticReceipts.flatMap(receipt => [...receipt.evidenceRefs]),
-      ...committedChanges.flatMap(receipt => [...receipt.evidenceRefs]),
-    ]),
+    revisionId,
+    taskContract: current,
+    evidenceRefs: unique(evidenceRefs),
   };
 }
 
-function preserveUserContractBoundaries(
-  current: CodingKernelTaskContract,
-  projected: CodingKernelTaskContract,
-): CodingKernelTaskContract {
-  const preserveRelease = current.mode === 'release' && projected.mode !== 'release';
-  return buildCodingKernelTaskContract({
-    goal: projected.goal,
-    mode: preserveRelease ? current.mode : projected.mode,
-    orientation: preserveRelease ? current.orientation : projected.orientation,
-    include: projected.scope.include,
-    exclude: unique([...current.scope.exclude, ...projected.scope.exclude]),
-    // Deliverables, verification obligations, and acceptance criteria are a
-    // semantic snapshot. Carrying them forward would preserve a superseded
-    // lexical guess (for example, treating a memory write as source work).
-    deliverables: projected.deliverables,
-    constraints: projected.constraints,
-    nonGoals: unique([...projected.nonGoals, ...current.nonGoals]),
-    assumptions: mergeById(projected.assumptions, current.assumptions),
-    conflicts: mergeById(projected.conflicts, current.conflicts),
-    externalBoundaries: mergeById(projected.externalBoundaries, current.externalBoundaries),
-    acceptance: projected.acceptance,
-    provenanceRefs: unique([
-      ...projected.provenanceRefs,
-      ...current.provenanceRefs,
-    ]),
-  });
+function matchingReceipts(
+  binding: ModelToolSemanticEvidenceBinding,
+  receipts: readonly CodingToolExecutionReceipt<unknown>[],
+): CodingToolExecutionReceipt<unknown>[] {
+  return receipts.filter(receipt => (
+    receipt.tool === binding.tool
+      && receipt.purpose === binding.purpose
+      && receipt.inputSha256 === binding.inputSha256
+      && sameValues(receipt.effects, binding.effects)
+  ));
 }
 
-/**
- * Settled effects accumulate for the turn. A later read or verification action
- * cannot downgrade an already committed change into a read-only task.
- */
-function resolveObservedExecutionMode(
-  input: Pick<ObservedTaskContractReconciliationInput, 'current' | 'semanticContract'>,
-  committedChanges: readonly CodingWorkspaceMutationReceipt<unknown>[],
-): ExecutionMode {
-  const { current, semanticContract } = input;
-  if (semanticContract.kind === 'destructive'
-    || semanticContract.intent.mode === 'destructive') {
-    return 'destructive';
-  }
-  if (current.mode === 'change'
-    || current.mode === 'release'
-    || committedChanges.length > 0
-    || semanticContract.mutation.requested
-    || semanticContract.intent.context.externalEffect === 'requested') {
-    return 'edit';
-  }
-  if (semanticContract.validation.requested) return 'run';
-  return semanticContract.intent.mode;
+function sameValues(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
-function mergeById<T extends { readonly id: string }>(
-  preferred: readonly T[],
-  inherited: readonly T[],
-): T[] {
-  const merged = new Map<string, T>();
-  for (const item of preferred) merged.set(item.id, item);
-  for (const item of inherited) {
-    if (!merged.has(item.id)) merged.set(item.id, item);
-  }
-  return [...merged.values()];
-}
-
-function isExcluded(target: string, exclusions: readonly string[]): boolean {
-  return exclusions.some(scope => codingWorkspaceTargetMatchesScope(target, scope));
+function normalizeWorkspacePaths(values: readonly string[], workspaceRoot: string): string[] {
+  const root = path.resolve(workspaceRoot);
+  return unique(values.flatMap(value => {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    const absolute = path.isAbsolute(trimmed) ? path.resolve(trimmed) : path.resolve(root, trimmed);
+    const relative = path.relative(root, absolute).replace(/\\/gu, '/');
+    return relative && relative !== '..' && !relative.startsWith('../') ? [relative] : [];
+  }));
 }
 
 function unique(values: readonly string[]): string[] {
   return [...new Set(values.map(value => value.trim()).filter(Boolean))];
-}
-
-function sanitizeId(value: string): string {
-  return value.replace(/[^0-9A-Za-z._-]+/gu, '-').slice(0, 160) || 'action';
 }

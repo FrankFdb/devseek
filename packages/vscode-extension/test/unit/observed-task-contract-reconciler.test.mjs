@@ -34,6 +34,10 @@ const { projectVsCodeCodingKernelTaskContract } = require(path.join(
   'app/coding-kernel-task-contract.js',
 ));
 const { createWriteAuthority } = require(path.join(bundleRoot, 'agent/write-authority.js'));
+const { resolveCodingKernelTaskContract } = require(path.resolve(
+  extensionRoot,
+  '../shared/dist/index.js',
+));
 
 after(() => rmSync(bundleRoot, { recursive: true, force: true }));
 
@@ -96,6 +100,7 @@ function reconcile(prompt, proposal, receipts, changeReceipts = [], options = {}
       purpose: receipt.purpose,
       effects: receipt.effects,
       inputSha256: receipt.inputSha256,
+      targetPaths: proposal.targetPaths,
     })),
   };
   assert.equal(authority.applyModelSemanticProposal(boundProposal), true);
@@ -105,7 +110,7 @@ function reconcile(prompt, proposal, receipts, changeReceipts = [], options = {}
     current,
     candidate: reconcileObservedTaskContract({
       current,
-      semanticContract: settled.semanticContract,
+      semanticFragments: settled.semanticFragments,
       contextFiles,
       workspaceRoot: '/workspace',
       toolReceipts: settled.toolReceipts,
@@ -233,6 +238,60 @@ test('symptom-style repair gains verification acceptance from settled edit evide
   assert.equal(candidate.taskContract.constraints.includes('verification-before-completion'), true);
 });
 
+test('pre-delivery reads cannot downgrade an outstanding source-change obligation', () => {
+  const prompt = '修改现有 src/main.cpp，修复脚本渲染，并运行公开测试确认。';
+  const current = resolveCodingKernelTaskContract({
+    prompt,
+    surface: 'vscode',
+    modeHint: 'change',
+    targetPaths: ['src/main.cpp'],
+    targetPathsAuthoritative: true,
+    deliverableKinds: ['source-change'],
+    confirmedWorkspaceMutation: true,
+    verificationRequired: true,
+    verificationRequirementAuthoritative: true,
+  });
+  const read = toolReceipt({
+    actionId: 'read-main-before-edit',
+    tool: 'read_file',
+    purpose: 'observe',
+    effects: ['read'],
+    inputSha256: 'e'.repeat(64),
+    evidenceRefs: ['tool:read-main-before-edit:completed'],
+  });
+  const authority = createWriteAuthority(prompt, {});
+  assert.equal(authority.applyModelSemanticProposal(mutationProposal(['src/main.cpp'], {
+    mode: 'inspect',
+    taskKind: 'read-only-analysis',
+    mutation: 'none',
+    requiresTerminal: false,
+    reason: 'model reads the target before implementing the requested change',
+    evidenceBindings: [{
+      tool: read.tool,
+      purpose: read.purpose,
+      effects: read.effects,
+      inputSha256: read.inputSha256,
+      targetPaths: ['src/main.cpp'],
+    }],
+  })), true);
+  const settled = authority.settleModelSemanticProposal([read]);
+  assert.ok(settled);
+  const candidate = reconcileObservedTaskContract({
+    current,
+    semanticFragments: settled.semanticFragments,
+    contextFiles: [],
+    workspaceRoot: '/workspace',
+    toolReceipts: settled.toolReceipts,
+    changeReceipts: [],
+  });
+  const finalContract = candidate?.taskContract ?? current;
+
+  assert.equal(current.mode, 'change');
+  assert.equal(finalContract.mode, 'change');
+  assert.equal(finalContract.deliverables.some(item => item.kind === 'source-change'), true);
+  assert.equal(finalContract.constraints.includes('no-workspace-mutation'), false);
+});
+
 test('post-change observations cannot downgrade accumulated source work to review', () => {
   const prompt = 'Read USER_STORY.md and build the requested layered C++ application across include and src.';
   const authority = createWriteAuthority(prompt, {});
@@ -264,7 +323,7 @@ test('post-change observations cannot downgrade accumulated source work to revie
   assert.ok(settledWrite);
   const first = reconcileObservedTaskContract({
     current: initial,
-    semanticContract: settledWrite.semanticContract,
+    semanticFragments: settledWrite.semanticFragments,
     contextFiles: [],
     workspaceRoot: '/workspace',
     toolReceipts: settledWrite.toolReceipts,
@@ -309,7 +368,7 @@ test('post-change observations cannot downgrade accumulated source work to revie
   assert.ok(settledRead);
   const second = reconcileObservedTaskContract({
     current: first.taskContract,
-    semanticContract: settledRead.semanticContract,
+    semanticFragments: settledRead.semanticFragments,
     contextFiles: [],
     workspaceRoot: '/workspace',
     toolReceipts: settledRead.toolReceipts,
@@ -383,7 +442,7 @@ test('a pre-effect denial cannot revise the canonical task contract', () => {
   });
   const candidate = reconcileObservedTaskContract({
     current,
-    semanticContract: authority.semanticContract,
+    semanticFragments: [],
     contextFiles: [],
     workspaceRoot: '/workspace',
     toolReceipts: [denied],

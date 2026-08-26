@@ -145,7 +145,7 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
       onSettledModelSemanticContract: settlement => {
         const candidate = reconcileObservedTaskContract({
           current: kernelRequest.taskContractRevision.current(),
-          semanticContract: settlement.semanticContract,
+          semanticFragments: settlement.semanticFragments,
           contextFiles: request.contextFiles,
           workspaceRoot: kernelRequest.workspaceRoot,
           toolReceipts: settlement.toolReceipts,

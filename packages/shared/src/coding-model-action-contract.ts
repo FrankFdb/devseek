@@ -17,17 +17,20 @@ import type { CodingToolPurpose } from './coding-tool-authority';
 import type { CodingToolExecutionReceipt } from './coding-tool-execution';
 import type { CodingWorkspaceMutationReceipt } from './coding-workspace-mutation';
 
-export interface CodingModelActionObservation {
+type CodingModelActionInputIdentity =
+  | Readonly<{ input: unknown; inputSha256?: never }>
+  | Readonly<{ input?: never; inputSha256: string }>;
+
+export type CodingModelActionObservation = Readonly<{
   readonly actionId: string;
   readonly tool: string;
   readonly purpose: CodingToolPurpose;
   readonly effects: readonly CodingToolEffect[];
-  readonly input: Readonly<Record<string, unknown>>;
   readonly targetPaths: readonly string[];
   readonly deliverableKinds?: readonly CodingDeliverableKind[];
   readonly verificationRequired?: boolean;
   readonly dependencyEffect?: boolean;
-}
+}> & CodingModelActionInputIdentity;
 
 export interface ProjectCodingModelActionTaskContractInput {
   readonly current: CodingKernelTaskContract;
@@ -51,12 +54,21 @@ export interface ReconcileSettledCodingModelActionInput
 export function projectCodingModelActionTaskContract(
   input: ProjectCodingModelActionTaskContractInput,
 ): CodingKernelTaskContract {
+  return projectModelActionContractAtBoundary(input, false);
+}
+
+function projectModelActionContractAtBoundary(
+  input: ProjectCodingModelActionTaskContractInput,
+  actionSettled: boolean,
+): CodingKernelTaskContract {
   const { current, action } = input;
   if (current.orientation.source === 'safety-policy') return current;
 
   const workspaceAction = action.purpose === 'workspace-mutation'
     && action.effects.includes('workspace-mutation');
-  if (workspaceAction && hasAuthoritativeNoMutationBoundary(current)) return current;
+  if (workspaceAction
+    && hasAuthoritativeNoMutationBoundary(current)
+    && !actionSettled) return current;
 
   const currentMutation = codingTaskContractRequiresWorkspaceMutation(current);
   const mutationRequested = currentMutation || workspaceAction;
@@ -122,9 +134,9 @@ export function projectCodingModelActionTaskContract(
 export function reconcileSettledCodingModelAction(
   input: ReconcileSettledCodingModelActionInput,
 ): CodingTaskContractRevisionCandidate | undefined {
-  const matchingReceipts = input.toolReceipts.filter(receipt => receiptMatchesAction(
-    receipt,
-    input.action,
+  const matchingReceipts = input.toolReceipts.filter(receipt => (
+    codingToolReceiptCanSettleModelAction(receipt)
+      && receiptMatchesAction(receipt, input.action)
   ));
   if (matchingReceipts.length === 0) return undefined;
 
@@ -133,13 +145,13 @@ export function reconcileSettledCodingModelAction(
   const committedTargetPaths = uniquePaths(matchingChanges.flatMap(receipt => (
     receipt.status === 'committed' ? [...receipt.paths] : []
   )));
-  const taskContract = projectCodingModelActionTaskContract({
+  const taskContract = projectModelActionContractAtBoundary({
     current: input.current,
     surface: input.surface,
     action: input.action,
     contextFiles: input.contextFiles,
     committedTargetPaths,
-  });
+  }, true);
   if (codingSemanticDigest(taskContract) === codingSemanticDigest(input.current)) return undefined;
 
   const lastReceipt = [...matchingReceipts]
@@ -154,6 +166,20 @@ export function reconcileSettledCodingModelAction(
       ...matchingChanges.flatMap(receipt => [...receipt.evidenceRefs]),
     ]),
   };
+}
+
+/** Pre-effect denials are attempt evidence, never completion semantics. */
+export function codingToolReceiptCanSettleModelAction(
+  receipt: CodingToolExecutionReceipt<unknown>,
+): boolean {
+  if (receipt.status === 'completed') return true;
+  if (receipt.status === 'denied') return false;
+  if (receipt.status === 'failed'
+    && receipt.purpose === 'workspace-mutation'
+    && receipt.permission.decision === 'allow') {
+    return true;
+  }
+  return receipt.effectStarted !== false;
 }
 
 function resolveObservedActionMode(
@@ -228,8 +254,12 @@ function receiptMatchesAction(
   return receipt.actionId === action.actionId
     && receipt.tool === action.tool
     && receipt.purpose === action.purpose
-    && receipt.inputSha256 === codingSemanticDigest(action.input)
+    && receipt.inputSha256 === resolveActionInputSha256(action)
     && sameEffects(receipt.effects, action.effects);
+}
+
+function resolveActionInputSha256(action: CodingModelActionObservation): string {
+  return action.inputSha256 ?? codingSemanticDigest(action.input);
 }
 
 function sameEffects(left: readonly CodingToolEffect[], right: readonly CodingToolEffect[]): boolean {
