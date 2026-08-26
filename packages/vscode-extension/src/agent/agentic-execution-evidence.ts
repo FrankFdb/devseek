@@ -37,9 +37,23 @@ export function assessAgenticEvidenceClosure(
   const required = input.requiredBeforeExecution || input.workToolObserved;
   if (!required) return { required, missingEvidence: [] };
   const { completion } = input;
+  const missingEvidence = assessMissingCompletionEvidence(completion);
+  const outstandingTodos = completion.todos.filter(todo => todo.status !== 'completed');
+  if (outstandingTodos.length > 0) {
+    const visibleTitles = outstandingTodos
+      .slice(0, 3)
+      .map(todo => todo.title.trim().replace(/\s+/gu, ' ').slice(0, 60))
+      .filter(Boolean);
+    const remaining = outstandingTodos.length - visibleTitles.length;
+    missingEvidence.push([
+      `模型任务清单尚有 ${outstandingTodos.length} 项未完成`,
+      visibleTitles.length > 0 ? `：${visibleTitles.join('、')}` : '',
+      remaining > 0 ? ` 等 ${remaining} 项` : '',
+    ].join(''));
+  }
   return {
     required,
-    missingEvidence: assessMissingCompletionEvidence(completion),
+    missingEvidence,
     blockingTerminalFailure: getAgenticBlockingTerminalFailure(
       completion.terminalEvidence,
       completion.semanticContract,

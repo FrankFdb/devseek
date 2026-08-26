@@ -93,6 +93,42 @@ test('agentic evidence closure preserves a real failed check after model-led wor
   assert.equal(closure.blockingTerminalFailure, failedCheck);
 });
 
+test('agentic evidence closure blocks unsettled model todos without trusting completed todos as evidence', () => {
+  const baseCompletion = {
+    userPrompt: 'Continue the implementation and run its explicit acceptance case.',
+    semanticContract: semanticContract('Continue the implementation and run its explicit acceptance case.'),
+    writtenFiles: [],
+    terminalEvidence: [],
+  };
+  const pending = assessAgenticEvidenceClosure({
+    requiredBeforeExecution: false,
+    workToolObserved: true,
+    completion: {
+      ...baseCompletion,
+      todos: [
+        { id: 1, title: 'Repair the implementation', status: 'completed' },
+        { id: 2, title: 'Run the requested snapshot and state checks', status: 'not-started' },
+      ],
+    },
+  });
+  const settled = assessAgenticEvidenceClosure({
+    requiredBeforeExecution: false,
+    workToolObserved: true,
+    completion: {
+      ...baseCompletion,
+      todos: [
+        { id: 1, title: 'Repair the implementation', status: 'completed' },
+        { id: 2, title: 'Run the requested snapshot and state checks', status: 'completed' },
+      ],
+    },
+  });
+
+  assert.deepEqual(pending.missingEvidence, [
+    '模型任务清单尚有 1 项未完成：Run the requested snapshot and state checks',
+  ]);
+  assert.deepEqual(settled.missingEvidence, []);
+});
+
 test('agentic execution evidence settles an authority denial instead of retrying missing work', () => {
   const completed = toolReceipt('completed');
   const denied = toolReceipt('denied');
