@@ -15,6 +15,7 @@ const MUTATION_EVIDENCE_BEFORE_CORRECTION = 6;
 const UNCLASSIFIED_ROUNDS_BEFORE_CORRECTION = 6;
 const UNCLASSIFIED_EVIDENCE_BEFORE_CORRECTION = 12;
 const MAX_DELIVERY_CORRECTIONS = 2;
+const MAX_ACTIONABLE_REPAIR_CORRECTIONS = 3;
 
 export type DeliveryConvergenceExpectation = 'mutation' | 'unclassified' | 'none';
 
@@ -103,7 +104,10 @@ export class DeliveryConvergenceLedger {
       return CONTINUE_RESULT;
     }
 
-    if (this.correctionCount >= MAX_DELIVERY_CORRECTIONS) {
+    const correctionLimit = input.actionableRepairPending === true
+      ? MAX_ACTIONABLE_REPAIR_CORRECTIONS
+      : MAX_DELIVERY_CORRECTIONS;
+    if (this.correctionCount >= correctionLimit) {
       return Object.freeze({
         kind: 'stop',
         reason: [

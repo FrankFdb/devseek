@@ -154,6 +154,25 @@ test('actionable review repair corrects read-only drift without requiring broad 
   }).kind, 'continue');
 });
 
+test('actionable review repair gets one final bounded correction after dependency reads', () => {
+  const ledger = new DeliveryConvergenceLedger();
+  const reviewRepair = {
+    ...unresolvedMutation,
+    gatheredEvidenceCount: 1,
+    actionableRepairPending: true,
+  };
+
+  assert.equal(ledger.observe(reviewRepair).kind, 'continue');
+  assert.equal(ledger.observe(reviewRepair).kind, 'continue');
+  assert.equal(ledger.observe(reviewRepair).kind, 'correct');
+  assert.equal(ledger.observe(reviewRepair).kind, 'correct');
+  assert.equal(ledger.observe(reviewRepair).kind, 'correct');
+
+  const stopped = ledger.observe(reviewRepair);
+  assert.equal(stopped.kind, 'stop');
+  assert.match(stopped.reason, /3 次交付纠正/u);
+});
+
 test('explicit read-only work and insufficient evidence never acquire delivery pressure', () => {
   const ledger = new DeliveryConvergenceLedger();
   for (let round = 0; round < 6; round++) {
