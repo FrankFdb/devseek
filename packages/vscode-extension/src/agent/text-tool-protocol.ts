@@ -29,6 +29,12 @@ export interface InvalidAuthorizedTextToolProtocol {
   readonly observedToolNames: readonly string[];
 }
 
+export interface IncompleteAuthorizedTextToolProtocol {
+  readonly found: boolean;
+  /** Registered names are evidence of an unresolved proposal; their arguments remain untrusted. */
+  readonly observedToolNames: readonly string[];
+}
+
 const CHANNEL_ID_RE = /^[A-Za-z0-9_-]{16,96}$/;
 const FILE_CONTENT_MUTATION_TOOLS = new Set([
   'create_file',
@@ -73,12 +79,11 @@ export function inspectOutOfEnvelopeTextToolProtocol(
     ...actionableMatches.map(match => match.dialect),
     ...(transcript.found ? ['provider-text-content-block'] : []),
   ])];
-  const observedToolNames = [...new Set(
-    [
-      ...actionableMatches.flatMap(match => match.tools.map(tool => tool.name)),
-      ...transcript.observedToolNames,
-    ],
-  )];
+  const observedToolNames = observeUntrustedToolNames(
+    outsideAuthorizedEnvelopes,
+    analysis,
+    transcript,
+  );
   return Object.freeze({
     found: dialects.length > 0,
     dialects: Object.freeze(dialects),
@@ -101,16 +106,44 @@ export function inspectInvalidAuthorizedTextToolProtocol(
   }
   const payloads = extractAuthorizedTextToolPayloads(text, session);
   const invalidPayloads = payloads.filter(payload => parseAuthorizedTextToolPayload(payload).length === 0);
-  const observedToolNames = [...new Set(invalidPayloads.flatMap(payload => [
-    ...analyzeFakeToolCallProtocol(payload).matches.flatMap(match => match.tools.map(tool => tool.name)),
-    ...inspectProviderTextToolTranscript(payload).observedToolNames,
-  ]))];
+  const observedToolNames = [...new Set(
+    invalidPayloads.flatMap(payload => observeUntrustedToolNames(payload)),
+  )];
   return Object.freeze({
     found: invalidPayloads.length > 0,
     envelopeCount: payloads.length,
     invalidEnvelopeCount: invalidPayloads.length,
     observedToolNames: Object.freeze(observedToolNames),
   });
+}
+
+/**
+ * Preserves only observable action names from a current-channel envelope whose
+ * payload never closed. Parameters remain quarantined and unexecutable.
+ */
+export function inspectIncompleteAuthorizedTextToolProtocol(
+  text: string,
+  session: TextToolProtocolSession | undefined,
+): IncompleteAuthorizedTextToolProtocol {
+  if (!session) return Object.freeze({ found: false, observedToolNames: Object.freeze([]) });
+  const raw = String(text || '');
+  const open = openMarker(session);
+  const close = closeMarker(session);
+  let cursor = 0;
+  while (cursor < raw.length) {
+    const start = raw.indexOf(open, cursor);
+    if (start < 0) break;
+    const payloadStart = start + open.length;
+    const envelopeClose = findEnvelopeClose(raw, payloadStart, close);
+    if (!envelopeClose) {
+      return Object.freeze({
+        found: true,
+        observedToolNames: Object.freeze(observeUntrustedToolNames(raw.slice(payloadStart))),
+      });
+    }
+    cursor = envelopeClose.end;
+  }
+  return Object.freeze({ found: false, observedToolNames: Object.freeze([]) });
 }
 
 /**
@@ -204,6 +237,17 @@ function hasCdataField(body: string, names: readonly string[]): boolean {
 
 function toolIdentity(tool: FakeTool): string {
   return codingSemanticDigest({ name: tool.name, input: tool.input });
+}
+
+function observeUntrustedToolNames(
+  text: string,
+  analysis = analyzeFakeToolCallProtocol(text),
+  transcript = inspectProviderTextToolTranscript(text),
+): string[] {
+  return [...new Set([
+    ...analysis.matches.flatMap(match => match.tools.map(tool => tool.name)),
+    ...transcript.observedToolNames,
+  ])];
 }
 
 function escapeRegExp(value: string): string {

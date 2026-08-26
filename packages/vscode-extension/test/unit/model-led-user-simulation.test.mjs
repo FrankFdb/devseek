@@ -269,6 +269,50 @@ test('ModelLedUserSimulation: protocol recovery cannot settle from a prose-only 
   }
 });
 
+test('ModelLedUserSimulation: successful command evidence cannot settle a typo-closed pending mutation', async () => {
+  const prompt = '先验证当前状态，再修复 result.txt 为 RECOVERED_AFTER_PROTOCOL_OK 并读回。';
+  let calls = 0;
+  const simulation = await runSimulation(prompt, async messages => {
+    calls += 1;
+    const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'result.txt');
+    if (calls === 1) {
+      return {
+        text: '先执行当前公开验证。',
+        tools: [{ name: 'run_terminal', input: { command: "printf 'PUBLIC_CHECK_OK\\n'" } }],
+      };
+    }
+    if (calls === 2) {
+      const channelId = messages[0].content.match(/channel="([A-Za-z0-9_-]+)"/u)?.[1];
+      assert.ok(channelId, messages[0].content);
+      return {
+        text: [
+          '验证通过后提交修复。',
+          `<devseek_tool_calls version="devseek.text-tools/v1" channel="${channelId}">`,
+          `[TOOL:replace_in_file {"path":"${target}","old_str":"OLD","new_str":"RECOVERED_AFTER_PROTOCOL_OK"}]`,
+          '</devsek_tool_calls>',
+        ].join('\n'),
+        tools: [],
+      };
+    }
+    assert.match(messages.at(-1).content, /仅识别到上一轮尝试调用 replace_in_file/u);
+    return {
+      text: '重新判断后以完整授权动作落实修复。',
+      tools: [
+        { name: 'create_file', input: { path: target, content: 'RECOVERED_AFTER_PROTOCOL_OK\n' } },
+        { name: 'read_file', input: { path: target } },
+        { name: 'task_complete', input: { summary: '已完成协议恢复后的修复与读回。' } },
+      ],
+    };
+  }, { runDisplayAction: 'create' });
+  try {
+    assert.equal(calls, 3, simulation.result.historyText);
+    assert.equal(readFileSync(path.join(simulation.root, 'result.txt'), 'utf8'), 'RECOVERED_AFTER_PROTOCOL_OK\n');
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
 test('ModelLedUserSimulation: invalid authenticated mutation recovers with its lossless write format', async () => {
   const prompt = '创建 recovered-format.txt，内容为 RECOVERED_FORMAT_OK，并读回确认。';
   let calls = 0;

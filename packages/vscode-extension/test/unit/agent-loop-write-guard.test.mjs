@@ -24,6 +24,7 @@ const {
   detectNestedFilePayloadDrift,
   detectShellFileMutationCommand,
   detectShellFileWriteCommand,
+  getTerminalRecoveryProtocol,
   makeTerminalCmdSignature,
   shouldBlockUnverifiedSourceOverwrite,
 } = req(bundlePath);
@@ -38,6 +39,17 @@ test('AgentLoop terminal guard keeps identity beyond a long shared workdir prefi
   assert.ok(prefix.length > 120);
   assert.notEqual(help, acceptance);
   assert.equal(makeTerminalCmdSignature(`  ${prefix}   --help  `), help);
+});
+
+test('AgentLoop terminal recovery distinguishes a passing command from fresh artifact progress', () => {
+  const feedback = getTerminalRecoveryProtocol(
+    './math_visual --script assets/actions.txt --snapshot output.ppm --state output.json',
+    2,
+  );
+
+  assert.match(feedback, /验收条件、输出路径和产物新鲜度/u);
+  assert.match(feedback, /已有文件优先使用 replace_in_file 精确修改/u);
+  assert.doesNotMatch(feedback, /直接调用 create_file 写入目标文件的完整内容/u);
 });
 
 test('AgentLoop write guard: blocks existing source overwrite without read evidence', () => {

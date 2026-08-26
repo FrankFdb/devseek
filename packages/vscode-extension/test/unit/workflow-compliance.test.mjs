@@ -958,7 +958,8 @@ test('Agentic loop: repeated terminal failures enter root-cause recovery before 
   assertContains(recovery, '根因分析', 'recovery prompt must require root-cause analysis');
   assertContains(recovery, '禁止再次执行同一命令直到完成根因修复', 'recovery prompt must block blind retry');
   assertContains(recovery, 'read_file / grep_search / get_errors', 'recovery prompt must require evidence collection');
-  assertContains(recovery, 'create_file / write_file 或 SEARCH/REPLACE', 'recovery prompt must require a repair action');
+  assertContains(recovery, '已有文件优先使用 replace_in_file 精确修改', 'recovery prompt must preserve targeted repair boundaries');
+  assertContains(recovery, '产物新鲜度', 'a passing repeated command must redirect to unmet acceptance and fresh artifact evidence');
   assert.match(
     code,
     /blockedRepeatedToolIndexes[\s\S]*?toolsToExecute[\s\S]*?executeScheduledToolLoop\(\s*toolsToExecute,/,
@@ -3149,7 +3150,7 @@ test('Agentic loop: visible correction and context convergence are owned by Agen
   assertContains(agenticProviderRecoveryBoundary, 'class AgenticProviderRecoveryLifecycle', 'provider recovery boundary must own its pending lifecycle');
   assertContains(runContext, 'provider-recovery-status-observed', 'RunContext must observe provider retry progress without claiming workspace recovery authority');
   assertDoesNotContain(runContext, 'collectRecoverableAdverseOperationIds', 'one recovery lane must not sweep unrelated adverse operations from the shared ledger');
-  assertContains(agenticLoop, 'hasIncompleteAuthorizedTextToolEnvelope(text, textToolProtocol)', 'damaged current-channel tool envelopes must not fall through as ordinary prose');
+  assertContains(agenticLoop, 'inspectIncompleteAuthorizedTextToolProtocol(text, textToolProtocol)', 'incomplete current-channel envelopes must preserve observed action names without granting execution authority');
   assertContains(agenticLoop, 'inspectOutOfEnvelopeTextToolProtocol(text, textToolProtocol)', 'out-of-envelope model actions must be quarantined without execution authority');
   assertContains(textProtocol, 'channelId', 'text-provider tool authority must be scoped to a run channel');
   assertContains(textProtocol, 'QuarantinedTextToolProtocol', 'text protocol boundary must expose quarantine evidence separately from authorized calls');

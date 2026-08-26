@@ -36,7 +36,7 @@ import {
   countCompletedAuthorizedTextToolEnvelopes,
   createTextToolProtocolSession,
   findFirstAuthorizedTextToolEnvelopeStart,
-  hasIncompleteAuthorizedTextToolEnvelope,
+  inspectIncompleteAuthorizedTextToolProtocol,
   inspectInvalidAuthorizedTextToolProtocol,
   inspectOutOfEnvelopeTextToolProtocol,
   parseAuthorizedTextToolCalls,
@@ -572,30 +572,31 @@ export async function runAgenticLoop(
     }
 
     if (!tools.length) {
-      const incompleteAuthorizedEnvelope = hasIncompleteAuthorizedTextToolEnvelope(text, textToolProtocol);
+      const incompleteAuthorizedProtocol = inspectIncompleteAuthorizedTextToolProtocol(text, textToolProtocol);
       const invalidAuthorizedProtocol = inspectInvalidAuthorizedTextToolProtocol(text, textToolProtocol);
       const quarantinedProtocol = inspectOutOfEnvelopeTextToolProtocol(text, textToolProtocol);
       if (!callbacks.signal?.aborted && (
-        incompleteAuthorizedEnvelope
+        incompleteAuthorizedProtocol.found
         || invalidAuthorizedProtocol.found
         || quarantinedProtocol.found
       )) {
         noToolRounds++;
         const status = quarantinedProtocol.found
           ? 'out-of-envelope-tool-block'
-          : incompleteAuthorizedEnvelope
+          : incompleteAuthorizedProtocol.found
             ? 'incomplete-tool-block'
             : 'invalid-tool-block';
         const disposition = await settleOrRecoverProviderFailureInsideCurrentTask({
           status,
           reason: quarantinedProtocol.found
             ? `检测到授权信封外的结构化工具动作（${quarantinedProtocol.dialects.join(', ')}）；已隔离且未执行。`
-            : incompleteAuthorizedEnvelope
+            : incompleteAuthorizedProtocol.found
               ? '工具协议信封没有完整闭合，未形成可安全执行的工具参数。'
               : `检测到 ${invalidAuthorizedProtocol.invalidEnvelopeCount} 个未形成无损可执行工具参数的授权信封；已隔离且未执行。`,
           rawMessage: text,
           recoverable: true,
           observedToolNames: [...new Set([
+            ...incompleteAuthorizedProtocol.observedToolNames,
             ...quarantinedProtocol.observedToolNames,
             ...invalidAuthorizedProtocol.observedToolNames,
           ])],

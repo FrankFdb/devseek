@@ -140,7 +140,7 @@ export function getTerminalRecoveryProtocol(cmd: string, attempt: number): strin
     `下一轮必须按以下顺序处理，禁止再次执行同一命令直到完成根因修复：`,
     `1. 根因分析：基于上一轮终端输出指出真正失败原因，不要只说“重试”。`,
     `2. 证据收集：使用 read_file / grep_search / get_errors 查看相关源码、配置或诊断。`,
-    `3. 修复动作：使用 create_file / write_file 或 SEARCH/REPLACE 实际修改错误位置；如果根因是命令参数错误，则改用正确命令。`,
+    `3. 最小修复：已有文件优先使用 replace_in_file 精确修改；仅在目标文件确实缺失时创建新文件；如果根因是命令参数错误，则改用正确命令。`,
     `4. 验证：只有在完成修复动作或换成正确命令后，才允许 run_terminal 编译/运行/测试。`,
     `完成报告必须说明根因、修复文件/命令、验证结果。`,
   ].join('\n');
@@ -213,15 +213,15 @@ function looksLikeFilePath(filePath: string): boolean {
 function getLoopBreakFeedback(cmd: string): string {
   const c = cmd.trimStart();
   if (/^ls[\s-]|^ls$/.test(c)) {
-    return '停止反复用 ls 检查文件。文件不存在 → 直接调用 create_file 写入完整内容；文件存在 → 直接读取或编译，不要再 ls 了。';
+    return '停止反复用 ls 检查文件。目标缺失且属于交付范围时创建；目标存在时使用 read_file 读取所需内容，然后进入实现或验证。';
   }
   if (/^cat\s/.test(c)) {
-    return '停止反复 cat 读文件。内容不对 → 直接调用 create_file 重写；内容正确 → 直接进行下一步，不要再 cat 了。';
+    return '停止反复 cat 读文件。改用 read_file 获取受控上下文；内容不对时做精确替换，内容正确时直接进入下一项未满足验收。';
   }
   if (/\bg\+\+\b|\bgcc\b/.test(cmd)) {
-    return '编译命令多次失败。请先用 read_file 确认源文件内容，内容有误则先用 create_file 修正，再尝试编译。';
+    return '不要重复编译。若上一轮失败，先依据编译诊断读取并精确修复对应源码；若上一轮已通过，转而检查尚未满足的验收条件和新生成产物。';
   }
-  return '相同命令已重复多次没有进展，请改变策略：直接调用 create_file 写入目标文件的完整内容。';
+  return '不要重复运行同一命令。若上一轮失败，依据真实输出定位并最小修复；若上一轮已通过，核对尚未满足的验收条件、输出路径和产物新鲜度。';
 }
 
 function lastShellArgument(raw: string): string {

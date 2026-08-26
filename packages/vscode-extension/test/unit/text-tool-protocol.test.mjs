@@ -27,6 +27,7 @@ const {
   createTextToolProtocolSession,
   findFirstAuthorizedTextToolEnvelopeStart,
   hasIncompleteAuthorizedTextToolEnvelope,
+  inspectIncompleteAuthorizedTextToolProtocol,
   inspectInvalidAuthorizedTextToolProtocol,
   inspectOutOfEnvelopeTextToolProtocol,
   parseAuthorizedTextToolCalls,
@@ -148,6 +149,21 @@ test('incomplete recovery is scoped to an authorized envelope, not naked syntax'
     renderTextToolProtocolEnvelope(session, payload),
     session,
   ), 1);
+});
+
+test('incomplete current-channel envelopes preserve tool names without authorizing parameters', () => {
+  const incomplete = [
+    `<devseek_tool_calls version="${session.version}" channel="${session.channelId}">`,
+    '[TOOL:replace_in_file {"path":"src/main.cpp","old_str":"old","new_str":"new"}]',
+    '[TOOL:read_file {"path":"src/main.cpp"}]',
+    '</devsek_tool_calls>',
+  ].join('\n');
+
+  assert.deepEqual(inspectIncompleteAuthorizedTextToolProtocol(incomplete, session), {
+    found: true,
+    observedToolNames: ['replace_in_file', 'read_file'],
+  });
+  assert.deepEqual(parseAuthorizedTextToolCalls(incomplete, session), []);
 });
 
 test('complete authorized envelopes without a recognized tool are rejected', () => {
