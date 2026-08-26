@@ -26,6 +26,27 @@ Useful options:
 --command-input
 ```
 
+Reuse a retained implementation without regenerating Round 1 code. The runner
+first requires the previous stage to pass the independent workspace verifier;
+only then does it submit the selected consecutive follow-ups:
+
+```bash
+node code/devseek-tests/n4-cpp-visual-math-user/run-journey.mjs --run \
+  --workspace /absolute/path/to/retained/workspace \
+  --rounds 2,3,4 \
+  --vsix /absolute/path/to/candidate.vsix
+```
+
+Run validation only, with no Provider request or source generation:
+
+```bash
+node code/devseek-tests/n4-cpp-visual-math-user/verify-workspace.mjs \
+  /absolute/path/to/retained/workspace 1 /absolute/path/to/evidence
+```
+
+An existing-workspace continuation is diagnostic iteration evidence. A formal
+four-round candidate result still starts from a fresh workspace.
+
 `--command-input` is diagnostic only. Formal local N4 evidence uses the default
 `natural-ui` route and must report `commandInjected=false`.
 

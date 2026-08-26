@@ -5,6 +5,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { selectAuthoritativeProductRun } from '../shared/product-run-selection.mjs';
+import {
+  requiredResumePreflightStage,
+  selectJourneyRounds,
+} from './journey-resume-policy.mjs';
 import { prepareWorkspace, protectedWorkspacePaths } from './prepare-workspace.mjs';
 import { verifyWorkspace } from './verify-workspace.mjs';
 
@@ -16,8 +20,13 @@ const relogin = args.includes('--relogin');
 const inputMode = args.includes('--command-input') ? 'command' : 'natural-ui';
 const timeoutMs = Number(argValue('--timeout-ms') || 900_000);
 const vsixPath = path.resolve(argValue('--vsix') || path.join(repoRoot, 'devseek-netai-latest.vsix'));
+const requestedWorkspace = argValue('--workspace');
 const journey = JSON.parse(fs.readFileSync(path.join(here, 'journey.json'), 'utf8'));
-const selectedRounds = parseSelectedRounds(argValue('--rounds'), journey.rounds.length);
+const selectedRounds = selectJourneyRounds(
+  argValue('--rounds'),
+  journey.rounds.length,
+  Boolean(requestedWorkspace),
+);
 
 if (!runRequested) {
   console.log(JSON.stringify({
@@ -33,15 +42,34 @@ if (!fs.existsSync(vsixPath)) throw new Error(`VSIX not found: ${vsixPath}`);
 if (!Number.isFinite(timeoutMs) || timeoutMs < 120_000) throw new Error('--timeout-ms must be at least 120000');
 
 const attemptRoot = path.join(here, 'runs', attemptId());
-const workspace = path.join(attemptRoot, 'workspace');
+const workspace = requestedWorkspace
+  ? path.resolve(requestedWorkspace)
+  : path.join(attemptRoot, 'workspace');
 fs.mkdirSync(attemptRoot, { recursive: true });
-prepareWorkspace(workspace);
+if (requestedWorkspace) {
+  if (!fs.existsSync(workspace) || !fs.statSync(workspace).isDirectory()) {
+    throw new Error(`Existing workspace not found: ${workspace}`);
+  }
+} else {
+  prepareWorkspace(workspace);
+}
 const protectedBaseline = hashWorkspacePaths(workspace, protectedWorkspacePaths);
+const resumePreflightStage = requestedWorkspace
+  ? requiredResumePreflightStage(selectedRounds)
+  : 0;
+const resumePreflight = resumePreflightStage > 0
+  ? verifyWorkspace(
+    workspace,
+    resumePreflightStage,
+    path.join(attemptRoot, `resume-preflight-stage-${resumePreflightStage}`),
+  )
+  : undefined;
 const report = {
   schemaVersion: 'devseek.n4-simulated-user-journey-result/v1',
   journeyId: journey.id,
   startedAt: new Date().toISOString(),
   workspace,
+  workspaceMode: requestedWorkspace ? 'existing' : 'fresh',
   attemptRoot,
   candidate: {
     vsixPath,
@@ -50,10 +78,22 @@ const report = {
   inputMode,
   waitBackgroundIdle: true,
   requestedRounds: selectedRounds,
+  ...(resumePreflight ? { resumePreflight } : {}),
   rounds: [],
   ok: false,
 };
 writeJourneyReport(report);
+if (resumePreflight && !resumePreflight.ok) {
+  report.completedAt = new Date().toISOString();
+  writeJourneyReport(report);
+  console.log(JSON.stringify({
+    ok: false,
+    journeyId: report.journeyId,
+    attemptRoot,
+    reason: `Existing workspace failed Stage ${resumePreflightStage} preflight.`,
+  }, null, 2));
+  process.exit(1);
+}
 
 for (const roundNumber of selectedRounds) {
   const round = journey.rounds[roundNumber - 1];
@@ -151,19 +191,6 @@ process.exitCode = report.ok ? 0 : 1;
 function argValue(flag) {
   const index = args.indexOf(flag);
   return index >= 0 ? String(args[index + 1] || '') : '';
-}
-
-function parseSelectedRounds(value, count) {
-  if (!value) return Array.from({ length: count }, (_, index) => index + 1);
-  const selected = [...new Set(value.split(',').map(Number))];
-  if (selected.some(value => !Number.isInteger(value) || value < 1 || value > count)) {
-    throw new Error(`--rounds must contain values between 1 and ${count}`);
-  }
-  const ordered = selected.sort((left, right) => left - right);
-  if (ordered.some((value, index) => value !== index + 1)) {
-    throw new Error('--rounds must be a consecutive prefix such as 1,2 or 1,2,3,4');
-  }
-  return ordered;
 }
 
 function attemptId() {

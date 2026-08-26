@@ -2432,6 +2432,7 @@ test('Architecture: validated source changes require fresh source review before 
   const providerReview = src('src/agent/provider-requirement-review.ts');
   const reviewPolicy = src('src/agent/requirement-review-policy.ts');
   const independentReview = src('src/agent/independent-requirement-review.ts');
+  const findingAdjudicator = src('src/agent/requirement-review-finding-adjudicator.ts');
   const reviewNoToolRecovery = src('src/agent/requirement-review-no-tool-recovery.ts');
   const providerOutputIntegrity = src('src/agent/provider-output-integrity.ts');
   const providerTurnIntegrity = src('src/agent/provider-turn-integrity.ts');
@@ -2534,6 +2535,21 @@ test('Architecture: validated source changes require fresh source review before 
     providerReview,
     'new IndependentRequirementReviewer',
     'provider adapter must delegate final-source judgment to the independent reviewer',
+  );
+  assertContains(
+    providerReview,
+    'new RequirementReviewFindingAdjudicator',
+    'model-authored review findings must pass through a separate fact adjudicator',
+  );
+  assertContains(
+    findingAdjudicator,
+    'untrusted hypothesis, not execution authority',
+    'the adjudicator must not promote one model review directly into execution authority',
+  );
+  assertContains(
+    findingAdjudicator,
+    'captureRequirementReviewSourceSnapshots',
+    'finding adjudication must recapture the current complete source cohort',
   );
   assertContains(
     providerReview,

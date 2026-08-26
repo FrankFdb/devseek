@@ -1,10 +1,12 @@
 import { bindProviderNormalizationBoundary } from '../llm/provider-events';
+import type { ChatMessage } from '../llm/types';
 import type { AgentLoopCallbacks } from './loop-types';
 import { chatWithMessages } from './loop-chat';
 import {
   IndependentRequirementReviewer,
   type RequirementReviewInvocationResult,
 } from './independent-requirement-review';
+import { RequirementReviewFindingAdjudicator } from './requirement-review-finding-adjudicator';
 import {
   RequirementReviewLedger,
   type RequirementReviewInput,
@@ -44,9 +46,12 @@ export function createProviderRequirementReviewService(
 ): ProviderRequirementReviewService {
   const ledger = new RequirementReviewLedger();
   const policy = new RequirementReviewPolicy();
-  const reviewer = new IndependentRequirementReviewer(async messages => {
+  const invokeReadOnlyReview = async (
+    messages: ChatMessage[],
+    activity: string,
+  ): Promise<RequirementReviewInvocationResult> => {
     input.onProviderSessionReplaced();
-    input.callbacks.onToolActivity?.('label', '使用独立上下文审查最终源码');
+    input.callbacks.onToolActivity?.('label', activity);
     const turn = await chatWithMessages(
       messages,
       input.mode,
@@ -67,7 +72,13 @@ export function createProviderRequirementReviewService(
       text: turn.text,
       toolCount: turn.tools.length,
     } satisfies RequirementReviewInvocationResult;
-  });
+  };
+  const reviewer = new IndependentRequirementReviewer(messages => (
+    invokeReadOnlyReview(messages, '使用独立上下文审查最终源码')
+  ));
+  const adjudicator = new RequirementReviewFindingAdjudicator(messages => (
+    invokeReadOnlyReview(messages, '使用独立上下文复核审查 finding')
+  ));
 
   return {
     async request(reviewInput): Promise<ProviderRequirementReviewOutcome> {
@@ -87,12 +98,17 @@ export function createProviderRequirementReviewService(
           ? { kind: 'feedback', feedback: sourceFeedback }
           : { kind: 'settled' };
       }
-      const decision = await reviewer.review({
+      const candidateInput = {
         userPrompt: input.userPrompt(),
         workspaceRoot: input.workspaceRoot,
         sourcePaths: candidate.sourcePaths,
         contextPaths: candidate.contextPaths,
         validationSummary: reviewInput.qualityGate?.summary,
+      };
+      const proposedDecision = await reviewer.review(candidateInput);
+      const decision = await adjudicator.adjudicate({
+        ...candidateInput,
+        decision: proposedDecision,
       });
       const feedback = ledger.settleIndependentReview(decision);
       return feedback

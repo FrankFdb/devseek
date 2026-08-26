@@ -1,5 +1,3 @@
-import { promises as fs } from 'fs';
-import * as nodePath from 'path';
 import type { ChatMessage } from '../llm/types';
 import type { RequirementReviewDecision } from './requirement-review-ledger';
 import {
@@ -9,11 +7,11 @@ import {
   type RequirementReviewInvocationResult,
   type RequirementReviewSourceSnapshot,
 } from './requirement-review-contract';
-
-const MAX_SOURCE_BYTES = 96 * 1024;
-const MAX_REVIEW_SOURCE_CHARS = 180_000;
-const MAX_CONTEXT_BYTES = 48 * 1024;
-const MAX_REVIEW_CONTEXT_CHARS = 64_000;
+import {
+  captureRequirementReviewContextSnapshots,
+  captureRequirementReviewSourceSnapshots,
+  renderRequirementReviewSnapshots,
+} from './requirement-review-source-snapshot';
 
 export type { RequirementReviewInvocationResult } from './requirement-review-contract';
 export { parseIndependentReviewResponse } from './requirement-review-contract';
@@ -37,12 +35,12 @@ export class IndependentRequirementReviewer {
   async review(input: IndependentRequirementReviewInput): Promise<RequirementReviewDecision> {
     let snapshots: RequirementReviewSourceSnapshot[];
     try {
-      snapshots = await captureSourceSnapshots(input.workspaceRoot, input.sourcePaths);
+      snapshots = await captureRequirementReviewSourceSnapshots(input.workspaceRoot, input.sourcePaths);
     } catch (error) {
       return indeterminateDecision(`无法形成完整的最终源码快照：${errorText(error)}`);
     }
 
-    const contextSnapshots = await captureContextSnapshots(
+    const contextSnapshots = await captureRequirementReviewContextSnapshots(
       input.workspaceRoot,
       input.contextPaths ?? [],
       snapshots,
@@ -67,15 +65,9 @@ export function buildIndependentReviewMessages(
   snapshots: readonly RequirementReviewSourceSnapshot[],
   contextSnapshots: readonly RequirementReviewSourceSnapshot[] = [],
 ): ChatMessage[] {
-  const sources = snapshots.map(snapshot => [
-    `--- ${snapshot.absolutePath} ---`,
-    addLineNumbers(snapshot.content),
-  ].join('\n')).join('\n\n');
+  const sources = renderRequirementReviewSnapshots(snapshots);
   const context = contextSnapshots.length > 0
-    ? contextSnapshots.map(snapshot => [
-      `--- ${snapshot.absolutePath} ---`,
-      addLineNumbers(snapshot.content),
-    ].join('\n')).join('\n\n')
+    ? renderRequirementReviewSnapshots(contextSnapshots)
     : '(none)';
   return [
     {
@@ -150,84 +142,6 @@ function buildReviewCorrectionMessages(
       ].join('\n'),
     },
   ];
-}
-
-async function captureSourceSnapshots(
-  workspaceRoot: string,
-  sourcePaths: readonly string[],
-): Promise<RequirementReviewSourceSnapshot[]> {
-  const root = nodePath.resolve(workspaceRoot);
-  const realRoot = await fs.realpath(root);
-  const snapshots: RequirementReviewSourceSnapshot[] = [];
-  let totalChars = 0;
-  for (const sourcePath of [...new Set(sourcePaths)]) {
-    const absolutePath = nodePath.isAbsolute(sourcePath)
-      ? nodePath.resolve(sourcePath)
-      : nodePath.resolve(root, sourcePath);
-    if (!isInsideWorkspace(root, absolutePath)) throw new Error(`outside-workspace:${sourcePath}`);
-    const realPath = await fs.realpath(absolutePath);
-    if (!isInsideWorkspace(realRoot, realPath)) throw new Error(`symlink-outside-workspace:${sourcePath}`);
-    const stat = await fs.stat(realPath);
-    if (!stat.isFile()) throw new Error(`not-a-file:${sourcePath}`);
-    if (stat.size > MAX_SOURCE_BYTES) throw new Error(`source-too-large:${sourcePath}`);
-    const content = await fs.readFile(realPath, 'utf8');
-    if (content.includes('\0')) throw new Error(`binary-source:${sourcePath}`);
-    totalChars += content.length;
-    if (totalChars > MAX_REVIEW_SOURCE_CHARS) throw new Error('source-cohort-too-large');
-    snapshots.push({
-      path: nodePath.relative(root, absolutePath).replace(/\\/g, '/'),
-      absolutePath,
-      content,
-      lineCount: Math.max(1, content.split('\n').length),
-    });
-  }
-  if (snapshots.length === 0) throw new Error('empty-source-cohort');
-  return snapshots;
-}
-
-async function captureContextSnapshots(
-  workspaceRoot: string,
-  contextPaths: readonly string[],
-  sourceSnapshots: readonly RequirementReviewSourceSnapshot[],
-): Promise<RequirementReviewSourceSnapshot[]> {
-  const root = nodePath.resolve(workspaceRoot);
-  const realRoot = await fs.realpath(root);
-  const sourcePaths = new Set(sourceSnapshots.map(snapshot => snapshot.absolutePath));
-  const snapshots: RequirementReviewSourceSnapshot[] = [];
-  let totalChars = 0;
-  for (const contextPath of [...new Set(contextPaths)]) {
-    const absolutePath = nodePath.isAbsolute(contextPath)
-      ? nodePath.resolve(contextPath)
-      : nodePath.resolve(root, contextPath);
-    if (!isInsideWorkspace(root, absolutePath) || sourcePaths.has(absolutePath)) continue;
-    try {
-      const realPath = await fs.realpath(absolutePath);
-      if (!isInsideWorkspace(realRoot, realPath) || sourcePaths.has(realPath)) continue;
-      const stat = await fs.stat(realPath);
-      if (!stat.isFile() || stat.size > MAX_CONTEXT_BYTES) continue;
-      const content = await fs.readFile(realPath, 'utf8');
-      if (content.includes('\0') || totalChars + content.length > MAX_REVIEW_CONTEXT_CHARS) continue;
-      totalChars += content.length;
-      snapshots.push({
-        path: nodePath.relative(root, absolutePath).replace(/\\/g, '/'),
-        absolutePath,
-        content,
-        lineCount: Math.max(1, content.split('\n').length),
-      });
-    } catch {
-      // Supplemental context may disappear after it was read; final source remains authoritative.
-    }
-  }
-  return snapshots;
-}
-
-function addLineNumbers(content: string): string {
-  return content.split('\n').map((line, index) => `${index + 1}: ${line}`).join('\n');
-}
-
-function isInsideWorkspace(root: string, target: string): boolean {
-  const relative = nodePath.relative(root, target);
-  return relative === '' || (!relative.startsWith('..') && !nodePath.isAbsolute(relative));
 }
 
 function indeterminateDecision(explanation: string): RequirementReviewDecision {
