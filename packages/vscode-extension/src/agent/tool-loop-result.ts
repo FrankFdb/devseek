@@ -13,6 +13,8 @@ export interface ToolLoopResult {
   toolCallsMade: boolean;
   workToolCallsMade: boolean;
   feedbackForAI: string;
+  /** Ordered feedback boundaries retained when observations execute independently. */
+  feedbackSegmentsForAI?: string[];
   completeSummary?: string;
   allTodosCompleted?: boolean;
   todoItems?: TodoItem[];

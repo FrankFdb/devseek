@@ -56,11 +56,17 @@ function isCanonicalToolCall(tool: SchedulableTool): tool is CodingToolCall {
 function mergeToolLoopResults(results: readonly ToolLoopResult[]): ToolLoopResult {
   const lastWithTodos = [...results].reverse().find(result => result.todoItems !== undefined);
   const lastWithSummary = [...results].reverse().find(result => result.completeSummary !== undefined);
+  const feedbackSegmentsForAI = results.flatMap(result => (
+    result.feedbackSegmentsForAI?.length
+      ? result.feedbackSegmentsForAI
+      : result.feedbackForAI ? [result.feedbackForAI] : []
+  ));
   return {
     taskComplete: results.some(result => result.taskComplete),
     toolCallsMade: results.some(result => result.toolCallsMade),
     workToolCallsMade: results.some(result => result.workToolCallsMade),
-    feedbackForAI: results.map(result => result.feedbackForAI).filter(Boolean).join('\n\n'),
+    feedbackForAI: feedbackSegmentsForAI.join('\n\n'),
+    feedbackSegmentsForAI,
     ...(lastWithSummary?.completeSummary === undefined
       ? {}
       : { completeSummary: lastWithSummary.completeSummary }),

@@ -96,7 +96,10 @@ import { AgenticProviderRecoveryLifecycle, recoverAgenticProviderFailure } from 
 import {
   replaceLatestAssistantToolHistory,
 } from './agent-history-compaction';
-import { compactAgenticMessageHistory } from './agentic-context-compaction';
+import {
+  compactAgenticMessageHistory,
+  projectAgenticToolFeedbackMessage,
+} from './agentic-context-compaction';
 import { ToolFailureRecoveryLedger } from './tool-failure-recovery';
 import { QualityGateStagnationLedger } from './quality-gate-stagnation';
 import { SourceValidationLedger } from './source-validation-ledger';
@@ -1108,8 +1111,13 @@ export async function runAgenticLoop(
     }
 
     // Inject tool results into next round
-    const combinedFeedback = [loopRes.feedbackForAI, autoValidationFeedback, ...loopWarnings].filter(Boolean).join('\n\n');
-    const feedback = `[工具结果 Round ${roundCount}]\n${combinedFeedback}`;
+    const feedback = projectAgenticToolFeedbackMessage(roundCount, [
+      ...(loopRes.feedbackSegmentsForAI?.length
+        ? loopRes.feedbackSegmentsForAI
+        : [loopRes.feedbackForAI]),
+      autoValidationFeedback,
+      ...loopWarnings,
+    ]);
     appendUserFeedback(feedback);
   }
 

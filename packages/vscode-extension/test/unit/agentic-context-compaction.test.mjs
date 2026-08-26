@@ -16,7 +16,11 @@ execSync(
 );
 
 const req = createRequire(import.meta.url);
-const { compactAgenticMessageHistory, compactCanonicalAgenticHistory } = req(bundlePath);
+const {
+  compactAgenticMessageHistory,
+  compactCanonicalAgenticHistory,
+  projectAgenticToolFeedbackMessage,
+} = req(bundlePath);
 const {
   CanonicalCheckpointService,
   CanonicalContextCompactionService,
@@ -113,6 +117,44 @@ test('agentic history budget delegates over-budget pruning to the canonical comp
   ]);
 });
 
+test('agentic tool feedback fairly preserves every parallel read with an exact continuation', () => {
+  const segments = Array.from({ length: 9 }, (_, index) => readFileFeedback(
+    `/repo/src/unit-${index + 1}.cpp`,
+    140,
+  ));
+
+  const projected = projectAgenticToolFeedbackMessage(5, segments);
+
+  assert.ok(projected.length <= 8_000);
+  assert.match(projected, /^\[工具结果 Round 5\]/u);
+  for (let index = 0; index < segments.length; index += 1) {
+    assert.match(projected, new RegExp(`\\[read_file: /repo/src/unit-${index + 1}\\.cpp\\]`, 'u'));
+    assert.match(projected, new RegExp(`DevSeek 读取结果 ${index + 1}/9 已压缩`, 'u'));
+  }
+  assert.equal((projected.match(/startLine=\d+, endLine=\d+/gu) ?? []).length, 9);
+});
+
+test('agentic tool feedback leaves an in-budget result byte-for-byte intact', () => {
+  const segment = '[grep_search: TODO]\nsrc/main.cpp:12: TODO';
+  assert.equal(
+    projectAgenticToolFeedbackMessage(2, [segment]),
+    `[工具结果 Round 2]\n${segment}`,
+  );
+});
+
+test('agentic tool feedback redistributes unused budget without losing long result identities', () => {
+  const short = '[list_dir: /repo]\nsrc\ntest';
+  const longA = `[grep_search: alpha]\n${'alpha-result\n'.repeat(900)}`;
+  const longB = `[grep_search: beta]\n${'beta-result\n'.repeat(900)}`;
+  const projected = projectAgenticToolFeedbackMessage(3, [short, longA, longB]);
+
+  assert.ok(projected.length <= 8_000);
+  assert.ok(projected.includes(short));
+  assert.match(projected, /\[grep_search: alpha\]/u);
+  assert.match(projected, /\[grep_search: beta\]/u);
+  assert.equal((projected.match(/DevSeek 工具结果 [23]\/3 已压缩/gu) ?? []).length, 2);
+});
+
 test('agentic compaction keeps stable todo progress and a final revalidation unit', () => {
   const compaction = session();
   const history = messages();
@@ -191,3 +233,22 @@ test('agentic compaction fails closed on todo expansion or semantic drift betwee
     round: 3,
   }), /agentic-context-compaction:pending-plan-drift/u);
 });
+
+function readFileFeedback(filePath, lineCount) {
+  const source = Array.from(
+    { length: lineCount },
+    (_, index) => `line ${index + 1}: ${'source-context '.repeat(10)}`,
+  ).join('\n');
+  return [
+    `[read_file: ${filePath}]`,
+    '[file_context]',
+    `path=${filePath}`,
+    `resolvedPath=${filePath}`,
+    `lines=${lineCount}`,
+    `returnedLines=1-${lineCount}/${lineCount}`,
+    'complete=true',
+    'truncated=false',
+    '[/file_context]',
+    source,
+  ].join('\n');
+}

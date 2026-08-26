@@ -21,6 +21,7 @@ const AGENTIC_TOOL_FEEDBACK_CHAR_BUDGET = 8_000;
 const AGENTIC_ASSISTANT_HISTORY_CHAR_BUDGET = 6_000;
 const AGENTIC_USER_HISTORY_CHAR_BUDGET = 8_000;
 const AGENTIC_RECENT_MESSAGE_KEEP_COUNT = 5;
+const TOOL_FEEDBACK_SEPARATOR = '\n\n';
 
 export interface AgenticCompactionEvidenceRef {
   readonly evidenceId?: string;
@@ -53,6 +54,34 @@ export interface AgenticContextCompactionInput {
   readonly round: number;
   readonly evidenceRefs?: readonly string[];
   readonly trigger?: CodingContextCompactionTrigger;
+}
+
+/**
+ * Projects independently executed tool results into one bounded provider turn.
+ * Every result keeps an identity and an explicit continuation instead of being
+ * silently lost to whole-message head/tail truncation.
+ */
+export function projectAgenticToolFeedbackMessage(
+  round: number,
+  segments: readonly string[],
+): string {
+  const prefix = `[工具结果 Round ${positiveInteger(round, 'invalid-round')}]\n`;
+  const normalized = segments.map(segment => String(segment ?? '').trim()).filter(Boolean);
+  if (normalized.length === 0) return prefix.trimEnd();
+
+  const bodyBudget = AGENTIC_TOOL_FEEDBACK_CHAR_BUDGET - prefix.length;
+  const separatorBudget = TOOL_FEEDBACK_SEPARATOR.length * Math.max(0, normalized.length - 1);
+  const segmentBudgets = allocateFairBudgets(
+    normalized.map(segment => segment.length),
+    Math.max(0, bodyBudget - separatorBudget),
+  );
+  const body = normalized.map((segment, index) => compactToolFeedbackSegment(
+    segment,
+    segmentBudgets[index],
+    index,
+    normalized.length,
+  )).join(TOOL_FEEDBACK_SEPARATOR);
+  return `${prefix}${body}`;
 }
 
 /** Owns the agentic history budget and delegates semantic pruning to the Kernel session. */
@@ -251,6 +280,115 @@ function truncateHistoryText(text: string, maxChars: number, label: string): str
   const headChars = Math.ceil(contentBudget * 0.58);
   const tailChars = contentBudget - headChars;
   return `${text.slice(0, headChars).trimEnd()}\n\n${notice}\n\n${text.slice(-tailChars).trimStart()}`
+    .slice(0, maxChars);
+}
+
+function allocateFairBudgets(lengths: readonly number[], totalBudget: number): number[] {
+  const budgets = lengths.map(() => 0);
+  let remainingBudget = Math.max(0, totalBudget);
+  let pending = lengths.map((length, index) => ({ length, index }));
+  while (pending.length > 0) {
+    const share = Math.floor(remainingBudget / pending.length);
+    const complete = pending.filter(item => item.length <= share);
+    if (complete.length === 0) {
+      pending.forEach((item, offset) => {
+        budgets[item.index] = share + (offset < remainingBudget % pending.length ? 1 : 0);
+      });
+      break;
+    }
+    const completeIndexes = new Set(complete.map(item => item.index));
+    for (const item of complete) {
+      budgets[item.index] = item.length;
+      remainingBudget -= item.length;
+    }
+    pending = pending.filter(item => !completeIndexes.has(item.index));
+  }
+  return budgets;
+}
+
+function compactToolFeedbackSegment(
+  segment: string,
+  maxChars: number,
+  index: number,
+  total: number,
+): string {
+  if (segment.length <= maxChars) return segment;
+  if (maxChars <= 0) return '';
+  const readProjection = compactReadFileFeedback(segment, maxChars, index, total);
+  if (readProjection) return readProjection;
+
+  const firstLine = segment.split(/\r?\n/u, 1)[0]?.trim() || 'tool-result';
+  const omitted = Math.max(1, segment.length - maxChars);
+  const notice = `[DevSeek 工具结果 ${index + 1}/${total} 已压缩 ${omitted} 字符；请针对 ${firstLine} 重新发起精确查询。]`;
+  return retainFeedbackHeadAndTail(segment, notice, maxChars);
+}
+
+function compactReadFileFeedback(
+  segment: string,
+  maxChars: number,
+  index: number,
+  total: number,
+): string | undefined {
+  const lines = segment.split(/\r?\n/u);
+  const pathMatch = /^\[read_file:\s*(.+?)\]$/u.exec(lines[0]?.trim() ?? '');
+  const metadataEnd = lines.findIndex(line => line.trim() === '[/file_context]');
+  const returnedMatch = /^returnedLines=(\d+)-(\d+)\/(\d+)$/u.exec(
+    lines.find(line => /^returnedLines=/u.test(line.trim()))?.trim() ?? '',
+  );
+  if (!pathMatch || metadataEnd < 0 || !returnedMatch) return undefined;
+
+  const sourceLines = lines.slice(metadataEnd + 1);
+  const returnedStart = Number(returnedMatch[1]);
+  const returnedEnd = Number(returnedMatch[2]);
+  if (sourceLines.length < 3 || returnedEnd - returnedStart + 1 !== sourceLines.length) return undefined;
+
+  const identity = [
+    lines[0],
+    '[file_context]',
+    `returnedLines=${returnedMatch[1]}-${returnedMatch[2]}/${returnedMatch[3]}`,
+    'contextProjection=devseek-fair-tool-feedback/v1',
+    '[/file_context]',
+  ];
+  const render = (headCount: number, tailCount: number): string => {
+    const omittedStart = returnedStart + headCount;
+    const omittedEnd = returnedEnd - tailCount;
+    const notice = omittedStart <= omittedEnd
+      ? `[DevSeek 读取结果 ${index + 1}/${total} 已压缩；省略文件行 ${omittedStart}-${omittedEnd}。继续：read_file 使用同一 path，startLine=${omittedStart}, endLine=${omittedEnd}。]`
+      : '';
+    return [
+      ...identity,
+      ...sourceLines.slice(0, headCount),
+      notice,
+      ...sourceLines.slice(sourceLines.length - tailCount),
+    ].filter(Boolean).join('\n');
+  };
+
+  let headCount = 0;
+  let tailCount = 0;
+  let projected = render(headCount, tailCount);
+  if (projected.length > maxChars) {
+    const notice = `[DevSeek 读取结果 ${index + 1}/${total} 已压缩；继续：read_file 使用同一 path 和更小行范围。]`;
+    return retainFeedbackHeadAndTail(lines[0], notice, maxChars);
+  }
+  while (headCount + tailCount < sourceLines.length) {
+    const growHead = headCount <= tailCount;
+    const nextHead = headCount + (growHead ? 1 : 0);
+    const nextTail = tailCount + (growHead ? 0 : 1);
+    const candidate = render(nextHead, nextTail);
+    if (candidate.length > maxChars) break;
+    headCount = nextHead;
+    tailCount = nextTail;
+    projected = candidate;
+  }
+  return projected;
+}
+
+function retainFeedbackHeadAndTail(text: string, notice: string, maxChars: number): string {
+  if (notice.length >= maxChars) return notice.slice(0, maxChars);
+  const contentBudget = Math.max(0, maxChars - notice.length - 2);
+  const headChars = Math.ceil(contentBudget * 0.58);
+  const tailChars = contentBudget - headChars;
+  return `${text.slice(0, headChars).trimEnd()}\n${notice}\n${text.slice(-tailChars).trimStart()}`
     .slice(0, maxChars);
 }
 

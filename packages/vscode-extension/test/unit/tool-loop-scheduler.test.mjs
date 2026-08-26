@@ -41,6 +41,7 @@ test('ToolLoopScheduler: independent local observations execute concurrently wit
   assert.equal(maxActive, 4);
   assert.deepEqual(batches, tools.map(tool => [tool.name]));
   assert.equal(result.feedbackForAI, tools.map(tool => tool.name).join('\n\n'));
+  assert.deepEqual(result.feedbackSegmentsForAI, tools.map(tool => tool.name));
   assert.deepEqual(result.toolExecutionReceipts.map(receipt => receipt.sequence), [1, 2, 3, 4]);
 });
 
