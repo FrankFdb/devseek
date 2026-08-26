@@ -30,9 +30,21 @@ export interface ProviderRunEvidenceInput {
   now?: () => number;
   newOperationId?: () => string;
   onEvidenceError?: (error: unknown) => void;
+  onCompleted?: (operationId: string) => void;
 }
 
 export const BRIDGE_PROVIDER_FAILURE_EVIDENCE_GAP = 'BRIDGE_PROVIDER_FAILURE_EVIDENCE_GAP';
+const PROVIDER_RUN_EVIDENCE_OPERATION_ID: unique symbol = Symbol('devseek.provider-run-evidence-operation-id');
+
+type ProviderOperationBoundError = Error & {
+  readonly [PROVIDER_RUN_EVIDENCE_OPERATION_ID]: string;
+};
+
+export function providerRunEvidenceOperationId(error: unknown): string | undefined {
+  if (!(error instanceof Error)) return undefined;
+  const operationId = (error as Partial<ProviderOperationBoundError>)[PROVIDER_RUN_EVIDENCE_OPERATION_ID];
+  return typeof operationId === 'string' && operationId.trim() ? operationId.trim() : undefined;
+}
 
 /**
  * A failed bridge request already has a trustworthy client-side terminal, but
@@ -89,6 +101,7 @@ export async function invokeProviderWithRunEvidence(input: ProviderRunEvidenceIn
     prompt: summarizeTraceText(input.request.prompt),
     file_count: input.request.files?.length ?? 0,
   });
+  let completedResponse: string;
   try {
     profiler.beginSampling();
     const response = await input.invoke({
@@ -106,7 +119,7 @@ export async function invokeProviderWithRunEvidence(input: ProviderRunEvidenceIn
     if (input.providerType === 'bridge') {
       await assertBridgeParticipantTerminal(evidence, operationId, 'provider.completed', input);
     }
-    return response;
+    completedResponse = response;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const efficiency = profiler.finish(providerInvocationWasCancelled(input.request.signal, message)
@@ -123,7 +136,32 @@ export async function invokeProviderWithRunEvidence(input: ProviderRunEvidenceIn
     if (input.providerType === 'bridge') {
       await assertBridgeParticipantTerminal(evidence, operationId, 'provider.failed', input);
     }
-    throw error;
+    throw bindProviderRunEvidenceOperationId(error, operationId);
+  }
+  input.onCompleted?.(operationId);
+  return completedResponse;
+}
+
+function bindProviderRunEvidenceOperationId(error: unknown, operationId: string): Error {
+  const target = error instanceof Error ? error : new Error(String(error));
+  try {
+    Object.defineProperty(target, PROVIDER_RUN_EVIDENCE_OPERATION_ID, {
+      value: operationId,
+      configurable: false,
+      enumerable: false,
+      writable: false,
+    });
+    return target;
+  } catch {
+    const wrapped = new Error(target.message) as Error & { cause?: unknown };
+    wrapped.cause = target;
+    Object.defineProperty(wrapped, PROVIDER_RUN_EVIDENCE_OPERATION_ID, {
+      value: operationId,
+      configurable: false,
+      enumerable: false,
+      writable: false,
+    });
+    return wrapped;
   }
 }
 

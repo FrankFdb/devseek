@@ -786,6 +786,83 @@ test('RunContext: provider protocol recovery cannot claim verification failures 
   }
 });
 
+test('RunContext: accepted provider retry resolves only its correlated provider failure', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  const runId = 'run-context-correlated-provider-recovery';
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId,
+      userPrompt: '修复 src/value.cpp 并运行测试',
+      traceLevel: 'debug',
+    });
+    const provider = ProductRunEvidenceSession.forWorkspace({
+      workspaceRoot,
+      runId,
+      surface: 'vscode-provider',
+      authority: { role: 'participant', token: context.evidenceParticipantToken },
+    });
+    for (const type of ['provider.requested', 'provider.failed']) {
+      provider.record({
+        type,
+        idempotencyKey: `correlated-provider-recovery:${type}`,
+        payload: observed(type.slice('provider.'.length), {
+          operation_id: 'provider:corrupted-response',
+          boundary: 'vscode-provider-client',
+        }),
+      });
+    }
+    for (const [phase, state] of [
+      ['validate', 'started'], ['validate', 'failed'],
+      ['quality', 'started'], ['quality', 'failed'],
+    ]) {
+      context.recordAgentStatus({
+        type: 'agentStatus', phase, state, title: '源码验证失败',
+        evidenceOperationId: 'verify:value-source',
+        verificationScopePaths: ['src/value.cpp'],
+      });
+    }
+
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'repair', state: 'started',
+      title: 'Provider 安全重试',
+      recoveryReason: 'provider-response-corruption',
+      recoveryTargetOperationIds: ['provider:corrupted-response'],
+    });
+    for (const type of ['provider.requested', 'provider.completed']) {
+      provider.record({
+        type,
+        idempotencyKey: `correlated-provider-result:${type}`,
+        payload: observed(type.slice('provider.'.length), {
+          operation_id: 'provider:accepted-response',
+          boundary: 'vscode-provider-client',
+        }),
+      });
+    }
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'repair', state: 'completed',
+      title: 'Provider 安全恢复完成',
+      recoveryReason: 'provider-response-corruption',
+      recoveryTargetOperationIds: ['provider:corrupted-response'],
+      recoveryResultOperationId: 'provider:accepted-response',
+    });
+    assert.equal(context.complete('failed'), 'failed');
+
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const events = ledger.read(runId);
+    const recovery = events.find(event => (
+      event.type === 'recovery.completed'
+      && event.payload.recovery_trigger === 'provider-response-retry'
+    ));
+    assert.deepEqual(recovery?.payload.resolves_operation_ids, ['provider:corrupted-response']);
+    assert.equal(recovery?.payload.recovery_resolution, 'accepted-provider-response');
+    assert.equal(recovery?.payload.resolves_operation_ids.includes('verify:value-source'), false);
+    assert.equal(events.find(event => event.type === 'run.settled')?.payload.status, 'failed');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('RunContext: multiple repair writes join one recovery transaction before shared verification', () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
   try {

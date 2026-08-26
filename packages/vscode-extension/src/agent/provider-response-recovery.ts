@@ -12,12 +12,14 @@ import { projectActionableDiagnosticExcerpt } from '../app/diagnostic-output-pro
 import { isDiagnosticProjectionCommand } from '../tools/shell-command-analysis';
 import { buildTerminalFailureRepairFeedback } from './terminal-failure-repair';
 import { buildTextToolEnvelopeRecoveryPrompt } from './tool-protocol-prompt';
+import { providerRunEvidenceOperationId } from '../app/provider-run-evidence';
 
 export interface AgentProviderFailure {
   status: string;
   reason: string;
   rawMessage: string;
   recoverable: boolean;
+  readonly operationId?: string;
   readonly observedToolNames?: readonly string[];
 }
 
@@ -59,6 +61,7 @@ const RECOVERABLE_RESPONSE_CORRUPTION_STATUSES = new Set([
 
 export function parseAgentProviderFailure(error: unknown): AgentProviderFailure | undefined {
   const rawMessage = error instanceof Error ? error.message : String(error || '');
+  const operationId = providerRunEvidenceOperationId(error);
   const match = /^RESPONSE_CORRUPTED:([^:\n]+):([\s\S]*)$/i.exec(rawMessage.trim());
   if (!match) {
     if (/^PROMPT_SUBMIT_FAILED:/i.test(rawMessage.trim())) {
@@ -67,6 +70,7 @@ export function parseAgentProviderFailure(error: unknown): AgentProviderFailure 
         reason: rawMessage.trim(),
         rawMessage,
         recoverable: true,
+        ...(operationId ? { operationId } : {}),
       };
     }
     return undefined;
@@ -78,6 +82,7 @@ export function parseAgentProviderFailure(error: unknown): AgentProviderFailure 
     reason,
     rawMessage,
     recoverable: isRecoverableAgentProviderCorruption(status, reason),
+    ...(operationId ? { operationId } : {}),
   };
 }
 

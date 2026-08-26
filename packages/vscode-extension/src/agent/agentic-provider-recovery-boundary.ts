@@ -48,6 +48,7 @@ export interface AgenticProviderRecoveryBoundaryResult {
 
 export class AgenticProviderRecoveryLifecycle {
   private pending = false;
+  private readonly targetOperationIds = new Set<string>();
 
   constructor(
     private readonly taskFile: string,
@@ -55,17 +56,22 @@ export class AgenticProviderRecoveryLifecycle {
     private readonly callbacks: Pick<AgentLoopCallbacks, 'signal' | 'onAgentStatus'>,
   ) {}
 
-  begin(): void {
+  begin(operationId?: string): void {
     this.pending = true;
+    if (operationId?.trim()) this.targetOperationIds.add(operationId.trim());
   }
 
-  async completeAcceptedResponse(kind: 'tool-protocol' | 'plain-response'): Promise<void> {
+  async completeAcceptedResponse(
+    kind: 'tool-protocol' | 'plain-response',
+    resultOperationId?: string,
+  ): Promise<void> {
     await this.settle(
       'completed',
       'Provider 安全恢复完成',
       kind === 'tool-protocol'
         ? '新的 Provider 响应已通过当前工具协议门禁，后续动作仍由本地权限与沙箱逐项仲裁。'
         : '新的 Provider 响应已通过当前响应边界，可继续按当前任务证据结算。',
+      resultOperationId,
     );
   }
 
@@ -81,6 +87,7 @@ export class AgenticProviderRecoveryLifecycle {
     state: 'completed' | 'failed',
     title: string,
     detail: string,
+    resultOperationId?: string,
   ): Promise<void> {
     if (!this.pending) return;
     if (!this.callbacks.signal?.aborted) {
@@ -96,9 +103,12 @@ export class AgenticProviderRecoveryLifecycle {
         title,
         detail,
         recoveryReason: 'provider-response-corruption',
+        recoveryTargetOperationIds: [...this.targetOperationIds],
+        ...(resultOperationId ? { recoveryResultOperationId: resultOperationId } : {}),
       });
     }
     this.pending = false;
+    this.targetOperationIds.clear();
   }
 }
 
@@ -139,6 +149,7 @@ export async function recoverAgenticProviderFailure(
     title: display.title,
     detail: display.detail,
     recoveryReason: 'provider-response-corruption',
+    recoveryTargetOperationIds: input.failure.operationId ? [input.failure.operationId] : [],
   });
 
   const recoveryMessage = buildAgentProviderRecoveryPrompt({

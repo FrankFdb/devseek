@@ -40,6 +40,10 @@ export interface AgentStatusEvent extends AgentProgressPresentation {
   verificationScopePaths?: readonly string[];
   /** Stable machine-readable reason for a host-owned recovery transition. */
   recoveryReason?: AgentRecoveryReason;
+  /** Exact failed provider operations owned by this provider-only recovery. */
+  recoveryTargetOperationIds?: readonly string[];
+  /** Accepted provider operation that proves this provider-only recovery. */
+  recoveryResultOperationId?: string;
   taskId?: string;
   taskFile?: string;
   taskAction?: AgentTaskAction;

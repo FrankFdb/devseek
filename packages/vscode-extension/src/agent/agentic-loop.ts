@@ -7,7 +7,6 @@
 
 import * as vscode from 'vscode';
 import type {
-  CodingToolCall,
   CodingToolExecutionReceipt,
   CodingVerificationReceipt,
   CodingWorkspaceMutationReceipt,
@@ -370,7 +369,7 @@ export async function runAgenticLoop(
       seenContextToolSignatures.clear();
     }
     if (recovery.recovered) {
-      providerRecovery.begin();
+      providerRecovery.begin(providerFailure?.operationId);
       return 'recovered';
     }
     await providerRecovery.fail();
@@ -481,8 +480,7 @@ export async function runAgenticLoop(
       evidenceRefs: allEvidenceRefs,
       textToolProtocol,
     });
-    let text = '';
-    let tools: CodingToolCall[] = [];
+    let providerTurn: Awaited<ReturnType<typeof chatWithMessages>>;
     const useFreshProviderSession = roundCount === 1 || forceProviderNewSessionNextTurn;
     if (forceProviderNewSessionNextTurn) {
       callbacks.onToolActivity?.('label', '重建模型会话并从任务事实恢复');
@@ -490,7 +488,7 @@ export async function runAgenticLoop(
     forceProviderNewSessionNextTurn = false;
     const providerWaitFeedback = new ProviderWaitFeedback(callbacks.onToolActivity, roundCount);
     try {
-      const providerTurn = await chatWithMessages(
+      providerTurn = await chatWithMessages(
         messages,
         mode,
         delta => {
@@ -508,8 +506,6 @@ export async function runAgenticLoop(
         ),
       );
       providerWaitFeedback.complete();
-      text = providerTurn.text;
-      tools = providerTurn.tools;
     } catch (error) {
       const providerFailure = parseAgentProviderFailure(error);
       const disposition = await settleOrRecoverProviderFailureInsideCurrentTask(
@@ -522,6 +518,7 @@ export async function runAgenticLoop(
     } finally {
       providerWaitFeedback.stop();
     }
+    const { text, tools, providerOperationId } = providerTurn;
 
     const postProviderSteerMessages = writeAuthority.drainAfterProvider();
     if (postProviderSteerMessages.length > 0) {
@@ -545,7 +542,7 @@ export async function runAgenticLoop(
       if (tools.some(tool => tool.purpose === 'workspace-mutation')) promptRequiresFileChange = true;
     }
     if (tools.length > 0) {
-      await providerRecovery.completeAcceptedResponse('tool-protocol');
+      await providerRecovery.completeAcceptedResponse('tool-protocol', providerOperationId);
       unresolvedProviderToolProtocol = false;
     }
 
@@ -620,7 +617,7 @@ export async function runAgenticLoop(
         failedReason = 'Provider 安全恢复后仍未形成有效工具调用。';
         break;
       }
-      await providerRecovery.completeAcceptedResponse('plain-response');
+      await providerRecovery.completeAcceptedResponse('plain-response', providerOperationId);
       const evidenceWithoutTools = assessCurrentEvidenceClosure();
       if (await recoverBlockingTerminalFailure(
         evidenceWithoutTools.blockingTerminalFailure,

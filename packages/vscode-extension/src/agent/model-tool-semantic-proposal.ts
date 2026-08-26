@@ -44,6 +44,13 @@ export function canToolReceiptPromoteModelSemantics(
 ): boolean {
   if (receipt.status === 'completed') return true;
   if (receipt.status === 'denied') return false;
+  if (receipt.status === 'failed'
+    && receipt.purpose === 'workspace-mutation'
+    && receipt.permission.decision === 'allow') {
+    // An authorized write that failed before commit establishes an outstanding
+    // mutation obligation. The failed receipt remains non-delivery evidence.
+    return true;
+  }
   return receipt.effectStarted !== false;
 }
 

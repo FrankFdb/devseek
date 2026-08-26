@@ -10,6 +10,8 @@ import {
   RUN_EVIDENCE_LATE_PROVIDER_FAILURE_RECOVERY_TRIGGER,
   RUN_EVIDENCE_PROVIDER_FAILURE_RECOVERY_RESOLUTION,
   RUN_EVIDENCE_PROVIDER_FAILURE_RECOVERY_TRIGGER,
+  RUN_EVIDENCE_PROVIDER_RESPONSE_RETRY_RESOLUTION,
+  RUN_EVIDENCE_PROVIDER_RESPONSE_RETRY_TRIGGER,
   RUN_EVIDENCE_TERMINAL_DENIAL_RECOVERY_RESOLUTION,
   RUN_EVIDENCE_TERMINAL_DENIAL_RECOVERY_TRIGGER,
   RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_RESOLUTION,
@@ -57,6 +59,7 @@ interface AdverseTerminal {
 interface RecoveryState {
   detected: boolean;
   detectedSequence?: number;
+  detectedTargetOperationIds?: readonly string[];
   recoveryLane?: string;
   terminal?: 'recovery.completed' | 'recovery.failed';
 }
@@ -131,7 +134,7 @@ export function reduceRunEvidencePrefix(
       continue;
     }
     if (event.type.startsWith('recovery.')) {
-      reduceRecovery(event, recoveries, adverseTerminals, sideEffects, verifications, qualityGates);
+      reduceRecovery(event, recoveries, adverseTerminals, providers, sideEffects, verifications, qualityGates);
     }
   }
 
@@ -171,6 +174,7 @@ function reduceProvider(
   if (event.type === 'provider.requested') {
     if (state.requested || state.terminal) semanticFailure(`Provider operation ${label} was requested twice`);
     state.requested = true;
+    state.requestedSequence = event.sequence;
     state.providerAttempt = providerAttempt;
     return;
   }
@@ -325,6 +329,7 @@ function reduceRecovery(
   event: RunEvidenceSemanticEvent,
   recoveries: Map<string, RecoveryState>,
   adverse: AdverseTerminal[],
+  providers: ReadonlyMap<string, OperationState>,
   sideEffects: ReadonlyMap<string, OperationState>,
   verifications: ReadonlyMap<string, OperationState>,
   qualityGates: ReadonlyMap<string, OperationState>,
@@ -343,7 +348,12 @@ function reduceRecovery(
     if (state.detected || state.terminal) semanticFailure(`Recovery ${operationId} was detected twice`);
     state.detected = true;
     state.detectedSequence = event.sequence;
+    state.detectedTargetOperationIds = optionalTargetOperationIds(event);
     state.recoveryLane = typeof payload.recovery_lane === 'string' ? payload.recovery_lane : undefined;
+    if (payload.recovery_trigger === RUN_EVIDENCE_PROVIDER_RESPONSE_RETRY_TRIGGER
+      && !state.detectedTargetOperationIds) {
+      semanticFailure(`Recovery ${operationId} requires non-empty target_operation_ids`);
+    }
     return;
   }
   if (!state.detected) semanticFailure(`Recovery ${operationId} terminated before detection`);
@@ -361,6 +371,21 @@ function reduceRecovery(
   const resolvedOperationIds = requireResolvedOperationIds(event);
   const detectionSequence = state.detectedSequence;
   if (detectionSequence === undefined) semanticFailure(`Recovery ${operationId} has no detection sequence`);
+  if (payload.recovery_trigger === RUN_EVIDENCE_PROVIDER_RESPONSE_RETRY_TRIGGER) {
+    if (!hasAcceptedProviderResponseRetryProof({
+      payload,
+      resolvedOperationIds,
+      adverse,
+      providers,
+      detectionSequence,
+      detectedTargetOperationIds: state.detectedTargetOperationIds,
+      recoveryTerminalSequence: event.sequence,
+    })) {
+      semanticFailure(`Recovery ${operationId} requires a correlated accepted provider response`);
+    }
+    resolveAdverseOperations(operationId, resolvedOperationIds, adverse, detectionSequence);
+    return;
+  }
   const verificationOperationId = requireRunEvidenceBoundedText(
     payload.verification_operation_id,
     `recovery.completed at sequence ${event.sequence} verification_operation_id`,
@@ -457,20 +482,64 @@ function reduceRecovery(
       `Recovery ${operationId} requires an ordered retry or verified workspace supersession before verification and quality gate completion`,
     );
   }
+  resolveAdverseOperations(operationId, resolvedOperationIds, adverse, detectionSequence);
+}
+
+function resolveAdverseOperations(
+  recoveryOperationId: string,
+  resolvedOperationIds: readonly string[],
+  adverse: AdverseTerminal[],
+  detectionSequence: number,
+): void {
   for (const resolvedOperationId of resolvedOperationIds) {
     const matching = adverse.filter(item => (
       item.resolutionOperationId === resolvedOperationId && item.resolvedBy === undefined
     ));
     if (matching.length === 0) {
       semanticFailure(
-        `Recovery ${operationId} cannot resolve pending, unknown, or already resolved operation ${resolvedOperationId}`,
+        `Recovery ${recoveryOperationId} cannot resolve pending, unknown, or already resolved operation ${resolvedOperationId}`,
       );
     }
     if (matching.some(terminal => terminal.sequence >= detectionSequence)) {
-      semanticFailure(`Recovery ${operationId} cannot resolve an adverse operation detected after recovery began`);
+      semanticFailure(`Recovery ${recoveryOperationId} cannot resolve an adverse operation detected after recovery began`);
     }
-    for (const terminal of matching) terminal.resolvedBy = operationId;
+    for (const terminal of matching) terminal.resolvedBy = recoveryOperationId;
   }
+}
+
+function hasAcceptedProviderResponseRetryProof(input: {
+  payload: { [key: string]: RunEvidenceJson };
+  resolvedOperationIds: readonly string[];
+  adverse: readonly AdverseTerminal[];
+  providers: ReadonlyMap<string, OperationState>;
+  detectionSequence: number;
+  detectedTargetOperationIds?: readonly string[];
+  recoveryTerminalSequence: number;
+}): boolean {
+  if (input.payload.recovery_resolution !== RUN_EVIDENCE_PROVIDER_RESPONSE_RETRY_RESOLUTION) return false;
+  const resultOperationId = typeof input.payload.provider_result_operation_id === 'string'
+    ? input.payload.provider_result_operation_id.trim()
+    : '';
+  if (!resultOperationId || input.resolvedOperationIds.includes(resultOperationId)) return false;
+  if (!input.detectedTargetOperationIds
+    || !sameOperationIds(input.detectedTargetOperationIds, input.resolvedOperationIds)) return false;
+  const accepted = input.providers.get(`${resultOperationId}\u0000vscode-provider-client`);
+  if (accepted?.terminal !== 'provider.completed'
+    || accepted.requestedSequence === undefined
+    || accepted.terminalSequence === undefined
+    || input.detectionSequence >= accepted.requestedSequence
+    || accepted.requestedSequence >= accepted.terminalSequence
+    || accepted.terminalSequence >= input.recoveryTerminalSequence) {
+    return false;
+  }
+  return input.resolvedOperationIds.every(operationId => {
+    const matching = input.adverse.filter(item => (
+      item.resolutionOperationId === operationId && item.resolvedBy === undefined
+    ));
+    return matching.length > 0 && matching.every(item => (
+      item.type === 'provider.failed' && item.sequence < input.detectionSequence
+    ));
+  });
 }
 
 function hasTerminalValidationFailureSupersessionProof(input: {
@@ -691,26 +760,44 @@ function requireSettlementStatus(event: RunEvidenceSemanticEvent): RunEvidenceSe
 }
 
 function requireResolvedOperationIds(event: RunEvidenceSemanticEvent): string[] {
-  const value = readObjectPayload(event).resolves_operation_ids;
+  return requireOperationIdList(event, readObjectPayload(event).resolves_operation_ids, 'resolves_operation_ids');
+}
+
+function optionalTargetOperationIds(event: RunEvidenceSemanticEvent): string[] | undefined {
+  const value = readObjectPayload(event).target_operation_ids;
+  if (value === undefined) return undefined;
+  return requireOperationIdList(event, value, 'target_operation_ids');
+}
+
+function requireOperationIdList(
+  event: RunEvidenceSemanticEvent,
+  value: RunEvidenceJson | undefined,
+  field: string,
+): string[] {
   if (!Array.isArray(value) || value.length === 0) {
-    semanticFailure(`${event.type} at sequence ${event.sequence} requires non-empty resolves_operation_ids`);
+    semanticFailure(`${event.type} at sequence ${event.sequence} requires non-empty ${field}`);
   }
   const normalized: string[] = [];
   const seen = new Set<string>();
   for (const item of value) {
     const operationId = requireRunEvidenceBoundedText(
       item,
-      `${event.type} at sequence ${event.sequence} resolved operation id`,
+      `${event.type} at sequence ${event.sequence} ${field} operation id`,
       'RUN_SEMANTIC_INVALID',
     );
-    if (operationId.includes('\u0000')) semanticFailure(`${event.type} has an invalid resolved operation id`);
+    if (operationId.includes('\u0000')) semanticFailure(`${event.type} has an invalid ${field} operation id`);
     if (seen.has(operationId)) {
-      semanticFailure(`${event.type} at sequence ${event.sequence} repeats resolved operation ${operationId}`);
+      const operationRole = field === 'resolves_operation_ids' ? 'resolved' : 'target';
+      semanticFailure(`${event.type} at sequence ${event.sequence} repeats ${operationRole} operation ${operationId}`);
     }
     seen.add(operationId);
     normalized.push(operationId);
   }
   return normalized;
+}
+
+function sameOperationIds(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every(operationId => right.includes(operationId));
 }
 
 function readObjectPayload(event: RunEvidenceSemanticEvent): { [key: string]: RunEvidenceJson } {

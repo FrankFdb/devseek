@@ -66,6 +66,28 @@ test('matching workspace receipt promotes the proposal into completion semantics
   assert.equal(authority.canonicalSemanticContract.mutation.requested, false);
 });
 
+test('an authorized failed write preserves an outstanding mutation obligation', () => {
+  const authority = createWriteAuthority('修复 src/value.ts。', {});
+  authority.applyModelSemanticProposal(createProposal({
+    taskKind: 'existing-project-edit',
+    mutation: 'modify-source',
+    targetPaths: ['src/value.ts'],
+    requiresWorkspace: true,
+  }));
+
+  const settled = authority.settleModelSemanticProposal([toolReceipt({
+    status: 'failed',
+    effectStarted: false,
+    evidenceRefs: ['tool:semantic-action-3:failed-before-commit'],
+  })]);
+
+  assert.ok(settled);
+  assert.equal(settled.semanticContract.mutation.requested, true);
+  assert.deepEqual(settled.semanticContract.mutation.targets, ['src/value.ts']);
+  assert.equal(authority.completionSemanticContract.mutation.requested, true);
+  assert.equal(authority.canonicalSemanticContract.mutation.requested, false);
+});
+
 test('read-only terminal observation settles from observe plus process evidence', () => {
   const authority = createWriteAuthority('看看目录状态。', {});
   authority.applyModelSemanticProposal(createProposal({

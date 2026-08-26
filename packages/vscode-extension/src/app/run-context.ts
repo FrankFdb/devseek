@@ -10,6 +10,8 @@ import {
   RUN_EVIDENCE_LATE_PROVIDER_FAILURE_RECOVERY_TRIGGER,
   RUN_EVIDENCE_PROVIDER_FAILURE_RECOVERY_RESOLUTION,
   RUN_EVIDENCE_PROVIDER_FAILURE_RECOVERY_TRIGGER,
+  RUN_EVIDENCE_PROVIDER_RESPONSE_RETRY_RESOLUTION,
+  RUN_EVIDENCE_PROVIDER_RESPONSE_RETRY_TRIGGER,
   summarizeTraceText,
   providerAttemptEvidenceIdentity,
   providerAttemptEvidenceLifecycleKey,
@@ -112,6 +114,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
   private readonly pendingAdverseOperationIdsByKey = new Map<string, Set<string>>();
   private readonly committedSideEffectOperationIdsByKey = new Map<string, string>();
   private readonly recoverableProviderBoundaryGapOperationIds = new Set<string>();
+  private readonly activeProviderRecoveryOperations = new Map<string, string>();
   private hasSideEffectEvidence = false;
   private settlementStatus?: RunContextStatus;
   private cancellationRequested = false;
@@ -514,13 +517,14 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     }
 
     if (status.phase === 'repair') {
-      // Provider/session retry is owned by the Agent Loop. It does not prove or
-      // resolve workspace, terminal, or verification failures in this ledger.
       if (status.recoveryReason) {
         this.trace.info('run-context', 'provider-recovery-status-observed', {
           recoveryReason: status.recoveryReason,
           state: status.state,
+          targetOperationIds: status.recoveryTargetOperationIds,
+          resultOperationId: status.recoveryResultOperationId,
         });
+        this.recordProviderRecoveryStatus(status, summary);
         return;
       }
       const targetOperationIds = [...this.pendingAdverseOperationIds];
@@ -965,6 +969,54 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     } catch (error) {
       this.markEvidenceDegraded(error);
       return [];
+    }
+  }
+
+  private recordProviderRecoveryStatus(
+    status: AgentStatusEvent,
+    summary: { length: number; sha256: string },
+  ): void {
+    const requestedTargets = [...new Set(
+      (status.recoveryTargetOperationIds ?? []).map(value => value.trim()).filter(Boolean),
+    )];
+    if (requestedTargets.length === 0) return;
+
+    if (status.state === 'started') {
+      const unresolved = new Set(this.collectRecoverableProviderFailureOperationIds());
+      for (const targetOperationId of requestedTargets) {
+        if (!unresolved.has(targetOperationId)
+          || this.activeProviderRecoveryOperations.has(targetOperationId)) {
+          continue;
+        }
+        this.recoverySequence += 1;
+        const operationId = `vscode-provider-recovery-${this.recoverySequence}`;
+        const detected = this.recordOperationEvent('recovery.detected', operationId, 'detected', summary, {
+          target_operation_ids: [targetOperationId],
+          recovery_trigger: RUN_EVIDENCE_PROVIDER_RESPONSE_RETRY_TRIGGER,
+        });
+        if (detected) this.activeProviderRecoveryOperations.set(targetOperationId, operationId);
+      }
+      return;
+    }
+
+    for (const targetOperationId of requestedTargets) {
+      const operationId = this.activeProviderRecoveryOperations.get(targetOperationId);
+      if (!operationId) continue;
+      if (status.state === 'completed') {
+        if (!status.recoveryResultOperationId?.trim()) continue;
+        const completed = this.recordOperationEvent('recovery.completed', operationId, 'completed', summary, {
+          resolves_operation_ids: [targetOperationId],
+          recovery_trigger: RUN_EVIDENCE_PROVIDER_RESPONSE_RETRY_TRIGGER,
+          recovery_resolution: RUN_EVIDENCE_PROVIDER_RESPONSE_RETRY_RESOLUTION,
+          provider_result_operation_id: status.recoveryResultOperationId.trim(),
+        });
+        if (completed) this.deletePendingAdverseOperation(targetOperationId);
+      } else if (status.state === 'failed' || status.state === 'skipped') {
+        this.recordOperationEvent('recovery.failed', operationId, 'failed', summary, {
+          recovery_trigger: RUN_EVIDENCE_PROVIDER_RESPONSE_RETRY_TRIGGER,
+        });
+      }
+      this.activeProviderRecoveryOperations.delete(targetOperationId);
     }
   }
 
@@ -1479,6 +1531,8 @@ function summarizeAgentStatusForTrace(status: AgentStatusEvent): Record<string, 
     evidenceOperationId: status.evidenceOperationId,
     verificationScopePaths: status.verificationScopePaths,
     recoveryReason: status.recoveryReason,
+    recoveryTargetOperationIds: status.recoveryTargetOperationIds,
+    recoveryResultOperationId: status.recoveryResultOperationId,
     taskId: status.taskId,
     taskFile: status.taskFile,
     taskAction: status.taskAction,
@@ -1503,6 +1557,10 @@ function agentStatusEvidenceIdentity(status: AgentStatusEvent): { [key: string]:
     evidenceOperationId: status.evidenceOperationId ?? null,
     verificationScopePaths: status.verificationScopePaths ? [...status.verificationScopePaths] : null,
     recoveryReason: status.recoveryReason ?? null,
+    recoveryTargetOperationIds: status.recoveryTargetOperationIds
+      ? [...status.recoveryTargetOperationIds]
+      : null,
+    recoveryResultOperationId: status.recoveryResultOperationId ?? null,
     taskId: status.taskId ?? null,
     taskFile: status.taskFile ?? null,
     taskAction: status.taskAction ?? null,

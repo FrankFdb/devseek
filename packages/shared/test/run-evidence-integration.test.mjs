@@ -9,6 +9,8 @@ import {
   LEGACY_EVIDENCE_TRUST,
   PRODUCT_RUNTIME_OBSERVATION_TRUST,
   ProductRunEvidenceSession,
+  RUN_EVIDENCE_PROVIDER_RESPONSE_RETRY_RESOLUTION,
+  RUN_EVIDENCE_PROVIDER_RESPONSE_RETRY_TRIGGER,
   RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_RESOLUTION,
   RUN_EVIDENCE_TERMINAL_VALIDATION_FAILURE_RECOVERY_TRIGGER,
   createProductRunEvidenceAuthorityToken,
@@ -1222,6 +1224,142 @@ test('provider failure before verification settles only through a verified works
     session.settleAndSeal({ status: 'completed', idempotencyKey: 'settlement' }).head.sealed,
     true,
   );
+});
+
+test('provider response retry resolves only the exact failure observed before an accepted client response', t => {
+  const workspaceRoot = tempWorkspace(t);
+  const authority = authoritySet();
+  const session = ProductRunEvidenceSession.forWorkspace({
+    workspaceRoot,
+    runId: 'provider-response-retry-correlated',
+    surface: 'vscode',
+    authority: authority.ownerOpen,
+    openIfMissing: true,
+  });
+  for (const [index, [type, payload]] of [
+    ['provider.requested', observed('requested', {
+      operation_id: 'provider:failed',
+      boundary: 'vscode-provider-client',
+    })],
+    ['provider.failed', observed('failed', {
+      operation_id: 'provider:failed',
+      boundary: 'vscode-provider-client',
+    })],
+    ['recovery.detected', observed('detected', {
+      operation_id: 'recovery:provider-retry',
+      target_operation_ids: ['provider:failed'],
+      recovery_trigger: RUN_EVIDENCE_PROVIDER_RESPONSE_RETRY_TRIGGER,
+    })],
+    ['provider.requested', observed('requested', {
+      operation_id: 'provider:accepted',
+      boundary: 'vscode-provider-client',
+    })],
+    ['provider.completed', observed('completed', {
+      operation_id: 'provider:accepted',
+      boundary: 'vscode-provider-client',
+    })],
+    ['recovery.completed', observed('completed', {
+      operation_id: 'recovery:provider-retry',
+      resolves_operation_ids: ['provider:failed'],
+      recovery_trigger: RUN_EVIDENCE_PROVIDER_RESPONSE_RETRY_TRIGGER,
+      recovery_resolution: RUN_EVIDENCE_PROVIDER_RESPONSE_RETRY_RESOLUTION,
+      provider_result_operation_id: 'provider:accepted',
+    })],
+  ].entries()) {
+    session.record({ type, idempotencyKey: `provider-response-retry:${index}`, payload });
+  }
+
+  assert.equal(
+    session.settleAndSeal({ status: 'completed', idempotencyKey: 'settlement' }).head.sealed,
+    true,
+  );
+});
+
+test('provider response retry rejects uncorrelated targets, boundaries, and ordering', t => {
+  const attacks = [
+    {
+      runId: 'provider-response-retry-wrong-target',
+      beforeDetection: [],
+      targetOperationIds: ['provider:other'],
+      resultBoundary: 'vscode-provider-client',
+    },
+    {
+      runId: 'provider-response-retry-wrong-boundary',
+      beforeDetection: [],
+      targetOperationIds: ['provider:failed'],
+      resultBoundary: 'bridge-server',
+    },
+    {
+      runId: 'provider-response-retry-pre-detection-result',
+      beforeDetection: [
+        ['provider.requested', observed('requested', {
+          operation_id: 'provider:accepted',
+          boundary: 'vscode-provider-client',
+        })],
+        ['provider.completed', observed('completed', {
+          operation_id: 'provider:accepted',
+          boundary: 'vscode-provider-client',
+        })],
+      ],
+      targetOperationIds: ['provider:failed'],
+      resultBoundary: undefined,
+    },
+  ];
+
+  for (const attack of attacks) {
+    const workspaceRoot = tempWorkspace(t);
+    const authority = authoritySet();
+    const session = ProductRunEvidenceSession.forWorkspace({
+      workspaceRoot,
+      runId: attack.runId,
+      surface: 'vscode',
+      authority: authority.ownerOpen,
+      openIfMissing: true,
+    });
+    const prefix = [
+      ['provider.requested', observed('requested', {
+        operation_id: 'provider:failed',
+        boundary: 'vscode-provider-client',
+      })],
+      ['provider.failed', observed('failed', {
+        operation_id: 'provider:failed',
+        boundary: 'vscode-provider-client',
+      })],
+      ...attack.beforeDetection,
+      ['recovery.detected', observed('detected', {
+        operation_id: 'recovery:provider-retry',
+        target_operation_ids: ['provider:failed'],
+        recovery_trigger: RUN_EVIDENCE_PROVIDER_RESPONSE_RETRY_TRIGGER,
+      })],
+      ...(attack.resultBoundary ? [
+        ['provider.requested', observed('requested', {
+          operation_id: 'provider:accepted',
+          boundary: attack.resultBoundary,
+        })],
+        ['provider.completed', observed('completed', {
+          operation_id: 'provider:accepted',
+          boundary: attack.resultBoundary,
+        })],
+      ] : []),
+    ];
+    for (const [index, [type, payload]] of prefix.entries()) {
+      session.record({ type, idempotencyKey: `${attack.runId}:prefix:${index}`, payload });
+    }
+    const before = session.head();
+
+    assert.throws(() => session.record({
+      type: 'recovery.completed',
+      idempotencyKey: `${attack.runId}:recovery-completed`,
+      payload: observed('completed', {
+        operation_id: 'recovery:provider-retry',
+        resolves_operation_ids: attack.targetOperationIds,
+        recovery_trigger: RUN_EVIDENCE_PROVIDER_RESPONSE_RETRY_TRIGGER,
+        recovery_resolution: RUN_EVIDENCE_PROVIDER_RESPONSE_RETRY_RESOLUTION,
+        provider_result_operation_id: 'provider:accepted',
+      }),
+    }), error => error?.code === 'RUN_SEMANTIC_INVALID');
+    assert.deepEqual(session.head(), before);
+  }
 });
 
 test('provider failure recovery cannot claim verification without a committed workspace result', t => {

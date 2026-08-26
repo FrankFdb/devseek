@@ -47,7 +47,7 @@ export async function chatWithMessages(
   traceEvidenceParticipantToken?: string,
   onTraceEvidenceError?: (error: unknown) => void,
   normalization?: ProviderNormalizationBoundary,
-): Promise<{ text: string; tools: CodingToolCall[] }> {
+): Promise<{ text: string; tools: CodingToolCall[]; providerOperationId?: string }> {
   return invokeLoopChat({
     messages,
     evidencePrompt: JSON.stringify(messages),
@@ -75,7 +75,7 @@ export async function chatViaProvider(
   traceEvidenceParticipantToken?: string,
   onTraceEvidenceError?: (error: unknown) => void,
   normalization?: ProviderNormalizationBoundary,
-): Promise<{ text: string; tools: CodingToolCall[] }> {
+): Promise<{ text: string; tools: CodingToolCall[]; providerOperationId?: string }> {
   const messages: ChatMessage[] = [
     ...(history ?? []),
     { role: 'user', content: prompt },
@@ -95,10 +95,15 @@ export async function chatViaProvider(
   });
 }
 
-async function invokeLoopChat(input: LoopChatInput): Promise<{ text: string; tools: CodingToolCall[] }> {
+async function invokeLoopChat(input: LoopChatInput): Promise<{
+  text: string;
+  tools: CodingToolCall[];
+  providerOperationId?: string;
+}> {
   const provider = getActiveProvider();
   const samplingId = crypto.randomUUID();
   const promptBudget = measureProviderMessagePrompt(input.messages);
+  let providerOperationId: string | undefined;
   const text = await providerInvocationRetry.execute({
     providerType: provider.type,
     signal: input.signal,
@@ -118,6 +123,7 @@ async function invokeLoopChat(input: LoopChatInput): Promise<{ text: string; too
         transportAttempt: attempt,
         promptBudget,
         onEvidenceError: input.onTraceEvidenceError,
+        onCompleted: operationId => { providerOperationId = operationId; },
         invoke: observation => provider.chat({
           messages: input.messages,
           stream: true,
@@ -151,7 +157,7 @@ async function invokeLoopChat(input: LoopChatInput): Promise<{ text: string; too
   const normalizedText = normalized.event.type === 'message' ? normalized.event.content : text;
   const tools = [...normalized.tools];
   assertProviderTurnIntegrity(normalizedText, { toolCallCount: tools.length });
-  return { text: normalizedText, tools };
+  return { text: normalizedText, tools, ...(providerOperationId ? { providerOperationId } : {}) };
 }
 
 function traceProviderRetry(input: LoopChatInput, event: ProviderInvocationRetryEvent, samplingId: string): void {

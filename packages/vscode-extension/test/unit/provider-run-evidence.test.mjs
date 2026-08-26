@@ -20,6 +20,7 @@ const {
   BRIDGE_PROVIDER_FAILURE_EVIDENCE_GAP,
   BridgeProviderFailureEvidenceGapError,
   invokeProviderWithRunEvidence,
+  providerRunEvidenceOperationId,
 } = req(bundlePath);
 const {
   FileSystemRunEvidenceLedger,
@@ -43,6 +44,7 @@ test('provider wrapper appends direct provider request and completion to the own
       authority: { role: 'owner', token: ownerToken, participantToken },
       openIfMissing: true,
     });
+    let completedOperationId;
     const response = await invokeProviderWithRunEvidence({
       request: { prompt, traceRunId: 'provider-success', traceWorkspaceRoot: workspaceRoot, traceEvidenceParticipantToken: participantToken },
       providerType: 'deepseek-api',
@@ -50,12 +52,14 @@ test('provider wrapper appends direct provider request and completion to the own
       transportAttempt: 2,
       now: () => ticks.shift(),
       newOperationId: () => 'provider-op-1',
+      onCompleted: operationId => { completedOperationId = operationId; },
       invoke: async observation => {
         observation.observeOutput('首');
         return 'secret response';
       },
     });
     assert.equal(response, 'secret response');
+    assert.equal(completedOperationId, 'provider-op-1');
     owner.settleAndSeal({ status: 'completed', idempotencyKey: 'settled' });
 
     const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
@@ -79,6 +83,42 @@ test('provider wrapper appends direct provider request and completion to the own
   }
 });
 
+test('provider completion observers cannot rewrite a completed provider fact as failure', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-provider-evidence-'));
+  try {
+    const ownerToken = createProductRunEvidenceAuthorityToken();
+    const participantToken = createProductRunEvidenceAuthorityToken();
+    ProductRunEvidenceSession.forWorkspace({
+      workspaceRoot,
+      runId: 'provider-completion-observer-failure',
+      surface: 'vscode',
+      authority: { role: 'owner', token: ownerToken, participantToken },
+      openIfMissing: true,
+    });
+    await assert.rejects(invokeProviderWithRunEvidence({
+      request: {
+        prompt: 'hello',
+        traceRunId: 'provider-completion-observer-failure',
+        traceWorkspaceRoot: workspaceRoot,
+        traceEvidenceParticipantToken: participantToken,
+      },
+      providerType: 'vscode-lm',
+      newOperationId: () => 'provider-op-observed',
+      onCompleted: () => { throw new Error('observer failed'); },
+      invoke: async () => 'accepted response',
+    }), /observer failed/);
+
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    assert.deepEqual(ledger.read('provider-completion-observer-failure').map(event => event.type), [
+      'run.opened',
+      'provider.requested',
+      'provider.completed',
+    ]);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('provider wrapper records failure and preserves the original exception', async () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-provider-evidence-'));
   try {
@@ -91,14 +131,19 @@ test('provider wrapper records failure and preserves the original exception', as
       authority: { role: 'owner', token: ownerToken, participantToken },
       openIfMissing: true,
     });
+    const providerError = new Error('provider exploded');
     await assert.rejects(
       invokeProviderWithRunEvidence({
         request: { prompt: 'hello', traceRunId: 'provider-failure', traceWorkspaceRoot: workspaceRoot, traceEvidenceParticipantToken: participantToken },
         providerType: 'vscode-lm',
         newOperationId: () => 'provider-op-2',
-        invoke: async () => { throw new Error('provider exploded'); },
+        invoke: async () => { throw providerError; },
       }),
-      /provider exploded/,
+      error => {
+        assert.equal(error, providerError);
+        assert.equal(providerRunEvidenceOperationId(error), 'provider-op-2');
+        return true;
+      },
     );
     const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
     assert.deepEqual(ledger.read('provider-failure').map(event => event.type), [

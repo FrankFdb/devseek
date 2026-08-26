@@ -33,6 +33,10 @@ export const RUN_EVIDENCE_LATE_PROVIDER_FAILURE_RECOVERY_TRIGGER =
   'provider-failure-after-verified-local-result' as const;
 export const RUN_EVIDENCE_LATE_PROVIDER_FAILURE_RECOVERY_RESOLUTION =
   'provider-failure-superseded-by-verified-local-result' as const;
+export const RUN_EVIDENCE_PROVIDER_RESPONSE_RETRY_TRIGGER =
+  'provider-response-retry' as const;
+export const RUN_EVIDENCE_PROVIDER_RESPONSE_RETRY_RESOLUTION =
+  'accepted-provider-response' as const;
 export const RUN_EVIDENCE_AUTHORITY_PROTOCOL = 'devseek.product-run-evidence-authority/v1' as const;
 export const RUN_EVIDENCE_AUTHORITY_PAYLOAD_KEY = '_devseek_run_evidence_authority' as const;
 export const RUN_EVIDENCE_AUTHORITY_TOKEN_PREFIX = DEVSEEK_AUTHORITY_CAPABILITY_PREFIX;
