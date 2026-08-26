@@ -42,6 +42,11 @@ export type RequirementReviewNoToolRecovery =
   | { kind: 'retry'; feedback: string }
   | { kind: 'stop'; reason: string };
 
+export interface RequirementReviewCompletionObligation {
+  readonly kind: 'final-source-read' | 'review-settlement' | 'source-repair' | 'review-evidence';
+  readonly blocker: string;
+}
+
 interface PendingRequirementReview {
   changedSourcePaths: string[];
   reviewSourcePaths: string[];
@@ -225,19 +230,35 @@ export class RequirementReviewLedger {
     return undefined;
   }
 
-  completionBlocker(): string | undefined {
+  completionObligation(): RequirementReviewCompletionObligation | undefined {
     if (!this.pending) return undefined;
     if (!this.pending.freshSourceEvidenceReady) {
-      return `独立需求审查未完成：缺少最终源码 read_file 复核（${this.pending.changedSourcePaths.join('、')}）。`;
+      return {
+        kind: 'final-source-read',
+        blocker: `独立需求审查未完成：缺少最终源码 read_file 复核（${this.pending.changedSourcePaths.join('、')}）。`,
+      };
     }
     if (!this.pending.decision) {
-      return '独立需求审查未完成：最终源码已读取，但隔离审查者尚未形成结论。';
+      return {
+        kind: 'review-settlement',
+        blocker: '独立需求审查未完成：最终源码已读取，但隔离审查者尚未形成结论。',
+      };
     }
     if (this.pending.decision.status === 'passed') return undefined;
     if (this.pending.decision.status === 'failed') {
-      return `独立需求审查未通过：${this.pending.decision.explanation}`;
+      return {
+        kind: 'source-repair',
+        blocker: `独立需求审查未通过：${this.pending.decision.explanation}`,
+      };
     }
-    return `独立需求审查证据不足：${this.pending.decision.explanation}`;
+    return {
+      kind: 'review-evidence',
+      blocker: `独立需求审查证据不足：${this.pending.decision.explanation}`,
+    };
+  }
+
+  completionBlocker(): string | undefined {
+    return this.completionObligation()?.blocker;
   }
 
   recoverNoToolCompletion(consecutiveRound: number): RequirementReviewNoToolRecovery | undefined {

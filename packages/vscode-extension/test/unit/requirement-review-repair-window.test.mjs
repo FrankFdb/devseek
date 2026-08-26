@@ -18,20 +18,17 @@ const {
   renewRequirementReviewRepairWindow,
   updateRequirementReviewRepairWindow,
 } = createRequire(import.meta.url)(bundlePath);
-const failedReview = '【独立需求审查：未通过】\nA distinct final-source defect remains.';
-
 test('each failed review wave renews a bounded local repair cohort', () => {
-  assert.equal(updateRequirementReviewRepairWindow(0, failedReview).graceRounds, 6);
-  assert.equal(updateRequirementReviewRepairWindow(6, failedReview).graceRounds, 12);
-  assert.equal(updateRequirementReviewRepairWindow(12, failedReview).graceRounds, 18);
-  assert.equal(updateRequirementReviewRepairWindow(18, failedReview).graceRounds, 24);
-  assert.equal(updateRequirementReviewRepairWindow(24, failedReview).graceRounds, 24);
+  assert.equal(updateRequirementReviewRepairWindow(0, true).graceRounds, 6);
+  assert.equal(updateRequirementReviewRepairWindow(6, true).graceRounds, 12);
+  assert.equal(updateRequirementReviewRepairWindow(12, true).graceRounds, 18);
+  assert.equal(updateRequirementReviewRepairWindow(18, true).graceRounds, 24);
+  assert.equal(updateRequirementReviewRepairWindow(24, true).graceRounds, 24);
 });
 
-test('non-finding review feedback opens one cohort without repeatedly growing it', () => {
-  const evidenceFeedback = '【系统反馈：完成前需求覆盖复核】';
-  assert.equal(updateRequirementReviewRepairWindow(0, evidenceFeedback).graceRounds, 6);
-  assert.equal(updateRequirementReviewRepairWindow(6, evidenceFeedback).graceRounds, 6);
+test('ordinary and repeated failed-review feedback opens one cohort without growing it', () => {
+  assert.equal(updateRequirementReviewRepairWindow(0, false).graceRounds, 6);
+  assert.equal(updateRequirementReviewRepairWindow(6, false).graceRounds, 6);
 });
 
 test('accepted review repair progress renews a moving lease inside the hard cap', () => {
@@ -39,7 +36,8 @@ test('accepted review repair progress renews a moving lease inside the hard cap'
     currentGraceRounds: 6,
     baseRoundLimit: 55,
     roundCount: 60,
-    concreteProgress: true,
+    acceptedSourceMutation: true,
+    postMutationValidation: false,
     reviewPending: true,
   });
   assert.equal(graceRounds, 11);
@@ -48,7 +46,8 @@ test('accepted review repair progress renews a moving lease inside the hard cap'
     currentGraceRounds: graceRounds,
     baseRoundLimit: 55,
     roundCount: 65,
-    concreteProgress: true,
+    acceptedSourceMutation: false,
+    postMutationValidation: true,
     reviewPending: true,
   });
   assert.equal(graceRounds, 16);
@@ -57,12 +56,13 @@ test('accepted review repair progress renews a moving lease inside the hard cap'
     currentGraceRounds: 23,
     baseRoundLimit: 55,
     roundCount: 78,
-    concreteProgress: true,
+    acceptedSourceMutation: true,
+    postMutationValidation: false,
     reviewPending: true,
   }), 24);
 });
 
-test('review repair lease ignores prose, stalled actions, and settled reviews', () => {
+test('review repair lease ignores read-only investigation, stalled actions, and settled reviews', () => {
   const base = {
     currentGraceRounds: 6,
     baseRoundLimit: 55,
@@ -70,12 +70,14 @@ test('review repair lease ignores prose, stalled actions, and settled reviews', 
   };
   assert.equal(renewRequirementReviewRepairWindow({
     ...base,
-    concreteProgress: false,
+    acceptedSourceMutation: false,
+    postMutationValidation: false,
     reviewPending: true,
   }), 6);
   assert.equal(renewRequirementReviewRepairWindow({
     ...base,
-    concreteProgress: true,
+    acceptedSourceMutation: true,
+    postMutationValidation: false,
     reviewPending: false,
   }), 6);
 });

@@ -30,6 +30,7 @@ export interface DeliveryConvergenceObservation {
   readonly expectation: DeliveryConvergenceExpectation;
   readonly deliveryProgressEpoch: number;
   readonly deliveryPending: boolean;
+  readonly actionableRepairPending?: boolean;
   readonly gatheredEvidenceCount: number;
   readonly investigationActivity: boolean;
 }
@@ -77,8 +78,9 @@ export class DeliveryConvergenceLedger {
     const evidenceBeforeCorrection = input.expectation === 'mutation'
       ? MUTATION_EVIDENCE_BEFORE_CORRECTION
       : UNCLASSIFIED_EVIDENCE_BEFORE_CORRECTION;
-    if (this.investigationRounds < roundsBeforeCorrection
-      || input.gatheredEvidenceCount < evidenceBeforeCorrection) {
+    const deliveryEvidenceReady = input.actionableRepairPending === true
+      || input.gatheredEvidenceCount >= evidenceBeforeCorrection;
+    if (this.investigationRounds < roundsBeforeCorrection || !deliveryEvidenceReady) {
       return CONTINUE_RESULT;
     }
 
@@ -100,7 +102,9 @@ export class DeliveryConvergenceLedger {
         ? '项目证据已收集，正在切换到交付落盘'
         : '项目证据已收集，正在要求形成交付',
       statusDetail: mutationExpected
-        ? `已读取、搜索或验证 ${input.gatheredEvidenceCount} 项项目证据，但当前修改阶段尚无新写入。DevSeek 正在要求模型停止横向调查并落实一个最小修改。`
+        ? input.actionableRepairPending
+          ? '独立审查已经给出可执行反例，但当前修复阶段尚无新写入。DevSeek 正在要求模型停止横向调查并落实定点修改。'
+          : `已读取、搜索或验证 ${input.gatheredEvidenceCount} 项项目证据，但当前修改阶段尚无新写入。DevSeek 正在要求模型停止横向调查并落实一个最小修改。`
         : `已读取、搜索或验证 ${input.gatheredEvidenceCount} 项项目证据，但模型仍未形成可结算交付。DevSeek 正在要求模型依据原始需求选择实施或给出结论。`,
       activityLabel: mutationExpected
         ? '项目证据已足够，切换到交付落盘'
@@ -123,7 +127,9 @@ function buildMutationDeliveryFeedback(
 ): string {
   return [
     '【系统反馈】项目调查证据已足够，必须从调查阶段切换到交付阶段。',
-    `当前已读取/搜索/验证 ${input.gatheredEvidenceCount} 项证据，本交付阶段连续 ${investigationRounds} 个工具轮没有新写盘进展。`,
+    input.actionableRepairPending
+      ? `独立审查已经给出可执行反例，本修复阶段连续 ${investigationRounds} 个工具轮没有新写盘进展。`
+      : `当前已读取/搜索/验证 ${input.gatheredEvidenceCount} 项证据，本交付阶段连续 ${investigationRounds} 个工具轮没有新写盘进展。`,
     '下一轮不要继续横向 grep/list/read 或重复验证；请提交一个能推进交付的最小修改。既有文件使用 replace_in_file，只有确认目标不存在时才使用 create_file，随后读取并运行适用验证。',
     '如果仍缺少一个关键事实，只允许读取一个精确文件或行范围，并在紧接着的工具轮中落实修改。',
   ].join('\n');

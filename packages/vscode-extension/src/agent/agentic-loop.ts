@@ -20,6 +20,7 @@ import {
 } from '../intent/safety-intent';
 import {
   describeBlockingTerminalFailure,
+  isCodeArtifactPath,
   type TerminalEvidence,
   type WrittenFileEvidence,
 } from './completion-evidence';
@@ -970,15 +971,16 @@ export async function runAgenticLoop(
     const evidenceAfterTools = assessCurrentEvidenceClosure();
     const missingAfterTools = evidenceAfterTools.missingEvidence;
     const blockingFailureAfterTools = evidenceAfterTools.blockingTerminalFailure;
+    const requirementReviewObligationAfterTools = requirementReview.completionObligation();
+    const requirementReviewSourceRepairPending = requirementReviewObligationAfterTools?.kind === 'source-repair';
     lastMissingEvidence = missingAfterTools;
     requirementReviewRepairGraceRounds = renewRequirementReviewRepairWindow({
       currentGraceRounds: requirementReviewRepairGraceRounds,
       baseRoundLimit: maxAgenticRounds,
       roundCount,
-      concreteProgress: (loopRes.readFiles?.length ?? 0) > 0
-        || (loopRes.writtenFiles?.length ?? 0) > 0
-        || roundHasValidationTerminalProgress,
-      reviewPending: Boolean(requirementReview.completionBlocker()),
+      acceptedSourceMutation: loopRes.writtenFiles?.some(file => isCodeArtifactPath(file.path)) === true,
+      postMutationValidation: progressEpoch > 0 && roundHasValidationTerminalProgress,
+      reviewPending: Boolean(requirementReviewObligationAfterTools),
     });
     executionConvergenceRoundLimit = renewExecutionConvergenceRoundLimit({
       currentRoundLimit: executionConvergenceRoundLimit,
@@ -991,15 +993,18 @@ export async function runAgenticLoop(
     });
     const gatheredEvidenceCount = allReadEvidencePaths.size + allEvidenceRefs.length;
     const deliveryExpectation = resolveDeliveryConvergenceExpectation({
-      mutationRequired: promptRequiresFileChange,
+      mutationRequired: promptRequiresFileChange || requirementReviewSourceRepairPending,
       modelLedUnclassified: writeAuthority.canonicalSemanticContract.signals.includes('model-led-unclassified-turn'),
     });
     const deliveryConvergenceResult = deliveryConvergence.observe({
       expectation: deliveryExpectation,
       deliveryProgressEpoch: progressEpoch,
       deliveryPending: deliveryExpectation === 'unclassified'
-        ? !loopRes.taskComplete && !loopRes.allTodosCompleted
-        : missingAfterTools.length > 0 || Boolean(blockingFailureAfterTools),
+        ? (!loopRes.taskComplete && !loopRes.allTodosCompleted) || requirementReviewSourceRepairPending
+        : missingAfterTools.length > 0
+          || Boolean(blockingFailureAfterTools)
+          || requirementReviewSourceRepairPending,
+      actionableRepairPending: requirementReviewSourceRepairPending,
       gatheredEvidenceCount,
       investigationActivity: roundHasInvestigationActivity,
     });
@@ -1030,7 +1035,10 @@ export async function runAgenticLoop(
       if (reviewOutcome.kind === 'feedback') {
         reviewFeedback = reviewOutcome.feedback;
         noToolRounds = 0;
-        const repairWindow = updateRequirementReviewRepairWindow(requirementReviewRepairGraceRounds, reviewFeedback);
+        const repairWindow = updateRequirementReviewRepairWindow(
+          requirementReviewRepairGraceRounds,
+          reviewOutcome.failedReviewCohortStarted,
+        );
         requirementReviewRepairGraceRounds = repairWindow.graceRounds;
         if (repairWindow.failureStatus) {
           await emitAgenticCorrectionStatus(...repairWindow.failureStatus);

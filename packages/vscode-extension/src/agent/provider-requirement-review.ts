@@ -9,6 +9,7 @@ import {
 import { RequirementReviewFindingAdjudicator } from './requirement-review-finding-adjudicator';
 import {
   RequirementReviewLedger,
+  type RequirementReviewCompletionObligation,
   type RequirementReviewInput,
   type RequirementReviewNoToolRecovery,
 } from './requirement-review-ledger';
@@ -31,13 +32,18 @@ export interface ProviderRequirementReviewInput {
 
 export interface ProviderRequirementReviewService {
   request(input: RequirementReviewInput): Promise<ProviderRequirementReviewOutcome>;
+  completionObligation(): RequirementReviewCompletionObligation | undefined;
   completionBlocker(): string | undefined;
   recoverNoToolCompletion(consecutiveRound: number): RequirementReviewNoToolRecovery | undefined;
 }
 
 export type ProviderRequirementReviewOutcome =
   | { readonly kind: 'not-applicable' }
-  | { readonly kind: 'feedback'; readonly feedback: string }
+  | {
+    readonly kind: 'feedback';
+    readonly feedback: string;
+    readonly failedReviewCohortStarted: boolean;
+  }
   | { readonly kind: 'settled' };
 
 /** Composes requirement-review state with a fresh, read-only provider session. */
@@ -95,7 +101,11 @@ export function createProviderRequirementReviewService(
       const candidate = ledger.takeIndependentReviewCandidate();
       if (!candidate) {
         return sourceFeedback
-          ? { kind: 'feedback', feedback: sourceFeedback }
+          ? {
+            kind: 'feedback',
+            feedback: sourceFeedback,
+            failedReviewCohortStarted: false,
+          }
           : { kind: 'settled' };
       }
       const candidateInput = {
@@ -112,9 +122,14 @@ export function createProviderRequirementReviewService(
       });
       const feedback = ledger.settleIndependentReview(decision);
       return feedback
-        ? { kind: 'feedback', feedback }
+        ? {
+          kind: 'feedback',
+          feedback,
+          failedReviewCohortStarted: decision.status === 'failed',
+        }
         : { kind: 'settled' };
     },
+    completionObligation: () => ledger.completionObligation(),
     completionBlocker: () => ledger.completionBlocker(),
     recoverNoToolCompletion: consecutiveRound => ledger.recoverNoToolCompletion(consecutiveRound),
   };

@@ -250,6 +250,10 @@ test('failed independent review blocks completion until repaired source is reval
   assert.match(failed, /全部成立的反例都取得针对性验证后，再运行项目既有验证作为大 case 回归/);
   assert.match(ledger.beforeNoToolCompletion(), /必须根据上述独立结论修复生产源码/);
   assert.match(ledger.completionBlocker(), /独立需求审查未通过：A used identity can be submitted again/);
+  assert.deepEqual(ledger.completionObligation(), {
+    kind: 'source-repair',
+    blocker: '独立需求审查未通过：A used identity can be submitted again.',
+  });
 
   const repairedWrite = sourceWrite('src/order_book.cpp');
   assert.match(ledger.request({
@@ -257,6 +261,7 @@ test('failed independent review blocks completion until repaired source is reval
     writtenFiles: [firstWrite, repairedWrite],
     roundReadFiles: [],
   }), /完成前需求覆盖复核/);
+  assert.equal(ledger.completionObligation()?.kind, 'final-source-read');
 });
 
 test('failed independent review renders a domain-neutral counterexample protocol', () => {

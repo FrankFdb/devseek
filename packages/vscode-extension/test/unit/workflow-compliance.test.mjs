@@ -2488,8 +2488,13 @@ test('Architecture: validated source changes require fresh source review before 
   );
   assertContains(
     agenticLoop,
-    'updateRequirementReviewRepairWindow(requirementReviewRepairGraceRounds, reviewFeedback)',
+    'reviewOutcome.failedReviewCohortStarted',
     'agent loop must delegate requirement-review repair budgeting to the review repair window owner',
+  );
+  assertContains(
+    providerReview,
+    "failedReviewCohortStarted: decision.status === 'failed'",
+    'only a fresh independent-review failure may open another review repair cohort',
   );
   assertContains(
     agenticLoop,
@@ -2498,13 +2503,23 @@ test('Architecture: validated source changes require fresh source review before 
   );
   assertContains(
     agenticLoop,
-    'reviewPending: Boolean(requirementReview.completionBlocker())',
-    'ordinary execution progress must not consume or renew requirement-review repair capacity',
+    'acceptedSourceMutation: loopRes.writtenFiles?.some(file => isCodeArtifactPath(file.path)) === true',
+    'only accepted source mutations may renew requirement-review repair capacity',
+  );
+  assertContains(
+    agenticLoop,
+    'postMutationValidation: progressEpoch > 0 && roundHasValidationTerminalProgress',
+    'only validation after a source mutation may renew requirement-review repair capacity',
   );
   assertContains(
     reviewRepairWindow,
-    '!input.concreteProgress || !input.reviewPending',
-    'review repair renewal must require both an unresolved review and observable progress',
+    'input.acceptedSourceMutation || input.postMutationValidation',
+    'review repair renewal must reject read-only investigation as repair progress',
+  );
+  assertContains(
+    agenticLoop,
+    'actionableRepairPending: requirementReviewSourceRepairPending',
+    'failed independent review must enter bounded delivery convergence',
   );
   assertContains(
     agenticLoop,

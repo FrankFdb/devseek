@@ -10,22 +10,22 @@ export interface RequirementReviewRepairWindowRenewal {
   currentGraceRounds: number;
   baseRoundLimit: number;
   roundCount: number;
-  concreteProgress: boolean;
+  acceptedSourceMutation: boolean;
+  postMutationValidation: boolean;
   reviewPending: boolean;
 }
 
 /** Owns the bounded local-repair budget for failed final-source reviews. */
 export function updateRequirementReviewRepairWindow(
   currentGraceRounds: number,
-  reviewFeedback: string,
+  failedReviewCohortStarted: boolean,
 ): RequirementReviewRepairWindowUpdate {
-  const failedReview = /【独立需求审查：未通过】/.test(reviewFeedback);
-  const nextGraceRounds = failedReview
+  const nextGraceRounds = failedReviewCohortStarted
     ? currentGraceRounds + AGENTIC_REQUIREMENT_REVIEW_REPAIR_GRACE_ROUNDS
     : Math.max(currentGraceRounds, AGENTIC_REQUIREMENT_REVIEW_REPAIR_GRACE_ROUNDS);
   return {
     graceRounds: Math.min(nextGraceRounds, AGENTIC_REQUIREMENT_REVIEW_MAX_GRACE_ROUNDS),
-    ...(failedReview ? {
+    ...(failedReviewCohortStarted ? {
       failureStatus: [
         '独立需求审查发现缺陷，进入定点修复',
         '公开验证已经通过，但最终源码仍有需求级反例。DevSeek 已切换到局部修复窗口：核实完整 finding 队列，合并修复共同责任边界并回归大 case。',
@@ -39,7 +39,8 @@ export function updateRequirementReviewRepairWindow(
 export function renewRequirementReviewRepairWindow(
   input: RequirementReviewRepairWindowRenewal,
 ): number {
-  if (!input.concreteProgress || !input.reviewPending) return input.currentGraceRounds;
+  const repairProgress = input.acceptedSourceMutation || input.postMutationValidation;
+  if (!repairProgress || !input.reviewPending) return input.currentGraceRounds;
   const requiredGraceRounds = Math.max(
     0,
     input.roundCount + AGENTIC_REQUIREMENT_REVIEW_REPAIR_GRACE_ROUNDS - input.baseRoundLimit,

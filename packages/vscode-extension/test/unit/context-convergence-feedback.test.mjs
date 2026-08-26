@@ -88,6 +88,26 @@ test('delivery convergence ignores non-investigation turns and opens a new cohor
   }).kind, 'correct');
 });
 
+test('actionable review repair corrects read-only drift without requiring broad evidence', () => {
+  const ledger = new DeliveryConvergenceLedger();
+  const reviewRepair = {
+    ...unresolvedMutation,
+    gatheredEvidenceCount: 1,
+    actionableRepairPending: true,
+  };
+
+  assert.equal(ledger.observe(reviewRepair).kind, 'continue');
+  assert.equal(ledger.observe(reviewRepair).kind, 'continue');
+  const correction = ledger.observe(reviewRepair);
+  assert.equal(correction.kind, 'correct');
+  assert.match(correction.feedback, /独立审查已经给出可执行反例/u);
+
+  assert.equal(ledger.observe({
+    ...reviewRepair,
+    deliveryProgressEpoch: 1,
+  }).kind, 'continue');
+});
+
 test('explicit read-only work and insufficient evidence never acquire delivery pressure', () => {
   const ledger = new DeliveryConvergenceLedger();
   for (let round = 0; round < 6; round++) {
