@@ -2685,6 +2685,11 @@ test('Architecture: validated source changes require fresh source review before 
     'normalizeFindings',
     'review settlement must validate every model finding structurally',
   );
+  assertDoesNotContain(
+    reviewContract,
+    'raw.requirement_quote !== check.requirement.quote',
+    'review findings must bind through the canonical requirement check instead of duplicating quote authority',
+  );
   assertContains(
     reviewContract,
     'snapshots.find(candidate => candidate.absolutePath === absolutePath)',
@@ -2702,6 +2707,12 @@ test('Architecture: validated source changes require fresh source review before 
     src('src/agent/requirement-review-ledger.ts'),
     'decision.hostClearable',
     'requirement review ledger must not locally clear provider-transcript-polluted review output',
+  );
+  const completionAdapter = src('src/app/coding-completion-adapter.ts');
+  assertContains(
+    completionAdapter,
+    'isVerificationFailure(input.failedReason)',
+    'historical verification recovery must only settle a current verification-class failure',
   );
   const structuralCompileFailure = src('src/app/structural-compile-failure.ts');
   assertContains(

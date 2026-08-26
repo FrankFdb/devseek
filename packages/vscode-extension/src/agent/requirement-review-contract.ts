@@ -32,7 +32,6 @@ interface RawRequirementCheck {
 
 interface RawReviewFinding {
   requirement_id?: unknown;
-  requirement_quote?: unknown;
   title?: unknown;
   observed_behavior?: unknown;
   expected_behavior?: unknown;
@@ -69,7 +68,6 @@ export const REQUIREMENT_REVIEW_SCHEMA = [
   '  }],',
   '  "findings": [{',
   '    "requirement_id": "R1",',
-  '    "requirement_quote": "exact quote from the supplied inventory",',
   '    "title": "imperative finding title, <= 80 chars",',
   '    "observed_behavior": "caller-observable behavior reached in final source",',
   '    "expected_behavior": "behavior required by the quoted requirement",',
@@ -245,9 +243,7 @@ function normalizeFinding(
   if (!raw || typeof raw !== 'object') return undefined;
   const requirementId = typeof raw.requirement_id === 'string' ? raw.requirement_id : '';
   const check = checks.get(requirementId);
-  if (!check
-    || check.status !== 'violated'
-    || raw.requirement_quote !== check.requirement.quote) {
+  if (!check || check.status !== 'violated') {
     return undefined;
   }
 

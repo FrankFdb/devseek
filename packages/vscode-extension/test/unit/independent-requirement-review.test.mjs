@@ -51,7 +51,6 @@ function check(prompt, status = 'satisfied', overrides = {}) {
 function finding(source, prompt, overrides = {}) {
   return {
     requirement_id: 'R1',
-    requirement_quote: prompt.trim(),
     title: 'Return the required value',
     observed_behavior: 'Calling the exported function returns 1.',
     expected_behavior: 'The request requires the exported function to return 2.',
@@ -227,13 +226,26 @@ test('requires findings to correspond exactly to violated checks', () => {
     failBody(source, prompt, {
       findings: [finding(source, prompt, { requirement_id: 'R2' })],
     }),
-    failBody(source, prompt, {
-      findings: [finding(source, prompt, { requirement_quote: 'Return 3.' })],
-    }),
   ];
   for (const body of cases) {
     assert.equal(parseIndependentReviewResponse(response(body), [source], prompt).status, 'indeterminate');
   }
+});
+
+test('binds each finding to the canonical requirement check without a duplicate quote', () => {
+  const source = snapshot();
+  const prompt = 'Build the lesson. The fraction view must show the complete selected wedge.';
+  const body = failBody(source, prompt, {
+    findings: [finding(source, prompt, {
+      requirement_quote: 'The fraction view must show the complete selected wedge.',
+    })],
+  });
+
+  const decision = parseIndependentReviewResponse(response(body), [source], prompt);
+
+  assert.equal(decision.status, 'failed');
+  assert.equal(decision.findings[0].requirementId, 'R1');
+  assert.equal(decision.findings[0].requirement, prompt);
 });
 
 test('validates finding evidence fields, priority, confidence, and title length', () => {
@@ -309,7 +321,7 @@ test('review prompt delegates semantics to the model and keeps raw multilingual 
   assert.match(messages[0].content, /alternate default value/);
   assert.match(messages[0].content, /do not choose one and fail the others/);
   assert.match(messages[0].content, /blank, placeholder, misleading mathematical result/);
-  assert.match(messages[0].content, /directly traceable to words in the exact requirement/);
+  assert.match(messages[0].content, /directly traceable to words in the requirement bound to that inventory ID/);
   assert.doesNotMatch(messages[0].content, /order book|best bid|FIFO\/LIFO|std::invalid_argument/i);
   assert.match(messages[1].content, /MODEL_LATEST_OK/);
   assert.match(messages[1].content, new RegExp(JSON.stringify(prompt).slice(1, -1).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));

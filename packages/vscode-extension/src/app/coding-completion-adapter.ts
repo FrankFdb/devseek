@@ -125,11 +125,13 @@ function shouldClearRecoveredTaskFailure(input: {
   if (input.deniedEffectRefs.length > 0) return false;
   if (input.failedArtifactRefs.length > 0 || input.uncoveredChangedPaths.length > 0) return false;
   if (input.changedPaths.length === 0) return false;
-  const policyDeniedFailureWasRecovered = input.neutralPolicyDeniedRefs.length > 0;
+  const policyDeniedFailureWasRecovered = input.neutralPolicyDeniedRefs.length > 0
+    && (!hasFailureReason(input.failedReason) || isDeniedToolFailure(input.failedReason));
   const deniedToolFailureWasRecovered = isDeniedToolFailure(input.failedReason)
     && input.recoveredDeniedRefs.length > 0;
   const legacyEvidenceFailureWasRecovered = isRecoverableLegacyEvidenceFailure(input.failedReason);
-  const verificationFailureWasRecovered = hasRecoveredVerificationFailure(input.verifications, input.toolExecutions);
+  const verificationFailureWasRecovered = isVerificationFailure(input.failedReason)
+    && hasRecoveredVerificationFailure(input.verifications, input.toolExecutions);
   if (!policyDeniedFailureWasRecovered
     && !deniedToolFailureWasRecovered
     && !legacyEvidenceFailureWasRecovered
@@ -143,6 +145,15 @@ function shouldClearRecoveredTaskFailure(input: {
 function isDeniedToolFailure(reason: string | undefined): boolean {
   return /(?:工具\s+\S+\s+未获授权|tool\b.*\b(?:denied|not authorized)|authorization denied)/iu
     .test(String(reason || ''));
+}
+
+function isVerificationFailure(reason: string | undefined): boolean {
+  return /(?:\b(?:validation|verification)\b.*\bfailed\b|\bfailed\b.*\b(?:validation|verification)\b|(?:编译|测试|运行|验证)(?:失败|未通过)|(?:失败|未通过).*(?:编译|测试|运行|验证))/iu
+    .test(String(reason || ''));
+}
+
+function hasFailureReason(reason: string | undefined): boolean {
+  return Boolean(reason?.trim());
 }
 
 function hasRecoveredVerificationFailure(

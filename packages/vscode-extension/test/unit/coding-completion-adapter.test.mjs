@@ -355,6 +355,50 @@ test('VS Code evidence projection clears recovered validation failures after rep
   );
 });
 
+test('VS Code evidence projection preserves an unrelated current failure after validation recovery', () => {
+  const failedVerificationTool = terminalTool({
+    sequence: 2,
+    actionId: 'focused-check-1',
+    status: 'failed',
+  });
+  const passedVerificationTool = terminalTool({
+    sequence: 4,
+    actionId: 'focused-check-2',
+    status: 'completed',
+  });
+  const evidence = project({
+    tasksFailed: 1,
+    failedReason: '独立需求审查证据不足：finding 缺少有效的需求引用。',
+    changedPaths: ['src/main.ts'],
+    changeReceipts: [mutation({
+      sequence: 3,
+      actionId: 'repair-mutation',
+      idempotencyKey: 'vscode-completion-run:repair-mutation',
+    })],
+    toolExecutionReceipts: [failedVerificationTool, passedVerificationTool],
+    verificationReceipts: [
+      verification({
+        sequence: 2,
+        actionId: 'focused-check-1',
+        idempotencyKey: 'vscode-completion-run:focused-check-1',
+        status: 'failed',
+      }),
+      verification({
+        sequence: 4,
+        actionId: 'focused-check-2',
+        idempotencyKey: 'vscode-completion-run:focused-check-2',
+        status: 'passed',
+      }),
+    ],
+  });
+
+  assert.equal(evidence.acceptanceEvidence[0].status, 'failed');
+  assert.equal(
+    evidence.evidenceRefs.includes('vscode-agent-result:vscode-completion-run:tasks-failed'),
+    true,
+  );
+});
+
 test('manual review and read-only response evidence remain explicit', () => {
   const manualReview = project({
     changedPaths: ['src/main.ts'],
