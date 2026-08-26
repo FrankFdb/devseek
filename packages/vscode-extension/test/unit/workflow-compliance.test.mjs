@@ -1983,6 +1983,7 @@ test('Architecture: fake tool parser is split from the canonical tool loop', () 
 
 test('Architecture: agentic loop does not hard-code fake tool protocol formats', () => {
   const agenticLoop = src('src/agent/agentic-loop.ts');
+  assertContains(agenticLoop, 'countCompletedAuthorizedTextToolEnvelopes(sAccum, textToolProtocol)', 'streaming preview must wait for a complete authenticated envelope');
   assertContains(agenticLoop, 'parseAuthorizedTextToolCalls(sAccum, textToolProtocol)', 'streaming detection must require the current run-scoped channel');
   assertContains(agenticLoop, 'findFirstAuthorizedTextToolEnvelopeStart(text, textToolProtocol)', 'tool-envelope settlement must use the current channel');
   assertDoesNotContain(agenticLoop, 'containsFakeToolCallProtocol(sAccum)', 'naked tool-like text must not be execution authority');
@@ -3388,6 +3389,7 @@ test('Extension execution boundary: ordinary source prose cannot enter a write p
   assertDoesNotContain(extension, 'looksLikeTargetScopedSourceResponse', 'the extension must not infer write authority from source-shaped prose');
   assertDoesNotContain(extension, 'applyGeneratedArtifactsWithPrompt', 'the retired response-to-workspace mutation path must stay absent');
   assertContains(loop, 'parseAuthorizedTextToolCalls(sAccum, textToolProtocol)', 'text tool execution must require the current run-scoped protocol channel');
+  assertContains(loop, 'currentWriteCohortValidated: sourceValidation.currentSourceIsValidated()', 'provider corruption must not settle against stale validation evidence');
   assertContains(writer, 'rawPath: string', 'the canonical writer must require the concrete path projected from a typed tool call');
   assertContains(writer, 'normalizeFileWritePath(', 'the concrete tool path must pass through the local path boundary');
 });

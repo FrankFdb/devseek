@@ -23,6 +23,7 @@ execFileSync('npx', [
 
 const require = createRequire(import.meta.url);
 const {
+  countCompletedAuthorizedTextToolEnvelopes,
   createTextToolProtocolSession,
   findFirstAuthorizedTextToolEnvelopeStart,
   hasIncompleteAuthorizedTextToolEnvelope,
@@ -100,6 +101,11 @@ test('incomplete recovery is scoped to an authorized envelope, not naked syntax'
   const incomplete = renderTextToolProtocolEnvelope(session, payload)
     .replace(`</devseek_tool_calls channel="${session.channelId}">`, '');
   assert.equal(hasIncompleteAuthorizedTextToolEnvelope(incomplete, session), true);
+  assert.equal(countCompletedAuthorizedTextToolEnvelopes(incomplete, session), 0);
+  assert.equal(countCompletedAuthorizedTextToolEnvelopes(
+    renderTextToolProtocolEnvelope(session, payload),
+    session,
+  ), 1);
 });
 
 test('complete authorized envelopes without a recognized tool are rejected', () => {

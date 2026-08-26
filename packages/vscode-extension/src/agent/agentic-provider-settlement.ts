@@ -14,6 +14,7 @@ export interface ProviderFailureSettlementInput {
   promptRequiresTools: boolean;
   sawWorkTool: boolean;
   aborted: boolean | undefined;
+  currentWriteCohortValidated: boolean;
   writtenFiles: WrittenFileEvidence[];
   terminalEvidence: TerminalEvidence[];
   readEvidencePaths: string[];
@@ -34,6 +35,9 @@ export function settleProviderFailureFromCompletedEvidence(
     return { completed: false };
   }
   if (input.completionBlockers?.some(blocker => Boolean(blocker?.trim()))) {
+    return { completed: false };
+  }
+  if (input.writtenFiles.length > 0 && !input.currentWriteCohortValidated) {
     return { completed: false };
   }
   if (isToolProtocolFailure(input.providerFailureStatus)

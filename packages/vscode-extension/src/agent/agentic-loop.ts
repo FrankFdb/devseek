@@ -34,6 +34,7 @@ import {
 import { normalizeAgenticAutoValidation } from './agentic-auto-validation-settlement';
 import { buildMissingEvidenceRecoveryInstruction, type TodoItem } from './evidence-recovery';
 import {
+  countCompletedAuthorizedTextToolEnvelopes,
   createTextToolProtocolSession,
   findFirstAuthorizedTextToolEnvelopeStart,
   hasIncompleteAuthorizedTextToolEnvelope,
@@ -322,6 +323,7 @@ export async function runAgenticLoop(
       promptRequiresTools,
       sawWorkTool,
       aborted: callbacks.signal?.aborted,
+      currentWriteCohortValidated: sourceValidation.currentSourceIsValidated(),
       writtenFiles: allWrittenFiles,
       terminalEvidence: allTerminalEvidence,
       readEvidencePaths: [...allReadEvidencePaths],
@@ -397,22 +399,21 @@ export async function runAgenticLoop(
     roundCount++;
 
     // ── Streaming delta: early manage_todo_list detection ───────────────────
-    // As DeepSeek streams its response, detect the first completed manage_todo_list
-    // block and fire onTodoUpdate immediately so todos appear in real-time rather
-    // than waiting for the full response. Threshold-based to avoid calling
-    // Parse only this run's authenticated text-tool envelope, at bounded intervals.
+    // Preview each newly completed authenticated envelope once so Todo and tool
+    // activity can appear before the full response without repeatedly parsing a partial payload.
     let sAccum = '';
-    let sNextCheck = 80;
+    let sNextToolPreviewCheck = 80;
     let sEarlyFired = false;
     let sNextSpinnerUpdate = 200; // update spinner label every ~200 chars to show progress
-    let sLastEarlyToolCheck = 0;
+    let sPreviewedEnvelopeCount = 0;
     const sEarlyToolsEmitted = new Set<string>();
     const roundStreamDelta = (delta: string) => {
       // Bridge may send \x00RESET\x00 + fullText to replace accumulated content.
       // Reset sAccum to the new full text instead of appending the corrupt prefix.
       if (delta.startsWith('\x00RESET\x00')) {
         sAccum = delta.slice(7);
-        if (!sEarlyFired) sNextCheck = Math.min(sNextCheck, sAccum.length + 1);
+        sNextToolPreviewCheck = Math.min(sNextToolPreviewCheck, sAccum.length);
+        sPreviewedEnvelopeCount = 0;
       } else {
         sAccum += delta;
       }
@@ -422,27 +423,30 @@ export async function runAgenticLoop(
         sNextSpinnerUpdate = sAccum.length + 300;
         callbacks.onToolActivity('label', `思考中 (${sAccum.length} 字符)…`);
       }
-      if (!sEarlyFired && callbacks.onTodoUpdate && sAccum.length >= sNextCheck) {
-        sNextCheck = sAccum.length + 150; // check again in 150 chars
-        const earlyTools = parseAuthorizedTextToolCalls(sAccum, textToolProtocol);
+      if (sAccum.length < sNextToolPreviewCheck) return;
+      sNextToolPreviewCheck = sAccum.length + 100;
+      const completedEnvelopeCount = countCompletedAuthorizedTextToolEnvelopes(sAccum, textToolProtocol);
+      if (completedEnvelopeCount <= sPreviewedEnvelopeCount) return;
+      sPreviewedEnvelopeCount = completedEnvelopeCount;
+      const earlyTools = parseAuthorizedTextToolCalls(sAccum, textToolProtocol);
+      if (!sEarlyFired && callbacks.onTodoUpdate) {
         const firstTodo = earlyTools.find(t => t.name === 'manage_todo_list');
         if (firstTodo) {
           const earlyItems = normalizeVisibleTodos((firstTodo.input.todoList ?? []) as TodoItem[]);
           if (Array.isArray(earlyItems) && earlyItems.length > 0) {
-            if (earlyItems.every(item => item.status === 'completed')) return;
-            sEarlyFired = true; // stop checking — already fired
-            todoEverSet = true;
-            currentTodos = earlyItems;
-            void callbacks.onTodoUpdate(earlyItems);
+            if (!earlyItems.every(item => item.status === 'completed')) {
+              sEarlyFired = true;
+              todoEverSet = true;
+              currentTodos = earlyItems;
+              void callbacks.onTodoUpdate(earlyItems);
+            }
           }
         }
       }
       // Early tool activity: emit activity rows as soon as complete tool blocks are detected
       // in the streaming accumulation — before tools are actually executed.
       // The webview deduplicates by actKind:label, so re-emitting at execution time is safe.
-      if (callbacks.onToolActivity && sAccum.length > sLastEarlyToolCheck + 100) {
-        sLastEarlyToolCheck = sAccum.length;
-        const earlyTools = parseAuthorizedTextToolCalls(sAccum, textToolProtocol);
+      if (callbacks.onToolActivity) {
         for (const t of earlyTools) {
           if (t.name === 'manage_todo_list') continue; // handled by the todo-detection block above
           const actKey = t.name + ':' + JSON.stringify(t.input ?? {}).slice(0, 50);

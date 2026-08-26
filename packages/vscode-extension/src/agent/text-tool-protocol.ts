@@ -191,10 +191,30 @@ export function extractAuthorizedTextToolPayloads(
   text: string,
   session: TextToolProtocolSession,
 ): string[] {
+  const payloads: string[] = [];
+  scanCompletedAuthorizedTextToolEnvelopes(text, session, (raw, start, end) => {
+    payloads.push(raw.slice(start, end).trim());
+  });
+  return payloads;
+}
+
+/** Cheap streaming signal: full protocol parsing is only useful after a new envelope closes. */
+export function countCompletedAuthorizedTextToolEnvelopes(
+  text: string,
+  session: TextToolProtocolSession | undefined,
+): number {
+  return session ? scanCompletedAuthorizedTextToolEnvelopes(text, session) : 0;
+}
+
+function scanCompletedAuthorizedTextToolEnvelopes(
+  text: string,
+  session: TextToolProtocolSession,
+  visitPayload?: (raw: string, start: number, end: number) => void,
+): number {
   const raw = String(text || '');
   const open = openMarker(session);
   const close = closeMarker(session);
-  const payloads: string[] = [];
+  let count = 0;
   let cursor = 0;
   while (cursor < raw.length) {
     const start = raw.indexOf(open, cursor);
@@ -202,10 +222,11 @@ export function extractAuthorizedTextToolPayloads(
     const payloadStart = start + open.length;
     const envelopeClose = findEnvelopeClose(raw, payloadStart, close);
     if (!envelopeClose) break;
-    payloads.push(raw.slice(payloadStart, envelopeClose.start).trim());
+    visitPayload?.(raw, payloadStart, envelopeClose.start);
+    count++;
     cursor = envelopeClose.end;
   }
-  return payloads;
+  return count;
 }
 
 export function findFirstAuthorizedTextToolEnvelopeStart(

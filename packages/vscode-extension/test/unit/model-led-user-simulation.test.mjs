@@ -253,7 +253,7 @@ test('ModelLedUserSimulation: protocol recovery cannot settle from a prose-only 
   }
 });
 
-test('ModelLedUserSimulation: completed file evidence settles before malformed provider recovery', async () => {
+test('ModelLedUserSimulation: validated current file evidence completes without another provider turn', async () => {
   const prompt = '创建 report.md，内容为 EVIDENCE_SETTLED_OK，并读回确认。';
   let calls = 0;
   const simulation = await runSimulation(prompt, async () => {
@@ -265,16 +265,17 @@ test('ModelLedUserSimulation: completed file evidence settles before malformed p
         tools: [
           { name: 'create_file', input: { path: target, content: 'EVIDENCE_SETTLED_OK\n' } },
           { name: 'read_file', input: { path: target } },
+          {
+            name: 'manage_todo_list',
+            input: { todoList: [{ id: 1, title: '创建并读回报告', status: 'completed' }] },
+          },
         ],
       };
     }
-    return {
-      text: `Action: read_fileAction Input: {"path":"${target}"}`,
-      tools: [],
-    };
+    throw new Error(`validated write cohort unexpectedly requested another provider turn for ${target}`);
   }, { runDisplayAction: 'create' });
   try {
-    assert.equal(calls, 2, simulation.result.historyText);
+    assert.equal(calls, 1, simulation.result.historyText);
     assert.equal(readFileSync(path.join(simulation.root, 'report.md'), 'utf8'), 'EVIDENCE_SETTLED_OK\n');
     assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
     assert.equal(

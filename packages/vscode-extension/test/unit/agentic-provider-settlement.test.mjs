@@ -64,6 +64,7 @@ test('provider failure settlement completes only after local file-check evidence
       promptRequiresTools: true,
       sawWorkTool: true,
       aborted: false,
+      currentWriteCohortValidated: true,
       semanticContract: fileArtifactContract(filePrompt(), file),
       writtenFiles,
       terminalEvidence,
@@ -89,6 +90,7 @@ test('completed local evidence cannot bypass an independent completion blocker',
       promptRequiresTools: true,
       sawWorkTool: true,
       aborted: false,
+      currentWriteCohortValidated: true,
       semanticContract: fileArtifactContract(filePrompt(), file),
       writtenFiles: [{ path: file, basename: path.basename(file), linesAdded: 1, linesRemoved: 0, action: 'create' }],
       terminalEvidence: [{
@@ -130,6 +132,7 @@ test('provider failure settlement completes scoped Markdown deliverable before s
       promptRequiresTools: true,
       sawWorkTool: true,
       aborted: false,
+      currentWriteCohortValidated: true,
       semanticContract: fileArtifactContract(prompt, report),
       writtenFiles: [{ path: report, basename: path.basename(report), linesAdded: 3, linesRemoved: 0, action: 'create' }],
       terminalEvidence: [{
@@ -177,6 +180,7 @@ test('tool protocol failure cannot settle from read-only evidence while an actio
       promptRequiresTools: true,
       sawWorkTool: true,
       aborted: false,
+      currentWriteCohortValidated: true,
       semanticContract,
       writtenFiles: [],
       terminalEvidence: [],
@@ -199,6 +203,7 @@ test('provider failure settlement refuses missing or failed validation evidence'
       promptRequiresTools: true,
       sawWorkTool: true,
       aborted: false,
+      currentWriteCohortValidated: true,
       semanticContract: fileArtifactContract(filePrompt(), file),
       writtenFiles: [{ path: file, basename: 'ui-r1a1b-clean2-4a148c.txt', linesAdded: 1, linesRemoved: 0, action: 'create' }],
       readEvidencePaths: [],
@@ -210,6 +215,35 @@ test('provider failure settlement refuses missing or failed validation evidence'
       ...base,
       terminalEvidence: [{ command: 'g++ broken.cpp', kind: 'compile', ok: false, exitCode: 1 }],
     }).completed, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('provider corruption cannot settle from validation that predates the latest write cohort', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-provider-settlement-stale-validation-'));
+  try {
+    const file = path.join(root, 'ui-r1a1b-clean2-4a148c.txt');
+    writeFileSync(file, 'UI_R1A1B_CLEAN2_OK\n');
+    const result = settleProviderFailureFromCompletedEvidence({
+      providerFailureStatus: 'invalid-tool-block',
+      promptRequiresTools: true,
+      sawWorkTool: true,
+      aborted: false,
+      currentWriteCohortValidated: false,
+      semanticContract: fileArtifactContract(filePrompt(), file),
+      writtenFiles: [{ path: file, basename: path.basename(file), linesAdded: 1, linesRemoved: 0, action: 'replace' }],
+      terminalEvidence: [{
+        command: "test -f 'ui-r1a1b-clean2-4a148c.txt'",
+        kind: 'other',
+        ok: true,
+        exitCode: 0,
+      }],
+      readEvidencePaths: [],
+      workspaceRoot: root,
+    });
+
+    assert.equal(result.completed, false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
