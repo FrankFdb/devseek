@@ -120,6 +120,7 @@ import {
   isContextGatheringToolName,
   makeContextToolSignature,
   resolveDeliveryConvergenceExpectation,
+  resolveDeliveryConvergencePending,
 } from './context-convergence-feedback';
 import { createModelSemanticSettlementService } from './model-semantic-settlement';
 const AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS = 3;
@@ -992,7 +993,6 @@ export async function runAgenticLoop(
       concreteProgress: (loopRes.writtenFiles?.length ?? 0) > 0 || roundHasValidationTerminalProgress,
       unresolvedExecution: missingAfterTools.length > 0 || Boolean(blockingFailureAfterTools),
     });
-    const gatheredEvidenceCount = allReadEvidencePaths.size + allEvidenceRefs.length;
     const deliveryExpectation = resolveDeliveryConvergenceExpectation({
       mutationRequired: promptRequiresFileChange || requirementReviewSourceRepairPending,
       modelLedUnclassified: writeAuthority.canonicalSemanticContract.signals.includes('model-led-unclassified-turn'),
@@ -1000,13 +1000,15 @@ export async function runAgenticLoop(
     const deliveryConvergenceResult = deliveryConvergence.observe({
       expectation: deliveryExpectation,
       deliveryProgressEpoch: progressEpoch,
-      deliveryPending: deliveryExpectation === 'unclassified'
-        ? (!loopRes.taskComplete && !loopRes.allTodosCompleted) || requirementReviewSourceRepairPending
-        : missingAfterTools.length > 0
-          || Boolean(blockingFailureAfterTools)
-          || requirementReviewSourceRepairPending,
+      deliveryPending: resolveDeliveryConvergencePending({
+        expectation: deliveryExpectation,
+        deliveryProgressEstablished: progressEpoch > 0,
+        completionSignaled: Boolean(loopRes.taskComplete || loopRes.allTodosCompleted),
+        unresolvedExecution: missingAfterTools.length > 0 || Boolean(blockingFailureAfterTools),
+        actionableRepairPending: requirementReviewSourceRepairPending,
+      }),
       actionableRepairPending: requirementReviewSourceRepairPending,
-      gatheredEvidenceCount,
+      gatheredEvidenceCount: allReadEvidencePaths.size + allEvidenceRefs.length,
       investigationActivity: roundHasInvestigationActivity && !providerRecoveryCompletedThisRound,
     });
     if (!callbacks.signal?.aborted && deliveryConvergenceResult.kind === 'correct') {

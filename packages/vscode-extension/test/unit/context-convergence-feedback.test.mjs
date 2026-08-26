@@ -23,6 +23,7 @@ execFileSync('npx', [
 const {
   DeliveryConvergenceLedger,
   resolveDeliveryConvergenceExpectation,
+  resolveDeliveryConvergencePending,
 } = createRequire(import.meta.url)(bundlePath);
 
 after(() => rmSync(tempRoot, { recursive: true, force: true }));
@@ -48,6 +49,51 @@ test('delivery expectation keeps unclassified model guidance separate from mutat
     mutationRequired: false,
     modelLedUnclassified: false,
   }), 'none');
+});
+
+test('mutation delivery remains pending until the current turn establishes write progress', () => {
+  const retainedWorkspace = {
+    expectation: 'mutation',
+    deliveryProgressEstablished: false,
+    completionSignaled: true,
+    unresolvedExecution: false,
+    actionableRepairPending: false,
+  };
+
+  assert.equal(resolveDeliveryConvergencePending(retainedWorkspace), true);
+  assert.equal(resolveDeliveryConvergencePending({
+    ...retainedWorkspace,
+    deliveryProgressEstablished: true,
+  }), false);
+  assert.equal(resolveDeliveryConvergencePending({
+    ...retainedWorkspace,
+    deliveryProgressEstablished: true,
+    unresolvedExecution: true,
+  }), true);
+});
+
+test('delivery pending resolution preserves read-only and review-repair boundaries', () => {
+  const base = {
+    deliveryProgressEstablished: false,
+    completionSignaled: true,
+    unresolvedExecution: true,
+    actionableRepairPending: false,
+  };
+
+  assert.equal(resolveDeliveryConvergencePending({ ...base, expectation: 'none' }), false);
+  assert.equal(resolveDeliveryConvergencePending({ ...base, expectation: 'unclassified' }), false);
+  assert.equal(resolveDeliveryConvergencePending({
+    ...base,
+    expectation: 'unclassified',
+    completionSignaled: false,
+  }), true);
+  assert.equal(resolveDeliveryConvergencePending({
+    ...base,
+    expectation: 'mutation',
+    deliveryProgressEstablished: true,
+    unresolvedExecution: false,
+    actionableRepairPending: true,
+  }), true);
 });
 
 test('delivery convergence corrects twice and then stops a mutation cohort without progress', () => {

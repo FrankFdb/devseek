@@ -26,6 +26,25 @@ export function resolveDeliveryConvergenceExpectation(input: {
   return input.modelLedUnclassified ? 'unclassified' : 'none';
 }
 
+export interface DeliveryConvergencePendingInput {
+  readonly expectation: DeliveryConvergenceExpectation;
+  readonly deliveryProgressEstablished: boolean;
+  readonly completionSignaled: boolean;
+  readonly unresolvedExecution: boolean;
+  readonly actionableRepairPending: boolean;
+}
+
+/** Existing workspace artifacts cannot satisfy progress owed by the current turn. */
+export function resolveDeliveryConvergencePending(input: DeliveryConvergencePendingInput): boolean {
+  if (input.expectation === 'none') return false;
+  if (input.expectation === 'unclassified') {
+    return !input.completionSignaled || input.actionableRepairPending;
+  }
+  return !input.deliveryProgressEstablished
+    || input.unresolvedExecution
+    || input.actionableRepairPending;
+}
+
 export interface DeliveryConvergenceObservation {
   readonly expectation: DeliveryConvergenceExpectation;
   readonly deliveryProgressEpoch: number;
