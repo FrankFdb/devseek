@@ -11,6 +11,8 @@ import type { CodingKernelTaskContract } from '@devseek-netai/shared';
 
 export interface ProviderFailureSettlementInput {
   providerFailureStatus?: string;
+  /** The failed response proposed a concrete tool action that never reached arbitration. */
+  unsettledToolProposal?: boolean;
   promptRequiresTools: boolean;
   sawWorkTool: boolean;
   aborted: boolean | undefined;
@@ -32,6 +34,9 @@ export function settleProviderFailureFromCompletedEvidence(
   input: ProviderFailureSettlementInput,
 ): ProviderFailureSettlement {
   if (input.aborted || !input.promptRequiresTools || !input.sawWorkTool) {
+    return { completed: false };
+  }
+  if (input.unsettledToolProposal) {
     return { completed: false };
   }
   if (requiresCleanProviderRecovery(input.providerFailureStatus)) {

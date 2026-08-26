@@ -194,6 +194,50 @@ test('tool protocol failure cannot settle from read-only evidence while an actio
   }
 });
 
+test('observed invalid mutation proposal cannot settle from earlier successful validation', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-provider-settlement-unsettled-action-'));
+  try {
+    const source = path.join(root, 'src', 'main.cpp');
+    mkdirSync(path.dirname(source), { recursive: true });
+    writeFileSync(source, 'int main() { return 0; }\n');
+    const semanticContract = projectModelActionSemanticContract(
+      createModelLedTurnSemanticContract('继续修改现有 C++ 程序并执行公开验证。'),
+      {
+        version: 'devseek.semantic-intent/v1',
+        source: 'provider',
+        mode: 'run',
+        taskKind: 'workspace-command',
+        confidence: 0.98,
+        mutation: 'none',
+        targetPaths: [],
+        requiresWorkspace: true,
+        requiresTerminal: true,
+        requiresExternalEffect: false,
+        requiresClarification: false,
+        reason: 'the model validated before proposing a source mutation',
+      },
+    );
+
+    const result = settleProviderFailureFromCompletedEvidence({
+      providerFailureStatus: 'invalid-tool-block',
+      unsettledToolProposal: true,
+      promptRequiresTools: true,
+      sawWorkTool: true,
+      aborted: false,
+      currentWriteCohortValidated: true,
+      semanticContract,
+      writtenFiles: [],
+      terminalEvidence: [{ command: './test.sh', kind: 'test', ok: true, exitCode: 0 }],
+      readEvidencePaths: [source],
+      workspaceRoot: root,
+    });
+
+    assert.equal(result.completed, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('provider-authored tool transcript cannot settle from otherwise sufficient read evidence', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-provider-settlement-polluted-'));
   try {

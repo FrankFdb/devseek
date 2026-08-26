@@ -313,6 +313,7 @@ export async function runAgenticLoop(
   ): Promise<'completed' | 'recovered' | 'unrecoverable'> => {
     const providerSettlement = settleProviderFailureFromCompletedEvidence({
       providerFailureStatus: providerFailure?.status,
+      unsettledToolProposal: Boolean(providerFailure?.observedToolNames?.length),
       promptRequiresTools,
       sawWorkTool,
       aborted: callbacks.signal?.aborted,
