@@ -31,6 +31,9 @@ test('recognizes bounded Chinese and English future tool-action announcements', 
   assert.equal(isDeferredAgentActionAnnouncement(
     'I will implement the request. Let me first inspect the project files.',
   ), true);
+  assert.equal(isDeferredAgentActionAnnouncement(
+    '现在我需要查看完整的 render() 函数。',
+  ), true);
 });
 
 test('does not reinterpret complete answers or quoted action language', () => {
@@ -38,4 +41,29 @@ test('does not reinterpret complete answers or quoted action language', () => {
   assert.equal(isDeferredAgentActionAnnouncement('“I will read the file” 的中文是“我会读取文件”。'), false);
   assert.equal(isDeferredAgentActionAnnouncement('“我将读取文件”是一种未来时表达。'), false);
   assert.equal(isDeferredAgentActionAnnouncement(''), false);
+});
+
+test('classifies visible deferred prose without executing long fenced presentation data', () => {
+  const fencedPayload = [
+    '```json',
+    '[',
+    ...Array.from({ length: 12 }, (_, index) => (
+      `  {"id":"read_${index}","name":"read_file","args":{"path":"/workspace/source-${index}.cpp"}},`
+    )),
+    ']',
+    '```',
+  ].join('\n');
+  const response = [
+    '我已经找到绘制边界问题。让我修复这个问题并验证缩放布局。',
+    '现在我需要查看完整渲染函数：',
+    fencedPayload,
+  ].join('\n\n');
+
+  assert.ok(response.length > 600);
+  assert.equal(isDeferredAgentActionAnnouncement(response), true);
+  assert.equal(isDeferredAgentActionAnnouncement([
+    '```text',
+    '我将读取文件并修改实现。',
+    '```',
+  ].join('\n')), false);
 });

@@ -358,6 +358,60 @@ test('ModelLedUserSimulation: a deferred action announcement must continue into 
   }
 });
 
+test('ModelLedUserSimulation: late deferred prose after prior reads cannot end the turn', async () => {
+  const prompt = '检查项目后创建 late-action.txt，内容为 LATE_ACTION_READY，并读回确认。';
+  let calls = 0;
+  const simulation = await runSimulation(prompt, async () => {
+    calls += 1;
+    const root = fakeWorkspace.workspaceFolders[0].uri.fsPath;
+    const target = path.join(root, 'late-action.txt');
+    if (calls === 1) {
+      return {
+        text: '先检查当前项目内容。',
+        tools: [{ name: 'list_dir', input: { path: root } }],
+      };
+    }
+    if (calls === 2) {
+      const fencedPayload = [
+        '```json',
+        '[',
+        ...Array.from({ length: 12 }, (_, index) => (
+          `  {"id":"read_${index}","name":"read_file","args":{"path":"${root}/source-${index}.cpp"}},`
+        )),
+        ']',
+        '```',
+      ].join('\n');
+      return {
+        text: [
+          '我已经完成初步检查。让我先读取这些文件，然后修改并验证结果。',
+          fencedPayload,
+        ].join('\n\n'),
+        tools: [],
+      };
+    }
+    return {
+      text: '落实已承诺的写入并读回交付文件。',
+      tools: [
+        { name: 'create_file', input: { path: target, content: 'LATE_ACTION_READY\n' } },
+        { name: 'read_file', input: { path: target } },
+        { name: 'task_complete', input: { summary: '已创建并读回 late-action.txt。' } },
+      ],
+    };
+  }, { runDisplayAction: 'create' });
+  try {
+    assert.equal(calls, 3, simulation.result.historyText);
+    assert.equal(readFileSync(path.join(simulation.root, 'late-action.txt'), 'utf8'), 'LATE_ACTION_READY\n');
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+    assert.equal(
+      simulation.harness.statuses.some(status => status.title === '等待行动提案落地'),
+      true,
+      simulation.result.historyText,
+    );
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
 test('ModelLedUserSimulation: inline historical wording cannot resurrect a superseded target', async () => {
   const prompt = '这是一次多轮需求的最终轮：前面曾说写 INITIAL_REQUIREMENT，但现在改为 FINAL_REQUIREMENT_OK。请只按最新要求创建 journey-result.txt，文件内容必须精确包含一行 FINAL_REQUIREMENT_OK。完成写入和读回验证后结束任务，不要创建旧要求文件。';
   let calls = 0;

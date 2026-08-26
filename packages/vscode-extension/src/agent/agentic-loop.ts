@@ -642,7 +642,6 @@ export async function runAgenticLoop(
         continue;
       }
       if (!callbacks.signal?.aborted
-        && !sawWorkTool
         && noToolRounds < 2
         && isDeferredAgentActionAnnouncement(stripped)) {
         noToolRounds++;
