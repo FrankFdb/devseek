@@ -20,7 +20,7 @@ devseek_governance:
 - 首要产品目标：以 Codex 和 Claude Code 的官方公开能力及可观察优秀行为为对标，把 DevSeek 优化为顶级编程智能体。
 - 编程主线：代码理解、计划、实现、多文件集成、测试、诊断、修复、复核和交付优先；默认模型入口是无需 API Key 的免费 DeepSeek 网页，权限与扩展能力只保留服务编程闭环的最小边界。
 - 文档定位：本目录文档是需求、设计和验收输入；归档是责任完成后的结果，不是产品目标。
-- 当前停止点：本地产品候选 source 为 `2db5768a70ebd53aea6c279328e2c87a9ad1aab2`；最终已安装 VSIX 为 `2.0.32-debug.20260824.t170937.g2db5768`，SHA-256 为 `236d45d9ad7559e82912435e3f47bd0633e4259617e8bb2cda235a1b96875951`。
+- 当前停止点：本地产品代码候选 source 为 `2ffac6f68207d3248226eea0b2aa9bd48cba3738`；已安装 VSIX 为 `2.0.32-debug.20260826.t133847.g2ffac6f`，SHA-256 为 `f0cdd5b8dee5ef91d8b22c7b2bb9210cbc4d24739be70dc9e5697fdb86ddd37b`。N4 首轮仿真仍失败，状态为 `paused_revalidation_required`。
 - 当前判断：本地适用的活跃产品能力已经完成接线，但正式顶级资格尚未通过。Gate 0 仍为 `NOT_PASSED`，不得把本地测试、安装或受控仿真解释为资格结论。
 - 状态词：`completed`、`in_progress`、`ready_external_execution`、`pending_scope`、`blocked_external`。
 - 更新规则：本文只记录当前状态、下一任务、依赖和完成条件；执行日志、命令输出、时间线和历史回执不进入本文。
@@ -47,7 +47,7 @@ devseek_governance:
 | C13 扩展边界 | `completed` | 唯一活跃项 MCP 已使用官方稳定 SDK；server launch 建立会话信任，只读封闭调用直接执行，高风险调用精确确认且 receipt 不可重放；其余未启用生态保持 conditional/experimental |
 | 用户仿真 | `completed` | T11 保留 17 套 60 个不重复产品流程、真实 DeepSeek Web 中型编程任务和实现外独立 CLI holdout；T12 增补短问答、追问、错字、多语言、标识符子串、动作拒绝、失败恢复、steering、session/restart 和 todo/completion 一致性；成功与失败样本均保留 |
 | C14 正式顶级资格 | `blocked_external` | Gate 0=`NOT_PASSED`，6 个外部 authority blocker、7 个 exact claims 尚未满足；RC、真实 Provider wave 与 sealed holdout 不得本地伪造 |
-| 本轮 release loop | `completed` | `a47ffe3` 提交已推送；最终 VSIX 按提交身份重新打包、包内 Bridge HTTP 200、SHA-256 复算并覆盖安装，本地与远端分支一致 |
+| 本轮 release loop | `completed` | 代码提交 `2ffac6f` 的 Shared build、Extension typecheck/compile、exact debug VSIX 打包、SHA-256 复算和覆盖安装均完成；候选因 N4 失败仅作暂停检查点，不构成 release qualification |
 | C14 候选流程资产 | `completed` | manifest v3 已绑定 `a47ffe3`、exact VSIX、安装和单一稳定 Bridge；v1/v2 清单按 byte hash 保留为不可变历史。当前证据仍是 `local-protocol-conformance`、debug channel、`protected_release_candidate=false`，不构成资格回执 |
 | 文档治理 | `completed` | 60/60 legacy 文档均有逐份 provenance、decision、relationship 和 rationale；受治理文档 63、active 3、legacy 60，`verify:doc-governance` 4/4，Gate 0 与 claims 未变化 |
 
@@ -70,7 +70,7 @@ devseek_governance:
 | 2 | N1 修复 legacy 文档库存 | `completed` | 逐份核对 60 份受治理文档 provenance，把缺失 29 条真实记录加入 inventory；`verify:doc-governance` 达到 4/4，且不改变 Gate 0 结论 |
 | 3 | N2 当前候选与 C14 流程身份对齐 | `completed` | `2db5768`、exact debug VSIX、稳定安装、单一 Bridge 和派生 source bindings 已一致；manifest v4 建立本地版本化后继，v1～v3 历史保持不可变，protected RC 仍留给 N5～N7 |
 | 4 | N3 跨平台产品证据 | `ready_external_execution` | 本地平台 owner 与故障矩阵已验证，独立人工测试包已就绪；在 Linux、Windows、WSL2 和 macOS 主机按 exact VSIX 执行安装、路径/symlink、shell、权限、Bridge 生命周期、steering/cancel、session/restart、断网恢复和交付清理，通过 matrix verifier 后完成 |
-| 5 | N4 真实 Provider reliability wave | `paused_revalidation_required` | 2026-08-25 C++ 图形数学四轮自然 UI 仿真连续暴露并修复执行续期、无损 mutation 恢复、审查修复续期、未清除终端失败、独立完成门禁、当前终端状态投影和分阶段审查边界；最新代码候选 `391ecf6` 尚未重跑四轮，旧候选成功证据不得继承 |
+| 5 | N4 真实 Provider reliability wave | `paused_revalidation_required` | 2026-08-26 候选 `2ffac6f` 已修复 Provider 重建后丢失读取内容却抑制重放的缺陷类，并收敛 `execute_command` 工具方言与验收文件保护。新鲜首轮已按固定分层生成 C++ 实现，外部 `./test.sh` 和 self-test 通过，但 agent 以 `unresolved-adverse-evidence`/`denied-effect`/`verification-failed` 结算失败，源码卫生检查亦命中 placeholder；因此后续三轮未执行，不得宣称 wave 通过 |
 | 6 | N5 受保护 profile 与 sealed holdout | `blocked_external` | 取得 `R4-LIVE-AUTH-03/04`；独立 owner 在候选冻结前封存与开发集不重叠的 case、retry budget、failure taxonomy 和证据策略，失败不得选择性补跑或改 case 适配实现 |
 | 7 | N6 Gate 0 外部 authority 与资格导入 | `blocked_external` | `EXT-01`～`EXT-05` 提供受信 source registry、独立 attestation、protected policy、角色/密钥、WORM retention 与 trusted time；再由 `R4-LIVE-AUTH-05` 独立导入 exact claims |
 | 8 | N7 发布裁决 | `blocked_external` | protected aggregator 对冻结 RC、真实 Provider wave、跨平台证据和 sealed holdout 做机器复算；只有 Gate 0=`PASSED` 且正式 release decision 允许时才能声明顶级资格 |
@@ -127,6 +127,8 @@ devseek_governance:
 - 本地授权 N4 wave 先以 `6609ea0` canary 暴露 checkpoint、协议、交付物结算问题，再以 `2db5768` 修复 scoped-package 原始输入、无效/未完成工具 envelope、恢复后 prose-only 假完成和 read-only evidence 假结算。最终 exact candidate 的 C13、R3-08A、R3-09A 前台任务 3/3 通过；R3-09A 完成快照仍有 2 个无 mutation 的后台记忆请求，因此不宣称 full-idle 通过。
 - 2026-08-25 新增 `code/devseek-tests/n4-cpp-visual-math-user/` 四轮真实用户旅程，要求 DevSeek 从空工作区编写 C++17/X11 小学数学图形应用并持续迭代。失败尝试保存在 ignored `runs/`；最后一次 `20260825T113614Z` 在第 67 回合证明恢复上下文重放已清除编译失败会导致模型围绕过时事实空转，因此主动停止。测试器未代写源码。
 - 本轮代码候选 `391ecf6bd7beec15c85427f5ec1e2c3e986414cf` 修复当前终端状态投影与分阶段独立审查；对应 exact VSIX `2.0.32-debug.20260825.t200708.g391ecf6`，SHA-256 `9e6c4a1c923b44306157846bd0c738924e50d53df9a2d06c95701b6c0e6bfa8f` 已本地安装。聚焦回归 217/217、Extension 全量 181/181 和类型检查通过；按用户要求在再次执行真实 Provider 四轮前暂停，所以该候选状态只能是 `revalidation_required`。
+- 2026-08-26 以 Codex `codex-rs/core/src/session/turn.rs` 的工具结果回注与 follow-up 责任为基线，修复 Provider 会话重建后上下文重放责任；Claude 风格 `execute_command` 仅作公开工具方言兼容，仍由 DevSeek 本地 `run_terminal` 权限和 effect 边界裁决。候选 `2ffac6f68207d3248226eea0b2aa9bd48cba3738`、exact VSIX `2.0.32-debug.20260826.t133847.g2ffac6f` 和 SHA-256 `f0cdd5b8dee5ef91d8b22c7b2bb9210cbc4d24739be70dc9e5697fdb86ddd37b` 已安装。Focused 170/170、Shared 369/369、Extension 全量零失败、typecheck、compile 和 architecture drift 通过。
+- 候选的新鲜 N4 运行 `runs/20260826T053922Z/` 用 1120 秒完成首轮：固定源码契约和外部 `./test.sh`/self-test 通过，完成前审查成功发现并修复非法数值被静默夹取问题；但 canonical completion 仍以 `tasksFailed=1` 结束，外部源码卫生检查也命中 `src/raster_canvas.cpp` 的 placeholder 注释。四轮 wave 未完成，详见 `code/devseek-tests/n4-cpp-visual-math-user/PAUSE-CHECKPOINT-20260826.md`。
 - 因此本地可执行代码与治理工作已收敛；N3 等待独立人工按测试包回传证据，N4 的跨主机完整波次仍随 N3 执行，N5～N7 等待 `R4-LIVE-AUTH-03`～`05`、`EXT-01`～`05` 及 protected release authority 提供新事实。不得为“全部完成”人工把状态改绿。
 
 任何产品失败必须先保留原始 prompt、Provider transcript、run log、工具/权限/变更/验证 receipt、工作区前后状态和进程资源证据。随后定位 defect class 与唯一 owner；必要时重构并删除旧责任。修复会使当前 RC 与 holdout 结果全部失效，必须生成新候选并重新执行完整门禁。
@@ -180,5 +182,5 @@ devseek_governance:
 ## 新对话启动提示
 
 ```text
-请读取仓库根 AGENTS.md、docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md 和 code/devseek-tests/n4-cpp-visual-math-user/PAUSE-CHECKPOINT-20260825.md。当前本地扩展代码候选 source 为 devseek-multi/391ecf6，exact VSIX 为 2.0.32-debug.20260825.t200708.g391ecf6。聚焦回归 217/217、Extension 全量 181/181、类型检查和本地安装已通过；N4 C++ 四轮真实 Provider 仿真在最后一次失败中发现并修复了过时终端证据重放和分阶段审查扩张，但修复后尚未重跑，状态为 paused_revalidation_required。恢复时从全新工作区执行四轮，不继承旧候选结果；不要把 debug VSIX 当 protected RC，不要执行未授权的 sealed holdout，也不要伪造 external authority 或 Gate 0 claim。产品缺陷继续以本地 Codex 源码为主基线、Claude Code 公开证据为辅，按设计原则修复 defect class。所有回复中文。
+请读取仓库根 AGENTS.md、docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md 和 code/devseek-tests/n4-cpp-visual-math-user/PAUSE-CHECKPOINT-20260826.md。当前本地扩展代码候选 source 为 devseek-multi/2ffac6f，exact VSIX 为 2.0.32-debug.20260826.t133847.g2ffac6f，SHA-256 为 f0cdd5b8dee5ef91d8b22c7b2bb9210cbc4d24739be70dc9e5697fdb86ddd37b。Focused 170/170、Shared 369/369、Extension 全量零失败、类型检查、编译、architecture drift 和本地安装已通过。N4 新鲜首轮已正确生成固定分层 C++ 代码，外部 ./test.sh 与 self-test 通过，但 canonical completion 以 unresolved-adverse-evidence/denied-effect/verification-failed 结算失败，源码卫生检查也命中 placeholder，所以后续三轮未执行，状态为 paused_revalidation_required。恢复时先审计这两类未结算证据，按 defect class 修复后构建新候选并从全新工作区重跑四轮；不要人工修改生成 C++ 工作区，不要把 debug VSIX 当 protected RC，不要伪造 external authority 或 Gate 0 claim。所有回复中文。
 ```
