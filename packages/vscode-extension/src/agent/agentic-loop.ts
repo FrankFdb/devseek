@@ -842,10 +842,13 @@ export async function runAgenticLoop(
     const roundHasValidationTerminalProgress = loopRes.terminalEvidence?.some(
       evidence => evidence.kind !== 'other',
     ) === true;
+    const failedTerminalWriteCountBeforeRound = failedTerminalWriteCount;
     failedTerminalWriteCount = advanceAutoValidationFailureFence(failedTerminalWriteCount, {
       writeCount: allWrittenFiles.length,
       terminalOutcomes: (loopRes.terminalEvidence ?? []).map(evidence => evidence.ok),
     });
+    const repairsTerminalFailure = failedTerminalWriteCountBeforeRound !== undefined
+      && allWrittenFiles.length > failedTerminalWriteCountBeforeRound;
     const roundHasOnlyContextGathering = toolsToExecute.length > 0
       && toolsToExecute.some(tool => isContextGatheringToolName(tool.name))
       && toolsToExecute.every(tool => (
@@ -876,6 +879,7 @@ export async function runAgenticLoop(
       pendingWriteCount: pendingAutoValidationWrites.length,
       roundHasValidationTerminalProgress,
       pendingCohortHasUnrepairedTerminalFailure: failedTerminalWriteCount === allWrittenFiles.length,
+      repairsTerminalFailure,
       completionSignaled: Boolean(loopRes.taskComplete || loopRes.allTodosCompleted),
     });
     const autoValidation: AgentAutoValidationResult = deferAutoValidation
@@ -907,6 +911,10 @@ export async function runAgenticLoop(
     }
     if (normalizedAutoValidation.evidence.length) {
       allTerminalEvidence.push(...normalizedAutoValidation.evidence);
+      failedTerminalWriteCount = advanceAutoValidationFailureFence(failedTerminalWriteCount, {
+        writeCount: allWrittenFiles.length,
+        terminalOutcomes: normalizedAutoValidation.evidence.map(evidence => evidence.ok),
+      });
     }
     const qualityGateFeedback = recordQualityGateFailureFeedback(normalizedAutoValidation.qualityGate);
     if (autoValidation.repairBlockedReason) {

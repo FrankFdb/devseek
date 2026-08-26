@@ -2714,6 +2714,17 @@ test('Architecture: validated source changes require fresh source review before 
     'isVerificationFailure(input.failedReason)',
     'historical verification recovery must only settle a current verification-class failure',
   );
+  const autoValidationScheduler = src('src/agent/auto-validation-scheduler.ts');
+  assertContains(
+    autoValidationScheduler,
+    'if (input.repairsTerminalFailure)',
+    'a repair write must return the known failed verification to host-owned validation',
+  );
+  assertContains(
+    agenticLoop,
+    'terminalOutcomes: normalizedAutoValidation.evidence.map(evidence => evidence.ok)',
+    'host-owned validation failures must re-arm the same mutation-version failure fence',
+  );
   const structuralCompileFailure = src('src/app/structural-compile-failure.ts');
   assertContains(
     structuralCompileFailure,

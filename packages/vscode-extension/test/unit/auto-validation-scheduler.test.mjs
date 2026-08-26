@@ -29,6 +29,7 @@ test('defers validation while a pure-write mutation cohort is still open', () =>
     pendingWriteCount: 4,
     roundHasValidationTerminalProgress: false,
     pendingCohortHasUnrepairedTerminalFailure: false,
+    repairsTerminalFailure: false,
     completionSignaled: false,
   }), true);
 });
@@ -38,6 +39,7 @@ test('runs validation at explicit validation and completion boundaries', () => {
     pendingWriteCount: 4,
     roundHasValidationTerminalProgress: false,
     pendingCohortHasUnrepairedTerminalFailure: false,
+    repairsTerminalFailure: false,
     completionSignaled: false,
   };
   assert.equal(shouldDeferAgentAutoValidation({ ...base, roundHasValidationTerminalProgress: true }), false);
@@ -49,6 +51,27 @@ test('does not duplicate validation after a failed terminal result', () => {
     pendingWriteCount: 4,
     roundHasValidationTerminalProgress: true,
     pendingCohortHasUnrepairedTerminalFailure: true,
+    repairsTerminalFailure: false,
+    completionSignaled: false,
+  }), true);
+});
+
+test('runs host validation immediately after a write repairs an active terminal failure', () => {
+  assert.equal(shouldDeferAgentAutoValidation({
+    pendingWriteCount: 1,
+    roundHasValidationTerminalProgress: false,
+    pendingCohortHasUnrepairedTerminalFailure: false,
+    repairsTerminalFailure: true,
+    completionSignaled: false,
+  }), false);
+});
+
+test('does not duplicate a failed validation emitted in the repair round', () => {
+  assert.equal(shouldDeferAgentAutoValidation({
+    pendingWriteCount: 1,
+    roundHasValidationTerminalProgress: true,
+    pendingCohortHasUnrepairedTerminalFailure: true,
+    repairsTerminalFailure: true,
     completionSignaled: false,
   }), true);
 });
@@ -58,12 +81,14 @@ test('keeps a pending cohort open during context-only rounds', () => {
     pendingWriteCount: 0,
     roundHasValidationTerminalProgress: false,
     pendingCohortHasUnrepairedTerminalFailure: false,
+    repairsTerminalFailure: false,
     completionSignaled: false,
   }), false);
   assert.equal(shouldDeferAgentAutoValidation({
     pendingWriteCount: 1,
     roundHasValidationTerminalProgress: false,
     pendingCohortHasUnrepairedTerminalFailure: false,
+    repairsTerminalFailure: false,
     completionSignaled: false,
   }), true);
 });
@@ -93,4 +118,27 @@ test('clears a failed validation fence after repair or successful terminal evide
     writeCount: 5,
     terminalOutcomes: [false],
   }), 5);
+});
+
+test('re-arms the failure fence when host validation exposes the next repair defect', () => {
+  const firstFailure = advanceAutoValidationFailureFence(undefined, {
+    writeCount: 4,
+    terminalOutcomes: [false],
+  });
+  const repairBoundary = advanceAutoValidationFailureFence(firstFailure, {
+    writeCount: 5,
+    terminalOutcomes: [],
+  });
+  const nextFailure = advanceAutoValidationFailureFence(repairBoundary, {
+    writeCount: 5,
+    terminalOutcomes: [false],
+  });
+
+  assert.equal(firstFailure, 4);
+  assert.equal(repairBoundary, undefined);
+  assert.equal(nextFailure, 5);
+  assert.equal(advanceAutoValidationFailureFence(nextFailure, {
+    writeCount: 6,
+    terminalOutcomes: [],
+  }), undefined);
 });

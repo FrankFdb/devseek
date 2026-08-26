@@ -2,6 +2,7 @@ export interface AutoValidationScheduleInput {
   pendingWriteCount: number;
   roundHasValidationTerminalProgress: boolean;
   pendingCohortHasUnrepairedTerminalFailure: boolean;
+  repairsTerminalFailure: boolean;
   completionSignaled: boolean;
 }
 
@@ -12,6 +13,9 @@ export function shouldDeferAgentAutoValidation(input: AutoValidationScheduleInpu
   }
   if (input.pendingCohortHasUnrepairedTerminalFailure) {
     return true;
+  }
+  if (input.repairsTerminalFailure) {
+    return false;
   }
   return !input.roundHasValidationTerminalProgress && !input.completionSignaled;
 }
