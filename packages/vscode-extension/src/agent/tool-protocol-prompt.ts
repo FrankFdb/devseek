@@ -3,9 +3,6 @@ import {
   type TextToolProtocolSession,
 } from './text-tool-protocol';
 
-export const REPLACE_IN_FILE_JSON_EXAMPLE =
-  '[TOOL:replace_in_file {"path":"src/foo.cpp","old_str":"原始文本","new_str":"替换后文本"}]';
-
 export const REPLACE_IN_FILE_RAW_EXAMPLE = [
   '```xml',
   '<replace_in_file>',
@@ -44,9 +41,7 @@ export function buildFullFileWriteToolPrompt(session?: TextToolProtocolSession):
 
 export function buildReplaceInFileToolPrompt(session?: TextToolProtocolSession): string {
   return [
-    REPLACE_IN_FILE_JSON_EXAMPLE,
-    '优先选取能唯一匹配的最小 old_str/new_str；短单行替换可以使用 JSON，并按 JSON 规则转义源码双引号。',
-    '当 old_str/new_str 含源码双引号、反斜杠或多行文本时，必须使用 XML 代码围栏包裹的 CDATA 无损原始参数格式：',
+    '优先选取能唯一匹配的最小 old_str/new_str。文本 Provider 的 replace_in_file 必须统一使用 XML 代码围栏包裹的 CDATA 无损原始参数格式：',
     renderProtocolExample(REPLACE_IN_FILE_RAW_EXAMPLE, session),
     '整个工具块必须保留在 ```xml 代码围栏内，不要输出裸 XML。',
     '每轮最多输出 1 个多行 replace_in_file；输出工具块后立即停止，等待真实写盘结果。',

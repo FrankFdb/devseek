@@ -313,6 +313,63 @@ test('ModelLedUserSimulation: successful command evidence cannot settle a typo-c
   }
 });
 
+test('ModelLedUserSimulation: validation and reads cannot discharge a malformed mutation', async () => {
+  const prompt = '修复 result.txt 为 MUTATION_DEBT_CLEARED，并读回确认。';
+  let calls = 0;
+  const simulation = await runSimulation(prompt, async messages => {
+    calls += 1;
+    const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'result.txt');
+    if (calls === 1) {
+      const channelId = messages[0].content.match(/channel="([A-Za-z0-9_-]+)"/u)?.[1];
+      writeFileSync(target, 'OLD');
+      return {
+        text: [
+          `<devseek_tool_calls version="devseek.text-tools/v1" channel="${channelId}">`,
+          `[TOOL:replace_in_file {"path":"${target}","old_str":"OLD","new_str":"value with "quotes""}]`,
+          '</devseek_tool_calls>',
+        ].join('\n'),
+        tools: [],
+      };
+    }
+    if (calls === 2) {
+      assert.match(messages.at(-1).content, /本轮只恢复被隔离的动作/u);
+      return {
+        text: '先重跑验证。',
+        tools: [{ name: 'run_terminal', input: { command: "printf 'PUBLIC_CHECK_OK\\n'" } }],
+      };
+    }
+    if (calls === 3) {
+      assert.match(messages.at(-1).content, /尚未解决上一轮被隔离的结构化动作/u);
+      return {
+        text: '精确重读目标。',
+        tools: [{ name: 'read_file', input: { path: target } }],
+      };
+    }
+    assert.match(messages.at(-1).content, /尚未解决上一轮被隔离的结构化动作/u);
+    return {
+      text: '以有效文件修改解决待处理动作。',
+      tools: [
+        { name: 'replace_in_file', input: { path: target, old_str: 'OLD', new_str: 'MUTATION_DEBT_CLEARED' } },
+        { name: 'read_file', input: { path: target } },
+        { name: 'task_complete', input: { summary: '已完成修改并读回。' } },
+      ],
+    };
+  }, { runDisplayAction: 'repair' });
+  try {
+    assert.equal(calls, 4, simulation.result.historyText);
+    assert.equal(readFileSync(path.join(simulation.root, 'result.txt'), 'utf8'), 'MUTATION_DEBT_CLEARED');
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+    assert.deepEqual(
+      simulation.harness.statuses
+        .filter(status => status.recoveryReason === 'provider-response-corruption')
+        .map(status => status.state),
+      ['started', 'completed'],
+    );
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
 test('ModelLedUserSimulation: invalid authenticated mutation recovers with its lossless write format', async () => {
   const prompt = '创建 recovered-format.txt，内容为 RECOVERED_FORMAT_OK，并读回确认。';
   let calls = 0;

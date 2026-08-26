@@ -367,7 +367,7 @@ export async function runAgenticLoop(
       contextInvestigation.reset();
     }
     if (recovery.recovered) {
-      providerRecovery.begin(providerFailure?.operationId);
+      providerRecovery.begin(providerFailure?.operationId, providerFailure?.observedToolNames);
       return 'recovered';
     }
     await providerRecovery.fail();
@@ -542,10 +542,9 @@ export async function runAgenticLoop(
     }
     if (tools.length > 0) {
       providerRecoveryCompletedThisRound = await providerRecovery.completeAcceptedResponse(
-        'tool-protocol',
-        providerOperationId,
+        'tool-protocol', providerOperationId, tools.map(tool => tool.name),
       );
-      unresolvedProviderToolProtocol = false;
+      unresolvedProviderToolProtocol = providerRecovery.hasUnresolvedToolAction();
     }
 
     messages.push({ role: 'assistant', content: text }, ...postProviderSteerMessages);
@@ -617,6 +616,7 @@ export async function runAgenticLoop(
           reason: '安全恢复后仍未形成有效工具调用，上一轮结构化动作尚未解决。',
           rawMessage: text,
           recoverable: true,
+          observedToolNames: providerRecovery.pendingObservedToolNames(),
         }, text.trim().length);
         if (disposition === 'completed') break;
         if (disposition === 'recovered') continue;
@@ -731,7 +731,7 @@ export async function runAgenticLoop(
 
     const blockedRepeatedToolIndexes = new Set<number>();
     const suppressedTools: ToolSuppressionEvidence[] = [];
-    const loopWarnings: string[] = [];
+    const loopWarnings: string[] = [providerRecovery.unresolvedToolActionFeedback(textToolProtocol)].filter(Boolean);
     const hasFileWriteIntentThisRound = tools.some(tool => tool.purpose === 'workspace-mutation');
     tools.forEach((tool, toolIndex) => {
       if (tool.name !== 'run_terminal') return;

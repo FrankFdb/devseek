@@ -223,7 +223,9 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
       resetProviderSession ? '- 本轮会重建 Provider 会话：必须沿用当前消息历史和下列已验证事实继续，不得要求用户重新发送需求。' : '',
       blockingTerminalFailure
         ? '- 不要在恢复轮重新规划 Todo；先清除活动验证失败。'
-        : '- 先用 manage_todo_list 校正当前步骤；未完成项保持 in-progress 或 not-started。',
+        : unresolvedToolAction
+          ? '- 本轮只恢复被隔离的动作，不要先更新 Todo、重复验证或扩展调查。'
+          : '- 先用 manage_todo_list 校正当前步骤；未完成项保持 in-progress 或 not-started。',
       contextReplayLine,
       '- 需要上下文时，只输出具体 read_file/list_dir/grep_search/file_search/只读 run_terminal 工具调用，不要同时输出长篇分析。',
       '- 需要创建或修改文件时，只使用 create_file 或 replace_in_file；大产物应分轮交付可验证、可继续扩展的完整责任切片。不得用占位骨架、近似接口或“最小可编译版本”冒充原始契约已经完成。',

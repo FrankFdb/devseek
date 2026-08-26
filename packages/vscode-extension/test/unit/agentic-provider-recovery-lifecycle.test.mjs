@@ -45,3 +45,33 @@ test('provider recovery lifecycle identifies only the first accepted recovery re
     result: 'recovered-op',
   }]);
 });
+
+test('provider recovery lifecycle keeps a rejected mutation pending across reads and validation', async () => {
+  const statuses = [];
+  const lifecycle = new AgenticProviderRecoveryLifecycle('src/x11_app.cpp', 'repair', {
+    onAgentStatus(status) { statuses.push(status); },
+  });
+
+  lifecycle.begin('malformed-mutation', ['replace_in_file']);
+  assert.equal(lifecycle.hasUnresolvedToolAction(), true);
+  assert.equal(
+    await lifecycle.completeAcceptedResponse('tool-protocol', 'validation-op', ['run_terminal']),
+    false,
+  );
+  assert.equal(
+    await lifecycle.completeAcceptedResponse('tool-protocol', 'context-op', ['read_file']),
+    false,
+  );
+  assert.equal(statuses.length, 0);
+  assert.match(lifecycle.unresolvedToolActionFeedback({
+    version: 'devseek.text-tools/v1',
+    channelId: 'recovery-channel-1234',
+  }), /尚未解决上一轮被隔离的结构化动作[\s\S]*fenced CDATA/u);
+
+  assert.equal(
+    await lifecycle.completeAcceptedResponse('tool-protocol', 'mutation-op', ['replace_in_file']),
+    true,
+  );
+  assert.equal(lifecycle.hasUnresolvedToolAction(), false);
+  assert.deepEqual(statuses.map(status => status.state), ['completed']);
+});

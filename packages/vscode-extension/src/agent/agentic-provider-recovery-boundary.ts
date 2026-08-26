@@ -1,4 +1,7 @@
-import type { CodingContextCompactionSessionPort } from '@devseek-netai/shared';
+import {
+  isFileWriteToolName,
+  type CodingContextCompactionSessionPort,
+} from '@devseek-netai/shared';
 import type { AgentTaskAction } from './agent-task';
 import type { ChatMessage } from '../llm/types';
 import type { AgentLoopCallbacks } from './loop-types';
@@ -15,6 +18,7 @@ import {
   shouldResetProviderSessionForRecovery,
   type AgentProviderFailure,
 } from './provider-response-recovery';
+import { buildTextToolEnvelopeRecoveryPrompt } from './tool-protocol-prompt';
 
 export interface AgenticProviderRecoveryBoundaryInput {
   readonly failure: AgentProviderFailure | undefined;
@@ -49,6 +53,7 @@ export interface AgenticProviderRecoveryBoundaryResult {
 export class AgenticProviderRecoveryLifecycle {
   private pending = false;
   private readonly targetOperationIds = new Set<string>();
+  private readonly observedToolNames = new Set<string>();
 
   constructor(
     private readonly taskFile: string,
@@ -56,15 +61,38 @@ export class AgenticProviderRecoveryLifecycle {
     private readonly callbacks: Pick<AgentLoopCallbacks, 'signal' | 'onAgentStatus'>,
   ) {}
 
-  begin(operationId?: string): void {
+  begin(operationId?: string, observedToolNames: readonly string[] = []): void {
     this.pending = true;
     if (operationId?.trim()) this.targetOperationIds.add(operationId.trim());
+    for (const name of observedToolNames) {
+      if (name?.trim()) this.observedToolNames.add(name.trim());
+    }
+  }
+
+  hasUnresolvedToolAction(): boolean {
+    return this.pending && this.observedToolNames.size > 0;
+  }
+
+  pendingObservedToolNames(): readonly string[] {
+    return Object.freeze([...this.observedToolNames]);
+  }
+
+  unresolvedToolActionFeedback(session: TextToolProtocolSession): string {
+    if (!this.hasUnresolvedToolAction()) return '';
+    return [
+      '【系统恢复】刚执行的工具只补充了上下文或验证事实，尚未解决上一轮被隔离的结构化动作。不得把该工具结果当作原动作恢复完成。',
+      buildTextToolEnvelopeRecoveryPrompt(session, {
+        observedToolNames: this.pendingObservedToolNames(),
+      }),
+    ].join('\n');
   }
 
   async completeAcceptedResponse(
     kind: 'tool-protocol' | 'plain-response',
     resultOperationId?: string,
+    acceptedToolNames: readonly string[] = [],
   ): Promise<boolean> {
+    if (!this.acceptedResponseResolvesPendingAction(kind, acceptedToolNames)) return false;
     return this.settle(
       'completed',
       'Provider 安全恢复完成',
@@ -81,6 +109,20 @@ export class AgenticProviderRecoveryLifecycle {
       'Provider 安全恢复失败',
       'Provider 在受限重试预算内仍未形成可信响应，本次恢复已明确终止。',
     );
+  }
+
+  private acceptedResponseResolvesPendingAction(
+    kind: 'tool-protocol' | 'plain-response',
+    acceptedToolNames: readonly string[],
+  ): boolean {
+    if (!this.pending) return false;
+    if (this.observedToolNames.size === 0) return true;
+    if (kind !== 'tool-protocol') return false;
+    const accepted = new Set(acceptedToolNames.map(name => name.trim()).filter(Boolean));
+    if ([...this.observedToolNames].some(isFileWriteToolName)) {
+      return [...accepted].some(isFileWriteToolName);
+    }
+    return [...this.observedToolNames].some(name => accepted.has(name));
   }
 
   private async settle(
@@ -109,6 +151,7 @@ export class AgenticProviderRecoveryLifecycle {
     }
     this.pending = false;
     this.targetOperationIds.clear();
+    this.observedToolNames.clear();
     return true;
   }
 }
