@@ -40,5 +40,8 @@ export interface ToolFailureEvidence {
 
 export interface ToolSuppressionEvidence {
   tool: string;
-  reason: 'repeated-terminal-without-progress' | 'repeated-context-without-progress';
+  reason:
+    | 'repeated-terminal-without-progress'
+    | 'repeated-context-without-progress'
+    | 'covered-context-without-progress';
 }

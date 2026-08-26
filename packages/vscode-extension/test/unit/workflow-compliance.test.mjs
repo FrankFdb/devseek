@@ -942,6 +942,7 @@ test('Agentic loop: repeated terminal failures enter root-cause recovery before 
   const code = src('src/agent/agentic-loop.ts');
   const recovery = src('src/agent/write-guard.ts');
   const convergence = src('src/agent/context-convergence-feedback.ts');
+  const investigation = src('src/agent/context-investigation-ledger.ts');
   assertContains(code, 'getTerminalRecoveryProtocol', 'terminal recovery protocol helper');
   assertContains(recovery, '根因分析', 'recovery prompt must require root-cause analysis');
   assertContains(recovery, '禁止再次执行同一命令直到完成根因修复', 'recovery prompt must block blind retry');
@@ -959,8 +960,12 @@ test('Agentic loop: repeated terminal failures enter root-cause recovery before 
   );
   assertContains(code, 'isContextGatheringToolName', 'agent loop must delegate context-tool classification');
   assertContains(convergence, 'CONTEXT_GATHERING_TOOL_NAMES', 'context gathering repeats must share the same no-progress guard');
-  assertContains(code, 'seenContextToolSignatures', 'context tool repeats must be tracked across rounds');
-  assertContains(code, 'consumeContextRefresh', 'failed mutations must permit one fresh read before repeat suppression');
+  assertContains(code, 'ContextInvestigationLedger', 'agent loop must delegate duplicate investigation ownership');
+  assertContains(code, 'contextInvestigation.reset()', 'a rebuilt Provider session must forget evidence it can no longer see');
+  assertContains(investigation, 'private readonly signatures', 'exact context repeats must be tracked across rounds');
+  assertContains(investigation, 'private readonly readCoverage', 'successful broad reads must cover later narrow requests');
+  assertContains(investigation, 'coverage.progressEpoch === progressEpoch', 'writes must invalidate prior read coverage');
+  assertContains(investigation, 'input.consumeContextRefresh', 'failed mutations must permit one fresh read before repeat suppression');
   assertContains(code, 'suppressedTools', 'intentional repeat suppression must be recorded for replay diagnostics');
   assertContains(code, 'lastProgressEpoch', 'terminal repeats must be compared against file-write progress');
 });

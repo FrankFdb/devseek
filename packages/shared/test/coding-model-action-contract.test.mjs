@@ -81,6 +81,35 @@ test('a denied canonical receipt cannot settle model action semantics', () => {
   }), undefined);
 });
 
+test('settled observation evidence cannot classify the whole user task as review', () => {
+  const current = defaultContract('Inspect the project, then implement the requested fix.');
+  const observation = {
+    actionId: 'read-current-source',
+    tool: 'read_file',
+    purpose: 'observe',
+    effects: ['read'],
+    input: { path: 'src/value.ts' },
+    targetPaths: ['src/value.ts'],
+  };
+  const receipt = toolReceipt({
+    actionId: observation.actionId,
+    tool: observation.tool,
+    purpose: observation.purpose,
+    effects: observation.effects,
+    inputSha256: codingSemanticDigest(observation.input),
+  });
+
+  assert.equal(reconcileSettledCodingModelAction({
+    current,
+    surface: 'cli',
+    action: observation,
+    toolReceipts: [receipt],
+    changeReceipts: [],
+  }), undefined);
+  assert.equal(current.orientation.source, 'read-only-default');
+  assert.equal(current.mode, 'explain');
+});
+
 test('an explicit review contract cannot be widened by a model workspace proposal', () => {
   const current = resolveCodingKernelTaskContract({
     prompt: 'Review src/value.ts and report findings only.',

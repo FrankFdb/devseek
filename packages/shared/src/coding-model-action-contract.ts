@@ -63,6 +63,7 @@ function projectModelActionContractAtBoundary(
 ): CodingKernelTaskContract {
   const { current, action } = input;
   if (current.orientation.source === 'safety-policy') return current;
+  if (!actionCanReviseTaskContract(action)) return current;
 
   const workspaceAction = action.purpose === 'workspace-mutation'
     && action.effects.includes('workspace-mutation');
@@ -194,10 +195,15 @@ function resolveObservedActionMode(
     || action.purpose === 'external-effect') {
     return 'change';
   }
-  if (current === 'review' || action.purpose === 'verify' || action.purpose === 'observe') {
-    return 'review';
-  }
   return current;
+}
+
+function actionCanReviseTaskContract(action: CodingModelActionObservation): boolean {
+  return action.purpose === 'workspace-mutation'
+    || action.purpose === 'external-effect'
+    || action.effects.includes('workspace-mutation')
+    || action.effects.includes('release')
+    || action.effects.includes('git');
 }
 
 function hasAuthoritativeNoMutationBoundary(contract: CodingKernelTaskContract): boolean {

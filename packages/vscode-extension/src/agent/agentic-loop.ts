@@ -114,13 +114,12 @@ import {
 import { renewExecutionConvergenceRoundLimit } from './execution-convergence-window';
 import { settleAgenticLoopFinal } from './agentic-final-settlement';
 import {
-  buildRepeatedContextToolFeedback,
   DeliveryConvergenceLedger,
   isContextGatheringToolName,
-  makeContextToolSignature,
   resolveDeliveryConvergenceExpectation,
   resolveDeliveryConvergencePending,
 } from './context-convergence-feedback';
+import { ContextInvestigationLedger } from './context-investigation-ledger';
 import { createModelSemanticSettlementService } from './model-semantic-settlement';
 import { resolveAgenticPromptRequirements } from './agentic-prompt-requirements';
 const AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS = 3;
@@ -360,7 +359,7 @@ export async function runAgenticLoop(
       // Duplicate-read suppression is scoped to what the current model session
       // has actually seen. A rebuilt Provider session retains audit paths but
       // must be allowed to replay the file contents it no longer possesses.
-      seenContextToolSignatures.clear();
+      contextInvestigation.reset();
     }
     if (recovery.recovered) {
       providerRecovery.begin(providerFailure?.operationId);
@@ -388,7 +387,7 @@ export async function runAgenticLoop(
   let steeringRevisionGraceRounds = 0;
   // Track terminal command signatures across rounds to detect and break stuck loops
   const seenTerminalCmdSignatures = new Map<string, { count: number; lastProgressEpoch: number }>();
-  const seenContextToolSignatures = new Map<string, { count: number; lastProgressEpoch: number }>();
+  const contextInvestigation = new ContextInvestigationLedger(workspaceRoot);
   for (;;) {
   while (roundCount < Math.max(
     executionConvergenceRoundLimit,
@@ -741,30 +740,18 @@ export async function runAgenticLoop(
         callbacks.onToolActivity?.('terminal', `跳过重复命令: ${sig.slice(0, 50)}`);
       }
     });
-    tools.forEach((tool, toolIndex) => {
-      if (!isContextGatheringToolName(tool.name)) return;
-      const sig = makeContextToolSignature(tool);
-      const seen = seenContextToolSignatures.get(sig);
-      if (seen && seen.lastProgressEpoch === progressEpoch && !hasFileWriteIntentThisRound) {
-        const refreshPath = tool.name === 'read_file' && typeof tool.input.path === 'string'
-          ? tool.input.path
-          : undefined;
-        if (toolFailureRecovery.consumeContextRefresh(refreshPath)) {
-          seenContextToolSignatures.delete(sig);
-          callbacks.onToolActivity?.('read', '重新读取失败编辑后的当前文件');
-          return;
-        }
-        const nextCount = seen.count + 1;
-        seenContextToolSignatures.set(sig, { count: nextCount, lastProgressEpoch: progressEpoch });
-        blockedRepeatedToolIndexes.add(toolIndex);
-        suppressedTools.push({ tool: tool.name, reason: 'repeated-context-without-progress' });
-        loopWarnings.push(buildRepeatedContextToolFeedback(tool, nextCount));
-        callbacks.onToolActivity?.('search', `跳过重复上下文工具: ${tool.name}`);
-      }
+    const contextScreen = contextInvestigation.screen(tools, {
+      progressEpoch,
+      hasWorkspaceMutation: hasFileWriteIntentThisRound,
+      consumeContextRefresh: path => toolFailureRecovery.consumeContextRefresh(path),
     });
+    for (const toolIndex of contextScreen.blockedToolIndexes) blockedRepeatedToolIndexes.add(toolIndex);
+    suppressedTools.push(...contextScreen.suppressedTools);
+    loopWarnings.push(...contextScreen.warnings);
     const toolsToExecute = blockedRepeatedToolIndexes.size > 0
       ? tools.filter((_, toolIndex) => !blockedRepeatedToolIndexes.has(toolIndex))
       : tools;
+    const progressEpochBeforeTools = progressEpoch;
 
     const loopRes = await executeScheduledToolLoop(
       toolsToExecute,
@@ -828,6 +815,11 @@ export async function runAgenticLoop(
     if (loopRes.evidenceRefs?.length) {
       allEvidenceRefs.push(...loopRes.evidenceRefs);
     }
+    loopWarnings.push(...contextInvestigation.record({
+      tools: toolsToExecute,
+      evidenceRefs: loopRes.evidenceRefs ?? [],
+      progressEpoch: progressEpochBeforeTools,
+    }));
     const semanticSettlement = await modelSemanticSettlement.observe(loopRes);
     if (semanticSettlement.settled) {
       refreshPromptRequirements();
@@ -933,16 +925,6 @@ export async function runAgenticLoop(
       seenTerminalCmdSignatures.set(sig, { count: nextCount, lastProgressEpoch: progressEpoch });
       if (prev && prev.lastProgressEpoch === progressEpoch && nextCount >= 2) {
         loopWarnings.push(getTerminalRecoveryProtocol(cmd, nextCount));
-      }
-    }
-    for (const tool of toolsToExecute) {
-      if (!isContextGatheringToolName(tool.name)) continue;
-      const sig = makeContextToolSignature(tool);
-      const prev = seenContextToolSignatures.get(sig);
-      const nextCount = (prev?.count ?? 0) + 1;
-      seenContextToolSignatures.set(sig, { count: nextCount, lastProgressEpoch: progressEpoch });
-      if (prev && prev.lastProgressEpoch === progressEpoch && nextCount >= 2) {
-        loopWarnings.push(buildRepeatedContextToolFeedback(tool, nextCount));
       }
     }
     // Clear any ASUM delta that task_complete may have emitted during this round.
