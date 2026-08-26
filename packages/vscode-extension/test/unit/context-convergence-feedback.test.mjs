@@ -20,21 +20,40 @@ execFileSync('npx', [
   `--outfile=${bundlePath}`,
 ], { cwd: rootDir, stdio: 'pipe' });
 
-const { PreMutationConvergenceLedger } = createRequire(import.meta.url)(bundlePath);
+const {
+  DeliveryConvergenceLedger,
+  resolveDeliveryConvergenceExpectation,
+} = createRequire(import.meta.url)(bundlePath);
 
 after(() => rmSync(tempRoot, { recursive: true, force: true }));
 
 const unresolvedMutation = Object.freeze({
-  mutationRequired: true,
-  successfulMutationCount: 0,
-  unresolvedExecution: true,
+  expectation: 'mutation',
+  deliveryProgressEpoch: 0,
+  deliveryPending: true,
   gatheredEvidenceCount: 8,
   investigationActivity: true,
 });
 
-test('pre-mutation convergence corrects twice and then stops investigation without a write', () => {
-  const ledger = new PreMutationConvergenceLedger();
+test('delivery expectation keeps unclassified model guidance separate from mutation authority', () => {
+  assert.equal(resolveDeliveryConvergenceExpectation({
+    mutationRequired: true,
+    modelLedUnclassified: true,
+  }), 'mutation');
+  assert.equal(resolveDeliveryConvergenceExpectation({
+    mutationRequired: false,
+    modelLedUnclassified: true,
+  }), 'unclassified');
+  assert.equal(resolveDeliveryConvergenceExpectation({
+    mutationRequired: false,
+    modelLedUnclassified: false,
+  }), 'none');
+});
 
+test('delivery convergence corrects twice and then stops a mutation cohort without progress', () => {
+  const ledger = new DeliveryConvergenceLedger();
+
+  assert.equal(ledger.observe(unresolvedMutation).kind, 'continue');
   assert.equal(ledger.observe(unresolvedMutation).kind, 'continue');
   const firstCorrection = ledger.observe(unresolvedMutation);
   assert.equal(firstCorrection.kind, 'correct');
@@ -46,8 +65,8 @@ test('pre-mutation convergence corrects twice and then stops investigation witho
   assert.match(stopped.reason, /避免自主模式继续无界调查/u);
 });
 
-test('pre-mutation convergence ignores non-investigation turns and resets after a real write', () => {
-  const ledger = new PreMutationConvergenceLedger();
+test('delivery convergence ignores non-investigation turns and opens a new cohort after progress', () => {
+  const ledger = new DeliveryConvergenceLedger();
   const idle = { ...unresolvedMutation, investigationActivity: false };
   assert.equal(ledger.observe(idle).kind, 'continue');
   assert.equal(ledger.observe(idle).kind, 'continue');
@@ -56,22 +75,50 @@ test('pre-mutation convergence ignores non-investigation turns and resets after 
   assert.equal(ledger.observe(unresolvedMutation).kind, 'correct');
   assert.equal(ledger.observe({
     ...unresolvedMutation,
-    successfulMutationCount: 1,
+    deliveryProgressEpoch: 1,
   }).kind, 'continue');
 
-  assert.equal(ledger.observe(unresolvedMutation).kind, 'continue');
+  assert.equal(ledger.observe({
+    ...unresolvedMutation,
+    deliveryProgressEpoch: 1,
+  }).kind, 'continue');
+  assert.equal(ledger.observe({
+    ...unresolvedMutation,
+    deliveryProgressEpoch: 1,
+  }).kind, 'correct');
 });
 
-test('read-only work and insufficient evidence never acquire mutation convergence pressure', () => {
-  const ledger = new PreMutationConvergenceLedger();
+test('explicit read-only work and insufficient evidence never acquire delivery pressure', () => {
+  const ledger = new DeliveryConvergenceLedger();
   for (let round = 0; round < 6; round++) {
     assert.equal(ledger.observe({
       ...unresolvedMutation,
-      mutationRequired: false,
+      expectation: 'none',
     }).kind, 'continue');
     assert.equal(ledger.observe({
       ...unresolvedMutation,
       gatheredEvidenceCount: 2,
     }).kind, 'continue');
   }
+});
+
+test('unclassified model-led investigation receives neutral pressure before it can run unbounded', () => {
+  const ledger = new DeliveryConvergenceLedger();
+  const observation = {
+    ...unresolvedMutation,
+    expectation: 'unclassified',
+    gatheredEvidenceCount: 16,
+  };
+
+  for (let round = 0; round < 6; round++) {
+    assert.equal(ledger.observe(observation).kind, 'continue');
+  }
+  const firstCorrection = ledger.observe(observation);
+  assert.equal(firstCorrection.kind, 'correct');
+  assert.match(firstCorrection.feedback, /如果原始需求要求实现或修复/u);
+  assert.doesNotMatch(firstCorrection.feedback, /replace_in_file/u);
+  assert.match(firstCorrection.feedback, /不授权任何副作用/u);
+
+  assert.equal(ledger.observe(observation).kind, 'correct');
+  assert.equal(ledger.observe(observation).kind, 'stop');
 });

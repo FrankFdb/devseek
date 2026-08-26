@@ -500,6 +500,49 @@ test('ModelLedUserSimulation: late deferred prose after prior reads cannot end t
   }
 });
 
+test('ModelLedUserSimulation: unclassified investigation is bounded before the model chooses delivery', async () => {
+  const prompt = '检查现有项目后完成需要的实现，并把结果写入 convergence.txt。';
+  let calls = 0;
+  const simulation = await runSimulation(prompt, async messages => {
+    calls += 1;
+    const root = fakeWorkspace.workspaceFolders[0].uri.fsPath;
+    if (calls <= 7) {
+      const source = path.join(root, `context-${calls}.txt`);
+      writeFileSync(source, `context ${calls}\n`);
+      return {
+        text: `继续检查第 ${calls} 项项目上下文。`,
+        tools: [{ name: 'read_file', input: { path: source } }],
+      };
+    }
+
+    assert.match(messages.at(-1).content, /必须依据原始用户需求形成可结算交付/u);
+    assert.match(messages.at(-1).content, /本提示不授权任何副作用/u);
+    const target = path.join(root, 'convergence.txt');
+    return {
+      text: '已有证据足够，按原始需求落实交付。',
+      tools: [
+        { name: 'create_file', input: { path: target, content: 'DELIVERY_CONVERGED_OK\n' } },
+        { name: 'read_file', input: { path: target } },
+        { name: 'task_complete', input: { summary: '已创建并读回 convergence.txt。' } },
+      ],
+    };
+  }, { runDisplayAction: 'create' });
+  try {
+    assert.equal(calls, 8, simulation.result.historyText);
+    assert.equal(
+      readFileSync(path.join(simulation.root, 'convergence.txt'), 'utf8'),
+      'DELIVERY_CONVERGED_OK\n',
+    );
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+    assert.equal(
+      simulation.harness.statuses.some(status => status.title === '项目证据已收集，正在要求形成交付'),
+      true,
+    );
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
 test('ModelLedUserSimulation: inline historical wording cannot resurrect a superseded target', async () => {
   const prompt = '这是一次多轮需求的最终轮：前面曾说写 INITIAL_REQUIREMENT，但现在改为 FINAL_REQUIREMENT_OK。请只按最新要求创建 journey-result.txt，文件内容必须精确包含一行 FINAL_REQUIREMENT_OK。完成写入和读回验证后结束任务，不要创建旧要求文件。';
   let calls = 0;

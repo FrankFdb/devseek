@@ -10,19 +10,31 @@ const CONTEXT_GATHERING_TOOL_NAMES = new Set([
   'semantic_search', 'memory_search', 'memory_read',
 ]);
 
-const PRE_MUTATION_ROUNDS_BEFORE_CORRECTION = 2;
-const PRE_MUTATION_EVIDENCE_BEFORE_CORRECTION = 6;
-const PRE_MUTATION_MAX_CORRECTIONS = 2;
+const MUTATION_ROUNDS_BEFORE_CORRECTION = 2;
+const MUTATION_EVIDENCE_BEFORE_CORRECTION = 6;
+const UNCLASSIFIED_ROUNDS_BEFORE_CORRECTION = 6;
+const UNCLASSIFIED_EVIDENCE_BEFORE_CORRECTION = 12;
+const MAX_DELIVERY_CORRECTIONS = 2;
 
-export interface PreMutationConvergenceObservation {
+export type DeliveryConvergenceExpectation = 'mutation' | 'unclassified' | 'none';
+
+export function resolveDeliveryConvergenceExpectation(input: {
   readonly mutationRequired: boolean;
-  readonly successfulMutationCount: number;
-  readonly unresolvedExecution: boolean;
+  readonly modelLedUnclassified: boolean;
+}): DeliveryConvergenceExpectation {
+  if (input.mutationRequired) return 'mutation';
+  return input.modelLedUnclassified ? 'unclassified' : 'none';
+}
+
+export interface DeliveryConvergenceObservation {
+  readonly expectation: DeliveryConvergenceExpectation;
+  readonly deliveryProgressEpoch: number;
+  readonly deliveryPending: boolean;
   readonly gatheredEvidenceCount: number;
   readonly investigationActivity: boolean;
 }
 
-export type PreMutationConvergenceResult =
+export type DeliveryConvergenceResult =
   | Readonly<{ kind: 'continue' }>
   | Readonly<{
     kind: 'correct';
@@ -38,53 +50,95 @@ export type PreMutationConvergenceResult =
 
 const CONTINUE_RESULT = Object.freeze({ kind: 'continue' as const });
 
-/** Bounds investigation and validation rounds that never produce the first requested mutation. */
-export class PreMutationConvergenceLedger {
-  private roundsWithoutMutation = 0;
+/** Bounds investigation rounds within each delivery or repair cohort. */
+export class DeliveryConvergenceLedger {
+  private expectation: DeliveryConvergenceExpectation | undefined;
+  private progressEpoch: number | undefined;
+  private investigationRounds = 0;
   private correctionCount = 0;
 
-  observe(input: PreMutationConvergenceObservation): PreMutationConvergenceResult {
-    if (!input.mutationRequired || input.successfulMutationCount > 0 || !input.unresolvedExecution) {
-      this.reset();
+  observe(input: DeliveryConvergenceObservation): DeliveryConvergenceResult {
+    if (this.expectation !== input.expectation || this.progressEpoch !== input.deliveryProgressEpoch) {
+      this.expectation = input.expectation;
+      this.progressEpoch = input.deliveryProgressEpoch;
+      this.resetCohort();
+      return CONTINUE_RESULT;
+    }
+    if (input.expectation === 'none' || !input.deliveryPending) {
+      this.resetCohort();
       return CONTINUE_RESULT;
     }
     if (!input.investigationActivity) return CONTINUE_RESULT;
 
-    this.roundsWithoutMutation++;
-    if (this.roundsWithoutMutation < PRE_MUTATION_ROUNDS_BEFORE_CORRECTION
-      || input.gatheredEvidenceCount < PRE_MUTATION_EVIDENCE_BEFORE_CORRECTION) {
+    this.investigationRounds++;
+    const roundsBeforeCorrection = input.expectation === 'mutation'
+      ? MUTATION_ROUNDS_BEFORE_CORRECTION
+      : UNCLASSIFIED_ROUNDS_BEFORE_CORRECTION;
+    const evidenceBeforeCorrection = input.expectation === 'mutation'
+      ? MUTATION_EVIDENCE_BEFORE_CORRECTION
+      : UNCLASSIFIED_EVIDENCE_BEFORE_CORRECTION;
+    if (this.investigationRounds < roundsBeforeCorrection
+      || input.gatheredEvidenceCount < evidenceBeforeCorrection) {
       return CONTINUE_RESULT;
     }
 
-    if (this.correctionCount >= PRE_MUTATION_MAX_CORRECTIONS) {
+    if (this.correctionCount >= MAX_DELIVERY_CORRECTIONS) {
       return Object.freeze({
         kind: 'stop',
         reason: [
-          `已收集 ${input.gatheredEvidenceCount} 项项目证据，但连续 ${this.roundsWithoutMutation} 个调查/验证工具轮没有产生成功写入。`,
-          `模型在 ${this.correctionCount} 次交付纠正后仍未落实受权修改；为避免自主模式继续无界调查，当前任务已停止。`,
+          `已收集 ${input.gatheredEvidenceCount} 项项目证据，但当前交付阶段连续 ${this.investigationRounds} 个工具轮只有调查/验证。`,
+          `模型在 ${this.correctionCount} 次交付纠正后仍未产生可结算进展；为避免自主模式继续无界调查，当前任务已停止。`,
         ].join(''),
       });
     }
 
     this.correctionCount++;
+    const mutationExpected = input.expectation === 'mutation';
     return Object.freeze({
       kind: 'correct',
-      statusTitle: '项目证据已收集，正在切换到交付落盘',
-      statusDetail: `已读取、搜索或验证 ${input.gatheredEvidenceCount} 项项目证据，但尚未成功写入。DevSeek 正在要求模型停止横向调查并落实一个最小修改。`,
-      activityLabel: '项目证据已足够，切换到交付落盘',
-      feedback: [
-        '【系统反馈】项目调查证据已足够，必须从调查阶段切换到交付阶段。',
-        `当前已读取/搜索/验证 ${input.gatheredEvidenceCount} 项证据，连续 ${this.roundsWithoutMutation} 个工具轮没有任何成功写盘证据。`,
-        '下一轮不要继续横向 grep/list/read 或重复验证；请提交一个能推进交付的最小修改。既有文件使用 replace_in_file，只有确认目标不存在时才使用 create_file，随后读取并运行适用验证。',
-        '如果仍缺少一个关键事实，只允许读取一个精确文件或行范围，并在紧接着的工具轮中落实修改。',
-      ].join('\n'),
+      statusTitle: mutationExpected
+        ? '项目证据已收集，正在切换到交付落盘'
+        : '项目证据已收集，正在要求形成交付',
+      statusDetail: mutationExpected
+        ? `已读取、搜索或验证 ${input.gatheredEvidenceCount} 项项目证据，但当前修改阶段尚无新写入。DevSeek 正在要求模型停止横向调查并落实一个最小修改。`
+        : `已读取、搜索或验证 ${input.gatheredEvidenceCount} 项项目证据，但模型仍未形成可结算交付。DevSeek 正在要求模型依据原始需求选择实施或给出结论。`,
+      activityLabel: mutationExpected
+        ? '项目证据已足够，切换到交付落盘'
+        : '项目证据已足够，切换到交付',
+      feedback: mutationExpected
+        ? buildMutationDeliveryFeedback(input, this.investigationRounds)
+        : buildUnclassifiedDeliveryFeedback(input, this.investigationRounds),
     });
   }
 
-  private reset(): void {
-    this.roundsWithoutMutation = 0;
+  private resetCohort(): void {
+    this.investigationRounds = 0;
     this.correctionCount = 0;
   }
+}
+
+function buildMutationDeliveryFeedback(
+  input: DeliveryConvergenceObservation,
+  investigationRounds: number,
+): string {
+  return [
+    '【系统反馈】项目调查证据已足够，必须从调查阶段切换到交付阶段。',
+    `当前已读取/搜索/验证 ${input.gatheredEvidenceCount} 项证据，本交付阶段连续 ${investigationRounds} 个工具轮没有新写盘进展。`,
+    '下一轮不要继续横向 grep/list/read 或重复验证；请提交一个能推进交付的最小修改。既有文件使用 replace_in_file，只有确认目标不存在时才使用 create_file，随后读取并运行适用验证。',
+    '如果仍缺少一个关键事实，只允许读取一个精确文件或行范围，并在紧接着的工具轮中落实修改。',
+  ].join('\n');
+}
+
+function buildUnclassifiedDeliveryFeedback(
+  input: DeliveryConvergenceObservation,
+  investigationRounds: number,
+): string {
+  return [
+    '【系统反馈】项目调查证据已足够，必须依据原始用户需求形成可结算交付。',
+    `当前已读取/搜索/验证 ${input.gatheredEvidenceCount} 项证据，连续 ${investigationRounds} 个工具轮仍只有调查。`,
+    '下一轮不要继续横向 grep/list/read 或重复验证：如果原始需求要求实现或修复，请提交一个最小写入；如果原始需求只要求分析，请停止调用工具并直接给出完整结论和依据。',
+    '本提示不授权任何副作用；所有具体动作仍必须通过当前工具协议、权限和沙箱逐项仲裁。',
+  ].join('\n');
 }
 
 export function isContextGatheringToolName(name: string): boolean {

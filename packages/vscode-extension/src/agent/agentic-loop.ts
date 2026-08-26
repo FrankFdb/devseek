@@ -115,9 +115,10 @@ import { renewExecutionConvergenceRoundLimit } from './execution-convergence-win
 import { settleAgenticLoopFinal } from './agentic-final-settlement';
 import {
   buildRepeatedContextToolFeedback,
+  DeliveryConvergenceLedger,
   isContextGatheringToolName,
   makeContextToolSignature,
-  PreMutationConvergenceLedger,
+  resolveDeliveryConvergenceExpectation,
 } from './context-convergence-feedback';
 import { createModelSemanticSettlementService } from './model-semantic-settlement';
 const AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS = 3;
@@ -211,7 +212,7 @@ export async function runAgenticLoop(
   const announcedProseKeys = new Set<string>();
   const allReadEvidencePaths = new Set<string>();
   const toolFailureRecovery = new ToolFailureRecoveryLedger({ workspaceRoot });
-  const preMutationConvergence = new PreMutationConvergenceLedger();
+  const deliveryConvergence = new DeliveryConvergenceLedger();
   const qualityGateStagnation = new QualityGateStagnationLedger();
   const requirementReview = createProviderRequirementReviewService({
     userPrompt: () => writeAuthority.currentPrompt,
@@ -989,22 +990,28 @@ export async function runAgenticLoop(
       unresolvedExecution: missingAfterTools.length > 0 || Boolean(blockingFailureAfterTools),
     });
     const gatheredEvidenceCount = allReadEvidencePaths.size + allEvidenceRefs.length;
-    const preMutationResult = preMutationConvergence.observe({
+    const deliveryExpectation = resolveDeliveryConvergenceExpectation({
       mutationRequired: promptRequiresFileChange,
-      successfulMutationCount: allWrittenFiles.length,
-      unresolvedExecution: missingAfterTools.length > 0 || Boolean(blockingFailureAfterTools),
+      modelLedUnclassified: writeAuthority.canonicalSemanticContract.signals.includes('model-led-unclassified-turn'),
+    });
+    const deliveryConvergenceResult = deliveryConvergence.observe({
+      expectation: deliveryExpectation,
+      deliveryProgressEpoch: progressEpoch,
+      deliveryPending: deliveryExpectation === 'unclassified'
+        ? !loopRes.taskComplete && !loopRes.allTodosCompleted
+        : missingAfterTools.length > 0 || Boolean(blockingFailureAfterTools),
       gatheredEvidenceCount,
       investigationActivity: roundHasInvestigationActivity,
     });
-    if (!callbacks.signal?.aborted && preMutationResult.kind === 'correct') {
+    if (!callbacks.signal?.aborted && deliveryConvergenceResult.kind === 'correct') {
       await emitAgenticCorrectionStatus(
-        preMutationResult.statusTitle,
-        preMutationResult.statusDetail,
-        preMutationResult.activityLabel,
+        deliveryConvergenceResult.statusTitle,
+        deliveryConvergenceResult.statusDetail,
+        deliveryConvergenceResult.activityLabel,
       );
-      loopWarnings.push(preMutationResult.feedback);
-    } else if (preMutationResult.kind === 'stop') {
-      failedReason = preMutationResult.reason;
+      loopWarnings.push(deliveryConvergenceResult.feedback);
+    } else if (deliveryConvergenceResult.kind === 'stop') {
+      failedReason = deliveryConvergenceResult.reason;
       break;
     }
 
