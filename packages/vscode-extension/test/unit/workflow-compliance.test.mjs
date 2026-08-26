@@ -2475,7 +2475,7 @@ test('Architecture: validated source changes require fresh source review before 
   );
   assertContains(
     agenticLoop,
-    'roundHasInvestigationActivity && !providerRecoveryCompletedThisRound',
+    /investigationActivity:\s*roundHasContextInvestigationActivity\s*&&\s*!providerRecoveryCompletedThisRound/u,
     'the accepted recovery result must not consume a normal delivery investigation round',
   );
   assertContains(
@@ -3148,6 +3148,8 @@ test('Agentic loop: visible correction and context convergence are owned by Agen
   assertContains(agenticLoop, 'new DeliveryConvergenceLedger()', 'agent loop must delegate delivery convergence ownership');
   assertContains(agenticLoop, 'resolveDeliveryConvergencePending({', 'agent loop must delegate current-turn delivery debt ownership');
   assertContains(agenticLoop, 'deliveryConvergence.observe({', 'each executed round must report facts to the convergence owner');
+  assertContains(agenticLoop, 'const roundHasContextInvestigationActivity =', 'delivery convergence must distinguish context drift from validation execution');
+  assertContains(agenticLoop, 'investigationActivity: roundHasContextInvestigationActivity', 'validation rounds must not consume the bounded context-investigation cohort');
   assertContains(agenticLoop, "deliveryConvergenceResult.kind === 'stop'", 'non-delivering autonomous investigation must fail closed');
   assertContains(contextConvergence, '项目证据已收集，正在切换到交付落盘', 'formal project work must visibly transition from investigation to delivery');
   assertContains(contextConvergence, '项目调查证据已足够，必须从调查阶段切换到交付阶段', 'model feedback must force delivery after enough evidence');

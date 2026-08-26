@@ -107,7 +107,7 @@ export class DeliveryConvergenceLedger {
       return Object.freeze({
         kind: 'stop',
         reason: [
-          `已收集 ${input.gatheredEvidenceCount} 项项目证据，但当前交付阶段连续 ${this.investigationRounds} 个工具轮只有调查/验证。`,
+          `已收集 ${input.gatheredEvidenceCount} 项项目证据，但当前交付阶段连续 ${this.investigationRounds} 个工具轮只有上下文调查。`,
           `模型在 ${this.correctionCount} 次交付纠正后仍未产生可结算进展；为避免自主模式继续无界调查，当前任务已停止。`,
         ].join(''),
       });
@@ -148,7 +148,7 @@ function buildMutationDeliveryFeedback(
     '【系统反馈】项目调查证据已足够，必须从调查阶段切换到交付阶段。',
     input.actionableRepairPending
       ? `独立审查已经给出可执行反例，本修复阶段连续 ${investigationRounds} 个工具轮没有新写盘进展。`
-      : `当前已读取/搜索/验证 ${input.gatheredEvidenceCount} 项证据，本交付阶段连续 ${investigationRounds} 个工具轮没有新写盘进展。`,
+      : `当前已收集 ${input.gatheredEvidenceCount} 项证据，本交付阶段连续 ${investigationRounds} 个上下文工具轮没有新写盘进展。`,
     '下一轮不要继续横向 grep/list/read 或重复验证；请提交一个能推进交付的最小修改。既有文件使用 replace_in_file，只有确认目标不存在时才使用 create_file，随后读取并运行适用验证。',
     '如果仍缺少一个关键事实，只允许读取一个精确文件或行范围，并在紧接着的工具轮中落实修改。',
   ].join('\n');
@@ -160,7 +160,7 @@ function buildUnclassifiedDeliveryFeedback(
 ): string {
   return [
     '【系统反馈】项目调查证据已足够，必须依据原始用户需求形成可结算交付。',
-    `当前已读取/搜索/验证 ${input.gatheredEvidenceCount} 项证据，连续 ${investigationRounds} 个工具轮仍只有调查。`,
+    `当前已收集 ${input.gatheredEvidenceCount} 项证据，连续 ${investigationRounds} 个上下文工具轮仍只有调查。`,
     '下一轮不要继续横向 grep/list/read 或重复验证：如果原始需求要求实现或修复，请提交一个最小写入；如果原始需求只要求分析，请停止调用工具并直接给出完整结论和依据。',
     '本提示不授权任何副作用；所有具体动作仍必须通过当前工具协议、权限和沙箱逐项仲裁。',
   ].join('\n');

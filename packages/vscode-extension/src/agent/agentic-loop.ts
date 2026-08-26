@@ -847,8 +847,11 @@ export async function runAgenticLoop(
     });
     const repairsTerminalFailure = failedTerminalWriteCountBeforeRound !== undefined
       && allWrittenFiles.length > failedTerminalWriteCountBeforeRound;
+    const roundHasContextInvestigationActivity = toolsToExecute.some(
+      tool => isContextGatheringToolName(tool.name),
+    );
     const roundHasInvestigationActivity = roundHasTerminalProgress
-      || toolsToExecute.some(tool => isContextGatheringToolName(tool.name));
+      || roundHasContextInvestigationActivity;
     const failureRound = toolFailureRecovery.recordRound(loopRes.toolFailures ?? []);
     loopWarnings.push(...failureRound.warnings);
     if (failureRound.stopReason && !failedReason) {
@@ -987,7 +990,8 @@ export async function runAgenticLoop(
       }),
       actionableRepairPending: requirementReviewSourceRepairPending,
       gatheredEvidenceCount: allReadEvidencePaths.size + allEvidenceRefs.length,
-      investigationActivity: roundHasInvestigationActivity && !providerRecoveryCompletedThisRound,
+      investigationActivity: roundHasContextInvestigationActivity
+        && !providerRecoveryCompletedThisRound,
     });
     if (!callbacks.signal?.aborted && deliveryConvergenceResult.kind === 'correct') {
       await emitAgenticCorrectionStatus(
