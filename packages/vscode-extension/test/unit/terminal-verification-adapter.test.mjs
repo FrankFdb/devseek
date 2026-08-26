@@ -160,6 +160,7 @@ test('terminal verification fails closed for ambiguity or mismatched ownership',
     { evidence: evidence({ kind: 'other' }) },
     { evidence: evidence({ canonicalAction: { actionId: 'other-action', sequence: 4, evidenceRefs: [] } }) },
     { toolReceipt: receipt({ effects: ['process', 'network'] }) },
+    { evidence: evidence({ command: './test.sh 2>&1 | head -50', kind: 'test' }) },
   ];
 
   for (const overrides of cases) {

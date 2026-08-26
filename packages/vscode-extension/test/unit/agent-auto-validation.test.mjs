@@ -220,6 +220,15 @@ test('terminal verification reuse requires current run, full scope, current acce
   }), undefined);
   assert.equal(selectReusableVerificationReceipt({
     ...base,
+    verificationReceipts: [priorVerificationReceipt({
+      checks: [{
+        ...priorVerificationReceipt().checks[0],
+        command: './test.sh 2>&1 | head -50',
+      }],
+    })],
+  }), undefined);
+  assert.equal(selectReusableVerificationReceipt({
+    ...base,
     verificationReceipts: [
       priorVerificationReceipt(),
       priorVerificationReceipt({
@@ -280,6 +289,61 @@ test('Agent auto validation reuses a later same-run terminal proof without rerun
       'quality:started',
       'quality:completed',
     ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a diagnostic projection receipt cannot suppress canonical auto validation', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-projection-proof-'));
+  try {
+    seed(root, 'src/app.js', 'export const value = 2;\n');
+    seed(root, 'package.json', JSON.stringify({ scripts: { test: 'node --test' } }));
+    let commandRuns = 0;
+    const context = verificationContext(
+      root,
+      ['src/app.js'],
+      [],
+      [],
+      async invocation => {
+        commandRuns += 1;
+        return {
+          ran: true,
+          ok: true,
+          command: invocation.command,
+          exitCode: 0,
+          stdout: 'PASS\n',
+          stderr: '',
+          output: 'PASS\n',
+          cwd: invocation.cwd,
+        };
+      },
+    );
+    const projection = priorVerificationReceipt({
+      runId: context.callbacks.traceRunId,
+      checks: [{
+        ...priorVerificationReceipt().checks[0],
+        command: './test.sh 2>&1 | head -50',
+      }],
+    });
+
+    const result = await runAgentAutoValidationForWrites(
+      [written(root, 'src/app.js')],
+      root,
+      '修复 src/app.js 并运行项目测试',
+      context.callbacks,
+      {
+        verificationAcceptance: context.acceptance,
+        priorVerificationReceipts: [projection],
+        changeReceipts: [committedChangeReceipt(['src/app.js'], {
+          runId: context.callbacks.traceRunId,
+        })],
+      },
+    );
+
+    assert.equal(commandRuns, 1);
+    assert.equal(result.verificationReceipt.status, 'passed');
+    assert.doesNotMatch(result.feedbackForAI, /无需重复启动自动验证器/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

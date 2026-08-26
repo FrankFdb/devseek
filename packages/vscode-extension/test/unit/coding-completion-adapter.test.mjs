@@ -135,6 +135,46 @@ test('VS Code evidence projection clears a denied validation route after a canon
   assert.deepEqual(evidence.residualRisks, []);
 });
 
+test('VS Code evidence projection clears a recovered denied composite validation failure', () => {
+  const denied = {
+    ...deniedTool(),
+    sequence: 2,
+    purpose: 'external-effect',
+    effects: ['process', 'workspace-mutation'],
+    effectStarted: false,
+    permission: {
+      decision: 'deny',
+      status: 'denied',
+      reason: 'external-purpose-has-invalid-effect',
+      evidenceRefs: ['permission:cleanup-denied'],
+    },
+    evidenceRefs: ['permission:cleanup-denied'],
+  };
+  const completed = terminalTool({
+    sequence: 3,
+    actionId: 'safe-host-validation-3',
+  });
+  const evidence = project({
+    tasksFailed: 1,
+    failedReason: '工具 run_terminal 未获授权：external-purpose-has-invalid-effect',
+    changedPaths: ['src/main.ts'],
+    changeReceipts: [mutation()],
+    toolExecutionReceipts: [denied, completed],
+    verificationReceipts: [verification({
+      sequence: completed.sequence,
+      actionId: completed.actionId,
+      idempotencyKey: `vscode-completion-run:${completed.actionId}`,
+    })],
+  });
+
+  assert.deepEqual(evidence.acceptanceEvidence, []);
+  assert.deepEqual(evidence.residualRisks, []);
+  assert.equal(
+    evidence.evidenceRefs.includes('vscode-agent-result:vscode-completion-run:tasks-failed'),
+    false,
+  );
+});
+
 test('VS Code evidence projection does not turn rejected control attempts into delivery risk', () => {
   const controlDenial = {
     ...deniedTool(),

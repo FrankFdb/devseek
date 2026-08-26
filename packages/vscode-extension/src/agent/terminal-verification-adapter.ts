@@ -7,6 +7,7 @@ import {
 } from '@devseek-netai/shared';
 import type { TerminalEvidence, WrittenFileEvidence } from './completion-evidence';
 import { workspaceRelativeVerificationPaths } from './verification-scope';
+import { isDiagnosticProjectionCommand } from '../tools/shell-command-analysis';
 
 export interface TerminalVerificationObservation {
   readonly toolReceipt: CodingToolExecutionReceipt<unknown>;
@@ -125,7 +126,8 @@ function canonicalTerminalVerificationStatus(
     && input.acceptance.length > 0
     && evidence.kind !== 'other'
     && action?.actionId === toolReceipt.actionId
-    && action.sequence === toolReceipt.sequence;
+    && action.sequence === toolReceipt.sequence
+    && !isDiagnosticProjectionCommand(evidence.command);
   if (!hasCanonicalOwnership) return undefined;
   if (toolReceipt.status === 'completed' && evidence.ok && evidence.exitCode === 0) {
     return { status: 'passed', exitCode: 0 };

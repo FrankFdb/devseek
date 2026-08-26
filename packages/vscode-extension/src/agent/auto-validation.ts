@@ -45,6 +45,7 @@ import { CanonicalValidationCommandRunner } from './canonical-validation-command
 import { buildStructuralCompileFailureRecoveryProtocol } from '../app/structural-compile-failure';
 import { isCodeArtifactPathValue } from '../artifact-path-kind';
 import { projectDiagnosticOutputExcerpt } from '../app/diagnostic-output-projection';
+import { isDiagnosticProjectionCommand } from '../tools/shell-command-analysis';
 
 export interface AgentAutoValidationCallbacks {
   onAgentStatus: (status: AgentStatusEvent) => void | Promise<void>;
@@ -144,8 +145,20 @@ export function selectReusableVerificationReceipt(
   return latest?.status === 'passed'
     && latest.acceptance.length > 0
     && latest.acceptance.every(result => result.status === 'passed')
+    && acceptanceHasReusableChecks(latest, acceptanceIds)
     ? latest
     : undefined;
+}
+
+function acceptanceHasReusableChecks(
+  receipt: CodingVerificationReceipt,
+  acceptanceIds: ReadonlySet<string>,
+): boolean {
+  return [...acceptanceIds].every(criterionId => receipt.checks.some(check => (
+    check.status === 'passed'
+      && check.acceptanceIds.includes(criterionId)
+      && (!check.command || !isDiagnosticProjectionCommand(check.command))
+  )));
 }
 
 function receiptCoversPaths(

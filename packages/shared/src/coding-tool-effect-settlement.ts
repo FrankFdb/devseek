@@ -106,8 +106,10 @@ function codingDeniedProcessToolWasRecovered(
 ): boolean {
   if (denied.status !== 'denied'
     || denied.tool !== 'run_terminal'
-    || denied.effects.length !== 1
-    || denied.effects[0] !== 'process') {
+    || !denied.effects.includes('process')
+    || denied.effectStarted === true
+    || (denied.effects.some(effect => effect !== 'process')
+      && denied.purpose !== 'external-effect')) {
     return false;
   }
   return toolExecutions.some(candidate => (

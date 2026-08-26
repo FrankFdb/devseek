@@ -47,11 +47,23 @@ export class VsCodeCompletionEvidenceAdapter {
     const neutralPolicyDeniedRefs = uniqueNonEmpty(toolExecutions
       .filter(codingDeniedToolExecutionIsPolicyNoEffect)
       .flatMap(receipt => receipt.evidenceRefs));
+    const recoveredDeniedRefs = uniqueNonEmpty(toolExecutions
+      .filter(receipt => (
+        receipt.status === 'denied'
+          && !codingAdverseToolExecutionBlocksCompletion(
+            receipt,
+            toolExecutions,
+            mutations,
+            verifications,
+          )
+      ))
+      .flatMap(receipt => receipt.evidenceRefs));
     const tasksFailed = shouldClearRecoveredTaskFailure({
       tasksFailed: input.result.tasksFailed,
       failedReason: input.result.failedReason,
       deniedEffectRefs,
       neutralPolicyDeniedRefs,
+      recoveredDeniedRefs,
       failedArtifactRefs,
       uncoveredChangedPaths,
       changedPaths: input.result.changedPaths,
@@ -101,6 +113,7 @@ function shouldClearRecoveredTaskFailure(input: {
   readonly failedReason?: string;
   readonly deniedEffectRefs: readonly string[];
   readonly neutralPolicyDeniedRefs: readonly string[];
+  readonly recoveredDeniedRefs: readonly string[];
   readonly failedArtifactRefs: readonly string[];
   readonly uncoveredChangedPaths: readonly string[];
   readonly changedPaths: readonly string[];
@@ -113,15 +126,23 @@ function shouldClearRecoveredTaskFailure(input: {
   if (input.failedArtifactRefs.length > 0 || input.uncoveredChangedPaths.length > 0) return false;
   if (input.changedPaths.length === 0) return false;
   const policyDeniedFailureWasRecovered = input.neutralPolicyDeniedRefs.length > 0;
+  const deniedToolFailureWasRecovered = isDeniedToolFailure(input.failedReason)
+    && input.recoveredDeniedRefs.length > 0;
   const legacyEvidenceFailureWasRecovered = isRecoverableLegacyEvidenceFailure(input.failedReason);
   const verificationFailureWasRecovered = hasRecoveredVerificationFailure(input.verifications, input.toolExecutions);
   if (!policyDeniedFailureWasRecovered
+    && !deniedToolFailureWasRecovered
     && !legacyEvidenceFailureWasRecovered
     && !verificationFailureWasRecovered) {
     return false;
   }
   return allChangedPathsHaveCommittedReadback(input.changedPaths, input.mutations)
     && hasPassedVerification(input.verifications);
+}
+
+function isDeniedToolFailure(reason: string | undefined): boolean {
+  return /(?:工具\s+\S+\s+未获授权|tool\b.*\b(?:denied|not authorized)|authorization denied)/iu
+    .test(String(reason || ''));
 }
 
 function hasRecoveredVerificationFailure(

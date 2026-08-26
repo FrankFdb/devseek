@@ -253,6 +253,38 @@ test('CanonicalCompletionDecisionService settles denied process-only readback th
   assert.equal(unrecovered.reasonCodes.includes('denied-effect'), true);
 });
 
+test('CanonicalCompletionDecisionService settles a denied composite shell route through safe host verification', () => {
+  const deniedCleanup = {
+    ...failedVerificationTool('destructive-clean-denied', 1),
+    purpose: 'external-effect',
+    effects: ['process', 'workspace-mutation'],
+    status: 'denied',
+    effectStarted: false,
+    permission: {
+      decision: 'deny',
+      status: 'denied',
+      reason: 'external-purpose-has-invalid-effect',
+      evidenceRefs: ['permission:destructive-clean-denied'],
+    },
+    evidenceRefs: ['permission:destructive-clean-denied'],
+  };
+  const verifiedTool = completedVerificationTool('safe-host-validation-2', 2);
+  const verified = {
+    ...verification('passed'),
+    sequence: verifiedTool.sequence,
+    actionId: verifiedTool.actionId,
+    idempotencyKey: `completion-run-1:${verifiedTool.actionId}`,
+  };
+  const decision = new CanonicalCompletionDecisionService().decide(input({
+    toolExecutions: [deniedCleanup, verifiedTool],
+    verifications: [verified],
+  }));
+
+  assert.equal(decision.status, 'completed');
+  assert.equal(decision.reasonCodes.includes('denied-effect'), false);
+  assert.equal(decision.evidenceRefs.includes('permission:destructive-clean-denied'), true);
+});
+
 test('CanonicalCompletionDecisionService keeps a denied optional proposal audit-only after acceptance passes', () => {
   const verifiedTool = completedVerificationTool('host-validation-before-denial', 2);
   const verified = {
