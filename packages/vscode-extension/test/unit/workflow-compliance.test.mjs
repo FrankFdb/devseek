@@ -3095,10 +3095,12 @@ test('Agentic loop: visible correction and context convergence are owned by Agen
   assertContains(agenticLoop, "'incomplete-tool-block'", 'damaged authorized envelopes must get a stable recoverable failure status');
   assertContains(agenticLoop, "'invalid-tool-block'", 'empty or malformed authorized envelopes must get a stable recoverable failure status');
   assertContains(agenticLoop, "'out-of-envelope-tool-block'", 'quarantined provider actions must get a distinct recoverable failure status');
-  assertContains(agenticLoop, 'AGENTIC_CONTEXT_GATHERING_ROUND_LIMIT_BEFORE_WRITE', 'context-gathering convergence must be bounded');
-  assertContains(agenticLoop, 'contextGatheringOnlyRoundsWithoutWrite', 'agentic loop must track read/search-only rounds');
-  assertContains(agenticLoop, '项目证据已收集，正在切换到交付落盘', 'formal project work must visibly transition from investigation to delivery');
-  assertContains(agenticLoop, '项目调查证据已足够，必须从调查阶段切换到交付阶段', 'model feedback must force delivery after enough evidence');
+  const contextConvergence = src('src/agent/context-convergence-feedback.ts');
+  assertContains(agenticLoop, 'new PreMutationConvergenceLedger()', 'agent loop must delegate pre-mutation convergence ownership');
+  assertContains(agenticLoop, 'preMutationConvergence.observe({', 'each executed round must report facts to the convergence owner');
+  assertContains(agenticLoop, "preMutationResult.kind === 'stop'", 'non-mutating autonomous investigation must fail closed');
+  assertContains(contextConvergence, '项目证据已收集，正在切换到交付落盘', 'formal project work must visibly transition from investigation to delivery');
+  assertContains(contextConvergence, '项目调查证据已足够，必须从调查阶段切换到交付阶段', 'model feedback must force delivery after enough evidence');
   assert.equal(existsSync(path.join(root, 'src/agent/no-tool-intent.ts')), false, 'keyword promise detector must stay retired');
   assert.equal(existsSync(path.join(root, 'src/agent/artifact-quality-oracle.ts')), false, 'domain-specific artifact oracle must stay retired');
 });

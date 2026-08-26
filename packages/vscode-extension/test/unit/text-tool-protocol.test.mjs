@@ -120,6 +120,7 @@ test('complete authorized envelopes without a recognized tool are rejected', () 
     found: true,
     envelopeCount: 1,
     invalidEnvelopeCount: 1,
+    observedToolNames: [],
   });
 
   assert.deepEqual(inspectInvalidAuthorizedTextToolProtocol(
@@ -129,6 +130,7 @@ test('complete authorized envelopes without a recognized tool are rejected', () 
     found: false,
     envelopeCount: 1,
     invalidEnvelopeCount: 0,
+    observedToolNames: [],
   });
 });
 
@@ -147,6 +149,7 @@ test('lossy JSON source mutations are quarantined while strict JSON preserves ex
     found: true,
     envelopeCount: 1,
     invalidEnvelopeCount: 1,
+    observedToolNames: ['create_file'],
   });
 
   const strictPayload = `[TOOL:create_file ${JSON.stringify({
@@ -199,8 +202,12 @@ test('labeled or plain fenced CDATA grants mutation authority but naked XML does
   assert.equal(plainFenceTool.input.content, cppContent);
 
   const nakedXml = xmlPayload.replace(/^```xml\n|\n```$/g, '');
-  assert.deepEqual(parseAuthorizedTextToolCalls(
-    renderTextToolProtocolEnvelope(session, nakedXml),
-    session,
-  ), []);
+  const nakedEnvelope = renderTextToolProtocolEnvelope(session, nakedXml);
+  assert.deepEqual(parseAuthorizedTextToolCalls(nakedEnvelope, session), []);
+  assert.deepEqual(inspectInvalidAuthorizedTextToolProtocol(nakedEnvelope, session), {
+    found: true,
+    envelopeCount: 1,
+    invalidEnvelopeCount: 1,
+    observedToolNames: ['create_file'],
+  });
 });

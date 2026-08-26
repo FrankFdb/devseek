@@ -261,6 +261,53 @@ test('ModelLedUserSimulation: protocol recovery cannot settle from a prose-only 
   }
 });
 
+test('ModelLedUserSimulation: invalid authenticated mutation recovers with its lossless write format', async () => {
+  const prompt = '创建 recovered-format.txt，内容为 RECOVERED_FORMAT_OK，并读回确认。';
+  let calls = 0;
+  const simulation = await runSimulation(prompt, async messages => {
+    calls += 1;
+    const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'recovered-format.txt');
+    if (calls === 1) {
+      const channelId = messages[0].content.match(/channel="([A-Za-z0-9_-]+)"/u)?.[1];
+      assert.ok(channelId, messages[0].content);
+      return {
+        text: [
+          `<devseek_tool_calls version="devseek.text-tools/v1" channel="${channelId}">`,
+          '<create_file>',
+          `<path>${target}</path>`,
+          '<content><![CDATA[RECOVERED_FORMAT_OK',
+          ']]></content>',
+          '</create_file>',
+          `</devseek_tool_calls channel="${channelId}">`,
+        ].join('\n'),
+        tools: [],
+      };
+    }
+
+    const recoveryPrompt = messages.at(-1).content;
+    assert.match(recoveryPrompt, /仅识别到上一轮尝试调用 create_file/u);
+    assert.match(recoveryPrompt, /```xml[\s\S]*<create_file>/u);
+    return {
+      text: '按无损恢复协议重新落实写入。',
+      tools: [
+        { name: 'create_file', input: { path: target, content: 'RECOVERED_FORMAT_OK\n' } },
+        { name: 'read_file', input: { path: target } },
+        { name: 'task_complete', input: { summary: '已创建并读回 recovered-format.txt。' } },
+      ],
+    };
+  }, { runDisplayAction: 'create' });
+  try {
+    assert.equal(calls, 2, simulation.result.historyText);
+    assert.equal(
+      readFileSync(path.join(simulation.root, 'recovered-format.txt'), 'utf8'),
+      'RECOVERED_FORMAT_OK\n',
+    );
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
 test('ModelLedUserSimulation: validated current file evidence completes without another provider turn', async () => {
   const prompt = '创建 report.md，内容为 EVIDENCE_SETTLED_OK，并读回确认。';
   let calls = 0;

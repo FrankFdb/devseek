@@ -24,6 +24,8 @@ export interface InvalidAuthorizedTextToolProtocol {
   readonly found: boolean;
   readonly envelopeCount: number;
   readonly invalidEnvelopeCount: number;
+  /** Registered names are recovery hints only; invalid arguments remain untrusted. */
+  readonly observedToolNames: readonly string[];
 }
 
 const CHANNEL_ID_RE = /^[A-Za-z0-9_-]{16,96}$/;
@@ -82,14 +84,23 @@ export function inspectInvalidAuthorizedTextToolProtocol(
   session: TextToolProtocolSession | undefined,
 ): InvalidAuthorizedTextToolProtocol {
   if (!session) {
-    return Object.freeze({ found: false, envelopeCount: 0, invalidEnvelopeCount: 0 });
+    return Object.freeze({
+      found: false,
+      envelopeCount: 0,
+      invalidEnvelopeCount: 0,
+      observedToolNames: Object.freeze([]),
+    });
   }
   const payloads = extractAuthorizedTextToolPayloads(text, session);
-  const invalidEnvelopeCount = payloads.filter(payload => parseAuthorizedTextToolPayload(payload).length === 0).length;
+  const invalidPayloads = payloads.filter(payload => parseAuthorizedTextToolPayload(payload).length === 0);
+  const observedToolNames = [...new Set(invalidPayloads.flatMap(payload => (
+    analyzeFakeToolCallProtocol(payload).matches.flatMap(match => match.tools.map(tool => tool.name))
+  )))];
   return Object.freeze({
-    found: invalidEnvelopeCount > 0,
+    found: invalidPayloads.length > 0,
     envelopeCount: payloads.length,
-    invalidEnvelopeCount,
+    invalidEnvelopeCount: invalidPayloads.length,
+    observedToolNames: Object.freeze(observedToolNames),
   });
 }
 

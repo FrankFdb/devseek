@@ -117,6 +117,7 @@ import {
   buildRepeatedContextToolFeedback,
   isContextGatheringToolName,
   makeContextToolSignature,
+  PreMutationConvergenceLedger,
 } from './context-convergence-feedback';
 import { createModelSemanticSettlementService } from './model-semantic-settlement';
 const AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS = 3;
@@ -130,9 +131,6 @@ const AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS = 3;
 const AGENTIC_ROUNDS_NORMAL   = 25;
 const AGENTIC_ROUNDS_AUTOPILOT = 200;
 const AGENTIC_ROUNDS_NORMAL_CONVERGENCE_MAX = 80;
-const AGENTIC_CONTEXT_GATHERING_ROUND_LIMIT_BEFORE_WRITE = 2;
-const AGENTIC_CONTEXT_GATHERING_EVIDENCE_LIMIT_BEFORE_WRITE = 6;
-const AGENTIC_CONTEXT_CONVERGENCE_MAX_WARNINGS = 2;
 /** Canonical agentic loop: a single-phase tool cycle for every new task. */
 export async function runAgenticLoop(
   userPrompt: string,
@@ -194,8 +192,6 @@ export async function runAgenticLoop(
   let completeSummary = '';
   let failedReason = '';
   let noToolRounds = 0;
-  let contextGatheringOnlyRoundsWithoutWrite = 0;
-  let contextConvergenceWarnings = 0;
   let sawWorkTool = false;
   const allTerminalEvidence: TerminalEvidence[] = [];
   const allEvidenceRefs: EvidenceRef[] = [];
@@ -215,6 +211,7 @@ export async function runAgenticLoop(
   const announcedProseKeys = new Set<string>();
   const allReadEvidencePaths = new Set<string>();
   const toolFailureRecovery = new ToolFailureRecoveryLedger({ workspaceRoot });
+  const preMutationConvergence = new PreMutationConvergenceLedger();
   const qualityGateStagnation = new QualityGateStagnationLedger();
   const requirementReview = createProviderRequirementReviewService({
     userPrompt: () => writeAuthority.currentPrompt,
@@ -593,7 +590,10 @@ export async function runAgenticLoop(
               : `检测到 ${invalidAuthorizedProtocol.invalidEnvelopeCount} 个未形成无损可执行工具参数的授权信封；已隔离且未执行。`,
           rawMessage: text,
           recoverable: true,
-          observedToolNames: quarantinedProtocol.observedToolNames,
+          observedToolNames: [...new Set([
+            ...quarantinedProtocol.observedToolNames,
+            ...invalidAuthorizedProtocol.observedToolNames,
+          ])],
         }, text.trim().length);
         if (disposition === 'completed') break;
         if (disposition === 'recovered') {
@@ -856,20 +856,8 @@ export async function runAgenticLoop(
     });
     const repairsTerminalFailure = failedTerminalWriteCountBeforeRound !== undefined
       && allWrittenFiles.length > failedTerminalWriteCountBeforeRound;
-    const roundHasOnlyContextGathering = toolsToExecute.length > 0
-      && toolsToExecute.some(tool => isContextGatheringToolName(tool.name))
-      && toolsToExecute.every(tool => (
-        isContextGatheringToolName(tool.name)
-        || tool.name === 'manage_todo_list'
-        || tool.name === 'memory_write'
-      ))
-      && !roundHasWriteProgress
-      && !roundHasTerminalProgress;
-    if (roundHasOnlyContextGathering) {
-      contextGatheringOnlyRoundsWithoutWrite++;
-    } else if (roundHasWriteProgress || roundHasTerminalProgress) {
-      contextGatheringOnlyRoundsWithoutWrite = 0;
-    }
+    const roundHasInvestigationActivity = roundHasTerminalProgress
+      || toolsToExecute.some(tool => isContextGatheringToolName(tool.name));
     const failureRound = toolFailureRecovery.recordRound(loopRes.toolFailures ?? []);
     loopWarnings.push(...failureRound.warnings);
     if (failureRound.stopReason && !failedReason) {
@@ -1001,25 +989,23 @@ export async function runAgenticLoop(
       unresolvedExecution: missingAfterTools.length > 0 || Boolean(blockingFailureAfterTools),
     });
     const gatheredEvidenceCount = allReadEvidencePaths.size + allEvidenceRefs.length;
-    if (!callbacks.signal?.aborted
-      && promptRequiresFileChange
-      && allWrittenFiles.length === 0
-      && missingAfterTools.length > 0
-      && contextGatheringOnlyRoundsWithoutWrite >= AGENTIC_CONTEXT_GATHERING_ROUND_LIMIT_BEFORE_WRITE
-      && gatheredEvidenceCount >= AGENTIC_CONTEXT_GATHERING_EVIDENCE_LIMIT_BEFORE_WRITE
-      && contextConvergenceWarnings < AGENTIC_CONTEXT_CONVERGENCE_MAX_WARNINGS) {
-      contextConvergenceWarnings++;
+    const preMutationResult = preMutationConvergence.observe({
+      mutationRequired: promptRequiresFileChange,
+      successfulMutationCount: allWrittenFiles.length,
+      unresolvedExecution: missingAfterTools.length > 0 || Boolean(blockingFailureAfterTools),
+      gatheredEvidenceCount,
+      investigationActivity: roundHasInvestigationActivity,
+    });
+    if (!callbacks.signal?.aborted && preMutationResult.kind === 'correct') {
       await emitAgenticCorrectionStatus(
-        '项目证据已收集，正在切换到交付落盘',
-        `已读取或搜索 ${gatheredEvidenceCount} 项项目证据，但尚未写入目标文件。DevSeek 正在要求模型停止横向调查，基于已有证据创建文档/源码并继续验证。`,
-        '项目证据已足够，切换到交付落盘',
+        preMutationResult.statusTitle,
+        preMutationResult.statusDetail,
+        preMutationResult.activityLabel,
       );
-      loopWarnings.push([
-        '【系统反馈】项目调查证据已足够，必须从调查阶段切换到交付阶段。',
-        `当前已读取/搜索 ${gatheredEvidenceCount} 项证据，连续 ${contextGatheringOnlyRoundsWithoutWrite} 轮只有上下文收集，但还没有任何写盘证据。`,
-        '下一轮不要继续横向 grep/list/read；请直接使用 create_file/write_file 创建用户要求的 Markdown 文档、源码或测试骨架，随后用 read_file/run_terminal 等工具验证。',
-        '如果仍缺少一个关键事实，只允许读取一个精确文件或行范围，并在同一轮后续工具中落盘。',
-      ].join('\n'));
+      loopWarnings.push(preMutationResult.feedback);
+    } else if (preMutationResult.kind === 'stop') {
+      failedReason = preMutationResult.reason;
+      break;
     }
 
     let reviewFeedback: string | undefined;
