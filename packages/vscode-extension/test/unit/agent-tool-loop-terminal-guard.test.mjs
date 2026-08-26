@@ -661,6 +661,37 @@ test('ToolLoop terminal guard allows workspace-local C++ compile-run validation'
   }
 });
 
+test('ToolLoop terminal guard executes a public shell verifier with fd merging and returns failure evidence', async () => {
+  const projectRoot = mkdtempSync(path.join(tmpdir(), 'devseek-tool-loop-shell-verifier-'));
+  try {
+    writeFileSync(path.join(projectRoot, 'test.sh'), '#!/bin/sh\nexit 2\n', { mode: 0o755 });
+    const command = `cd ${projectRoot} && bash test.sh 2>&1`;
+    const output = `[终端命令] ${command}\n[退出码] 2\n[stderr]\nmain.cpp:7: error: invalid declaration\n`;
+    const terminalCommands = [];
+
+    const result = await executeFakeToolsForLoop(
+      [{ name: 'run_terminal', input: { command } }],
+      {
+        ...preparedTerminalCallbacks(async executed => {
+          terminalCommands.push(executed);
+          return output;
+        }),
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      projectRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: projectRoot },
+    );
+
+    assert.deepEqual(terminalCommands, [command]);
+    assert.equal(result.toolFailures?.length ?? 0, 0);
+    assert.equal(result.terminalEvidence?.[0]?.ok, false);
+    assert.match(result.feedbackForAI, /invalid declaration/);
+  } finally {
+    rmSync(projectRoot, { recursive: true, force: true });
+  }
+});
+
 test('ToolLoop resolves unavailable python runtime to python3 before executing validation', async () => {
   const projectRoot = mkdtempSync(path.join(tmpdir(), 'devseek-tool-loop-python-runtime-'));
   const toolsDir = path.join(projectRoot, 'tools');

@@ -403,13 +403,19 @@ function isWorkspaceShellValidationSegment(
   workspaceRoot?: string,
   workdir?: string,
 ): boolean {
-  const words = splitShellWords(stripLeadingAssignments(segment));
+  const words = splitShellWords(stripLeadingAssignments(segment))
+    .filter(word => !isNonPersistingOutputRedirection(word));
   if (words.length !== 2) return false;
   const script = cleanToken(words[1]);
   if (!/^(?:test|tests|check|verify)(?:[-_.][A-Za-z0-9_.-]+)?\.sh$/i.test(nodePath.basename(script))) {
     return false;
   }
   return isWorkspacePath(script, workspaceRoot, workdir);
+}
+
+function isNonPersistingOutputRedirection(word: string): boolean {
+  return /^\d*>\s*&\s*\d+$/u.test(word)
+    || /^\d*>{1,2}\s*\/dev\/null$/u.test(word);
 }
 
 function isCmakeValidationSegment(segment: string): boolean {

@@ -160,7 +160,7 @@ test('CanonicalToolDispatchService projects artifact paths and terminal effects 
   }, { source: 'surface', workspaceRoot: '/workspace' });
   const shellWrappedValidation = dispatch.dispatch({
     name: 'run_terminal',
-    input: { command: 'cd /workspace && bash test.sh' },
+    input: { command: 'cd /workspace && bash test.sh 2>&1' },
   }, { source: 'surface', workspaceRoot: '/workspace' });
 
   assert.equal(workspace.decision, 'accepted');

@@ -275,6 +275,8 @@ test('TerminalCommandPolicy: project scripts and bounded CMake builds remain val
   for (const command of [
     'cd /workspace/devseek && ./test.sh 2>&1',
     'cd /workspace/devseek && bash test.sh',
+    'cd /workspace/devseek && bash test.sh 2>&1',
+    'cd /workspace/devseek && sh ./verify-project.sh 2>/dev/null',
     'cd /workspace/devseek && sh ./verify-project.sh',
     'cd /workspace/devseek && cmake -S . -B build 2>&1 && cmake --build build -j2 2>&1 && ctest --test-dir build --output-on-failure',
   ]) {
@@ -288,6 +290,10 @@ test('TerminalCommandPolicy: project scripts and bounded CMake builds remain val
   );
   assert.equal(
     decideTerminalCommandPermission({ command: './test.sh > validation.log', workspaceRoot }).risk,
+    'mutating',
+  );
+  assert.equal(
+    decideTerminalCommandPermission({ command: 'bash test.sh 2> validation.log', workspaceRoot }).risk,
     'mutating',
   );
   for (const command of ['bash release.sh', "bash -c './test.sh'", 'sh arbitrary.sh']) {
