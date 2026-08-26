@@ -282,6 +282,28 @@ test('validates finding evidence fields, priority, and confidence', () => {
   }
 });
 
+test('reports the exact malformed finding and fields for provider correction', () => {
+  const source = snapshot();
+  const prompt = 'Return 2.';
+  const body = failBody(source, prompt, {
+    findings: [
+      finding(source, prompt),
+      finding(source, prompt, {
+        title: 'No actual defect remains',
+        confidence_score: 0,
+        code_location: null,
+      }),
+    ],
+  });
+
+  const decision = parseIndependentReviewResponse(response(body), [source], prompt);
+
+  assert.equal(decision.status, 'indeterminate');
+  assert.match(decision.explanation, /finding #2/u);
+  assert.match(decision.explanation, /confidence_score/u);
+  assert.match(decision.explanation, /code_location\.absolute_file_path/u);
+});
+
 test('bounds an otherwise valid finding title without discarding its evidence', () => {
   const source = snapshot();
   const prompt = 'Return 2.';
@@ -492,6 +514,69 @@ test('a fresh falsification review can overturn a superficial validation-only pa
   assert.equal(calls, 2);
   assert.equal(decision.status, 'failed');
   assert.equal(decision.findings[0].title, 'Count lesson actions through the controller');
+});
+
+test('a falsification review repairs successive field errors without losing valid findings', async () => {
+  const workspace = path.join(tempRoot, 'challenge-correction-workspace');
+  mkdirSync(path.join(workspace, 'src'), { recursive: true });
+  writeFileSync(path.join(workspace, 'src/main.cpp'), 'int value() { return 1; }\n');
+  const prompt = 'Return 2.';
+  const source = snapshot('src/main.cpp', 'int value() { return 1; }\n');
+  const validFinding = finding(source, prompt, {
+    code_location: {
+      absolute_file_path: path.join(workspace, 'src/main.cpp'),
+      line_range: { start: 1, end: 1 },
+    },
+  });
+  let calls = 0;
+  const reviewer = new IndependentRequirementReviewer(async messages => {
+    calls += 1;
+    if (calls === 1) return response(passBody(prompt));
+    if (calls === 2) {
+      return response(failBody(source, prompt, {
+        findings: [
+          validFinding,
+          {
+            ...validFinding,
+            title: '',
+          },
+        ],
+      }));
+    }
+    const correction = messages.at(-1).content;
+    if (calls === 3) {
+      assert.match(correction, /finding #2/u);
+      assert.match(correction, /title/u);
+      assert.match(correction, /Delete any finding whose own text concludes N\/A, no violation/u);
+      return response(failBody(source, prompt, {
+        findings: [
+          validFinding,
+          {
+            ...validFinding,
+            title: 'No violation remains',
+            confidence_score: 0,
+            code_location: null,
+          },
+        ],
+      }));
+    }
+    assert.match(correction, /finding #2/u);
+    assert.match(correction, /confidence_score/u);
+    assert.match(correction, /code_location\.absolute_file_path/u);
+    return response(failBody(source, prompt, { findings: [validFinding] }));
+  });
+
+  const decision = await reviewer.review({
+    userPrompt: prompt,
+    workspaceRoot: workspace,
+    sourcePaths: ['src/main.cpp'],
+    validationSummary: 'Project validation passed.',
+  });
+
+  assert.equal(calls, 4);
+  assert.equal(decision.status, 'failed');
+  assert.equal(decision.findings.length, 1);
+  assert.equal(decision.findings[0].title, validFinding.title);
 });
 
 test('isolated reviewer captures safe in-workspace files read by the implementing agent', async () => {

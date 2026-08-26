@@ -29,6 +29,7 @@ export type RequirementReviewInvoker = (
 ) => Promise<RequirementReviewInvocationResult>;
 
 type RequirementReviewPosture = 'initial' | 'challenge-pass';
+const MAX_REVIEW_CONTRACT_ATTEMPTS = 3;
 
 /** Requires an initial review and a fresh pass challenge before accepting final source. */
 export class IndependentRequirementReviewer {
@@ -65,14 +66,18 @@ export class IndependentRequirementReviewer {
     posture: RequirementReviewPosture,
   ): Promise<RequirementReviewDecision> {
     let messages = buildIndependentReviewMessages(input, snapshots, contextSnapshots, posture);
-    for (let attempt = 1; attempt <= 2; attempt++) {
+    for (let attempt = 1; attempt <= MAX_REVIEW_CONTRACT_ATTEMPTS; attempt++) {
       try {
         const response = await this.invoke(messages);
         const decision = parseIndependentReviewResponse(response, snapshots, input.userPrompt);
-        if (decision.status !== 'indeterminate' || attempt === 2) return decision;
+        if (decision.status !== 'indeterminate' || attempt === MAX_REVIEW_CONTRACT_ATTEMPTS) {
+          return decision;
+        }
         messages = buildReviewCorrectionMessages(messages, response.text, decision.explanation);
       } catch (error) {
-        if (attempt === 2) return indeterminateDecision(`隔离审查调用失败：${errorText(error)}`);
+        if (attempt === MAX_REVIEW_CONTRACT_ATTEMPTS) {
+          return indeterminateDecision(`隔离审查调用失败：${errorText(error)}`);
+        }
       }
     }
     return indeterminateDecision('隔离审查未形成可验证结论。');
@@ -165,8 +170,10 @@ function buildReviewCorrectionMessages(
       role: 'user',
       content: [
         `Your previous review was rejected by the response contract: ${reason}`,
+        'The rejection reason above comes from host schema validation and identifies the first invalid object and fields. Correct that exact object before returning the complete result.',
         'Re-evaluate the original requirements and every supplied source file from scratch.',
         'Fix the specific rejected JSON field instead of repeating the same wording. If evidence was rejected, name the concrete input/state scenario plus the caller-observable source or validation fact that proves it.',
+        'Delete any finding whose own text concludes N/A, no violation, correct, satisfied, speculative, or below the required confidence. Never fill mandatory fields for a non-defect merely to satisfy the schema.',
         'Return every requirement_check and the complete JSON object again. Omit non-defects, low-confidence or unreachable concerns, and never reverse an explicit requirement.',
       ].join('\n'),
     },

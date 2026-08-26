@@ -57,6 +57,14 @@ interface NormalizedRequirementCheck {
   evidence: string;
 }
 
+type FindingNormalizationResult =
+  | { ok: true; findings: RequirementReviewFinding[] }
+  | { ok: false; diagnostic: string };
+
+type FindingValidationResult =
+  | { ok: true; finding: RequirementReviewFinding }
+  | { ok: false; errors: string[] };
+
 export const REQUIREMENT_REVIEW_SCHEMA = [
   '{',
   '  "requirement_checks": [{',
@@ -127,10 +135,14 @@ export function parseIndependentReviewResponse(
     return indeterminateDecision('隔离审查未按原始需求清单逐项、原文返回有效检查。');
   }
 
-  const findings = normalizeFindings(raw.findings, snapshots, checks);
-  if (!findings) {
-    return indeterminateDecision('隔离审查 finding 缺少有效的需求引用、源码位置或可复现证据。');
+  const normalizedFindings = normalizeFindings(raw.findings, snapshots, checks);
+  if (!normalizedFindings.ok) {
+    return indeterminateDecision([
+      '隔离审查 finding 缺少有效的需求引用、源码位置或可复现证据。',
+      normalizedFindings.diagnostic,
+    ].join(' '));
   }
+  const findings = normalizedFindings.findings;
 
   const explanation = nonEmptyString(raw.overall_explanation);
   if (!explanation || !isReviewConfidence(raw.overall_confidence_score)) {
@@ -224,67 +236,83 @@ function normalizeFindings(
   rawFindings: unknown,
   snapshots: readonly RequirementReviewSourceSnapshot[],
   checks: ReadonlyMap<string, NormalizedRequirementCheck>,
-): RequirementReviewFinding[] | undefined {
-  if (!Array.isArray(rawFindings)) return undefined;
-  const findings: RequirementReviewFinding[] = [];
-  for (const raw of rawFindings as RawReviewFinding[]) {
-    const finding = normalizeFinding(raw, snapshots, checks);
-    if (!finding) return undefined;
-    findings.push(finding);
+): FindingNormalizationResult {
+  if (!Array.isArray(rawFindings)) {
+    return { ok: false, diagnostic: 'findings 必须是 JSON 数组。' };
   }
-  return findings;
+  const findings: RequirementReviewFinding[] = [];
+  for (let index = 0; index < rawFindings.length; index += 1) {
+    const result = normalizeFinding(rawFindings[index] as RawReviewFinding, snapshots, checks);
+    if (!result.ok) {
+      return {
+        ok: false,
+        diagnostic: `finding #${index + 1} 无效：${result.errors.join('；')}。`,
+      };
+    }
+    findings.push(result.finding);
+  }
+  return { ok: true, findings };
 }
 
 function normalizeFinding(
   raw: RawReviewFinding,
   snapshots: readonly RequirementReviewSourceSnapshot[],
   checks: ReadonlyMap<string, NormalizedRequirementCheck>,
-): RequirementReviewFinding | undefined {
-  if (!raw || typeof raw !== 'object') return undefined;
+): FindingValidationResult {
+  if (!raw || typeof raw !== 'object') {
+    return { ok: false, errors: ['必须是 JSON 对象'] };
+  }
+  const errors: string[] = [];
   const requirementId = typeof raw.requirement_id === 'string' ? raw.requirement_id : '';
   const check = checks.get(requirementId);
   if (!check || check.status !== 'violated') {
-    return undefined;
+    errors.push('requirement_id 必须引用 status=violated 的现有 requirement_check');
   }
 
   const title = normalizeFindingTitle(raw.title);
   const observedBehavior = nonEmptyString(raw.observed_behavior);
   const expectedBehavior = nonEmptyString(raw.expected_behavior);
   const counterexample = nonEmptyString(raw.counterexample);
-  if (!title
-    || !observedBehavior
-    || !expectedBehavior
-    || !counterexample) {
-    return undefined;
-  }
+  if (!title) errors.push('title 必须是非空字符串');
+  if (!observedBehavior) errors.push('observed_behavior 必须是非空字符串');
+  if (!expectedBehavior) errors.push('expected_behavior 必须是非空字符串');
+  if (!counterexample) errors.push('counterexample 必须是非空字符串');
 
-  if (!isPriority(raw.priority) || !isReviewConfidence(raw.confidence_score)) return undefined;
+  if (!isPriority(raw.priority)) errors.push('priority 必须是 0..3 的整数');
+  if (!isReviewConfidence(raw.confidence_score)) {
+    errors.push(`confidence_score 必须是 ${MIN_REVIEW_CONFIDENCE}..1 的有限数字`);
+  }
   const absolutePath = nonEmptyString(raw.code_location?.absolute_file_path);
   const snapshot = absolutePath
     ? snapshots.find(candidate => candidate.absolutePath === absolutePath)
     : undefined;
   const start = raw.code_location?.line_range?.start;
   const end = raw.code_location?.line_range?.end;
-  if (!snapshot
-    || !Number.isInteger(start)
-    || !Number.isInteger(end)
-    || (start as number) < 1
-    || (end as number) < (start as number)
-    || (end as number) > snapshot.lineCount) {
-    return undefined;
+  if (!snapshot) {
+    errors.push('code_location.absolute_file_path 必须精确匹配一个已提供源码快照');
+  } else if (!Number.isInteger(start)
+      || !Number.isInteger(end)
+      || (start as number) < 1
+      || (end as number) < (start as number)
+      || (end as number) > snapshot.lineCount) {
+    errors.push(`code_location.line_range 必须是 1..${snapshot.lineCount} 内有界的整数行号`);
   }
+  if (errors.length > 0) return { ok: false, errors };
 
   return {
-    requirementId,
-    requirement: check.requirement.quote,
-    title,
-    observedBehavior,
-    expectedBehavior,
-    counterexample,
-    priority: raw.priority,
-    confidence: raw.confidence_score,
-    path: snapshot.path,
-    line: start as number,
+    ok: true,
+    finding: {
+      requirementId,
+      requirement: check!.requirement.quote,
+      title: title!,
+      observedBehavior: observedBehavior!,
+      expectedBehavior: expectedBehavior!,
+      counterexample: counterexample!,
+      priority: raw.priority as 0 | 1 | 2 | 3,
+      confidence: raw.confidence_score as number,
+      path: snapshot!.path,
+      line: start as number,
+    },
   };
 }
 
