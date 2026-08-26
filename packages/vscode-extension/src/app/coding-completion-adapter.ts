@@ -88,6 +88,9 @@ export class VsCodeCompletionEvidenceAdapter {
     );
     const reviewRequired = input.result.manualReviewRequired === true;
     return {
+      ...(tasksFailed > 0 && deniedEffectRefs.length === 0
+        ? { requestedTerminalStatus: 'failed' as const }
+        : {}),
       reviewRequired,
       acceptanceEvidence,
       ...(reviewRequired ? {
@@ -129,12 +132,10 @@ function shouldClearRecoveredTaskFailure(input: {
     && (!hasFailureReason(input.failedReason) || isDeniedToolFailure(input.failedReason));
   const deniedToolFailureWasRecovered = isDeniedToolFailure(input.failedReason)
     && input.recoveredDeniedRefs.length > 0;
-  const legacyEvidenceFailureWasRecovered = isRecoverableLegacyEvidenceFailure(input.failedReason);
   const verificationFailureWasRecovered = isVerificationFailure(input.failedReason)
     && hasRecoveredVerificationFailure(input.verifications, input.toolExecutions);
   if (!policyDeniedFailureWasRecovered
     && !deniedToolFailureWasRecovered
-    && !legacyEvidenceFailureWasRecovered
     && !verificationFailureWasRecovered) {
     return false;
   }
@@ -192,10 +193,6 @@ function hasPassedVerification(
       && receipt.acceptance.length > 0
       && receipt.acceptance.every(result => result.status === 'passed')
   ));
-}
-
-function isRecoverableLegacyEvidenceFailure(reason: string | undefined): boolean {
-  return /实际执行证据不足/u.test(String(reason || ''));
 }
 
 function buildDirectAcceptanceEvidence(input: {

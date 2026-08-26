@@ -503,6 +503,25 @@ test('CanonicalCodingKernel seals blocked and failed runtime outcomes through on
   assert.equal(blocked.completion.reasonCodes.includes('verification-not-run'), true);
   assert.equal(blocked.lifecycle.events.at(-1).cause, 'authority-blocked');
 
+  const reportedFailureKernel = new CanonicalCodingKernel({
+    async executeCanonical() {
+      return {
+        result: { reason: 'runtime-work-remains' },
+        completionEvidence: completionEvidence({
+          requestedTerminalStatus: 'failed',
+          evidenceRefs: ['runtime:work-remains'],
+        }),
+      };
+    },
+  });
+  const reportedFailure = await reportedFailureKernel.execute(request({
+    runId: 'run-runtime-reported-failure',
+  }));
+  assert.equal(reportedFailure.lifecycle.status, 'failed');
+  assert.equal(reportedFailure.settlement.status, 'failed');
+  assert.equal(reportedFailure.completion.status, 'failed');
+  assert.equal(reportedFailure.completion.reasonCodes.includes('execution-failed'), true);
+
   const failedKernel = new CanonicalCodingKernel({
     async executeCanonical() {
       throw new Error('provider disconnected');

@@ -79,6 +79,7 @@ test('VS Code evidence projection preserves task and artifact failure evidence',
   }, 'review');
 
   assert.equal(taskFailure.acceptanceEvidence[0].status, 'failed');
+  assert.equal(taskFailure.requestedTerminalStatus, 'failed');
   assert.deepEqual(artifactFailure.adverseEvidenceRefs, [
     'vscode-artifact-verification:artifact-1:failed',
   ]);
@@ -97,6 +98,7 @@ test('VS Code evidence projection treats denied effects as blocking evidence', (
     evidenceRefs: ['permission:install-denied'],
   }]);
   assert.deepEqual(evidence.residualRisks, ['requested-change-not-applied']);
+  assert.equal(evidence.requestedTerminalStatus, undefined);
 });
 
 test('VS Code evidence projection clears a denied validation route after a canonical host pass', () => {
@@ -283,32 +285,30 @@ test('VS Code evidence projection clears a task failure caused only by an out-of
   );
 });
 
-test('VS Code evidence projection clears stale missing-evidence failures after canonical verification passes', () => {
-  const recovered = project({
+test('VS Code evidence projection preserves active missing evidence after an unrelated verification passes', () => {
+  const missingVerification = project({
     tasksFailed: 1,
     failedReason: '实际执行证据不足：缺少成功的测试/运行结果。',
     changedPaths: ['src/main.ts'],
     changeReceipts: [mutation()],
     verificationReceipts: [verification()],
   });
-  const summaryFactFailure = project({
+  const unsettledTodos = project({
     tasksFailed: 1,
-    failedReason: '完成摘要缺少文件事实证据：ghost.js。',
+    failedReason: '实际执行证据不足：缺少模型任务清单尚有 8 项未完成。',
     changedPaths: ['src/main.ts'],
     changeReceipts: [mutation()],
     verificationReceipts: [verification()],
   });
 
-  assert.deepEqual(recovered.acceptanceEvidence, []);
-  assert.equal(
-    recovered.evidenceRefs.includes('vscode-agent-result:vscode-completion-run:tasks-failed'),
-    false,
-  );
-  assert.equal(summaryFactFailure.acceptanceEvidence[0].status, 'failed');
-  assert.equal(
-    summaryFactFailure.evidenceRefs.includes('vscode-agent-result:vscode-completion-run:tasks-failed'),
-    true,
-  );
+  for (const evidence of [missingVerification, unsettledTodos]) {
+    assert.equal(evidence.requestedTerminalStatus, 'failed');
+    assert.equal(evidence.acceptanceEvidence[0].status, 'failed');
+    assert.equal(
+      evidence.evidenceRefs.includes('vscode-agent-result:vscode-completion-run:tasks-failed'),
+      true,
+    );
+  }
 });
 
 test('VS Code evidence projection clears recovered validation failures after repair verification passes', () => {

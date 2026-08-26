@@ -880,6 +880,9 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         mutations: workspaceMutations.receipts(),
       });
       const cancellationRequested = runControl.cancellationRequested();
+      const requestedTerminalStatus = cancellationRequested
+        ? 'cancelled' as const
+        : completionEvidence.requestedTerminalStatus;
       const completion = this.completion.decide({
         runId: request.runId,
         decisionId: 'kernel-completion',
@@ -887,7 +890,7 @@ export class CanonicalCodingKernel<TRuntimeContext, TResult> {
         acceptance: settledTaskContract.acceptance,
         verificationRequired: codingTaskContractRequiresVerification(settledTaskContract),
         reviewRequired: completionReviewRequired,
-        ...(cancellationRequested ? { requestedTerminalStatus: 'cancelled' as const } : {}),
+        ...(requestedTerminalStatus ? { requestedTerminalStatus } : {}),
         toolExecutions: toolExecution.receipts(),
         mutations: workspaceMutations.receipts(),
         verifications: verification.receipts(),
@@ -1226,6 +1229,10 @@ function assertRuntimeCompletionEvidence(value: unknown): CodingKernelCompletion
   if (evidence.independentReviewRequired !== undefined
     && typeof evidence.independentReviewRequired !== 'boolean') {
     throw new Error('coding-kernel-execution:invalid-independent-review-requirement');
+  }
+  if (evidence.requestedTerminalStatus !== undefined
+    && evidence.requestedTerminalStatus !== 'failed') {
+    throw new Error('coding-kernel-execution:invalid-requested-terminal-status');
   }
   for (const key of [
     'acceptanceEvidence',

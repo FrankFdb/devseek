@@ -86,6 +86,8 @@ export interface CodingCompletionDecisionInput {
 }
 
 export interface CodingKernelCompletionEvidence {
+  /** Runtime observation only; the canonical completion service remains the terminal-state owner. */
+  readonly requestedTerminalStatus?: 'failed';
   readonly reviewRequired: boolean;
   readonly acceptanceEvidence: readonly CodingCompletionAcceptanceDecision[];
   readonly review?: CodingCompletionReview;
