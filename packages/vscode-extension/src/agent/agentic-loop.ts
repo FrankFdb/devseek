@@ -13,7 +13,6 @@ import type {
 } from '@devseek-netai/shared';
 import { type ChatMessage } from '../llm/types';
 import { bindProviderNormalizationBoundary } from '../llm/provider-events';
-import { routeTaskSemanticContract } from '../task-intent-router';
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import {
   hasUnsafeSecretHarvestingRefusalEvidence,
@@ -123,6 +122,7 @@ import {
   resolveDeliveryConvergencePending,
 } from './context-convergence-feedback';
 import { createModelSemanticSettlementService } from './model-semantic-settlement';
+import { resolveAgenticPromptRequirements } from './agentic-prompt-requirements';
 const AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS = 3;
 
 // ----------------------------------------------------------------
@@ -168,16 +168,10 @@ export async function runAgenticLoop(
     textToolProtocol,
   );
 
-  const resolvePromptRequirements = () => {
-    const currentContract = writeAuthority.semanticContract;
-    const currentTaskIntent = routeTaskSemanticContract(currentContract);
-    const promptRequiresFileChange = currentContract.mutation.requested;
-    const promptRequiresTools = promptRequiresFileChange
-      || currentContract.read.requested
-      || currentContract.validation.requested
-      || currentContract.obligations.sideEffects.length > 0;
-    return { currentTaskIntent, promptRequiresFileChange, promptRequiresTools };
-  };
+  const resolvePromptRequirements = () => resolveAgenticPromptRequirements(
+    writeAuthority.semanticContract,
+    callbacks.canonicalTaskContract,
+  );
   let { currentTaskIntent, promptRequiresFileChange, promptRequiresTools } = resolvePromptRequirements();
   const refreshPromptRequirements = (): void => {
     ({ currentTaskIntent, promptRequiresFileChange, promptRequiresTools } = resolvePromptRequirements());

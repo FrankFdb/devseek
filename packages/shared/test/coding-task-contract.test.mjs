@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   CODING_KERNEL_TASK_CONTRACT_VERSION,
   CanonicalTaskContractService,
+  codingTaskContractRequiresWorkspaceMutation,
   resolveCodingKernelTaskContract,
 } from '../dist/index.js';
 
@@ -143,4 +144,21 @@ test('all product Surfaces resolve through the same TaskContractPort semantics',
       acceptance: contracts[0].acceptance,
     }),
   );
+});
+
+test('workspace mutation obligation is derived from the canonical mode, constraints, and deliverables', () => {
+  const change = new CanonicalTaskContractService().build(validInput());
+  assert.equal(codingTaskContractRequiresWorkspaceMutation(change), true);
+  assert.equal(codingTaskContractRequiresWorkspaceMutation({
+    ...change,
+    constraints: [...change.constraints, 'no-workspace-mutation'],
+  }), false);
+  assert.equal(codingTaskContractRequiresWorkspaceMutation({
+    ...change,
+    mode: 'review',
+  }), false);
+  assert.equal(codingTaskContractRequiresWorkspaceMutation({
+    ...change,
+    deliverables: [{ id: 'verification-result', kind: 'verification-result' }],
+  }), false);
 });

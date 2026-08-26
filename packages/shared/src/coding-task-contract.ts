@@ -118,6 +118,16 @@ export function codingTaskContractRequiresVerification(
   return contract.acceptance.some(criterion => criterion.oracle.kind === 'verification');
 }
 
+export function codingTaskContractRequiresWorkspaceMutation(
+  contract: Pick<CodingKernelTaskContract, 'mode' | 'constraints' | 'deliverables'>,
+): boolean {
+  return (contract.mode === 'change' || contract.mode === 'release')
+    && !contract.constraints.includes('no-workspace-mutation')
+    && contract.deliverables.some(deliverable => (
+      deliverable.kind === 'source-change' || Boolean(deliverable.path)
+    ));
+}
+
 /** Owns canonical construction, validation, snapshots, and public projection. */
 export class CanonicalTaskContractService implements TaskContractPort {
   build(input: BuildCodingKernelTaskContractInput): CodingKernelTaskContract {

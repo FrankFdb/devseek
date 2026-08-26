@@ -7,6 +7,7 @@ import type {
 import { codingSemanticDigest } from './coding-semantic-digest';
 import {
   buildCodingKernelTaskContract,
+  codingTaskContractRequiresWorkspaceMutation,
   codingTaskContractRequiresVerification,
   type CodingKernelTaskContract,
 } from './coding-task-contract';
@@ -57,7 +58,7 @@ export function projectCodingModelActionTaskContract(
     && action.effects.includes('workspace-mutation');
   if (workspaceAction && hasAuthoritativeNoMutationBoundary(current)) return current;
 
-  const currentMutation = taskContractDescribesWorkspaceMutation(current);
+  const currentMutation = codingTaskContractRequiresWorkspaceMutation(current);
   const mutationRequested = currentMutation || workspaceAction;
   const externalEffectRequested = current.acceptance.some(criterion => criterion.oracle.kind === 'authority')
     || action.purpose === 'external-effect';
@@ -171,14 +172,6 @@ function resolveObservedActionMode(
     return 'review';
   }
   return current;
-}
-
-function taskContractDescribesWorkspaceMutation(contract: CodingKernelTaskContract): boolean {
-  return (contract.mode === 'change' || contract.mode === 'release')
-    && !contract.constraints.includes('no-workspace-mutation')
-    && contract.deliverables.some(deliverable => (
-      deliverable.kind === 'source-change' || Boolean(deliverable.path)
-    ));
 }
 
 function hasAuthoritativeNoMutationBoundary(contract: CodingKernelTaskContract): boolean {
