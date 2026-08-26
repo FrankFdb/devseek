@@ -11,6 +11,8 @@ const extensionRoot = path.resolve(__dirname, '../..');
 const harnessPath = path.join(extensionRoot, 'test/devseek-controlled-vsix-harness.mjs');
 const mediumProgramJourneyPath = path.join(extensionRoot, 'test/harness/controlled-medium-program-journey.mjs');
 const realPluginHarnessPath = path.join(extensionRoot, 'test/devseek-real-plugin-deepseek-harness.mjs');
+const naturalUiDispatchEvidencePath = path.join(extensionRoot, 'test/harness/natural-ui-dispatch-evidence.mjs');
+const naturalUiPromptSubmitterPath = path.join(extensionRoot, 'test/harness/natural-ui-prompt-submitter.mjs');
 const cppMatrixRunCasePath = path.resolve(extensionRoot, '../../code/devseek-tests/cpp-user-matrix/run-case.mjs');
 
 function evaluateHarnessFunctions(source, startMarker, endMarker, names, globals = {}) {
@@ -624,14 +626,19 @@ test('real plugin VSIX harness timeout reports are report-time snapshots, not br
 });
 
 test('real plugin natural UI submission requires prompt-bound foreground dispatch evidence', () => {
-  const source = readFileSync(realPluginHarnessPath, 'utf8');
+  const harness = readFileSync(realPluginHarnessPath, 'utf8');
+  const evidence = readFileSync(naturalUiDispatchEvidencePath, 'utf8');
+  const submitter = readFileSync(naturalUiPromptSubmitterPath, 'utf8');
 
-  assert.match(source, /waitForNaturalUiForegroundDispatch\(30_000\)/u);
-  assert.match(source, /\.map\(parseHarnessJsonLine\)/u);
-  assert.match(source, /function parseHarnessJsonLine\(line\)/u);
-  assert.match(source, /event\.data\?\.prompt\?\.sha256 === expectedPrompt\.sha256/u);
-  assert.match(source, /ok: foregroundDispatch\.observed/u);
-  assert.doesNotMatch(source, /route: 'vscode-webview-screen-coordinate-keyboard',[\s\S]{0,120}ok: true/u);
+  assert.match(harness, /submitNaturalUiPrompt\(\{/u);
+  assert.match(submitter, /captureNaturalUiDispatchBaseline\(this\.runsDir\)/u);
+  assert.match(submitter, /waitForNaturalUiForegroundDispatch\(\{[\s\S]{0,180}baseline/u);
+  assert.match(submitter, /ok: foregroundDispatch\.observed/u);
+  assert.match(submitter, /inputVisualChanged/u);
+  assert.doesNotMatch(submitter, /route: 'vscode-webview-screen-coordinate-keyboard',[\s\S]{0,120}ok: true/u);
+  assert.match(evidence, /baselineFile\.size/u);
+  assert.match(evidence, /eventAtMs < baseline\.capturedAtMs/u);
+  assert.match(evidence, /event\.data\?\.prompt\?\.sha256 !== expectedPrompt\.sha256/u);
 });
 
 test('real plugin VSIX harness parses product and bridge run-log timestamps', () => {

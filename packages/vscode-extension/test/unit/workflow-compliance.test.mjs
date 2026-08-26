@@ -1220,10 +1220,14 @@ test('Real DeepSeek harness: timeout reports are marked as report-time snapshots
 
 test('Real DeepSeek harness: natural UI cannot claim success without foreground prompt evidence', () => {
   const harness = src('test/devseek-real-plugin-deepseek-harness.mjs');
-  assertContains(harness, 'waitForNaturalUiForegroundDispatch(30_000)', 'natural UI must wait for product dispatch evidence');
-  assertContains(harness, '.map(parseHarnessJsonLine)', 'natural UI must use an outer-scope log parser');
-  assertContains(harness, 'event.data?.prompt?.sha256 === expectedPrompt.sha256', 'natural UI evidence must bind the exact prompt');
-  assertContains(harness, 'ok: foregroundDispatch.observed', 'coordinate fallback must fail closed when dispatch is absent');
+  const naturalUiEvidence = src('test/harness/natural-ui-dispatch-evidence.mjs');
+  const naturalUiSubmitter = src('test/harness/natural-ui-prompt-submitter.mjs');
+  assertContains(harness, 'submitNaturalUiPrompt({', 'the live harness must delegate natural UI submission to one owner');
+  assertContains(naturalUiSubmitter, 'captureNaturalUiDispatchBaseline', 'natural UI must capture evidence before submitting');
+  assertContains(naturalUiSubmitter, 'waitForNaturalUiForegroundDispatch({', 'natural UI must wait for product dispatch evidence');
+  assertContains(naturalUiEvidence, 'eventAtMs < baseline.capturedAtMs', 'natural UI must reject events older than the submission baseline');
+  assertContains(naturalUiEvidence, 'event.data?.prompt?.sha256 !== expectedPrompt.sha256', 'natural UI evidence must bind the exact prompt');
+  assertContains(naturalUiSubmitter, 'ok: foregroundDispatch.observed', 'coordinate fallback must fail closed when dispatch is absent');
 });
 
 test('Real DeepSeek harness: quality gates are scenario-driven and task-specific', () => {

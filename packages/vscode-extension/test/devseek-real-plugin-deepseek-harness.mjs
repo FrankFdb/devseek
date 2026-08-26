@@ -24,6 +24,7 @@ import {
   parseRequiredArtifactSnippets,
   specializeRealPluginQualityProfileForDelivery,
 } from './harness/real-plugin-quality-profile.mjs';
+import { submitNaturalUiPrompt } from './harness/natural-ui-prompt-submitter.mjs';
 
 const args = process.argv.slice(2);
 const runRequested = hasFlag('--run') || process.env.DEVSEEK_REAL_PLUGIN_DEEPSEEK_RUN === '1';
@@ -2714,221 +2715,22 @@ async function runVsCodeDriver() {
 }
 
 async function submitPromptThroughNaturalUi() {
-  appendHarnessProgress('natural-ui-submit-wait-ready', {
+  return submitNaturalUiPrompt({
     debugPort: vscodeDebugPort,
-    inputSelector: '#input',
-    sendSelector: '#send-btn',
     domProbeMs: naturalUiDomProbeMs,
+    prompt,
+    workspaceDir,
+    artifactDir: tmpRoot,
+    waitForReady: () => waitForProgressStage('natural-ui-ready', 90_000),
+    reportProgress: appendHarnessProgress,
   });
-  await waitForProgressStage('natural-ui-ready', 90000);
-  const version = await waitForDebugEndpoint(vscodeDebugPort, 90000);
-  appendHarnessProgress('natural-ui-debug-ready', {
-    browser: version.Browser,
-    hasWebSocketDebuggerUrl: Boolean(version.webSocketDebuggerUrl),
-  });
-
-  const { chromium } = await import('playwright');
-  let browser;
-  try {
-    browser = await chromium.connectOverCDP(`http://127.0.0.1:${vscodeDebugPort}`);
-    const context = browser.contexts()[0];
-    if (!context) throw new Error('Playwright CDP connection did not expose a VS Code browser context');
-    try {
-      const found = await findDevSeekInputFrame(context, naturalUiDomProbeMs);
-      return await submitPromptThroughDomFrame(found);
-    } catch (error) {
-      const domError = String(error?.message || error);
-      appendHarnessProgress('natural-ui-dom-submit-unavailable', { error: domError });
-      return await submitPromptThroughScreenCoordinates(context, domError);
-    }
-  } finally {
-    if (browser) await browser.close().catch(() => {});
-  }
-}
-
-async function submitPromptThroughDomFrame(found) {
-  const input = found.frame.locator('#input');
-  await input.click({ timeout: 10000 });
-  await input.fill('');
-  let entryMethod = 'pressSequentially';
-  try {
-    await input.pressSequentially(prompt, { delay: 2 });
-  } catch {
-    entryMethod = 'fill-fallback';
-    await input.fill(prompt);
-  }
-  const typedValue = await input.inputValue();
-  if (typedValue !== prompt) {
-    throw new Error(`真实 Webview 输入框内容不匹配：typed=${typedValue.length}, expected=${prompt.length}`);
-  }
-  await found.frame.locator('#send-btn').click({ timeout: 10000 });
-  const promptNeedle = prompt.slice(0, Math.min(80, prompt.length));
-  let userTurnObserved = false;
-  try {
-    await found.frame.waitForFunction((needle) => {
-      const messages = document.getElementById('messages')?.textContent || '';
-      const inputValue = document.getElementById('input')?.value || '';
-      return inputValue.trim() === '' && messages.includes(needle);
-    }, promptNeedle, { timeout: 15000 });
-    userTurnObserved = true;
-  } catch {
-    userTurnObserved = false;
-  }
-  const foregroundDispatch = await waitForNaturalUiForegroundDispatch(30_000);
-  const result = {
-    ok: userTurnObserved && foregroundDispatch.observed,
-    route: 'vscode-webview-textarea-click',
-    naturalUi: true,
-    commandInjected: false,
-    entryMethod,
-    userTurnObserved,
-    foregroundDispatch,
-    inputSelector: '#input',
-    sendSelector: '#send-btn',
-    frameUrl: found.frame.url(),
-    pageTitle: found.title,
-    debugPort: vscodeDebugPort,
-    promptLength: prompt.length,
-    promptSha256: crypto.createHash('sha256').update(prompt).digest('hex'),
-  };
-  appendHarnessProgress('natural-ui-submitted', result);
-  return result;
-}
-
-async function submitPromptThroughScreenCoordinates(context, domFallbackError) {
-  const page = context.pages()[0];
-  if (!page) throw new Error('Playwright CDP connection exposed no VS Code page');
-  const viewport = await page.evaluate(() => ({
-    width: window.innerWidth,
-    height: window.innerHeight,
-    devicePixelRatio: window.devicePixelRatio,
-  }));
-  const inputPoint = {
-    x: Math.max(24, viewport.width - 175),
-    y: Math.max(24, viewport.height - 80),
-  };
-  const sendPoint = {
-    x: Math.max(24, viewport.width - 24),
-    y: inputPoint.y,
-  };
-
-  await page.mouse.click(inputPoint.x, inputPoint.y);
-  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A').catch(() => {});
-  await page.keyboard.press('Backspace').catch(() => {});
-  await page.keyboard.insertText(prompt);
-  await delay(250);
-  const screenshotBeforeSend = path.join(tmpRoot, 'natural-ui-input-before-send.png');
-  await page.screenshot({ path: screenshotBeforeSend, fullPage: false }).catch(() => {});
-  await page.mouse.click(sendPoint.x, sendPoint.y);
-  const foregroundDispatch = await waitForNaturalUiForegroundDispatch(30_000);
-  const screenshotAfterSend = path.join(tmpRoot, 'natural-ui-input-after-send.png');
-  await page.screenshot({ path: screenshotAfterSend, fullPage: false }).catch(() => {});
-
-  const result = {
-    ok: foregroundDispatch.observed,
-    route: 'vscode-webview-screen-coordinate-keyboard',
-    naturalUi: true,
-    commandInjected: false,
-    entryMethod: 'screen-coordinate-click-keyboard-insertText',
-    userTurnObserved: foregroundDispatch.observed,
-    foregroundDispatch,
-    domFallbackError,
-    inputPoint,
-    sendPoint,
-    viewport,
-    screenshotBeforeSend,
-    screenshotAfterSend,
-    debugPort: vscodeDebugPort,
-    promptLength: prompt.length,
-    promptSha256: crypto.createHash('sha256').update(prompt).digest('hex'),
-  };
-  appendHarnessProgress('natural-ui-submitted', result);
-  return result;
-}
-
-async function waitForNaturalUiForegroundDispatch(timeoutMs) {
-  const runsDir = path.join(workspaceDir, '.devseek', 'runs');
-  const expectedPrompt = {
-    length: prompt.length,
-    sha256: crypto.createHash('sha256').update(prompt).digest('hex'),
-  };
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (fs.existsSync(runsDir)) {
-      for (const name of fs.readdirSync(runsDir).filter(item => item.endsWith('.log'))) {
-        const events = fs.readFileSync(path.join(runsDir, name), 'utf8')
-          .split(/\r?\n/)
-          .map(parseHarnessJsonLine)
-          .filter(Boolean);
-        const started = events.find(event => event.event === 'agent-run-started'
-          && event.data?.workloadRole !== 'background-maintenance'
-          && event.data?.prompt?.length === expectedPrompt.length
-          && event.data?.prompt?.sha256 === expectedPrompt.sha256);
-        if (started) {
-          return { observed: true, runId: started.runId, ts: started.ts, prompt: expectedPrompt };
-        }
-      }
-    }
-    await delay(250);
-  }
-  return { observed: false, runId: '', ts: '', prompt: expectedPrompt };
-}
-
-function parseHarnessJsonLine(line) {
-  try {
-    return JSON.parse(line);
-  } catch {
-    return null;
-  }
-}
-
-async function findDevSeekInputFrame(context, waitMs) {
-  const deadline = Date.now() + waitMs;
-  let lastSummary = [];
-  while (Date.now() < deadline) {
-    lastSummary = [];
-    for (const page of context.pages()) {
-      const title = await page.title().catch(() => '');
-      for (const frame of page.frames()) {
-        const frameUrl = frame.url();
-        lastSummary.push({ title, url: frameUrl });
-        const inputCount = await frame.locator('#input').count({ timeout: 200 }).catch(() => 0);
-        const sendCount = await frame.locator('#send-btn').count({ timeout: 200 }).catch(() => 0);
-        if (inputCount > 0 && sendCount > 0) {
-          appendHarnessProgress('natural-ui-input-found', { title, frameUrl });
-          return { page, frame, title };
-        }
-      }
-    }
-    await delay(1000);
-  }
-  throw new Error('未在真实 VS Code Webview 中找到 DevSeek 输入框：' + JSON.stringify(lastSummary.slice(-8)));
 }
 
 function normalizeNaturalUiDomProbeMs(value) {
-  if (value === undefined || value === '') return 2000;
+  if (value === undefined || value === '') return 10000;
   const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return 2000;
+  if (!Number.isFinite(parsed)) return 10000;
   return Math.max(0, Math.min(30000, parsed));
-}
-
-async function waitForDebugEndpoint(port, waitMs) {
-  const deadline = Date.now() + waitMs;
-  let lastError = '';
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/json/version`);
-      if (response.ok) {
-        const version = await response.json();
-        if (version?.webSocketDebuggerUrl) return version;
-      }
-      lastError = `HTTP ${response.status}`;
-    } catch (error) {
-      lastError = String(error?.message || error);
-    }
-    await delay(500);
-  }
-  throw new Error(`VS Code 调试端口未就绪 port=${port}: ${lastError}`);
 }
 
 async function waitForProgressStage(stage, waitMs) {
