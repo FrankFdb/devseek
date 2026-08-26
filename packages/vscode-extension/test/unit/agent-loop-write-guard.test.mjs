@@ -24,8 +24,21 @@ const {
   detectNestedFilePayloadDrift,
   detectShellFileMutationCommand,
   detectShellFileWriteCommand,
+  makeTerminalCmdSignature,
   shouldBlockUnverifiedSourceOverwrite,
 } = req(bundlePath);
+
+test('AgentLoop terminal guard keeps identity beyond a long shared workdir prefix', () => {
+  const prefix = `cd /workspace/${'deeply-nested-project/'.repeat(8)} && ./build/math_visual_lab`;
+  const help = makeTerminalCmdSignature(`${prefix} --help`);
+  const acceptance = makeTerminalCmdSignature(
+    `${prefix} --script assets/actions.txt --snapshot output.ppm --state output.json`,
+  );
+
+  assert.ok(prefix.length > 120);
+  assert.notEqual(help, acceptance);
+  assert.equal(makeTerminalCmdSignature(`  ${prefix}   --help  `), help);
+});
 
 test('AgentLoop write guard: blocks existing source overwrite without read evidence', () => {
   const decision = shouldBlockUnverifiedSourceOverwrite({

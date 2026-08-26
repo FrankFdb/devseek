@@ -864,6 +864,7 @@ export async function runAgenticLoop(
     const deferAutoValidation = shouldDeferAgentAutoValidation({
       pendingWriteCount: pendingAutoValidationWrites.length,
       roundHasValidationTerminalProgress,
+      roundHasInvestigationActivity,
       pendingCohortHasUnrepairedTerminalFailure: failedTerminalWriteCount === allWrittenFiles.length,
       repairsTerminalFailure,
       completionSignaled: Boolean(loopRes.taskComplete || loopRes.allTodosCompleted),

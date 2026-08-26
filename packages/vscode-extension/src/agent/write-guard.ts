@@ -129,7 +129,7 @@ export function detectShellFileMutationCommand(cmd: string): string | undefined 
 }
 
 export function makeTerminalCmdSignature(cmd: string): string {
-  return cmd.trim().replace(/\s+/g, ' ').slice(0, 120);
+  return cmd.trim().replace(/\s+/g, ' ');
 }
 
 export function getTerminalRecoveryProtocol(cmd: string, attempt: number): string {

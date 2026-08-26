@@ -28,6 +28,7 @@ test('defers validation while a pure-write mutation cohort is still open', () =>
   assert.equal(shouldDeferAgentAutoValidation({
     pendingWriteCount: 4,
     roundHasValidationTerminalProgress: false,
+    roundHasInvestigationActivity: false,
     pendingCohortHasUnrepairedTerminalFailure: false,
     repairsTerminalFailure: false,
     completionSignaled: false,
@@ -38,6 +39,7 @@ test('runs validation at explicit validation and completion boundaries', () => {
   const base = {
     pendingWriteCount: 4,
     roundHasValidationTerminalProgress: false,
+    roundHasInvestigationActivity: false,
     pendingCohortHasUnrepairedTerminalFailure: false,
     repairsTerminalFailure: false,
     completionSignaled: false,
@@ -46,10 +48,22 @@ test('runs validation at explicit validation and completion boundaries', () => {
   assert.equal(shouldDeferAgentAutoValidation({ ...base, completionSignaled: true }), false);
 });
 
+test('runs validation when a pending mutation cohort leaves the pure-write stage', () => {
+  assert.equal(shouldDeferAgentAutoValidation({
+    pendingWriteCount: 1,
+    roundHasValidationTerminalProgress: false,
+    roundHasInvestigationActivity: true,
+    pendingCohortHasUnrepairedTerminalFailure: false,
+    repairsTerminalFailure: false,
+    completionSignaled: false,
+  }), false);
+});
+
 test('does not duplicate validation after a failed terminal result', () => {
   assert.equal(shouldDeferAgentAutoValidation({
     pendingWriteCount: 4,
     roundHasValidationTerminalProgress: true,
+    roundHasInvestigationActivity: false,
     pendingCohortHasUnrepairedTerminalFailure: true,
     repairsTerminalFailure: false,
     completionSignaled: false,
@@ -60,6 +74,7 @@ test('runs host validation immediately after a write repairs an active terminal 
   assert.equal(shouldDeferAgentAutoValidation({
     pendingWriteCount: 1,
     roundHasValidationTerminalProgress: false,
+    roundHasInvestigationActivity: false,
     pendingCohortHasUnrepairedTerminalFailure: false,
     repairsTerminalFailure: true,
     completionSignaled: false,
@@ -70,6 +85,7 @@ test('does not duplicate a failed validation emitted in the repair round', () =>
   assert.equal(shouldDeferAgentAutoValidation({
     pendingWriteCount: 1,
     roundHasValidationTerminalProgress: true,
+    roundHasInvestigationActivity: false,
     pendingCohortHasUnrepairedTerminalFailure: true,
     repairsTerminalFailure: true,
     completionSignaled: false,
@@ -80,6 +96,7 @@ test('keeps a pending cohort open during context-only rounds', () => {
   assert.equal(shouldDeferAgentAutoValidation({
     pendingWriteCount: 0,
     roundHasValidationTerminalProgress: false,
+    roundHasInvestigationActivity: true,
     pendingCohortHasUnrepairedTerminalFailure: false,
     repairsTerminalFailure: false,
     completionSignaled: false,
@@ -87,6 +104,7 @@ test('keeps a pending cohort open during context-only rounds', () => {
   assert.equal(shouldDeferAgentAutoValidation({
     pendingWriteCount: 1,
     roundHasValidationTerminalProgress: false,
+    roundHasInvestigationActivity: false,
     pendingCohortHasUnrepairedTerminalFailure: false,
     repairsTerminalFailure: false,
     completionSignaled: false,
