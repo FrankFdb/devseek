@@ -182,6 +182,7 @@ export async function executeFakeToolsForLoop(
     workspaceRoot?: string;
     requireReadBeforeOverwrite?: boolean;
     readEvidencePaths?: string[];
+    targetedReadEvidencePaths?: string[];
     readEvidenceRecorder?: ToolReadEvidenceRecorder;
     verificationScopeFiles?: readonly WrittenFileEvidence[];
     plannedTerminalValidation?: {
@@ -243,6 +244,7 @@ export async function executeFakeToolsForLoop(
 
   const workspaceRoot = taskContext?.workspaceRoot ?? inferWorkspaceRootForAgentTool(defaultWorkdir);
   const readEvidencePaths = new Set(taskContext?.readEvidencePaths ?? []);
+  const targetedReadEvidencePaths = new Set(taskContext?.targetedReadEvidencePaths ?? []);
   const trace = getToolTraceLogger(callbacks.traceWorkspaceRoot ?? workspaceRoot, callbacks.traceRunId);
   const readEvidenceRecorder = taskContext?.readEvidenceRecorder
     ?? new ToolReadEvidenceRecorder(workspaceRoot, callbacks.traceRunId);
@@ -257,6 +259,7 @@ export async function executeFakeToolsForLoop(
     defaultWorkdir,
     requireReadBeforeOverwrite: taskContext?.requireReadBeforeOverwrite,
     readEvidencePaths,
+    targetedReadEvidencePaths,
     readEvidenceRecorder,
     canonical: canonicalTools,
     reporter: {

@@ -202,7 +202,6 @@ export async function runAgenticLoop(
   let lastRoundToolRequestCount = 0;
   let executedToolRoundCount = 0;
   let providerRecoveryAttempts = 0;
-  let unresolvedProviderToolProtocol = false;
   let forceProviderNewSessionNextTurn = false;
   const resetProviderRecoveryAttemptsAfterProgress = () => {
     providerRecoveryAttempts = 0;
@@ -544,7 +543,6 @@ export async function runAgenticLoop(
       providerRecoveryCompletedThisRound = await providerRecovery.completeAcceptedResponse(
         'tool-protocol', providerOperationId, tools.map(tool => tool.name),
       );
-      unresolvedProviderToolProtocol = providerRecovery.hasUnresolvedToolAction();
     }
 
     messages.push({ role: 'assistant', content: text }, ...postProviderSteerMessages);
@@ -602,14 +600,13 @@ export async function runAgenticLoop(
         }, text.trim().length);
         if (disposition === 'completed') break;
         if (disposition === 'recovered') {
-          unresolvedProviderToolProtocol = true;
           continue;
         }
         failedReason = 'Provider 连续输出损坏工具协议，未形成可执行工具调用。';
         break;
       }
       const stripped = stripAuthorizedTextToolEnvelopes(text, textToolProtocol).trim();
-      if (!callbacks.signal?.aborted && unresolvedProviderToolProtocol) {
+      if (!callbacks.signal?.aborted && providerRecovery.hasUnresolvedToolAction()) {
         noToolRounds++;
         const disposition = await settleOrRecoverProviderFailureInsideCurrentTask({
           status: 'incomplete-tool-block',
@@ -774,6 +771,7 @@ export async function runAgenticLoop(
           workspaceRoot,
           requireReadBeforeOverwrite: true,
           readEvidencePaths: contextInvestigation.completeReadPaths(),
+          targetedReadEvidencePaths: contextInvestigation.visibleReadPaths(),
           verificationScopeFiles: allWrittenFiles,
           suppressedTools,
         },

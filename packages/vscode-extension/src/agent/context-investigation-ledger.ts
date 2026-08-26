@@ -72,6 +72,14 @@ export class ContextInvestigationLedger {
     return complete;
   }
 
+  visibleReadPaths(): string[] {
+    const visible: string[] = [];
+    for (const [path, entries] of this.readCoverage) {
+      if (entries.some(entry => entry.pathRevision === this.pathRevision(path))) visible.push(path);
+    }
+    return visible;
+  }
+
   recordVisibleReadExposures(
     exposures: readonly ProviderVisibleReadExposure[],
     fileAccessEvents: readonly ToolFileAccessEvent[],

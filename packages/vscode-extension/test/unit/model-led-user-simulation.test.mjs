@@ -370,6 +370,37 @@ test('ModelLedUserSimulation: validation and reads cannot discharge a malformed 
   }
 });
 
+test('ModelLedUserSimulation: a current ranged read permits an exact targeted repair', async () => {
+  const prompt = '读取 result.txt 的报错范围，把 BROKEN 精确修复为 FIXED，并读回。';
+  let calls = 0;
+  const simulation = await runSimulation(prompt, async () => {
+    calls += 1;
+    const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'result.txt');
+    if (calls === 1) {
+      writeFileSync(target, ['header', 'BROKEN', 'footer'].join('\n'));
+      return {
+        text: '先读取包含错误的局部范围。',
+        tools: [{ name: 'read_file', input: { path: target, startLine: 2, endLine: 2 } }],
+      };
+    }
+    return {
+      text: '依据当前版本的局部基线实施唯一精确替换。',
+      tools: [
+        { name: 'replace_in_file', input: { path: target, old_str: 'BROKEN', new_str: 'FIXED' } },
+        { name: 'read_file', input: { path: target } },
+        { name: 'task_complete', input: { summary: '已精确修复并读回。' } },
+      ],
+    };
+  }, { runDisplayAction: 'repair' });
+  try {
+    assert.equal(calls, 2, simulation.result.historyText);
+    assert.equal(readFileSync(path.join(simulation.root, 'result.txt'), 'utf8'), 'header\nFIXED\nfooter');
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
 test('ModelLedUserSimulation: invalid authenticated mutation recovers with its lossless write format', async () => {
   const prompt = '创建 recovered-format.txt，内容为 RECOVERED_FORMAT_OK，并读回确认。';
   let calls = 0;

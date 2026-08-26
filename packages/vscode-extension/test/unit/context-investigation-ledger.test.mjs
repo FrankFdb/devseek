@@ -113,6 +113,26 @@ test('Provider session reset forgets coverage that the rebuilt model can no long
   assert.equal(result.blockedToolIndexes.size, 0);
 });
 
+test('a visible partial read authorizes targeted repair evidence but not full-file overwrite evidence', () => {
+  const ledger = new ContextInvestigationLedger('/workspace');
+  const partialRead = {
+    path: '/workspace/src/controller.cpp',
+    startLine: 120,
+    endLine: 170,
+    totalLines: 356,
+    sourceSegmentIndex: 0,
+  };
+  ledger.recordVisibleReadExposures([partialRead], visibleRead(partialRead.path));
+
+  assert.deepEqual(ledger.visibleReadPaths(), ['/workspace/src/controller.cpp']);
+  assert.deepEqual(ledger.completeReadPaths(), []);
+
+  ledger.recordVisibleReadExposures([], [
+    { kind: 'write', path: partialRead.path, sequence: 2 },
+  ]);
+  assert.deepEqual(ledger.visibleReadPaths(), []);
+});
+
 test('omitted projected lines remain readable and cannot authorize a source overwrite', () => {
   const ledger = new ContextInvestigationLedger('/workspace');
   ledger.recordVisibleReadExposures([

@@ -49,6 +49,7 @@ export interface ToolLoopFileWriterOptions {
   readonly defaultWorkdir?: string;
   readonly requireReadBeforeOverwrite?: boolean;
   readonly readEvidencePaths: ReadonlySet<string>;
+  readonly targetedReadEvidencePaths: ReadonlySet<string>;
   readonly readEvidenceRecorder: ToolReadEvidenceRecorder;
   readonly canonical: ToolLoopCanonicalSession;
   readonly reporter: ToolLoopFileWriteReporter;
@@ -146,7 +147,9 @@ export class ToolLoopFileWriter {
         const guard = shouldBlockUnverifiedSourceOverwrite({
           absPath,
           existed: baseline.snapshot.existed,
-          readEvidencePaths: this.options.readEvidencePaths,
+          readEvidencePaths: toolName === 'replace_in_file'
+            ? this.options.targetedReadEvidencePaths
+            : this.options.readEvidencePaths,
         });
         if (guard.block) {
           return failBeforeEffect('source-overwrite-without-read-evidence', guard.reason ?? '覆盖现有源码前缺少读取证据，已阻止写入。');
