@@ -54,6 +54,12 @@ const MISSING_PATH_SEARCH_IGNORED_DIRECTORIES = new Set([
   'dist',
   'node_modules',
 ]);
+const MISSING_PATH_EQUIVALENT_EXTENSION_FAMILIES = [
+  new Set(['.h', '.hh', '.hpp', '.hxx']),
+  new Set(['.c', '.cc', '.cpp', '.cxx']),
+  new Set(['.js', '.cjs', '.mjs']),
+  new Set(['.ts', '.cts', '.mts']),
+];
 
 type SourceIntegrity = 'full' | 'range' | 'preview' | 'generated-full' | 'generated-range' | 'generated-preview';
 
@@ -94,7 +100,7 @@ export class FileContextService {
     if (!resolved) {
       const suggestions = this.findMissingPathSuggestions(filePath);
       const hint = suggestions.length > 0
-        ? `。工作区同名候选：${suggestions.join('、')}`
+        ? `。工作区可能匹配：${suggestions.join('、')}`
         : '';
       throw new Error(`找不到文件：${filePath}${hint}`);
     }
@@ -202,7 +208,7 @@ export class FileContextService {
           }
           continue;
         }
-        if (!entry.isFile() || entry.name.toLowerCase() !== requestedBasename) continue;
+        if (!entry.isFile() || !missingPathNamesMatch(requestedBasename, entry.name)) continue;
         if (!decideFileContextReadBoundary(absolutePath, root).allowed) continue;
 
         suggestions.push(toWorkspaceDisplayPath(root, absolutePath));
@@ -216,6 +222,21 @@ export class FileContextService {
 
 function toWorkspaceDisplayPath(workspaceRoot: string, candidate: string): string {
   return nodePath.relative(workspaceRoot, candidate).split(nodePath.sep).join('/');
+}
+
+function missingPathNamesMatch(requestedBasename: string, candidateName: string): boolean {
+  const candidateBasename = candidateName.toLowerCase();
+  if (candidateBasename === requestedBasename) return true;
+  if (nodePath.basename(candidateBasename, nodePath.extname(candidateBasename))
+    !== nodePath.basename(requestedBasename, nodePath.extname(requestedBasename))) {
+    return false;
+  }
+
+  const requestedExtension = nodePath.extname(requestedBasename);
+  const candidateExtension = nodePath.extname(candidateBasename);
+  return MISSING_PATH_EQUIVALENT_EXTENSION_FAMILIES.some(family => (
+    family.has(requestedExtension) && family.has(candidateExtension)
+  ));
 }
 
 /** The only local-file boundary used before content can enter an AI prompt. */

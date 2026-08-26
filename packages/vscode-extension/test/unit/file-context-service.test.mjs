@@ -104,7 +104,7 @@ test('FileContextService: never exposes the internal bridge credential', async (
   }
 });
 
-test('FileContextService: suggests bounded workspace paths when a guessed file location is missing', async () => {
+test('FileContextService: suggests bounded logical source paths when a guessed location or extension is missing', async () => {
   const workspace = tempProject();
   try {
     mkdirSync(path.join(workspace, 'include'), { recursive: true });
@@ -118,9 +118,9 @@ test('FileContextService: suggests bounded workspace paths when a guessed file l
     const service = new FileContextService({ workspaceRoot: workspace });
 
     await assert.rejects(
-      service.readFileForAi('src/lesson_controller.hpp', { workDir: workspace }),
+      service.readFileForAi('src/lesson_controller.h', { workDir: workspace }),
       (error) => {
-        assert.match(error.message, /工作区同名候选：include\/lesson_controller\.hpp、src\/detail\/lesson_controller\.hpp/);
+        assert.match(error.message, /工作区可能匹配：include\/lesson_controller\.hpp、src\/detail\/lesson_controller\.hpp/);
         assert.doesNotMatch(error.message, /\.devseek|node_modules/);
         return true;
       },
