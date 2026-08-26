@@ -28,7 +28,9 @@ export type RequirementReviewInvoker = (
   messages: ChatMessage[],
 ) => Promise<RequirementReviewInvocationResult>;
 
-/** Runs a read-only semantic review against final source in an isolated model context. */
+type RequirementReviewPosture = 'initial' | 'challenge-pass';
+
+/** Requires an initial review and a fresh pass challenge before accepting final source. */
 export class IndependentRequirementReviewer {
   constructor(private readonly invoke: RequirementReviewInvoker) {}
 
@@ -45,7 +47,24 @@ export class IndependentRequirementReviewer {
       input.contextPaths ?? [],
       snapshots,
     );
-    let messages = buildIndependentReviewMessages(input, snapshots, contextSnapshots);
+    const initialDecision = await this.runReview(
+      input,
+      snapshots,
+      contextSnapshots,
+      'initial',
+    );
+    if (initialDecision.status !== 'passed') return initialDecision;
+
+    return this.runReview(input, snapshots, contextSnapshots, 'challenge-pass');
+  }
+
+  private async runReview(
+    input: IndependentRequirementReviewInput,
+    snapshots: readonly RequirementReviewSourceSnapshot[],
+    contextSnapshots: readonly RequirementReviewSourceSnapshot[],
+    posture: RequirementReviewPosture,
+  ): Promise<RequirementReviewDecision> {
+    let messages = buildIndependentReviewMessages(input, snapshots, contextSnapshots, posture);
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         const response = await this.invoke(messages);
@@ -64,6 +83,7 @@ export function buildIndependentReviewMessages(
   input: IndependentRequirementReviewInput,
   snapshots: readonly RequirementReviewSourceSnapshot[],
   contextSnapshots: readonly RequirementReviewSourceSnapshot[] = [],
+  posture: RequirementReviewPosture = 'initial',
 ): ChatMessage[] {
   const sources = renderRequirementReviewSnapshots(snapshots);
   const context = contextSnapshots.length > 0
@@ -96,6 +116,15 @@ export function buildIndependentReviewMessages(
         'Honor user-requested data structures and complexity. Flag dead state, wrong ownership, and scans that defeat the requested design.',
         'priority must be an integer from 0 through 3 only: 0 blocks all use, 1 is high, 2 is normal, and 3 is low.',
         'overall_correctness is patch is correct only when every check is satisfied and findings is empty; otherwise it is patch is incorrect.',
+        ...(posture === 'challenge-pass'
+          ? [
+              'A separate reviewer proposed that the patch passes. That proposal is an untrusted hypothesis and is deliberately omitted; independently try to falsify it before allowing completion.',
+              'Trace every concrete action in user-supplied acceptance examples through the final source and compare any supplied generated state or snapshot evidence with the delegated contract. Count accepted inputs explicitly when the contract defines a count.',
+              'For ownership or shared-implementation constraints, compare every public entry point that produces the behavior; a separately coded validation path is a violation even when both paths currently build.',
+              'A successful build, self-test, or validation command proves only what that command exercised. It cannot satisfy an unexercised runtime, graphical, ownership, error, or artifact-content requirement.',
+              'Return patch is correct only after this falsification pass finds no reachable contradiction. Do not manufacture a finding merely to disagree with the first reviewer.',
+            ]
+          : []),
         'Return one exact JSON object matching the schema. Do not wrap it in Markdown or add prose.',
       ].join('\n'),
     },

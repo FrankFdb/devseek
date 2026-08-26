@@ -397,7 +397,11 @@ test('isolated reviewer retries a rejected proposal and accepts the corrected co
   const reviewer = new IndependentRequirementReviewer(async messages => {
     calls += 1;
     if (calls === 1) return { text: 'not-json', toolCount: 0 };
-    assert.match(messages.at(-1).content, /rejected by the response contract/);
+    if (calls === 2) {
+      assert.match(messages.at(-1).content, /rejected by the response contract/);
+    } else {
+      assert.match(messages[0].content, /independently try to falsify it/);
+    }
     return response(passBody(prompt));
   });
 
@@ -407,8 +411,74 @@ test('isolated reviewer retries a rejected proposal and accepts the corrected co
     sourcePaths: ['src/main.ts'],
     validationSummary: 'typecheck passed',
   });
-  assert.equal(calls, 2);
+  assert.equal(calls, 3);
   assert.equal(decision.status, 'passed');
+});
+
+test('a fresh falsification review can overturn a superficial validation-only pass', async () => {
+  const workspace = path.join(tempRoot, 'pass-challenge-workspace');
+  mkdirSync(path.join(workspace, 'src'), { recursive: true });
+  writeFileSync(path.join(workspace, 'src/main.cpp'), [
+    'int handledActions = 0;',
+    'void apply(const char* action) {',
+    '  if (action[0] == \'l\') return;',
+    '  ++handledActions;',
+    '}',
+    '',
+  ].join('\n'));
+  writeFileSync(path.join(workspace, 'USER_STORY.md'), [
+    'Every accepted action increments handledActions.',
+    'The supplied action file contains five accepted actions.',
+    '',
+  ].join('\n'));
+  writeFileSync(
+    path.join(workspace, 'state.json'),
+    '{"handledActions":"3"}\n',
+  );
+  const prompt = 'Implement USER_STORY.md and inspect the generated state.json.';
+  const source = snapshot(
+    'src/main.cpp',
+    'int handledActions = 0;\nvoid apply(const char* action) { if (action[0] == \'l\') return; ++handledActions; }\n',
+  );
+  let calls = 0;
+  const reviewer = new IndependentRequirementReviewer(async messages => {
+    calls += 1;
+    if (calls === 1) {
+      assert.doesNotMatch(messages[0].content, /separate reviewer proposed/u);
+      return response(passBody(prompt, {
+        requirement_checks: [check(prompt, 'satisfied', {
+          evidence: 'The project builds and test.sh passes.',
+        })],
+      }));
+    }
+    assert.match(messages[0].content, /separate reviewer proposed/u);
+    assert.match(messages[0].content, /Count accepted inputs explicitly/u);
+    assert.match(messages[1].content, /handledActions/u);
+    return response(failBody(source, prompt, {
+      findings: [finding(source, prompt, {
+        title: 'Count lesson actions through the controller',
+        observed_behavior: 'Lesson actions return before handledActions is incremented.',
+        expected_behavior: 'Every accepted action must increment handledActions.',
+        counterexample: 'Run the five accepted actions; actual handledActions is 3 while required is 5.',
+        code_location: {
+          absolute_file_path: path.join(workspace, 'src/main.cpp'),
+          line_range: { start: 3, end: 3 },
+        },
+      })],
+    }));
+  });
+
+  const decision = await reviewer.review({
+    userPrompt: prompt,
+    workspaceRoot: workspace,
+    sourcePaths: ['src/main.cpp'],
+    contextPaths: ['USER_STORY.md', 'state.json'],
+    validationSummary: 'QualityGate passed: bash test.sh exited 0.',
+  });
+
+  assert.equal(calls, 2);
+  assert.equal(decision.status, 'failed');
+  assert.equal(decision.findings[0].title, 'Count lesson actions through the controller');
 });
 
 test('isolated reviewer captures safe in-workspace files read by the implementing agent', async () => {

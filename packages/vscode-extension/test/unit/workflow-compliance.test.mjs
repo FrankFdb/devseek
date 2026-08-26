@@ -2655,6 +2655,21 @@ test('Architecture: validated source changes require fresh source review before 
   );
   assertContains(
     independentReview,
+    "if (initialDecision.status !== 'passed') return initialDecision",
+    'only an initial pass may enter the independent pass-challenge cohort',
+  );
+  assertContains(
+    independentReview,
+    "return this.runReview(input, snapshots, contextSnapshots, 'challenge-pass')",
+    'a model-authored pass must be challenged in a fresh provider invocation',
+  );
+  assertContains(
+    independentReview,
+    'A successful build, self-test, or validation command proves only what that command exercised',
+    'pass challenge must not promote narrow validation into whole-task evidence',
+  );
+  assertContains(
+    independentReview,
     '[WORKSPACE CONTEXT READ BY IMPLEMENTING AGENT]',
     'semantic review must receive bounded project context separately from final source',
   );
