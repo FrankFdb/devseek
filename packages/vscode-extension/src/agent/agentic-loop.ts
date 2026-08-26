@@ -359,7 +359,13 @@ export async function runAgenticLoop(
     });
     providerRecoveryAttempts = recovery.recoveryAttempts;
     totalChars = recovery.totalChars;
-    if (recovery.forceFreshProviderSession) forceProviderNewSessionNextTurn = true;
+    if (recovery.forceFreshProviderSession) {
+      forceProviderNewSessionNextTurn = true;
+      // Duplicate-read suppression is scoped to what the current model session
+      // has actually seen. A rebuilt Provider session retains audit paths but
+      // must be allowed to replay the file contents it no longer possesses.
+      seenContextToolSignatures.clear();
+    }
     return recovery.recovered ? 'recovered' : 'unrecoverable';
   };
   await callbacks.onAgentStatus({

@@ -175,6 +175,12 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
     ? '- 这是最后一次恢复：只能输出最小下一步。最多 3 个只读工具或 1 个写入工具；不能重新做全量项目探索。'
     : '- 恢复轮必须小步推进：最多 6 个只读工具；如需写入，最多 1 个写入工具，content 控制在 6000 字符以内。';
   const resetProviderSession = shouldResetProviderSessionForRecovery(input.failure);
+  const readEvidenceLine = resetProviderSession
+    ? `已读取路径（仅审计，文件内容未注入重建会话）：${readPaths || '暂无'}`
+    : `已读取证据：${readPaths || '暂无'}`;
+  const contextReplayLine = resetProviderSession
+    ? '- 重建会话不包含先前只读工具返回的文件内容；若下一步依赖这些内容，先精确重读必要路径。每个必要路径只重放一次，不做全量探索。'
+    : '- 不要重复已读取路径、相同 list_dir、相同 grep_search 或相同 file_search；如确实缺少内容，只读取更精确的新文件或行范围。';
   const toolSerializationLine = failureStatus === 'incomplete-tool-block'
     && input.writtenFiles.length > 0
     ? buildReplaceInFileRecoveryPrompt(input.textToolProtocol)
@@ -194,7 +200,7 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
       '',
       '请不要引用、续写或执行上一轮损坏文本；这是从运行账本重建的最小恢复上下文。',
       `原始用户任务：${truncateSingleLine(input.userPrompt, 800)}`,
-      `已读取证据：${readPaths || '暂无'}`,
+      readEvidenceLine,
       `已写入文件：${writtenPaths || '暂无'}`,
       `终端/验证证据：${terminalFacts || '暂无'}`,
       `当前 Todo：${todos || '暂无'}`,
@@ -208,7 +214,7 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
       blockingTerminalFailure
         ? '- 不要在恢复轮重新规划 Todo；先清除活动验证失败。'
         : '- 先用 manage_todo_list 校正当前步骤；未完成项保持 in-progress 或 not-started。',
-      '- 不要重复已读取路径、相同 list_dir、相同 grep_search 或相同 file_search；如确实缺少内容，只读取更精确的新文件或行范围。',
+      contextReplayLine,
       '- 需要上下文时，只输出具体 read_file/list_dir/grep_search/file_search/只读 run_terminal 工具调用，不要同时输出长篇分析。',
       '- 需要创建或修改文件时，只使用 create_file 或 replace_in_file；大产物应分轮交付可验证、可继续扩展的完整责任切片。不得用占位骨架、近似接口或“最小可编译版本”冒充原始契约已经完成。',
       toolSerializationLine,

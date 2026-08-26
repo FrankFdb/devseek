@@ -43,6 +43,21 @@ test('FakeToolParser: parses bracket tool calls', () => {
   assert.deepEqual(tools[0].input, { path: 'src/index.ts' });
 });
 
+test('FakeToolParser: normalizes execute_command XML through the canonical terminal tool', () => {
+  const text = [
+    '先查看失败位置。',
+    '<execute_command><command>sed -n \'200,240p\' src/main.cpp</command></execute_command>',
+  ].join('');
+
+  assert.deepEqual(parseFakeToolCalls(text), [{
+    name: 'run_terminal',
+    input: { command: "sed -n '200,240p' src/main.cpp" },
+  }]);
+  assert.equal(findFirstToolCallStart(text), text.indexOf('<execute_command>'));
+  assert.equal(stripToolCallBlocks(text), '先查看失败位置。');
+  assert.equal(containsFakeToolCallProtocol(text), true);
+});
+
 test('FakeToolParser: unwraps fenced structured text emitted around a complete tool request', () => {
   const text = [
     '我先查看工作区。',

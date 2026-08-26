@@ -99,7 +99,10 @@ test('Agent provider recovery prompt keeps only durable facts and forces small t
 
   assert.match(prompt, /已阻止执行损坏内容/);
   assert.match(prompt, /不要引用、续写或执行上一轮损坏文本/);
-  assert.match(prompt, /不要重复已读取路径/);
+  assert.match(prompt, /已读取路径（仅审计，文件内容未注入重建会话）/);
+  assert.match(prompt, /重建会话不包含先前只读工具返回的文件内容/);
+  assert.match(prompt, /每个必要路径只重放一次/);
+  assert.doesNotMatch(prompt, /不要重复已读取路径/);
   assert.match(prompt, /活动失败恢复轮只允许一个精确只读工具或一个写入工具/);
   assert.match(prompt, /活动失败是下一轮最高优先级/);
   assert.match(prompt, /不要在恢复轮重新规划 Todo/);

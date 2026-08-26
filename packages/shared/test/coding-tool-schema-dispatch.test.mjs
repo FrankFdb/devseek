@@ -32,6 +32,7 @@ test('CanonicalToolSchemaRegistry owns canonical names, descriptors, and model v
 
   assert.equal(normalizeCodingToolName('search_content'), 'grep_search');
   assert.equal(normalizeCodingToolName('search_replace'), 'replace_in_file');
+  assert.equal(normalizeCodingToolName('execute_command'), 'run_terminal');
   assert.equal(getCodingToolDescriptor('create_file').version, CODING_TOOL_SCHEMA_VERSION);
   assert.equal(getCodingToolDescriptor('create_file').mutatesWorkspace, true);
   assert.equal(Object.isFrozen(getCodingToolDescriptor('create_file').schema.properties.path), true);
@@ -43,6 +44,7 @@ test('CanonicalToolSchemaRegistry owns canonical names, descriptors, and model v
   assert.equal(isFileWriteToolName('search_replace'), true);
   assert.equal(isFileWriteToolName('run_terminal'), false);
   assert.equal(listCodingToolNames(true).includes('search_content'), true);
+  assert.equal(listCodingToolNames(true).includes('execute_command'), true);
   assert.equal(schemas.listNames().includes('apply_workspace_artifacts'), false);
   assert.equal(schemas.listNames({ includeInternal: true }).includes('apply_workspace_artifacts'), true);
 });

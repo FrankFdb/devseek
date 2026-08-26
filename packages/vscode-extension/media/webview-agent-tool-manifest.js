@@ -6,6 +6,7 @@
     "create_file",
     "delete_file",
     "edit_file",
+    "execute_command",
     "fetch_webpage",
     "file_search",
     "get_changed_files",

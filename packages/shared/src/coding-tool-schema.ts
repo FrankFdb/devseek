@@ -111,6 +111,7 @@ export const CODING_TOOL_ALIASES: Readonly<Record<string, string>> = Object.free
   search_content: 'grep_search',
   edit_file: 'replace_in_file',
   search_replace: 'replace_in_file',
+  execute_command: 'run_terminal',
 });
 
 export class CanonicalToolSchemaRegistry implements ToolSchemaRegistryPort {

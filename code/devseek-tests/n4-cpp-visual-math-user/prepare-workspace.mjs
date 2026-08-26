@@ -17,6 +17,14 @@ export const protectedWorkspacePaths = Object.freeze([
 export function prepareWorkspace(workspace) {
   fs.rmSync(workspace, { recursive: true, force: true });
   fs.mkdirSync(path.join(workspace, 'assets'), { recursive: true });
+  write(path.join(workspace, '.vscode/settings.json'), `${JSON.stringify({
+    'devseek.protectedFiles': [
+      'CMakeLists.txt',
+      'test.sh',
+      'USER_STORY.md',
+      'assets/**',
+    ],
+  }, null, 2)}\n`);
   write(path.join(workspace, 'CMakeLists.txt'), cmakeContract());
   write(path.join(workspace, 'test.sh'), testContract(), 0o755);
   write(path.join(workspace, 'USER_STORY.md'), userStory());
