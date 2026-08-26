@@ -262,12 +262,11 @@ test('binds each finding to the canonical requirement check without a duplicate 
   assert.equal(decision.findings[0].requirement, prompt);
 });
 
-test('validates finding evidence fields, priority, confidence, and title length', () => {
+test('validates finding evidence fields, priority, and confidence', () => {
   const source = snapshot();
   const prompt = 'Return 2.';
   const invalidOverrides = [
     { title: '' },
-    { title: 'x'.repeat(81) },
     { observed_behavior: '' },
     { expected_behavior: '' },
     { counterexample: '' },
@@ -281,6 +280,20 @@ test('validates finding evidence fields, priority, confidence, and title length'
     const body = failBody(source, prompt, { findings: [finding(source, prompt, overrides)] });
     assert.equal(parseIndependentReviewResponse(response(body), [source], prompt).status, 'indeterminate');
   }
+});
+
+test('bounds an otherwise valid finding title without discarding its evidence', () => {
+  const source = snapshot();
+  const prompt = 'Return 2.';
+  const body = failBody(source, prompt, {
+    findings: [finding(source, prompt, { title: '界'.repeat(81) })],
+  });
+
+  const decision = parseIndependentReviewResponse(response(body), [source], prompt);
+
+  assert.equal(decision.status, 'failed');
+  assert.equal(Array.from(decision.findings[0].title).length, 80);
+  assert.equal(decision.findings[0].counterexample, finding(source, prompt).counterexample);
 });
 
 test('accepts only exact supplied source paths and bounded integer line ranges', () => {

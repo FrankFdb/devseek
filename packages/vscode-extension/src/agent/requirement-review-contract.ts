@@ -167,13 +167,16 @@ function requirementInventory(userPrompt: string): RequirementClause[] {
 }
 
 function parseStrictReviewJson(text: string): RawReviewResult | undefined {
+  return parseSingleJsonObjectDocument(text) as RawReviewResult | undefined;
+}
+
+export function parseSingleJsonObjectDocument(text: string): Record<string, unknown> | undefined {
   const candidate = unwrapSingleJsonDocument(text);
-  if (!candidate) return undefined;
-  if (!candidate.startsWith('{') || !candidate.endsWith('}')) return undefined;
+  if (!candidate || !candidate.startsWith('{') || !candidate.endsWith('}')) return undefined;
   try {
     const parsed = JSON.parse(candidate);
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as RawReviewResult
+      ? parsed as Record<string, unknown>
       : undefined;
   } catch {
     return undefined;
@@ -244,12 +247,11 @@ function normalizeFinding(
     return undefined;
   }
 
-  const title = nonEmptyString(raw.title);
+  const title = normalizeFindingTitle(raw.title);
   const observedBehavior = nonEmptyString(raw.observed_behavior);
   const expectedBehavior = nonEmptyString(raw.expected_behavior);
   const counterexample = nonEmptyString(raw.counterexample);
   if (!title
-    || Array.from(title).length > MAX_FINDING_TITLE_CHARS
     || !observedBehavior
     || !expectedBehavior
     || !counterexample) {
@@ -284,6 +286,13 @@ function normalizeFinding(
     path: snapshot.path,
     line: start as number,
   };
+}
+
+function normalizeFindingTitle(value: unknown): string | undefined {
+  const title = nonEmptyString(value);
+  return title
+    ? Array.from(title).slice(0, MAX_FINDING_TITLE_CHARS).join('')
+    : undefined;
 }
 
 function nonEmptyString(value: unknown): string | undefined {

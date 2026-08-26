@@ -126,6 +126,25 @@ test('retains only findings independently confirmed against the current source',
   assert.match(decision.explanation, /1 条/);
 });
 
+test('accepts one fenced JSON verdict document from the provider', async () => {
+  const workspaceRoot = workspaceWithMain('int main() { return 1; }\n');
+  const adjudicator = new RequirementReviewFindingAdjudicator(async () => ({
+    text: `\`\`\`json\n${JSON.stringify({
+      finding_verdicts: [{
+        finding_index: 1,
+        verdict: 'confirmed',
+        evidence: 'src/main.cpp:1 returns status 1 on the reachable default path.',
+      }],
+    })}\n\`\`\``,
+    toolCount: 0,
+  }));
+
+  const decision = await adjudicator.adjudicate(input(workspaceRoot));
+
+  assert.equal(decision.status, 'failed');
+  assert.deepEqual(decision.findings, [finding()]);
+});
+
 test('treats incomplete or tool-using adjudication as indeterminate instead of granting authority', async () => {
   const workspaceRoot = workspaceWithMain('int main() { return 0; }\n');
   const incomplete = new RequirementReviewFindingAdjudicator(async () => verdicts([]));

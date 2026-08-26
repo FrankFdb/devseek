@@ -1,6 +1,7 @@
 import type { ChatMessage } from '../llm/types';
 import type { RequirementReviewDecision } from './requirement-review-ledger';
 import {
+  parseSingleJsonObjectDocument,
   renderRequirementInventory,
   type RequirementReviewInvocationResult,
   type RequirementReviewSourceSnapshot,
@@ -130,13 +131,8 @@ function parseFindingVerdicts(
   findingCount: number,
 ): FindingVerdict[] | undefined {
   if (response.toolCount > 0) return undefined;
-  let raw: unknown;
-  try {
-    raw = JSON.parse(response.text.trim());
-  } catch {
-    return undefined;
-  }
-  if (!isRecord(raw) || !Array.isArray(raw.finding_verdicts)) return undefined;
+  const raw = parseSingleJsonObjectDocument(response.text);
+  if (!raw || !Array.isArray(raw.finding_verdicts)) return undefined;
   if (raw.finding_verdicts.length !== findingCount) return undefined;
   const verdicts: FindingVerdict[] = [];
   for (let index = 0; index < raw.finding_verdicts.length; index++) {
