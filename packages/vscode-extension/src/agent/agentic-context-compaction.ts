@@ -7,6 +7,7 @@ import type {
 import type { ChatMessage } from '../llm/types';
 import type { TodoItem } from './evidence-recovery';
 import type { TextToolProtocolSession } from './text-tool-protocol';
+import type { ProviderVisibleReadExposure } from './tool-loop-result';
 import {
   CONTEXT_COMPACTION_SUMMARY_MARKER,
   compactAgentMessageHistoryWithFidelity,
@@ -56,32 +57,46 @@ export interface AgenticContextCompactionInput {
   readonly trigger?: CodingContextCompactionTrigger;
 }
 
+export interface AgenticToolFeedbackProjection {
+  readonly message: string;
+  readonly readExposures: readonly ProviderVisibleReadExposure[];
+}
+
 /**
  * Projects independently executed tool results into one bounded provider turn.
  * Every result keeps an identity and an explicit continuation instead of being
  * silently lost to whole-message head/tail truncation.
  */
-export function projectAgenticToolFeedbackMessage(
+export function projectAgenticToolFeedback(
   round: number,
   segments: readonly string[],
-): string {
+): AgenticToolFeedbackProjection {
   const prefix = `[工具结果 Round ${positiveInteger(round, 'invalid-round')}]\n`;
-  const normalized = segments.map(segment => String(segment ?? '').trim()).filter(Boolean);
-  if (normalized.length === 0) return prefix.trimEnd();
+  const normalized = segments
+    .map((segment, sourceSegmentIndex) => ({
+      content: String(segment ?? '').trim(),
+      sourceSegmentIndex,
+    }))
+    .filter(segment => Boolean(segment.content));
+  if (normalized.length === 0) return { message: prefix.trimEnd(), readExposures: [] };
 
   const bodyBudget = AGENTIC_TOOL_FEEDBACK_CHAR_BUDGET - prefix.length;
   const separatorBudget = TOOL_FEEDBACK_SEPARATOR.length * Math.max(0, normalized.length - 1);
   const segmentBudgets = allocateFairBudgets(
-    normalized.map(segment => segment.length),
+    normalized.map(segment => segment.content.length),
     Math.max(0, bodyBudget - separatorBudget),
   );
-  const body = normalized.map((segment, index) => compactToolFeedbackSegment(
-    segment,
+  const projected = normalized.map((segment, index) => compactToolFeedbackSegment(
+    segment.content,
     segmentBudgets[index],
     index,
     normalized.length,
-  )).join(TOOL_FEEDBACK_SEPARATOR);
-  return `${prefix}${body}`;
+    segment.sourceSegmentIndex,
+  ));
+  return {
+    message: `${prefix}${projected.map(result => result.content).join(TOOL_FEEDBACK_SEPARATOR)}`,
+    readExposures: projected.flatMap(result => result.readExposures),
+  };
 }
 
 /** Owns the agentic history budget and delegates semantic pruning to the Kernel session. */
@@ -311,16 +326,19 @@ function compactToolFeedbackSegment(
   maxChars: number,
   index: number,
   total: number,
-): string {
-  if (segment.length <= maxChars) return segment;
-  if (maxChars <= 0) return '';
-  const readProjection = compactReadFileFeedback(segment, maxChars, index, total);
+  sourceSegmentIndex: number,
+): { content: string; readExposures: readonly ProviderVisibleReadExposure[] } {
+  if (segment.length <= maxChars) {
+    return { content: segment, readExposures: parseCompleteReadExposure(segment, sourceSegmentIndex) };
+  }
+  if (maxChars <= 0) return { content: '', readExposures: [] };
+  const readProjection = compactReadFileFeedback(segment, maxChars, index, total, sourceSegmentIndex);
   if (readProjection) return readProjection;
 
   const firstLine = segment.split(/\r?\n/u, 1)[0]?.trim() || 'tool-result';
   const omitted = Math.max(1, segment.length - maxChars);
   const notice = `[DevSeek 工具结果 ${index + 1}/${total} 已压缩 ${omitted} 字符；请针对 ${firstLine} 重新发起精确查询。]`;
-  return retainFeedbackHeadAndTail(segment, notice, maxChars);
+  return { content: retainFeedbackHeadAndTail(segment, notice, maxChars), readExposures: [] };
 }
 
 function compactReadFileFeedback(
@@ -328,7 +346,8 @@ function compactReadFileFeedback(
   maxChars: number,
   index: number,
   total: number,
-): string | undefined {
+  sourceSegmentIndex: number,
+): { content: string; readExposures: readonly ProviderVisibleReadExposure[] } | undefined {
   const lines = segment.split(/\r?\n/u);
   const pathMatch = /^\[read_file:\s*(.+?)\]$/u.exec(lines[0]?.trim() ?? '');
   const metadataEnd = lines.findIndex(line => line.trim() === '[/file_context]');
@@ -353,7 +372,7 @@ function compactReadFileFeedback(
     const omittedStart = returnedStart + headCount;
     const omittedEnd = returnedEnd - tailCount;
     const notice = omittedStart <= omittedEnd
-      ? `[DevSeek 读取结果 ${index + 1}/${total} 已压缩；省略文件行 ${omittedStart}-${omittedEnd}。继续：read_file 使用同一 path，startLine=${omittedStart}, endLine=${omittedEnd}。]`
+      ? `[DevSeek 读取结果 ${index + 1}/${total} 已压缩；文件行 ${omittedStart}-${omittedEnd} 存在但尚未交付给模型，严禁据此判断代码缺失或修改该文件。必须继续：read_file 使用同一 path，startLine=${omittedStart}, endLine=${omittedEnd}。]`
       : '';
     return [
       ...identity,
@@ -368,7 +387,7 @@ function compactReadFileFeedback(
   let projected = render(headCount, tailCount);
   if (projected.length > maxChars) {
     const notice = `[DevSeek 读取结果 ${index + 1}/${total} 已压缩；继续：read_file 使用同一 path 和更小行范围。]`;
-    return retainFeedbackHeadAndTail(lines[0], notice, maxChars);
+    return { content: retainFeedbackHeadAndTail(lines[0], notice, maxChars), readExposures: [] };
   }
   while (headCount + tailCount < sourceLines.length) {
     const growHead = headCount <= tailCount;
@@ -380,7 +399,42 @@ function compactReadFileFeedback(
     tailCount = nextTail;
     projected = candidate;
   }
-  return projected;
+  const readExposures: ProviderVisibleReadExposure[] = [];
+  if (headCount > 0) {
+    readExposures.push({
+      path: pathMatch[1],
+      startLine: returnedStart,
+      endLine: returnedStart + headCount - 1,
+      totalLines: Number(returnedMatch[3]),
+      sourceSegmentIndex,
+    });
+  }
+  if (tailCount > 0) {
+    readExposures.push({
+      path: pathMatch[1],
+      startLine: returnedEnd - tailCount + 1,
+      endLine: returnedEnd,
+      totalLines: Number(returnedMatch[3]),
+      sourceSegmentIndex,
+    });
+  }
+  return { content: projected, readExposures };
+}
+
+function parseCompleteReadExposure(
+  segment: string,
+  sourceSegmentIndex: number,
+): readonly ProviderVisibleReadExposure[] {
+  const path = /^\[read_file:\s*(.+?)\]$/mu.exec(segment)?.[1];
+  const returned = /^returnedLines=(\d+)-(\d+)\/(\d+)$/mu.exec(segment);
+  if (!path || !returned) return [];
+  return [{
+    path,
+    startLine: Number(returned[1]),
+    endLine: Number(returned[2]),
+    totalLines: Number(returned[3]),
+    sourceSegmentIndex,
+  }];
 }
 
 function retainFeedbackHeadAndTail(text: string, notice: string, maxChars: number): string {

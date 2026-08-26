@@ -15,6 +15,8 @@ export interface ToolLoopResult {
   feedbackForAI: string;
   /** Ordered feedback boundaries retained when observations execute independently. */
   feedbackSegmentsForAI?: string[];
+  /** Ordered file-version events used to bind visible reads to the version observed. */
+  fileAccessEvents?: ToolFileAccessEvent[];
   completeSummary?: string;
   allTodosCompleted?: boolean;
   todoItems?: TodoItem[];
@@ -29,6 +31,22 @@ export interface ToolLoopResult {
   toolExecutionReceipts?: CodingToolExecutionReceipt<unknown>[];
   verificationReceipts?: CodingVerificationReceipt[];
   toolFailures?: ToolFailureEvidence[];
+}
+
+/** Source lines that were actually delivered to the Provider, after prompt projection. */
+export interface ProviderVisibleReadExposure {
+  path: string;
+  startLine: number;
+  endLine: number;
+  totalLines: number;
+  sourceSegmentIndex: number;
+}
+
+export interface ToolFileAccessEvent {
+  readonly kind: 'read' | 'write';
+  readonly path: string;
+  readonly sequence: number;
+  readonly sourceSegmentIndex?: number;
 }
 
 export interface ToolFailureEvidence {

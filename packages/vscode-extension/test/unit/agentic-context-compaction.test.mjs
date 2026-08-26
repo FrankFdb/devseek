@@ -19,7 +19,7 @@ const req = createRequire(import.meta.url);
 const {
   compactAgenticMessageHistory,
   compactCanonicalAgenticHistory,
-  projectAgenticToolFeedbackMessage,
+  projectAgenticToolFeedback,
 } = req(bundlePath);
 const {
   CanonicalCheckpointService,
@@ -123,7 +123,7 @@ test('agentic tool feedback fairly preserves every parallel read with an exact c
     140,
   ));
 
-  const projected = projectAgenticToolFeedbackMessage(5, segments);
+  const projected = projectAgenticToolFeedback(5, segments).message;
 
   assert.ok(projected.length <= 8_000);
   assert.match(projected, /^\[工具结果 Round 5\]/u);
@@ -134,10 +134,35 @@ test('agentic tool feedback fairly preserves every parallel read with an exact c
   assert.equal((projected.match(/startLine=\d+, endLine=\d+/gu) ?? []).length, 9);
 });
 
+test('agentic tool feedback exposes only source lines actually delivered to the Provider', () => {
+  const projection = projectAgenticToolFeedback(6, [readFileFeedback('/repo/src/main.cpp', 280)]);
+
+  assert.ok(projection.message.length <= 8_000);
+  assert.match(projection.message, /文件行 \d+-\d+ 存在但尚未交付给模型/u);
+  assert.equal(projection.readExposures.length, 2);
+  assert.deepEqual(projection.readExposures.map(exposure => exposure.path), [
+    '/repo/src/main.cpp',
+    '/repo/src/main.cpp',
+  ]);
+  assert.equal(projection.readExposures[0].startLine, 1);
+  assert.equal(projection.readExposures[1].endLine, 280);
+  assert.deepEqual(projection.readExposures.map(exposure => exposure.sourceSegmentIndex), [0, 0]);
+  assert.ok(projection.readExposures[0].endLine + 1 < projection.readExposures[1].startLine);
+});
+
+test('agentic tool feedback retains source segment identity across empty feedback', () => {
+  const projection = projectAgenticToolFeedback(7, [
+    '',
+    readFileFeedback('/repo/src/worker.cpp', 12),
+  ]);
+
+  assert.deepEqual(projection.readExposures.map(exposure => exposure.sourceSegmentIndex), [1]);
+});
+
 test('agentic tool feedback leaves an in-budget result byte-for-byte intact', () => {
   const segment = '[grep_search: TODO]\nsrc/main.cpp:12: TODO';
   assert.equal(
-    projectAgenticToolFeedbackMessage(2, [segment]),
+    projectAgenticToolFeedback(2, [segment]).message,
     `[工具结果 Round 2]\n${segment}`,
   );
 });
@@ -146,7 +171,7 @@ test('agentic tool feedback redistributes unused budget without losing long resu
   const short = '[list_dir: /repo]\nsrc\ntest';
   const longA = `[grep_search: alpha]\n${'alpha-result\n'.repeat(900)}`;
   const longB = `[grep_search: beta]\n${'beta-result\n'.repeat(900)}`;
-  const projected = projectAgenticToolFeedbackMessage(3, [short, longA, longB]);
+  const projected = projectAgenticToolFeedback(3, [short, longA, longB]).message;
 
   assert.ok(projected.length <= 8_000);
   assert.ok(projected.includes(short));

@@ -885,6 +885,7 @@ test('Agent loop: explicit-content validation conflicts stop autonomous rewrite 
 test('Tool loop: file tools use canonical ground-truth outcomes', () => {
   const toolLoop = src('src/agent/tool-loop.ts');
   const fileWriter = src('src/agent/tool-loop-file-writer.ts');
+  const agenticLoop = src('src/agent/agentic-loop.ts');
   const registry = repoSrc('packages/shared/src/coding-tool-schema.ts');
   const executor = src('src/agent/tool-executor.ts');
   assertContains(registry, 'replace_file', 'replace_file tool calls must be registered as file writes, not prose');
@@ -899,6 +900,16 @@ test('Tool loop: file tools use canonical ground-truth outcomes', () => {
   assertContains(toolLoop, 'normalizeCodingFileWriteInputs(tool.input)', 'ToolLoop must consume normalized file-write inputs');
   assertContains(toolLoop, 'files:[{path,content}]', 'malformed batch file writes must return actionable feedback');
   assertContains(toolLoop, '缺少 path/filePath', 'malformed file write calls must return explicit feedback instead of silently doing nothing');
+  assertDoesNotContain(
+    toolLoop,
+    'readEvidencePaths.add',
+    'same-batch reads and replace preflight reads must not grant Provider-visible overwrite authority',
+  );
+  assertContains(
+    agenticLoop,
+    'contextInvestigation.completeReadPaths()',
+    'source overwrite authority must require complete context delivered in the current file epoch',
+  );
 });
 
 test('Agent parser: malformed file tool JSON is recovered for code payloads', () => {
@@ -964,7 +975,13 @@ test('Agentic loop: repeated terminal failures enter root-cause recovery before 
   assertContains(code, 'contextInvestigation.reset()', 'a rebuilt Provider session must forget evidence it can no longer see');
   assertContains(investigation, 'private readonly signatures', 'exact context repeats must be tracked across rounds');
   assertContains(investigation, 'private readonly readCoverage', 'successful broad reads must cover later narrow requests');
-  assertContains(investigation, 'coverage.progressEpoch === progressEpoch', 'writes must invalidate prior read coverage');
+  assertContains(investigation, 'recordVisibleReadExposures', 'read coverage must come from post-projection Provider-visible lines');
+  assertContains(investigation, 'advancePathRevision(event.path)', 'writes must invalidate same-path read coverage');
+  assertContains(
+    investigation,
+    'coverage.pathRevision === this.pathRevision(path)',
+    'read authority must bind to the current path revision',
+  );
   assertContains(investigation, 'input.consumeContextRefresh', 'failed mutations must permit one fresh read before repeat suppression');
   assertContains(code, 'suppressedTools', 'intentional repeat suppression must be recorded for replay diagnostics');
   assertContains(code, 'lastProgressEpoch', 'terminal repeats must be compared against file-write progress');

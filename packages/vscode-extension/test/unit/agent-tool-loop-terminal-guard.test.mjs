@@ -1244,7 +1244,8 @@ test('ToolLoop replace_in_file edits existing workspace file with write evidence
     assert.deepEqual(result.changeReceipts?.[0]?.paths, ['src/worker.cpp']);
     assert.equal(result.toolExecutionReceipts?.[0]?.status, 'completed');
     assert.equal(result.toolExecutionReceipts?.[0]?.result?.actionId, result.changeReceipts?.[0]?.actionId);
-    assert.equal(result.readFiles?.[0], filePath);
+    assert.equal(result.readFiles, undefined);
+    assert.deepEqual(result.fileAccessEvents, [{ kind: 'write', path: filePath, sequence: 1 }]);
     assert.match(result.feedbackForAI, /replace_in_file: src\/worker\.cpp.*已写入/s);
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });

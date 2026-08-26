@@ -98,8 +98,9 @@ import {
 } from './agent-history-compaction';
 import {
   compactAgenticMessageHistory,
-  projectAgenticToolFeedbackMessage,
+  projectAgenticToolFeedback,
 } from './agentic-context-compaction';
+import { deliverAgenticToolFeedback } from './agentic-tool-feedback-delivery';
 import { ToolFailureRecoveryLedger } from './tool-failure-recovery';
 import { QualityGateStagnationLedger } from './quality-gate-stagnation';
 import { SourceValidationLedger } from './source-validation-ledger';
@@ -771,7 +772,7 @@ export async function runAgenticLoop(
           userPrompt: writeAuthority.currentPrompt,
           workspaceRoot,
           requireReadBeforeOverwrite: true,
-          readEvidencePaths: [...allReadEvidencePaths],
+          readEvidencePaths: contextInvestigation.completeReadPaths(),
           verificationScopeFiles: allWrittenFiles,
           suppressedTools,
         },
@@ -821,7 +822,6 @@ export async function runAgenticLoop(
     }
     loopWarnings.push(...contextInvestigation.record({
       tools: toolsToExecute,
-      evidenceRefs: loopRes.evidenceRefs ?? [],
       progressEpoch: progressEpochBeforeTools,
     }));
     const semanticSettlement = await modelSemanticSettlement.observe(loopRes);
@@ -860,6 +860,17 @@ export async function runAgenticLoop(
     if (failureRound.stopReason && !failedReason) {
       failedReason = failureRound.stopReason;
     }
+    // Tool outputs become Provider history before any settlement branch can
+    // break or continue. A completion-fence correction must see the exact
+    // results produced by the turn it is reopening.
+    deliverAgenticToolFeedback({
+      round: roundCount,
+      result: loopRes,
+      additionalSegments: loopWarnings,
+      contextInvestigation,
+      appendUserFeedback,
+    });
+    const deliveredLoopWarningCount = loopWarnings.length;
     if (failedReason) {
       break;
     }
@@ -1110,15 +1121,13 @@ export async function runAgenticLoop(
       break;
     }
 
-    // Inject tool results into next round
-    const feedback = projectAgenticToolFeedbackMessage(roundCount, [
-      ...(loopRes.feedbackSegmentsForAI?.length
-        ? loopRes.feedbackSegmentsForAI
-        : [loopRes.feedbackForAI]),
+    const postToolFeedback = [
       autoValidationFeedback,
-      ...loopWarnings,
-    ]);
-    appendUserFeedback(feedback);
+      ...loopWarnings.slice(deliveredLoopWarningCount),
+    ].filter(Boolean);
+    if (postToolFeedback.length > 0) {
+      appendUserFeedback(projectAgenticToolFeedback(roundCount, postToolFeedback).message);
+    }
   }
 
   if (callbacks.signal?.aborted) break;

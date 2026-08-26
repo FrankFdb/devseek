@@ -25,20 +25,24 @@ const { ContextInvestigationLedger } = createRequire(import.meta.url)(bundlePath
 after(() => rmSync(tempRoot, { recursive: true, force: true }));
 
 const fullRead = {
-  kind: 'read',
-  label: 'src/controller.cpp',
-  sourcePath: '/workspace/src/controller.cpp',
-  lineStart: 1,
-  lineEnd: 314,
+  path: '/workspace/src/controller.cpp',
+  startLine: 1,
+  endLine: 314,
+  totalLines: 314,
+  sourceSegmentIndex: 0,
 };
+
+function visibleRead(path, sourceSegmentIndex = 0, sequence = 1) {
+  return [{ kind: 'read', path, sourceSegmentIndex, sequence }];
+}
 
 test('a successful broad read covers a later narrow request in the same progress epoch', () => {
   const ledger = new ContextInvestigationLedger('/workspace');
   ledger.record({
     tools: [{ name: 'read_file', input: { path: '/workspace/src/controller.cpp' } }],
-    evidenceRefs: [fullRead],
     progressEpoch: 0,
   });
+  ledger.recordVisibleReadExposures([fullRead], visibleRead(fullRead.path));
 
   const result = ledger.screen([
     { name: 'read_file', input: { path: '/workspace/src/controller.cpp', startLine: 1, endLine: 100 } },
@@ -50,16 +54,16 @@ test('a successful broad read covers a later narrow request in the same progress
 
   assert.deepEqual([...result.blockedToolIndexes], [0]);
   assert.equal(result.suppressedTools[0].reason, 'covered-context-without-progress');
-  assert.match(result.warnings[0], /已有内容实施修改或形成结论/u);
+  assert.match(result.warnings[0], /模型已经收到的内容实施修改或形成结论/u);
 });
 
-test('a write epoch, uncovered lines, or an authorized failure refresh permits another read', () => {
+test('only a same-path write, uncovered lines, or an authorized failure refresh permits another read', () => {
   const ledger = new ContextInvestigationLedger('/workspace');
   ledger.record({
     tools: [{ name: 'read_file', input: { path: 'src/controller.cpp' } }],
-    evidenceRefs: [fullRead],
     progressEpoch: 0,
   });
+  ledger.recordVisibleReadExposures([fullRead], visibleRead(fullRead.path));
   const request = {
     name: 'read_file',
     input: { path: 'src/controller.cpp', startLine: 300, endLine: 340 },
@@ -70,6 +74,14 @@ test('a write epoch, uncovered lines, or an authorized failure refresh permits a
     hasWorkspaceMutation: false,
     consumeContextRefresh: () => false,
   }).blockedToolIndexes.size, 0);
+  assert.deepEqual([...ledger.screen([{ ...request, input: { ...request.input, endLine: 310 } }], {
+    progressEpoch: 1,
+    hasWorkspaceMutation: false,
+    consumeContextRefresh: () => false,
+  }).blockedToolIndexes], [0]);
+  ledger.recordVisibleReadExposures([], [
+    { kind: 'write', path: '/workspace/src/controller.cpp', sequence: 1 },
+  ]);
   assert.equal(ledger.screen([{ ...request, input: { ...request.input, endLine: 310 } }], {
     progressEpoch: 1,
     hasWorkspaceMutation: false,
@@ -86,9 +98,9 @@ test('Provider session reset forgets coverage that the rebuilt model can no long
   const ledger = new ContextInvestigationLedger('/workspace');
   ledger.record({
     tools: [{ name: 'read_file', input: { path: 'src/controller.cpp' } }],
-    evidenceRefs: [fullRead],
     progressEpoch: 0,
   });
+  ledger.recordVisibleReadExposures([fullRead], visibleRead(fullRead.path));
   ledger.reset();
 
   const result = ledger.screen([
@@ -99,4 +111,50 @@ test('Provider session reset forgets coverage that the rebuilt model can no long
     consumeContextRefresh: () => false,
   });
   assert.equal(result.blockedToolIndexes.size, 0);
+});
+
+test('omitted projected lines remain readable and cannot authorize a source overwrite', () => {
+  const ledger = new ContextInvestigationLedger('/workspace');
+  ledger.recordVisibleReadExposures([
+    { path: 'src/main.cpp', startLine: 1, endLine: 66, totalLines: 280, sourceSegmentIndex: 0 },
+    { path: 'src/main.cpp', startLine: 215, endLine: 280, totalLines: 280, sourceSegmentIndex: 0 },
+  ], visibleRead('src/main.cpp'));
+
+  const result = ledger.screen([
+    { name: 'read_file', input: { path: 'src/main.cpp', startLine: 67, endLine: 214 } },
+  ], {
+    progressEpoch: 0,
+    hasWorkspaceMutation: false,
+    consumeContextRefresh: () => false,
+  });
+
+  assert.equal(result.blockedToolIndexes.size, 0);
+  assert.deepEqual(ledger.completeReadPaths(), []);
+  ledger.recordVisibleReadExposures([
+    { path: 'src/main.cpp', startLine: 67, endLine: 214, totalLines: 280, sourceSegmentIndex: 1 },
+  ], visibleRead('src/main.cpp', 1));
+  assert.deepEqual(ledger.completeReadPaths(), ['/workspace/src/main.cpp']);
+});
+
+test('write ordering keeps only reads of the current file version', () => {
+  const ledger = new ContextInvestigationLedger('/workspace');
+  const exposure = {
+    path: 'src/main.cpp',
+    startLine: 1,
+    endLine: 280,
+    totalLines: 280,
+    sourceSegmentIndex: 0,
+  };
+
+  ledger.recordVisibleReadExposures([exposure], [
+    { kind: 'read', path: 'src/main.cpp', sequence: 1, sourceSegmentIndex: 0 },
+    { kind: 'write', path: 'src/main.cpp', sequence: 2 },
+  ]);
+  assert.deepEqual(ledger.completeReadPaths(), []);
+
+  ledger.recordVisibleReadExposures([{ ...exposure, sourceSegmentIndex: 1 }], [
+    { kind: 'write', path: 'src/main.cpp', sequence: 1 },
+    { kind: 'read', path: 'src/main.cpp', sequence: 2, sourceSegmentIndex: 1 },
+  ]);
+  assert.deepEqual(ledger.completeReadPaths(), ['/workspace/src/main.cpp']);
 });

@@ -100,11 +100,19 @@ function createHarness(root, prompt, options = {}) {
     onWorkflowStatus() {},
     onAgentStatus(status) { statuses.push(status); },
     onAppliedChange(change) { changes.push(change); },
-    onReadFile(filePath, workdir) {
+    onReadFile(filePath, workdir, range = {}) {
       const absolutePath = path.isAbsolute(filePath)
         ? filePath
         : path.resolve(workdir || root, filePath);
-      return readFileSync(absolutePath, 'utf8');
+      const lines = readFileSync(absolutePath, 'utf8').split(/\r?\n/u);
+      const startLine = Math.max(1, range.startLine ?? 1);
+      const endLine = Math.min(lines.length, range.endLine ?? lines.length);
+      return [
+        '[file_context]',
+        `returnedLines=${startLine}-${endLine}/${lines.length}`,
+        '[/file_context]',
+        ...lines.slice(startLine - 1, endLine),
+      ].join('\n');
     },
     onResponseMeta() {},
     onTodoUpdate(items) { todos.push(items); },
@@ -829,7 +837,11 @@ test('ModelLedUserSimulation: a correction accepted at the completion fence reop
     assert.equal(calls >= 2, true, simulation.result.historyText);
     assert.equal(correctionWrites, 1);
     assert.equal(reopenCalls, 1);
-    assert.equal(readFileSync(path.join(simulation.root, 'result.txt'), 'utf8'), 'MODEL_LATEST_OK\n');
+    assert.equal(
+      readFileSync(path.join(simulation.root, 'result.txt'), 'utf8'),
+      'MODEL_LATEST_OK\n',
+      simulation.result.historyText,
+    );
     assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
     assert.equal(
       simulation.harness.activities.some(item => item.label.includes('完成前收到最新要求')),

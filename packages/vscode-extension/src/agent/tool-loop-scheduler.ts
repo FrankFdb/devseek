@@ -1,6 +1,6 @@
 import type { CodingToolCall } from '@devseek-netai/shared';
 import type { FakeTool } from './fake-tool-parser';
-import type { ToolLoopResult } from './tool-loop-result';
+import type { ToolFileAccessEvent, ToolLoopResult } from './tool-loop-result';
 
 type SchedulableTool = FakeTool | CodingToolCall;
 type ToolBatchExecutor = (tools: SchedulableTool[]) => Promise<ToolLoopResult>;
@@ -61,12 +61,14 @@ function mergeToolLoopResults(results: readonly ToolLoopResult[]): ToolLoopResul
       ? result.feedbackSegmentsForAI
       : result.feedbackForAI ? [result.feedbackForAI] : []
   ));
+  const fileAccessEvents = mergeFileAccessEvents(results);
   return {
     taskComplete: results.some(result => result.taskComplete),
     toolCallsMade: results.some(result => result.toolCallsMade),
     workToolCallsMade: results.some(result => result.workToolCallsMade),
     feedbackForAI: feedbackSegmentsForAI.join('\n\n'),
     feedbackSegmentsForAI,
+    fileAccessEvents,
     ...(lastWithSummary?.completeSummary === undefined
       ? {}
       : { completeSummary: lastWithSummary.completeSummary }),
@@ -86,4 +88,27 @@ function mergeToolLoopResults(results: readonly ToolLoopResult[]): ToolLoopResul
     verificationReceipts: results.flatMap(result => result.verificationReceipts ?? []),
     toolFailures: results.flatMap(result => result.toolFailures ?? []),
   };
+}
+
+function mergeFileAccessEvents(results: readonly ToolLoopResult[]): ToolFileAccessEvent[] {
+  const merged: ToolFileAccessEvent[] = [];
+  let sequenceOffset = 0;
+  let segmentOffset = 0;
+  for (const result of results) {
+    const segments = result.feedbackSegmentsForAI?.length
+      ? result.feedbackSegmentsForAI
+      : result.feedbackForAI ? [result.feedbackForAI] : [];
+    for (const event of result.fileAccessEvents ?? []) {
+      merged.push({
+        ...event,
+        sequence: sequenceOffset + event.sequence,
+        ...(event.sourceSegmentIndex === undefined
+          ? {}
+          : { sourceSegmentIndex: segmentOffset + event.sourceSegmentIndex }),
+      });
+    }
+    sequenceOffset += Math.max(0, ...(result.fileAccessEvents ?? []).map(event => event.sequence));
+    segmentOffset += segments.length;
+  }
+  return merged;
 }

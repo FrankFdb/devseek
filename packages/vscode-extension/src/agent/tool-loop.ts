@@ -46,6 +46,7 @@ import { ToolLoopFileWriter } from './tool-loop-file-writer';
 import { observeSettledTerminalExecution } from './tool-loop-terminal-observation';
 import { resolveTextReplacement } from './text-replacement';
 import type {
+  ToolFileAccessEvent,
   ToolFailureEvidence,
   ToolLoopResult,
   ToolSuppressionEvidence,
@@ -200,6 +201,8 @@ export async function executeFakeToolsForLoop(
   let completeSummary: string | undefined;
   let allTodosCompleted = false;
   const parts: string[] = [];
+  const fileAccessEvents: ToolFileAccessEvent[] = [];
+  let fileAccessSequence = 0;
   const writtenFiles: Array<{path: string; basename: string; linesAdded: number; linesRemoved: number; action: string}> = [];
   const readFiles: string[] = [];
   const terminalCommands: string[] = [];
@@ -266,7 +269,10 @@ export async function executeFakeToolsForLoop(
         strategyFingerprint,
       ),
       cancellation: (toolName, rawPath) => recordCancellationFeedback(toolName, rawPath),
-      written: file => writtenFiles.push(file),
+      written: file => {
+        writtenFiles.push(file);
+        fileAccessEvents.push({ kind: 'write', path: file.path, sequence: ++fileAccessSequence });
+      },
       evidence: ref => evidenceRefs.push(ref),
       change: receipt => changeReceipts.push(receipt),
     },
@@ -572,7 +578,12 @@ export async function executeFakeToolsForLoop(
           callbacks.onToolActivity?.('read', filePath);
           if (readEvidencePath) {
             readFiles.push(readEvidencePath);
-            readEvidencePaths.add(readEvidencePath);
+            fileAccessEvents.push({
+              kind: 'read',
+              path: readEvidencePath,
+              sequence: ++fileAccessSequence,
+              sourceSegmentIndex: parts.length,
+            });
           }
           parts.push(`[read_file: ${filePath}]\n${content}`);
         } else {
@@ -911,6 +922,7 @@ export async function executeFakeToolsForLoop(
           linesRemoved: oldContent ? oldContent.split('\n').length : 0,
           action: 'delete',
         });
+        fileAccessEvents.push({ kind: 'write', path: absPath, sequence: ++fileAccessSequence });
         parts.push(`[delete_file: ${rawPath}] 已删除 ${absPath}`);
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
@@ -978,8 +990,6 @@ export async function executeFakeToolsForLoop(
           continue;
         }
         const oldContent = fs.readFileSync(absPath, 'utf8');
-        readFiles.push(absPath);
-        readEvidencePaths.add(absPath);
         const replacement = resolveTextReplacement(oldContent, oldStr, newStr, replaceAll);
         if (replacement.status !== 'matched') {
           const reason = replacement.status === 'ambiguous'
@@ -1266,6 +1276,8 @@ export async function executeFakeToolsForLoop(
     toolCallsMade,
     workToolCallsMade,
     feedbackForAI: parts.join('\n\n'),
+    feedbackSegmentsForAI: parts.length > 0 ? parts : undefined,
+    fileAccessEvents: fileAccessEvents.length > 0 ? fileAccessEvents : undefined,
     completeSummary,
     allTodosCompleted,
     todoItems: lastTodoItems,

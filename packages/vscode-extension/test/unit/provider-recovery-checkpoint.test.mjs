@@ -16,22 +16,28 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
 const tempRoot = mkdtempSync(path.join(rootDir, '.provider-recovery-checkpoint-'));
 const bundlePath = path.join(tempRoot, 'provider-recovery-checkpoint.cjs');
+let bundledCheckpoint;
 
-execFileSync('npx', [
-  'esbuild',
-  'src/app/provider-recovery-checkpoint.ts',
-  '--bundle',
-  `--outfile=${bundlePath}`,
-  '--format=cjs',
-  '--platform=node',
-  '--external:@devseek-netai/shared',
-], { cwd: rootDir, stdio: 'pipe' });
+try {
+  execFileSync('npx', [
+    'esbuild',
+    'src/app/provider-recovery-checkpoint.ts',
+    '--bundle',
+    `--outfile=${bundlePath}`,
+    '--format=cjs',
+    '--platform=node',
+    '--external:@devseek-netai/shared',
+  ], { cwd: rootDir, stdio: 'pipe' });
+  bundledCheckpoint = createRequire(import.meta.url)(bundlePath);
+} catch (error) {
+  rmSync(tempRoot, { recursive: true, force: true });
+  throw error;
+}
 
-const req = createRequire(import.meta.url);
 const {
   buildProviderRecoveryCheckpointRecord,
   isCheckpointableProviderRecoveryError,
-} = req(bundlePath);
+} = bundledCheckpoint;
 
 after(() => rmSync(tempRoot, { recursive: true, force: true }));
 

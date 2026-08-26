@@ -1,6 +1,9 @@
 import * as nodePath from 'path';
-import type { EvidenceRef } from './evidence-grounding';
-import type { ToolSuppressionEvidence } from './tool-loop-result';
+import type {
+  ProviderVisibleReadExposure,
+  ToolFileAccessEvent,
+  ToolSuppressionEvidence,
+} from './tool-loop-result';
 import {
   buildRepeatedContextToolFeedback,
   isContextGatheringToolName,
@@ -26,26 +29,72 @@ interface ContextInvestigationScreenInput {
 
 interface ContextInvestigationRecordInput {
   readonly tools: readonly InvestigationTool[];
-  readonly evidenceRefs: readonly EvidenceRef[];
   readonly progressEpoch: number;
 }
 
 interface ReadCoverage {
   readonly startLine: number;
   readonly endLine: number;
-  readonly progressEpoch: number;
+  readonly totalLines: number;
+  readonly pathRevision: number;
 }
 
 /** Owns duplicate investigation suppression for the evidence visible to one Provider session. */
 export class ContextInvestigationLedger {
   private readonly signatures = new Map<string, { count: number; progressEpoch: number }>();
   private readonly readCoverage = new Map<string, ReadCoverage[]>();
+  private readonly pathRevisions = new Map<string, number>();
 
   constructor(private readonly workspaceRoot: string) {}
 
   reset(): void {
     this.signatures.clear();
     this.readCoverage.clear();
+    this.pathRevisions.clear();
+  }
+
+  completeReadPaths(): string[] {
+    const complete: string[] = [];
+    for (const [path, entries] of this.readCoverage) {
+      const pathRevision = this.pathRevision(path);
+      const current = entries
+        .filter(entry => entry.pathRevision === pathRevision)
+        .sort((left, right) => left.startLine - right.startLine || left.endLine - right.endLine);
+      const totalLines = current[0]?.totalLines;
+      if (!totalLines || current.some(entry => entry.totalLines !== totalLines)) continue;
+      let coveredThrough = 0;
+      for (const entry of current) {
+        if (entry.startLine > coveredThrough + 1) break;
+        coveredThrough = Math.max(coveredThrough, entry.endLine);
+      }
+      if (coveredThrough >= totalLines) complete.push(path);
+    }
+    return complete;
+  }
+
+  recordVisibleReadExposures(
+    exposures: readonly ProviderVisibleReadExposure[],
+    fileAccessEvents: readonly ToolFileAccessEvent[],
+  ): void {
+    const events = fileAccessEvents.map(event => ({ ...event, path: this.resolvePath(event.path) }));
+    for (const event of events) {
+      if (event.kind === 'write') this.advancePathRevision(event.path);
+    }
+    for (const exposure of exposures) {
+      const path = this.resolvePath(exposure.path);
+      const readEvent = events.find(event => (
+        event.kind === 'read'
+        && event.path === path
+        && event.sourceSegmentIndex === exposure.sourceSegmentIndex
+      ));
+      if (!readEvent) continue;
+      const stale = events.some(event => (
+        event.kind === 'write'
+        && event.path === path
+        && event.sequence > readEvent.sequence
+      ));
+      if (!stale) this.recordReadExposure(exposure);
+    }
   }
 
   screen(
@@ -64,7 +113,7 @@ export class ContextInvestigationLedger {
       const signature = makeContextToolSignature(tool);
       const seen = this.signatures.get(signature);
       const exactRepeat = seen?.progressEpoch === input.progressEpoch;
-      const coveredRead = this.readRequestIsCovered(tool, input.progressEpoch);
+      const coveredRead = this.readRequestIsCovered(tool);
       if (!exactRepeat && !coveredRead) return;
 
       const refreshPath = tool.name === 'read_file' && typeof tool.input.path === 'string'
@@ -101,36 +150,47 @@ export class ContextInvestigationLedger {
       this.signatures.set(signature, { count, progressEpoch: input.progressEpoch });
       if (count >= 2) warnings.push(buildRepeatedContextToolFeedback(tool, count));
     }
-    for (const evidence of input.evidenceRefs) this.recordReadEvidence(evidence, input.progressEpoch);
     return warnings;
   }
 
-  private readRequestIsCovered(tool: InvestigationTool, progressEpoch: number): boolean {
+  private readRequestIsCovered(tool: InvestigationTool): boolean {
     if (tool.name !== 'read_file' || typeof tool.input.path !== 'string') return false;
     const startLine = optionalPositiveInteger(tool.input, 'startLine', 'start_line', 'lineStart', 'fromLine') ?? 1;
     const endLine = optionalPositiveInteger(tool.input, 'endLine', 'end_line', 'lineEnd', 'toLine');
     if (endLine === undefined || endLine < startLine) return false;
     const path = this.resolvePath(tool.input.path);
     return (this.readCoverage.get(path) ?? []).some(coverage => (
-      coverage.progressEpoch === progressEpoch
+      coverage.pathRevision === this.pathRevision(path)
       && coverage.startLine <= startLine
       && coverage.endLine >= endLine
     ));
   }
 
-  private recordReadEvidence(evidence: EvidenceRef, progressEpoch: number): void {
-    if (evidence.kind !== 'read'
-      || !evidence.sourcePath
-      || evidence.lineStart === undefined
-      || evidence.lineEnd === undefined) return;
-    const path = this.resolvePath(evidence.sourcePath);
+  private recordReadExposure(exposure: ProviderVisibleReadExposure): void {
+    if (!exposure.path
+      || !Number.isSafeInteger(exposure.startLine)
+      || !Number.isSafeInteger(exposure.endLine)
+      || !Number.isSafeInteger(exposure.totalLines)
+      || exposure.startLine < 1
+      || exposure.endLine < exposure.startLine
+      || exposure.totalLines < exposure.endLine) return;
+    const path = this.resolvePath(exposure.path);
     const entries = this.readCoverage.get(path) ?? [];
     entries.push({
-      startLine: evidence.lineStart,
-      endLine: evidence.lineEnd,
-      progressEpoch,
+      startLine: exposure.startLine,
+      endLine: exposure.endLine,
+      totalLines: exposure.totalLines,
+      pathRevision: this.pathRevision(path),
     });
     this.readCoverage.set(path, entries);
+  }
+
+  private pathRevision(path: string): number {
+    return this.pathRevisions.get(path) ?? 0;
+  }
+
+  private advancePathRevision(path: string): void {
+    this.pathRevisions.set(path, this.pathRevision(path) + 1);
   }
 
   private resolvePath(value: string): string {
@@ -157,6 +217,6 @@ function buildCoveredContextReadFeedback(tool: InvestigationTool): string {
   return [
     `【系统反馈】已跳过被既有证据覆盖的重复读取：${path}`,
     '请求的行范围已由本轮较早的成功读取完整覆盖，期间没有写盘使证据失效。',
-    '请直接依据已有内容实施修改或形成结论；只有写入失败、文件变化或缺少未覆盖行时才重新读取。',
+    '请直接依据模型已经收到的内容实施修改或形成结论；只有写入失败、文件变化或缺少未覆盖行时才重新读取。',
   ].join('\n');
 }
