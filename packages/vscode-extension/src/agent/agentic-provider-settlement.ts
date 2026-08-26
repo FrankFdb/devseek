@@ -34,6 +34,9 @@ export function settleProviderFailureFromCompletedEvidence(
   if (input.aborted || !input.promptRequiresTools || !input.sawWorkTool) {
     return { completed: false };
   }
+  if (requiresCleanProviderRecovery(input.providerFailureStatus)) {
+    return { completed: false };
+  }
   if (input.completionBlockers?.some(blocker => Boolean(blocker?.trim()))) {
     return { completed: false };
   }
@@ -69,6 +72,10 @@ export function settleProviderFailureFromCompletedEvidence(
 
 function isToolProtocolFailure(status: string | undefined): boolean {
   return String(status || '').toLowerCase().endsWith('tool-block');
+}
+
+function requiresCleanProviderRecovery(status: string | undefined): boolean {
+  return String(status || '').toLowerCase() === 'provider-authored-tool-transcript';
 }
 
 function hasSettledEffectRequirement(contract: TaskSemanticContract): boolean {

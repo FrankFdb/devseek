@@ -308,6 +308,47 @@ test('ModelLedUserSimulation: invalid authenticated mutation recovers with its l
   }
 });
 
+test('ModelLedUserSimulation: provider transcript pollution rebuilds the session before clean settlement', async () => {
+  const prompt = '读取 README.md，并告诉我标题。';
+  let calls = 0;
+  const newSessionFlags = [];
+  const simulation = await runSimulation(prompt, async (_messages, request) => {
+    calls += 1;
+    newSessionFlags.push(request.newSession);
+    const source = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'README.md');
+    if (calls === 1) {
+      writeFileSync(source, '# Trusted title\n');
+      return {
+        text: '先读取目标文件。',
+        tools: [{ name: 'read_file', input: { path: source } }],
+      };
+    }
+    if (calls === 2) {
+      throw new Error(
+        'RESPONSE_CORRUPTED:provider-authored-tool-transcript:reserved transcript marker',
+      );
+    }
+    return {
+      text: 'README.md 的标题是 Trusted title。',
+      tools: [{ name: 'task_complete', input: { summary: '已基于读回内容确认标题为 Trusted title。' } }],
+    };
+  });
+  try {
+    assert.equal(calls, 3, simulation.result.historyText);
+    assert.equal(newSessionFlags[2], true, 'polluted Provider context must be replaced');
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+    const recoveryStates = simulation.harness.statuses
+      .filter(status => (
+        status.phase === 'repair'
+        && status.recoveryReason === 'provider-response-corruption'
+      ))
+      .map(status => status.state);
+    assert.deepEqual(recoveryStates, ['started', 'completed']);
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
 test('ModelLedUserSimulation: validated current file evidence completes without another provider turn', async () => {
   const prompt = '创建 report.md，内容为 EVIDENCE_SETTLED_OK，并读回确认。';
   let calls = 0;

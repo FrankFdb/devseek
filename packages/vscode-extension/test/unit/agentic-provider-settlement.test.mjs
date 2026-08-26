@@ -194,6 +194,48 @@ test('tool protocol failure cannot settle from read-only evidence while an actio
   }
 });
 
+test('provider-authored tool transcript cannot settle from otherwise sufficient read evidence', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-provider-settlement-polluted-'));
+  try {
+    const source = path.join(root, 'README.md');
+    writeFileSync(source, '# Trusted local evidence\n');
+    const semanticContract = projectModelActionSemanticContract(
+      createModelLedTurnSemanticContract('读取 README.md 并说明标题。'),
+      {
+        version: 'devseek.semantic-intent/v1',
+        source: 'provider',
+        mode: 'inspect',
+        taskKind: 'read-only-analysis',
+        confidence: 0.98,
+        mutation: 'none',
+        targetPaths: [source],
+        requiresWorkspace: true,
+        requiresTerminal: false,
+        requiresExternalEffect: false,
+        requiresClarification: false,
+        reason: 'normalized observation action',
+      },
+    );
+
+    const result = settleProviderFailureFromCompletedEvidence({
+      providerFailureStatus: 'provider-authored-tool-transcript',
+      promptRequiresTools: true,
+      sawWorkTool: true,
+      aborted: false,
+      currentWriteCohortValidated: true,
+      semanticContract,
+      writtenFiles: [],
+      terminalEvidence: [],
+      readEvidencePaths: [source],
+      workspaceRoot: root,
+    });
+
+    assert.equal(result.completed, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('provider failure settlement refuses missing or failed validation evidence', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-provider-settlement-blocked-'));
   try {
