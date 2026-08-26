@@ -25,7 +25,6 @@ interface RequirementClause {
 
 interface RawRequirementCheck {
   requirement_id?: unknown;
-  requirement_quote?: unknown;
   status?: unknown;
   evidence?: unknown;
 }
@@ -62,7 +61,6 @@ export const REQUIREMENT_REVIEW_SCHEMA = [
   '{',
   '  "requirement_checks": [{',
   '    "requirement_id": "R1",',
-  '    "requirement_quote": "exact quote from the supplied inventory",',
   '    "status": "satisfied" | "violated",',
   '    "evidence": "concise source path/line or validation fact and execution path"',
   '  }],',
@@ -205,7 +203,6 @@ function normalizeRequirementChecks(
     const requirement = requirements[index];
     if (!raw
       || raw.requirement_id !== requirement.id
-      || raw.requirement_quote !== requirement.quote
       || (raw.status !== 'satisfied' && raw.status !== 'violated')) {
       return undefined;
     }

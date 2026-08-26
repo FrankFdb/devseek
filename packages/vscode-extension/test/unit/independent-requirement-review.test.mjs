@@ -41,7 +41,6 @@ function response(body, toolCount = 0) {
 function check(prompt, status = 'satisfied', overrides = {}) {
   return {
     requirement_id: 'R1',
-    requirement_quote: prompt.trim(),
     status,
     evidence: 'src/main.ts:1 and the supplied validation fact establish the traced behavior.',
     ...overrides,
@@ -198,14 +197,13 @@ test('requires a non-empty raw request and final source cohort', () => {
   assert.equal(parseIndependentReviewResponse(response(passBody('x')), [], 'x').status, 'indeterminate');
 });
 
-test('requires one exact raw requirement check with evidence', () => {
+test('requires one ordered host-bound requirement check with evidence', () => {
   const source = snapshot();
   const prompt = 'Do the requested work.\nKeep this second line verbatim.';
   const invalidChecks = [
     [],
     [check(prompt), { ...check(prompt), requirement_id: 'R2' }],
     [{ ...check(prompt), requirement_id: 'R9' }],
-    [{ ...check(prompt), requirement_quote: 'Do the requested work.' }],
     [{ ...check(prompt), status: 'covered' }],
     [{ ...check(prompt), evidence: '   ' }],
   ];
@@ -215,6 +213,22 @@ test('requires one exact raw requirement check with evidence', () => {
     })), [source], prompt);
     assert.equal(decision.status, 'indeterminate');
   }
+});
+
+test('keeps the host requirement binding when a provider normalizes multilingual quotes', () => {
+  const source = snapshot();
+  const prompt = '键盘切换“分数/数轴”，并保持可操作。';
+  const body = failBody(source, prompt, {
+    requirement_checks: [{
+      ...check(prompt, 'violated'),
+      requirement_quote: '键盘切换"分数/数轴"，并保持可操作。',
+    }],
+  });
+
+  const decision = parseIndependentReviewResponse(response(body), [source], prompt);
+
+  assert.equal(decision.status, 'failed');
+  assert.equal(decision.findings[0].requirement, prompt);
 });
 
 test('requires findings to correspond exactly to violated checks', () => {
@@ -325,6 +339,33 @@ test('review prompt delegates semantics to the model and keeps raw multilingual 
   assert.doesNotMatch(messages[0].content, /order book|best bid|FIFO\/LIFO|std::invalid_argument/i);
   assert.match(messages[1].content, /MODEL_LATEST_OK/);
   assert.match(messages[1].content, new RegExp(JSON.stringify(prompt).slice(1, -1).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(messages[0].content, /never repeat or rewrite requirement_quote/);
+});
+
+test('isolated review captures a bounded module cohort around changed source', async () => {
+  const workspace = path.join(tempRoot, 'module-cohort-workspace');
+  mkdirSync(path.join(workspace, 'src'), { recursive: true });
+  mkdirSync(path.join(workspace, 'include'), { recursive: true });
+  writeFileSync(path.join(workspace, 'src/changed.cpp'), '#include "app.hpp"\nint changed() { return 1; }\n');
+  writeFileSync(path.join(workspace, 'src/main.cpp'), 'int main() { return 0; }\n');
+  writeFileSync(path.join(workspace, 'include/app.hpp'), 'int changed();\n');
+  const prompt = 'Keep the full module entry point valid.';
+  let reviewPrompt = '';
+  const reviewer = new IndependentRequirementReviewer(async messages => {
+    reviewPrompt = messages.map(message => message.content).join('\n');
+    return response(passBody(prompt));
+  });
+
+  const decision = await reviewer.review({
+    userPrompt: prompt,
+    workspaceRoot: workspace,
+    sourcePaths: ['src/changed.cpp'],
+  });
+
+  assert.equal(decision.status, 'passed');
+  assert.match(reviewPrompt, /src\/changed\.cpp/);
+  assert.match(reviewPrompt, /src\/main\.cpp/);
+  assert.match(reviewPrompt, /include\/app\.hpp/);
 });
 
 test('review prompt carries bounded workspace context only as user-delegated evidence', () => {
