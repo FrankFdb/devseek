@@ -514,17 +514,26 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     }
 
     if (status.phase === 'repair') {
-      const targetOperationIds = this.collectRecoverableAdverseOperationIds();
+      // Provider/session retry is owned by the Agent Loop. It does not prove or
+      // resolve workspace, terminal, or verification failures in this ledger.
+      if (status.recoveryReason) {
+        this.trace.info('run-context', 'provider-recovery-status-observed', {
+          recoveryReason: status.recoveryReason,
+          state: status.state,
+        });
+        return;
+      }
+      const targetOperationIds = [...this.pendingAdverseOperationIds];
       if (targetOperationIds.length === 0) return;
       if (status.state === 'started') {
         const currentRecovery = this.currentRecovery;
         if (!currentRecovery) {
           this.recoverySequence += 1;
           const operationId = `vscode-recovery-${this.recoverySequence}`;
-          this.currentRecovery = { operationId, targetOperationIds };
-          this.recordOperationEvent('recovery.detected', operationId, 'detected', summary, {
+          const detected = this.recordOperationEvent('recovery.detected', operationId, 'detected', summary, {
             target_operation_ids: targetOperationIds,
           });
+          if (detected) this.currentRecovery = { operationId, targetOperationIds };
         } else {
           this.trace.info('run-context', 'duplicate-recovery-start-ignored', {
             currentRecoveryOperationId: currentRecovery.operationId,
@@ -534,8 +543,13 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
         }
       }
       if ((status.state === 'failed' || status.state === 'skipped') && this.currentRecovery) {
-        this.recordOperationEvent('recovery.failed', this.currentRecovery.operationId, 'failed', summary);
-        this.currentRecovery = undefined;
+        const recorded = this.recordOperationEvent(
+          'recovery.failed',
+          this.currentRecovery.operationId,
+          'failed',
+          summary,
+        );
+        if (recorded) this.currentRecovery = undefined;
       }
       return;
     }
@@ -596,34 +610,6 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
 
   private pendingQualityGateCount(): number {
     return [...this.qualityGateStates.values()].filter(state => state === 'started').length;
-  }
-
-  private collectRecoverableAdverseOperationIds(): string[] {
-    const operationIds = new Set(this.pendingAdverseOperationIds);
-    if (!this.evidence) return [...operationIds];
-    try {
-      const resolved = new Set<string>();
-      const events = this.evidence.readEvents();
-      for (const event of events) {
-        if (event.type !== 'recovery.completed') continue;
-        const payload = evidencePayloadObject(event.payload);
-        const resolvedIds = Array.isArray(payload?.resolves_operation_ids)
-          ? payload.resolves_operation_ids
-          : [];
-        for (const value of resolvedIds) {
-          if (typeof value === 'string' && value.trim()) resolved.add(value.trim());
-        }
-      }
-      for (const event of events) {
-        if (!isAdverseEvidenceType(event.type)) continue;
-        const payload = evidencePayloadObject(event.payload);
-        const operationId = typeof payload?.operation_id === 'string' ? payload.operation_id.trim() : '';
-        if (operationId && !resolved.has(operationId)) operationIds.add(operationId);
-      }
-    } catch (error) {
-      this.markEvidenceDegraded(error);
-    }
-    return [...operationIds];
   }
 
   private recordVerificationStatus(
@@ -729,8 +715,13 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     this.qualityGateStates.set(operationId, terminal);
     this.addPendingAdverseOperation(operationId);
     if (this.currentRecovery) {
-      this.recordOperationEvent('recovery.failed', this.currentRecovery.operationId, 'failed', summary);
-      this.currentRecovery = undefined;
+      const recorded = this.recordOperationEvent(
+        'recovery.failed',
+        this.currentRecovery.operationId,
+        'failed',
+        summary,
+      );
+      if (recorded) this.currentRecovery = undefined;
     }
   }
 
@@ -822,7 +813,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
           `Recovery ${recovery.operationId} lacks detected < correlated mutation lifecycle < verification < quality-gate proof`,
         );
       }
-      this.recordOperationEvent('recovery.completed', recovery.operationId, 'completed', summary, {
+      const recorded = this.recordOperationEvent('recovery.completed', recovery.operationId, 'completed', summary, {
         resolves_operation_ids: recovery.targetOperationIds,
         verification_operation_id: verificationOperationId,
         ...(scopeTargets.length > 0 ? {
@@ -830,6 +821,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
           verification_scope_paths: [...this.verificationScopes.pathsFor(verificationOperationId)],
         } : {}),
       });
+      if (!recorded) return;
       recovery.targetOperationIds.forEach(operationId => this.deletePendingAdverseOperation(operationId));
       this.currentRecovery = undefined;
     } catch (error) {
@@ -882,7 +874,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     if (targetOperationIds.length === 0) return;
     this.recoverySequence += 1;
     const operationId = `vscode-recovery-${this.recoverySequence}`;
-    this.currentRecovery = {
+    const recovery = {
       operationId,
       targetOperationIds,
       ...(verificationScopeTargetOperationIds.length > 0 ? { verificationScopeTargetOperationIds } : {}),
@@ -892,13 +884,14 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
         ? 'mutation-retry-with-verification-supersession'
         : 'mutation-after-failed-verification'
       : 'same-task-mutation-retry';
-    this.recordOperationEvent('recovery.detected', operationId, 'detected', summary, {
+    const detected = this.recordOperationEvent('recovery.detected', operationId, 'detected', summary, {
       target_operation_ids: targetOperationIds,
       recovery_trigger: recoveryTrigger,
       ...(verificationScopeTargetOperationIds.length > 0
         ? { verification_scope_target_operation_ids: verificationScopeTargetOperationIds }
         : {}),
     });
+    if (detected) this.currentRecovery = recovery;
   }
 
   private beginImplicitProviderFallbackRecovery(
@@ -910,7 +903,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     this.recoverySequence += 1;
     const operationId = `vscode-recovery-${this.recoverySequence}`;
     const sideEffectOperationId = `${sideEffectOperationBaseId(this.runId, status)}-provider-fallback-${this.recoverySequence}`.slice(0, 512);
-    this.currentRecovery = {
+    const recovery = {
       operationId,
       targetOperationIds,
       sideEffectOperationId,
@@ -920,10 +913,12 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
       recovery_operation_id: operationId,
       recovery_trigger: 'provider-fallback-local-write',
     };
-    this.recordOperationEvent('recovery.detected', operationId, 'detected', summary, {
+    const detected = this.recordOperationEvent('recovery.detected', operationId, 'detected', summary, {
       target_operation_ids: targetOperationIds,
       recovery_trigger: 'provider-fallback-local-write',
     });
+    if (!detected) return;
+    this.currentRecovery = recovery;
     this.recordSideEffectStart(sideEffectOperationId, summary, recoveryDetails);
     this.hasSideEffectEvidence = true;
   }
@@ -931,11 +926,11 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
   private commitImplicitRecoverySideEffect(summary: { length: number; sha256: string }): void {
     const recovery = this.currentRecovery;
     if (!recovery?.sideEffectOperationId || recovery.sideEffectCommitted) return;
-    this.recordOperationEvent('side_effect.committed', recovery.sideEffectOperationId, 'committed', summary, {
+    const recorded = this.recordOperationEvent('side_effect.committed', recovery.sideEffectOperationId, 'committed', summary, {
       recovery_operation_id: recovery.operationId,
       recovery_trigger: 'provider-fallback-local-write',
     });
-    recovery.sideEffectCommitted = true;
+    if (recorded) recovery.sideEffectCommitted = true;
   }
 
   private collectRecoverableProviderFailureOperationIds(): string[] {
@@ -1041,14 +1036,15 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     const providerBoundaryGapOperationIds = input.targetOperationIds.filter(targetOperationId => (
       this.recoverableProviderBoundaryGapOperationIds.has(targetOperationId)
     ));
-    this.recordOperationEvent('recovery.detected', operationId, 'detected', summary, {
+    const detected = this.recordOperationEvent('recovery.detected', operationId, 'detected', summary, {
       target_operation_ids: [...input.targetOperationIds],
       recovery_trigger: input.trigger,
       ...(providerBoundaryGapOperationIds.length > 0
         ? { provider_boundary_gap_operation_ids: providerBoundaryGapOperationIds }
         : {}),
     });
-    this.recordOperationEvent('recovery.completed', operationId, 'completed', summary, {
+    if (!detected) return;
+    const completed = this.recordOperationEvent('recovery.completed', operationId, 'completed', summary, {
       resolves_operation_ids: [...input.targetOperationIds],
       verification_operation_id: input.verificationOperationId,
       recovery_trigger: input.trigger,
@@ -1057,6 +1053,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
         ? { provider_boundary_gap_operation_ids: providerBoundaryGapOperationIds }
         : {}),
     });
+    if (!completed) return;
     input.targetOperationIds.forEach(targetOperationId => this.deletePendingAdverseOperation(targetOperationId));
   }
 
@@ -1148,8 +1145,8 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     status: string,
     summary: { length: number; sha256: string },
     details: Record<string, import('@devseek-netai/shared').RunEvidenceJson> = {},
-  ): void {
-    this.recordEvidence({
+  ): boolean {
+    return this.recordEvidence({
       type,
       idempotencyKey: productRunEvidenceIdempotencyKey(`vscode-${type}`, {
         runId: this.runId,
@@ -1165,15 +1162,17 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     });
   }
 
-  private recordEvidence(input: Parameters<ProductRunEvidenceSession['record']>[0]): void {
+  private recordEvidence(input: Parameters<ProductRunEvidenceSession['record']>[0]): boolean {
     if (!this.evidence) {
       this.evidenceDegraded = true;
-      return;
+      return false;
     }
     try {
       this.evidence.record(input);
+      return true;
     } catch (error) {
       this.markEvidenceDegraded(error);
+      return false;
     }
   }
 

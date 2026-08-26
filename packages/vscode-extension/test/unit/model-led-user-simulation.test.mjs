@@ -212,13 +212,13 @@ test('ModelLedUserSimulation: out-of-envelope ReAct actions are quarantined and 
   try {
     assert.equal(calls, 2, simulation.result.historyText);
     assert.equal(readFileSync(path.join(simulation.root, 'result.txt'), 'utf8'), 'AUTHORIZED_REISSUE_OK\n');
-    assert.equal(
-      simulation.harness.statuses.some(status => (
+    const recoveryStates = simulation.harness.statuses
+      .filter(status => (
         status.phase === 'repair'
         && status.recoveryReason === 'provider-response-corruption'
-      )),
-      true,
-    );
+      ))
+      .map(status => status.state);
+    assert.deepEqual(recoveryStates, ['started', 'completed']);
   } finally {
     rmSync(simulation.root, { recursive: true, force: true });
   }
@@ -248,6 +248,14 @@ test('ModelLedUserSimulation: protocol recovery cannot settle from a prose-only 
     assert.equal(calls, 3, simulation.result.historyText);
     assert.equal(readFileSync(path.join(simulation.root, 'recovered.txt'), 'utf8'), 'RECOVERY_PENDING_OK\n');
     assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+    assert.equal(
+      simulation.harness.statuses.some(status => (
+        status.phase === 'repair'
+        && status.recoveryReason === 'provider-response-corruption'
+        && status.state === 'completed'
+      )),
+      true,
+    );
   } finally {
     rmSync(simulation.root, { recursive: true, force: true });
   }

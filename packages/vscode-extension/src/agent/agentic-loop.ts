@@ -93,7 +93,7 @@ import { describeProviderOutputIntegrity } from './provider-output-integrity';
 import {
   parseAgentProviderFailure,
 } from './provider-response-recovery';
-import { recoverAgenticProviderFailure } from './agentic-provider-recovery-boundary';
+import { AgenticProviderRecoveryLifecycle, recoverAgenticProviderFailure } from './agentic-provider-recovery-boundary';
 import {
   replaceLatestAssistantToolHistory,
 } from './agent-history-compaction';
@@ -277,6 +277,7 @@ export async function runAgenticLoop(
     ? 'explore'
     : requestedDisplayAction;
   const initialDisplayTarget = callbacks.runDisplayTarget || '';
+  const providerRecovery = new AgenticProviderRecoveryLifecycle(initialDisplayTarget, initialDisplayAction, callbacks);
   const emitAgenticCorrectionStatus = async (
     title: string,
     detail: string,
@@ -368,7 +369,12 @@ export async function runAgenticLoop(
       // must be allowed to replay the file contents it no longer possesses.
       seenContextToolSignatures.clear();
     }
-    return recovery.recovered ? 'recovered' : 'unrecoverable';
+    if (recovery.recovered) {
+      providerRecovery.begin();
+      return 'recovered';
+    }
+    await providerRecovery.fail();
+    return 'unrecoverable';
   };
   await callbacks.onAgentStatus({
     type: 'agentStatus',
@@ -538,7 +544,10 @@ export async function runAgenticLoop(
       promptRequiresTools = true;
       if (tools.some(tool => tool.purpose === 'workspace-mutation')) promptRequiresFileChange = true;
     }
-    if (tools.length > 0) unresolvedProviderToolProtocol = false;
+    if (tools.length > 0) {
+      await providerRecovery.completeAcceptedResponse('tool-protocol');
+      unresolvedProviderToolProtocol = false;
+    }
 
     messages.push({ role: 'assistant', content: text }, ...postProviderSteerMessages);
     lastProviderText = text;
@@ -610,6 +619,7 @@ export async function runAgenticLoop(
         failedReason = 'Provider 安全恢复后仍未形成有效工具调用。';
         break;
       }
+      await providerRecovery.completeAcceptedResponse('plain-response');
       const evidenceWithoutTools = assessCurrentEvidenceClosure();
       if (await recoverBlockingTerminalFailure(
         evidenceWithoutTools.blockingTerminalFailure,

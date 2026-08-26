@@ -709,6 +709,83 @@ test('RunContext: a broader verified coding mutation supersedes an earlier parti
   }
 });
 
+test('RunContext: provider protocol recovery cannot claim verification failures owned by workspace repair', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  const runId = 'run-context-provider-workspace-recovery-boundaries';
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId,
+      userPrompt: '修复 src/lesson.cpp 并运行项目测试',
+      traceLevel: 'debug',
+    });
+    const provider = ProductRunEvidenceSession.forWorkspace({
+      workspaceRoot,
+      runId,
+      surface: 'vscode-provider',
+      authority: { role: 'participant', token: context.evidenceParticipantToken },
+    });
+    for (const type of ['provider.requested', 'provider.failed']) {
+      provider.record({
+        type,
+        idempotencyKey: `provider-workspace-boundary:${type}`,
+        payload: observed(type.slice('provider.'.length), {
+          operation_id: 'provider:malformed-tool-response',
+          boundary: 'vscode-provider-client',
+        }),
+      });
+    }
+    for (const [phase, state] of [
+      ['validate', 'started'], ['validate', 'failed'],
+      ['quality', 'started'], ['quality', 'failed'],
+    ]) {
+      context.recordAgentStatus({
+        type: 'agentStatus', phase, state, title: '初次课程验证失败',
+        evidenceOperationId: 'verify-lesson-initial',
+        verificationScopePaths: ['src/lesson.cpp'],
+      });
+    }
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'repair', state: 'started',
+      title: 'Provider 工具协议安全重试', recoveryReason: 'provider-response-corruption',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'repair', state: 'completed',
+      title: 'Provider 工具协议恢复完成', recoveryReason: 'provider-response-corruption',
+    });
+
+    const repair = workspaceMutation(runId, 1, 'repair-lesson', ['src/lesson.cpp']);
+    context.recordWorkspaceMutation({ ...repair, state: 'started' });
+    context.recordWorkspaceMutation({ ...repair, state: 'committed' });
+    for (const [phase, state] of [
+      ['validate', 'started'], ['validate', 'completed'],
+      ['quality', 'started'], ['quality', 'completed'],
+    ]) {
+      context.recordAgentStatus({
+        type: 'agentStatus', phase, state, title: '课程修复验证通过',
+        evidenceOperationId: 'verify-lesson-repaired',
+        verificationScopePaths: ['src/lesson.cpp'],
+      });
+    }
+
+    assert.equal(context.complete('completed'), 'completed');
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const events = ledger.read(runId);
+    const recoveries = events.filter(event => event.type === 'recovery.completed');
+    const workspaceRecovery = recoveries.find(event => !event.payload.recovery_trigger);
+    const providerRecovery = recoveries.find(event => (
+      event.payload.recovery_trigger === 'provider-failure-before-verified-workspace-result'
+    ));
+    assert.deepEqual(workspaceRecovery?.payload.resolves_operation_ids, ['verify-lesson-initial']);
+    assert.deepEqual(providerRecovery?.payload.resolves_operation_ids, ['provider:malformed-tool-response']);
+    assert.equal(events.some(event => event.type === 'evidence.degraded'), false);
+    assert.equal(events.find(event => event.type === 'run.settled')?.payload.status, 'completed');
+    assert.equal(ledger.verify(runId).status, 'valid-sealed');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('RunContext: multiple repair writes join one recovery transaction before shared verification', () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
   try {
@@ -846,7 +923,10 @@ test('RunContext: provider response recovery resolves participant provider failu
       });
     }
 
-    context.recordAgentStatus({ type: 'agentStatus', phase: 'repair', state: 'started', title: 'Provider 响应被截断，正在安全续跑' });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'repair', state: 'started',
+      title: 'Provider 响应被截断，正在安全续跑', recoveryReason: 'provider-response-corruption',
+    });
     context.recordAgentStatus({
       type: 'agentStatus',
       phase: 'execute',
@@ -882,7 +962,7 @@ test('RunContext: provider response recovery resolves participant provider failu
   }
 });
 
-test('RunContext: duplicate provider recovery starts do not degrade a proven retry', () => {
+test('RunContext: typed provider retry progress does not open cross-boundary recovery transactions', () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
   const runId = 'run-context-provider-recovery-duplicate-start';
   try {
@@ -914,8 +994,18 @@ test('RunContext: duplicate provider recovery starts do not degrade a proven ret
       });
     }
 
-    context.recordAgentStatus({ type: 'agentStatus', phase: 'repair', state: 'started', title: 'Provider 响应被截断，正在安全续跑 1/3' });
-    context.recordAgentStatus({ type: 'agentStatus', phase: 'repair', state: 'started', title: 'Provider 响应被截断，正在安全续跑 2/3' });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'repair', state: 'started',
+      title: 'Provider 响应被截断，正在安全续跑 1/3', recoveryReason: 'provider-response-corruption',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'repair', state: 'started',
+      title: 'Provider 响应被截断，正在安全续跑 2/3', recoveryReason: 'provider-response-corruption',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'repair', state: 'completed',
+      title: 'Provider 安全恢复完成', recoveryReason: 'provider-response-corruption',
+    });
     context.recordAgentStatus({
       type: 'agentStatus',
       phase: 'execute',
@@ -955,7 +1045,8 @@ test('RunContext: duplicate provider recovery starts do not degrade a proven ret
     assert.equal(ledger.verify(runId).status, 'valid-sealed');
 
     const entries = readJsonl(path.join(workspaceRoot, '.devseek', 'runs', `${runId}.log`));
-    assert.equal(entries.some(entry => entry.event === 'duplicate-recovery-start-ignored'), true);
+    assert.equal(entries.some(entry => entry.event === 'duplicate-recovery-start-ignored'), false);
+    assert.equal(entries.filter(entry => entry.event === 'provider-recovery-status-observed').length, 3);
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });
   }

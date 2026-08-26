@@ -46,6 +46,62 @@ export interface AgenticProviderRecoveryBoundaryResult {
   readonly forceFreshProviderSession: boolean;
 }
 
+export class AgenticProviderRecoveryLifecycle {
+  private pending = false;
+
+  constructor(
+    private readonly taskFile: string,
+    private readonly taskAction: AgentTaskAction,
+    private readonly callbacks: Pick<AgentLoopCallbacks, 'signal' | 'onAgentStatus'>,
+  ) {}
+
+  begin(): void {
+    this.pending = true;
+  }
+
+  async completeAcceptedResponse(kind: 'tool-protocol' | 'plain-response'): Promise<void> {
+    await this.settle(
+      'completed',
+      'Provider 安全恢复完成',
+      kind === 'tool-protocol'
+        ? '新的 Provider 响应已通过当前工具协议门禁，后续动作仍由本地权限与沙箱逐项仲裁。'
+        : '新的 Provider 响应已通过当前响应边界，可继续按当前任务证据结算。',
+    );
+  }
+
+  async fail(): Promise<void> {
+    await this.settle(
+      'failed',
+      'Provider 安全恢复失败',
+      'Provider 在受限重试预算内仍未形成可信响应，本次恢复已明确终止。',
+    );
+  }
+
+  private async settle(
+    state: 'completed' | 'failed',
+    title: string,
+    detail: string,
+  ): Promise<void> {
+    if (!this.pending) return;
+    if (!this.callbacks.signal?.aborted) {
+      await this.callbacks.onAgentStatus({
+        type: 'agentStatus',
+        phase: 'repair',
+        taskId: 'agentic',
+        taskFile: this.taskFile,
+        taskAction: this.taskAction,
+        taskIndex: 1,
+        taskTotal: 1,
+        state,
+        title,
+        detail,
+        recoveryReason: 'provider-response-corruption',
+      });
+    }
+    this.pending = false;
+  }
+}
+
 export async function recoverAgenticProviderFailure(
   input: AgenticProviderRecoveryBoundaryInput,
 ): Promise<AgenticProviderRecoveryBoundaryResult> {

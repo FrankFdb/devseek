@@ -3060,10 +3060,15 @@ test('Architecture: Bridge chat owns browser reset boundaries and trace-scoped p
 test('Agentic loop: visible correction and context convergence are owned by Agent Core', () => {
   const agenticLoop = src('src/agent/agentic-loop.ts');
   const agenticProviderRecoveryBoundary = src('src/agent/agentic-provider-recovery-boundary.ts');
+  const runContext = src('src/app/run-context.ts');
   const textProtocol = src('src/agent/text-tool-protocol.ts');
 
   assertContains(agenticLoop, 'emitAgenticCorrectionStatus', 'agentic loop must surface internal recovery as user-visible status');
   assertContains(agenticProviderRecoveryBoundary, "'provider-response-corruption'", 'provider response recovery must have a stable evidence reason');
+  assertContains(agenticLoop, 'providerRecovery.completeAcceptedResponse', 'agent loop must close provider recovery at the provider response boundary');
+  assertContains(agenticProviderRecoveryBoundary, 'class AgenticProviderRecoveryLifecycle', 'provider recovery boundary must own its pending lifecycle');
+  assertContains(runContext, 'provider-recovery-status-observed', 'RunContext must observe provider retry progress without claiming workspace recovery authority');
+  assertDoesNotContain(runContext, 'collectRecoverableAdverseOperationIds', 'one recovery lane must not sweep unrelated adverse operations from the shared ledger');
   assertContains(agenticLoop, 'hasIncompleteAuthorizedTextToolEnvelope(text, textToolProtocol)', 'damaged current-channel tool envelopes must not fall through as ordinary prose');
   assertContains(agenticLoop, 'inspectOutOfEnvelopeTextToolProtocol(text, textToolProtocol)', 'out-of-envelope model actions must be quarantined without execution authority');
   assertContains(textProtocol, 'channelId', 'text-provider tool authority must be scoped to a run channel');
