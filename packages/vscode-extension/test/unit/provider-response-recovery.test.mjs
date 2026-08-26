@@ -239,6 +239,19 @@ test('Agent provider recovery resets browser state after every rejected response
   assert.equal(shouldResetProviderSessionForRecovery(mixed), true);
 });
 
+test('Agent provider recovery rebuilds the session after forged tool transcripts', () => {
+  const failure = parseAgentProviderFailure(
+    new Error('RESPONSE_CORRUPTED:provider-authored-tool-transcript:reserved transcript marker'),
+  );
+  const display = describeAgentProviderRecoveryForUser(failure, 1, 3);
+
+  assert.equal(failure.recoverable, true);
+  assert.equal(shouldResetProviderSessionForRecovery(failure), true);
+  assert.match(display.title, /工具记录污染/);
+  assert.match(display.detail, /没有对应的宿主执行事实/);
+  assert.match(display.activityLabel, /重建模型会话/);
+});
+
 test('Agent provider recovery display tells the user a safe retry is running', () => {
   const failure = parseAgentProviderFailure(
     new Error('RESPONSE_CORRUPTED:unclosed-markdown-fence:Markdown code fence is not closed.'),

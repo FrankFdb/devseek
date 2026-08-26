@@ -2427,32 +2427,36 @@ test('Architecture: validated source changes require fresh source review before 
   const providerReview = src('src/agent/provider-requirement-review.ts');
   const reviewPolicy = src('src/agent/requirement-review-policy.ts');
   const independentReview = src('src/agent/independent-requirement-review.ts');
-  const providerTranscriptRecovery = src('src/agent/provider-authored-transcript-recovery.ts');
+  const reviewNoToolRecovery = src('src/agent/requirement-review-no-tool-recovery.ts');
+  const providerOutputIntegrity = src('src/agent/provider-output-integrity.ts');
+  const providerTurnIntegrity = src('src/agent/provider-turn-integrity.ts');
+  const providerResponseRecovery = src('src/agent/provider-response-recovery.ts');
+  const loopChat = src('src/agent/loop-chat.ts');
   const reviewRepairWindow = src('src/agent/requirement-review-repair-window.ts');
   const executionEvidence = src('src/agent/agentic-execution-evidence.ts');
 
   assertContains(
-    providerTranscriptRecovery,
+    reviewNoToolRecovery,
     'requirementReview.recoverNoToolCompletion(consecutiveRound)',
     'no-tool completion must pass through the requirement review owner',
   );
   assertContains(
     agenticLoop,
-    'recoverRequirementReviewNoToolCompletion(requirementReview, noToolRounds + 1, text)',
-    'agent loop must delegate no-tool requirement review recovery to the protocol recovery owner',
+    'recoverRequirementReviewNoToolCompletion(requirementReview, noToolRounds + 1)',
+    'agent loop must delegate no-tool requirement review recovery to its semantic owner',
   );
   assertContains(
-    providerTranscriptRecovery,
-    'containsProviderAuthoredToolTranscript(providerText)',
-    'no-tool requirement review recovery must detect model-authored tool transcripts',
+    providerOutputIntegrity,
+    'provider-authored-tool-transcript',
+    'provider output integrity must classify model-authored internal tool transcripts',
   );
   assertContains(
-    providerTranscriptRecovery,
-    'buildProviderAuthoredToolTranscriptRecovery(',
-    'no-tool requirement review recovery must steer protocol pollution back to real tool calls',
+    providerResponseRecovery,
+    "'provider-authored-tool-transcript'",
+    'provider recovery must treat internal tool transcript pollution as recoverable corruption',
   );
   assertContains(
-    providerTranscriptRecovery,
+    reviewNoToolRecovery,
     'requirementReview.completionBlocker()',
     'no-tool requirement review recovery must keep the current review blocker instead of restarting the task',
   );
@@ -2607,24 +2611,34 @@ test('Architecture: validated source changes require fresh source review before 
     'semantic review must not promote deferred context requirements into the current delivery stage',
   );
   assertContains(
-    providerTranscriptRecovery,
-    '[DevSeek 已执行工具请求摘要]',
-    'provider-authored transcript recovery must recognize DevSeek internal summary echoes',
+    providerOutputIntegrity,
+    '[DevSeek 已执行工具请求摘要',
+    'provider output integrity must recognize DevSeek internal summary echoes',
   );
   assertContains(
-    providerTranscriptRecovery,
+    providerOutputIntegrity,
     '[工具结果 Round',
-    'provider-authored transcript recovery must recognize DevSeek tool-result round echoes',
+    'provider output integrity must recognize DevSeek tool-result round echoes',
   );
   assertContains(
-    providerTranscriptRecovery,
-    '读文件',
-    'provider-authored transcript recovery must recognize localized DeepSeek file-read transcript echoes',
+    providerResponseRecovery,
+    'RECOVERABLE_RESPONSE_CORRUPTION_STATUSES',
+    'tool transcript pollution must use the bounded provider corruption recovery ledger',
   );
   assertContains(
-    providerTranscriptRecovery,
-    '真实工具调用',
-    'provider-authored transcript recovery must force recovery through real tool calls',
+    providerResponseRecovery,
+    'shouldResetProviderSessionForRecovery',
+    'tool transcript pollution recovery must rebuild the contaminated provider session',
+  );
+  assertContains(
+    loopChat,
+    'assertProviderTurnIntegrity(normalizedText, { toolCallCount: tools.length })',
+    'every provider adapter must pass the shared turn-integrity boundary after normalization',
+  );
+  assertContains(
+    providerTurnIntegrity,
+    'RESPONSE_CORRUPTED:${output.kind}',
+    'the shared provider turn boundary must emit the canonical recoverable corruption protocol',
   );
   assertContains(
     agenticLoop,
@@ -3006,7 +3020,7 @@ test('Architecture: Bridge chat owns browser reset boundaries and trace-scoped p
   assert.match(bridgeProvider, /newSession: Boolean\(opts\.newSession \|\| preparedPrompt\.resetBrowserSession\)/, 'BridgeProvider must honor caller resets and cursor-invalidating resets');
   assert.match(
     bridgeProvider,
-    /new ResponseIntegrityChecker\(\)\.assertSafeForExecution\(response\);[\s\S]*?isProviderOutputFatal\(providerOutput\.kind\)[\s\S]*?recordBridgePromptSessionRequest/,
+    /new ResponseIntegrityChecker\(\)\.assertSafeForExecution\(response\);[\s\S]*?assertProviderTurnIntegrity\(response\);[\s\S]*?recordBridgePromptSessionRequest/,
     'BridgeProvider must only advance same-session request cursors after provider integrity gates pass',
   );
   assertContains(promptSession, '沿用本会话上一轮已经建立的 DevSeek 编程智能体规则', 'bridge prompt reuse must send a clear same-session continuation marker');

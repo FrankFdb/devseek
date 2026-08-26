@@ -1063,6 +1063,14 @@ function collectProviderResponseIssues(
       message: 'Provider 输出缺少可结算回答证据；只读任务不能仅凭该文本完成。',
       evidence: truncateOneLine(content, 220),
     };
+  } else if (integrity.kind === 'provider-authored-tool-transcript') {
+    recoverableIssue = {
+      kind: 'provider-authored-tool-result',
+      severity: 'error',
+      line,
+      message: `${describeProviderOutputIntegrity(integrity.kind)}运行时必须重建 Provider 会话后恢复。`,
+      evidence: truncateOneLine(content, 220),
+    };
   }
 
   const toolRequestText = isolateModelToolRequestText(content).text;
@@ -1077,7 +1085,8 @@ function collectProviderResponseIssues(
     });
   }
 
-  if (PROVIDER_AUTHORED_TOOL_RESULT_RE.test(content)) {
+  if (integrity.kind !== 'provider-authored-tool-transcript'
+    && PROVIDER_AUTHORED_TOOL_RESULT_RE.test(content)) {
     issues.push({
       kind: 'provider-authored-tool-result',
       severity: 'warn',

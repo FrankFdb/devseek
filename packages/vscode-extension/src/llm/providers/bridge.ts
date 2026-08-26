@@ -6,11 +6,7 @@ import * as vscode from 'vscode';
 import { knownCodingProviderCapabilities } from '@devseek-netai/shared';
 import { LLMProvider, LLMProviderType, LLMChatOptions } from '../types';
 import * as bridgeClient from '../../bridge-client';
-import {
-  classifyProviderOutputIntegrity,
-  describeProviderOutputIntegrity,
-  isProviderOutputFatal,
-} from '../../agent/provider-output-integrity';
+import { assertProviderTurnIntegrity } from '../../agent/provider-turn-integrity';
 import { BridgeHealthMonitor, ResponseIntegrityChecker } from './web-reliability';
 import {
   prepareBridgePromptForSession,
@@ -61,18 +57,13 @@ export class BridgeProvider implements LLMProvider {
       signal: opts.signal,
     });
     new ResponseIntegrityChecker().assertSafeForExecution(response);
-    const providerOutput = classifyProviderOutputIntegrity(response);
-    if (isProviderOutputFatal(providerOutput.kind)) {
-      throw new Error(`RESPONSE_CORRUPTED:${providerOutput.kind}:${describeProviderOutputIntegrity(providerOutput.kind)}`);
-    }
-    if (providerOutput.kind === 'tool_call' || providerOutput.kind === 'complete_answer') {
-      recordBridgePromptSessionRequest({
-        messages: opts.messages,
-        newSession: opts.newSession,
-        traceRunId: opts.traceRunId,
-        traceWorkspaceRoot: opts.traceWorkspaceRoot,
-      });
-    }
+    assertProviderTurnIntegrity(response);
+    recordBridgePromptSessionRequest({
+      messages: opts.messages,
+      newSession: opts.newSession,
+      traceRunId: opts.traceRunId,
+      traceWorkspaceRoot: opts.traceWorkspaceRoot,
+    });
     return response;
   }
 }

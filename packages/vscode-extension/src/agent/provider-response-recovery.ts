@@ -54,6 +54,7 @@ const RECOVERABLE_RESPONSE_CORRUPTION_STATUSES = new Set([
   'invalid-json-response',
   'stream-timeout',
   'prompt-submit-failed',
+  'provider-authored-tool-transcript',
 ]);
 
 export function parseAgentProviderFailure(error: unknown): AgentProviderFailure | undefined {
@@ -108,16 +109,21 @@ export function describeAgentProviderRecoveryForUser(
   const step = `${recoveryAttempt}/${maxRecoveryAttempts}`;
   const isSubmitFailure = failure.status.toLowerCase() === 'prompt-submit-failed';
   const isToolProtocolFailure = failure.status.toLowerCase().endsWith('tool-block');
+  const isToolTranscriptPollution = failure.status.toLowerCase() === 'provider-authored-tool-transcript';
   const resetProviderSession = shouldResetProviderSessionForRecovery(failure);
   return {
     title: isSubmitFailure
       ? `Provider 请求未送达，正在安全重试（${step}）`
+      : isToolTranscriptPollution
+        ? `Provider 工具记录污染，正在安全重试（${step}）`
       : isToolProtocolFailure
         ? `Provider 工具请求未通过协议门禁，正在安全重试（${step}）`
       : `Provider 响应被截断，正在安全续跑（${step}）`,
     detail: [
       isSubmitFailure
         ? '上一轮请求没有被网页确认接收，DevSeek 已保留已完成工具事实并准备重新提交。'
+        : isToolTranscriptPollution
+          ? '上一轮回复包含 DevSeek 保留的工具执行记录标记，但没有对应的宿主执行事实；该回复已整体隔离。'
         : isToolProtocolFailure
           ? '上一轮结构化动作没有通过当前工具授权协议，DevSeek 已隔离且未执行，并准备要求模型安全重发。'
         : '上一轮模型回复没有通过完整性门禁，DevSeek 已阻止执行其中任何未验证内容。',

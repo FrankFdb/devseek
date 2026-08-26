@@ -1889,6 +1889,71 @@ test('run log replay settles a truncated response after the runtime starts safe 
   }
 });
 
+test('run log replay keeps an unrecovered provider-authored tool transcript adverse', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-08-26T01:00:00.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'provider-tool-transcript-unrecovered',
+      data: {
+        name: 'extension.response.raw',
+        content: '[DevSeek 已执行工具请求摘要]\n[工具结果 Round 38]\nrun_terminal: ./test.sh exitCode: 0',
+      },
+    },
+  ]);
+
+  try {
+    const issue = replayRunLog(logPath).issues.find(item => (
+      item.kind === 'provider-authored-tool-result'
+    ));
+    assert.equal(issue?.severity, 'error');
+    assert.match(issue?.message ?? '', /重建 Provider 会话/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay settles provider-authored tool transcript pollution only after safe recovery starts', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-08-26T01:10:00.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'provider-tool-transcript-recovered',
+      data: {
+        name: 'extension.response.raw',
+        content: '[工具结果 Round 38]\n[run_terminal: ./test.sh] exitCode: 0',
+      },
+    },
+    {
+      ts: '2026-08-26T01:10:00.100Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'agent-status',
+      event: 'agent-status',
+      runId: 'provider-tool-transcript-recovered',
+      data: {
+        phase: 'repair',
+        state: 'started',
+        recoveryReason: 'provider-response-corruption',
+        title: 'Provider 工具记录污染，正在安全重试（1/3）',
+      },
+    },
+  ]);
+
+  try {
+    const kinds = new Set(replayRunLog(logPath).issues.map(issue => issue.kind));
+    assert.equal(kinds.has('provider-authored-tool-result'), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run log replay accepts full markdown read-only answer after tool evidence', () => {
   const { dir, logPath } = writeLog([
     {

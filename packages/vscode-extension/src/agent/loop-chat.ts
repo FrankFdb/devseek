@@ -17,6 +17,7 @@ import {
   type ProviderInvocationRetryEvent,
 } from '../app/provider-invocation-retry';
 import { providerErrorText } from '../llm/provider-transport-error';
+import { assertProviderTurnIntegrity } from './provider-turn-integrity';
 export { consumeUserSteerMessages } from './user-steer';
 
 interface LoopChatInput {
@@ -147,7 +148,10 @@ async function invokeLoopChat(input: LoopChatInput): Promise<{ text: string; too
     content: text,
     ...(input.traceRunId ? { workflowId: input.traceRunId } : {}),
   }, input.normalization);
-  return { text: normalized.event.type === 'message' ? normalized.event.content : text, tools: [...normalized.tools] };
+  const normalizedText = normalized.event.type === 'message' ? normalized.event.content : text;
+  const tools = [...normalized.tools];
+  assertProviderTurnIntegrity(normalizedText, { toolCallCount: tools.length });
+  return { text: normalizedText, tools };
 }
 
 function traceProviderRetry(input: LoopChatInput, event: ProviderInvocationRetryEvent, samplingId: string): void {

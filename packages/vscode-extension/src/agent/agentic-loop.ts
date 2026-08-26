@@ -42,7 +42,7 @@ import {
   parseAuthorizedTextToolCalls,
   stripAuthorizedTextToolEnvelopes,
 } from './text-tool-protocol';
-import { recoverRequirementReviewNoToolCompletion } from './provider-authored-transcript-recovery';
+import { recoverRequirementReviewNoToolCompletion } from './requirement-review-no-tool-recovery';
 import {
   agentAnnouncementKey,
   cleanAgentFinalSummaryForUser,
@@ -608,7 +608,7 @@ export async function runAgenticLoop(
       )) {
         continue;
       }
-      const reviewRecovery = recoverRequirementReviewNoToolCompletion(requirementReview, noToolRounds + 1, text);
+      const reviewRecovery = recoverRequirementReviewNoToolCompletion(requirementReview, noToolRounds + 1);
       if (!callbacks.signal?.aborted && reviewRecovery) {
         noToolRounds++;
         if (reviewRecovery.kind === 'stop') {

@@ -6,7 +6,8 @@ export interface PendingProviderShortIntent {
 export type RecoverableProviderReplayIssueKind =
   | 'empty-provider-response'
   | 'provider-truncated-response'
-  | 'provider-incomplete-answer';
+  | 'provider-incomplete-answer'
+  | 'provider-authored-tool-result';
 
 export interface PendingProviderIntegrityFailure {
   kind: RecoverableProviderReplayIssueKind;
