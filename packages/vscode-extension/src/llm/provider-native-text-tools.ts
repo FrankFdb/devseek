@@ -2,7 +2,7 @@ import type { FakeTool } from '../agent/fake-tool-types';
 import { findJsonObjectEnd } from '../agent/loose-json-text';
 
 const MAX_PROVIDER_NATIVE_TEXT_TOOLS = 16;
-const CALLING_HEADER_RE = /(?:^|\n)[ \t]*\*\*Calling:\*\*[ \t]*`([A-Za-z0-9_]+)`[ \t]*(?:\r?\n[ \t]*)+```(?:json)?[ \t]*\r?\n/gi;
+const CALLING_HEADER_RE = /\*\*Calling:\*\*[ \t]*`([A-Za-z0-9_]+)`[ \t]*(?:\r?\n[ \t]*)+```(?:json)?[ \t]*\r?\n/gi;
 const CLOSING_FENCE_RE = /(?:^|\r?\n)[ \t]*```[ \t]*(?=\r?\n|$)/g;
 const TOOL_ARGUMENTS_HEADER_RE = /Tool:[ \t]*`?([A-Za-z0-9_]+)`?[ \t]*Arguments:[ \t]*/g;
 const BARE_JSON_HEADER_RE = /([A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+)[ \t]+(?=\{)/g;

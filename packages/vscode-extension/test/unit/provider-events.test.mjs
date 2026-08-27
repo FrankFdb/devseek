@@ -155,6 +155,14 @@ test('Bridge Calling responses require explicit admission and strict complete JS
   assert.ok(accepted.every(tool => tool.executable));
   assert.deepEqual(accepted[0].input, { path: '/tmp/workspace/USER_STORY.md' });
 
+  const sameLineProse = response.replace(
+    '我先读取任务和源码。\n**Calling:**',
+    '让我先理解当前工作区。**Calling:**',
+  );
+  assert.deepEqual(normalizeProviderMessage({
+    type: 'message', provider: 'bridge', content: sameLineProse,
+  }, enabled).tools.map(tool => tool.name), ['read_file', 'list_dir']);
+
   for (const invalid of [
     `${response}\n这只是一个格式示例。`,
     response.replace('{"path":"/tmp/workspace"}', '{path:"/tmp/workspace"}'),
