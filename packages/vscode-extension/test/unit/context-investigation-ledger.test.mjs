@@ -87,11 +87,28 @@ test('only a same-path write, uncovered lines, or an authorized failure refresh 
     hasWorkspaceMutation: false,
     consumeContextRefresh: () => false,
   }).blockedToolIndexes.size, 0);
-  assert.equal(ledger.screen([{ ...request, input: { ...request.input, endLine: 310 } }], {
+  const acceptedRefresh = ledger.screen([{ ...request, input: { ...request.input, endLine: 310 } }], {
     progressEpoch: 0,
     hasWorkspaceMutation: false,
     consumeContextRefresh: () => true,
-  }).blockedToolIndexes.size, 0);
+  });
+  assert.equal(acceptedRefresh.blockedToolIndexes.size, 0);
+  assert.equal(acceptedRefresh.acceptedRecoveryContextRefresh, true);
+});
+
+test('an authorized failure refresh is reported even for a previously unread range', () => {
+  const ledger = new ContextInvestigationLedger('/workspace');
+  const result = ledger.screen([{
+    name: 'read_file',
+    input: { path: 'src/controller.cpp', startLine: 410, endLine: 430 },
+  }], {
+    progressEpoch: 0,
+    hasWorkspaceMutation: false,
+    consumeContextRefresh: path => path === 'src/controller.cpp',
+  });
+
+  assert.equal(result.blockedToolIndexes.size, 0);
+  assert.equal(result.acceptedRecoveryContextRefresh, true);
 });
 
 test('Provider session reset forgets coverage that the rebuilt model can no longer see', () => {

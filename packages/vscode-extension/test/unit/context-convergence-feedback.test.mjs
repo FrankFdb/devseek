@@ -23,6 +23,7 @@ execFileSync('npx', [
 const {
   DeliveryConvergenceLedger,
   resolveDeliveryConvergenceExpectation,
+  resolveDeliveryInvestigationActivity,
   resolveDeliveryConvergencePending,
 } = createRequire(import.meta.url)(bundlePath);
 
@@ -94,6 +95,40 @@ test('delivery pending resolution preserves read-only and review-repair boundari
     unresolvedExecution: false,
     actionableRepairPending: true,
   }), true);
+});
+
+test('delivery investigation counts only pure context drift', () => {
+  const pureContext = {
+    hasContextInvestigationActivity: true,
+    hasWorkspaceMutationProposal: false,
+    acceptedRecoveryContextRefresh: false,
+    expectation: 'mutation',
+    hasNovelValidationTerminalProgress: false,
+    providerRecoveryCompleted: false,
+  };
+
+  assert.equal(resolveDeliveryInvestigationActivity(pureContext), true);
+  assert.equal(resolveDeliveryInvestigationActivity({
+    ...pureContext,
+    hasWorkspaceMutationProposal: true,
+  }), false);
+  assert.equal(resolveDeliveryInvestigationActivity({
+    ...pureContext,
+    acceptedRecoveryContextRefresh: true,
+  }), false);
+  assert.equal(resolveDeliveryInvestigationActivity({
+    ...pureContext,
+    providerRecoveryCompleted: true,
+  }), false);
+  assert.equal(resolveDeliveryInvestigationActivity({
+    ...pureContext,
+    expectation: 'unclassified',
+    hasNovelValidationTerminalProgress: true,
+  }), false);
+  assert.equal(resolveDeliveryInvestigationActivity({
+    ...pureContext,
+    hasContextInvestigationActivity: false,
+  }), false);
 });
 
 test('delivery convergence corrects twice and then stops a mutation cohort without progress', () => {

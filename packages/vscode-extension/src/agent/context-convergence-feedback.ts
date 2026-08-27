@@ -47,6 +47,25 @@ export function resolveDeliveryConvergencePending(input: DeliveryConvergencePend
     || input.actionableRepairPending;
 }
 
+export interface DeliveryInvestigationActivityInput {
+  readonly hasContextInvestigationActivity: boolean;
+  readonly hasWorkspaceMutationProposal: boolean;
+  readonly acceptedRecoveryContextRefresh: boolean;
+  readonly expectation: DeliveryConvergenceExpectation;
+  readonly hasNovelValidationTerminalProgress: boolean;
+  readonly providerRecoveryCompleted: boolean;
+}
+
+/** Only pure context drift consumes the bounded delivery-investigation cohort. */
+export function resolveDeliveryInvestigationActivity(
+  input: DeliveryInvestigationActivityInput,
+): boolean {
+  if (!input.hasContextInvestigationActivity) return false;
+  if (input.hasWorkspaceMutationProposal || input.acceptedRecoveryContextRefresh) return false;
+  if (input.providerRecoveryCompleted) return false;
+  return input.expectation !== 'unclassified' || !input.hasNovelValidationTerminalProgress;
+}
+
 export interface DeliveryConvergenceObservation {
   readonly expectation: DeliveryConvergenceExpectation;
   readonly deliveryProgressEpoch: number;

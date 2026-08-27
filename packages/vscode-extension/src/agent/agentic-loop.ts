@@ -121,6 +121,7 @@ import {
   DeliveryConvergenceLedger,
   isContextGatheringToolName,
   resolveDeliveryConvergenceExpectation,
+  resolveDeliveryInvestigationActivity,
   resolveDeliveryConvergencePending,
 } from './context-convergence-feedback';
 import { ContextInvestigationLedger } from './context-investigation-ledger';
@@ -997,9 +998,14 @@ export async function runAgenticLoop(
       }),
       actionableRepairPending: requirementReviewSourceRepairPending,
       gatheredEvidenceCount: allReadEvidencePaths.size + allEvidenceRefs.length,
-      investigationActivity: roundHasContextInvestigationActivity
-        && !(deliveryExpectation === 'unclassified' && roundHasNovelValidationTerminalProgress)
-        && !providerRecoveryCompletedThisRound,
+      investigationActivity: resolveDeliveryInvestigationActivity({
+        hasContextInvestigationActivity: roundHasContextInvestigationActivity,
+        hasWorkspaceMutationProposal: hasFileWriteIntentThisRound,
+        acceptedRecoveryContextRefresh: contextScreen.acceptedRecoveryContextRefresh,
+        expectation: deliveryExpectation,
+        hasNovelValidationTerminalProgress: roundHasNovelValidationTerminalProgress,
+        providerRecoveryCompleted: providerRecoveryCompletedThisRound,
+      }),
     });
     if (!callbacks.signal?.aborted && deliveryConvergenceResult.kind === 'correct') {
       await emitAgenticCorrectionStatus(

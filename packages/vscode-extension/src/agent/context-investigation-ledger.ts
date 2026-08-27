@@ -19,6 +19,7 @@ export interface ContextInvestigationScreenResult {
   readonly blockedToolIndexes: ReadonlySet<number>;
   readonly suppressedTools: readonly ToolSuppressionEvidence[];
   readonly warnings: readonly string[];
+  readonly acceptedRecoveryContextRefresh: boolean;
 }
 
 interface ContextInvestigationScreenInput {
@@ -112,8 +113,9 @@ export class ContextInvestigationLedger {
     const blockedToolIndexes = new Set<number>();
     const suppressedTools: ToolSuppressionEvidence[] = [];
     const warnings: string[] = [];
+    let acceptedRecoveryContextRefresh = false;
     if (input.hasWorkspaceMutation) {
-      return { blockedToolIndexes, suppressedTools, warnings };
+      return { blockedToolIndexes, suppressedTools, warnings, acceptedRecoveryContextRefresh };
     }
 
     tools.forEach((tool, toolIndex) => {
@@ -122,15 +124,15 @@ export class ContextInvestigationLedger {
       const seen = this.signatures.get(signature);
       const exactRepeat = seen?.progressEpoch === input.progressEpoch;
       const coveredRead = this.readRequestIsCovered(tool);
-      if (!exactRepeat && !coveredRead) return;
-
       const refreshPath = tool.name === 'read_file' && typeof tool.input.path === 'string'
         ? tool.input.path
         : undefined;
       if (input.consumeContextRefresh(refreshPath)) {
+        acceptedRecoveryContextRefresh = true;
         this.signatures.delete(signature);
         return;
       }
+      if (!exactRepeat && !coveredRead) return;
 
       const nextCount = exactRepeat ? (seen?.count ?? 1) + 1 : 2;
       if (exactRepeat) {
@@ -145,7 +147,7 @@ export class ContextInvestigationLedger {
         ? buildCoveredContextReadFeedback(tool)
         : buildRepeatedContextToolFeedback(tool, nextCount));
     });
-    return { blockedToolIndexes, suppressedTools, warnings };
+    return { blockedToolIndexes, suppressedTools, warnings, acceptedRecoveryContextRefresh };
   }
 
   record(input: ContextInvestigationRecordInput): string[] {
