@@ -213,3 +213,51 @@ test('Bridge Tool Arguments responses accept complete sequences and reject ambig
     }, enabled).tools.length, 0, content);
   }
 });
+
+test('Bridge bare JSON tool sequences are strict, bounded, and Bridge-only', () => {
+  const providerEvents = new CanonicalProviderEventService();
+  const toolDispatch = new CanonicalToolDispatchService();
+  const textToolProtocol = {
+    version: 'devseek.text-tools/v1',
+    channelId: 'bridge-native-bare-json-channel',
+  };
+  const enabled = bindProviderNormalizationBoundary(
+    providerEvents,
+    toolDispatch,
+    { workspaceRoot: '/tmp/workspace' },
+    textToolProtocol,
+    { allowProviderNativeTextTools: true },
+  );
+  const response = [
+    '我先检查当前工作区。',
+    'read_file {"path":"/tmp/workspace/src/main.cpp"}',
+    'grep_search {"pattern":"renderNumberLine","path":"/tmp/workspace/src"}',
+    'list_dir {"path":"/tmp/workspace/include"}',
+  ].join('');
+
+  const accepted = normalizeProviderMessage({
+    type: 'message', provider: 'bridge', content: response,
+  }, enabled).tools;
+  assert.deepEqual(accepted.map(tool => tool.name), ['read_file', 'grep_search', 'list_dir']);
+  assert.ok(accepted.every(tool => tool.source === 'provider-native-text'));
+  assert.equal(normalizeProviderMessage({
+    type: 'message', provider: 'deepseek-api', content: response,
+  }, enabled).tools.length, 0);
+
+  const invalid = [
+    `${response}然后修改源码。`,
+    'read_file {path:"/tmp/workspace/src/main.cpp"}',
+    'read_file ["/tmp/workspace/src/main.cpp"]',
+    'read_file {"path":"/tmp/workspace/src/main.cpp"',
+    `${response}\n**Calling:** \`list_dir\`\n\n\`\`\`\n{"path":"/tmp/workspace"}\n\`\`\``,
+    `${response}Tool: list_dirArguments: {"path":"/tmp/workspace"}`,
+    Array.from({ length: 17 }, (_, index) => (
+      `read_file {"path":"/tmp/workspace/${index}.cpp"}`
+    )).join(''),
+  ];
+  for (const content of invalid) {
+    assert.equal(normalizeProviderMessage({
+      type: 'message', provider: 'bridge', content,
+    }, enabled).tools.length, 0, content);
+  }
+});

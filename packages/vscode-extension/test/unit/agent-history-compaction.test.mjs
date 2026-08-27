@@ -138,6 +138,27 @@ test('Agent history compaction: executed Bridge Tool Arguments blocks become dur
   assert.doesNotMatch(messages[1].content, /Tool:/);
 });
 
+test('Agent history compaction: executed Bridge bare JSON calls become durable summaries', () => {
+  const content = [
+    '我先核对损坏区域。',
+    'read_file {"path":"/repo/src/raster_canvas.cpp","startLine":220,"endLine":340}',
+  ].join('');
+  const messages = [
+    { role: 'user', content: '任务' },
+    { role: 'assistant', content },
+  ];
+
+  const changed = replaceLatestAssistantToolHistory(messages, textToolProtocol, [{
+    name: 'read_file',
+    input: { path: '/repo/src/raster_canvas.cpp', startLine: 220, endLine: 340 },
+  }]);
+
+  assert.equal(changed, true);
+  assert.match(messages[1].content, /意图：我先核对损坏区域/);
+  assert.match(messages[1].content, /read_file path=\/repo\/src\/raster_canvas\.cpp lines=220-340/);
+  assert.doesNotMatch(messages[1].content, /startLine/);
+});
+
 test('Agent history compaction: replaces every assistant tool message before provider send', () => {
   const messages = [
     { role: 'user', content: '任务' },
