@@ -115,6 +115,29 @@ test('Agent history compaction: executed Bridge Calling blocks become durable su
   assert.doesNotMatch(messages[1].content, /\*\*Calling/);
 });
 
+test('Agent history compaction: executed Bridge Tool Arguments blocks become durable summaries', () => {
+  const content = [
+    '我先读取两个实现文件。',
+    'Tool: read_fileArguments: {"path":"/repo/src/main.cpp"}',
+    'Tool: read_fileArguments: {"path":"/repo/src/raster_canvas.cpp"}',
+  ].join('');
+  const messages = [
+    { role: 'user', content: '任务' },
+    { role: 'assistant', content },
+  ];
+
+  const changed = replaceLatestAssistantToolHistory(messages, textToolProtocol, [
+    { name: 'read_file', input: { path: '/repo/src/main.cpp' } },
+    { name: 'read_file', input: { path: '/repo/src/raster_canvas.cpp' } },
+  ]);
+
+  assert.equal(changed, true);
+  assert.match(messages[1].content, /意图：我先读取两个实现文件/);
+  assert.match(messages[1].content, /工具调用：2 个/);
+  assert.match(messages[1].content, /read_file path=\/repo\/src\/raster_canvas\.cpp/);
+  assert.doesNotMatch(messages[1].content, /Tool:/);
+});
+
 test('Agent history compaction: replaces every assistant tool message before provider send', () => {
   const messages = [
     { role: 'user', content: '任务' },

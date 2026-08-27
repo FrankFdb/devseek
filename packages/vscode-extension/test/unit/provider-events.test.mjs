@@ -165,3 +165,51 @@ test('Bridge Calling responses require explicit admission and strict complete JS
     }, enabled).tools.length, 0, invalid);
   }
 });
+
+test('Bridge Tool Arguments responses accept complete sequences and reject ambiguous payloads', () => {
+  const providerEvents = new CanonicalProviderEventService();
+  const toolDispatch = new CanonicalToolDispatchService();
+  const textToolProtocol = {
+    version: 'devseek.text-tools/v1',
+    channelId: 'bridge-native-tool-arguments-channel',
+  };
+  const enabled = bindProviderNormalizationBoundary(
+    providerEvents,
+    toolDispatch,
+    { workspaceRoot: '/tmp/workspace' },
+    textToolProtocol,
+    { allowProviderNativeTextTools: true },
+  );
+  const response = [
+    '我先读取入口和实现。',
+    'Tool: read_fileArguments: {"path":"/tmp/workspace/src/main.cpp"}',
+    'Tool: read_fileArguments: {"path":"/tmp/workspace/src/raster_canvas.cpp","startLine":240}',
+  ].join('');
+
+  const accepted = normalizeProviderMessage({
+    type: 'message', provider: 'bridge', content: response,
+  }, enabled).tools;
+  assert.deepEqual(accepted.map(tool => tool.name), ['read_file', 'read_file']);
+  assert.deepEqual(accepted[1].input, {
+    path: '/tmp/workspace/src/raster_canvas.cpp',
+    startLine: 240,
+  });
+  assert.ok(accepted.every(tool => tool.source === 'provider-native-text'));
+  assert.ok(accepted.every(tool => tool.executable));
+
+  const invalid = [
+    `${response}接下来修改。`,
+    'Tool: read_fileArguments: {path:"/tmp/workspace/src/main.cpp"}',
+    'Tool: read_fileArguments: ["/tmp/workspace/src/main.cpp"]',
+    'Tool: read_fileArguments: {"path":"/tmp/workspace/src/main.cpp"',
+    `${response}\n**Calling:** \`list_dir\`\n\n\`\`\`\n{"path":"/tmp/workspace"}\n\`\`\``,
+    Array.from({ length: 17 }, (_, index) => (
+      `Tool: read_fileArguments: {"path":"/tmp/workspace/${index}.cpp"}`
+    )).join(''),
+  ];
+  for (const content of invalid) {
+    assert.equal(normalizeProviderMessage({
+      type: 'message', provider: 'bridge', content,
+    }, enabled).tools.length, 0, content);
+  }
+});
