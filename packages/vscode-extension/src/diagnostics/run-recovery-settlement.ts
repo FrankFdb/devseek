@@ -5,6 +5,7 @@ export interface PendingProviderShortIntent {
 
 export type RecoverableProviderReplayIssueKind =
   | 'empty-provider-response'
+  | 'malformed-tool-block'
   | 'provider-truncated-response'
   | 'provider-incomplete-answer'
   | 'provider-authored-tool-result';

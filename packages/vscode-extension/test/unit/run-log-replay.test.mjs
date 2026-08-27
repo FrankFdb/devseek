@@ -827,6 +827,44 @@ test('run log replay detects unrecoverable bracket tool blocks', () => {
   }
 });
 
+test('run log replay settles a malformed bracket tool block after safe recovery starts', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-08-27T06:28:37.979Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'malformed-tool-recovered',
+      data: {
+        name: 'extension.response.raw',
+        content: '[TOOL:replace_in_file {"path":"src/main.cpp"',
+      },
+    },
+    {
+      ts: '2026-08-27T06:28:39.055Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'agent-status',
+      event: 'agent-status',
+      runId: 'malformed-tool-recovered',
+      data: {
+        phase: 'repair',
+        state: 'started',
+        recoveryReason: 'provider-response-corruption',
+        title: 'Provider 工具请求未通过协议门禁，正在安全重试（1/3）',
+      },
+    },
+  ]);
+
+  try {
+    const kinds = new Set(replayRunLog(logPath).issues.map(issue => issue.kind));
+    assert.equal(kinds.has('malformed-tool-block'), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run log replay isolates tool requests before provider-authored tool results', () => {
   const { dir, logPath } = writeLog([
     {

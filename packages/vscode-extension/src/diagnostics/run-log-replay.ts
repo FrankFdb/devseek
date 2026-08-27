@@ -1100,12 +1100,16 @@ function collectProviderResponseIssues(
   if (markerCount > 0) {
     const parsedTools = parseFakeToolCalls(content);
     if (parsedTools.length < markerCount) {
-      issues.push({
+      const malformedToolIssue: PendingProviderIntegrityFailure = {
         kind: 'malformed-tool-block',
         severity: parsedTools.length > 0 ? 'warn' : 'error',
         line,
-        message: `检测到 ${markerCount} 个 [TOOL:*] 标记，但只解析出 ${parsedTools.length} 个工具调用。`,
-      });
+        message: `检测到 ${markerCount} 个 [TOOL:*] 标记，但只解析出 ${parsedTools.length} 个工具调用；运行时必须隔离并安全恢复。`,
+      };
+      if (!recoverableIssue
+        || (recoverableIssue.severity === 'warn' && malformedToolIssue.severity === 'error')) {
+        recoverableIssue = malformedToolIssue;
+      }
     }
 
     for (const tool of parsedTools) {
