@@ -22,6 +22,7 @@ execSync(
 const req = createRequire(import.meta.url);
 const {
   extractDeepSeekResponse,
+  isFreshDeepSeekResponseText,
   isLoginUrl,
   normalizeDeepSeekAnswer,
 } = req(bundlePath);
@@ -50,6 +51,12 @@ test('ResponseExtractor: derives login state from indicator count and url', () =
 
 test('ResponseExtractor: normalizes answer whitespace', () => {
   assert.equal(normalizeDeepSeekAnswer('a  \r\n\r\n\r\nb\t\n'), 'a\n\nb');
+});
+
+test('ResponseExtractor: a response must be non-empty and distinct from the pre-submit baseline', () => {
+  assert.equal(isFreshDeepSeekResponseText('', 'previous answer'), false);
+  assert.equal(isFreshDeepSeekResponseText(' previous answer\r\n', 'previous answer'), false);
+  assert.equal(isFreshDeepSeekResponseText('ok', 'previous answer'), true);
 });
 
 console.log('\nBridge response extractor tests passed.\n');

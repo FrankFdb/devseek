@@ -57,6 +57,15 @@ test('DeepSeekAgent: reused-container visible text diff must be substantive befo
   assert.doesNotMatch(streaming, /t\.length > 0 && t !== baselineText/);
 });
 
+test('DeepSeekAgent: a new DOM message cannot replay the pre-submit assistant response', () => {
+  const agent = src('src/deepseek-agent.ts');
+  const streaming = agent.match(/private async pollForStreamingResponse[\s\S]*?await this\._clickCodeTabs/)?.[0] || '';
+
+  assert.match(agent, /isFreshDeepSeekResponseText/);
+  assert.match(streaming, /!accumulatedPrefix && !isFreshDeepSeekResponseText\(currentText, baselineText\)/);
+  assert.match(agent, /isFreshDeepSeekResponseText\(finalText, baselineText\)/);
+});
+
 test('DeepSeekAgent: streaming has an absolute wall-clock timeout', () => {
   const agent = src('src/deepseek-agent.ts');
   const streaming = agent.match(/private async pollForStreamingResponse[\s\S]*?await this\._clickCodeTabs/)?.[0] || '';

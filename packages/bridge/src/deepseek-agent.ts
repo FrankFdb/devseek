@@ -6,7 +6,11 @@ import {
 } from '@devseek-netai/shared';
 import { DEEPSEEK_URL } from './config';
 import { DEEPSEEK_DOM_SELECTORS as SELECTORS } from './deepseek-dom-selectors';
-import { extractDeepSeekResponse, isLoginUrl } from './response-extractor';
+import {
+  extractDeepSeekResponse,
+  isFreshDeepSeekResponseText,
+  isLoginUrl,
+} from './response-extractor';
 import { getStorageStatePath, loadCookies, saveCookies } from './session';
 import { BrowserSession } from './browser-session';
 import { ConversationDriver } from './conversation-driver';
@@ -965,8 +969,8 @@ export class DeepSeekAgent {
     let sawStopButton = false;
     let stableFor = 0;
     let lastTextChangedAt = Date.now();
-    // 双重门控：AI消息计数增加 OR 最后一条AI文本与baseline不同，任一触发则认为新回复已开始。
-    // 原因：DeepSeek 多轮对话可能复用已有 ds-message 容器（计数不变），此时依赖文本变化检测。
+    // Count growth or a substantive text diff identifies a candidate response.
+    // The identity gate below still requires extracted text to differ from the pre-submit baseline.
     let newMsgSeen = false;
     const resumeAfterContinueClick = async (source: string): Promise<void> => {
       console.log(`[agent] Clicked "继续生成" (${source}), resuming generation...`);
@@ -1038,6 +1042,11 @@ export class DeepSeekAgent {
       }
 
       const currentText = await this.getStreamingAssistantText(page);
+      if (!accumulatedPrefix && !isFreshDeepSeekResponseText(currentText, baselineText)) {
+        stableFor = 0;
+        await page.waitForTimeout(STREAM_POLL_INTERVAL_MS);
+        continue;
+      }
       const combinedText = mergeContinuedAssistantText(accumulatedPrefix, currentText);
 
       if (combinedText.length > lastText.length) {
@@ -1175,7 +1184,9 @@ export class DeepSeekAgent {
     // Only fire the final RESET if we actually saw a new AI message.
     // Without this guard, a timed-out request (newMsgSeen=false) would read
     // the previous response from the DOM and replay it as the current response.
-    if (newMsgSeen && finalText.length > 0 && finalText !== lastText) {
+    if (newMsgSeen
+      && isFreshDeepSeekResponseText(finalText, baselineText)
+      && finalText !== lastText) {
       onDelta('\x00RESET\x00' + finalText);
       lastText = finalText;
     }

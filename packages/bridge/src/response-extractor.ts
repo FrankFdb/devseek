@@ -24,6 +24,12 @@ export function normalizeDeepSeekAnswer(text: string): string {
     .trim();
 }
 
+/** A submitted turn cannot reuse the assistant text captured before submission. */
+export function isFreshDeepSeekResponseText(currentText: string, baselineText: string): boolean {
+  const current = normalizeDeepSeekAnswer(currentText);
+  return Boolean(current) && current !== normalizeDeepSeekAnswer(baselineText);
+}
+
 export function extractDeepSeekResponse(snapshot: DeepSeekResponseSnapshot): DeepSeekResponseExtraction {
   const lastAnswer = [...snapshot.assistantMessages]
     .reverse()
