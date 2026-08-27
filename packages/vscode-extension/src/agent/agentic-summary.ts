@@ -15,8 +15,36 @@ export function agentAnnouncementKey(text: string): string {
   return normalizeAgentUserAnnouncement(text).toLowerCase().replace(/\s+/g, ' ').slice(0, 160);
 }
 
-const DEFERRED_CHINESE_ACTION = /(?:^|[。！？；.!?;]\s*)(?:(?:我将|我会|接下来(?:我)?(?:将|会)?)(?:先|立即|开始)?|让我(?:先|开始)?|现在(?:我)?需要).{0,24}(?:读取|阅读|检查|获取|查看|打开|了解|分析|创建|修改|修复|实现|运行|执行|测试|验证)/u;
-const DEFERRED_ENGLISH_ACTION = /(?:^|[.!?;]\s*)(?:(?:I(?:'ll| will)|next I(?:'ll| will))(?: first| immediately| start(?: by| to)?)?|let me(?: first| start(?: by| to)?)|(?:now )?I need to).{0,24}(?:read|inspect|check|open|understand|analy[sz]e|create|modify|fix|implement|run|execute|test|verify|look)\b/iu;
+const CHINESE_DEFERRED_ACTOR = [
+  '(?:我将|我会|接下来(?:我)?(?:将|会)?)(?:先|立即|开始)?',
+  '我需要(?:先|立即|开始)?',
+  '让我(?:先|开始)?',
+  '现在(?:我)?需要',
+].join('|');
+const CHINESE_AGENT_ACTION = [
+  '读取', '阅读', '检查', '获取', '查看', '打开', '了解', '分析',
+  '浏览', '检索', '搜索', '探查', '调查', '调研', '排查', '定位', '审查',
+  '创建', '修改', '修复', '实现', '运行', '执行', '测试', '验证',
+].join('|');
+const DEFERRED_CHINESE_ACTION = new RegExp(
+  String.raw`(?:^|[。！？；.!?;]\s*)(?:${CHINESE_DEFERRED_ACTOR}).{0,24}(?:${CHINESE_AGENT_ACTION})`,
+  'u',
+);
+
+const ENGLISH_DEFERRED_ACTOR = [
+  String.raw`(?:I(?:'ll| will)|next I(?:'ll| will))(?: first| immediately| start(?: by| to)?)?`,
+  String.raw`let me(?: first| start(?: by| to)?)`,
+  String.raw`(?:now )?I need to`,
+].join('|');
+const ENGLISH_AGENT_ACTION = [
+  'read', 'inspect', 'check', 'open', 'understand', 'analy[sz]e',
+  'browse', 'search', 'investigate', 'explore', 'audit', 'debug', 'locate',
+  'create', 'modify', 'fix', 'implement', 'run', 'execute', 'test', 'verify', 'look',
+].join('|');
+const DEFERRED_ENGLISH_ACTION = new RegExp(
+  String.raw`(?:^|[.!?;]\s*)(?:${ENGLISH_DEFERRED_ACTOR}).{0,24}(?:${ENGLISH_AGENT_ACTION})\b`,
+  'iu',
+);
 
 function removeBoundedQuotedSegments(text: string): string {
   return text.replace(

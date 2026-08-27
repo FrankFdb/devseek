@@ -749,6 +749,45 @@ test('ModelLedUserSimulation: a deferred action announcement must continue into 
   }
 });
 
+test('ModelLedUserSimulation: investigation prose from a repair turn cannot settle as completion', async () => {
+  const prompt = '继续修复现有程序中的验证失败，修改生产实现并运行验证。';
+  let calls = 0;
+  const simulation = await runSimulation(prompt, async messages => {
+    calls += 1;
+    const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'repair-evidence.txt');
+    if (calls === 1) {
+      return {
+        text: [
+          '我已经理解了两个验证失败：状态结构不正确，图像输出也不充分。',
+          '我需要先探查工作区现有文件结构和生产实现。让我开始调查。',
+        ].join('\n'),
+        tools: [],
+      };
+    }
+    assert.match(messages.at(-1).content, /没有形成工具调用或完整直接答案/u);
+    return {
+      text: '落实调查并留下可读回的修复证据。',
+      tools: [
+        { name: 'create_file', input: { path: target, content: 'REPAIR_EVIDENCE_OK\n' } },
+        { name: 'read_file', input: { path: target } },
+        { name: 'task_complete', input: { summary: '已完成修复动作并读回证据。' } },
+      ],
+    };
+  });
+  try {
+    assert.equal(calls, 2, simulation.result.historyText);
+    assert.equal(readFileSync(path.join(simulation.root, 'repair-evidence.txt'), 'utf8'), 'REPAIR_EVIDENCE_OK\n');
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+    assert.equal(
+      simulation.harness.statuses.some(status => status.title === '等待行动提案落地'),
+      true,
+      simulation.result.historyText,
+    );
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
 test('ModelLedUserSimulation: a Markdown shell proposal is reissued through the authorized tool protocol', async () => {
   const prompt = '检查项目后创建 shell-recovery.txt，内容为 SHELL_RECOVERY_READY，并读回确认。';
   let calls = 0;

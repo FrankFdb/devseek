@@ -37,12 +37,19 @@ test('recognizes bounded Chinese and English future tool-action announcements', 
   assert.equal(isDeferredAgentActionAnnouncement(
     '现在我需要查看完整的 render() 函数。',
   ), true);
+  assert.equal(isDeferredAgentActionAnnouncement(
+    '我需要先探查工作区现有文件结构和生产实现。让我开始调查。',
+  ), true);
+  assert.equal(isDeferredAgentActionAnnouncement(
+    'I need to investigate the current implementation before repairing it.',
+  ), true);
 });
 
 test('does not reinterpret complete answers or quoted action language', () => {
   assert.equal(isDeferredAgentActionAnnouncement('CPU 和 GPU 的主要区别是并行度与延迟取向。'), false);
   assert.equal(isDeferredAgentActionAnnouncement('“I will read the file” 的中文是“我会读取文件”。'), false);
   assert.equal(isDeferredAgentActionAnnouncement('“我将读取文件”是一种未来时表达。'), false);
+  assert.equal(isDeferredAgentActionAnnouncement('“我需要先调查”表示尚未开始调查。'), false);
   assert.equal(isDeferredAgentActionAnnouncement(''), false);
 });
 
