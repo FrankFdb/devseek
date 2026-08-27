@@ -25,17 +25,28 @@ function removeBoundedQuotedSegments(text: string): string {
   );
 }
 
-function removeMarkdownFencedBlocks(text: string): string {
+interface MarkdownFenceProjection {
+  readonly visibleText: string;
+  readonly blocks: readonly { readonly info: string; readonly content: string }[];
+}
+
+function projectMarkdownFences(text: string): MarkdownFenceProjection {
   const visibleLines: string[] = [];
+  const blocks: Array<{ info: string; content: string }> = [];
   let fenceCharacter = '';
   let fenceLength = 0;
+  let fenceInfo = '';
+  let fencedLines: string[] = [];
 
   for (const line of text.split(/\r?\n/u)) {
-    const marker = line.match(/^[ \t]{0,3}(`{3,}|~{3,})/u)?.[1] ?? '';
+    const opening = line.match(/^[ \t]{0,3}(`{3,}|~{3,})[ \t]*([^\s`]*)[^\r\n]*$/u);
+    const marker = opening?.[1] ?? '';
     if (!fenceCharacter) {
       if (marker) {
         fenceCharacter = marker[0];
         fenceLength = marker.length;
+        fenceInfo = (opening?.[2] ?? '').toLowerCase();
+        fencedLines = [];
         visibleLines.push(' ');
       } else {
         visibleLines.push(line);
@@ -45,12 +56,22 @@ function removeMarkdownFencedBlocks(text: string): string {
 
     const closingMarker = line.match(/^[ \t]{0,3}(`{3,}|~{3,})[ \t]*$/u)?.[1] ?? '';
     if (closingMarker[0] === fenceCharacter && closingMarker.length >= fenceLength) {
+      blocks.push({ info: fenceInfo, content: fencedLines.join('\n') });
       fenceCharacter = '';
       fenceLength = 0;
+      fenceInfo = '';
+      fencedLines = [];
+    } else {
+      fencedLines.push(line);
     }
   }
 
-  return visibleLines.join('\n');
+  if (fenceCharacter) blocks.push({ info: fenceInfo, content: fencedLines.join('\n') });
+  return { visibleText: visibleLines.join('\n'), blocks };
+}
+
+function removeMarkdownFencedBlocks(text: string): string {
+  return projectMarkdownFences(text).visibleText;
 }
 
 /** A bounded hint that prose promises a later tool action instead of delivering an answer. */
@@ -61,4 +82,28 @@ export function isDeferredAgentActionAnnouncement(text: string): boolean {
   if (!normalized || normalized.length > 600) return false;
   const unquoted = removeBoundedQuotedSegments(normalized);
   return DEFERRED_CHINESE_ACTION.test(unquoted) || DEFERRED_ENGLISH_ACTION.test(unquoted);
+}
+
+const SHELL_FENCE_LANGUAGES = new Set(['bash', 'sh', 'shell', 'zsh', 'console', 'terminal']);
+const SHELL_COMMAND_LINE = /^(?:\$\s*)?(?:cd|pwd|ls|cat|head|tail|sed|awk|xxd|file|find|rg|grep|cmake|make|ninja|ctest|npm|pnpm|yarn|bun|node|python3?|pytest|cargo|go|dotnet|bash|sh|timeout|\.\.?\/\S+)(?:\s|$)/iu;
+
+function looksLikeShellCommandBlock(content: string): boolean {
+  const actionableLines = content.split(/\r?\n/u)
+    .map(line => line.trim())
+    .filter(line => line && !line.startsWith('#'));
+  return actionableLines.length > 0
+    && actionableLines.every(line => SHELL_COMMAND_LINE.test(line));
+}
+
+/** Detects command proposals shown as Markdown data; it never authorizes or executes them. */
+export function hasUnexecutedShellActionPresentation(text: string): boolean {
+  const normalized = normalizeAgentUserAnnouncement(text);
+  const projection = projectMarkdownFences(normalized);
+  const hasShellBlock = projection.blocks.some(block => (
+    (SHELL_FENCE_LANGUAGES.has(block.info) && block.content.trim().length > 0)
+    || (!block.info && looksLikeShellCommandBlock(block.content))
+  ));
+  if (!hasShellBlock) return false;
+  const visibleText = projection.visibleText.replace(/\s+/gu, ' ').trim();
+  return !visibleText || isDeferredAgentActionAnnouncement(normalized);
 }

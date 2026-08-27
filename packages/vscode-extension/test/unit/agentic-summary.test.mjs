@@ -17,7 +17,10 @@ execSync(
   { cwd: rootDir, stdio: 'pipe' },
 );
 
-const { isDeferredAgentActionAnnouncement } = createRequire(import.meta.url)(bundlePath);
+const {
+  hasUnexecutedShellActionPresentation,
+  isDeferredAgentActionAnnouncement,
+} = createRequire(import.meta.url)(bundlePath);
 
 after(() => rmSync(tempRoot, { recursive: true, force: true }));
 
@@ -64,6 +67,38 @@ test('classifies visible deferred prose without executing long fenced presentati
   assert.equal(isDeferredAgentActionAnnouncement([
     '```text',
     '我将读取文件并修改实现。',
+    '```',
+  ].join('\n')), false);
+});
+
+test('recognizes unexecuted shell action presentations without treating source examples as commands', () => {
+  assert.equal(hasUnexecutedShellActionPresentation([
+    '现在需要检查真实输出，我会执行以下命令：',
+    '```',
+    '# inspect the artifact',
+    'head -n 3 out.ppm',
+    'xxd out.ppm | head -n 20',
+    '```',
+  ].join('\n')), true);
+  assert.equal(hasUnexecutedShellActionPresentation([
+    '```bash',
+    'npm test',
+    '```',
+  ].join('\n')), true);
+  assert.equal(hasUnexecutedShellActionPresentation([
+    '```cpp',
+    'int main() { return 0; }',
+    '```',
+  ].join('\n')), false);
+  assert.equal(hasUnexecutedShellActionPresentation([
+    '```',
+    'const command = "npm test";',
+    '```',
+  ].join('\n')), false);
+  assert.equal(hasUnexecutedShellActionPresentation([
+    '可供人工执行的示例命令如下，本回答没有执行它：',
+    '```bash',
+    'npm test',
     '```',
   ].join('\n')), false);
 });

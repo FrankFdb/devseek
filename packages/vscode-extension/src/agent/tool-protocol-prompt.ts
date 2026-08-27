@@ -80,6 +80,16 @@ export function buildTextToolEnvelopeRecoveryPrompt(
   ].filter(Boolean).join('\n');
 }
 
+export function buildUnexecutedShellActionRecoveryPrompt(session: TextToolProtocolSession): string {
+  return [
+    '- 上一轮只在普通 Markdown 代码块中展示了 shell 命令；代码块是说明数据，不是已授权的 run_terminal 调用，因此没有执行。',
+    '- 若该命令仍是当前最小下一步，请重新判断真实参数，并只输出 1 个 run_terminal 调用，完整包在以下当前授权信封中：',
+    renderTextToolProtocolEnvelope(session, SIMPLE_RECOVERY_EXAMPLES.run_terminal),
+    '- 不要输出裸命令、shell 代码块或未来动作说明。闭合信封后立即停止，等待宿主返回真实执行结果。',
+    '- 本提示只恢复动作提案的传输格式，不授予额外权限；命令仍会独立经过范围、风险、确认和沙箱仲裁。',
+  ].join('\n');
+}
+
 function renderProtocolExample(payload: string, session?: TextToolProtocolSession): string {
   return session ? renderTextToolProtocolEnvelope(session, payload) : payload;
 }

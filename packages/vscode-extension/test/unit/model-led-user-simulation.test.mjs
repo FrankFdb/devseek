@@ -699,6 +699,55 @@ test('ModelLedUserSimulation: a deferred action announcement must continue into 
   }
 });
 
+test('ModelLedUserSimulation: a Markdown shell proposal is reissued through the authorized tool protocol', async () => {
+  const prompt = '检查项目后创建 shell-recovery.txt，内容为 SHELL_RECOVERY_READY，并读回确认。';
+  let calls = 0;
+  const simulation = await runSimulation(prompt, async messages => {
+    calls += 1;
+    const root = fakeWorkspace.workspaceFolders[0].uri.fsPath;
+    const target = path.join(root, 'shell-recovery.txt');
+    if (calls === 1) {
+      return {
+        text: '先建立可继续修订的交付文件。',
+        tools: [
+          { name: 'create_file', input: { path: target, content: 'SHELL_RECOVERY_DRAFT\n' } },
+          { name: 'read_file', input: { path: target } },
+        ],
+      };
+    }
+    if (calls === 2) {
+      return {
+        text: ['接下来查看目标。', '```', 'ls -la', 'cat shell-recovery.txt', '```'].join('\n'),
+        tools: [],
+      };
+    }
+    assert.match(messages.at(-1).content, /普通 Markdown 代码块/u);
+    assert.match(messages.at(-1).content, /run_terminal/u);
+    assert.match(messages.at(-1).content, /devseek_tool_calls/u);
+    return {
+      text: '通过真实工具完成写入和读回。',
+      tools: [
+        { name: 'replace_in_file', input: { path: target, old_str: 'SHELL_RECOVERY_DRAFT', new_str: 'SHELL_RECOVERY_READY' } },
+        { name: 'read_file', input: { path: target } },
+        { name: 'task_complete', input: { summary: '已创建并读回 shell-recovery.txt。' } },
+      ],
+    };
+  }, { runDisplayAction: 'create' });
+  try {
+    assert.equal(calls, 3, simulation.result.historyText);
+    const target = path.join(simulation.root, 'shell-recovery.txt');
+    assert.equal(existsSync(target), true, simulation.result.historyText);
+    assert.equal(readFileSync(target, 'utf8'), 'SHELL_RECOVERY_READY\n', simulation.result.historyText);
+    assert.equal(
+      simulation.harness.statuses.some(status => status.title === '等待 shell 动作通过工具执行'),
+      true,
+      simulation.result.historyText,
+    );
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
 test('ModelLedUserSimulation: late deferred prose after prior reads cannot end the turn', async () => {
   const prompt = '检查项目后创建 late-action.txt，内容为 LATE_ACTION_READY，并读回确认。';
   let calls = 0;

@@ -14,6 +14,7 @@ import { recordTerminalVerification } from './terminal-verification-adapter';
 import { ToolReadEvidenceRecorder } from './tool-read-evidence';
 import { analyzeTerminalEvidence } from './tool-loop-terminal-evidence';
 import { projectActionableDiagnosticExcerpt } from '../app/diagnostic-output-projection';
+import { isDiagnosticProjectionCommand } from '../tools/shell-command-analysis';
 
 export interface SettledTerminalObservationInput {
   readonly command: string;
@@ -66,6 +67,13 @@ export async function observeSettledTerminalExecution(
     })
     : undefined;
   const feedbackParts = [`[run_terminal: ${input.command}]\n${input.output}`];
+  if (isDiagnosticProjectionCommand(input.command)) {
+    feedbackParts.push(
+      `[terminal_evidence]\n`
+      + '当前命令包含输出截断或非断言诊断过滤，只能用于观察，不能建立或清除编译、运行、测试通过证据。\n'
+      + '即使显示 exitCode=0，也可能只是末级过滤器成功。请去掉 head/tail/sed 或诊断 grep/rg 管道后原样重跑待验证命令；终端宿主会限制反馈长度。',
+    );
+  }
   if (canonicalEvidence.kind !== 'other' && !canonicalEvidence.ok) {
     feedbackParts.push(
       `[terminal_evidence]\n`

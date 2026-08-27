@@ -46,9 +46,9 @@ import { recoverRequirementReviewNoToolCompletion } from './requirement-review-n
 import {
   agentAnnouncementKey,
   cleanAgentFinalSummaryForUser,
-  isDeferredAgentActionAnnouncement,
   normalizeAgentUserAnnouncement,
 } from './agentic-summary';
+import { resolveNoToolActionRecovery } from './no-tool-action-recovery';
 import {
   getTerminalRecoveryProtocol,
   TerminalCommandProgressLedger,
@@ -643,20 +643,18 @@ export async function runAgenticLoop(
         appendUserFeedback(reviewRecovery.feedback);
         continue;
       }
-      if (!callbacks.signal?.aborted
-        && noToolRounds < 2
-        && isDeferredAgentActionAnnouncement(stripped)) {
+      const actionRecovery = resolveNoToolActionRecovery({
+        text: stripped, noToolRounds, promptRequiresTools, sawWorkTool, textToolProtocol,
+        missingEvidenceCount: evidenceWithoutTools.missingEvidence.length,
+      });
+      if (!callbacks.signal?.aborted && actionRecovery) {
         noToolRounds++;
         await emitAgenticCorrectionStatus(
-          '等待行动提案落地',
-          '当前回复只预告了后续动作，没有提供完整答案或工具提案。DevSeek 正在要求模型重新确认并落实本轮意图。',
-          '要求模型落实预告动作',
+          actionRecovery.statusTitle,
+          actionRecovery.statusDetail,
+          actionRecovery.activityLabel,
         );
-        appendUserFeedback([
-          '【系统反馈】上一轮只说明了准备采取的后续动作，但没有形成工具调用或完整直接答案。',
-          '请重新判断当前用户目标：若需要读取、修改或运行，请立即调用对应工具；若应直接回答，请现在给出完整答案，不要再停在未来动作预告。',
-          '本提示不授予任何额外权限，每个具体工具动作仍会独立仲裁。',
-        ].join('\n'));
+        appendUserFeedback(actionRecovery.feedback);
         continue;
       }
       if (!callbacks.signal?.aborted && promptRequiresTools && !sawWorkTool && noToolRounds < 2) {

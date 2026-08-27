@@ -109,3 +109,21 @@ test('settled terminal observation preserves failed execution and repair feedbac
   assert.match(result.terminalEvidence[0].detail, /SyntaxError: Unexpected token/);
   assert.match(result.feedbackParts[1], /验证命令未通过/);
 });
+
+test('settled terminal observation explains why a successful diagnostic projection cannot pass validation', async () => {
+  const result = await observeSettledTerminalExecution({
+    command: './build/math_visual_lab --self-test 2>&1 | head -20',
+    output: 'all checks passed\n[退出码] 0',
+    workdir: '/workspace',
+    workspaceRoot: '/workspace',
+    toolReceipt: receipt('completed', 0),
+    readEvidenceRecorder: recorder(),
+    writtenFiles: [],
+  });
+
+  assert.equal(result.terminalEvidence[0].ok, true);
+  assert.equal(result.feedbackParts.length, 2);
+  assert.match(result.feedbackParts[1], /只能用于观察/);
+  assert.match(result.feedbackParts[1], /末级过滤器成功/);
+  assert.match(result.feedbackParts[1], /去掉 head\/tail\/sed/);
+});
