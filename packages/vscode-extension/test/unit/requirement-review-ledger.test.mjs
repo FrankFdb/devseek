@@ -299,6 +299,7 @@ test('failed independent review renders a domain-neutral counterexample protocol
   assert.match(failed, /优先验证反例：Submit an unmatched buy with quantity 5/);
   assert.doesNotMatch(failed, /定点修复协议|OrderNode node/);
   assert.match(failed, /全部成立的反例都取得针对性验证后，再运行项目既有验证作为大 case 回归/);
+  assert.match(ledger.recoveryContext(), /Submit an unmatched buy with quantity 5/);
 });
 
 test('indeterminate independent review retries through final-source evidence instead of blind source edits', () => {

@@ -232,24 +232,37 @@ test('ModelLedUserSimulation: out-of-envelope ReAct actions are quarantined and 
     const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'result.txt');
     if (calls === 1) {
       return {
-        text: `我先读取目标文件。Action: read_fileAction Input: {"path":"${target}"}`,
+        text: `我先创建目标文件。\nAction: create_file\nAction Input: {"path":"${target}","content":"AUTHORIZED_REISSUE_OK\\n"}`,
         tools: [],
       };
     }
 
-    assert.match(messages.at(-1).content, /授权信封之外/u);
+    if (calls === 2) {
+      assert.match(messages.at(-1).content, /授权信封之外/u);
+      assert.match(messages.at(-1).content, /尝试调用 create_file/u);
+      return {
+        text: '按当前授权协议重新发出唯一写入动作。',
+        tools: [
+          { name: 'create_file', input: { path: target, content: 'AUTHORIZED_REISSUE_OK\n' } },
+          { name: 'read_file', input: { path: target } },
+          { name: 'task_complete', input: { summary: `已创建并读回 ${target}。` } },
+        ],
+      };
+    }
+    assert.match(messages.at(-1).content, /只执行一个具体工具/u);
     return {
-      text: '按当前授权协议重新发出动作。',
+      text: '被隔离的写入已恢复，现在读回并结算。',
       tools: [
-        { name: 'create_file', input: { path: target, content: 'AUTHORIZED_REISSUE_OK\n' } },
         { name: 'read_file', input: { path: target } },
         { name: 'task_complete', input: { summary: `已创建并读回 ${target}。` } },
       ],
     };
   }, { runDisplayAction: 'create' });
   try {
-    assert.equal(calls, 2, simulation.result.historyText);
-    assert.equal(readFileSync(path.join(simulation.root, 'result.txt'), 'utf8'), 'AUTHORIZED_REISSUE_OK\n');
+    assert.equal(calls, 3, simulation.result.historyText);
+    const resultPath = path.join(simulation.root, 'result.txt');
+    assert.equal(existsSync(resultPath), true, simulation.result.historyText);
+    assert.equal(readFileSync(resultPath, 'utf8'), 'AUTHORIZED_REISSUE_OK\n');
     const recoveryStates = simulation.harness.statuses
       .filter(status => (
         status.phase === 'repair'
@@ -274,16 +287,25 @@ test('ModelLedUserSimulation: protocol recovery cannot settle from a prose-only 
     if (calls === 2) {
       return { text: '我接下来会创建文件。', tools: [] };
     }
+    if (calls === 3) {
+      return {
+        text: '安全重发唯一写入动作。',
+        tools: [
+          { name: 'create_file', input: { path: target, content: 'RECOVERY_PENDING_OK\n' } },
+          { name: 'task_complete', input: { summary: '已完成恢复写入。' } },
+        ],
+      };
+    }
     return {
-      text: '安全重发写入动作。',
+      text: '依据写入结果完成读回。',
       tools: [
-        { name: 'create_file', input: { path: target, content: 'RECOVERY_PENDING_OK\n' } },
+        { name: 'read_file', input: { path: target } },
         { name: 'task_complete', input: { summary: '已完成恢复写入。' } },
       ],
     };
   }, { runDisplayAction: 'create' });
   try {
-    assert.equal(calls, 3, simulation.result.historyText);
+    assert.equal(calls, 4, simulation.result.historyText);
     assert.equal(readFileSync(path.join(simulation.root, 'recovered.txt'), 'utf8'), 'RECOVERY_PENDING_OK\n');
     assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
     assert.equal(
@@ -324,18 +346,27 @@ test('ModelLedUserSimulation: successful command evidence cannot settle a typo-c
         tools: [],
       };
     }
-    assert.match(messages.at(-1).content, /仅识别到上一轮尝试调用 replace_in_file/u);
+    if (calls === 3) {
+      assert.match(messages.at(-1).content, /仅识别到上一轮尝试调用 replace_in_file/u);
+      return {
+        text: '重新判断后以唯一授权动作落实修复。',
+        tools: [
+          { name: 'create_file', input: { path: target, content: 'RECOVERED_AFTER_PROTOCOL_OK\n' } },
+          { name: 'read_file', input: { path: target } },
+          { name: 'task_complete', input: { summary: '已完成协议恢复后的修复与读回。' } },
+        ],
+      };
+    }
     return {
-      text: '重新判断后以完整授权动作落实修复。',
+      text: '写入已经完成，现在读回并结算。',
       tools: [
-        { name: 'create_file', input: { path: target, content: 'RECOVERED_AFTER_PROTOCOL_OK\n' } },
         { name: 'read_file', input: { path: target } },
         { name: 'task_complete', input: { summary: '已完成协议恢复后的修复与读回。' } },
       ],
     };
   }, { runDisplayAction: 'create' });
   try {
-    assert.equal(calls, 3, simulation.result.historyText);
+    assert.equal(calls, 4, simulation.result.historyText);
     assert.equal(readFileSync(path.join(simulation.root, 'result.txt'), 'utf8'), 'RECOVERED_AFTER_PROTOCOL_OK\n');
     assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
   } finally {
@@ -375,18 +406,27 @@ test('ModelLedUserSimulation: validation and reads cannot discharge a malformed 
         tools: [{ name: 'read_file', input: { path: target } }],
       };
     }
-    assert.match(messages.at(-1).content, /尚未解决上一轮被隔离的结构化动作/u);
+    if (calls === 4) {
+      assert.match(messages.at(-1).content, /尚未解决上一轮被隔离的结构化动作/u);
+      return {
+        text: '以唯一有效文件修改解决待处理动作。',
+        tools: [
+          { name: 'replace_in_file', input: { path: target, old_str: 'OLD', new_str: 'MUTATION_DEBT_CLEARED' } },
+          { name: 'read_file', input: { path: target } },
+          { name: 'task_complete', input: { summary: '已完成修改并读回。' } },
+        ],
+      };
+    }
     return {
-      text: '以有效文件修改解决待处理动作。',
+      text: '修改已经落盘，现在读回并结算。',
       tools: [
-        { name: 'replace_in_file', input: { path: target, old_str: 'OLD', new_str: 'MUTATION_DEBT_CLEARED' } },
         { name: 'read_file', input: { path: target } },
         { name: 'task_complete', input: { summary: '已完成修改并读回。' } },
       ],
     };
   }, { runDisplayAction: 'repair' });
   try {
-    assert.equal(calls, 4, simulation.result.historyText);
+    assert.equal(calls, 5, simulation.result.historyText);
     assert.equal(readFileSync(path.join(simulation.root, 'result.txt'), 'utf8'), 'MUTATION_DEBT_CLEARED');
     assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
     assert.deepEqual(
@@ -400,7 +440,7 @@ test('ModelLedUserSimulation: validation and reads cannot discharge a malformed 
   }
 });
 
-test('ModelLedUserSimulation: quarantined mutation recovery starts a fresh investigation cohort', async () => {
+test('ModelLedUserSimulation: quarantined mutation recovery cannot reset an exhausted investigation cohort', async () => {
   const prompt = '调查现有实现后，把 result.txt 中的 OLD 修复为 RECOVERED_COHORT_OK，并读回确认。';
   let calls = 0;
   const simulation = await runSimulation(prompt, async messages => {
@@ -460,13 +500,14 @@ test('ModelLedUserSimulation: quarantined mutation recovery starts a fresh inves
     };
   }, { runDisplayAction: 'repair' });
   try {
-    assert.equal(calls, 13, simulation.result.historyText);
+    assert.equal(calls, 12, simulation.result.historyText);
     assert.equal(
       readFileSync(path.join(simulation.root, 'result.txt'), 'utf8'),
-      'RECOVERED_COHORT_OK',
+      'OLD',
       simulation.result.historyText,
     );
-    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+    assert.equal(simulation.result.tasksFailed, 1, simulation.result.historyText);
+    assert.match(simulation.result.historyText, /避免自主模式继续无界调查/u);
     assert.equal(
       simulation.harness.statuses.filter(
         status => status.title === '项目证据已收集，正在要求形成交付',
@@ -533,20 +574,29 @@ test('ModelLedUserSimulation: invalid authenticated mutation recovers with its l
       };
     }
 
-    const recoveryPrompt = messages.at(-1).content;
-    assert.match(recoveryPrompt, /仅识别到上一轮尝试调用 create_file/u);
-    assert.match(recoveryPrompt, /```xml[\s\S]*<create_file>/u);
+    if (calls === 2) {
+      const recoveryPrompt = messages.at(-1).content;
+      assert.match(recoveryPrompt, /仅识别到上一轮尝试调用 create_file/u);
+      assert.match(recoveryPrompt, /```xml[\s\S]*<create_file>/u);
+      return {
+        text: '按无损恢复协议重新落实唯一写入。',
+        tools: [
+          { name: 'create_file', input: { path: target, content: 'RECOVERED_FORMAT_OK\n' } },
+          { name: 'read_file', input: { path: target } },
+          { name: 'task_complete', input: { summary: '已创建并读回 recovered-format.txt。' } },
+        ],
+      };
+    }
     return {
-      text: '按无损恢复协议重新落实写入。',
+      text: '写入已完成，现在读回并结算。',
       tools: [
-        { name: 'create_file', input: { path: target, content: 'RECOVERED_FORMAT_OK\n' } },
         { name: 'read_file', input: { path: target } },
         { name: 'task_complete', input: { summary: '已创建并读回 recovered-format.txt。' } },
       ],
     };
   }, { runDisplayAction: 'create' });
   try {
-    assert.equal(calls, 2, simulation.result.historyText);
+    assert.equal(calls, 3, simulation.result.historyText);
     assert.equal(
       readFileSync(path.join(simulation.root, 'recovered-format.txt'), 'utf8'),
       'RECOVERED_FORMAT_OK\n',

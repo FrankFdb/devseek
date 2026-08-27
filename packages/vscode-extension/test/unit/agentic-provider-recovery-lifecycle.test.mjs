@@ -75,3 +75,52 @@ test('provider recovery lifecycle keeps a rejected mutation pending across reads
   assert.equal(lifecycle.hasUnresolvedToolAction(), false);
   assert.deepEqual(statuses.map(status => status.state), ['completed']);
 });
+
+test('provider recovery lifecycle locally admits only one concrete recovery action', () => {
+  const lifecycle = new AgenticProviderRecoveryLifecycle('src/x11_app.cpp', 'repair', {
+    onAgentStatus() {},
+  });
+  lifecycle.begin('malformed-mutation', ['replace_in_file']);
+
+  const screened = lifecycle.screenToolProposals([
+    { name: 'manage_todo_list' },
+    { name: 'read_file' },
+    { name: 'read_file' },
+    { name: 'replace_in_file' },
+    { name: 'task_complete' },
+  ]);
+
+  assert.deepEqual([...screened.blockedToolIndexes], [0, 2, 3, 4]);
+  assert.match(screened.warnings[0], /只执行一个具体工具/u);
+  assert.equal(lifecycle.hasUnresolvedToolAction(), true);
+});
+
+test('provider recovery lifecycle blocks actions unrelated to the quarantined proposal', () => {
+  const lifecycle = new AgenticProviderRecoveryLifecycle('src/main.cpp', 'repair', {
+    onAgentStatus() {},
+  });
+  lifecycle.begin('malformed-read', ['read_file']);
+
+  const screened = lifecycle.screenToolProposals([
+    { name: 'create_file' },
+    { name: 'read_file' },
+    { name: 'task_complete' },
+  ]);
+
+  assert.deepEqual([...screened.blockedToolIndexes], [0, 2]);
+  assert.match(screened.warnings[0], /不匹配/u);
+});
+
+test('provider recovery lifecycle does not screen ordinary provider turns', () => {
+  const lifecycle = new AgenticProviderRecoveryLifecycle('src/main.cpp', 'explore', {
+    onAgentStatus() {},
+  });
+
+  const screened = lifecycle.screenToolProposals([
+    { name: 'read_file' },
+    { name: 'replace_in_file' },
+  ]);
+
+  assert.deepEqual([...screened.blockedToolIndexes], []);
+  assert.deepEqual(screened.warnings, []);
+});

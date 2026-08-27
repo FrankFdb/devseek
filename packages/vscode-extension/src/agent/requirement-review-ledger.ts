@@ -230,6 +230,12 @@ export class RequirementReviewLedger {
     return undefined;
   }
 
+  recoveryContext(): string | undefined {
+    return this.pending?.decision?.status === 'failed'
+      ? renderBlockingDecision(this.pending.decision)
+      : undefined;
+  }
+
   completionObligation(): RequirementReviewCompletionObligation | undefined {
     if (!this.pending) return undefined;
     if (!this.pending.freshSourceEvidenceReady) {

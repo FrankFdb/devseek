@@ -32,6 +32,7 @@ export interface ProviderRequirementReviewInput {
 
 export interface ProviderRequirementReviewService {
   request(input: RequirementReviewInput): Promise<ProviderRequirementReviewOutcome>;
+  recoveryContext(): string | undefined;
   completionObligation(): RequirementReviewCompletionObligation | undefined;
   completionBlocker(): string | undefined;
   recoverNoToolCompletion(consecutiveRound: number): RequirementReviewNoToolRecovery | undefined;
@@ -129,6 +130,7 @@ export function createProviderRequirementReviewService(
         }
         : { kind: 'settled' };
     },
+    recoveryContext: () => ledger.recoveryContext(),
     completionObligation: () => ledger.completionObligation(),
     completionBlocker: () => ledger.completionBlocker(),
     recoverNoToolCompletion: consecutiveRound => ledger.recoverNoToolCompletion(consecutiveRound),

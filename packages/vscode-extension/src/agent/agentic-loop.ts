@@ -346,6 +346,7 @@ export async function runAgenticLoop(
       readEvidencePaths: [...allReadEvidencePaths],
       writtenFiles: allWrittenFiles,
       terminalEvidence: allTerminalEvidence,
+      activeRepairContext: requirementReview.recoveryContext(),
       textToolProtocol,
       messages,
       totalChars,
@@ -365,7 +366,6 @@ export async function runAgenticLoop(
       contextInvestigation.reset();
     }
     if (recovery.recovered) {
-      deliveryConvergence.reset();
       providerRecovery.begin(providerFailure?.operationId, providerFailure?.observedToolNames);
       return 'recovered';
     }
@@ -477,7 +477,6 @@ export async function runAgenticLoop(
       textToolProtocol,
     });
     let providerTurn: Awaited<ReturnType<typeof chatWithMessages>>;
-    let providerRecoveryCompletedThisRound = false;
     const useFreshProviderSession = roundCount === 1 || forceProviderNewSessionNextTurn;
     if (forceProviderNewSessionNextTurn) {
       callbacks.onToolActivity?.('label', '重建模型会话并从任务事实恢复');
@@ -538,12 +537,6 @@ export async function runAgenticLoop(
       promptRequiresTools = true;
       if (tools.some(tool => tool.purpose === 'workspace-mutation')) promptRequiresFileChange = true;
     }
-    if (tools.length > 0) {
-      providerRecoveryCompletedThisRound = await providerRecovery.completeAcceptedResponse(
-        'tool-protocol', providerOperationId, tools.map(tool => tool.name),
-      );
-    }
-
     messages.push({ role: 'assistant', content: text }, ...postProviderSteerMessages);
     lastProviderText = text;
     totalChars += text.length;
@@ -725,8 +718,17 @@ export async function runAgenticLoop(
 
     const blockedRepeatedToolIndexes = new Set<number>();
     const suppressedTools: ToolSuppressionEvidence[] = [];
-    const loopWarnings: string[] = [providerRecovery.unresolvedToolActionFeedback(textToolProtocol)].filter(Boolean);
+    const loopWarnings: string[] = [];
     const hasFileWriteIntentThisRound = tools.some(tool => tool.purpose === 'workspace-mutation');
+    const providerRecoveryScreen = providerRecovery.screenToolProposals(tools);
+    for (const toolIndex of providerRecoveryScreen.blockedToolIndexes) {
+      blockedRepeatedToolIndexes.add(toolIndex);
+      suppressedTools.push({
+        tool: tools[toolIndex]?.name ?? 'unknown',
+        reason: 'provider-recovery-action-budget',
+      });
+    }
+    loopWarnings.push(...providerRecoveryScreen.warnings);
     tools.forEach((tool, toolIndex) => {
       if (tool.name !== 'run_terminal') return;
       const command = typeof tool.input.command === 'string' ? tool.input.command.trim() : '';
@@ -750,6 +752,13 @@ export async function runAgenticLoop(
     const toolsToExecute = blockedRepeatedToolIndexes.size > 0
       ? tools.filter((_, toolIndex) => !blockedRepeatedToolIndexes.has(toolIndex))
       : tools;
+    if (toolsToExecute.length > 0) {
+      await providerRecovery.completeAcceptedResponse(
+        'tool-protocol', providerOperationId, toolsToExecute.map(tool => tool.name),
+      );
+    }
+    const unresolvedProviderActionFeedback = providerRecovery.unresolvedToolActionFeedback(textToolProtocol);
+    if (unresolvedProviderActionFeedback) loopWarnings.push(unresolvedProviderActionFeedback);
     const progressEpochBeforeTools = progressEpoch;
 
     const loopRes = await executeScheduledToolLoop(
@@ -997,11 +1006,10 @@ export async function runAgenticLoop(
       gatheredEvidenceCount: allReadEvidencePaths.size + allEvidenceRefs.length,
       ...resolveDeliveryRoundActivity({
         hasContextInvestigationActivity: roundHasContextInvestigationActivity,
-        hasWorkspaceMutationProposal: hasFileWriteIntentThisRound,
+        hasAcceptedWorkspaceMutation: (loopRes.writtenFiles?.length ?? 0) > 0,
         acceptedRecoveryContextRefresh: contextScreen.acceptedRecoveryContextRefresh,
         expectation: deliveryExpectation,
         hasNovelValidationTerminalProgress: roundHasNovelValidationTerminalProgress,
-        providerRecoveryCompleted: providerRecoveryCompletedThisRound,
       }),
     });
     if (!callbacks.signal?.aborted && deliveryConvergenceResult.kind === 'correct') {

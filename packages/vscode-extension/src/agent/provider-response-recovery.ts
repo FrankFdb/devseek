@@ -33,6 +33,7 @@ export interface AgentProviderRecoveryPromptInput {
   readEvidencePaths: readonly string[];
   writtenFiles: readonly WrittenFileEvidence[];
   terminalEvidence: readonly TerminalEvidence[];
+  activeRepairContext?: string;
   textToolProtocol: TextToolProtocolSession;
   partialResponseLength?: number;
 }
@@ -199,6 +200,7 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
       observedToolNames: input.failure.observedToolNames,
     })
     : '';
+  const activeRepairContext = truncateMultiline(input.activeRepairContext ?? '', 6000);
 
   return {
     role: 'user',
@@ -214,6 +216,9 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
       `已写入文件：${writtenPaths || '暂无'}`,
       `终端/验证证据：${terminalFacts || '暂无'}`,
       `当前 Todo：${todos || '暂无'}`,
+      activeRepairContext
+        ? `\n当前活动修复契约（由独立需求审查账本保留，恢复会话必须继续完成）：\n${activeRepairContext}`
+        : '',
       blockingTerminalFailure
         ? `\n活动失败修复契约：\n${buildTerminalFailureRepairFeedback(blockingTerminalFailure, [], 'repair')}`
         : '',
@@ -258,4 +263,11 @@ function truncateSingleLine(text: string, maxChars: number): string {
   const clean = String(text || '').replace(/\s+/g, ' ').trim();
   if (clean.length <= maxChars) return clean;
   return `${clean.slice(0, maxChars - 80)}...[已截断 ${clean.length - maxChars + 80} 字符]`;
+}
+
+function truncateMultiline(text: string, maxChars: number): string {
+  const clean = String(text || '').trim();
+  if (clean.length <= maxChars) return clean;
+  const suffix = `\n...[活动修复契约已截断 ${clean.length - maxChars} 字符]`;
+  return `${clean.slice(0, Math.max(0, maxChars - suffix.length))}${suffix}`;
 }

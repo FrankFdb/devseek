@@ -94,6 +94,11 @@ test('Agent provider recovery prompt keeps only durable facts and forces small t
       exitCode: 1,
       detail: 'FAIL: quiz state incorrect',
     }],
+    activeRepairContext: [
+      '【独立需求审查：未通过】',
+      '1. [P1] State output bypasses LessonController (src/main.cpp:187)',
+      '可复现反例：选择分数课程后 state.json 仍输出 fraction.selected 平铺字段。',
+    ].join('\n'),
     textToolProtocol: {
       version: 'devseek.text-tools/v1',
       channelId: 'durable-facts-channel',
@@ -121,6 +126,8 @@ test('Agent provider recovery prompt keeps only durable facts and forces small t
   assert.match(prompt, /输出闭合信封后立即停止/);
   assert.match(prompt, /正式既有工程任务必须继续沿既有入口/);
   assert.match(prompt, /FAIL: quiz state incorrect/);
+  assert.match(prompt, /当前活动修复契约/);
+  assert.match(prompt, /state\.json 仍输出 fraction\.selected 平铺字段/);
   assert.match(prompt, /src\/lifting\/lifting_manager\.hpp/);
   assert.equal(prompt.match(/```xml/g)?.length ?? 0, 0);
 });

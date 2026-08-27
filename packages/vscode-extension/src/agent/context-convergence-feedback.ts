@@ -49,11 +49,10 @@ export function resolveDeliveryConvergencePending(input: DeliveryConvergencePend
 
 export interface DeliveryRoundActivityInput {
   readonly hasContextInvestigationActivity: boolean;
-  readonly hasWorkspaceMutationProposal: boolean;
+  readonly hasAcceptedWorkspaceMutation: boolean;
   readonly acceptedRecoveryContextRefresh: boolean;
   readonly expectation: DeliveryConvergenceExpectation;
   readonly hasNovelValidationTerminalProgress: boolean;
-  readonly providerRecoveryCompleted: boolean;
 }
 
 export interface DeliveryRoundActivity {
@@ -61,13 +60,12 @@ export interface DeliveryRoundActivity {
   readonly cohortBoundaryActivity: boolean;
 }
 
-/** Separates pure context drift from action/recovery boundaries owned elsewhere. */
+/** Separates pure context drift from locally accepted progress boundaries. */
 export function resolveDeliveryRoundActivity(
   input: DeliveryRoundActivityInput,
 ): DeliveryRoundActivity {
-  const cohortBoundaryActivity = input.hasWorkspaceMutationProposal
-    || input.acceptedRecoveryContextRefresh
-    || input.providerRecoveryCompleted;
+  const cohortBoundaryActivity = input.hasAcceptedWorkspaceMutation
+    || input.acceptedRecoveryContextRefresh;
   const novelUnclassifiedValidation = input.expectation === 'unclassified'
     && input.hasNovelValidationTerminalProgress;
   return Object.freeze({

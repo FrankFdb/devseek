@@ -98,14 +98,13 @@ test('delivery pending resolution preserves read-only and review-repair boundari
   }), true);
 });
 
-test('delivery activity separates pure context drift from action and recovery boundaries', () => {
+test('delivery activity separates pure context drift from locally accepted progress boundaries', () => {
   const pureContext = {
     hasContextInvestigationActivity: true,
-    hasWorkspaceMutationProposal: false,
+    hasAcceptedWorkspaceMutation: false,
     acceptedRecoveryContextRefresh: false,
     expectation: 'mutation',
     hasNovelValidationTerminalProgress: false,
-    providerRecoveryCompleted: false,
   };
 
   assert.deepEqual(resolveDeliveryRoundActivity(pureContext), {
@@ -114,15 +113,11 @@ test('delivery activity separates pure context drift from action and recovery bo
   });
   assert.deepEqual(resolveDeliveryRoundActivity({
     ...pureContext,
-    hasWorkspaceMutationProposal: true,
+    hasAcceptedWorkspaceMutation: true,
   }), { investigationActivity: false, cohortBoundaryActivity: true });
   assert.deepEqual(resolveDeliveryRoundActivity({
     ...pureContext,
     acceptedRecoveryContextRefresh: true,
-  }), { investigationActivity: false, cohortBoundaryActivity: true });
-  assert.deepEqual(resolveDeliveryRoundActivity({
-    ...pureContext,
-    providerRecoveryCompleted: true,
   }), { investigationActivity: false, cohortBoundaryActivity: true });
   assert.deepEqual(resolveDeliveryRoundActivity({
     ...pureContext,
@@ -173,7 +168,7 @@ test('delivery convergence ignores non-investigation turns and opens a new cohor
   }).kind, 'correct');
 });
 
-test('delivery attempts and explicit Provider recovery start fresh pure-investigation cohorts', () => {
+test('only accepted progress starts a fresh pure-investigation cohort', () => {
   const ledger = new DeliveryConvergenceLedger();
   assert.equal(ledger.observe(unresolvedMutation).kind, 'continue');
   assert.equal(ledger.observe(unresolvedMutation).kind, 'continue');

@@ -31,6 +31,7 @@ export interface AgenticProviderRecoveryBoundaryInput {
   readonly readEvidencePaths: readonly string[];
   readonly writtenFiles: readonly WrittenFileEvidence[];
   readonly terminalEvidence: readonly TerminalEvidence[];
+  readonly activeRepairContext?: string;
   readonly textToolProtocol: TextToolProtocolSession;
   readonly messages: ChatMessage[];
   readonly totalChars: number;
@@ -42,6 +43,13 @@ export interface AgenticProviderRecoveryBoundaryInput {
   readonly taskAction: AgentTaskAction;
   readonly callbacks: Pick<AgentLoopCallbacks, 'signal' | 'onToolActivity' | 'onAgentStatus'>;
 }
+
+export interface AgenticProviderRecoveryToolScreen {
+  readonly blockedToolIndexes: ReadonlySet<number>;
+  readonly warnings: readonly string[];
+}
+
+const PROVIDER_RECOVERY_META_TOOL_NAMES = new Set(['manage_todo_list', 'task_complete']);
 
 export interface AgenticProviderRecoveryBoundaryResult {
   readonly recovered: boolean;
@@ -75,6 +83,43 @@ export class AgenticProviderRecoveryLifecycle {
 
   pendingObservedToolNames(): readonly string[] {
     return Object.freeze([...this.observedToolNames]);
+  }
+
+  /** Admits one concrete action while a rejected Provider action is being reconstructed. */
+  screenToolProposals(tools: readonly { readonly name: string }[]): AgenticProviderRecoveryToolScreen {
+    const blockedToolIndexes = new Set<number>();
+    if (!this.hasUnresolvedToolAction()) {
+      return Object.freeze({ blockedToolIndexes, warnings: Object.freeze([]) });
+    }
+
+    let admittedAction = false;
+    tools.forEach((tool, toolIndex) => {
+      if (PROVIDER_RECOVERY_META_TOOL_NAMES.has(tool.name)
+        || !this.isRecoveryActionAllowed(tool.name)) {
+        blockedToolIndexes.add(toolIndex);
+        return;
+      }
+      if (admittedAction) {
+        blockedToolIndexes.add(toolIndex);
+        return;
+      }
+      admittedAction = true;
+    });
+
+    const warnings = blockedToolIndexes.size > 0
+      ? Object.freeze([
+        `【系统恢复】未解决动作的恢复轮只执行一个具体工具，且该工具必须匹配被隔离动作；宿主已跳过 ${blockedToolIndexes.size} 个额外、不匹配或元状态工具。请依据唯一真实结果继续，未执行动作必须在下一轮重新提议。`,
+      ])
+      : Object.freeze([]);
+    return Object.freeze({ blockedToolIndexes, warnings });
+  }
+
+  private isRecoveryActionAllowed(name: string): boolean {
+    if (this.observedToolNames.has(name)) return true;
+    const restoresRejectedWrite = isFileWriteToolName(name)
+      && [...this.observedToolNames].some(isFileWriteToolName);
+    if (restoresRejectedWrite) return true;
+    return name === 'read_file' && [...this.observedToolNames].some(isFileWriteToolName);
   }
 
   unresolvedToolActionFeedback(session: TextToolProtocolSession): string {
@@ -206,6 +251,7 @@ export async function recoverAgenticProviderFailure(
     readEvidencePaths: input.readEvidencePaths,
     writtenFiles: input.writtenFiles,
     terminalEvidence: input.terminalEvidence,
+    activeRepairContext: input.activeRepairContext,
     textToolProtocol: input.textToolProtocol,
     partialResponseLength: input.partialResponseLength,
   });

@@ -2506,8 +2506,8 @@ test('Architecture: validated source changes require fresh source review before 
     'acceptedRecoveryContextRefresh: contextScreen.acceptedRecoveryContextRefresh',
     'accepted failed-action context refresh must reach delivery convergence',
   );
-  assertContains(contextConvergence, 'const cohortBoundaryActivity = input.hasWorkspaceMutationProposal', 'effect attempts and their bounded evidence refresh must start a fresh pure-investigation cohort');
-  assertContains(agenticLoop, 'deliveryConvergence.reset()', 'a rebuilt Provider action recovery must start a fresh delivery-investigation cohort');
+  assertContains(contextConvergence, 'const cohortBoundaryActivity = input.hasAcceptedWorkspaceMutation', 'only locally accepted mutations and bounded evidence refresh may start a fresh pure-investigation cohort');
+  assertDoesNotContain(agenticLoop, 'deliveryConvergence.reset()', 'a Provider session rebuild must preserve delivery-investigation pressure');
   assertContains(
     reviewNoToolRecovery,
     'requirementReview.completionBlocker()',
@@ -3160,6 +3160,9 @@ test('Agentic loop: visible correction and context convergence are owned by Agen
   assertContains(agenticProviderRecoveryBoundary, "'provider-response-corruption'", 'provider response recovery must have a stable evidence reason');
   assertContains(agenticLoop, 'providerRecovery.completeAcceptedResponse', 'agent loop must close provider recovery at the provider response boundary');
   assertContains(agenticProviderRecoveryBoundary, 'class AgenticProviderRecoveryLifecycle', 'provider recovery boundary must own its pending lifecycle');
+  assertContains(agenticProviderRecoveryBoundary, 'screenToolProposals', 'provider recovery boundary must own local recovery action admission');
+  assertContains(agenticLoop, 'providerRecovery.screenToolProposals(tools)', 'agent loop must apply the local recovery action budget before tool execution');
+  assertContains(agenticLoop, 'activeRepairContext: requirementReview.recoveryContext()', 'provider rebuilds must preserve the active independent-review repair contract');
   assertContains(runContext, 'provider-recovery-status-observed', 'RunContext must observe provider retry progress without claiming workspace recovery authority');
   assertDoesNotContain(runContext, 'collectRecoverableAdverseOperationIds', 'one recovery lane must not sweep unrelated adverse operations from the shared ledger');
   assertContains(agenticLoop, 'inspectIncompleteAuthorizedTextToolProtocol(text, textToolProtocol)', 'incomplete current-channel envelopes must preserve observed action names without granting execution authority');
