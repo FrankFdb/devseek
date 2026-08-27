@@ -92,9 +92,12 @@ function resolveVsCodeVerificationRequirement(input: {
   return false;
 }
 
-function projectTaskMode(mode: ExecutionMode): CodingTaskMode {
+function projectTaskMode(mode: ExecutionMode): CodingTaskMode | undefined {
   if (mode === 'inspect' || mode === 'plan') return 'review';
   if (mode === 'edit' || mode === 'run' || mode === 'destructive') return 'change';
+  // Model-led is an unresolved action orientation, not an authoritative
+  // read-only decision. A receipt-settled effectful model action owns revision.
+  if (mode === 'model-led') return undefined;
   return 'explain';
 }
 

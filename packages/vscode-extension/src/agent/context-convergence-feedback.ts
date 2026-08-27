@@ -14,7 +14,8 @@ const MUTATION_ROUNDS_BEFORE_CORRECTION = 2;
 const MUTATION_EVIDENCE_BEFORE_CORRECTION = 6;
 const UNCLASSIFIED_ROUNDS_BEFORE_CORRECTION = 6;
 const UNCLASSIFIED_EVIDENCE_BEFORE_CORRECTION = 12;
-const MAX_DELIVERY_CORRECTIONS = 2;
+const MAX_MUTATION_DELIVERY_CORRECTIONS = 2;
+const MAX_UNCLASSIFIED_DELIVERY_CORRECTIONS = 3;
 const MAX_ACTIONABLE_REPAIR_CORRECTIONS = 3;
 
 export type DeliveryConvergenceExpectation = 'mutation' | 'unclassified' | 'none';
@@ -104,9 +105,7 @@ export class DeliveryConvergenceLedger {
       return CONTINUE_RESULT;
     }
 
-    const correctionLimit = input.actionableRepairPending === true
-      ? MAX_ACTIONABLE_REPAIR_CORRECTIONS
-      : MAX_DELIVERY_CORRECTIONS;
+    const correctionLimit = resolveCorrectionLimit(input);
     if (this.correctionCount >= correctionLimit) {
       return Object.freeze({
         kind: 'stop',
@@ -142,6 +141,13 @@ export class DeliveryConvergenceLedger {
     this.investigationRounds = 0;
     this.correctionCount = 0;
   }
+}
+
+function resolveCorrectionLimit(input: DeliveryConvergenceObservation): number {
+  if (input.actionableRepairPending === true) return MAX_ACTIONABLE_REPAIR_CORRECTIONS;
+  return input.expectation === 'unclassified'
+    ? MAX_UNCLASSIFIED_DELIVERY_CORRECTIONS
+    : MAX_MUTATION_DELIVERY_CORRECTIONS;
 }
 
 function buildMutationDeliveryFeedback(

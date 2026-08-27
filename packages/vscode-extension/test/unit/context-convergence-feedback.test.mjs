@@ -205,5 +205,32 @@ test('unclassified model-led investigation receives neutral pressure before it c
   assert.match(firstCorrection.feedback, /不授权任何副作用/u);
 
   assert.equal(ledger.observe(observation).kind, 'correct');
-  assert.equal(ledger.observe(observation).kind, 'stop');
+  assert.equal(ledger.observe(observation).kind, 'correct');
+  const stopped = ledger.observe(observation);
+  assert.equal(stopped.kind, 'stop');
+  assert.match(stopped.reason, /3 次交付纠正/u);
+});
+
+test('unclassified delivery gets one bounded choice round beyond a known mutation cohort', () => {
+  const mutationLedger = new DeliveryConvergenceLedger();
+  const unclassifiedLedger = new DeliveryConvergenceLedger();
+  const unclassified = {
+    ...unresolvedMutation,
+    expectation: 'unclassified',
+    gatheredEvidenceCount: 16,
+  };
+
+  assert.equal(mutationLedger.observe(unresolvedMutation).kind, 'continue');
+  assert.equal(mutationLedger.observe(unresolvedMutation).kind, 'continue');
+  assert.equal(mutationLedger.observe(unresolvedMutation).kind, 'correct');
+  assert.equal(mutationLedger.observe(unresolvedMutation).kind, 'correct');
+  assert.equal(mutationLedger.observe(unresolvedMutation).kind, 'stop');
+
+  for (let round = 0; round < 6; round++) {
+    assert.equal(unclassifiedLedger.observe(unclassified).kind, 'continue');
+  }
+  assert.equal(unclassifiedLedger.observe(unclassified).kind, 'correct');
+  assert.equal(unclassifiedLedger.observe(unclassified).kind, 'correct');
+  assert.equal(unclassifiedLedger.observe(unclassified).kind, 'correct');
+  assert.equal(unclassifiedLedger.observe(unclassified).kind, 'stop');
 });

@@ -687,6 +687,50 @@ test('ModelLedUserSimulation: unclassified investigation is bounded before the m
   }
 });
 
+test('ModelLedUserSimulation: a recovered unclassified task gets a final bounded delivery turn', async () => {
+  const prompt = 'Continue the interrupted implementation after validating the retained workspace.';
+  let calls = 0;
+  const simulation = await runSimulation(prompt, async messages => {
+    calls += 1;
+    const root = fakeWorkspace.workspaceFolders[0].uri.fsPath;
+    if (calls <= 9) {
+      const source = path.join(root, `recovery-context-${calls}.txt`);
+      writeFileSync(source, `recovery context ${calls}\n`);
+      return {
+        text: `Inspect retained recovery context ${calls}.`,
+        tools: [{ name: 'read_file', input: { path: source } }],
+      };
+    }
+
+    assert.match(messages.at(-1).content, /必须依据原始用户需求形成可结算交付/u);
+    const target = path.join(root, 'recovered-delivery.txt');
+    return {
+      text: 'The retained evidence is sufficient; applying the bounded delivery now.',
+      tools: [
+        { name: 'create_file', input: { path: target, content: 'RECOVERED_DELIVERY_OK\n' } },
+        { name: 'read_file', input: { path: target } },
+        { name: 'task_complete', input: { summary: 'Created and read back recovered-delivery.txt.' } },
+      ],
+    };
+  }, { runDisplayAction: 'create' });
+  try {
+    assert.equal(calls, 10, simulation.result.historyText);
+    assert.equal(
+      readFileSync(path.join(simulation.root, 'recovered-delivery.txt'), 'utf8'),
+      'RECOVERED_DELIVERY_OK\n',
+    );
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+    assert.equal(
+      simulation.harness.statuses.filter(
+        status => status.title === '项目证据已收集，正在要求形成交付',
+      ).length,
+      3,
+    );
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
 test('ModelLedUserSimulation: inline historical wording cannot resurrect a superseded target', async () => {
   const prompt = '这是一次多轮需求的最终轮：前面曾说写 INITIAL_REQUIREMENT，但现在改为 FINAL_REQUIREMENT_OK。请只按最新要求创建 journey-result.txt，文件内容必须精确包含一行 FINAL_REQUIREMENT_OK。完成写入和读回验证后结束任务，不要创建旧要求文件。';
   let calls = 0;

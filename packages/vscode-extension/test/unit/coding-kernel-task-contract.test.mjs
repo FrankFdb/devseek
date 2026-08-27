@@ -54,6 +54,22 @@ test('an edit contract projects source mutation and verification normally', () =
   ]);
 });
 
+test('model-led projection remains provisional until a receipt-settled effectful action chooses orientation', () => {
+  const contract = projectVsCodeCodingKernelTaskContract({
+    userPrompt: 'Inspect the project and make the changes required by the request.',
+    executionMode: 'model-led',
+    contextFiles: ['src/math.js'],
+    workspaceRoot: '/workspace',
+    taskContract: semanticTaskContract([]),
+    externalEffectIntent: 'none',
+  });
+
+  assert.equal(contract.mode, 'explain');
+  assert.equal(contract.orientation.source, 'read-only-default');
+  assert.deepEqual(contract.orientation.reasonCodes, ['default-read-only', 'mode:explain']);
+  assert.equal(contract.constraints.includes('no-workspace-mutation'), true);
+});
+
 test('explicit medium-task targets remain included and are never projected as exclusions', () => {
   const targets = [
     'include/deployment_coordinator.hpp',
