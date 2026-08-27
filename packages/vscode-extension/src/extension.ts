@@ -346,11 +346,11 @@ async function runActiveChat(
   }
 
   const activeEditorContextPath = getActiveEditorContextPath();
-  const continuationPromptScope = detectWorkspacePathScope(prompt, effectiveFiles, activeEditorContextPath);
-  const continuationWorkspaceRoot = getTaskWorkspaceRootFsPath(prompt, [
-    ...effectiveFiles,
-    ...(continuationPromptScope.promptDir ? [continuationPromptScope.promptDir] : []),
-  ], activeEditorContextPath) ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+  const continuationWorkspaceRoot = getTaskWorkspaceRootFsPath(
+    undefined,
+    effectiveFiles,
+    activeEditorContextPath,
+  ) ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
   const initialSessionProjection = sessionContinuationProjector.project({
     workspaceRoot: continuationWorkspaceRoot,
     currentPrompt: userDisplay || prompt,
@@ -402,6 +402,11 @@ async function runActiveChat(
       ...(activeEditorContextPath ? [activeEditorContextPath] : []),
     ]),
   ];
+  const taskWorkspaceRoot = getTaskWorkspaceRootFsPath(
+    undefined,
+    effectiveFiles,
+    activeEditorContextPath,
+  ) ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
 
   // When starting a new session, tell the webview to clear the old conversation first.
   if (newSession) {
@@ -453,9 +458,7 @@ async function runActiveChat(
       }
     }
 
-    const agentWorkspaceRoot = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath)
-      ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
-      ?? process.cwd();
+    const agentWorkspaceRoot = taskWorkspaceRoot;
     const agentKernelRun = agentKernelService.startRun({
       workspaceRoot: agentWorkspaceRoot,
       source: 'vscode-extension.agent',
@@ -494,8 +497,7 @@ async function runActiveChat(
         checkpoint: projectCodingKernelCheckpointResume(resumeCheckpoint, lastAnalysisText),
       });
       {
-        const agWsRootPath = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath);
-        const agWsRoot = agWsRootPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+        const agWsRoot = taskWorkspaceRoot;
         const kernelRecovery = kernelRoute.reason === 'checkpoint-resume'
           ? kernelRoute.recovery
           : undefined;
@@ -772,9 +774,7 @@ async function runActiveChat(
         });
         if (recovery.kind !== 'Unknown' && isCheckpointableProviderRecoveryError(e)) {
           const savedAt = Date.now();
-          const wsRootFsPath = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath)
-            ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
-            ?? '';
+          const wsRootFsPath = taskWorkspaceRoot;
           const recoveryCheckpoint = buildProviderRecoveryCheckpointRecord({
             error: e,
             prompt,
@@ -952,10 +952,7 @@ async function runActiveChat(
       }
     }
 
-    const workspaceRoot = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath);
-    const chatWorkspaceRoot = workspaceRoot
-      ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
-      ?? process.cwd();
+    const chatWorkspaceRoot = taskWorkspaceRoot;
     chatRunContext = createDevSeekRunContext({
       workspaceRoot: chatWorkspaceRoot,
       source: 'vscode-extension.chat',
@@ -995,14 +992,16 @@ async function runActiveChat(
     const shouldInlineLocalFiles = effectiveFiles.length > 0
       && (intent.kind === 'chat' || noAgentCodeChat || autoDiscoveredFiles.length > 0);
     if (shouldInlineLocalFiles) {
-      const attachmentContext = buildLocalAttachmentContextPrompt(finalPrompt, effectiveFiles, { workspaceRoot });
+      const attachmentContext = buildLocalAttachmentContextPrompt(finalPrompt, effectiveFiles, {
+        workspaceRoot: chatWorkspaceRoot,
+      });
       finalPrompt = attachmentContext.prompt;
       if (attachmentContext.inlinedFiles.length > 0) {
         const inlinedFileSet = new Set(attachmentContext.inlinedFiles);
         routeFiles = routeFiles.filter((f) => {
           const resolved = nodePath.isAbsolute(f)
             ? nodePath.resolve(f)
-            : nodePath.resolve(workspaceRoot || process.cwd(), f);
+            : nodePath.resolve(chatWorkspaceRoot, f);
           return !inlinedFileSet.has(resolved);
         });
       }
@@ -1022,7 +1021,7 @@ async function runActiveChat(
 
     if (!newSession) {
       const sessionContextForChat = sessionContinuationProjector.project({
-        workspaceRoot: workspaceRoot ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '',
+        workspaceRoot: chatWorkspaceRoot,
         currentPrompt: userDisplay || prompt,
         currentFilePaths: effectiveFiles,
         newSession,

@@ -83,4 +83,24 @@ test('workspace-roots: task root prefers external active project marker over sin
   }
 });
 
+test('workspace-roots: raw external evidence paths cannot rebase the opened task workspace', () => {
+  const repositoryRoot = mkdtempSync(path.join(tmpdir(), 'devseek-parent-repository-'));
+  const workspaceRoot = path.join(repositoryRoot, 'runs', 'retained', 'workspace');
+  const evidencePath = path.join(repositoryRoot, 'runs', 'current', 'verification', 'snapshot.ppm');
+  try {
+    mkdirSync(path.join(repositoryRoot, '.git'), { recursive: true });
+    mkdirSync(workspaceRoot, { recursive: true });
+    mkdirSync(path.dirname(evidencePath), { recursive: true });
+    writeFileSync(evidencePath, 'P6\n1 1\n255\n');
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(workspaceRoot), name: 'workspace', index: 0 }];
+
+    assert.equal(
+      getTaskWorkspaceRootFsPath(`Verifier actual filePath: ${evidencePath}`, [], undefined),
+      workspaceRoot,
+    );
+  } finally {
+    rmSync(repositoryRoot, { recursive: true, force: true });
+  }
+});
+
 console.log('\nWorkspace root tests passed.\n');

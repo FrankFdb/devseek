@@ -37,6 +37,7 @@ test('owned process lifecycle waits for graceful process-group exit', async () =
   const stopped = await terminateOwnedProcessTree(child, {
     platform: 'linux',
     gracefulWaitMs: 20,
+    listDescendants: () => [],
     signalGroup(pid, signal) {
       signals.push({ pid, signal });
       child.finish(signal);
@@ -55,6 +56,7 @@ test('owned process lifecycle escalates an unresponsive process group', async ()
     platform: 'linux',
     gracefulWaitMs: 5,
     forceWaitMs: 20,
+    listDescendants: () => [],
     signalGroup(pid, signal) {
       signals.push({ pid, signal });
       if (signal === 'SIGKILL') child.finish(signal);
@@ -70,7 +72,7 @@ test('owned process lifecycle escalates an unresponsive process group', async ()
 
 test('owned process lifecycle reaps a real POSIX descendant', async () => {
   if (process.platform === 'win32') return;
-  const child = spawn('/bin/bash', ['-c', 'sleep 30 & echo $!; wait'], {
+  const child = spawn('/bin/bash', ['-c', 'setsid sleep 30 & echo $!; wait'], {
     detached: ownedProcessDetached(),
     stdio: ['ignore', 'pipe', 'ignore'],
   });
@@ -89,4 +91,28 @@ test('owned process lifecycle reaps a real POSIX descendant', async () => {
   } finally {
     try { process.kill(-child.pid, 'SIGKILL'); } catch {}
   }
+});
+
+test('owned process lifecycle signals detached descendants from the captured tree', async () => {
+  const child = new FakeChild();
+  const signals = [];
+  const stopped = await terminateOwnedProcessTree(child, {
+    platform: 'linux',
+    gracefulWaitMs: 20,
+    listDescendants: () => [5001, 5002],
+    signalProcess(pid, signal) {
+      signals.push({ target: pid, signal });
+    },
+    signalGroup(pid, signal) {
+      signals.push({ target: -pid, signal });
+      child.finish(signal);
+    },
+  });
+
+  assert.equal(stopped, true);
+  assert.deepEqual(signals, [
+    { target: 5002, signal: 'SIGTERM' },
+    { target: 5001, signal: 'SIGTERM' },
+    { target: -4242, signal: 'SIGTERM' },
+  ]);
 });

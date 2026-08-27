@@ -120,7 +120,6 @@ export function getTaskWorkspaceRootFsPath(
   const anchorRoot = resolveProjectRootFromAnchors([
     ...(preferredAbsolutePaths ?? []),
     activeEditorFile,
-    ...extractAbsolutePathHints(promptText || ''),
   ], workspaceRoots);
   if (anchorRoot) return anchorRoot;
 
@@ -133,8 +132,4 @@ export function getWorkspaceRootUri(promptText?: string, preferredAbsolutePaths?
 
 export function getWorkspaceRootFsPath(promptText?: string, preferredAbsolutePaths?: string[]): string | undefined {
   return getWorkspaceRootUri(promptText, preferredAbsolutePaths)?.fsPath;
-}
-
-function extractAbsolutePathHints(text: string): string[] {
-  return text.match(/\/[^\s'"`，。！？；：\n]+/g) || [];
 }
