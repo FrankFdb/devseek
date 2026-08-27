@@ -104,3 +104,64 @@ test('I13-VSC-01 user journey: VS Code rejects invalid wiring and preserves work
   assert.equal(textProtocol.source, 'text-protocol');
   assert.equal(outside.call.risk, 'high');
 });
+
+test('Bridge Calling responses require explicit admission and strict complete JSON blocks', () => {
+  const providerEvents = new CanonicalProviderEventService();
+  const toolDispatch = new CanonicalToolDispatchService();
+  const textToolProtocol = {
+    version: 'devseek.text-tools/v1',
+    channelId: 'bridge-native-calling-channel',
+  };
+  const disabled = bindProviderNormalizationBoundary(
+    providerEvents,
+    toolDispatch,
+    { workspaceRoot: '/tmp/workspace' },
+    textToolProtocol,
+  );
+  const enabled = bindProviderNormalizationBoundary(
+    providerEvents,
+    toolDispatch,
+    { workspaceRoot: '/tmp/workspace' },
+    textToolProtocol,
+    { allowProviderNativeTextTools: true },
+  );
+  const response = [
+    '我先读取任务和源码。',
+    '**Calling:** `read_file`',
+    '',
+    '```',
+    '{"path":"/tmp/workspace/USER_STORY.md"}',
+    '```',
+    '',
+    '**Calling:** `list_dir`',
+    '',
+    '```json',
+    '{"path":"/tmp/workspace"}',
+    '```',
+  ].join('\n');
+
+  assert.equal(normalizeProviderMessage({
+    type: 'message', provider: 'bridge', content: response,
+  }, disabled).tools.length, 0);
+  assert.equal(normalizeProviderMessage({
+    type: 'message', provider: 'deepseek-api', content: response,
+  }, enabled).tools.length, 0);
+
+  const accepted = normalizeProviderMessage({
+    type: 'message', provider: 'bridge', content: response,
+  }, enabled).tools;
+  assert.deepEqual(accepted.map(tool => tool.name), ['read_file', 'list_dir']);
+  assert.ok(accepted.every(tool => tool.source === 'provider-native-text'));
+  assert.ok(accepted.every(tool => tool.executable));
+  assert.deepEqual(accepted[0].input, { path: '/tmp/workspace/USER_STORY.md' });
+
+  for (const invalid of [
+    `${response}\n这只是一个格式示例。`,
+    response.replace('{"path":"/tmp/workspace"}', '{path:"/tmp/workspace"}'),
+    response.replace(/```$/, ''),
+  ]) {
+    assert.equal(normalizeProviderMessage({
+      type: 'message', provider: 'bridge', content: invalid,
+    }, enabled).tools.length, 0, invalid);
+  }
+});

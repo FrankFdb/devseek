@@ -8,6 +8,7 @@ import {
   type CodingProviderEvent,
   type CodingRawToolCall,
   type CodingToolCall,
+  type CodingToolCallSource,
   type CodingToolDispatchContext,
   type CodingToolDispatchEnvelope,
   type ProviderEventPort,
@@ -15,6 +16,7 @@ import {
   redactCodingSecretsInText,
 } from '@devseek-netai/shared';
 import type { LLMProviderType, TokenUsage } from './types';
+import { projectProviderNativeTextToolResponse } from './provider-native-text-tools';
 
 export type LLMEvent =
   | { type: 'text-delta'; provider: LLMProviderType; text: string; workflowId?: string }
@@ -28,6 +30,11 @@ export interface ProviderNormalizationBoundary {
   readonly toolDispatch: ToolDispatchPort;
   readonly dispatchContext: Readonly<Pick<CodingToolDispatchContext, 'workspaceRoot'>>;
   readonly textToolProtocol?: TextToolProtocolSession;
+  readonly allowProviderNativeTextTools?: boolean;
+}
+
+export interface ProviderNormalizationOptions {
+  readonly allowProviderNativeTextTools?: boolean;
 }
 
 export function bindProviderNormalizationBoundary(
@@ -35,6 +42,7 @@ export function bindProviderNormalizationBoundary(
   toolDispatch: ToolDispatchPort | undefined,
   dispatchContext: Pick<CodingToolDispatchContext, 'workspaceRoot'> = {},
   textToolProtocol?: TextToolProtocolSession,
+  options: ProviderNormalizationOptions = {},
 ): ProviderNormalizationBoundary | undefined {
   if (!providerEvents && !toolDispatch) return undefined;
   if (!providerEvents || !toolDispatch) {
@@ -45,6 +53,7 @@ export function bindProviderNormalizationBoundary(
     toolDispatch,
     dispatchContext: Object.freeze({ ...dispatchContext }),
     ...(textToolProtocol ? { textToolProtocol } : {}),
+    ...(options.allowProviderNativeTextTools ? { allowProviderNativeTextTools: true } : {}),
   });
 }
 
@@ -73,10 +82,10 @@ export function llmEventsToToolCallEnvelopes(
       continue;
     }
     if (event.type === 'message' && boundary.textToolProtocol) {
-      for (const textTool of parseAuthorizedTextToolCalls(event.content, boundary.textToolProtocol)) {
-        envelopes.push(boundary.toolDispatch.dispatch(textTool, {
+      for (const proposal of providerMessageToolProposals(event, boundary)) {
+        envelopes.push(boundary.toolDispatch.dispatch(proposal.tool, {
           ...boundary.dispatchContext,
-          source: 'text-protocol',
+          source: proposal.source,
         }));
       }
     }
@@ -92,12 +101,25 @@ export function normalizeProviderMessage(
   if (accepted.type !== 'message') throw new Error('vscode-provider-event:message-normalization-mismatch');
   return Object.freeze({
     event: accepted,
-    tools: Object.freeze(parseAuthorizedTextToolCalls(accepted.content, boundary.textToolProtocol)
-      .map(tool => boundary.toolDispatch.dispatch(tool, {
+    tools: Object.freeze(providerMessageToolProposals(accepted, boundary)
+      .map(proposal => boundary.toolDispatch.dispatch(proposal.tool, {
         ...boundary.dispatchContext,
-        source: 'text-protocol',
+        source: proposal.source,
       }).call)),
   });
+}
+
+function providerMessageToolProposals(
+  event: Extract<CodingProviderEvent, { readonly type: 'message' }>,
+  boundary: ProviderNormalizationBoundary,
+): readonly { readonly tool: CodingRawToolCall; readonly source: CodingToolCallSource }[] {
+  const authorized = parseAuthorizedTextToolCalls(event.content, boundary.textToolProtocol);
+  if (authorized.length > 0) {
+    return authorized.map(tool => ({ tool, source: 'text-protocol' }));
+  }
+  if (event.provider !== 'bridge' || !boundary.allowProviderNativeTextTools) return [];
+  const native = projectProviderNativeTextToolResponse(event.content);
+  return native?.tools.map(tool => ({ tool, source: 'provider-native-text' })) ?? [];
 }
 
 function defaultProviderNormalizationBoundary(): ProviderNormalizationBoundary {

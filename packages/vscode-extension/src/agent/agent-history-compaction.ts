@@ -5,6 +5,7 @@ import {
   type CodingContextCompactionReceipt,
 } from '@devseek-netai/shared';
 import type { ChatMessage } from '../llm/types';
+import { projectProviderNativeTextToolResponse } from '../llm/provider-native-text-tools';
 import type { FakeTool } from './fake-tool-parser';
 import {
   findFirstAuthorizedTextToolEnvelopeStart,
@@ -31,11 +32,16 @@ export interface AgentHistoryCompactionOptions {
 export function replaceLatestAssistantToolHistory(
   messages: ChatMessage[],
   textToolProtocol: TextToolProtocolSession,
+  providerNativeTextTools: readonly FakeTool[] = [],
 ): boolean {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (message.role !== 'assistant' || typeof message.content !== 'string') continue;
-    const summarized = summarizeExecutedAssistantToolHistory(message.content, textToolProtocol);
+    const summarized = summarizeExecutedAssistantToolHistory(
+      message.content,
+      textToolProtocol,
+      providerNativeTextTools,
+    );
     if (summarized === message.content) return false;
     message.content = summarized;
     return true;
@@ -110,16 +116,23 @@ export function redactAgentMessageHistory(messages: ChatMessage[]): number {
 export function summarizeExecutedAssistantToolHistory(
   text: string,
   textToolProtocol: TextToolProtocolSession,
+  providerNativeTextTools: readonly FakeTool[] = [],
 ): string {
   if (text.trimStart().startsWith(EXECUTED_TOOL_SUMMARY_MARKER)) return text;
-  const tools = parseAuthorizedTextToolCalls(text, textToolProtocol);
+  const authorizedTools = parseAuthorizedTextToolCalls(text, textToolProtocol);
+  const providerNative = authorizedTools.length === 0 && providerNativeTextTools.length > 0
+    ? projectProviderNativeTextToolResponse(text)
+    : undefined;
+  const tools = authorizedTools.length > 0 ? authorizedTools : providerNative?.tools ?? [];
   if (!tools.length) return text;
 
   const firstToolIndex = findFirstAuthorizedTextToolEnvelopeStart(text, textToolProtocol);
-  const prose = stripAuthorizedTextToolEnvelopes(
-    firstToolIndex >= 0 ? text.slice(0, firstToolIndex) : text,
-    textToolProtocol,
-  ).trim();
+  const prose = providerNative
+    ? providerNative.prose
+    : stripAuthorizedTextToolEnvelopes(
+      firstToolIndex >= 0 ? text.slice(0, firstToolIndex) : text,
+      textToolProtocol,
+    ).trim();
   const lines = [
     EXECUTED_TOOL_SUMMARY_MARKER,
   ];

@@ -13,7 +13,13 @@ import {
 
 export const CODING_TOOL_DISPATCH_VERSION = 'devseek.coding-tool-dispatch/v1' as const;
 
-export type CodingToolCallSource = 'text-protocol' | 'fake-tool' | 'native' | 'surface' | 'internal';
+export type CodingToolCallSource =
+  | 'text-protocol'
+  | 'provider-native-text'
+  | 'fake-tool'
+  | 'native'
+  | 'surface'
+  | 'internal';
 export type CodingToolDispatchRejectionReason =
   | 'malformed-tool-arguments'
   | 'partial-tool-call'

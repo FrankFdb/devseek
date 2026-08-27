@@ -89,6 +89,32 @@ test('Agent history compaction: replaces the latest assistant tool message only'
   assert.match(messages[3].content, /read_file path=\/repo\/a\.cpp lines=1-20/);
 });
 
+test('Agent history compaction: executed Bridge Calling blocks become durable summaries', () => {
+  const content = [
+    '我先读取任务契约。',
+    '**Calling:** `read_file`',
+    '',
+    '```',
+    '{"path":"/repo/USER_STORY.md"}',
+    '```',
+  ].join('\n');
+  const messages = [
+    { role: 'user', content: '任务' },
+    { role: 'assistant', content },
+  ];
+
+  const changed = replaceLatestAssistantToolHistory(messages, textToolProtocol, [{
+    name: 'read_file',
+    input: { path: '/repo/USER_STORY.md' },
+  }]);
+
+  assert.equal(changed, true);
+  assert.match(messages[1].content, /已执行工具请求摘要/);
+  assert.match(messages[1].content, /意图：我先读取任务契约/);
+  assert.match(messages[1].content, /read_file path=\/repo\/USER_STORY\.md/);
+  assert.doesNotMatch(messages[1].content, /\*\*Calling/);
+});
+
 test('Agent history compaction: replaces every assistant tool message before provider send', () => {
   const messages = [
     { role: 'user', content: '任务' },

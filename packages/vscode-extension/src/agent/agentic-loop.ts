@@ -506,6 +506,7 @@ export async function runAgenticLoop(
           callbacks.canonicalToolDispatch,
           { workspaceRoot },
           textToolProtocol,
+          { allowProviderNativeTextTools: promptRequiresTools },
         ),
       );
       providerWaitFeedback.complete();
@@ -789,8 +790,9 @@ export async function runAgenticLoop(
         },
       ),
     );
-    if (loopRes.toolCallsMade) {
-      replaceLatestAssistantToolHistory(messages, textToolProtocol);
+    const providerNativeTextTools = tools.filter(tool => tool.source === 'provider-native-text');
+    if (loopRes.toolCallsMade || providerNativeTextTools.length > 0) {
+      replaceLatestAssistantToolHistory(messages, textToolProtocol, providerNativeTextTools);
     }
 
     if (loopRes.workToolCallsMade) {
