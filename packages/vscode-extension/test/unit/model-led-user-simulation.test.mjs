@@ -227,8 +227,10 @@ test('ModelLedUserSimulation: noisy Chinese is understood by the main model and 
 test('ModelLedUserSimulation: out-of-envelope ReAct actions are quarantined and safely reissued', async () => {
   const prompt = '创建 result.txt，内容为 AUTHORIZED_REISSUE_OK，并读回确认。';
   let calls = 0;
-  const simulation = await runSimulation(prompt, async messages => {
+  const providerSessions = [];
+  const simulation = await runSimulation(prompt, async (messages, providerContext) => {
     calls += 1;
+    providerSessions.push(providerContext.newSession);
     const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'result.txt');
     if (calls === 1) {
       return {
@@ -260,6 +262,7 @@ test('ModelLedUserSimulation: out-of-envelope ReAct actions are quarantined and 
   }, { runDisplayAction: 'create' });
   try {
     assert.equal(calls, 3, simulation.result.historyText);
+    assert.deepEqual(providerSessions, [true, false, false]);
     const resultPath = path.join(simulation.root, 'result.txt');
     assert.equal(existsSync(resultPath), true, simulation.result.historyText);
     assert.equal(readFileSync(resultPath, 'utf8'), 'AUTHORIZED_REISSUE_OK\n');
@@ -270,6 +273,67 @@ test('ModelLedUserSimulation: out-of-envelope ReAct actions are quarantined and 
       ))
       .map(status => status.state);
     assert.deepEqual(recoveryStates, ['started', 'completed']);
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
+test('ModelLedUserSimulation: native XML mutation recovery retains verified read context in session', async () => {
+  const prompt = '读取现有 source.txt，把 OLD_VALUE 修复为 NEW_VALUE，并读回确认。';
+  let calls = 0;
+  const providerSessions = [];
+  const simulation = await runSimulation(prompt, async (messages, providerContext) => {
+    calls += 1;
+    providerSessions.push(providerContext.newSession);
+    const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'source.txt');
+    if (calls === 1) {
+      writeFileSync(target, 'OLD_VALUE\n');
+      return {
+        text: '先读取现有内容。',
+        tools: [{ name: 'read_file', input: { path: target } }],
+      };
+    }
+    if (calls === 2) {
+      assert.match(messages.at(-1).content, /OLD_VALUE/u);
+      return {
+        text: [
+          '使用原生 XML 提交修复。',
+          '<replace_in_file>',
+          `<path>${target}</path>`,
+          '<old_str><![CDATA[OLD_VALUE]]></old_str>',
+          '<new_str><![CDATA[NEW_VALUE]]></new_str>',
+          '</replace_in_file>',
+        ].join('\n'),
+        tools: [],
+      };
+    }
+    if (calls === 3) {
+      assert.equal(providerContext.newSession, false);
+      assert.match(JSON.stringify(messages), /OLD_VALUE/u);
+      assert.doesNotMatch(JSON.stringify(messages), /原生 XML 提交修复/u);
+      assert.match(messages.at(-1).content, /当前 Provider 会话保留先前真实工具结果/u);
+      return {
+        text: '通过当前授权协议重发唯一修改。',
+        tools: [
+          { name: 'replace_in_file', input: { path: target, old_str: 'OLD_VALUE', new_str: 'NEW_VALUE' } },
+          { name: 'read_file', input: { path: target } },
+          { name: 'task_complete', input: { summary: '修复并读回 source.txt。' } },
+        ],
+      };
+    }
+    return {
+      text: '依据真实写入结果完成读回。',
+      tools: [
+        { name: 'read_file', input: { path: target } },
+        { name: 'task_complete', input: { summary: '修复并读回 source.txt。' } },
+      ],
+    };
+  }, { runDisplayAction: 'repair' });
+  try {
+    assert.equal(calls, 4, simulation.result.historyText);
+    assert.deepEqual(providerSessions, [true, false, false, false]);
+    assert.equal(readFileSync(path.join(simulation.root, 'source.txt'), 'utf8'), 'NEW_VALUE\n');
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
   } finally {
     rmSync(simulation.root, { recursive: true, force: true });
   }
@@ -440,7 +504,7 @@ test('ModelLedUserSimulation: validation and reads cannot discharge a malformed 
   }
 });
 
-test('ModelLedUserSimulation: quarantined mutation recovery cannot reset an exhausted investigation cohort', async () => {
+test('ModelLedUserSimulation: quarantined mutation recovery reaches a matching write without reopening investigation', async () => {
   const prompt = '调查现有实现后，把 result.txt 中的 OLD 修复为 RECOVERED_COHORT_OK，并读回确认。';
   let calls = 0;
   const simulation = await runSimulation(prompt, async messages => {
@@ -489,25 +553,33 @@ test('ModelLedUserSimulation: quarantined mutation recovery cannot reset an exha
         tools: [{ name: 'read_file', input: { path: target } }],
       };
     }
-    assert.match(messages.at(-1).content, /尚未解决上一轮被隔离的结构化动作/u);
+    if (calls === 13) {
+      assert.match(messages.at(-1).content, /必须匹配被隔离动作/u);
+      return {
+        text: '依据既有精确证据重新提交被隔离的修改。',
+        tools: [
+          { name: 'replace_in_file', input: { path: target, old_str: 'OLD', new_str: 'RECOVERED_COHORT_OK' } },
+          { name: 'read_file', input: { path: target } },
+          { name: 'task_complete', input: { summary: '已完成恢复修改并读回。' } },
+        ],
+      };
+    }
     return {
-      text: '依据精确证据重新提交被隔离的修改。',
+      text: '恢复修改已落盘，现在读回并结算。',
       tools: [
-        { name: 'replace_in_file', input: { path: target, old_str: 'OLD', new_str: 'RECOVERED_COHORT_OK' } },
         { name: 'read_file', input: { path: target } },
         { name: 'task_complete', input: { summary: '已完成恢复修改并读回。' } },
       ],
     };
   }, { runDisplayAction: 'repair' });
   try {
-    assert.equal(calls, 12, simulation.result.historyText);
+    assert.equal(calls, 14, simulation.result.historyText);
     assert.equal(
       readFileSync(path.join(simulation.root, 'result.txt'), 'utf8'),
-      'OLD',
+      'RECOVERED_COHORT_OK',
       simulation.result.historyText,
     );
-    assert.equal(simulation.result.tasksFailed, 1, simulation.result.historyText);
-    assert.match(simulation.result.historyText, /避免自主模式继续无界调查/u);
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
     assert.equal(
       simulation.harness.statuses.filter(
         status => status.title === '项目证据已收集，正在要求形成交付',

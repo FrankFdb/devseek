@@ -68,6 +68,11 @@ const UNRESOLVED_TOOL_ACTION_STATUSES = new Set([
   'provider-authored-tool-transcript',
 ]);
 
+const IN_SESSION_PROTOCOL_CORRECTION_STATUSES = new Set([
+  'out-of-envelope-tool-block',
+  'invalid-tool-block',
+]);
+
 export function parseAgentProviderFailure(error: unknown): AgentProviderFailure | undefined {
   const rawMessage = error instanceof Error ? error.message : String(error || '');
   const operationId = providerRunEvidenceOperationId(error);
@@ -181,20 +186,27 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
     ? '当前任务需要真实工具证据；不得只输出说明、计划或自然语言完成摘要。'
     : '当前任务可以只读分析，但最终必须给出完整结论和依据。';
   const finalAttempt = input.recoveryAttempt >= input.maxRecoveryAttempts;
-  const readLimitLine = unresolvedToolAction
+  const resetProviderSession = shouldResetProviderSessionForRecovery(input.failure);
+  const retainedReadEvidence = !resetProviderSession && input.readEvidencePaths.length > 0;
+  const readLimitLine = unresolvedToolAction && retainedReadEvidence
+    ? '- 当前 Provider 会话仍保留先前真实工具结果；本轮只允许 1 个匹配被隔离动作的具体工具，不允许重新读取、重复验证或横向调查。'
+    : unresolvedToolAction
     ? '- 未执行动作恢复轮只允许 1 个写入工具；仅当当前参数无法从可信上下文重建时，才允许 1 个精确只读工具。不得用重复验证或横向读取代替动作重发。'
     : blockingTerminalFailure
     ? '- 活动失败恢复轮只允许一个精确只读工具或一个写入工具；不得重新做全量项目探索。写入后下一轮立即原样重跑公开失败命令。'
     : finalAttempt
     ? '- 这是最后一次恢复：只能输出最小下一步。最多 3 个只读工具或 1 个写入工具；不能重新做全量项目探索。'
     : '- 恢复轮必须小步推进：最多 6 个只读工具；如需写入，最多 1 个写入工具，content 控制在 6000 字符以内。';
-  const resetProviderSession = shouldResetProviderSessionForRecovery(input.failure);
   const readEvidenceLine = resetProviderSession
     ? `已读取路径（仅审计，文件内容未注入重建会话）：${readPaths || '暂无'}`
     : `已读取证据：${readPaths || '暂无'}`;
   const contextReplayLine = resetProviderSession
     ? '- 重建会话不包含先前只读工具返回的文件内容；若下一步依赖这些内容，先精确重读必要路径。每个必要路径只重放一次，不做全量探索。'
-    : '- 不要重复已读取路径、相同 list_dir、相同 grep_search 或相同 file_search；如确实缺少内容，只读取更精确的新文件或行范围。';
+    : unresolvedToolAction && retainedReadEvidence
+      ? '- 当前 Provider 会话保留先前真实工具结果；直接用这些内容重发被隔离动作，不要重复任何读取、搜索或验证。'
+      : unresolvedToolAction
+        ? '- 当前 Provider 会话没有可复用的读取证据；如覆盖写入需要当前内容，只允许一次精确 read_file，紧接着必须重发被隔离动作。'
+      : '- 不要重复已读取路径、相同 list_dir、相同 grep_search 或相同 file_search；如确实缺少内容，只读取更精确的新文件或行范围。';
   const toolSerializationLine = unresolvedToolAction
     ? buildTextToolEnvelopeRecoveryPrompt(input.textToolProtocol, {
       observedToolNames: input.failure.observedToolNames,
@@ -210,7 +222,9 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
       input.failure.reason ? `失败原因：${input.failure.reason}` : '',
       input.partialResponseLength ? `已丢弃未信任的部分响应：约 ${input.partialResponseLength} 字符。` : '',
       '',
-      '请不要引用、续写或执行上一轮损坏文本；这是从运行账本重建的最小恢复上下文。',
+      resetProviderSession
+        ? '请不要引用、续写或执行上一轮损坏文本；这是从运行账本重建的最小恢复上下文。'
+        : '上一轮损坏文本已被隔离；继续使用当前会话中已验证的真实工具结果，并按以下要求纠正协议。',
       `原始用户任务：${truncateSingleLine(input.userPrompt, 800)}`,
       readEvidenceLine,
       `已写入文件：${writtenPaths || '暂无'}`,
@@ -245,6 +259,7 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
 
 export function shouldResetProviderSessionForRecovery(failure: AgentProviderFailure | undefined): boolean {
   const status = failure?.status?.toLowerCase();
+  if (status && IN_SESSION_PROTOCOL_CORRECTION_STATUSES.has(status)) return false;
   return Boolean(failure?.recoverable && status && (
     RECOVERABLE_RESPONSE_CORRUPTION_STATUSES.has(status)
     || status === 'stream-error'

@@ -52,7 +52,9 @@ test('provider recovery lifecycle keeps a rejected mutation pending across reads
     onAgentStatus(status) { statuses.push(status); },
   });
 
-  lifecycle.begin('malformed-mutation', ['replace_in_file']);
+  lifecycle.begin('malformed-mutation', ['replace_in_file'], {
+    allowRejectedWriteContextRefresh: true,
+  });
   assert.equal(lifecycle.hasUnresolvedToolAction(), true);
   assert.equal(
     await lifecycle.completeAcceptedResponse('tool-protocol', 'validation-op', ['run_terminal']),
@@ -80,7 +82,9 @@ test('provider recovery lifecycle locally admits only one concrete recovery acti
   const lifecycle = new AgenticProviderRecoveryLifecycle('src/x11_app.cpp', 'repair', {
     onAgentStatus() {},
   });
-  lifecycle.begin('malformed-mutation', ['replace_in_file']);
+  lifecycle.begin('malformed-mutation', ['replace_in_file'], {
+    allowRejectedWriteContextRefresh: true,
+  });
 
   const screened = lifecycle.screenToolProposals([
     { name: 'manage_todo_list' },
@@ -109,6 +113,25 @@ test('provider recovery lifecycle blocks actions unrelated to the quarantined pr
 
   assert.deepEqual([...screened.blockedToolIndexes], [0, 2]);
   assert.match(screened.warnings[0], /不匹配/u);
+});
+
+test('provider recovery lifecycle preserves an in-session rejected write without admitting more reads', () => {
+  const lifecycle = new AgenticProviderRecoveryLifecycle('src/main.cpp', 'repair', {
+    onAgentStatus() {},
+  });
+  lifecycle.begin('native-xml-mutation', ['replace_in_file'], {
+    allowRejectedWriteContextRefresh: false,
+  });
+
+  const screened = lifecycle.screenToolProposals([
+    { name: 'read_file' },
+    { name: 'grep_search' },
+    { name: 'replace_in_file' },
+  ]);
+
+  assert.deepEqual([...screened.blockedToolIndexes], [0, 1]);
+  assert.match(screened.warnings[0], /必须匹配被隔离动作/u);
+  assert.equal(lifecycle.hasUnresolvedToolAction(), true);
 });
 
 test('provider recovery lifecycle does not screen ordinary provider turns', () => {

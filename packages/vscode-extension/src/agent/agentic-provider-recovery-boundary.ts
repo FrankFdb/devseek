@@ -49,6 +49,10 @@ export interface AgenticProviderRecoveryToolScreen {
   readonly warnings: readonly string[];
 }
 
+interface ProviderRecoveryActionOptions {
+  readonly allowRejectedWriteContextRefresh?: boolean;
+}
+
 const PROVIDER_RECOVERY_META_TOOL_NAMES = new Set(['manage_todo_list', 'task_complete']);
 
 export interface AgenticProviderRecoveryBoundaryResult {
@@ -60,6 +64,7 @@ export interface AgenticProviderRecoveryBoundaryResult {
 
 export class AgenticProviderRecoveryLifecycle {
   private pending = false;
+  private allowRejectedWriteContextRefresh = false;
   private readonly targetOperationIds = new Set<string>();
   private readonly observedToolNames = new Set<string>();
 
@@ -69,8 +74,13 @@ export class AgenticProviderRecoveryLifecycle {
     private readonly callbacks: Pick<AgentLoopCallbacks, 'signal' | 'onAgentStatus'>,
   ) {}
 
-  begin(operationId?: string, observedToolNames: readonly string[] = []): void {
+  begin(
+    operationId?: string,
+    observedToolNames: readonly string[] = [],
+    options: ProviderRecoveryActionOptions = {},
+  ): void {
     this.pending = true;
+    this.allowRejectedWriteContextRefresh = options.allowRejectedWriteContextRefresh === true;
     if (operationId?.trim()) this.targetOperationIds.add(operationId.trim());
     for (const name of observedToolNames) {
       if (name?.trim()) this.observedToolNames.add(name.trim());
@@ -119,7 +129,9 @@ export class AgenticProviderRecoveryLifecycle {
     const restoresRejectedWrite = isFileWriteToolName(name)
       && [...this.observedToolNames].some(isFileWriteToolName);
     if (restoresRejectedWrite) return true;
-    return name === 'read_file' && [...this.observedToolNames].some(isFileWriteToolName);
+    return this.allowRejectedWriteContextRefresh
+      && name === 'read_file'
+      && [...this.observedToolNames].some(isFileWriteToolName);
   }
 
   unresolvedToolActionFeedback(session: TextToolProtocolSession): string {
@@ -195,6 +207,7 @@ export class AgenticProviderRecoveryLifecycle {
       });
     }
     this.pending = false;
+    this.allowRejectedWriteContextRefresh = false;
     this.targetOperationIds.clear();
     this.observedToolNames.clear();
     return true;
@@ -255,7 +268,7 @@ export async function recoverAgenticProviderFailure(
     textToolProtocol: input.textToolProtocol,
     partialResponseLength: input.partialResponseLength,
   });
-  applyProviderRecoveryHistory(input.messages, recoveryMessage);
+  applyProviderRecoveryHistory(input.messages, recoveryMessage, !resetProviderSession);
   const totalChars = compactAgenticMessageHistory({
     messages: input.messages,
     session: input.contextCompaction,

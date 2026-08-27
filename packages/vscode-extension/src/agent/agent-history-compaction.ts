@@ -15,6 +15,7 @@ import {
 
 const MAX_TOOL_SUMMARIES = 14;
 const EXECUTED_TOOL_SUMMARY_MARKER = '[DevSeek 已执行工具请求摘要]';
+const QUARANTINED_PROVIDER_RESPONSE_MARKER = '[DevSeek 已隔离 Provider 响应]';
 export const CONTEXT_COMPACTION_RECEIPT_PROTOCOL = CODING_CONTEXT_COMPACTION_VERSION;
 export const CONTEXT_COMPACTION_SUMMARY_MARKER = '[DevSeek Canonical Context Compaction]';
 const SECRET_REDACTION = '[REDACTED_SECRET]';
@@ -60,9 +61,28 @@ export function replaceAllAssistantToolHistory(
 export function applyProviderRecoveryHistory(
   messages: ChatMessage[],
   recoveryMessage: ChatMessage,
+  preserveProviderSession = false,
 ): void {
+  if (preserveProviderSession) {
+    const responseIndex = findLatestAssistantMessageIndex(messages);
+    if (responseIndex >= 0) {
+      messages[responseIndex].content = [
+        QUARANTINED_PROVIDER_RESPONSE_MARKER,
+        '该响应未通过当前工具协议门禁，未执行其中任何动作；恢复要求见下一条用户消息。',
+      ].join('\n');
+    }
+    messages.push(recoveryMessage);
+    return;
+  }
   const taskPrompt = messages[0];
   messages.splice(0, messages.length, taskPrompt, recoveryMessage);
+}
+
+function findLatestAssistantMessageIndex(messages: readonly ChatMessage[]): number {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === 'assistant') return index;
+  }
+  return -1;
 }
 
 export function compactAgentMessageHistoryWithFidelity(

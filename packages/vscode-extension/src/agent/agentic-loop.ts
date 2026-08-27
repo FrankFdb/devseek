@@ -366,7 +366,14 @@ export async function runAgenticLoop(
       contextInvestigation.reset();
     }
     if (recovery.recovered) {
-      providerRecovery.begin(providerFailure?.operationId, providerFailure?.observedToolNames);
+      providerRecovery.begin(
+        providerFailure?.operationId,
+        providerFailure?.observedToolNames,
+        {
+          allowRejectedWriteContextRefresh: recovery.forceFreshProviderSession
+            || allReadEvidencePaths.size === 0,
+        },
+      );
       return 'recovered';
     }
     await providerRecovery.fail();

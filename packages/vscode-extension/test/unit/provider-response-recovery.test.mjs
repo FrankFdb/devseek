@@ -200,7 +200,7 @@ test('Agent provider recovery quarantines out-of-envelope actions and reissues t
     maxRecoveryAttempts: 3,
     promptRequiresTools: true,
     currentTodos: [],
-    readEvidencePaths: [],
+    readEvidencePaths: ['README.md'],
     writtenFiles: [],
     terminalEvidence: [],
     textToolProtocol: {
@@ -211,6 +211,10 @@ test('Agent provider recovery quarantines out-of-envelope actions and reissues t
   const display = describeAgentProviderRecoveryForUser(failure, 1, 3);
 
   assert.equal(failure.recoverable, true);
+  assert.equal(shouldResetProviderSessionForRecovery(failure), false);
+  assert.match(prompt, /当前 Provider 会话保留先前真实工具结果/u);
+  assert.match(prompt, /不允许重新读取/u);
+  assert.doesNotMatch(prompt, /本轮会重建 Provider 会话/u);
   assert.match(prompt, /不要使用 Action\/Action Input/);
   assert.match(prompt, /channel="provider-recovery-channel"/);
   assert.match(prompt, /仅识别到上一轮尝试调用 run_terminal/);
@@ -241,23 +245,32 @@ test('Agent provider recovery reissues malformed authorized envelopes in bounded
   }).content;
 
   assert.equal(failure.recoverable, true);
+  assert.equal(shouldResetProviderSessionForRecovery(failure), false);
   assert.match(prompt, /channel="invalid-envelope-channel"/);
   assert.match(prompt, /本轮只输出 1 个工具调用/);
   assert.match(prompt, /\[TOOL:read_file/);
   assert.doesNotMatch(prompt, /<create_file>/);
 });
 
-test('Agent provider recovery resets browser state after every rejected response', () => {
+test('Agent provider recovery rebuilds damaged responses but preserves complete protocol mismatches', () => {
   const failure = parseAgentProviderFailure(
     new Error('RESPONSE_CORRUPTED:incomplete-tool-block:Tool block is incomplete.'),
   );
   const mixed = parseAgentProviderFailure(
     new Error('RESPONSE_CORRUPTED:mixed-tool-protocol:incompatible tool dialects.'),
   );
+  const outOfEnvelope = parseAgentProviderFailure(
+    new Error('RESPONSE_CORRUPTED:out-of-envelope-tool-block:native XML was quarantined.'),
+  );
+  const invalidEnvelope = parseAgentProviderFailure(
+    new Error('RESPONSE_CORRUPTED:invalid-tool-block:authorized envelope was malformed.'),
+  );
 
   assert.equal(shouldResetProviderSessionForRecovery(failure), true);
   assert.equal(mixed.recoverable, true);
   assert.equal(shouldResetProviderSessionForRecovery(mixed), true);
+  assert.equal(shouldResetProviderSessionForRecovery(outOfEnvelope), false);
+  assert.equal(shouldResetProviderSessionForRecovery(invalidEnvelope), false);
 });
 
 test('Agent provider recovery rebuilds the session after forged tool transcripts', () => {

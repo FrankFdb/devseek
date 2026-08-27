@@ -142,6 +142,24 @@ test('Agent history compaction: provider recovery rebuilds from task prompt and 
   assert.doesNotMatch(JSON.stringify(messages), /<read_file>/);
 });
 
+test('Agent history compaction: in-session protocol correction preserves the provider cursor without raw actions', () => {
+  const messages = [
+    { role: 'user', content: '完整任务提示和工具协议' },
+    { role: 'assistant', content: authorizedTools('<read_file>{"path":"/repo/a.cpp"}</read_file>') },
+    { role: 'user', content: '[工具结果 Round 1]\n可信源文件内容' },
+    { role: 'assistant', content: '<replace_in_file><path>/repo/a.cpp</path><new_str>UNTRUSTED</new_str></replace_in_file>' },
+  ];
+  const recoveryMessage = { role: 'user', content: '【系统恢复】请通过当前授权信封重发 replace_in_file。' };
+
+  applyProviderRecoveryHistory(messages, recoveryMessage, true);
+
+  assert.equal(messages.length, 5);
+  assert.match(messages[2].content, /可信源文件内容/u);
+  assert.match(messages[3].content, /已隔离 Provider 响应/u);
+  assert.doesNotMatch(messages[3].content, /UNTRUSTED/u);
+  assert.equal(messages[4].content, recoveryMessage.content);
+});
+
 test('Agent history compaction: internal summaries are not nested into the next tool intent', () => {
   const text = [
     '正在修复验证脚本。',
