@@ -1395,13 +1395,17 @@ test('R3-08E-WINDOWS-WSL-CONFORMANCE: platform conformance owner splits Windows 
 
 test('Real DeepSeek harness: headed user-window runs can be retained for inspection', () => {
   const harness = src('test/devseek-real-plugin-deepseek-harness.mjs');
+  const processLifecycle = src('test/harness/owned-process-lifecycle.mjs');
   assertContains(harness, "const keepWindow = hasFlag('--keep-window')", 'real harness must expose an explicit keep-window flag');
   assertContains(harness, 'const keepWindow = __KEEP_WINDOW__', 'driver extension must receive the keep-window policy');
   assertContains(harness, 'if (!keepWindow) {\n      await vscode.commands.executeCommand(\'workbench.action.closeWindow\')', 'driver extension must not close retained user-window runs');
-  assertContains(harness, 'detached: keepWindow', 'outer VS Code process must detach retained user-window runs');
+  assertContains(harness, 'detached: ownedProcessDetached()', 'outer VS Code process must create an owned POSIX process group');
+  assertContains(processLifecycle, "return platform !== 'win32'", 'owned process groups must remain platform-aware');
   assertContains(harness, 'if (keepWindow) child.unref();', 'retained user-window runs must not keep the harness process attached');
   assertContains(harness, 'if (!keepWindow) await waitForChildExit(child, 10000);', 'retained user-window reports must return without waiting for window close');
-  assertContains(harness, "if (child.exitCode === null && !keepWindow) child.kill('SIGTERM');", 'retained user-window runs must not be killed after report capture');
+  assertContains(harness, 'if (!keepWindow) await terminateOwnedProcessTree(child);', 'ordinary harness runs must await complete process-tree cleanup');
+  assertContains(processLifecycle, "signalTree(child, 'SIGTERM'", 'owned process cleanup must attempt graceful tree termination first');
+  assertContains(processLifecycle, "signalTree(child, 'SIGKILL'", 'owned process cleanup must bound and escalate unresponsive shutdown');
 });
 
 test('Real DeepSeek harness: visible relogin waits for authenticated page state', () => {

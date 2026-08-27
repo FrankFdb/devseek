@@ -25,6 +25,10 @@ import {
   specializeRealPluginQualityProfileForDelivery,
 } from './harness/real-plugin-quality-profile.mjs';
 import { submitNaturalUiPrompt } from './harness/natural-ui-prompt-submitter.mjs';
+import {
+  ownedProcessDetached,
+  terminateOwnedProcessTree,
+} from './harness/owned-process-lifecycle.mjs';
 
 const args = process.argv.slice(2);
 const runRequested = hasFlag('--run') || process.env.DEVSEEK_REAL_PLUGIN_DEEPSEEK_RUN === '1';
@@ -2618,7 +2622,7 @@ async function runVsCodeDriver() {
   ];
   const child = cp.spawn(codeBin, launchArgs, {
     cwd: repoRoot,
-    detached: keepWindow,
+    detached: ownedProcessDetached(),
     env: {
       ...process.env,
       DEVSEEK_REAL_PLUGIN_DEEPSEEK: '1',
@@ -2680,7 +2684,6 @@ async function runVsCodeDriver() {
         return payload;
       }
       if (naturalUiResult?.ok === false) {
-        if (child.exitCode === null && !keepWindow) child.kill('SIGTERM');
         return {
           ok: false,
           errors: ['真实 Webview 用户输入提交失败：' + naturalUiResult.error],
@@ -2700,7 +2703,6 @@ async function runVsCodeDriver() {
       }
       await delay(1000);
     }
-    if (child.exitCode === null) child.kill('SIGTERM');
     return {
       ok: false,
       errors: [`VS Code live harness timed out after ${timeoutMs}ms`],
@@ -2709,7 +2711,7 @@ async function runVsCodeDriver() {
       progress: readProgressTail(),
     };
   } finally {
-    if (child.exitCode === null && !keepWindow) child.kill('SIGTERM');
+    if (!keepWindow) await terminateOwnedProcessTree(child);
     fs.closeSync(logFd);
   }
 }
