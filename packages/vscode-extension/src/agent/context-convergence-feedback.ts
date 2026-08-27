@@ -47,7 +47,7 @@ export function resolveDeliveryConvergencePending(input: DeliveryConvergencePend
     || input.actionableRepairPending;
 }
 
-export interface DeliveryInvestigationActivityInput {
+export interface DeliveryRoundActivityInput {
   readonly hasContextInvestigationActivity: boolean;
   readonly hasWorkspaceMutationProposal: boolean;
   readonly acceptedRecoveryContextRefresh: boolean;
@@ -56,14 +56,26 @@ export interface DeliveryInvestigationActivityInput {
   readonly providerRecoveryCompleted: boolean;
 }
 
-/** Only pure context drift consumes the bounded delivery-investigation cohort. */
-export function resolveDeliveryInvestigationActivity(
-  input: DeliveryInvestigationActivityInput,
-): boolean {
-  if (!input.hasContextInvestigationActivity) return false;
-  if (input.hasWorkspaceMutationProposal || input.acceptedRecoveryContextRefresh) return false;
-  if (input.providerRecoveryCompleted) return false;
-  return input.expectation !== 'unclassified' || !input.hasNovelValidationTerminalProgress;
+export interface DeliveryRoundActivity {
+  readonly investigationActivity: boolean;
+  readonly cohortBoundaryActivity: boolean;
+}
+
+/** Separates pure context drift from action/recovery boundaries owned elsewhere. */
+export function resolveDeliveryRoundActivity(
+  input: DeliveryRoundActivityInput,
+): DeliveryRoundActivity {
+  const cohortBoundaryActivity = input.hasWorkspaceMutationProposal
+    || input.acceptedRecoveryContextRefresh
+    || input.providerRecoveryCompleted;
+  const novelUnclassifiedValidation = input.expectation === 'unclassified'
+    && input.hasNovelValidationTerminalProgress;
+  return Object.freeze({
+    investigationActivity: input.hasContextInvestigationActivity
+      && !cohortBoundaryActivity
+      && !novelUnclassifiedValidation,
+    cohortBoundaryActivity,
+  });
 }
 
 export interface DeliveryConvergenceObservation {
@@ -73,6 +85,7 @@ export interface DeliveryConvergenceObservation {
   readonly actionableRepairPending?: boolean;
   readonly gatheredEvidenceCount: number;
   readonly investigationActivity: boolean;
+  readonly cohortBoundaryActivity: boolean;
 }
 
 export type DeliveryConvergenceResult =
@@ -106,6 +119,10 @@ export class DeliveryConvergenceLedger {
       return CONTINUE_RESULT;
     }
     if (input.expectation === 'none' || !input.deliveryPending) {
+      this.resetCohort();
+      return CONTINUE_RESULT;
+    }
+    if (input.cohortBoundaryActivity) {
       this.resetCohort();
       return CONTINUE_RESULT;
     }
@@ -154,6 +171,10 @@ export class DeliveryConvergenceLedger {
         ? buildMutationDeliveryFeedback(input, this.investigationRounds)
         : buildUnclassifiedDeliveryFeedback(input, this.investigationRounds),
     });
+  }
+
+  reset(): void {
+    this.resetCohort();
   }
 
   private resetCohort(): void {

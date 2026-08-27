@@ -23,7 +23,7 @@ execFileSync('npx', [
 const {
   DeliveryConvergenceLedger,
   resolveDeliveryConvergenceExpectation,
-  resolveDeliveryInvestigationActivity,
+  resolveDeliveryRoundActivity,
   resolveDeliveryConvergencePending,
 } = createRequire(import.meta.url)(bundlePath);
 
@@ -35,6 +35,7 @@ const unresolvedMutation = Object.freeze({
   deliveryPending: true,
   gatheredEvidenceCount: 8,
   investigationActivity: true,
+  cohortBoundaryActivity: false,
 });
 
 test('delivery expectation keeps unclassified model guidance separate from mutation authority', () => {
@@ -97,7 +98,7 @@ test('delivery pending resolution preserves read-only and review-repair boundari
   }), true);
 });
 
-test('delivery investigation counts only pure context drift', () => {
+test('delivery activity separates pure context drift from action and recovery boundaries', () => {
   const pureContext = {
     hasContextInvestigationActivity: true,
     hasWorkspaceMutationProposal: false,
@@ -107,28 +108,31 @@ test('delivery investigation counts only pure context drift', () => {
     providerRecoveryCompleted: false,
   };
 
-  assert.equal(resolveDeliveryInvestigationActivity(pureContext), true);
-  assert.equal(resolveDeliveryInvestigationActivity({
+  assert.deepEqual(resolveDeliveryRoundActivity(pureContext), {
+    investigationActivity: true,
+    cohortBoundaryActivity: false,
+  });
+  assert.deepEqual(resolveDeliveryRoundActivity({
     ...pureContext,
     hasWorkspaceMutationProposal: true,
-  }), false);
-  assert.equal(resolveDeliveryInvestigationActivity({
+  }), { investigationActivity: false, cohortBoundaryActivity: true });
+  assert.deepEqual(resolveDeliveryRoundActivity({
     ...pureContext,
     acceptedRecoveryContextRefresh: true,
-  }), false);
-  assert.equal(resolveDeliveryInvestigationActivity({
+  }), { investigationActivity: false, cohortBoundaryActivity: true });
+  assert.deepEqual(resolveDeliveryRoundActivity({
     ...pureContext,
     providerRecoveryCompleted: true,
-  }), false);
-  assert.equal(resolveDeliveryInvestigationActivity({
+  }), { investigationActivity: false, cohortBoundaryActivity: true });
+  assert.deepEqual(resolveDeliveryRoundActivity({
     ...pureContext,
     expectation: 'unclassified',
     hasNovelValidationTerminalProgress: true,
-  }), false);
-  assert.equal(resolveDeliveryInvestigationActivity({
+  }), { investigationActivity: false, cohortBoundaryActivity: false });
+  assert.deepEqual(resolveDeliveryRoundActivity({
     ...pureContext,
     hasContextInvestigationActivity: false,
-  }), false);
+  }), { investigationActivity: false, cohortBoundaryActivity: false });
 });
 
 test('delivery convergence corrects twice and then stops a mutation cohort without progress', () => {
@@ -167,6 +171,25 @@ test('delivery convergence ignores non-investigation turns and opens a new cohor
     ...unresolvedMutation,
     deliveryProgressEpoch: 1,
   }).kind, 'correct');
+});
+
+test('delivery attempts and explicit Provider recovery start fresh pure-investigation cohorts', () => {
+  const ledger = new DeliveryConvergenceLedger();
+  assert.equal(ledger.observe(unresolvedMutation).kind, 'continue');
+  assert.equal(ledger.observe(unresolvedMutation).kind, 'continue');
+  assert.equal(ledger.observe(unresolvedMutation).kind, 'correct');
+
+  assert.equal(ledger.observe({
+    ...unresolvedMutation,
+    investigationActivity: false,
+    cohortBoundaryActivity: true,
+  }).kind, 'continue');
+  assert.equal(ledger.observe(unresolvedMutation).kind, 'continue');
+  assert.equal(ledger.observe(unresolvedMutation).kind, 'correct');
+
+  ledger.reset();
+  assert.equal(ledger.observe(unresolvedMutation).kind, 'continue');
+  assert.equal(ledger.observe(unresolvedMutation).kind, 'correct');
 });
 
 test('actionable review repair corrects read-only drift without requiring broad evidence', () => {

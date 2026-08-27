@@ -121,7 +121,7 @@ import {
   DeliveryConvergenceLedger,
   isContextGatheringToolName,
   resolveDeliveryConvergenceExpectation,
-  resolveDeliveryInvestigationActivity,
+  resolveDeliveryRoundActivity,
   resolveDeliveryConvergencePending,
 } from './context-convergence-feedback';
 import { ContextInvestigationLedger } from './context-investigation-ledger';
@@ -361,12 +361,11 @@ export async function runAgenticLoop(
     totalChars = recovery.totalChars;
     if (recovery.forceFreshProviderSession) {
       forceProviderNewSessionNextTurn = true;
-      // Duplicate-read suppression is scoped to what the current model session
-      // has actually seen. A rebuilt Provider session retains audit paths but
-      // must be allowed to replay the file contents it no longer possesses.
+      // A rebuilt Provider session may replay file contents it no longer possesses.
       contextInvestigation.reset();
     }
     if (recovery.recovered) {
+      deliveryConvergence.reset();
       providerRecovery.begin(providerFailure?.operationId, providerFailure?.observedToolNames);
       return 'recovered';
     }
@@ -998,7 +997,7 @@ export async function runAgenticLoop(
       }),
       actionableRepairPending: requirementReviewSourceRepairPending,
       gatheredEvidenceCount: allReadEvidencePaths.size + allEvidenceRefs.length,
-      investigationActivity: resolveDeliveryInvestigationActivity({
+      ...resolveDeliveryRoundActivity({
         hasContextInvestigationActivity: roundHasContextInvestigationActivity,
         hasWorkspaceMutationProposal: hasFileWriteIntentThisRound,
         acceptedRecoveryContextRefresh: contextScreen.acceptedRecoveryContextRefresh,

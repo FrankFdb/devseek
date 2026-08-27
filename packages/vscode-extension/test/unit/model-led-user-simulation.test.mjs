@@ -400,6 +400,85 @@ test('ModelLedUserSimulation: validation and reads cannot discharge a malformed 
   }
 });
 
+test('ModelLedUserSimulation: quarantined mutation recovery starts a fresh investigation cohort', async () => {
+  const prompt = '调查现有实现后，把 result.txt 中的 OLD 修复为 RECOVERED_COHORT_OK，并读回确认。';
+  let calls = 0;
+  const simulation = await runSimulation(prompt, async messages => {
+    calls += 1;
+    const root = fakeWorkspace.workspaceFolders[0].uri.fsPath;
+    const target = path.join(root, 'result.txt');
+    if (calls === 1) {
+      writeFileSync(target, 'OLD');
+      return {
+        text: '先提交当前证据下的精确修改。',
+        tools: [
+          { name: 'read_file', input: { path: target } },
+          { name: 'replace_in_file', input: { path: target, old_str: 'MISSING', new_str: 'RECOVERED_COHORT_OK' } },
+        ],
+      };
+    }
+    if (calls === 2) {
+      return {
+        text: '失败后精确刷新目标内容。',
+        tools: [{ name: 'read_file', input: { path: target } }],
+      };
+    }
+    if (calls <= 10) {
+      const contextPath = path.join(root, `context-${calls}.txt`);
+      writeFileSync(contextPath, `context ${calls}\n`);
+      return {
+        text: `读取实现上下文 ${calls}。`,
+        tools: [{ name: 'read_file', input: { path: contextPath } }],
+      };
+    }
+    if (calls === 11) {
+      const channelId = messages[0].content.match(/channel="([A-Za-z0-9_-]+)"/u)?.[1];
+      return {
+        text: [
+          `<devseek_tool_calls version="devseek.text-tools/v1" channel="${channelId}">`,
+          `[TOOL:replace_in_file {"path":"${target}","old_str":"OLD","new_str":"value with "quotes""}]`,
+          '</devseek_tool_calls>',
+        ].join('\n'),
+        tools: [],
+      };
+    }
+    if (calls === 12) {
+      assert.match(messages.at(-1).content, /本轮只恢复被隔离的动作/u);
+      return {
+        text: '重建会话后精确重读待修复目标。',
+        tools: [{ name: 'read_file', input: { path: target } }],
+      };
+    }
+    assert.match(messages.at(-1).content, /尚未解决上一轮被隔离的结构化动作/u);
+    return {
+      text: '依据精确证据重新提交被隔离的修改。',
+      tools: [
+        { name: 'replace_in_file', input: { path: target, old_str: 'OLD', new_str: 'RECOVERED_COHORT_OK' } },
+        { name: 'read_file', input: { path: target } },
+        { name: 'task_complete', input: { summary: '已完成恢复修改并读回。' } },
+      ],
+    };
+  }, { runDisplayAction: 'repair' });
+  try {
+    assert.equal(calls, 13, simulation.result.historyText);
+    assert.equal(
+      readFileSync(path.join(simulation.root, 'result.txt'), 'utf8'),
+      'RECOVERED_COHORT_OK',
+      simulation.result.historyText,
+    );
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+    assert.equal(
+      simulation.harness.statuses.filter(
+        status => status.title === '项目证据已收集，正在要求形成交付',
+      ).length,
+      3,
+      JSON.stringify(simulation.harness.statuses, null, 2),
+    );
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
 test('ModelLedUserSimulation: a current ranged read permits an exact targeted repair', async () => {
   const prompt = '读取 result.txt 的报错范围，把 BROKEN 精确修复为 FIXED，并读回。';
   let calls = 0;

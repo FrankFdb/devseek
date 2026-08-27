@@ -2502,7 +2502,8 @@ test('Architecture: validated source changes require fresh source review before 
     'acceptedRecoveryContextRefresh: contextScreen.acceptedRecoveryContextRefresh',
     'accepted failed-action context refresh must reach delivery convergence',
   );
-  assertContains(contextConvergence, 'input.hasWorkspaceMutationProposal || input.acceptedRecoveryContextRefresh', 'effect attempts and their bounded evidence refresh must not consume a pure investigation round');
+  assertContains(contextConvergence, 'const cohortBoundaryActivity = input.hasWorkspaceMutationProposal', 'effect attempts and their bounded evidence refresh must start a fresh pure-investigation cohort');
+  assertContains(agenticLoop, 'deliveryConvergence.reset()', 'a rebuilt Provider action recovery must start a fresh delivery-investigation cohort');
   assertContains(
     reviewNoToolRecovery,
     'requirementReview.completionBlocker()',
@@ -3174,7 +3175,7 @@ test('Agentic loop: visible correction and context convergence are owned by Agen
   assertContains(agenticLoop, 'resolveDeliveryConvergencePending({', 'agent loop must delegate current-turn delivery debt ownership');
   assertContains(agenticLoop, 'deliveryConvergence.observe({', 'each executed round must report facts to the convergence owner');
   assertContains(agenticLoop, 'const roundHasContextInvestigationActivity =', 'delivery convergence must distinguish context drift from validation execution');
-  assertContains(agenticLoop, 'investigationActivity: resolveDeliveryInvestigationActivity({', 'delivery convergence must receive the centralized pure-investigation decision');
+  assertContains(agenticLoop, '...resolveDeliveryRoundActivity({', 'delivery convergence must receive the centralized round-activity classification');
   assertContains(agenticLoop, "deliveryConvergenceResult.kind === 'stop'", 'non-delivering autonomous investigation must fail closed');
   assertContains(contextConvergence, '项目证据已收集，正在切换到交付落盘', 'formal project work must visibly transition from investigation to delivery');
   assertContains(contextConvergence, '项目调查证据已足够，必须从调查阶段切换到交付阶段', 'model feedback must force delivery after enough evidence');
