@@ -14,14 +14,22 @@ export interface NoToolActionRecoveryInput {
   readonly textToolProtocol: TextToolProtocolSession;
 }
 
-export interface NoToolActionRecovery {
+export interface NoToolActionRetry {
+  readonly kind: 'retry';
   readonly statusTitle: string;
   readonly statusDetail: string;
   readonly activityLabel: string;
   readonly feedback: string;
 }
 
-/** Classifies an ungrounded action presentation and returns one bounded correction. */
+export interface NoToolActionStop {
+  readonly kind: 'stop';
+  readonly reason: string;
+}
+
+export type NoToolActionRecovery = NoToolActionRetry | NoToolActionStop;
+
+/** Classifies an ungrounded action presentation and returns a bounded correction or stop. */
 export function resolveNoToolActionRecovery(
   input: NoToolActionRecoveryInput,
 ): NoToolActionRecovery | undefined {
@@ -34,6 +42,7 @@ export function resolveNoToolActionRecovery(
     && (input.missingEvidenceCount > 0 || deferredAction)
     && hasUnexecutedShellActionPresentation(input.text)) {
     return {
+      kind: 'retry',
       statusTitle: '等待 shell 动作通过工具执行',
       statusDetail: '当前回复展示了 shell 命令，但普通代码块不会被执行。DevSeek 正在要求模型通过当前授权工具协议重发一个最小动作。',
       activityLabel: '要求模型重发 shell 工具动作',
@@ -43,8 +52,15 @@ export function resolveNoToolActionRecovery(
       ].join('\n'),
     };
   }
-  if (input.noToolRounds >= 2 || !deferredAction) return undefined;
+  if (!deferredAction) return undefined;
+  if (input.noToolRounds >= 2) {
+    return {
+      kind: 'stop',
+      reason: 'Provider 连续预告读取、修改或验证动作，但没有形成可执行工具调用；任务未完成。',
+    };
+  }
   return {
+    kind: 'retry',
     statusTitle: '等待行动提案落地',
     statusDetail: '当前回复只预告了后续动作，没有提供完整答案或工具提案。DevSeek 正在要求模型重新确认并落实本轮意图。',
     activityLabel: '要求模型落实预告动作',

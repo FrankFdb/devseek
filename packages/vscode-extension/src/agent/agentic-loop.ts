@@ -649,6 +649,10 @@ export async function runAgenticLoop(
         missingEvidenceCount: evidenceWithoutTools.missingEvidence.length,
       });
       if (!callbacks.signal?.aborted && actionRecovery) {
+        if (actionRecovery.kind === 'stop') {
+          failedReason = actionRecovery.reason;
+          break;
+        }
         noToolRounds++;
         await emitAgenticCorrectionStatus(
           actionRecovery.statusTitle,

@@ -17,6 +17,7 @@ export function agentAnnouncementKey(text: string): string {
 
 const CHINESE_DEFERRED_ACTOR = [
   '(?:我将|我会|接下来(?:我)?(?:将|会)?)(?:先|立即|开始)?',
+  '我(?:先|立即|开始)',
   '我需要(?:先|立即|开始)?',
   '让我(?:先|开始)?',
   '现在(?:我)?需要',

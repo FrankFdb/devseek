@@ -821,6 +821,33 @@ test('ModelLedUserSimulation: a deferred action announcement must continue into 
   }
 });
 
+test('ModelLedUserSimulation: repeated deferred actions fail instead of settling with zero delivery', async () => {
+  const prompt = '检查现有程序，修复源码并运行验证。';
+  let calls = 0;
+  const simulation = await runSimulation(prompt, async () => {
+    calls += 1;
+    const root = fakeWorkspace.workspaceFolders[0].uri.fsPath;
+    if (calls === 1) {
+      return {
+        text: '先读取工作区结构。',
+        tools: [{ name: 'list_dir', input: { path: root } }],
+      };
+    }
+    return {
+      text: '我立即读取必要文件并执行修复。首先读取完整源码：',
+      tools: [],
+    };
+  }, { runDisplayAction: 'fix' });
+  try {
+    assert.equal(calls, 4, simulation.result.historyText);
+    assert.equal(simulation.result.tasksFailed, 1, simulation.result.historyText);
+    assert.equal(simulation.result.changedPaths.length, 0);
+    assert.match(simulation.result.historyText, /没有形成可执行工具调用/u);
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
 test('ModelLedUserSimulation: investigation prose from a repair turn cannot settle as completion', async () => {
   const prompt = '继续修复现有程序中的验证失败，修改生产实现并运行验证。';
   let calls = 0;
