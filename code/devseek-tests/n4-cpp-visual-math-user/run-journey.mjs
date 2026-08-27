@@ -120,7 +120,7 @@ for (const roundNumber of roundsToExecute) {
     && resumePreflight?.ok === false
     && roundNumber === selectedRounds[0];
   const effectivePrompt = repairingInterruptedRound
-    ? buildRepairContinuationPrompt(round.prompt)
+    ? buildRepairContinuationPrompt(round.prompt, resumePreflight)
     : round.prompt;
   const harnessArgs = [
     path.join(repoRoot, 'packages/vscode-extension/test/devseek-real-plugin-deepseek-harness.mjs'),

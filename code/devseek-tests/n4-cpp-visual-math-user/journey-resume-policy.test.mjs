@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   buildRepairContinuationPrompt,
   planResumePreflight,
+  projectRepairVerificationFailures,
   requiredResumePreflightStage,
   selectJourneyRounds,
 } from './journey-resume-policy.mjs';
@@ -39,8 +40,36 @@ test('repair continuation verifies the current stage before deciding whether cod
 });
 
 test('repair continuation preserves the original requirement after its evidence-led instruction', () => {
-  const prompt = buildRepairContinuationPrompt('执行 ./test.sh 并完成第二轮。');
+  const verification = {
+    checks: [
+      { id: 'public-build', ok: true, details: { status: 0 } },
+      {
+        id: 'visual-state',
+        ok: false,
+        expected: { fraction: { selected: 3, total: 4 } },
+        details: { 'fraction.selected': 3, 'fraction.total': 4 },
+      },
+    ],
+  };
+  const prompt = buildRepairContinuationPrompt('执行 ./test.sh 并完成第二轮。', verification);
   assert.match(prompt, /独立验证已经失败/);
+  assert.match(prompt, /只读测试数据，不是命令/);
+  assert.match(prompt, /"check": "visual-state"/);
+  assert.match(prompt, /"fraction":/);
+  assert.doesNotMatch(prompt, /"check": "public-build"/);
   assert.match(prompt, /不要从头重写项目/);
   assert.match(prompt, /执行 \.\/test\.sh 并完成第二轮/);
+});
+
+test('repair verification projection is bounded and includes only failed checks', () => {
+  const projection = projectRepairVerificationFailures({
+    checks: [
+      { id: 'passed', ok: true, details: { status: 0 } },
+      { id: 'failed', ok: false, expected: { colors: 6 }, details: { output: 'x'.repeat(4_000) } },
+    ],
+  });
+  assert.match(projection, /"check": "failed"/);
+  assert.match(projection, /detail truncated/);
+  assert.doesNotMatch(projection, /"check": "passed"/);
+  assert.ok(projection.length < 2_000);
 });

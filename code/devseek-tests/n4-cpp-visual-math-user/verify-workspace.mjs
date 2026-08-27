@@ -30,14 +30,21 @@ export function verifyWorkspace(workspace, stage, evidenceDir) {
   check(checks, 'source-contract', sourcePaths.every(rel => fileHasContent(root, rel)), {
     missing: sourcePaths.filter(rel => !fileHasContent(root, rel)),
   });
-  const sourceText = sourcePaths
+  const existingSources = sourcePaths
     .filter(rel => fileHasContent(root, rel))
-    .map(rel => fs.readFileSync(path.join(root, rel), 'utf8'))
-    .join('\n');
+    .map(rel => ({ rel, text: fs.readFileSync(path.join(root, rel), 'utf8') }));
+  const sourceText = existingSources.map(source => source.text).join('\n');
   const unfinishedImplementation = hasUnfinishedImplementation(sourceText);
+  const unfinishedMatches = sourceMatches(existingSources, unfinishedSource);
+  const systemCallMatches = sourceMatches(existingSources, /\bsystem\s*\(/u);
   check(checks, 'source-hygiene', !unfinishedImplementation && !/\bsystem\s*\(/u.test(sourceText), {
     unfinishedImplementation,
     systemCall: /\bsystem\s*\(/u.test(sourceText),
+    unfinishedMatches,
+    systemCallMatches,
+  }, {
+    unfinishedImplementation: false,
+    systemCall: false,
   });
 
   const publicTest = run('./test.sh', [], root, 180_000);
@@ -52,8 +59,13 @@ export function verifyWorkspace(workspace, stage, evidenceDir) {
       && result.state?.fraction?.total === 4
       && result.state?.fraction?.selected === 3
       && result.state?.numberLine?.marker === 6
-      && Number(result.state?.handledActions) >= 5, result.state);
-    check(checks, 'fraction-number-line-pixels', ppmLooksGraphical(result.ppm), result.ppm);
+      && Number(result.state?.handledActions) >= 5, result.state, {
+      lesson: 'number-line',
+      handledActions: { minimum: 5 },
+      fraction: { selected: 3, total: 4 },
+      numberLine: { marker: 6 },
+    });
+    check(checks, 'fraction-number-line-pixels', ppmLooksGraphical(result.ppm), result.ppm, graphicalPpmExpectation());
   }
 
   if (stage >= 3 && publicTest.status === 0) {
@@ -64,8 +76,11 @@ export function verifyWorkspace(workspace, stage, evidenceDir) {
       && result.state?.quiz?.answered === 2
       && result.state?.quiz?.correct === 2
       && typeof result.state?.quiz?.feedback === 'string'
-      && result.state.quiz.feedback.trim().length > 0, result.state);
-    check(checks, 'quiz-pixels', ppmLooksGraphical(result.ppm), result.ppm);
+      && result.state.quiz.feedback.trim().length > 0, result.state, {
+      lesson: 'quiz',
+      quiz: { answered: 2, correct: 2, feedback: { nonEmptyString: true } },
+    });
+    check(checks, 'quiz-pixels', ppmLooksGraphical(result.ppm), result.ppm, graphicalPpmExpectation());
   }
 
   if (stage >= 4 && publicTest.status === 0) {
@@ -74,7 +89,7 @@ export function verifyWorkspace(workspace, stage, evidenceDir) {
       artifacts[name] = result.artifacts;
       check(checks, `${name}-render-command`, result.command.status === 0, commandSummary(result.command));
       check(checks, `${name}-render-size`, result.ppm?.width === width && result.ppm?.height === height, result.ppm);
-      check(checks, `${name}-render-pixels`, ppmLooksGraphical(result.ppm), result.ppm);
+      check(checks, `${name}-render-pixels`, ppmLooksGraphical(result.ppm), result.ppm, graphicalPpmExpectation());
     }
 
     const invalid = run(path.join(root, 'build/math_visual_lab'), [
@@ -234,6 +249,25 @@ export function ppmLooksGraphical(stats) {
     && stats.nonDominantRatio >= 0.02);
 }
 
+function graphicalPpmExpectation() {
+  return {
+    minimumWidth: 640,
+    minimumHeight: 480,
+    minimumUniqueSampledColors: 6,
+    minimumNonDominantRatio: 0.02,
+  };
+}
+
+function sourceMatches(sources, pattern) {
+  const matches = [];
+  for (const source of sources) {
+    source.text.split(/\r?\n/u).forEach((line, index) => {
+      if (pattern.test(line)) matches.push({ path: source.rel, line: index + 1, text: line.trim() });
+    });
+  }
+  return matches;
+}
+
 function addColor(colors, red, green, blue) {
   const key = `${red},${green},${blue}`;
   colors.set(key, (colors.get(key) || 0) + 1);
@@ -286,8 +320,8 @@ function commandSummary(result) {
   };
 }
 
-function check(checks, id, ok, details) {
-  checks.push({ id, ok: Boolean(ok), details });
+function check(checks, id, ok, details, expected) {
+  checks.push({ id, ok: Boolean(ok), ...(expected ? { expected } : {}), details });
 }
 
 function fileHasContent(root, rel) {
