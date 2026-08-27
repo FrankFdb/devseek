@@ -90,6 +90,33 @@ const ALLOW_FILE_WRITE = Object.freeze({
   evidenceRefs: Object.freeze(['test:model-led-user-simulation']),
 });
 
+function prepareTerminalCommand(host) {
+  return async (command, workdir) => ({
+    constraint: {
+      decision: 'require-confirmation',
+      reason: 'model-led-user-simulation-terminal-confirmed',
+      confirmationRef: `test:model-led-user-simulation:terminal:${command}`,
+      evidenceRefs: [`test:model-led-user-simulation:terminal-constraint:${command}`],
+    },
+    execute: async () => {
+      try {
+        return {
+          status: 'completed',
+          result: await host(command, workdir),
+          evidenceRefs: [`test:model-led-user-simulation:terminal-execution:${command}`],
+        };
+      } catch (error) {
+        return {
+          status: 'failed',
+          result: error instanceof Error ? error.message : String(error),
+          errorCode: 'model-led-user-simulation-terminal-failed',
+          evidenceRefs: [`test:model-led-user-simulation:terminal-execution:${command}:failed`],
+        };
+      }
+    },
+  });
+}
+
 function createHarness(root, prompt, options = {}) {
   const statuses = [];
   const changes = [];
@@ -119,6 +146,9 @@ function createHarness(root, prompt, options = {}) {
     onTaskCheckpoint() {},
     onToolActivity(kind, label) { activities.push({ kind, label }); },
     onResolveFileWriteConstraint: async () => ALLOW_FILE_WRITE,
+    ...(options.terminalHost
+      ? { onPrepareTerminalCommand: prepareTerminalCommand(options.terminalHost) }
+      : {}),
   }, {
     workspaceRoot: root,
     userPrompt: prompt,
@@ -690,6 +720,7 @@ test('ModelLedUserSimulation: unclassified investigation is bounded before the m
 test('ModelLedUserSimulation: a recovered unclassified task gets a final bounded delivery turn', async () => {
   const prompt = 'Continue the interrupted implementation after validating the retained workspace.';
   let calls = 0;
+  let terminalCalls = 0;
   const simulation = await runSimulation(prompt, async messages => {
     calls += 1;
     const root = fakeWorkspace.workspaceFolders[0].uri.fsPath;
@@ -702,7 +733,26 @@ test('ModelLedUserSimulation: a recovered unclassified task gets a final bounded
       };
     }
 
-    assert.match(messages.at(-1).content, /必须依据原始用户需求形成可结算交付/u);
+    if (calls === 10) {
+      const source = path.join(root, 'validation-context.txt');
+      const validation = path.join(root, 'recovery-validation.test.mjs');
+      writeFileSync(source, 'validation context\n');
+      writeFileSync(validation, [
+        "import assert from 'node:assert/strict';",
+        "import test from 'node:test';",
+        "test('recovery validation', () => assert.equal(1, 1));",
+        '',
+      ].join('\n'));
+      return {
+        text: 'Run the newly selected validation entry point before the targeted change.',
+        tools: [
+          { name: 'run_terminal', input: { command: 'node --test recovery-validation.test.mjs' } },
+          { name: 'read_file', input: { path: source } },
+        ],
+      };
+    }
+
+    assert.match(messages.at(-1).content, /recovery validation/u);
     const target = path.join(root, 'recovered-delivery.txt');
     return {
       text: 'The retained evidence is sufficient; applying the bounded delivery now.',
@@ -712,13 +762,26 @@ test('ModelLedUserSimulation: a recovered unclassified task gets a final bounded
         { name: 'task_complete', input: { summary: 'Created and read back recovered-delivery.txt.' } },
       ],
     };
-  }, { runDisplayAction: 'create' });
+  }, {
+    runDisplayAction: 'create',
+    terminalHost: async command => {
+      terminalCalls += 1;
+      assert.equal(command, 'node --test recovery-validation.test.mjs');
+      return 'ok 1 - recovery validation\n[exitCode=0]';
+    },
+  });
   try {
-    assert.equal(calls, 10, simulation.result.historyText);
+    assert.equal(calls, 11, JSON.stringify({
+      historyText: simulation.result.historyText,
+      terminalEvidence: simulation.result.terminalEvidence,
+      toolExecutionReceipts: simulation.result.toolExecutionReceipts,
+    }, null, 2));
     assert.equal(
       readFileSync(path.join(simulation.root, 'recovered-delivery.txt'), 'utf8'),
       'RECOVERED_DELIVERY_OK\n',
     );
+    assert.equal(terminalCalls, 1, simulation.result.historyText);
+    assert.match(simulation.result.historyText, /ok<\/code> run, code 0/u);
     assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
     assert.equal(
       simulation.harness.statuses.filter(
@@ -726,6 +789,53 @@ test('ModelLedUserSimulation: a recovered unclassified task gets a final bounded
       ).length,
       3,
     );
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
+test('ModelLedUserSimulation: repeated validation cannot keep unclassified investigation alive', async () => {
+  const prompt = 'Inspect the retained workspace, validate it, and settle the requested delivery.';
+  let calls = 0;
+  let terminalCalls = 0;
+  const validationCommand = 'node --test bounded-validation.test.mjs';
+  const simulation = await runSimulation(prompt, async () => {
+    calls += 1;
+    const root = fakeWorkspace.workspaceFolders[0].uri.fsPath;
+    const source = path.join(root, `bounded-context-${calls}.txt`);
+    writeFileSync(source, `bounded context ${calls}\n`);
+    if (calls <= 9) {
+      return {
+        text: `Inspect bounded context ${calls}.`,
+        tools: [{ name: 'read_file', input: { path: source } }],
+      };
+    }
+    writeFileSync(path.join(root, 'bounded-validation.test.mjs'), [
+      "import assert from 'node:assert/strict';",
+      "import test from 'node:test';",
+      "test('bounded validation', () => assert.equal(1, 1));",
+      '',
+    ].join('\n'));
+    return {
+      text: 'Repeat the same validation while continuing investigation.',
+      tools: [
+        { name: 'run_terminal', input: { command: validationCommand } },
+        { name: 'read_file', input: { path: source } },
+      ],
+    };
+  }, {
+    runDisplayAction: 'create',
+    terminalHost: async command => {
+      terminalCalls += 1;
+      assert.equal(command, validationCommand);
+      return 'ok 1 - bounded validation\n[exitCode=0]';
+    },
+  });
+  try {
+    assert.equal(calls, 11, simulation.result.historyText);
+    assert.equal(terminalCalls, 1, simulation.result.historyText);
+    assert.equal(simulation.result.tasksFailed, 1, simulation.result.historyText);
+    assert.match(simulation.result.historyText, /3 次交付纠正/u);
   } finally {
     rmSync(simulation.root, { recursive: true, force: true });
   }

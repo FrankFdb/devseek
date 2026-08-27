@@ -27,6 +27,7 @@ const {
   getTerminalRecoveryProtocol,
   makeTerminalCmdSignature,
   shouldBlockUnverifiedSourceOverwrite,
+  TerminalCommandProgressLedger,
 } = req(bundlePath);
 
 test('AgentLoop terminal guard keeps identity beyond a long shared workdir prefix', () => {
@@ -50,6 +51,30 @@ test('AgentLoop terminal recovery distinguishes a passing command from fresh art
   assert.match(feedback, /验收条件、输出路径和产物新鲜度/u);
   assert.match(feedback, /已有文件优先使用 replace_in_file 精确修改/u);
   assert.doesNotMatch(feedback, /直接调用 create_file 写入目标文件的完整内容/u);
+});
+
+test('AgentLoop terminal progress ledger distinguishes novelty, repetition, and a new progress epoch', () => {
+  const ledger = new TerminalCommandProgressLedger();
+  assert.deepEqual(ledger.inspect('  npm   test  ', 0), {
+    signature: 'npm test',
+    repeatedWithoutProgress: false,
+    nextAttempt: 1,
+  });
+
+  assert.deepEqual(ledger.observe(['npm test'], 0), {
+    hasNovelEligibleCommand: true,
+    warnings: [],
+  });
+  const mixed = ledger.observe(['npm test', 'git status'], 0, ['npm test']);
+  assert.equal(mixed.hasNovelEligibleCommand, false);
+  assert.equal(mixed.warnings.length, 1);
+  assert.match(mixed.warnings[0], /第 2 次出现/u);
+
+  assert.equal(ledger.inspect('npm test', 1).repeatedWithoutProgress, false);
+  assert.deepEqual(ledger.observe(['npm test'], 1), {
+    hasNovelEligibleCommand: true,
+    warnings: [],
+  });
 });
 
 test('AgentLoop write guard: blocks existing source overwrite without read evidence', () => {

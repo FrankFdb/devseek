@@ -985,7 +985,8 @@ test('Agentic loop: repeated terminal failures enter root-cause recovery before 
   );
   assertContains(investigation, 'input.consumeContextRefresh', 'failed mutations must permit one fresh read before repeat suppression');
   assertContains(code, 'suppressedTools', 'intentional repeat suppression must be recorded for replay diagnostics');
-  assertContains(code, 'lastProgressEpoch', 'terminal repeats must be compared against file-write progress');
+  assertContains(code, 'terminalCommandProgress.inspect', 'agent orchestration must consult the terminal progress owner');
+  assertContains(recovery, 'lastProgressEpoch', 'terminal repeats must be compared against file-write progress');
 });
 
 test('Agentic loop: terminal completion evidence requires successful validation output', () => {
@@ -2497,8 +2498,8 @@ test('Architecture: validated source changes require fresh source review before 
   );
   assertContains(
     agenticLoop,
-    /investigationActivity:\s*roundHasContextInvestigationActivity\s*&&\s*!providerRecoveryCompletedThisRound/u,
-    'the accepted recovery result must not consume a normal delivery investigation round',
+    /investigationActivity:\s*roundHasContextInvestigationActivity\s*&&\s*!\(deliveryExpectation === 'unclassified' && roundHasNovelValidationTerminalProgress\)\s*&&\s*!providerRecoveryCompletedThisRound/u,
+    'accepted recovery and first-time unclassified validation must not consume a normal delivery investigation round',
   );
   assertContains(
     reviewNoToolRecovery,

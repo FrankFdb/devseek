@@ -51,7 +51,7 @@ import {
 } from './agentic-summary';
 import {
   getTerminalRecoveryProtocol,
-  makeTerminalCmdSignature,
+  TerminalCommandProgressLedger,
 } from './write-guard';
 import {
   buildTaskTerminalFailureDetail,
@@ -389,8 +389,7 @@ export async function runAgenticLoop(
   let executionConvergenceRoundLimit = maxAgenticRounds;
   let requirementReviewRepairGraceRounds = 0;
   let steeringRevisionGraceRounds = 0;
-  // Track terminal command signatures across rounds to detect and break stuck loops
-  const seenTerminalCmdSignatures = new Map<string, { count: number; lastProgressEpoch: number }>();
+  const terminalCommandProgress = new TerminalCommandProgressLedger();
   const contextInvestigation = new ContextInvestigationLedger(workspaceRoot);
   for (;;) {
   while (roundCount < Math.max(
@@ -734,13 +733,12 @@ export async function runAgenticLoop(
       if (tool.name !== 'run_terminal') return;
       const command = typeof tool.input.command === 'string' ? tool.input.command.trim() : '';
       if (!command) return;
-      const sig = makeTerminalCmdSignature(command);
-      const seen = seenTerminalCmdSignatures.get(sig);
-      if (seen && seen.lastProgressEpoch === progressEpoch && !hasFileWriteIntentThisRound) {
+      const commandProgress = terminalCommandProgress.inspect(command, progressEpoch);
+      if (commandProgress.repeatedWithoutProgress && !hasFileWriteIntentThisRound) {
         blockedRepeatedToolIndexes.add(toolIndex);
         suppressedTools.push({ tool: tool.name, reason: 'repeated-terminal-without-progress' });
-        loopWarnings.push(getTerminalRecoveryProtocol(command, seen.count + 1));
-        callbacks.onToolActivity?.('terminal', `跳过重复命令: ${sig.slice(0, 50)}`);
+        loopWarnings.push(getTerminalRecoveryProtocol(command, commandProgress.nextAttempt));
+        callbacks.onToolActivity?.('terminal', `跳过重复命令: ${commandProgress.signature.slice(0, 50)}`);
       }
     });
     const contextScreen = contextInvestigation.screen(tools, {
@@ -933,18 +931,14 @@ export async function runAgenticLoop(
     }
     const autoValidationFeedback = [normalizedAutoValidation.feedbackForAI, qualityGateFeedback].filter(Boolean).join('\n\n');
 
-    // Loop detection: track terminal command signatures across rounds.
-    // If the same command is executed 2+ times without making progress, inject
-    // a targeted override so the AI is forced to change strategy.
-    for (const cmd of loopRes.terminalCommands ?? []) {
-      const sig = makeTerminalCmdSignature(cmd);
-      const prev = seenTerminalCmdSignatures.get(sig);
-      const nextCount = (prev?.count ?? 0) + 1;
-      seenTerminalCmdSignatures.set(sig, { count: nextCount, lastProgressEpoch: progressEpoch });
-      if (prev && prev.lastProgressEpoch === progressEpoch && nextCount >= 2) {
-        loopWarnings.push(getTerminalRecoveryProtocol(cmd, nextCount));
-      }
-    }
+    const validationCommandsThisRound = (loopRes.terminalEvidence ?? [])
+      .filter(evidence => evidence.kind !== 'other')
+      .map(evidence => evidence.command);
+    const terminalProgress = terminalCommandProgress.observe(
+      loopRes.terminalCommands ?? [], progressEpoch, validationCommandsThisRound,
+    );
+    loopWarnings.push(...terminalProgress.warnings);
+    const roundHasNovelValidationTerminalProgress = terminalProgress.hasNovelEligibleCommand;
     // Clear any ASUM delta that task_complete may have emitted during this round.
     // Each round's summary is intermediate — only the definitive post-loop ASUM
     // should appear in the prose bubble (Copilot/Claude Code pattern).
@@ -1004,6 +998,7 @@ export async function runAgenticLoop(
       actionableRepairPending: requirementReviewSourceRepairPending,
       gatheredEvidenceCount: allReadEvidencePaths.size + allEvidenceRefs.length,
       investigationActivity: roundHasContextInvestigationActivity
+        && !(deliveryExpectation === 'unclassified' && roundHasNovelValidationTerminalProgress)
         && !providerRecoveryCompletedThisRound,
     });
     if (!callbacks.signal?.aborted && deliveryConvergenceResult.kind === 'correct') {

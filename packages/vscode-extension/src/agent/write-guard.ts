@@ -132,6 +132,56 @@ export function makeTerminalCmdSignature(cmd: string): string {
   return cmd.trim().replace(/\s+/g, ' ');
 }
 
+export interface TerminalCommandProgressInspection {
+  readonly signature: string;
+  readonly repeatedWithoutProgress: boolean;
+  readonly nextAttempt: number;
+}
+
+export interface TerminalCommandProgressObservation {
+  readonly hasNovelEligibleCommand: boolean;
+  readonly warnings: readonly string[];
+}
+
+/** Owns terminal repetition identity and progress-epoch comparisons across model rounds. */
+export class TerminalCommandProgressLedger {
+  private readonly seen = new Map<string, { count: number; lastProgressEpoch: number }>();
+
+  inspect(command: string, progressEpoch: number): TerminalCommandProgressInspection {
+    const signature = makeTerminalCmdSignature(command);
+    const previous = this.seen.get(signature);
+    return {
+      signature,
+      repeatedWithoutProgress: previous?.lastProgressEpoch === progressEpoch,
+      nextAttempt: (previous?.count ?? 0) + 1,
+    };
+  }
+
+  observe(
+    commands: readonly string[],
+    progressEpoch: number,
+    noveltyEligibleCommands: readonly string[] = commands,
+  ): TerminalCommandProgressObservation {
+    const noveltyEligibleSignatures = new Set(noveltyEligibleCommands.map(makeTerminalCmdSignature));
+    let hasNovelEligibleCommand = false;
+    const warnings: string[] = [];
+    for (const command of commands) {
+      const inspection = this.inspect(command, progressEpoch);
+      if (!inspection.repeatedWithoutProgress && noveltyEligibleSignatures.has(inspection.signature)) {
+        hasNovelEligibleCommand = true;
+      }
+      this.seen.set(inspection.signature, {
+        count: inspection.nextAttempt,
+        lastProgressEpoch: progressEpoch,
+      });
+      if (inspection.repeatedWithoutProgress && inspection.nextAttempt >= 2) {
+        warnings.push(getTerminalRecoveryProtocol(command, inspection.nextAttempt));
+      }
+    }
+    return { hasNovelEligibleCommand, warnings };
+  }
+}
+
 export function getTerminalRecoveryProtocol(cmd: string, attempt: number): string {
   const sig = makeTerminalCmdSignature(cmd);
   return [
