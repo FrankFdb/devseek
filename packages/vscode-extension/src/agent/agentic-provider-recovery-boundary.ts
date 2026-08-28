@@ -46,6 +46,7 @@ export interface AgenticProviderRecoveryBoundaryInput {
 
 export interface AgenticProviderRecoveryToolScreen {
   readonly blockedToolIndexes: ReadonlySet<number>;
+  readonly contextRefreshToolIndexes: ReadonlySet<number>;
   readonly warnings: readonly string[];
 }
 
@@ -98,8 +99,13 @@ export class AgenticProviderRecoveryLifecycle {
   /** Admits one concrete action while a rejected Provider action is being reconstructed. */
   screenToolProposals(tools: readonly { readonly name: string }[]): AgenticProviderRecoveryToolScreen {
     const blockedToolIndexes = new Set<number>();
+    const contextRefreshToolIndexes = new Set<number>();
     if (!this.hasUnresolvedToolAction()) {
-      return Object.freeze({ blockedToolIndexes, warnings: Object.freeze([]) });
+      return Object.freeze({
+        blockedToolIndexes,
+        contextRefreshToolIndexes,
+        warnings: Object.freeze([]),
+      });
     }
 
     let admittedAction = false;
@@ -114,6 +120,9 @@ export class AgenticProviderRecoveryLifecycle {
         return;
       }
       admittedAction = true;
+      if (this.isRejectedWriteContextRefresh(tool.name)) {
+        contextRefreshToolIndexes.add(toolIndex);
+      }
     });
 
     const warnings = blockedToolIndexes.size > 0
@@ -121,7 +130,7 @@ export class AgenticProviderRecoveryLifecycle {
         `【系统恢复】未解决动作的恢复轮只执行一个具体工具，且该工具必须匹配被隔离动作；宿主已跳过 ${blockedToolIndexes.size} 个额外、不匹配或元状态工具。请依据唯一真实结果继续，未执行动作必须在下一轮重新提议。`,
       ])
       : Object.freeze([]);
-    return Object.freeze({ blockedToolIndexes, warnings });
+    return Object.freeze({ blockedToolIndexes, contextRefreshToolIndexes, warnings });
   }
 
   private isRecoveryActionAllowed(name: string): boolean {
@@ -129,6 +138,10 @@ export class AgenticProviderRecoveryLifecycle {
     const restoresRejectedWrite = isFileWriteToolName(name)
       && [...this.observedToolNames].some(isFileWriteToolName);
     if (restoresRejectedWrite) return true;
+    return this.isRejectedWriteContextRefresh(name);
+  }
+
+  private isRejectedWriteContextRefresh(name: string): boolean {
     return this.allowRejectedWriteContextRefresh
       && name === 'read_file'
       && [...this.observedToolNames].some(isFileWriteToolName);

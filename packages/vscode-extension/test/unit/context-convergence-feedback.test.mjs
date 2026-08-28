@@ -287,3 +287,28 @@ test('unclassified delivery gets one bounded choice round beyond a known mutatio
   assert.equal(unclassifiedLedger.observe(unclassified).kind, 'correct');
   assert.equal(unclassifiedLedger.observe(unclassified).kind, 'stop');
 });
+
+test('delivery convergence owns one final precise read and bounds suppressed investigation', () => {
+  const ledger = new DeliveryConvergenceLedger();
+  assert.equal(ledger.contextToolAdmission(), 'open');
+
+  assert.equal(ledger.observe(unresolvedMutation).kind, 'continue');
+  assert.equal(ledger.observe(unresolvedMutation).kind, 'continue');
+  assert.equal(ledger.observe(unresolvedMutation).kind, 'correct');
+  assert.equal(ledger.contextToolAdmission(), 'one-precise-read');
+
+  ledger.closeFinalContextAllowance();
+  assert.equal(ledger.contextToolAdmission(), 'closed');
+  assert.equal(ledger.recordSuppressedContextRound(18), undefined);
+  assert.match(
+    ledger.recordSuppressedContextRound(19),
+    /最终精确读取额度也已用尽/u,
+  );
+
+  ledger.observe({
+    ...unresolvedMutation,
+    deliveryProgressEpoch: 1,
+    cohortBoundaryActivity: true,
+  });
+  assert.equal(ledger.contextToolAdmission(), 'open');
+});

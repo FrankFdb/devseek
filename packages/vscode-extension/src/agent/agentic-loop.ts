@@ -756,7 +756,13 @@ export async function runAgenticLoop(
       progressEpoch,
       hasWorkspaceMutation: hasFileWriteIntentThisRound,
       consumeContextRefresh: path => toolFailureRecovery.consumeContextRefresh(path),
+      alreadyBlockedToolIndexes: blockedRepeatedToolIndexes,
+      providerRecoveryContextRefreshToolIndexes: providerRecoveryScreen.contextRefreshToolIndexes,
+      deliveryContextAdmission: deliveryConvergence.contextToolAdmission(),
     });
+    if (contextScreen.consumedPreciseContextRead || contextScreen.exhaustedPreciseContextAllowance) {
+      deliveryConvergence.closeFinalContextAllowance();
+    }
     for (const toolIndex of contextScreen.blockedToolIndexes) blockedRepeatedToolIndexes.add(toolIndex);
     suppressedTools.push(...contextScreen.suppressedTools);
     loopWarnings.push(...contextScreen.warnings);
@@ -1024,6 +1030,12 @@ export async function runAgenticLoop(
         hasNovelValidationTerminalProgress: roundHasNovelValidationTerminalProgress,
       }),
     });
+    const deliveryContextStopReason = contextScreen.deliveryBlockedToolCount > 0
+      && !roundHasNovelValidationTerminalProgress
+      ? deliveryConvergence.recordSuppressedContextRound(
+        allReadEvidencePaths.size + allEvidenceRefs.length,
+      )
+      : undefined;
     if (!callbacks.signal?.aborted && deliveryConvergenceResult.kind === 'correct') {
       await emitAgenticCorrectionStatus(
         deliveryConvergenceResult.statusTitle,
@@ -1033,6 +1045,10 @@ export async function runAgenticLoop(
       loopWarnings.push(deliveryConvergenceResult.feedback);
     } else if (deliveryConvergenceResult.kind === 'stop') {
       failedReason = deliveryConvergenceResult.reason;
+      break;
+    }
+    if (deliveryContextStopReason) {
+      failedReason = deliveryContextStopReason;
       break;
     }
 

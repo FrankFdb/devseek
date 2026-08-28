@@ -19,6 +19,7 @@ const MAX_UNCLASSIFIED_DELIVERY_CORRECTIONS = 3;
 const MAX_ACTIONABLE_REPAIR_CORRECTIONS = 3;
 
 export type DeliveryConvergenceExpectation = 'mutation' | 'unclassified' | 'none';
+export type DeliveryContextAdmission = 'open' | 'one-precise-read' | 'closed';
 
 export function resolveDeliveryConvergenceExpectation(input: {
   readonly mutationRequired: boolean;
@@ -108,6 +109,26 @@ export class DeliveryConvergenceLedger {
   private progressEpoch: number | undefined;
   private investigationRounds = 0;
   private correctionCount = 0;
+  private contextAdmission: DeliveryContextAdmission = 'open';
+  private suppressedContextRounds = 0;
+
+  contextToolAdmission(): DeliveryContextAdmission {
+    return this.contextAdmission;
+  }
+
+  closeFinalContextAllowance(): void {
+    if (this.contextAdmission === 'one-precise-read') this.contextAdmission = 'closed';
+  }
+
+  recordSuppressedContextRound(gatheredEvidenceCount: number): string | undefined {
+    if (this.contextAdmission !== 'closed') return undefined;
+    this.suppressedContextRounds++;
+    if (this.suppressedContextRounds < 2) return undefined;
+    return [
+      `已收集 ${gatheredEvidenceCount} 项项目证据，最终精确读取额度也已用尽。`,
+      '模型仍只请求更多上下文工具而没有产生写入或交付；为避免自主模式无界调查，当前任务已停止。',
+    ].join('');
+  }
 
   observe(input: DeliveryConvergenceObservation): DeliveryConvergenceResult {
     if (this.expectation !== input.expectation || this.progressEpoch !== input.deliveryProgressEpoch) {
@@ -151,6 +172,7 @@ export class DeliveryConvergenceLedger {
     }
 
     this.correctionCount++;
+    if (this.contextAdmission === 'open') this.contextAdmission = 'one-precise-read';
     const mutationExpected = input.expectation === 'mutation';
     return Object.freeze({
       kind: 'correct',
@@ -178,6 +200,8 @@ export class DeliveryConvergenceLedger {
   private resetCohort(): void {
     this.investigationRounds = 0;
     this.correctionCount = 0;
+    this.contextAdmission = 'open';
+    this.suppressedContextRounds = 0;
   }
 }
 

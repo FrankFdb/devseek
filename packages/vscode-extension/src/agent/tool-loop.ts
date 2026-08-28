@@ -971,7 +971,7 @@ export async function executeFakeToolsForLoop(
         continue;
       }
       if (oldStr === newStr) {
-        const reason = 'old_str 与 new_str 完全相同，不会产生任何修改。请重新 read_file 后给出真正变化的替换内容。';
+        const reason = 'old_str 与 new_str 完全相同，不会产生任何修改。若当前上下文已有目标原文，请直接给出真正变化的 new_str；只有原文缺失或已过期时才重新 read_file。';
         await canonicalTools.fail(toolPlan, canonicalContext, 'replace-no-op');
         recordToolFailure('replace_in_file', 'replace', rawPath, reason, strategyFingerprint);
         parts.push(`[replace_in_file: ${rawPath}] 错误: ${reason}`);

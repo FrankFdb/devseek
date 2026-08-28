@@ -95,6 +95,7 @@ test('provider recovery lifecycle locally admits only one concrete recovery acti
   ]);
 
   assert.deepEqual([...screened.blockedToolIndexes], [0, 2, 3, 4]);
+  assert.deepEqual([...screened.contextRefreshToolIndexes], [1]);
   assert.match(screened.warnings[0], /只执行一个具体工具/u);
   assert.equal(lifecycle.hasUnresolvedToolAction(), true);
 });
@@ -112,6 +113,7 @@ test('provider recovery lifecycle blocks actions unrelated to the quarantined pr
   ]);
 
   assert.deepEqual([...screened.blockedToolIndexes], [0, 2]);
+  assert.deepEqual([...screened.contextRefreshToolIndexes], []);
   assert.match(screened.warnings[0], /不匹配/u);
 });
 
@@ -130,6 +132,7 @@ test('provider recovery lifecycle preserves an in-session rejected write without
   ]);
 
   assert.deepEqual([...screened.blockedToolIndexes], [0, 1]);
+  assert.deepEqual([...screened.contextRefreshToolIndexes], []);
   assert.match(screened.warnings[0], /必须匹配被隔离动作/u);
   assert.equal(lifecycle.hasUnresolvedToolAction(), true);
 });
@@ -145,5 +148,6 @@ test('provider recovery lifecycle does not screen ordinary provider turns', () =
   ]);
 
   assert.deepEqual([...screened.blockedToolIndexes], []);
+  assert.deepEqual([...screened.contextRefreshToolIndexes], []);
   assert.deepEqual(screened.warnings, []);
 });

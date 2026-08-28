@@ -1422,6 +1422,7 @@ test('ToolLoop replace_in_file treats identical replacement as structured no-op 
     assert.equal(result.toolFailures?.[0]?.kind, 'replace');
     assert.equal(result.toolExecutionReceipts?.[0]?.effectStarted, false);
     assert.match(result.feedbackForAI, /old_str 与 new_str 完全相同/);
+    assert.match(result.feedbackForAI, /只有原文缺失或已过期时才重新 read_file/u);
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });
   }

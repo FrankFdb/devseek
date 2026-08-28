@@ -584,7 +584,7 @@ test('ModelLedUserSimulation: quarantined mutation recovery reaches a matching w
       simulation.harness.statuses.filter(
         status => status.title === '项目证据已收集，正在要求形成交付',
       ).length,
-      3,
+      2,
       JSON.stringify(simulation.harness.statuses, null, 2),
     );
   } finally {
@@ -1097,7 +1097,7 @@ test('ModelLedUserSimulation: a recovered unclassified task gets a final bounded
       simulation.harness.statuses.filter(
         status => status.title === '项目证据已收集，正在要求形成交付',
       ).length,
-      3,
+      2,
     );
   } finally {
     rmSync(simulation.root, { recursive: true, force: true });
@@ -1145,7 +1145,7 @@ test('ModelLedUserSimulation: repeated validation cannot keep unclassified inves
     assert.equal(calls, 11, simulation.result.historyText);
     assert.equal(terminalCalls, 1, simulation.result.historyText);
     assert.equal(simulation.result.tasksFailed, 1, simulation.result.historyText);
-    assert.match(simulation.result.historyText, /3 次交付纠正/u);
+    assert.match(simulation.result.historyText, /最终精确读取额度也已用尽/u);
   } finally {
     rmSync(simulation.root, { recursive: true, force: true });
   }

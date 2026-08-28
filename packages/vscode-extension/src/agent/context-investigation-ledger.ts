@@ -8,6 +8,7 @@ import {
   buildRepeatedContextToolFeedback,
   isContextGatheringToolName,
   makeContextToolSignature,
+  type DeliveryContextAdmission,
   type ContextToolRequest,
 } from './context-convergence-feedback';
 
@@ -20,12 +21,18 @@ export interface ContextInvestigationScreenResult {
   readonly suppressedTools: readonly ToolSuppressionEvidence[];
   readonly warnings: readonly string[];
   readonly acceptedRecoveryContextRefresh: boolean;
+  readonly consumedPreciseContextRead: boolean;
+  readonly exhaustedPreciseContextAllowance: boolean;
+  readonly deliveryBlockedToolCount: number;
 }
 
 interface ContextInvestigationScreenInput {
   readonly progressEpoch: number;
   readonly hasWorkspaceMutation: boolean;
   readonly consumeContextRefresh: (path: string | undefined) => boolean;
+  readonly alreadyBlockedToolIndexes?: ReadonlySet<number>;
+  readonly providerRecoveryContextRefreshToolIndexes?: ReadonlySet<number>;
+  readonly deliveryContextAdmission?: DeliveryContextAdmission;
 }
 
 interface ContextInvestigationRecordInput {
@@ -114,11 +121,24 @@ export class ContextInvestigationLedger {
     const suppressedTools: ToolSuppressionEvidence[] = [];
     const warnings: string[] = [];
     let acceptedRecoveryContextRefresh = false;
+    let consumedPreciseContextRead = false;
+    let exhaustedPreciseContextAllowance = false;
+    let deliveryBlockedToolCount = 0;
     if (input.hasWorkspaceMutation) {
-      return { blockedToolIndexes, suppressedTools, warnings, acceptedRecoveryContextRefresh };
+      return {
+        blockedToolIndexes,
+        suppressedTools,
+        warnings,
+        acceptedRecoveryContextRefresh,
+        consumedPreciseContextRead,
+        exhaustedPreciseContextAllowance,
+        deliveryBlockedToolCount,
+      };
     }
 
+    const deliveryAdmission = input.deliveryContextAdmission ?? 'open';
     tools.forEach((tool, toolIndex) => {
+      if (input.alreadyBlockedToolIndexes?.has(toolIndex)) return;
       if (!isContextGatheringToolName(tool.name)) return;
       const signature = makeContextToolSignature(tool);
       const seen = this.signatures.get(signature);
@@ -130,6 +150,28 @@ export class ContextInvestigationLedger {
       if (input.consumeContextRefresh(refreshPath)) {
         acceptedRecoveryContextRefresh = true;
         this.signatures.delete(signature);
+        return;
+      }
+      if (input.providerRecoveryContextRefreshToolIndexes?.has(toolIndex)) return;
+
+      const admitsPreciseRead = deliveryAdmission === 'one-precise-read'
+        && !consumedPreciseContextRead
+        && !exactRepeat
+        && !coveredRead
+        && tool.name === 'read_file'
+        && typeof tool.input.path === 'string';
+      if (admitsPreciseRead) {
+        consumedPreciseContextRead = true;
+        return;
+      }
+      if (deliveryAdmission !== 'open') {
+        if (deliveryAdmission === 'one-precise-read' && !consumedPreciseContextRead) {
+          exhaustedPreciseContextAllowance = true;
+        }
+        deliveryBlockedToolCount++;
+        blockedToolIndexes.add(toolIndex);
+        suppressedTools.push({ tool: tool.name, reason: 'delivery-context-budget-exhausted' });
+        warnings.push(buildDeliveryContextBlockedFeedback(tool));
         return;
       }
       if (!exactRepeat && !coveredRead) return;
@@ -147,7 +189,15 @@ export class ContextInvestigationLedger {
         ? buildCoveredContextReadFeedback(tool)
         : buildRepeatedContextToolFeedback(tool, nextCount));
     });
-    return { blockedToolIndexes, suppressedTools, warnings, acceptedRecoveryContextRefresh };
+    return {
+      blockedToolIndexes,
+      suppressedTools,
+      warnings,
+      acceptedRecoveryContextRefresh,
+      consumedPreciseContextRead,
+      exhaustedPreciseContextAllowance,
+      deliveryBlockedToolCount,
+    };
   }
 
   record(input: ContextInvestigationRecordInput): string[] {
@@ -228,5 +278,14 @@ function buildCoveredContextReadFeedback(tool: InvestigationTool): string {
     `【系统反馈】已跳过被既有证据覆盖的重复读取：${path}`,
     '请求的行范围已由本轮较早的成功读取完整覆盖，期间没有写盘使证据失效。',
     '请直接依据模型已经收到的内容实施修改或形成结论；只有写入失败、文件变化或缺少未覆盖行时才重新读取。',
+  ].join('\n');
+}
+
+function buildDeliveryContextBlockedFeedback(tool: InvestigationTool): string {
+  const path = typeof tool.input.path === 'string' ? tool.input.path : tool.name;
+  return [
+    `【系统反馈】已跳过交付收敛后的额外上下文请求：${path}`,
+    '模型已经使用最终精确读取机会，但仍未形成写入或可交付结论。',
+    '下一轮必须依据已有证据提交最小修改或明确结论；不要继续横向 read/list/grep/search。',
   ].join('\n');
 }
