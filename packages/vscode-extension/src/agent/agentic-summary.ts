@@ -110,7 +110,8 @@ function removeMarkdownFencedBlocks(text: string): string {
 /** A bounded hint that prose promises a later tool action instead of delivering an answer. */
 export function isDeferredAgentActionAnnouncement(text: string): boolean {
   const normalized = removeMarkdownFencedBlocks(normalizeAgentUserAnnouncement(text))
-    .replace(/\s+/g, ' ')
+    .replace(/\r?\n+/g, '。 ')
+    .replace(/[ \t]+/g, ' ')
     .trim();
   if (!normalized) return false;
   const terminalContext = normalized.slice(-DEFERRED_ACTION_CONTEXT_LENGTH);

@@ -61,9 +61,13 @@ test('NoToolActionRecovery: exhausted deferred actions stop instead of becoming 
 test('NoToolActionRecovery: investigation conclusions with a pending next action retry', () => {
   const result = resolveNoToolActionRecovery({
     text: [
-      '基于已读取的证据，我现在理解问题的根因。像素颜色不足，且非主色占比过低。',
-      '这表示渲染器输出的视觉多样性不够，需要检查颜色与绘制区域。',
-      '我现在需要查看 raster_canvas.cpp 中的 renderFraction、renderNumberLine 和 renderButton 实现。',
+      '## 失败分析',
+      '',
+      '基于已读取的证据，像素颜色不足，且非主色占比过低。',
+      '',
+      '## 具体修改',
+      '',
+      '我将读取完整的 `raster_canvas.cpp` 和状态输出相关代码后，提交精确的 `replace_in_file` 修复。',
     ].join('\n\n'),
     noToolRounds: 0,
     missingEvidenceCount: 0,

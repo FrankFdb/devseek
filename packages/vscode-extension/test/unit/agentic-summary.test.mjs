@@ -75,6 +75,20 @@ test('uses a bounded terminal window for long provider analysis', () => {
   assert.equal(isDeferredAgentActionAnnouncement(completed), false);
 });
 
+test('preserves a deferred paragraph boundary after a Markdown heading', () => {
+  const providerText = [
+    '## 失败分析',
+    '',
+    '状态输出与像素采样结果已经核对，当前实现仍需修改。',
+    '',
+    '## 具体修改',
+    '',
+    '我将读取完整的 `raster_canvas.cpp` 和状态输出相关代码后，提交精确的 `replace_in_file` 修复。',
+  ].join('\n');
+
+  assert.equal(isDeferredAgentActionAnnouncement(providerText), true);
+});
+
 test('classifies visible deferred prose without executing long fenced presentation data', () => {
   const fencedPayload = [
     '```json',
