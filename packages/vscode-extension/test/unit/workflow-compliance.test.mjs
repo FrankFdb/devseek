@@ -812,6 +812,7 @@ test('Agent planning: the main model receives raw-language guidance before propo
   assertContains(guidelines, '不得用本地关键词、文件名或项目主题替代用户意图', 'engineering guidance must preserve model-owned intent');
   assertContains(guidelines, 'SOLID、DRY、KISS、单一职责和现有依赖方向', 'engineering guidance must preserve design principles');
   assertContains(guidelines, '修复缺陷类别而非单一复现', 'engineering guidance must require defect-class repair');
+  assertContains(guidelines, '不得反向调用该 dispatcher', 'interaction helpers must not re-enter their owning dispatcher');
   assertContains(guidelines, '从公开入口验证至少一个真实流程', 'executable delivery must require public-entrypoint evidence');
   assertContains(guidelines, '部分解析结果不得穿透边界', 'input-boundary verification must reject partial parsing');
   assertContains(agenticPrompt, 'buildReplaceInFileToolPrompt(textToolProtocol)', 'Agentic prompt must bind targeted edits to the current tool channel');

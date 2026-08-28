@@ -20,6 +20,106 @@ export function hasUnfinishedImplementation(sourceText) {
   return unfinishedSource.test(sourceText);
 }
 
+const interactionMethods = Object.freeze([
+  'handleMouseClick',
+  'handleFractionClick',
+  'handleNumberLineClick',
+]);
+
+export function findInteractionDispatcherCycles(sourceText) {
+  const methodBodies = new Map(interactionMethods.map(name => [
+    name,
+    extractCppFunctionCode(sourceText, `LessonController::${name}`),
+  ]));
+  const edges = new Map(interactionMethods.map(name => {
+    const body = methodBodies.get(name);
+    const calls = body === null
+      ? []
+      : interactionMethods.filter(candidate => new RegExp(`\\b${candidate}\\s*\\(`, 'u').test(body));
+    return [name, calls];
+  }));
+  const cycles = new Set();
+
+  function visit(method, path) {
+    for (const called of edges.get(method) ?? []) {
+      const cycleStart = path.indexOf(called);
+      if (cycleStart >= 0) {
+        cycles.add([...path.slice(cycleStart), called].join(' -> '));
+        continue;
+      }
+      visit(called, [...path, called]);
+    }
+  }
+
+  visit('handleMouseClick', ['handleMouseClick']);
+  return [...cycles].sort();
+}
+
+function extractCppFunctionCode(sourceText, qualifiedName) {
+  const escapedName = qualifiedName.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  const signature = new RegExp(`\\b${escapedName}\\s*\\([^;{}]*\\)\\s*(?:const\\s*)?(?:noexcept\\s*)?\\{`, 'u');
+  const match = signature.exec(sourceText);
+  if (!match) return null;
+
+  const openingBrace = match.index + match[0].lastIndexOf('{');
+  let depth = 0;
+  let state = 'code';
+  let code = '';
+  for (let index = openingBrace; index < sourceText.length; index += 1) {
+    const current = sourceText[index];
+    const next = sourceText[index + 1];
+    if (state === 'line-comment') {
+      if (current === '\n') {
+        state = 'code';
+        code += '\n';
+      }
+      continue;
+    }
+    if (state === 'block-comment') {
+      if (current === '*' && next === '/') {
+        state = 'code';
+        index += 1;
+      }
+      continue;
+    }
+    if (state === 'string' || state === 'character') {
+      if (current === '\\') {
+        index += 1;
+      } else if ((state === 'string' && current === '"') || (state === 'character' && current === "'")) {
+        state = 'code';
+      }
+      continue;
+    }
+    if (current === '/' && next === '/') {
+      state = 'line-comment';
+      index += 1;
+      continue;
+    }
+    if (current === '/' && next === '*') {
+      state = 'block-comment';
+      index += 1;
+      continue;
+    }
+    if (current === '"' || current === "'") {
+      state = current === '"' ? 'string' : 'character';
+      continue;
+    }
+    if (current === '{') {
+      depth += 1;
+      if (depth > 1) code += current;
+      continue;
+    }
+    if (current === '}') {
+      depth -= 1;
+      if (depth === 0) return code;
+      code += current;
+      continue;
+    }
+    if (depth > 0) code += current;
+  }
+  return null;
+}
+
 export function verifyWorkspace(workspace, stage, evidenceDir) {
   const checks = [];
   const artifacts = {};
@@ -46,6 +146,16 @@ export function verifyWorkspace(workspace, stage, evidenceDir) {
     unfinishedImplementation: false,
     systemCall: false,
   });
+
+  if (stage >= 2) {
+    const lessonControllerSource = existingSources.find(source => source.rel === 'src/lesson_controller.cpp')?.text ?? '';
+    const interactionCycles = findInteractionDispatcherCycles(lessonControllerSource);
+    check(checks, 'interaction-dispatch-acyclic', interactionCycles.length === 0, {
+      cycles: interactionCycles,
+    }, {
+      cycles: [],
+    });
+  }
 
   const publicTest = run('./test.sh', [], root, 180_000);
   artifacts.publicTest = recordCommand(evidence, 'public-test', publicTest);

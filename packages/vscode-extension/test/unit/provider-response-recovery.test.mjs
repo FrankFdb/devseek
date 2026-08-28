@@ -111,6 +111,8 @@ test('Agent provider recovery prompt keeps only durable facts and forces small t
   assert.match(prompt, /已读取路径（仅审计，文件内容未注入重建会话）/);
   assert.match(prompt, /重建会话不包含先前只读工具返回的文件内容/);
   assert.match(prompt, /每个必要路径只重放一次/);
+  assert.match(prompt, /首次 read_file 必须读取诊断直接指向的生产源码调用点/);
+  assert.match(prompt, /不要先读取头文件声明、测试入口或需求文档/);
   assert.doesNotMatch(prompt, /不要重复已读取路径/);
   assert.match(prompt, /未执行动作恢复轮只允许 1 个写入工具/);
   assert.match(prompt, /仅当当前参数无法从可信上下文重建时，才允许 1 个精确只读工具/);

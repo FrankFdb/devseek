@@ -1252,6 +1252,84 @@ test('ToolLoop replace_in_file edits existing workspace file with write evidence
   }
 });
 
+test('ToolLoop apply_patch commits through the canonical file-write transaction', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-apply-patch-tool-'));
+  try {
+    const srcDir = path.join(workspaceRoot, 'src');
+    mkdirSync(srcDir, { recursive: true });
+    const filePath = path.join(srcDir, 'worker.cpp');
+    writeFileSync(filePath, 'void run() {\n  old_call();\n}\n', 'utf8');
+    const applied = [];
+    const patchText = [
+      '*** Begin Patch',
+      '*** Update File: src/worker.cpp',
+      '@@',
+      ' void run() {',
+      '-  old_call();',
+      '+  new_call();',
+      ' }',
+      '*** End Patch',
+    ].join('\n');
+    const result = await executeFakeToolsForLoop(
+      [{ name: 'apply_patch', input: { path: filePath, patch: patchText } }],
+      {
+        onResolveFileWriteConstraint: async () => ALLOW_FILE_WRITE,
+        onAppliedChange: async change => applied.push(change),
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      workspaceRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot },
+    );
+
+    assert.equal(readFileSync(filePath, 'utf8'), 'void run() {\n  new_call();\n}\n');
+    assert.equal(applied.length, 1);
+    assert.equal(result.writtenFiles?.[0]?.path, filePath);
+    assert.equal(result.changeReceipts?.[0]?.status, 'committed');
+    assert.equal(result.toolExecutionReceipts?.[0]?.status, 'completed');
+    assert.match(result.feedbackForAI, /apply_patch: .*worker\.cpp.*已写入/s);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('ToolLoop apply_patch reports stale context without corrupting canonical action identity', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-apply-patch-stale-'));
+  try {
+    const filePath = path.join(workspaceRoot, 'worker.cpp');
+    writeFileSync(filePath, 'void run() {}\n', 'utf8');
+    const patchText = [
+      '*** Begin Patch',
+      '*** Update File: worker.cpp',
+      '@@',
+      ' void missing() {',
+      '+  new_call();',
+      ' }',
+      '*** End Patch',
+    ].join('\n');
+    const result = await executeFakeToolsForLoop(
+      [{ name: 'apply_patch', input: { path: 'worker.cpp', patch: patchText } }],
+      {
+        onAppliedChange: async () => assert.fail('stale patch must not apply'),
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      workspaceRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot },
+    );
+
+    assert.equal(readFileSync(filePath, 'utf8'), 'void run() {}\n');
+    assert.equal(result.writtenFiles, undefined);
+    assert.equal(result.toolFailures?.[0]?.tool, 'apply_patch');
+    assert.equal(result.toolExecutionReceipts?.[0]?.status, 'failed');
+    assert.match(result.feedbackForAI, /single-file-patch:hunk-context-not-found-or-ambiguous/);
+    assert.match(result.feedbackForAI, /\[current_file_snapshot chars=14\]/);
+    assert.match(result.feedbackForAI, /void run\(\) \{\}/);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('ToolLoop replace_in_file tolerates only line-indentation loss from web transport', async () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-replace-whitespace-tool-'));
   try {

@@ -309,6 +309,7 @@ export async function executeFakeToolsForLoop(
     const expandedFileWritePlans = inputValidation.ok
       && isFileWriteToolName(tool.name)
       && tool.name !== 'replace_in_file'
+      && tool.name !== 'apply_patch'
       ? normalizeCodingFileWriteInputs(tool.input).map(({ rawPath, content }) => ({
           rawPath,
           content,
@@ -1030,6 +1031,7 @@ export async function executeFakeToolsForLoop(
         continue;
       }
       const absPath = resolveAgentToolEvidencePath(rawPath, workspaceRoot, defaultWorkdir);
+      let currentContent = '';
       try {
         if (!absPath || !fs.existsSync(absPath)) {
           const reason = '目标文件不存在，单文件补丁只允许更新已读取的既有文件。';
@@ -1045,15 +1047,16 @@ export async function executeFakeToolsForLoop(
           parts.push(`[apply_patch: ${rawPath}] 错误: ${reason}`);
           continue;
         }
-        const oldContent = fs.readFileSync(absPath, 'utf8');
+        currentContent = fs.readFileSync(absPath, 'utf8');
         const workspaceRelativePath = nodePath.relative(workspaceRoot, absPath).replace(/\\/g, '/');
-        const patched = applySingleFilePatch(oldContent, patch, [rawPath, workspaceRelativePath, absPath]);
+        const patched = applySingleFilePatch(currentContent, patch, [rawPath, workspaceRelativePath, absPath]);
         await fileWriter.apply(toolPlan, canonicalContext, 'apply_patch', rawPath, patched.content);
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
         await canonicalTools.fail(toolPlan, canonicalContext, 'apply-patch-preflight-failed');
         recordToolFailure('apply_patch', 'replace', rawPath, reason, strategyFingerprint);
-        parts.push(`[apply_patch: ${rawPath}] 错误: ${reason}`);
+        const snapshot = currentContent ? `\n${formatReplaceRecoverySnapshot(currentContent)}` : '';
+        parts.push(`[apply_patch: ${rawPath}] 错误: ${reason}${snapshot}`);
       }
     } else if (isFileWriteToolName(tool.name)) {
       // Unified file create/overwrite — works for new files AND full rewrites.

@@ -243,6 +243,9 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
       '恢复要求：',
       `- ${sideEffectLine}`,
       resetProviderSession ? '- 本轮会重建 Provider 会话：必须沿用当前消息历史和下列已验证事实继续，不得要求用户重新发送需求。' : '',
+      resetProviderSession
+        ? '- 若原任务包含编译或链接诊断，重建会话的首次 read_file 必须读取诊断直接指向的生产源码调用点；不要先读取头文件声明、测试入口或需求文档。'
+        : '',
       blockingTerminalFailure
         ? '- 不要在恢复轮重新规划 Todo；先清除活动验证失败。'
         : unresolvedToolAction

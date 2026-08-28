@@ -2,6 +2,7 @@
 // Source of truth: packages/shared/src/coding-tool-schema.ts
 (function(global) {
   var toolNames = [
+    "apply_patch",
     "create_directory",
     "create_file",
     "delete_file",
