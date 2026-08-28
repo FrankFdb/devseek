@@ -183,6 +183,101 @@ test('delivery convergence admits only exact continuations created by fair read 
   assert.deepEqual([...widened.blockedToolIndexes], [0]);
 });
 
+test('projected read debt corrects a stale same-file range and closes after visible delivery', () => {
+  const ledger = new ContextInvestigationLedger('/workspace');
+  ledger.recordVisibleReadExposures([
+    { path: '/workspace/src/controller.cpp', startLine: 1, endLine: 115, totalLines: 369, sourceSegmentIndex: 0 },
+    { path: '/workspace/src/controller.cpp', startLine: 256, endLine: 369, totalLines: 369, sourceSegmentIndex: 0 },
+  ], visibleRead('/workspace/src/controller.cpp', 0, 7));
+
+  const proposed = [{
+    name: 'read_file',
+    input: { path: 'src/controller.cpp', startLine: 1, endLine: 115 },
+  }];
+  const continuation = ledger.reconcileProjectedReadContinuations(proposed);
+  assert.deepEqual([...continuation.continuationToolIndexes], [0]);
+  assert.deepEqual(continuation.inputOverrides.get(0), {
+    path: 'src/controller.cpp',
+    startLine: 116,
+    endLine: 255,
+  });
+  assert.match(continuation.warnings[0], /实际读取范围：startLine=116, endLine=255/u);
+
+  const reconciled = [{ ...proposed[0], input: continuation.inputOverrides.get(0) }];
+  const screened = ledger.screen(reconciled, {
+    progressEpoch: 0,
+    hasWorkspaceMutation: false,
+    consumeContextRefresh: () => false,
+    deliveryContextAdmission: 'closed',
+  });
+  assert.deepEqual([...screened.blockedToolIndexes], []);
+  assert.equal(screened.consumedPreciseContextRead, true);
+
+  ledger.recordVisibleReadExposures([{
+    path: '/workspace/src/controller.cpp',
+    startLine: 116,
+    endLine: 255,
+    totalLines: 369,
+    sourceSegmentIndex: 0,
+  }], visibleRead('/workspace/src/controller.cpp', 0, 8));
+  const settled = ledger.reconcileProjectedReadContinuations(proposed);
+  assert.deepEqual([...settled.continuationToolIndexes], []);
+  assert.equal(settled.inputOverrides.size, 0);
+});
+
+test('separate partial reads never create host-owned projected read debt', () => {
+  const ledger = new ContextInvestigationLedger('/workspace');
+  ledger.recordVisibleReadExposures([
+    { path: '/workspace/src/controller.cpp', startLine: 1, endLine: 115, totalLines: 369, sourceSegmentIndex: 0 },
+    { path: '/workspace/src/controller.cpp', startLine: 256, endLine: 369, totalLines: 369, sourceSegmentIndex: 1 },
+  ], [
+    ...visibleRead('/workspace/src/controller.cpp', 0, 7),
+    ...visibleRead('/workspace/src/controller.cpp', 1, 8),
+  ]);
+
+  const resolution = ledger.reconcileProjectedReadContinuations([{
+    name: 'read_file',
+    input: { path: 'src/controller.cpp', startLine: 1, endLine: 115 },
+  }]);
+  assert.equal(resolution.continuationToolIndexes.size, 0);
+  assert.equal(resolution.inputOverrides.size, 0);
+});
+
+test('projected read debt tracks only the undelivered remainder and expires on mutation', () => {
+  const ledger = new ContextInvestigationLedger('/workspace');
+  ledger.recordVisibleReadExposures([
+    { path: '/workspace/src/controller.cpp', startLine: 1, endLine: 115, totalLines: 369, sourceSegmentIndex: 0 },
+    { path: '/workspace/src/controller.cpp', startLine: 256, endLine: 369, totalLines: 369, sourceSegmentIndex: 0 },
+  ], visibleRead('/workspace/src/controller.cpp', 0, 7));
+  ledger.recordVisibleReadExposures([{
+    path: '/workspace/src/controller.cpp',
+    startLine: 116,
+    endLine: 200,
+    totalLines: 369,
+    sourceSegmentIndex: 0,
+  }], visibleRead('/workspace/src/controller.cpp', 0, 8));
+
+  const proposed = [{
+    name: 'read_file',
+    input: { path: 'src/controller.cpp', startLine: 1, endLine: 115 },
+  }];
+  const remainder = ledger.reconcileProjectedReadContinuations(proposed);
+  assert.deepEqual(remainder.inputOverrides.get(0), {
+    path: 'src/controller.cpp',
+    startLine: 201,
+    endLine: 255,
+  });
+
+  ledger.recordVisibleReadExposures([], [{
+    kind: 'write',
+    path: '/workspace/src/controller.cpp',
+    sequence: 9,
+  }]);
+  const invalidated = ledger.reconcileProjectedReadContinuations(proposed);
+  assert.equal(invalidated.continuationToolIndexes.size, 0);
+  assert.equal(invalidated.inputOverrides.size, 0);
+});
+
 test('an ineligible final context request exhausts the allowance instead of leaving it open', () => {
   const ledger = new ContextInvestigationLedger('/workspace');
   const result = ledger.screen([

@@ -26,6 +26,12 @@ export interface ContextInvestigationScreenResult {
   readonly deliveryBlockedToolCount: number;
 }
 
+export interface ProjectedReadContinuationResolution {
+  readonly inputOverrides: ReadonlyMap<number, Readonly<Record<string, unknown>>>;
+  readonly continuationToolIndexes: ReadonlySet<number>;
+  readonly warnings: readonly string[];
+}
+
 interface ContextInvestigationScreenInput {
   readonly progressEpoch: number;
   readonly hasWorkspaceMutation: boolean;
@@ -47,10 +53,22 @@ interface ReadCoverage {
   readonly pathRevision: number;
 }
 
+interface ProjectedReadGap {
+  readonly startLine: number;
+  readonly endLine: number;
+  readonly totalLines: number;
+  readonly pathRevision: number;
+}
+
+interface AcceptedReadExposure extends ProviderVisibleReadExposure {
+  readonly readSequence: number;
+}
+
 /** Owns duplicate investigation suppression for the evidence visible to one Provider session. */
 export class ContextInvestigationLedger {
   private readonly signatures = new Map<string, { count: number; progressEpoch: number }>();
   private readonly readCoverage = new Map<string, ReadCoverage[]>();
+  private readonly projectedReadGaps = new Map<string, ProjectedReadGap[]>();
   private readonly pathRevisions = new Map<string, number>();
 
   constructor(private readonly workspaceRoot: string) {}
@@ -58,6 +76,7 @@ export class ContextInvestigationLedger {
   reset(): void {
     this.signatures.clear();
     this.readCoverage.clear();
+    this.projectedReadGaps.clear();
     this.pathRevisions.clear();
   }
 
@@ -96,6 +115,7 @@ export class ContextInvestigationLedger {
     for (const event of events) {
       if (event.kind === 'write') this.advancePathRevision(event.path);
     }
+    const acceptedExposures: AcceptedReadExposure[] = [];
     for (const exposure of exposures) {
       const path = this.resolvePath(exposure.path);
       const readEvent = events.find(event => (
@@ -109,8 +129,40 @@ export class ContextInvestigationLedger {
         && event.path === path
         && event.sequence > readEvent.sequence
       ));
-      if (!stale) this.recordReadExposure(exposure);
+      if (stale) continue;
+      const acceptedExposure = { ...exposure, path, readSequence: readEvent.sequence };
+      acceptedExposures.push(acceptedExposure);
+      this.recordReadExposure(acceptedExposure);
     }
+    this.subtractVisibleExposuresFromProjectedGaps(acceptedExposures);
+    this.recordProjectedReadGaps(acceptedExposures);
+  }
+
+  reconcileProjectedReadContinuations(
+    tools: readonly InvestigationTool[],
+  ): ProjectedReadContinuationResolution {
+    const inputOverrides = new Map<number, Readonly<Record<string, unknown>>>();
+    const continuationToolIndexes = new Set<number>();
+    const warnings: string[] = [];
+    tools.forEach((tool, toolIndex) => {
+      const gap = this.projectedReadGapFor(tool);
+      if (!gap) return;
+      continuationToolIndexes.add(toolIndex);
+      const startLine = optionalPositiveInteger(tool.input, 'startLine', 'start_line', 'lineStart', 'fromLine');
+      const endLine = optionalPositiveInteger(tool.input, 'endLine', 'end_line', 'lineEnd', 'toLine');
+      if (startLine === gap.startLine && endLine === gap.endLine) return;
+      inputOverrides.set(toolIndex, Object.freeze({
+        ...tool.input,
+        startLine: gap.startLine,
+        endLine: gap.endLine,
+      }));
+      warnings.push([
+        `【系统反馈】已将同文件读取收敛到尚未交付的投影缺口：${String(tool.input.path)}`,
+        `实际读取范围：startLine=${gap.startLine}, endLine=${gap.endLine}。`,
+        '该只读纠正没有扩大目标路径；后续必须依据补齐的源码事实恢复原动作。',
+      ].join('\n'));
+    });
+    return Object.freeze({ inputOverrides, continuationToolIndexes, warnings });
   }
 
   screen(
@@ -157,8 +209,7 @@ export class ContextInvestigationLedger {
       // Prompt projection can intentionally expose the head and tail of a large
       // read while instructing the Provider to request the omitted middle. That
       // exact continuation is host-created context debt, not renewed discovery.
-      const completesProjectedRead = deliveryAdmission !== 'open'
-        && this.readRequestCompletesVisibleGap(tool);
+      const completesProjectedRead = this.readRequestCompletesVisibleGap(tool);
       if (completesProjectedRead) {
         consumedPreciseContextRead = true;
         return;
@@ -236,27 +287,73 @@ export class ContextInvestigationLedger {
   }
 
   private readRequestCompletesVisibleGap(tool: InvestigationTool): boolean {
-    if (tool.name !== 'read_file' || typeof tool.input.path !== 'string') return false;
+    const gap = this.projectedReadGapFor(tool);
+    if (!gap) return false;
     const startLine = optionalPositiveInteger(tool.input, 'startLine', 'start_line', 'lineStart', 'fromLine');
     const endLine = optionalPositiveInteger(tool.input, 'endLine', 'end_line', 'lineEnd', 'toLine');
-    if (startLine === undefined || endLine === undefined || endLine < startLine) return false;
+    return startLine === gap.startLine && endLine === gap.endLine;
+  }
 
+  private projectedReadGapFor(tool: InvestigationTool): ProjectedReadGap | undefined {
+    if (tool.name !== 'read_file' || typeof tool.input.path !== 'string') return undefined;
     const path = this.resolvePath(tool.input.path);
-    const current = (this.readCoverage.get(path) ?? [])
-      .filter(entry => entry.pathRevision === this.pathRevision(path))
-      .sort((left, right) => left.startLine - right.startLine || left.endLine - right.endLine);
-    if (current.length < 2) return false;
-    const totalLines = current[0].totalLines;
-    if (current.some(entry => entry.totalLines !== totalLines)) return false;
+    const gaps = (this.projectedReadGaps.get(path) ?? [])
+      .filter(gap => gap.pathRevision === this.pathRevision(path))
+      .sort((left, right) => left.startLine - right.startLine);
+    if (gaps.length === 0) return undefined;
+    const startLine = optionalPositiveInteger(tool.input, 'startLine', 'start_line', 'lineStart', 'fromLine');
+    const endLine = optionalPositiveInteger(tool.input, 'endLine', 'end_line', 'lineEnd', 'toLine');
+    if (startLine === undefined || endLine === undefined) return gaps[0];
+    const intersecting = gaps.find(gap => startLine <= gap.endLine && endLine >= gap.startLine);
+    if (intersecting) return intersecting;
+    return this.readRequestIsCovered(tool) ? gaps[0] : undefined;
+  }
 
-    let coveredThrough = current[0].endLine;
-    for (const next of current.slice(1)) {
-      if (next.startLine > coveredThrough + 1
-        && startLine === coveredThrough + 1
-        && endLine === next.startLine - 1) return true;
-      coveredThrough = Math.max(coveredThrough, next.endLine);
+  private subtractVisibleExposuresFromProjectedGaps(exposures: readonly AcceptedReadExposure[]): void {
+    const paths = new Set(exposures.map(exposure => exposure.path));
+    for (const path of paths) {
+      const revision = this.pathRevision(path);
+      const visible = exposures.filter(exposure => exposure.path === path);
+      const retained: ProjectedReadGap[] = [];
+      for (const gap of this.projectedReadGaps.get(path) ?? []) {
+        if (gap.pathRevision !== revision) continue;
+        let fragments = [gap];
+        for (const exposure of visible) {
+          fragments = fragments.flatMap(fragment => subtractRange(fragment, exposure.startLine, exposure.endLine));
+        }
+        retained.push(...fragments);
+      }
+      this.projectedReadGaps.set(path, retained);
     }
-    return false;
+  }
+
+  private recordProjectedReadGaps(exposures: readonly AcceptedReadExposure[]): void {
+    const groups = new Map<string, AcceptedReadExposure[]>();
+    for (const exposure of exposures) {
+      const key = `${exposure.path}\u0000${exposure.sourceSegmentIndex}\u0000${exposure.readSequence}`;
+      const group = groups.get(key) ?? [];
+      group.push(exposure);
+      groups.set(key, group);
+    }
+    for (const group of groups.values()) {
+      const sorted = [...group].sort((left, right) => left.startLine - right.startLine);
+      for (let index = 1; index < sorted.length; index += 1) {
+        const left = sorted[index - 1];
+        const right = sorted[index];
+        if (left.totalLines !== right.totalLines || left.endLine + 1 >= right.startLine) continue;
+        const gap: ProjectedReadGap = {
+          startLine: left.endLine + 1,
+          endLine: right.startLine - 1,
+          totalLines: left.totalLines,
+          pathRevision: this.pathRevision(left.path),
+        };
+        const current = this.projectedReadGaps.get(left.path) ?? [];
+        if (!current.some(existing => existing.startLine === gap.startLine
+          && existing.endLine === gap.endLine
+          && existing.pathRevision === gap.pathRevision)) current.push(gap);
+        this.projectedReadGaps.set(left.path, current);
+      }
+    }
   }
 
   private recordReadExposure(exposure: ProviderVisibleReadExposure): void {
@@ -284,6 +381,7 @@ export class ContextInvestigationLedger {
 
   private advancePathRevision(path: string): void {
     this.pathRevisions.set(path, this.pathRevision(path) + 1);
+    this.projectedReadGaps.delete(path);
   }
 
   private resolvePath(value: string): string {
@@ -292,6 +390,22 @@ export class ContextInvestigationLedger {
       : nodePath.resolve(this.workspaceRoot, value);
     return process.platform === 'win32' ? path.toLowerCase() : path;
   }
+}
+
+function subtractRange(
+  gap: ProjectedReadGap,
+  visibleStart: number,
+  visibleEnd: number,
+): ProjectedReadGap[] {
+  if (visibleEnd < gap.startLine || visibleStart > gap.endLine) return [gap];
+  const fragments: ProjectedReadGap[] = [];
+  if (visibleStart > gap.startLine) {
+    fragments.push({ ...gap, endLine: Math.min(gap.endLine, visibleStart - 1) });
+  }
+  if (visibleEnd < gap.endLine) {
+    fragments.push({ ...gap, startLine: Math.max(gap.startLine, visibleEnd + 1) });
+  }
+  return fragments;
 }
 
 function optionalPositiveInteger(

@@ -3165,7 +3165,12 @@ test('Agentic loop: visible correction and context convergence are owned by Agen
   assertContains(agenticLoop, 'providerRecovery.completeAcceptedResponse', 'agent loop must close provider recovery at the provider response boundary');
   assertContains(agenticProviderRecoveryBoundary, 'class AgenticProviderRecoveryLifecycle', 'provider recovery boundary must own its pending lifecycle');
   assertContains(agenticProviderRecoveryBoundary, 'screenToolProposals', 'provider recovery boundary must own local recovery action admission');
-  assertContains(agenticLoop, 'providerRecovery.screenToolProposals(tools)', 'agent loop must apply the local recovery action budget before tool execution');
+  assert.match(
+    agenticLoop,
+    /reconcileProjectedReadContinuations\(tools\)[\s\S]*?screenToolProposals\(screenedTools/,
+    'host-created read debt must be reconciled before provider recovery action admission',
+  );
+  assertContains(agenticLoop, 'providerRecovery.screenToolProposals(screenedTools', 'agent loop must apply the local recovery action budget before tool execution');
   assertContains(agenticLoop, 'activeRepairContext: requirementReview.recoveryContext()', 'provider rebuilds must preserve the active independent-review repair contract');
   assertContains(runContext, 'provider-recovery-status-observed', 'RunContext must observe provider retry progress without claiming workspace recovery authority');
   assertDoesNotContain(runContext, 'collectRecoverableAdverseOperationIds', 'one recovery lane must not sweep unrelated adverse operations from the shared ledger');

@@ -54,6 +54,10 @@ interface ProviderRecoveryActionOptions {
   readonly allowRejectedWriteContextRefresh?: boolean;
 }
 
+interface ProviderRecoveryToolScreenOptions {
+  readonly projectedReadContinuationToolIndexes?: ReadonlySet<number>;
+}
+
 const PROVIDER_RECOVERY_META_TOOL_NAMES = new Set(['manage_todo_list', 'task_complete']);
 
 export interface AgenticProviderRecoveryBoundaryResult {
@@ -66,6 +70,7 @@ export interface AgenticProviderRecoveryBoundaryResult {
 export class AgenticProviderRecoveryLifecycle {
   private pending = false;
   private allowRejectedWriteContextRefresh = false;
+  private rejectedWriteContextRefreshConsumed = false;
   private readonly targetOperationIds = new Set<string>();
   private readonly observedToolNames = new Set<string>();
 
@@ -82,6 +87,7 @@ export class AgenticProviderRecoveryLifecycle {
   ): void {
     this.pending = true;
     this.allowRejectedWriteContextRefresh = options.allowRejectedWriteContextRefresh === true;
+    this.rejectedWriteContextRefreshConsumed = false;
     if (operationId?.trim()) this.targetOperationIds.add(operationId.trim());
     for (const name of observedToolNames) {
       if (name?.trim()) this.observedToolNames.add(name.trim());
@@ -97,7 +103,10 @@ export class AgenticProviderRecoveryLifecycle {
   }
 
   /** Admits one concrete action while a rejected Provider action is being reconstructed. */
-  screenToolProposals(tools: readonly { readonly name: string }[]): AgenticProviderRecoveryToolScreen {
+  screenToolProposals(
+    tools: readonly { readonly name: string }[],
+    options: ProviderRecoveryToolScreenOptions = {},
+  ): AgenticProviderRecoveryToolScreen {
     const blockedToolIndexes = new Set<number>();
     const contextRefreshToolIndexes = new Set<number>();
     if (!this.hasUnresolvedToolAction()) {
@@ -111,7 +120,10 @@ export class AgenticProviderRecoveryLifecycle {
     let admittedAction = false;
     tools.forEach((tool, toolIndex) => {
       if (PROVIDER_RECOVERY_META_TOOL_NAMES.has(tool.name)
-        || !this.isRecoveryActionAllowed(tool.name)) {
+        || !this.isRecoveryActionAllowed(
+          tool.name,
+          options.projectedReadContinuationToolIndexes?.has(toolIndex) === true,
+        )) {
         blockedToolIndexes.add(toolIndex);
         return;
       }
@@ -122,6 +134,7 @@ export class AgenticProviderRecoveryLifecycle {
       admittedAction = true;
       if (this.isRejectedWriteContextRefresh(tool.name)) {
         contextRefreshToolIndexes.add(toolIndex);
+        this.rejectedWriteContextRefreshConsumed = true;
       }
     });
 
@@ -133,7 +146,8 @@ export class AgenticProviderRecoveryLifecycle {
     return Object.freeze({ blockedToolIndexes, contextRefreshToolIndexes, warnings });
   }
 
-  private isRecoveryActionAllowed(name: string): boolean {
+  private isRecoveryActionAllowed(name: string, projectedReadContinuation: boolean): boolean {
+    if (projectedReadContinuation && name === 'read_file') return true;
     if (this.observedToolNames.has(name)) return true;
     const restoresRejectedWrite = isFileWriteToolName(name)
       && [...this.observedToolNames].some(isFileWriteToolName);
@@ -143,6 +157,7 @@ export class AgenticProviderRecoveryLifecycle {
 
   private isRejectedWriteContextRefresh(name: string): boolean {
     return this.allowRejectedWriteContextRefresh
+      && !this.rejectedWriteContextRefreshConsumed
       && name === 'read_file'
       && [...this.observedToolNames].some(isFileWriteToolName);
   }
@@ -221,6 +236,7 @@ export class AgenticProviderRecoveryLifecycle {
     }
     this.pending = false;
     this.allowRejectedWriteContextRefresh = false;
+    this.rejectedWriteContextRefreshConsumed = false;
     this.targetOperationIds.clear();
     this.observedToolNames.clear();
     return true;

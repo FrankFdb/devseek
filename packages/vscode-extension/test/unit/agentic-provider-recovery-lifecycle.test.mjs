@@ -100,6 +100,33 @@ test('provider recovery lifecycle locally admits only one concrete recovery acti
   assert.equal(lifecycle.hasUnresolvedToolAction(), true);
 });
 
+test('provider recovery spends one generic context refresh but admits host-created read debt', () => {
+  const lifecycle = new AgenticProviderRecoveryLifecycle('src/lesson_controller.cpp', 'repair', {
+    onAgentStatus() {},
+  });
+  lifecycle.begin('malformed-mutation', ['replace_in_file'], {
+    allowRejectedWriteContextRefresh: true,
+  });
+
+  const initialRefresh = lifecycle.screenToolProposals([{ name: 'read_file' }]);
+  assert.deepEqual([...initialRefresh.blockedToolIndexes], []);
+  assert.deepEqual([...initialRefresh.contextRefreshToolIndexes], [0]);
+
+  const repeatedRefresh = lifecycle.screenToolProposals([{ name: 'read_file' }]);
+  assert.deepEqual([...repeatedRefresh.blockedToolIndexes], [0]);
+  assert.deepEqual([...repeatedRefresh.contextRefreshToolIndexes], []);
+
+  const projectedContinuation = lifecycle.screenToolProposals([{ name: 'read_file' }], {
+    projectedReadContinuationToolIndexes: new Set([0]),
+  });
+  assert.deepEqual([...projectedContinuation.blockedToolIndexes], []);
+  assert.deepEqual([...projectedContinuation.contextRefreshToolIndexes], []);
+
+  const afterContinuation = lifecycle.screenToolProposals([{ name: 'read_file' }]);
+  assert.deepEqual([...afterContinuation.blockedToolIndexes], [0]);
+  assert.deepEqual([...lifecycle.screenToolProposals([{ name: 'apply_patch' }]).blockedToolIndexes], []);
+});
+
 test('provider recovery lifecycle blocks actions unrelated to the quarantined proposal', () => {
   const lifecycle = new AgenticProviderRecoveryLifecycle('src/main.cpp', 'repair', {
     onAgentStatus() {},

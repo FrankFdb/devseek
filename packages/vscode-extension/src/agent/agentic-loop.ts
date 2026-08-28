@@ -732,16 +732,24 @@ export async function runAgenticLoop(
     const suppressedTools: ToolSuppressionEvidence[] = [];
     const loopWarnings: string[] = [];
     const hasFileWriteIntentThisRound = tools.some(tool => tool.purpose === 'workspace-mutation');
-    const providerRecoveryScreen = providerRecovery.screenToolProposals(tools);
+    const projectedReadContinuations = contextInvestigation.reconcileProjectedReadContinuations(tools);
+    const screenedTools = tools.map((tool, toolIndex) => {
+      const input = projectedReadContinuations.inputOverrides.get(toolIndex);
+      return input ? { ...tool, input } : tool;
+    });
+    loopWarnings.push(...projectedReadContinuations.warnings);
+    const providerRecoveryScreen = providerRecovery.screenToolProposals(screenedTools, {
+      projectedReadContinuationToolIndexes: projectedReadContinuations.continuationToolIndexes,
+    });
     for (const toolIndex of providerRecoveryScreen.blockedToolIndexes) {
       blockedRepeatedToolIndexes.add(toolIndex);
       suppressedTools.push({
-        tool: tools[toolIndex]?.name ?? 'unknown',
+        tool: screenedTools[toolIndex]?.name ?? 'unknown',
         reason: 'provider-recovery-action-budget',
       });
     }
     loopWarnings.push(...providerRecoveryScreen.warnings);
-    tools.forEach((tool, toolIndex) => {
+    screenedTools.forEach((tool, toolIndex) => {
       if (tool.name !== 'run_terminal') return;
       const command = typeof tool.input.command === 'string' ? tool.input.command.trim() : '';
       if (!command) return;
@@ -753,7 +761,7 @@ export async function runAgenticLoop(
         callbacks.onToolActivity?.('terminal', `跳过重复命令: ${commandProgress.signature.slice(0, 50)}`);
       }
     });
-    const contextScreen = contextInvestigation.screen(tools, {
+    const contextScreen = contextInvestigation.screen(screenedTools, {
       progressEpoch,
       hasWorkspaceMutation: hasFileWriteIntentThisRound,
       consumeContextRefresh: path => toolFailureRecovery.consumeContextRefresh(path),
@@ -768,8 +776,8 @@ export async function runAgenticLoop(
     suppressedTools.push(...contextScreen.suppressedTools);
     loopWarnings.push(...contextScreen.warnings);
     const toolsToExecute = blockedRepeatedToolIndexes.size > 0
-      ? tools.filter((_, toolIndex) => !blockedRepeatedToolIndexes.has(toolIndex))
-      : tools;
+      ? screenedTools.filter((_, toolIndex) => !blockedRepeatedToolIndexes.has(toolIndex))
+      : screenedTools;
     if (toolsToExecute.length > 0) {
       await providerRecovery.completeAcceptedResponse(
         'tool-protocol', providerOperationId, toolsToExecute.map(tool => tool.name),
@@ -800,7 +808,7 @@ export async function runAgenticLoop(
         },
       ),
     );
-    const providerNativeTextTools = tools.filter(tool => tool.source === 'provider-native-text');
+    const providerNativeTextTools = screenedTools.filter(tool => tool.source === 'provider-native-text');
     if (loopRes.toolCallsMade || providerNativeTextTools.length > 0) {
       replaceLatestAssistantToolHistory(messages, textToolProtocol, providerNativeTextTools);
     }
