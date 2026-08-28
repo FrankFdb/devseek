@@ -322,3 +322,33 @@ test('Bridge fenced JSON tool arrays are complete, strict, bounded, and Bridge-o
     }, boundary).tools.length, 0, content);
   }
 });
+
+test('Bridge recovers a strict unclosed observation envelope without widening effect authority', () => {
+  const providerEvents = new CanonicalProviderEventService();
+  const toolDispatch = new CanonicalToolDispatchService();
+  const textToolProtocol = {
+    version: 'devseek.text-tools/v1',
+    channelId: 'bridge-unclosed-observation-channel',
+  };
+  const boundary = bindProviderNormalizationBoundary(
+    providerEvents,
+    toolDispatch,
+    { workspaceRoot: '/tmp/workspace' },
+    textToolProtocol,
+  );
+  const open = '<devseek_tool_calls version="devseek.text-tools/v1" channel="bridge-unclosed-observation-channel">';
+  const observations = `${open}[TOOL:read_file {"path":"/tmp/workspace/src/main.cpp"}]`
+    + '[TOOL:file_search {"glob":"src/**/*.cpp"}]';
+  const accepted = normalizeProviderMessage({
+    type: 'message', provider: 'bridge', content: observations,
+  }, boundary).tools;
+
+  assert.deepEqual(accepted.map(tool => tool.name), ['read_file', 'file_search']);
+  assert.ok(accepted.every(tool => tool.source === 'text-protocol'));
+  assert.ok(accepted.every(tool => tool.executable));
+  assert.equal(normalizeProviderMessage({
+    type: 'message',
+    provider: 'bridge',
+    content: `${open}[TOOL:create_file {"path":"/tmp/workspace/x","content":"y"}]`,
+  }, boundary).tools.length, 0);
+});

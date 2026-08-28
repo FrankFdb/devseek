@@ -1,11 +1,12 @@
 import * as crypto from 'crypto';
-import { codingSemanticDigest } from '@devseek-netai/shared';
+import { codingSemanticDigest, getCodingToolDescriptor } from '@devseek-netai/shared';
 import {
   analyzeFakeToolCallProtocol,
   parseFakeToolCalls,
   type FakeTool,
 } from './fake-tool-parser';
 import { inspectProviderTextToolTranscript } from './provider-text-tool-transcript';
+import { findJsonObjectEnd } from './loose-json-text';
 
 export const TEXT_TOOL_PROTOCOL_VERSION = 'devseek.text-tools/v1' as const;
 
@@ -62,8 +63,82 @@ export function parseAuthorizedTextToolCalls(
   session: TextToolProtocolSession | undefined,
 ): FakeTool[] {
   if (!session) return [];
-  return extractAuthorizedTextToolPayloads(text, session)
+  const completed = extractAuthorizedTextToolPayloads(text, session)
     .flatMap(parseAuthorizedTextToolPayload);
+  if (completed.length > 0) {
+    return hasIncompleteAuthorizedTextToolEnvelope(text, session) ? [] : completed;
+  }
+  return parseUnclosedAuthorizedObservationCalls(text, session);
+}
+
+/**
+ * A Bridge response may omit only the outer close marker after finishing a
+ * strict read-only batch. Recover that bounded observation without granting
+ * mutation, process, network, or control authority to a truncated response.
+ */
+function parseUnclosedAuthorizedObservationCalls(
+  text: string,
+  session: TextToolProtocolSession,
+): FakeTool[] {
+  const raw = String(text || '');
+  const open = openMarker(session);
+  const start = raw.indexOf(open);
+  if (start < 0 || raw.indexOf(open, start + open.length) >= 0) return [];
+  if (findEnvelopeClose(raw, start + open.length, closeMarker(session))) return [];
+
+  const tools = parseStrictBracketToolSequence(raw.slice(start + open.length));
+  return tools.length > 0 && tools.every(isRecoverableObservationTool) ? tools : [];
+}
+
+function parseStrictBracketToolSequence(payload: string): FakeTool[] {
+  const tools: FakeTool[] = [];
+  let cursor = skipWhitespace(payload, 0);
+  while (cursor < payload.length) {
+    if (!payload.startsWith('[TOOL:', cursor)) return [];
+    cursor += '[TOOL:'.length;
+    const nameMatch = /^[A-Za-z0-9_]+/.exec(payload.slice(cursor));
+    if (!nameMatch) return [];
+    const name = nameMatch[0];
+    cursor += name.length;
+    if (!/\s/.test(payload[cursor] || '')) return [];
+    cursor = skipWhitespace(payload, cursor);
+    if (payload[cursor] !== '{') return [];
+    const jsonEnd = findJsonObjectEnd(payload, cursor);
+    if (jsonEnd < 0) return [];
+
+    let input: unknown;
+    try {
+      input = JSON.parse(payload.slice(cursor, jsonEnd + 1));
+    } catch {
+      return [];
+    }
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return [];
+    cursor = skipWhitespace(payload, jsonEnd + 1);
+    if (payload[cursor] !== ']') return [];
+    tools.push(Object.freeze({
+      name,
+      input: Object.freeze(input as Record<string, unknown>),
+    }));
+    if (tools.length > 16) return [];
+    cursor = skipWhitespace(payload, cursor + 1);
+  }
+  return tools;
+}
+
+function isRecoverableObservationTool(tool: FakeTool): boolean {
+  const descriptor = getCodingToolDescriptor(tool.name);
+  return Boolean(
+    descriptor
+    && ['read', 'search', 'diagnostics', 'memory'].includes(descriptor.kind)
+    && descriptor.effects.length > 0
+    && descriptor.effects.every(effect => effect === 'read'),
+  );
+}
+
+function skipWhitespace(text: string, start: number): number {
+  let cursor = start;
+  while (cursor < text.length && /\s/.test(text[cursor])) cursor += 1;
+  return cursor;
 }
 
 /** Detects executable-looking provider output without granting it tool authority. */

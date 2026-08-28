@@ -166,6 +166,32 @@ test('incomplete current-channel envelopes preserve tool names without authorizi
   assert.deepEqual(parseAuthorizedTextToolCalls(incomplete, session), []);
 });
 
+test('an unclosed current-channel envelope recovers only one strict local observation batch', () => {
+  const open = `<devseek_tool_calls version="${session.version}" channel="${session.channelId}">`;
+  const observations = [
+    open,
+    '[TOOL:read_file {"path":"src/main.cpp"}]',
+    '[TOOL:file_search {"glob":"src/**/*.cpp"}]',
+  ].join('');
+  const tools = parseAuthorizedTextToolCalls(observations, session);
+  assert.deepEqual(tools.map(tool => tool.name), ['read_file', 'file_search']);
+  assert.deepEqual(tools[0].input, { path: 'src/main.cpp' });
+
+  const rejected = [
+    `${observations} trailing prose`,
+    `${open}[TOOL:read_file {"path":"src/main.cpp"}[TOOL:file_search {"glob":"src/**/*.cpp"}]`,
+    `${open}[TOOL:read_file {"path":"src/main.cpp"}][TOOL:create_file {"path":"x","content":"y"}]`,
+    `${open}[TOOL:run_terminal {"command":"pwd"}]`,
+    `${open}[TOOL:fetch_webpage {"url":"https://example.com"}]`,
+    `${open}[TOOL:task_complete {"summary":"done"}]`,
+    `${observations}${open}[TOOL:read_file {"path":"src/other.cpp"}]`,
+    `${renderTextToolProtocolEnvelope(session, '[TOOL:read_file {"path":"src/main.cpp"}]')}${open}[TOOL:read_file {"path":"src/other.cpp"}]`,
+  ];
+  for (const value of rejected) {
+    assert.deepEqual(parseAuthorizedTextToolCalls(value, session), [], value);
+  }
+});
+
 test('complete authorized envelopes without a recognized tool are rejected', () => {
   const malformed = renderTextToolProtocolEnvelope(
     session,
