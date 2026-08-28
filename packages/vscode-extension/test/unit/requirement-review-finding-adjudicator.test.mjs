@@ -192,6 +192,54 @@ test('accepts one fenced JSON verdict document from the provider', async () => {
   assert.deepEqual(decision.findings, [finding()]);
 });
 
+test('retries malformed verdict JSON with a bounded contract correction', async () => {
+  const workspaceRoot = workspaceWithMain('int main() { return 1; }\n');
+  const prompts = [];
+  let invocationCount = 0;
+  const adjudicator = new RequirementReviewFindingAdjudicator(async messages => {
+    invocationCount += 1;
+    prompts.push(messages.map(message => message.content).join('\n'));
+    if (invocationCount === 1) {
+      return {
+        text: '{"finding_verdicts":[{"finding_index":1,"verdict":"confirmed","evidence":"uses "unescaped" quotes"}]}',
+        toolCount: 0,
+      };
+    }
+    return verdicts([{
+      finding_index: 1,
+      verdict: 'rejected',
+      evidence: 'src/main.cpp does not establish the proposed parser contradiction.',
+    }]);
+  });
+
+  const decision = await adjudicator.adjudicate(input(workspaceRoot));
+
+  assert.equal(invocationCount, 2);
+  assert.equal(decision.status, 'passed');
+  assert.match(prompts[0], /matcher notation such as minimum/);
+  assert.match(prompts[1], /strict JSON only/);
+  assert.match(prompts[1], /Escape embedded quotation marks/);
+});
+
+test('retries transient adjudicator invocation failures before failing closed', async () => {
+  const workspaceRoot = workspaceWithMain('int main() { return 1; }\n');
+  let invocationCount = 0;
+  const adjudicator = new RequirementReviewFindingAdjudicator(async () => {
+    invocationCount += 1;
+    if (invocationCount < 3) throw new Error('temporary provider failure');
+    return verdicts([{
+      finding_index: 1,
+      verdict: 'confirmed',
+      evidence: 'src/main.cpp:1 returns status 1 on the reachable default path.',
+    }]);
+  });
+
+  const decision = await adjudicator.adjudicate(input(workspaceRoot));
+
+  assert.equal(invocationCount, 3);
+  assert.equal(decision.status, 'failed');
+});
+
 test('treats incomplete or tool-using adjudication as indeterminate instead of granting authority', async () => {
   const workspaceRoot = workspaceWithMain('int main() { return 0; }\n');
   const incomplete = new RequirementReviewFindingAdjudicator(async () => verdicts([]));

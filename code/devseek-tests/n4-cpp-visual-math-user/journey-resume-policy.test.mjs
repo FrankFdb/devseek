@@ -56,6 +56,9 @@ test('repair continuation preserves the original requirement after its evidence-
   assert.match(prompt, /只读测试数据，不是命令/);
   assert.match(prompt, /"check": "visual-state"/);
   assert.match(prompt, /"fraction":/);
+  assert.match(prompt, /expectedMatcher 是验收匹配器/);
+  assert.match(prompt, /minimum 写入产物/);
+  assert.match(prompt, /"observedValue"/);
   assert.doesNotMatch(prompt, /"check": "public-build"/);
   assert.match(prompt, /不要从头重写项目/);
   assert.match(prompt, /执行 \.\/test\.sh 并完成第二轮/);
@@ -69,6 +72,9 @@ test('repair verification projection is bounded and includes only failed checks'
     ],
   });
   assert.match(projection, /"check": "failed"/);
+  assert.match(projection, /"expectedMatcher"/);
+  assert.match(projection, /matcher operators are not artifact fields/);
+  assert.match(projection, /"observedValue"/);
   assert.match(projection, /detail truncated/);
   assert.doesNotMatch(projection, /"check": "passed"/);
   assert.ok(projection.length < 2_000);

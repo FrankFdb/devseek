@@ -12,6 +12,7 @@ import {
   captureRequirementReviewSourceSnapshots,
   renderRequirementReviewSnapshots,
 } from './requirement-review-source-snapshot';
+import { VALIDATION_EVIDENCE_REVIEW_RULES } from './validation-evidence-semantics';
 
 export type { RequirementReviewInvocationResult } from './requirement-review-contract';
 export { parseIndependentReviewResponse } from './requirement-review-contract';
@@ -125,6 +126,7 @@ export function buildIndependentReviewMessages(
         'Set evidence_authority to reported-validation only when the original requirements or VALIDATION FACT explicitly supplies the observed execution result. Otherwise use source-snapshot.',
         'For reported-validation, copy one exact contiguous expected/actual fact into evidence_quote without paraphrasing; for source-snapshot use an empty string. The host rejects quotes that are not present verbatim in the supplied evidence.',
         'A reported-validation fact remains authoritative until the exact counterexample is rerun; static source appearance cannot disprove it.',
+        ...VALIDATION_EVIDENCE_REVIEW_RULES,
         'Never put a non-defect, speculation, or hedged concern in findings. If analysis concludes correct, safe, valid, no defect, unlikely, unspecified, or no concrete reachable path, mark the check satisfied and omit the finding.',
         'Honor user-requested data structures and complexity. Flag dead state, wrong ownership, and scans that defeat the requested design.',
         'priority must be an integer from 0 through 3 only: 0 blocks all use, 1 is high, 2 is normal, and 3 is low.',

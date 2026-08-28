@@ -117,6 +117,7 @@ import {
 } from './requirement-review-repair-window';
 import { renewExecutionConvergenceRoundLimit } from './execution-convergence-window';
 import { settleAgenticLoopFinal } from './agentic-final-settlement';
+import { selectAgenticFinalFailure } from './agentic-final-failure';
 import {
   DeliveryConvergenceLedger,
   isContextGatheringToolName,
@@ -1217,38 +1218,49 @@ export async function runAgenticLoop(
     allTodosCompleted: currentTodos.length > 0 && currentTodos.every(todo => todo.status === 'completed'),
     failedReason: failedReason || undefined,
   });
-  if (!failedReason && finalRuntimeSettlement.state === 'failed') {
-    failedReason = finalRuntimeSettlement.failedReason || describeProviderOutputIntegrity(finalRuntimeSettlement.providerOutput.kind);
-  } else if (!failedReason
-    && finalRuntimeSettlement.state === 'tool_requested'
+  let providerRuntimeFailure: string | undefined;
+  if (finalRuntimeSettlement.state === 'failed') {
+    providerRuntimeFailure = finalRuntimeSettlement.failedReason
+      || describeProviderOutputIntegrity(finalRuntimeSettlement.providerOutput.kind);
+  } else if (finalRuntimeSettlement.state === 'tool_requested'
     && finalRuntimeSettlement.providerOutput.toolCallCount > 0) {
-    failedReason = 'Provider 返回了工具调用，但本轮没有执行到任何工具；任务未完成。';
-  } else if (!failedReason
-    && runtimeTaskAction === 'respond'
+    providerRuntimeFailure = 'Provider 返回了工具调用，但本轮没有执行到任何工具；任务未完成。';
+  } else if (runtimeTaskAction === 'respond'
     && !runtimeStateCanDeliver(finalRuntimeSettlement)) {
-    failedReason = describeProviderOutputIntegrity(finalRuntimeSettlement.providerOutput.kind);
-  } else if (!failedReason
-    && runtimeTaskAction !== 'respond'
+    providerRuntimeFailure = describeProviderOutputIntegrity(finalRuntimeSettlement.providerOutput.kind);
+  } else if (runtimeTaskAction !== 'respond'
     && !runtimeStateCanDeliver(finalRuntimeSettlement)) {
-    failedReason = finalRuntimeSettlement.failedReason
+    providerRuntimeFailure = finalRuntimeSettlement.failedReason
       || `任务已有执行证据，但缺少完成信号、通过验证或可交付总结：${describeProviderOutputIntegrity(finalRuntimeSettlement.providerOutput.kind)}`;
   }
-  if (!failedReason && finalRequirementReviewBlocker) {
-    failedReason = finalRequirementReviewBlocker;
-  } else if (!failedReason && finalBlockingFailure) {
-    failedReason = describeBlockingTerminalFailure(finalBlockingFailure);
+  const missingEvidenceFailure = finalMissingEvidence.length > 0
+    ? `实际执行证据不足：缺少${finalMissingEvidence.join('、')}。`
+    : lastMissingEvidence.length > 0
+      ? `实际执行证据不足：缺少${lastMissingEvidence.join('、')}。`
+      : undefined;
+  const finalFailure = selectAgenticFinalFailure({
+    existingFailure: failedReason,
+    terminalValidationFailure: finalBlockingFailure
+      ? describeBlockingTerminalFailure(finalBlockingFailure)
+      : undefined,
+    requirementReviewBlocker: finalRequirementReviewBlocker,
+    missingEvidenceFailure,
+    providerRuntimeFailure,
+  });
+  failedReason = finalFailure?.reason ?? '';
+  if (finalFailure?.kind === 'terminal-validation') {
     if (callbacks.onTodoUpdate && currentTodos.length > 0) {
       currentTodos = settleValidationFailureTodos(currentTodos);
       await callbacks.onTodoUpdate(currentTodos);
     }
-  } else if (!failedReason && finalMissingEvidence.length > 0) {
-    failedReason = `实际执行证据不足：缺少${finalMissingEvidence.join('、')}。`;
+  } else if (finalFailure?.kind === 'missing-evidence') {
     if (callbacks.onTodoUpdate && currentTodos.length > 0) {
-      currentTodos = settleMissingEvidenceTodos(currentTodos, finalMissingEvidence);
+      currentTodos = settleMissingEvidenceTodos(
+        currentTodos,
+        finalMissingEvidence.length > 0 ? finalMissingEvidence : lastMissingEvidence,
+      );
       await callbacks.onTodoUpdate(currentTodos);
     }
-  } else if (!failedReason && lastMissingEvidence.length > 0) {
-    failedReason = `实际执行证据不足：缺少${lastMissingEvidence.join('、')}。`;
   }
   if (!failedReason && !callbacks.signal?.aborted && callbacks.onTodoUpdate && currentTodos.length > 0) {
     currentTodos = completeAgentTodos(currentTodos);
