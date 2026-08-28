@@ -138,6 +138,33 @@ test('Agent history compaction: executed Bridge Tool Arguments blocks become dur
   assert.doesNotMatch(messages[1].content, /Tool:/);
 });
 
+test('Agent history compaction: executed Bridge ReAct calls become durable summaries', () => {
+  const content = [
+    '我继续核对绘制逻辑。',
+    'Action: read_fileAction Input: {"path":"/repo/src/raster_canvas.cpp","startLine":144,"endLine":160}',
+    'Action: grep_search\nAction Input: {"pattern":"renderNumberLine","path":"/repo/src"}',
+  ].join('');
+  const messages = [
+    { role: 'user', content: '任务' },
+    { role: 'assistant', content },
+  ];
+
+  const changed = replaceLatestAssistantToolHistory(messages, textToolProtocol, [
+    {
+      name: 'read_file',
+      input: { path: '/repo/src/raster_canvas.cpp', startLine: 144, endLine: 160 },
+    },
+    { name: 'grep_search', input: { pattern: 'renderNumberLine', path: '/repo/src' } },
+  ]);
+
+  assert.equal(changed, true);
+  assert.match(messages[1].content, /意图：我继续核对绘制逻辑/);
+  assert.match(messages[1].content, /工具调用：2 个/);
+  assert.match(messages[1].content, /read_file path=\/repo\/src\/raster_canvas\.cpp lines=144-160/);
+  assert.match(messages[1].content, /grep_search path=\/repo\/src pattern=renderNumberLine/);
+  assert.doesNotMatch(messages[1].content, /Action(?: Input)?:/);
+});
+
 test('Agent history compaction: executed Bridge bare JSON calls become durable summaries', () => {
   const content = [
     '我先核对损坏区域。',

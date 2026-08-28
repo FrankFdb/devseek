@@ -219,6 +219,79 @@ test('Bridge Tool Arguments responses accept complete sequences and reject ambig
   }
 });
 
+test('Bridge ReAct responses are strict, bounded, Bridge-only proposals under canonical dispatch', () => {
+  const providerEvents = new CanonicalProviderEventService();
+  const toolDispatch = new CanonicalToolDispatchService();
+  const textToolProtocol = {
+    version: 'devseek.text-tools/v1',
+    channelId: 'bridge-native-react-channel',
+  };
+  const disabled = bindProviderNormalizationBoundary(
+    providerEvents,
+    toolDispatch,
+    { workspaceRoot: '/tmp/workspace' },
+  );
+  const enabled = bindProviderNormalizationBoundary(
+    providerEvents,
+    toolDispatch,
+    { workspaceRoot: '/tmp/workspace' },
+    textToolProtocol,
+  );
+  const response = [
+    '我需要继续查看实现细节。',
+    'Action: read_fileAction Input: {"path":"/tmp/workspace/src/raster_canvas.cpp","startLine":144,"endLine":160}',
+    'Action: grep_search\nAction Input: {"pattern":"renderNumberLine","path":"/tmp/workspace/src"}',
+  ].join('');
+
+  const accepted = normalizeProviderMessage({
+    type: 'message', provider: 'bridge', content: response,
+  }, enabled).tools;
+  assert.deepEqual(accepted.map(tool => tool.name), ['read_file', 'grep_search']);
+  assert.deepEqual(accepted[0].input, {
+    path: '/tmp/workspace/src/raster_canvas.cpp',
+    startLine: 144,
+    endLine: 160,
+  });
+  assert.deepEqual(accepted[1].input, {
+    pattern: 'renderNumberLine',
+    path: '/tmp/workspace/src',
+  });
+  assert.ok(accepted.every(tool => tool.source === 'provider-native-text'));
+  assert.ok(accepted.every(tool => tool.executable));
+  assert.equal(normalizeProviderMessage({
+    type: 'message', provider: 'bridge', content: response,
+  }, disabled).tools.length, 0);
+  assert.equal(normalizeProviderMessage({
+    type: 'message', provider: 'deepseek-api', content: response,
+  }, enabled).tools.length, 0);
+
+  const [unknown] = normalizeProviderMessage({
+    type: 'message',
+    provider: 'bridge',
+    content: 'Action: provider_private_toolAction Input: {}',
+  }, enabled).tools;
+  assert.equal(unknown.source, 'provider-native-text');
+  assert.equal(unknown.executable, false);
+
+  const invalid = [
+    `${response}接下来修改。`,
+    'Action: read_fileAction Input: {path:"/tmp/workspace/src/main.cpp"}',
+    'Action: read_fileAction Input: ["/tmp/workspace/src/main.cpp"]',
+    'Action: read_fileAction Input: {"path":"/tmp/workspace/src/main.cpp"',
+    `${response}\n**Calling:** \`list_dir\`\n\n\`\`\`\n{"path":"/tmp/workspace"}\n\`\`\``,
+    `${response}Tool: list_dirArguments: {"path":"/tmp/workspace"}`,
+    `${response}list_dir {"path":"/tmp/workspace"}`,
+    Array.from({ length: 17 }, (_, index) => (
+      `Action: read_fileAction Input: {"path":"/tmp/workspace/${index}.cpp"}`
+    )).join(''),
+  ];
+  for (const content of invalid) {
+    assert.equal(normalizeProviderMessage({
+      type: 'message', provider: 'bridge', content,
+    }, enabled).tools.length, 0, content);
+  }
+});
+
 test('Bridge bare JSON tool sequences are strict, bounded, and Bridge-only', () => {
   const providerEvents = new CanonicalProviderEventService();
   const toolDispatch = new CanonicalToolDispatchService();

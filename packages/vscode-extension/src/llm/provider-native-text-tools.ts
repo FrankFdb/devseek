@@ -5,11 +5,13 @@ const MAX_PROVIDER_NATIVE_TEXT_TOOLS = 16;
 const CALLING_HEADER_RE = /\*\*Calling:\*\*[ \t]*`([A-Za-z0-9_]+)`[ \t]*(?:\r?\n[ \t]*)+```(?:json)?[ \t]*\r?\n/gi;
 const CLOSING_FENCE_RE = /(?:^|\r?\n)[ \t]*```[ \t]*(?=\r?\n|$)/g;
 const TOOL_ARGUMENTS_HEADER_RE = /Tool:[ \t]*`?([A-Za-z0-9_]+)`?[ \t]*Arguments:[ \t]*/g;
+const REACT_ACTION_HEADER_RE = /Action:[ \t]*([A-Za-z0-9_]+)[ \t\r\n]*Action Input:[ \t\r\n]*/g;
 const BARE_JSON_HEADER_RE = /([A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+)[ \t]+(?=\{)/g;
 const FENCED_JSON_ARRAY_RE = /```(?:json)?[ \t]*\r?\n[ \t]*(?=\[)/gi;
 const READ_FILE_SHORTHAND_RE = /\bread_file[ \t]+path=([^\s`]+)(?:[ \t]+lines=(\d+)-(\d+))?[ \t]*$/i;
 const CALLING_MARKER_RE = /\*\*Calling:\*\*/i;
 const TOOL_ARGUMENTS_MARKER_RE = /Tool:[ \t]*`?[A-Za-z0-9_]+`?[ \t]*Arguments:/i;
+const REACT_ACTION_MARKER_RE = /Action:[ \t]*[A-Za-z0-9_]+[ \t\r\n]*Action Input:/i;
 const BARE_JSON_MARKER_RE = /[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+[ \t]+\{/;
 
 export interface ProviderNativeTextToolResponse {
@@ -26,9 +28,13 @@ export function projectProviderNativeTextToolResponse(
 ): ProviderNativeTextToolResponse | undefined {
   const hasCalling = CALLING_MARKER_RE.test(text);
   const hasToolArguments = TOOL_ARGUMENTS_MARKER_RE.test(text);
-  if (hasCalling && hasToolArguments) return undefined;
-  if ((hasCalling || hasToolArguments) && BARE_JSON_MARKER_RE.test(text)) return undefined;
+  const hasReactAction = REACT_ACTION_MARKER_RE.test(text);
+  const explicitDialectCount = [hasCalling, hasToolArguments, hasReactAction]
+    .filter(Boolean).length;
+  if (explicitDialectCount > 1) return undefined;
+  if (explicitDialectCount > 0 && BARE_JSON_MARKER_RE.test(text)) return undefined;
   if (hasCalling) return projectCallingResponse(text);
+  if (hasReactAction) return projectInlineJsonResponse(text, REACT_ACTION_HEADER_RE);
   const jsonArray = projectJsonArrayResponse(text);
   if (jsonArray) return jsonArray;
   const observation = projectObservationShorthandResponse(text);
