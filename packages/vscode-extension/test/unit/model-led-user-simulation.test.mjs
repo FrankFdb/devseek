@@ -278,6 +278,67 @@ test('ModelLedUserSimulation: out-of-envelope ReAct actions are quarantined and 
   }
 });
 
+test('ModelLedUserSimulation: repeated legacy tool arrays rebuild the Provider session before execution', async () => {
+  const prompt = '创建 result.txt，内容为 FRESH_PROTOCOL_RECOVERY_OK，并读回确认。';
+  let calls = 0;
+  const providerSessions = [];
+  const simulation = await runSimulation(prompt, async (messages, providerContext) => {
+    calls += 1;
+    providerSessions.push(providerContext.newSession);
+    const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'result.txt');
+    if (calls <= 2) {
+      if (calls === 2) {
+        assert.equal(providerContext.newSession, false);
+        assert.match(messages.at(-1).content, /本轮只输出 1 个工具调用/u);
+      }
+      return {
+        text: [
+          '```',
+          '[',
+          `  {"tool":"create_file","input":{"path":"${target}","content":"FRESH_PROTOCOL_RECOVERY_OK\\n"}}`,
+          ']',
+          '```',
+        ].join('\n'),
+        tools: [],
+      };
+    }
+    if (calls === 3) {
+      assert.equal(providerContext.newSession, true);
+      assert.match(messages.at(-1).content, /本轮会重建 Provider 会话/u);
+      return {
+        text: '在重建会话中按授权协议重新提交唯一写入。',
+        tools: [
+          { name: 'create_file', input: { path: target, content: 'FRESH_PROTOCOL_RECOVERY_OK\n' } },
+          { name: 'read_file', input: { path: target } },
+          { name: 'task_complete', input: { summary: '已创建并读回 result.txt。' } },
+        ],
+      };
+    }
+    return {
+      text: '依据真实写入结果读回并结算。',
+      tools: [
+        { name: 'read_file', input: { path: target } },
+        { name: 'task_complete', input: { summary: '已创建并读回 result.txt。' } },
+      ],
+    };
+  }, { runDisplayAction: 'create' });
+  try {
+    assert.equal(calls, 4, simulation.result.historyText);
+    assert.deepEqual(providerSessions, [true, false, true, false]);
+    assert.equal(readFileSync(path.join(simulation.root, 'result.txt'), 'utf8'), 'FRESH_PROTOCOL_RECOVERY_OK\n');
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+    assert.equal(
+      simulation.harness.statuses.some(status => (
+        status.recoveryReason === 'provider-response-corruption'
+        && /重建模型会话/u.test(status.detail ?? '')
+      )),
+      true,
+    );
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
 test('ModelLedUserSimulation: native XML mutation recovery retains verified read context in session', async () => {
   const prompt = '读取现有 source.txt，把 OLD_VALUE 修复为 NEW_VALUE，并读回确认。';
   let calls = 0;

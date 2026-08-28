@@ -129,7 +129,7 @@ export function describeAgentProviderRecoveryForUser(
   const isSubmitFailure = failure.status.toLowerCase() === 'prompt-submit-failed';
   const isToolProtocolFailure = UNRESOLVED_TOOL_ACTION_STATUSES.has(failure.status.toLowerCase());
   const isToolTranscriptPollution = failure.status.toLowerCase() === 'provider-authored-tool-transcript';
-  const resetProviderSession = shouldResetProviderSessionForRecovery(failure);
+  const resetProviderSession = shouldResetProviderSessionForRecovery(failure, recoveryAttempt);
   return {
     title: isSubmitFailure
       ? `Provider 请求未送达，正在安全重试（${step}）`
@@ -186,7 +186,10 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
     ? '当前任务需要真实工具证据；不得只输出说明、计划或自然语言完成摘要。'
     : '当前任务可以只读分析，但最终必须给出完整结论和依据。';
   const finalAttempt = input.recoveryAttempt >= input.maxRecoveryAttempts;
-  const resetProviderSession = shouldResetProviderSessionForRecovery(input.failure);
+  const resetProviderSession = shouldResetProviderSessionForRecovery(
+    input.failure,
+    input.recoveryAttempt,
+  );
   const retainedReadEvidence = !resetProviderSession && input.readEvidencePaths.length > 0;
   const readLimitLine = unresolvedToolAction && retainedReadEvidence
     ? '- 当前 Provider 会话仍保留先前真实工具结果；本轮只允许 1 个匹配被隔离动作的具体工具，不允许重新读取、重复验证或横向调查。'
@@ -257,9 +260,14 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
   };
 }
 
-export function shouldResetProviderSessionForRecovery(failure: AgentProviderFailure | undefined): boolean {
+export function shouldResetProviderSessionForRecovery(
+  failure: AgentProviderFailure | undefined,
+  recoveryAttempt = 1,
+): boolean {
   const status = failure?.status?.toLowerCase();
-  if (status && IN_SESSION_PROTOCOL_CORRECTION_STATUSES.has(status)) return false;
+  if (status && IN_SESSION_PROTOCOL_CORRECTION_STATUSES.has(status)) {
+    return recoveryAttempt > 1;
+  }
   return Boolean(failure?.recoverable && status && (
     RECOVERABLE_RESPONSE_CORRUPTION_STATUSES.has(status)
     || status === 'stream-error'

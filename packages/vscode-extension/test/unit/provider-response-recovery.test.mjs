@@ -271,6 +271,8 @@ test('Agent provider recovery rebuilds damaged responses but preserves complete 
   assert.equal(shouldResetProviderSessionForRecovery(mixed), true);
   assert.equal(shouldResetProviderSessionForRecovery(outOfEnvelope), false);
   assert.equal(shouldResetProviderSessionForRecovery(invalidEnvelope), false);
+  assert.equal(shouldResetProviderSessionForRecovery(outOfEnvelope, 2), true);
+  assert.equal(shouldResetProviderSessionForRecovery(invalidEnvelope, 2), true);
 });
 
 test('Agent provider recovery rebuilds the session after forged tool transcripts', () => {

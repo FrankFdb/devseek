@@ -245,7 +245,10 @@ export async function recoverAgenticProviderFailure(
   }
 
   const nextRecoveryAttempts = input.recoveryAttempts + 1;
-  const resetProviderSession = shouldResetProviderSessionForRecovery(input.failure);
+  const resetProviderSession = shouldResetProviderSessionForRecovery(
+    input.failure,
+    nextRecoveryAttempts,
+  );
   const display = describeAgentProviderRecoveryForUser(
     input.failure,
     nextRecoveryAttempts,
