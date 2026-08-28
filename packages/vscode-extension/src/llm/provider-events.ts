@@ -30,11 +30,6 @@ export interface ProviderNormalizationBoundary {
   readonly toolDispatch: ToolDispatchPort;
   readonly dispatchContext: Readonly<Pick<CodingToolDispatchContext, 'workspaceRoot'>>;
   readonly textToolProtocol?: TextToolProtocolSession;
-  readonly allowProviderNativeTextTools?: boolean;
-}
-
-export interface ProviderNormalizationOptions {
-  readonly allowProviderNativeTextTools?: boolean;
 }
 
 export function bindProviderNormalizationBoundary(
@@ -42,7 +37,6 @@ export function bindProviderNormalizationBoundary(
   toolDispatch: ToolDispatchPort | undefined,
   dispatchContext: Pick<CodingToolDispatchContext, 'workspaceRoot'> = {},
   textToolProtocol?: TextToolProtocolSession,
-  options: ProviderNormalizationOptions = {},
 ): ProviderNormalizationBoundary | undefined {
   if (!providerEvents && !toolDispatch) return undefined;
   if (!providerEvents || !toolDispatch) {
@@ -53,7 +47,6 @@ export function bindProviderNormalizationBoundary(
     toolDispatch,
     dispatchContext: Object.freeze({ ...dispatchContext }),
     ...(textToolProtocol ? { textToolProtocol } : {}),
-    ...(options.allowProviderNativeTextTools ? { allowProviderNativeTextTools: true } : {}),
   });
 }
 
@@ -117,7 +110,7 @@ function providerMessageToolProposals(
   if (authorized.length > 0) {
     return authorized.map(tool => ({ tool, source: 'text-protocol' }));
   }
-  if (event.provider !== 'bridge' || !boundary.allowProviderNativeTextTools) return [];
+  if (event.provider !== 'bridge' || !boundary.textToolProtocol) return [];
   const native = projectProviderNativeTextToolResponse(event.content);
   return native?.tools.map(tool => ({ tool, source: 'provider-native-text' })) ?? [];
 }

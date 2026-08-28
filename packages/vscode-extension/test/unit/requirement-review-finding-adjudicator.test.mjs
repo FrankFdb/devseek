@@ -32,6 +32,7 @@ function finding(overrides = {}) {
   return {
     requirementId: 'R1',
     requirement: 'Implement the requested command-line interface.',
+    evidenceAuthority: 'source-snapshot',
     title: 'Implement the script command-line interface',
     observedBehavior: 'The parser rejects --script as an unknown option.',
     expectedBehavior: 'The parser accepts --script and dispatches script mode.',
@@ -124,6 +125,52 @@ test('retains only findings independently confirmed against the current source',
   assert.equal(decision.status, 'failed');
   assert.deepEqual(decision.findings, [second]);
   assert.match(decision.explanation, /1 条/);
+});
+
+test('does not let source-only adjudication erase a reported validation finding', async () => {
+  const workspaceRoot = workspaceWithMain('int main() { return 1; }\n');
+  let invocationCount = 0;
+  const adjudicator = new RequirementReviewFindingAdjudicator(async () => {
+    invocationCount += 1;
+    return verdicts([{
+      finding_index: 1,
+      verdict: 'rejected',
+      evidence: 'The current source appears to implement the requested behavior.',
+    }]);
+  });
+  const decision = failedDecision([finding({ evidenceAuthority: 'reported-validation' })]);
+
+  const result = await adjudicator.adjudicate(input(workspaceRoot, decision));
+
+  assert.equal(invocationCount, 0);
+  assert.equal(result, decision);
+});
+
+test('adjudicates source findings while preserving reported validation evidence', async () => {
+  const workspaceRoot = workspaceWithMain('int main() { return 1; }\n');
+  const reported = finding({
+    evidenceAuthority: 'reported-validation',
+    title: 'Preserve the observed command failure',
+  });
+  const sourceOnly = finding({ title: 'Inspect the static parser path' });
+  const adjudicator = new RequirementReviewFindingAdjudicator(async messages => {
+    const prompt = messages.map(message => message.content).join('\n');
+    assert.match(prompt, /Inspect the static parser path/);
+    assert.doesNotMatch(prompt, /Preserve the observed command failure/);
+    return verdicts([{
+      finding_index: 1,
+      verdict: 'rejected',
+      evidence: 'src/main.cpp contradicts the source-only parser hypothesis.',
+    }]);
+  });
+
+  const result = await adjudicator.adjudicate(input(
+    workspaceRoot,
+    failedDecision([reported, sourceOnly]),
+  ));
+
+  assert.equal(result.status, 'failed');
+  assert.deepEqual(result.findings, [reported]);
 });
 
 test('accepts one fenced JSON verdict document from the provider', async () => {

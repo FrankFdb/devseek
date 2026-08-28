@@ -50,6 +50,7 @@ function check(prompt, status = 'satisfied', overrides = {}) {
 function finding(source, prompt, overrides = {}) {
   return {
     requirement_id: 'R1',
+    evidence_authority: 'source-snapshot',
     title: 'Return the required value',
     observed_behavior: 'Calling the exported function returns 1.',
     expected_behavior: 'The request requires the exported function to return 2.',
@@ -266,6 +267,7 @@ test('validates finding evidence fields, priority, and confidence', () => {
   const source = snapshot();
   const prompt = 'Return 2.';
   const invalidOverrides = [
+    { evidence_authority: 'provider-opinion' },
     { title: '' },
     { observed_behavior: '' },
     { expected_behavior: '' },
@@ -371,6 +373,8 @@ test('review prompt delegates semantics to the model and keeps raw multilingual 
   assert.match(messages[0].content, /do not choose one and fail the others/);
   assert.match(messages[0].content, /blank, placeholder, misleading mathematical result/);
   assert.match(messages[0].content, /directly traceable to words in the requirement bound to that inventory ID/);
+  assert.match(messages[0].content, /reported-validation only when the original requirements or VALIDATION FACT explicitly supplies/);
+  assert.match(messages[0].content, /static source appearance cannot disprove it/);
   assert.doesNotMatch(messages[0].content, /order book|best bid|FIFO\/LIFO|std::invalid_argument/i);
   assert.match(messages[1].content, /MODEL_LATEST_OK/);
   assert.match(messages[1].content, new RegExp(JSON.stringify(prompt).slice(1, -1).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));

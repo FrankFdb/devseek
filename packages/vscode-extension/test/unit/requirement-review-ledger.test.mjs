@@ -228,6 +228,7 @@ test('failed independent review blocks completion until repaired source is reval
     findings: [{
       requirementId: 'R2',
       requirement: 'Reject duplicate or already-used ids.',
+      evidenceAuthority: 'source-snapshot',
       title: 'Preserve used order identifiers',
       observedBehavior: 'Completed identifiers are erased and accepted again.',
       expectedBehavior: 'Already-used identifiers must remain rejected.',
@@ -285,6 +286,7 @@ test('failed independent review renders a domain-neutral counterexample protocol
     findings: [{
       requirementId: 'R4',
       requirement: 'Unmatched active orders preserve remaining quantity.',
+      evidenceAuthority: 'source-snapshot',
       title: 'Initialize remaining quantity from the incoming order',
       observedBehavior: 'The node reads node.order.quantity while node is being initialized.',
       expectedBehavior: 'The book stores the incoming order quantity as remaining quantity.',

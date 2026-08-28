@@ -45,6 +45,12 @@ export class RequirementReviewFindingAdjudicator {
     if (input.decision.status !== 'failed' || input.decision.findings.length === 0) {
       return input.decision;
     }
+    const adjudicableFindings = input.decision.findings.filter(finding => (
+      finding.evidenceAuthority === 'source-snapshot'
+    ));
+    if (adjudicableFindings.length === 0) {
+      return input.decision;
+    }
     try {
       const sources = await captureRequirementReviewSourceSnapshots(input.workspaceRoot, input.sourcePaths);
       const context = await captureRequirementReviewContextSnapshots(
@@ -52,13 +58,22 @@ export class RequirementReviewFindingAdjudicator {
         input.contextPaths ?? [],
         sources,
       );
-      const response = await this.invoke(buildFindingAdjudicationMessages(input, sources, context));
-      const verdicts = parseFindingVerdicts(response, input.decision.findings.length);
+      const response = await this.invoke(buildFindingAdjudicationMessages(
+        input,
+        adjudicableFindings,
+        sources,
+        context,
+      ));
+      const verdicts = parseFindingVerdicts(response, adjudicableFindings.length);
       if (!verdicts) {
         return indeterminateDecision('独立 finding 事实复核未形成完整、只读的逐条结论。');
       }
-      const confirmed = input.decision.findings.filter((_, index) => (
+      const confirmedSourceFindings = new Set(adjudicableFindings.filter((_, index) => (
         verdicts[index]?.verdict === 'confirmed'
+      )));
+      const confirmed = input.decision.findings.filter(finding => (
+        finding.evidenceAuthority === 'reported-validation'
+        || confirmedSourceFindings.has(finding)
       ));
       if (confirmed.length === 0) {
         return {
@@ -80,10 +95,11 @@ export class RequirementReviewFindingAdjudicator {
 
 function buildFindingAdjudicationMessages(
   input: FindingAdjudicationInput,
+  adjudicableFindings: readonly RequirementReviewDecision['findings'][number][],
   sources: readonly RequirementReviewSourceSnapshot[],
   context: readonly RequirementReviewSourceSnapshot[],
 ): ChatMessage[] {
-  const findings = input.decision.findings.map((finding, index) => ({
+  const findings = adjudicableFindings.map((finding, index) => ({
     finding_index: index + 1,
     ...finding,
   }));

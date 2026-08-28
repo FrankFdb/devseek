@@ -31,6 +31,7 @@ interface RawRequirementCheck {
 
 interface RawReviewFinding {
   requirement_id?: unknown;
+  evidence_authority?: unknown;
   title?: unknown;
   observed_behavior?: unknown;
   expected_behavior?: unknown;
@@ -74,6 +75,7 @@ export const REQUIREMENT_REVIEW_SCHEMA = [
   '  }],',
   '  "findings": [{',
   '    "requirement_id": "R1",',
+  '    "evidence_authority": "source-snapshot" | "reported-validation",',
   '    "title": "imperative finding title, <= 80 chars",',
   '    "observed_behavior": "caller-observable behavior reached in final source",',
   '    "expected_behavior": "behavior required by the quoted requirement",',
@@ -270,10 +272,14 @@ function normalizeFinding(
   }
 
   const title = normalizeFindingTitle(raw.title);
+  const evidenceAuthority = raw.evidence_authority;
   const observedBehavior = nonEmptyString(raw.observed_behavior);
   const expectedBehavior = nonEmptyString(raw.expected_behavior);
   const counterexample = nonEmptyString(raw.counterexample);
   if (!title) errors.push('title 必须是非空字符串');
+  if (evidenceAuthority !== 'source-snapshot' && evidenceAuthority !== 'reported-validation') {
+    errors.push('evidence_authority 必须是 source-snapshot 或 reported-validation');
+  }
   if (!observedBehavior) errors.push('observed_behavior 必须是非空字符串');
   if (!expectedBehavior) errors.push('expected_behavior 必须是非空字符串');
   if (!counterexample) errors.push('counterexample 必须是非空字符串');
@@ -304,6 +310,7 @@ function normalizeFinding(
     finding: {
       requirementId,
       requirement: check!.requirement.quote,
+      evidenceAuthority: evidenceAuthority as RequirementReviewFinding['evidenceAuthority'],
       title: title!,
       observedBehavior: observedBehavior!,
       expectedBehavior: expectedBehavior!,

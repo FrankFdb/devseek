@@ -105,7 +105,7 @@ test('I13-VSC-01 user journey: VS Code rejects invalid wiring and preserves work
   assert.equal(outside.call.risk, 'high');
 });
 
-test('Bridge Calling responses require explicit admission and strict complete JSON blocks', () => {
+test('Bridge Calling responses require an agent protocol session and strict complete JSON blocks', () => {
   const providerEvents = new CanonicalProviderEventService();
   const toolDispatch = new CanonicalToolDispatchService();
   const textToolProtocol = {
@@ -116,14 +116,12 @@ test('Bridge Calling responses require explicit admission and strict complete JS
     providerEvents,
     toolDispatch,
     { workspaceRoot: '/tmp/workspace' },
-    textToolProtocol,
   );
   const enabled = bindProviderNormalizationBoundary(
     providerEvents,
     toolDispatch,
     { workspaceRoot: '/tmp/workspace' },
     textToolProtocol,
-    { allowProviderNativeTextTools: true },
   );
   const response = [
     '我先读取任务和源码。',
@@ -186,7 +184,6 @@ test('Bridge Tool Arguments responses accept complete sequences and reject ambig
     toolDispatch,
     { workspaceRoot: '/tmp/workspace' },
     textToolProtocol,
-    { allowProviderNativeTextTools: true },
   );
   const response = [
     '我先读取入口和实现。',
@@ -234,7 +231,6 @@ test('Bridge bare JSON tool sequences are strict, bounded, and Bridge-only', () 
     toolDispatch,
     { workspaceRoot: '/tmp/workspace' },
     textToolProtocol,
-    { allowProviderNativeTextTools: true },
   );
   const response = [
     '我先检查当前工作区。',

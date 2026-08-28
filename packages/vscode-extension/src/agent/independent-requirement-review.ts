@@ -117,6 +117,8 @@ export function buildIndependentReviewMessages(
         'The required result in each counterexample must be directly traceable to words in the requirement bound to that inventory ID or an explicitly supplied contract. If that trace cannot be stated, omit the finding.',
         'Use declarations, types, comparators, and ownership shown in every supplied source file. Never infer a default or missing declaration when another snapshot defines it.',
         'Report only defects reached by a concrete execution path in the supplied source. Omit speculative bypasses, irrelevant language-lawyer hypotheticals, and confidence below 0.80.',
+        'Set evidence_authority to reported-validation only when the original requirements or VALIDATION FACT explicitly supplies the observed execution result. Otherwise use source-snapshot.',
+        'A reported-validation fact remains authoritative until the exact counterexample is rerun; static source appearance cannot disprove it.',
         'Never put a non-defect, speculation, or hedged concern in findings. If analysis concludes correct, safe, valid, no defect, unlikely, unspecified, or no concrete reachable path, mark the check satisfied and omit the finding.',
         'Honor user-requested data structures and complexity. Flag dead state, wrong ownership, and scans that defeat the requested design.',
         'priority must be an integer from 0 through 3 only: 0 blocks all use, 1 is high, 2 is normal, and 3 is low.',

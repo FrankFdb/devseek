@@ -17,6 +17,7 @@ export interface RequirementReviewInput {
 export interface RequirementReviewFinding {
   requirementId: string;
   requirement: string;
+  evidenceAuthority: 'source-snapshot' | 'reported-validation';
   title: string;
   observedBehavior: string;
   expectedBehavior: string;

@@ -506,7 +506,6 @@ export async function runAgenticLoop(
           callbacks.canonicalToolDispatch,
           { workspaceRoot },
           textToolProtocol,
-          { allowProviderNativeTextTools: promptRequiresTools },
         ),
       );
       providerWaitFeedback.complete();
