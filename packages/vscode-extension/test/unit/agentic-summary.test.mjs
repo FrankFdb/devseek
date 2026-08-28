@@ -43,6 +43,15 @@ test('recognizes bounded Chinese and English future tool-action announcements', 
   assert.equal(isDeferredAgentActionAnnouncement(
     'I need to investigate the current implementation before repairing it.',
   ), true);
+  assert.equal(isDeferredAgentActionAnnouncement(
+    '问题在渲染色彩覆盖不足。我现在需要查看 raster_canvas.cpp 的绘制实现。',
+  ), true);
+  assert.equal(isDeferredAgentActionAnnouncement(
+    '现在让我再查看几个关键文件来完整了解原实现的设计。',
+  ), true);
+  assert.equal(isDeferredAgentActionAnnouncement(
+    'The failure is isolated to rendering. I still need to inspect the canvas implementation.',
+  ), true);
 });
 
 test('does not reinterpret complete answers or quoted action language', () => {

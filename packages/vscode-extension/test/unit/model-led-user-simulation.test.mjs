@@ -961,7 +961,8 @@ test('ModelLedUserSimulation: late deferred prose after prior reads cannot end t
       ].join('\n');
       return {
         text: [
-          '我已经完成初步检查。让我先读取这些文件，然后修改并验证结果。',
+          '基于已读取的证据，我现在理解问题的根因：像素颜色不足且非主色占比过低。',
+          '我现在需要查看完整的渲染函数，然后修改并验证结果。',
           fencedPayload,
         ].join('\n\n'),
         tools: [],

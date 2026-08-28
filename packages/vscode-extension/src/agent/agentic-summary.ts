@@ -19,7 +19,9 @@ const CHINESE_DEFERRED_ACTOR = [
   '(?:我将|我会|接下来(?:我)?(?:将|会)?)(?:先|立即|开始)?',
   '我(?:先|立即|开始)',
   '我需要(?:先|立即|开始)?',
+  '我(?:现在|仍然|仍|还|继续)(?:需要|要|得)(?:先|立即|开始)?',
   '让我(?:先|开始)?',
+  '现在让我(?:先|开始)?',
   '现在(?:我)?需要',
 ].join('|');
 const CHINESE_AGENT_ACTION = [
@@ -35,7 +37,7 @@ const DEFERRED_CHINESE_ACTION = new RegExp(
 const ENGLISH_DEFERRED_ACTOR = [
   String.raw`(?:I(?:'ll| will)|next I(?:'ll| will))(?: first| immediately| start(?: by| to)?)?`,
   String.raw`let me(?: first| start(?: by| to)?)`,
-  String.raw`(?:now )?I need to`,
+  String.raw`(?:now )?I(?: now| still)? need to`,
 ].join('|');
 const ENGLISH_AGENT_ACTION = [
   'read', 'inspect', 'check', 'open', 'understand', 'analy[sz]e',

@@ -57,3 +57,22 @@ test('NoToolActionRecovery: exhausted deferred actions stop instead of becoming 
   assert.equal(result.kind, 'stop');
   assert.match(result.reason, /没有形成可执行工具调用/u);
 });
+
+test('NoToolActionRecovery: investigation conclusions with a pending next action retry', () => {
+  const result = resolveNoToolActionRecovery({
+    text: [
+      '基于已读取的证据，我现在理解问题的根因。像素颜色不足，且非主色占比过低。',
+      '这表示渲染器输出的视觉多样性不够，需要检查颜色与绘制区域。',
+      '我现在需要查看 raster_canvas.cpp 中的 renderFraction、renderNumberLine 和 renderButton 实现。',
+    ].join('\n\n'),
+    noToolRounds: 0,
+    missingEvidenceCount: 0,
+    promptRequiresTools: false,
+    sawWorkTool: true,
+    textToolProtocol,
+  });
+
+  assert.ok(result);
+  assert.equal(result.kind, 'retry');
+  assert.match(result.feedback, /立即调用对应工具/u);
+});

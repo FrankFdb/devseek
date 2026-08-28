@@ -1,5 +1,6 @@
 import type { EvidenceRef } from './tool-executor';
 import type { AgentTaskAction } from './agent-task';
+import { isDeferredAgentActionAnnouncement } from './agentic-summary';
 import {
   classifyProviderOutputIntegrity,
   describeProviderOutputIntegrity,
@@ -78,7 +79,9 @@ export function settleAgentRuntimeState(input: AgentRuntimeStateInput): AgentRun
   const toolExecutions = input.toolExecutions ?? 0;
   const evidenceCount = countEvidence(input);
   const readOnlyRuntimeAction = isReadOnlyRuntimeAction(input.taskAction);
-  const hasDeliverySignal = Boolean(
+  const hasDeliverySignal = !isDeferredAgentActionAnnouncement(
+    input.roundText || input.providerText || '',
+  ) && Boolean(
     input.taskComplete
       || input.allTodosCompleted
       || input.validationPassed

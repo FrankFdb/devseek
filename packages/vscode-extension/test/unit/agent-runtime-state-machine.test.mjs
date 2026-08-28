@@ -57,7 +57,7 @@ test('agent runtime state machine: tool request without execution cannot deliver
   assert.equal(runtimeStateCanDeliver(settlement), false);
 });
 
-test('agent runtime state machine: a structurally complete read-only assistant message delivers', () => {
+test('agent runtime state machine: a read-only investigation promise cannot deliver', () => {
   const settlement = settleAgentRuntimeState({
     taskAction: 'analyze',
     providerText: '现在让我再查看几个关键文件来完整了解原实现的设计。',
@@ -67,8 +67,8 @@ test('agent runtime state machine: a structurally complete read-only assistant m
     readEvidenceCount: 4,
   });
 
-  assert.equal(settlement.state, 'delivered');
-  assert.equal(runtimeStateCanDeliver(settlement), true);
+  assert.equal(settlement.state, 'verified');
+  assert.equal(runtimeStateCanDeliver(settlement), false);
 });
 
 test('agent runtime state machine: read-only conclusion reaches delivered', () => {
