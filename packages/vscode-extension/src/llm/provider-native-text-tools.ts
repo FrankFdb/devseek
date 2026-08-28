@@ -6,6 +6,7 @@ const CALLING_HEADER_RE = /\*\*Calling:\*\*[ \t]*`([A-Za-z0-9_]+)`[ \t]*(?:\r?\n
 const CLOSING_FENCE_RE = /(?:^|\r?\n)[ \t]*```[ \t]*(?=\r?\n|$)/g;
 const TOOL_ARGUMENTS_HEADER_RE = /Tool:[ \t]*`?([A-Za-z0-9_]+)`?[ \t]*Arguments:[ \t]*/g;
 const REACT_ACTION_HEADER_RE = /Action:[ \t]*([A-Za-z0-9_]+)[ \t\r\n]*Action Input:[ \t\r\n]*/g;
+const BRACKETED_CALL_HEADER_RE = /\[\s*\u8c03\u7528[ \t]+([A-Za-z0-9_]+)[ \t]*\][ \t\r\n]*/g;
 const BARE_JSON_HEADER_RE = /([A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+)[ \t]+(?=\{)/g;
 const FENCED_JSON_ARRAY_RE = /```(?:json)?[ \t]*\r?\n[ \t]*(?=\[)/gi;
 const FENCED_JSON_OBJECT_RE = /```(?:json)?[ \t]*\r?\n[ \t]*(?=\{)/gi;
@@ -13,6 +14,7 @@ const READ_FILE_SHORTHAND_RE = /\bread_file[ \t]+path=([^\s`]+)(?:[ \t]+lines=(\
 const CALLING_MARKER_RE = /\*\*Calling:\*\*/i;
 const TOOL_ARGUMENTS_MARKER_RE = /Tool:[ \t]*`?[A-Za-z0-9_]+`?[ \t]*Arguments:/i;
 const REACT_ACTION_MARKER_RE = /Action:[ \t]*[A-Za-z0-9_]+[ \t\r\n]*Action Input:/i;
+const BRACKETED_CALL_MARKER_RE = /\[\s*\u8c03\u7528[ \t]+[A-Za-z0-9_]+[ \t]*\]/;
 const FENCED_JSON_OBJECT_MARKER_RE = /```(?:json)?[ \t]*\r?\n[ \t]*\{/i;
 const BARE_JSON_MARKER_RE = /[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+[ \t]+\{/;
 
@@ -31,14 +33,16 @@ export function projectProviderNativeTextToolResponse(
   const hasCalling = CALLING_MARKER_RE.test(text);
   const hasToolArguments = TOOL_ARGUMENTS_MARKER_RE.test(text);
   const hasReactAction = REACT_ACTION_MARKER_RE.test(text);
+  const hasBracketedCall = BRACKETED_CALL_MARKER_RE.test(text);
   const hasFencedJsonObject = FENCED_JSON_OBJECT_MARKER_RE.test(text);
-  const explicitDialectCount = [hasCalling, hasToolArguments, hasReactAction]
+  const explicitDialectCount = [hasCalling, hasToolArguments, hasReactAction, hasBracketedCall]
     .filter(Boolean).length;
   if (explicitDialectCount > 1) return undefined;
-  if (hasFencedJsonObject && (hasToolArguments || hasReactAction)) return undefined;
+  if (hasFencedJsonObject && (hasToolArguments || hasReactAction || hasBracketedCall)) return undefined;
   if (explicitDialectCount > 0 && BARE_JSON_MARKER_RE.test(text)) return undefined;
   if (hasCalling) return projectCallingResponse(text);
   if (hasReactAction) return projectInlineJsonResponse(text, REACT_ACTION_HEADER_RE);
+  if (hasBracketedCall) return projectInlineJsonResponse(text, BRACKETED_CALL_HEADER_RE);
   if (hasFencedJsonObject) return projectFencedJsonObjectResponse(text);
   const jsonArray = projectJsonArrayResponse(text);
   if (jsonArray) return jsonArray;

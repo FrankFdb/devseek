@@ -115,6 +115,29 @@ test('Agent history compaction: executed Bridge Calling blocks become durable su
   assert.doesNotMatch(messages[1].content, /\*\*Calling/);
 });
 
+test('Agent history compaction: executed Bridge bracketed calls become durable summaries', () => {
+  const content = [
+    '我先读取任务和核心实现。',
+    '[调用 read_file] {"path":"/repo/USER_STORY.md"}',
+    '[调用 grep_search] {"pattern":"renderNumberLine","path":"/repo/src"}',
+  ].join('');
+  const messages = [
+    { role: 'user', content: '任务' },
+    { role: 'assistant', content },
+  ];
+
+  const changed = replaceLatestAssistantToolHistory(messages, textToolProtocol, [
+    { name: 'read_file', input: { path: '/repo/USER_STORY.md' } },
+    { name: 'grep_search', input: { pattern: 'renderNumberLine', path: '/repo/src' } },
+  ]);
+
+  assert.equal(changed, true);
+  assert.match(messages[1].content, /意图：我先读取任务和核心实现/);
+  assert.match(messages[1].content, /工具调用：2 个/);
+  assert.match(messages[1].content, /grep_search path=\/repo\/src pattern=renderNumberLine/);
+  assert.doesNotMatch(messages[1].content, /\[调用|"pattern"/);
+});
+
 test('Agent history compaction: executed Bridge Tool Arguments blocks become durable summaries', () => {
   const content = [
     '我先读取两个实现文件。',

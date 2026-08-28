@@ -173,6 +173,64 @@ test('Bridge Calling responses require an agent protocol session and strict comp
   }
 });
 
+test('Bridge bracketed Chinese calls are strict, bounded, and Bridge-only proposals', () => {
+  const providerEvents = new CanonicalProviderEventService();
+  const toolDispatch = new CanonicalToolDispatchService();
+  const textToolProtocol = {
+    version: 'devseek.text-tools/v1',
+    channelId: 'bridge-native-bracketed-call-channel',
+  };
+  const disabled = bindProviderNormalizationBoundary(
+    providerEvents,
+    toolDispatch,
+    { workspaceRoot: '/tmp/workspace' },
+  );
+  const enabled = bindProviderNormalizationBoundary(
+    providerEvents,
+    toolDispatch,
+    { workspaceRoot: '/tmp/workspace' },
+    textToolProtocol,
+  );
+  const response = [
+    '我先读取任务和核心实现。',
+    '[调用 read_file] {"path":"/tmp/workspace/USER_STORY.md"}',
+    '[调用 file_search] {"glob":"**/*.cpp"}',
+    '[调用 grep_search] {"pattern":"renderNumberLine","path":"/tmp/workspace/src"}',
+  ].join('');
+
+  const accepted = normalizeProviderMessage({
+    type: 'message', provider: 'bridge', content: response,
+  }, enabled).tools;
+  assert.deepEqual(accepted.map(tool => tool.name), ['read_file', 'file_search', 'grep_search']);
+  assert.deepEqual(accepted[0].input, { path: '/tmp/workspace/USER_STORY.md' });
+  assert.ok(accepted.every(tool => tool.source === 'provider-native-text'));
+  assert.ok(accepted.every(tool => tool.executable));
+  assert.equal(normalizeProviderMessage({
+    type: 'message', provider: 'bridge', content: response,
+  }, disabled).tools.length, 0);
+  assert.equal(normalizeProviderMessage({
+    type: 'message', provider: 'deepseek-api', content: response,
+  }, enabled).tools.length, 0);
+
+  const invalid = [
+    `${response}接下来修改。`,
+    '[调用 read_file] {path:"/tmp/workspace/main.cpp"}',
+    '[调用 read_file] ["/tmp/workspace/main.cpp"]',
+    '[调用 read_file] {"path":"/tmp/workspace/main.cpp"',
+    `${response}\nAction: list_dirAction Input: {"path":"/tmp/workspace"}`,
+    `${response}\n**Calling:** \`list_dir\`\n\n\`\`\`\n{"path":"/tmp/workspace"}\n\`\`\``,
+    `\`\`\`\n{"tool":"list_dir","arguments":{"path":"/tmp/workspace"}}\n\`\`\`\n${response}`,
+    Array.from({ length: 17 }, (_, index) => (
+      `[调用 read_file] {"path":"/tmp/workspace/${index}.cpp"}`
+    )).join(''),
+  ];
+  for (const content of invalid) {
+    assert.equal(normalizeProviderMessage({
+      type: 'message', provider: 'bridge', content,
+    }, enabled).tools.length, 0, content);
+  }
+});
+
 test('Bridge Tool Arguments responses accept complete sequences and reject ambiguous payloads', () => {
   const providerEvents = new CanonicalProviderEventService();
   const toolDispatch = new CanonicalToolDispatchService();
