@@ -1,11 +1,12 @@
 import type { FakeTool } from '../agent/fake-tool-types';
-import { findJsonObjectEnd } from '../agent/loose-json-text';
+import { findJsonArrayEnd, findJsonObjectEnd } from '../agent/loose-json-text';
 
 const MAX_PROVIDER_NATIVE_TEXT_TOOLS = 16;
 const CALLING_HEADER_RE = /\*\*Calling:\*\*[ \t]*`([A-Za-z0-9_]+)`[ \t]*(?:\r?\n[ \t]*)+```(?:json)?[ \t]*\r?\n/gi;
 const CLOSING_FENCE_RE = /(?:^|\r?\n)[ \t]*```[ \t]*(?=\r?\n|$)/g;
 const TOOL_ARGUMENTS_HEADER_RE = /Tool:[ \t]*`?([A-Za-z0-9_]+)`?[ \t]*Arguments:[ \t]*/g;
 const BARE_JSON_HEADER_RE = /([A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+)[ \t]+(?=\{)/g;
+const FENCED_JSON_ARRAY_RE = /```(?:json)?[ \t]*\r?\n[ \t]*(?=\[)/gi;
 const CALLING_MARKER_RE = /\*\*Calling:\*\*/i;
 const TOOL_ARGUMENTS_MARKER_RE = /Tool:[ \t]*`?[A-Za-z0-9_]+`?[ \t]*Arguments:/i;
 const BARE_JSON_MARKER_RE = /[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+[ \t]+\{/;
@@ -27,10 +28,55 @@ export function projectProviderNativeTextToolResponse(
   if (hasCalling && hasToolArguments) return undefined;
   if ((hasCalling || hasToolArguments) && BARE_JSON_MARKER_RE.test(text)) return undefined;
   if (hasCalling) return projectCallingResponse(text);
+  const jsonArray = projectJsonArrayResponse(text);
+  if (jsonArray) return jsonArray;
   return projectInlineJsonResponse(
     text,
     hasToolArguments ? TOOL_ARGUMENTS_HEADER_RE : BARE_JSON_HEADER_RE,
   );
+}
+
+function projectJsonArrayResponse(text: string): ProviderNativeTextToolResponse | undefined {
+  const fencedHeader = new RegExp(FENCED_JSON_ARRAY_RE.source, FENCED_JSON_ARRAY_RE.flags);
+  const match = fencedHeader.exec(text);
+  const jsonStart = match ? skipWhitespace(text, fencedHeader.lastIndex) : skipWhitespace(text, 0);
+  if (text[jsonStart] !== '[') return undefined;
+
+  const jsonEnd = findJsonArrayEnd(text, jsonStart);
+  if (jsonEnd < 0) return undefined;
+  let suffix = text.slice(jsonEnd + 1);
+  if (match) {
+    const closingFence = /^[ \t\r\n]*```[ \t]*(?:\r?\n)?/.exec(suffix);
+    if (!closingFence) return undefined;
+    suffix = suffix.slice(closingFence[0].length);
+  }
+  if (suffix.trim()) return undefined;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0 || parsed.length > MAX_PROVIDER_NATIVE_TEXT_TOOLS) {
+    return undefined;
+  }
+
+  const tools: FakeTool[] = [];
+  for (const item of parsed) {
+    if (!isRecord(item) || typeof item.name !== 'string' || !/^[A-Za-z0-9_]+$/.test(item.name)) {
+      return undefined;
+    }
+    if (!isRecord(item.arguments) || Object.keys(item).some(key => key !== 'name' && key !== 'arguments')) {
+      return undefined;
+    }
+    tools.push(Object.freeze({ name: item.name, input: Object.freeze(item.arguments) }));
+  }
+
+  return Object.freeze({
+    prose: match ? text.slice(0, match.index).trim() : '',
+    tools: Object.freeze(tools),
+  });
 }
 
 function projectCallingResponse(text: string): ProviderNativeTextToolResponse | undefined {

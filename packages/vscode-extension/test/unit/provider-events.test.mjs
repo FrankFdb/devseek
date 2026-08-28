@@ -265,3 +265,60 @@ test('Bridge bare JSON tool sequences are strict, bounded, and Bridge-only', () 
     }, enabled).tools.length, 0, content);
   }
 });
+
+test('Bridge fenced JSON tool arrays are complete, strict, bounded, and Bridge-only', () => {
+  const providerEvents = new CanonicalProviderEventService();
+  const toolDispatch = new CanonicalToolDispatchService();
+  const textToolProtocol = {
+    version: 'devseek.text-tools/v1',
+    channelId: 'bridge-native-json-array-channel',
+  };
+  const boundary = bindProviderNormalizationBoundary(
+    providerEvents,
+    toolDispatch,
+    { workspaceRoot: '/tmp/workspace' },
+    textToolProtocol,
+  );
+  const response = [
+    '我先读取任务和源码。',
+    '```',
+    '[',
+    '  {"name":"read_file","arguments":{"path":"/tmp/workspace/USER_STORY.md"}},',
+    '  {"name":"file_search","arguments":{"glob":"src/**/*.{cpp,hpp,h}"}}',
+    ']',
+    '```',
+  ].join('\n');
+
+  const accepted = normalizeProviderMessage({
+    type: 'message', provider: 'bridge', content: response,
+  }, boundary).tools;
+  assert.deepEqual(accepted.map(tool => tool.name), ['read_file', 'file_search']);
+  assert.deepEqual(accepted[0].input, { path: '/tmp/workspace/USER_STORY.md' });
+  assert.ok(accepted.every(tool => tool.source === 'provider-native-text'));
+  assert.ok(accepted.every(tool => tool.executable));
+  assert.equal(normalizeProviderMessage({
+    type: 'message', provider: 'deepseek-api', content: response,
+  }, boundary).tools.length, 0);
+
+  const invalid = [
+    `${response}\n然后修改源码。`,
+    response.replace('```\n[', '```json\n[').replace('"arguments"', '"input"'),
+    response.replace('{"path":"/tmp/workspace/USER_STORY.md"}', '["/tmp/workspace/USER_STORY.md"]'),
+    response.replace('"arguments":', '"unexpected":true,"arguments":'),
+    response.replace(/\n```$/, ''),
+    response.replace(']\n```', '],\n```'),
+    [
+      '```json',
+      JSON.stringify(Array.from({ length: 17 }, (_, index) => ({
+        name: 'read_file',
+        arguments: { path: `/tmp/workspace/${index}.cpp` },
+      }))),
+      '```',
+    ].join('\n'),
+  ];
+  for (const content of invalid) {
+    assert.equal(normalizeProviderMessage({
+      type: 'message', provider: 'bridge', content,
+    }, boundary).tools.length, 0, content);
+  }
+});
