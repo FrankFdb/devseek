@@ -142,6 +142,47 @@ test('delivery convergence admits one precise read and blocks later investigatio
   assert.match(closed.warnings[0], /必须依据已有证据提交最小修改/u);
 });
 
+test('delivery convergence admits only exact continuations created by fair read projection', () => {
+  const ledger = new ContextInvestigationLedger('/workspace');
+  const projectedExposures = [
+    { path: '/workspace/src/controller.cpp', startLine: 1, endLine: 30, totalLines: 358, sourceSegmentIndex: 0 },
+    { path: '/workspace/src/controller.cpp', startLine: 330, endLine: 358, totalLines: 358, sourceSegmentIndex: 0 },
+    { path: '/workspace/src/main.cpp', startLine: 1, endLine: 39, totalLines: 344, sourceSegmentIndex: 1 },
+    { path: '/workspace/src/main.cpp', startLine: 306, endLine: 344, totalLines: 344, sourceSegmentIndex: 1 },
+  ];
+  ledger.recordVisibleReadExposures(projectedExposures, [
+    ...visibleRead('/workspace/src/controller.cpp', 0, 1),
+    ...visibleRead('/workspace/src/main.cpp', 1, 2),
+  ]);
+
+  const result = ledger.screen([
+    { name: 'read_file', input: { path: 'src/controller.cpp', startLine: 31, endLine: 329 } },
+    { name: 'read_file', input: { path: 'src/main.cpp', startLine: 40, endLine: 305 } },
+    { name: 'read_file', input: { path: 'src/unrelated.cpp' } },
+    { name: 'grep_search', input: { path: 'src', pattern: 'render' } },
+  ], {
+    progressEpoch: 0,
+    hasWorkspaceMutation: false,
+    consumeContextRefresh: () => false,
+    deliveryContextAdmission: 'closed',
+  });
+
+  assert.equal(result.consumedPreciseContextRead, true);
+  assert.deepEqual([...result.blockedToolIndexes], [2, 3]);
+  assert.equal(result.deliveryBlockedToolCount, 2);
+
+  const widened = ledger.screen([{
+    name: 'read_file',
+    input: { path: 'src/controller.cpp', startLine: 31, endLine: 340 },
+  }], {
+    progressEpoch: 0,
+    hasWorkspaceMutation: false,
+    consumeContextRefresh: () => false,
+    deliveryContextAdmission: 'closed',
+  });
+  assert.deepEqual([...widened.blockedToolIndexes], [0]);
+});
+
 test('an ineligible final context request exhausts the allowance instead of leaving it open', () => {
   const ledger = new ContextInvestigationLedger('/workspace');
   const result = ledger.screen([

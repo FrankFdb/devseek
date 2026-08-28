@@ -154,6 +154,15 @@ export class ContextInvestigationLedger {
       }
       if (input.providerRecoveryContextRefreshToolIndexes?.has(toolIndex)) return;
 
+      // Prompt projection can intentionally expose the head and tail of a large
+      // read while instructing the Provider to request the omitted middle. That
+      // exact continuation is host-created context debt, not renewed discovery.
+      const completesProjectedRead = deliveryAdmission !== 'open'
+        && this.readRequestCompletesVisibleGap(tool);
+      if (completesProjectedRead) {
+        consumedPreciseContextRead = true;
+        return;
+      }
       const admitsPreciseRead = deliveryAdmission === 'one-precise-read'
         && !consumedPreciseContextRead
         && !exactRepeat
@@ -224,6 +233,30 @@ export class ContextInvestigationLedger {
       && coverage.startLine <= startLine
       && coverage.endLine >= endLine
     ));
+  }
+
+  private readRequestCompletesVisibleGap(tool: InvestigationTool): boolean {
+    if (tool.name !== 'read_file' || typeof tool.input.path !== 'string') return false;
+    const startLine = optionalPositiveInteger(tool.input, 'startLine', 'start_line', 'lineStart', 'fromLine');
+    const endLine = optionalPositiveInteger(tool.input, 'endLine', 'end_line', 'lineEnd', 'toLine');
+    if (startLine === undefined || endLine === undefined || endLine < startLine) return false;
+
+    const path = this.resolvePath(tool.input.path);
+    const current = (this.readCoverage.get(path) ?? [])
+      .filter(entry => entry.pathRevision === this.pathRevision(path))
+      .sort((left, right) => left.startLine - right.startLine || left.endLine - right.endLine);
+    if (current.length < 2) return false;
+    const totalLines = current[0].totalLines;
+    if (current.some(entry => entry.totalLines !== totalLines)) return false;
+
+    let coveredThrough = current[0].endLine;
+    for (const next of current.slice(1)) {
+      if (next.startLine > coveredThrough + 1
+        && startLine === coveredThrough + 1
+        && endLine === next.startLine - 1) return true;
+      coveredThrough = Math.max(coveredThrough, next.endLine);
+    }
+    return false;
   }
 
   private recordReadExposure(exposure: ProviderVisibleReadExposure): void {
