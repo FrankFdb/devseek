@@ -165,6 +165,7 @@ test('Bridge Calling responses require an agent protocol session and strict comp
     `${response}\n这只是一个格式示例。`,
     response.replace('{"path":"/tmp/workspace"}', '{path:"/tmp/workspace"}'),
     response.replace(/```$/, ''),
+    `\`\`\`\n{"tool":"read_file","arguments":{"path":"/tmp/workspace/a.cpp"}}\n\`\`\`\n${response}`,
   ]) {
     assert.equal(normalizeProviderMessage({
       type: 'message', provider: 'bridge', content: invalid,
@@ -284,6 +285,69 @@ test('Bridge ReAct responses are strict, bounded, Bridge-only proposals under ca
     Array.from({ length: 17 }, (_, index) => (
       `Action: read_fileAction Input: {"path":"/tmp/workspace/${index}.cpp"}`
     )).join(''),
+  ];
+  for (const content of invalid) {
+    assert.equal(normalizeProviderMessage({
+      type: 'message', provider: 'bridge', content,
+    }, enabled).tools.length, 0, content);
+  }
+});
+
+test('Bridge fenced JSON object tools are strict, bounded, Bridge-only proposals', () => {
+  const providerEvents = new CanonicalProviderEventService();
+  const toolDispatch = new CanonicalToolDispatchService();
+  const textToolProtocol = {
+    version: 'devseek.text-tools/v1',
+    channelId: 'bridge-native-fenced-json-object-channel',
+  };
+  const disabled = bindProviderNormalizationBoundary(
+    providerEvents,
+    toolDispatch,
+    { workspaceRoot: '/tmp/workspace' },
+  );
+  const enabled = bindProviderNormalizationBoundary(
+    providerEvents,
+    toolDispatch,
+    { workspaceRoot: '/tmp/workspace' },
+    textToolProtocol,
+  );
+  const toolBlock = (tool, args, language = '') => [
+    `\`\`\`${language}`,
+    JSON.stringify({ tool, arguments: args }, null, 2),
+    '\`\`\`',
+  ].join('\n');
+  const response = [
+    '我先读取任务和核心实现。',
+    toolBlock('read_file', { path: '/tmp/workspace/USER_STORY.md' }),
+    toolBlock('grep_search', { pattern: 'renderNumberLine', path: '/tmp/workspace/src' }, 'json'),
+  ].join('\n\n');
+
+  const accepted = normalizeProviderMessage({
+    type: 'message', provider: 'bridge', content: response,
+  }, enabled).tools;
+  assert.deepEqual(accepted.map(tool => tool.name), ['read_file', 'grep_search']);
+  assert.deepEqual(accepted[0].input, { path: '/tmp/workspace/USER_STORY.md' });
+  assert.ok(accepted.every(tool => tool.source === 'provider-native-text'));
+  assert.ok(accepted.every(tool => tool.executable));
+  assert.equal(normalizeProviderMessage({
+    type: 'message', provider: 'bridge', content: response,
+  }, disabled).tools.length, 0);
+  assert.equal(normalizeProviderMessage({
+    type: 'message', provider: 'deepseek-api', content: response,
+  }, enabled).tools.length, 0);
+
+  const invalid = [
+    `${response}\n继续修改。`,
+    '```\n{"tool":"read_file","arguments":{path:"/tmp/workspace/main.cpp"}}\n```',
+    '```\n{"tool":"read_file","arguments":[]}\n```',
+    '```\n{"tool":"read_file","arguments":{"path":"/tmp/workspace/main.cpp"}\n```',
+    '```\n{"name":"read_file","arguments":{"path":"/tmp/workspace/main.cpp"}}\n```',
+    '```\n{"tool":"read_file","arguments":{},"executable":true}\n```',
+    `${response}\nAction: list_dirAction Input: {"path":"/tmp/workspace"}`,
+    `${response}\nlist_dir {"path":"/tmp/workspace"}`,
+    Array.from({ length: 17 }, (_, index) => toolBlock(
+      'read_file', { path: `/tmp/workspace/${index}.cpp` }, index % 2 ? 'json' : '',
+    )).join('\n'),
   ];
   for (const content of invalid) {
     assert.equal(normalizeProviderMessage({

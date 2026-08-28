@@ -165,6 +165,33 @@ test('Agent history compaction: executed Bridge ReAct calls become durable summa
   assert.doesNotMatch(messages[1].content, /Action(?: Input)?:/);
 });
 
+test('Agent history compaction: executed Bridge fenced JSON objects become durable summaries', () => {
+  const content = [
+    '我继续核对任务和绘制实现。',
+    '```',
+    '{"tool":"read_file","arguments":{"path":"/repo/USER_STORY.md"}}',
+    '```',
+    '```json',
+    '{"tool":"grep_search","arguments":{"pattern":"renderNumberLine","path":"/repo/src"}}',
+    '```',
+  ].join('\n');
+  const messages = [
+    { role: 'user', content: '任务' },
+    { role: 'assistant', content },
+  ];
+
+  const changed = replaceLatestAssistantToolHistory(messages, textToolProtocol, [
+    { name: 'read_file', input: { path: '/repo/USER_STORY.md' } },
+    { name: 'grep_search', input: { pattern: 'renderNumberLine', path: '/repo/src' } },
+  ]);
+
+  assert.equal(changed, true);
+  assert.match(messages[1].content, /意图：我继续核对任务和绘制实现/);
+  assert.match(messages[1].content, /工具调用：2 个/);
+  assert.match(messages[1].content, /grep_search path=\/repo\/src pattern=renderNumberLine/);
+  assert.doesNotMatch(messages[1].content, /"tool"|"arguments"/);
+});
+
 test('Agent history compaction: executed Bridge bare JSON calls become durable summaries', () => {
   const content = [
     '我先核对损坏区域。',

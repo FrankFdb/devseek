@@ -8,10 +8,12 @@ const TOOL_ARGUMENTS_HEADER_RE = /Tool:[ \t]*`?([A-Za-z0-9_]+)`?[ \t]*Arguments:
 const REACT_ACTION_HEADER_RE = /Action:[ \t]*([A-Za-z0-9_]+)[ \t\r\n]*Action Input:[ \t\r\n]*/g;
 const BARE_JSON_HEADER_RE = /([A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+)[ \t]+(?=\{)/g;
 const FENCED_JSON_ARRAY_RE = /```(?:json)?[ \t]*\r?\n[ \t]*(?=\[)/gi;
+const FENCED_JSON_OBJECT_RE = /```(?:json)?[ \t]*\r?\n[ \t]*(?=\{)/gi;
 const READ_FILE_SHORTHAND_RE = /\bread_file[ \t]+path=([^\s`]+)(?:[ \t]+lines=(\d+)-(\d+))?[ \t]*$/i;
 const CALLING_MARKER_RE = /\*\*Calling:\*\*/i;
 const TOOL_ARGUMENTS_MARKER_RE = /Tool:[ \t]*`?[A-Za-z0-9_]+`?[ \t]*Arguments:/i;
 const REACT_ACTION_MARKER_RE = /Action:[ \t]*[A-Za-z0-9_]+[ \t\r\n]*Action Input:/i;
+const FENCED_JSON_OBJECT_MARKER_RE = /```(?:json)?[ \t]*\r?\n[ \t]*\{/i;
 const BARE_JSON_MARKER_RE = /[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+[ \t]+\{/;
 
 export interface ProviderNativeTextToolResponse {
@@ -29,12 +31,15 @@ export function projectProviderNativeTextToolResponse(
   const hasCalling = CALLING_MARKER_RE.test(text);
   const hasToolArguments = TOOL_ARGUMENTS_MARKER_RE.test(text);
   const hasReactAction = REACT_ACTION_MARKER_RE.test(text);
+  const hasFencedJsonObject = FENCED_JSON_OBJECT_MARKER_RE.test(text);
   const explicitDialectCount = [hasCalling, hasToolArguments, hasReactAction]
     .filter(Boolean).length;
   if (explicitDialectCount > 1) return undefined;
+  if (hasFencedJsonObject && (hasToolArguments || hasReactAction)) return undefined;
   if (explicitDialectCount > 0 && BARE_JSON_MARKER_RE.test(text)) return undefined;
   if (hasCalling) return projectCallingResponse(text);
   if (hasReactAction) return projectInlineJsonResponse(text, REACT_ACTION_HEADER_RE);
+  if (hasFencedJsonObject) return projectFencedJsonObjectResponse(text);
   const jsonArray = projectJsonArrayResponse(text);
   if (jsonArray) return jsonArray;
   const observation = projectObservationShorthandResponse(text);
@@ -97,19 +102,55 @@ function projectJsonArrayResponse(text: string): ProviderNativeTextToolResponse 
 
   const tools: FakeTool[] = [];
   for (const item of parsed) {
-    if (!isRecord(item) || typeof item.name !== 'string' || !/^[A-Za-z0-9_]+$/.test(item.name)) {
-      return undefined;
-    }
-    if (!isRecord(item.arguments) || Object.keys(item).some(key => key !== 'name' && key !== 'arguments')) {
-      return undefined;
-    }
-    tools.push(Object.freeze({ name: item.name, input: Object.freeze(item.arguments) }));
+    const tool = parseStrictToolDescriptor(item, 'name');
+    if (!tool) return undefined;
+    tools.push(tool);
   }
 
   return Object.freeze({
     prose: match ? text.slice(0, match.index).trim() : '',
     tools: Object.freeze(tools),
   });
+}
+
+function projectFencedJsonObjectResponse(text: string): ProviderNativeTextToolResponse | undefined {
+  const tools: FakeTool[] = [];
+  const header = new RegExp(FENCED_JSON_OBJECT_RE.source, FENCED_JSON_OBJECT_RE.flags);
+  let cursor = 0;
+  let prose = '';
+
+  while (cursor < text.length) {
+    header.lastIndex = cursor;
+    const match = header.exec(text);
+    if (!match) break;
+
+    if (tools.length === 0) {
+      prose = text.slice(0, match.index).trim();
+    } else if (text.slice(cursor, match.index).trim()) {
+      return undefined;
+    }
+
+    const jsonStart = skipWhitespace(text, header.lastIndex);
+    const jsonEnd = findJsonObjectEnd(text, jsonStart);
+    if (jsonEnd < 0) return undefined;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+    } catch {
+      return undefined;
+    }
+    const tool = parseStrictToolDescriptor(parsed, 'tool');
+    if (!tool) return undefined;
+    tools.push(tool);
+    if (tools.length > MAX_PROVIDER_NATIVE_TEXT_TOOLS) return undefined;
+
+    const closingFence = /^[ \t\r\n]*```[ \t]*(?:\r?\n)?/.exec(text.slice(jsonEnd + 1));
+    if (!closingFence) return undefined;
+    cursor = jsonEnd + 1 + closingFence[0].length;
+  }
+
+  if (tools.length === 0 || text.slice(cursor).trim()) return undefined;
+  return Object.freeze({ prose, tools: Object.freeze(tools) });
 }
 
 function projectCallingResponse(text: string): ProviderNativeTextToolResponse | undefined {
@@ -124,7 +165,9 @@ function projectCallingResponse(text: string): ProviderNativeTextToolResponse | 
     if (!match) break;
 
     if (tools.length === 0) {
-      prose = text.slice(0, match.index).trim();
+      const prefix = text.slice(0, match.index);
+      if (FENCED_JSON_OBJECT_MARKER_RE.test(prefix)) return undefined;
+      prose = prefix.trim();
     } else if (text.slice(cursor, match.index).trim()) {
       return undefined;
     }
@@ -194,6 +237,21 @@ function parseStrictInput(value: string): Record<string, unknown> | undefined {
   } catch {
     return undefined;
   }
+}
+
+function parseStrictToolDescriptor(
+  value: unknown,
+  nameField: 'name' | 'tool',
+): FakeTool | undefined {
+  if (!isRecord(value) || typeof value[nameField] !== 'string'
+      || !/^[A-Za-z0-9_]+$/.test(value[nameField])) {
+    return undefined;
+  }
+  if (!isRecord(value.arguments)
+      || Object.keys(value).some(key => key !== nameField && key !== 'arguments')) {
+    return undefined;
+  }
+  return Object.freeze({ name: value[nameField], input: Object.freeze(value.arguments) });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
