@@ -58,10 +58,14 @@ test('agent runtime state machine: tool request without execution cannot deliver
 });
 
 test('agent runtime state machine: a read-only investigation promise cannot deliver', () => {
+  const analysis = Array.from({ length: 24 }, (_, index) => (
+    `分析项 ${index + 1}：当前失败数据需要结合生产实现继续核对。`
+  )).join('');
+  const providerText = `${analysis}当前目标已经整理完成。让我先读取项目文件了解当前实现状态。`;
   const settlement = settleAgentRuntimeState({
     taskAction: 'analyze',
-    providerText: '现在让我再查看几个关键文件来完整了解原实现的设计。',
-    roundText: '现在让我再查看几个关键文件来完整了解原实现的设计。',
+    providerText,
+    roundText: providerText,
     toolRequests: 0,
     toolExecutions: 1,
     readEvidenceCount: 4,

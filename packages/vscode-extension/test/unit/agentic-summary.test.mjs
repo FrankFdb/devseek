@@ -62,6 +62,19 @@ test('does not reinterpret complete answers or quoted action language', () => {
   assert.equal(isDeferredAgentActionAnnouncement(''), false);
 });
 
+test('uses a bounded terminal window for long provider analysis', () => {
+  const analysis = Array.from({ length: 24 }, (_, index) => (
+    `分析项 ${index + 1}：当前失败数据说明交互状态和渲染结果仍需结合生产实现核对。`
+  )).join('');
+  const unfinished = `${analysis}当前目标已经整理完成。让我先读取项目文件了解当前实现状态。`;
+  const completed = `我将读取项目文件。${analysis}结论：现有实现应保留，以上已经完整回答当前问题。`;
+
+  assert.ok(unfinished.length > 600);
+  assert.equal(isDeferredAgentActionAnnouncement(unfinished), true);
+  assert.ok(completed.length > 600);
+  assert.equal(isDeferredAgentActionAnnouncement(completed), false);
+});
+
 test('classifies visible deferred prose without executing long fenced presentation data', () => {
   const fencedPayload = [
     '```json',

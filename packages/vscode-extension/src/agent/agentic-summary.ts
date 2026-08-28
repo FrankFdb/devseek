@@ -48,6 +48,8 @@ const DEFERRED_ENGLISH_ACTION = new RegExp(
   String.raw`(?:^|[.!?;]\s*)(?:${ENGLISH_DEFERRED_ACTOR}).{0,24}(?:${ENGLISH_AGENT_ACTION})\b`,
   'iu',
 );
+const DEFERRED_ACTION_CONTEXT_LENGTH = 1_200;
+const DEFERRED_ACTION_SCAN_LENGTH = 600;
 
 function removeBoundedQuotedSegments(text: string): string {
   return text.replace(
@@ -110,9 +112,11 @@ export function isDeferredAgentActionAnnouncement(text: string): boolean {
   const normalized = removeMarkdownFencedBlocks(normalizeAgentUserAnnouncement(text))
     .replace(/\s+/g, ' ')
     .trim();
-  if (!normalized || normalized.length > 600) return false;
-  const unquoted = removeBoundedQuotedSegments(normalized);
-  return DEFERRED_CHINESE_ACTION.test(unquoted) || DEFERRED_ENGLISH_ACTION.test(unquoted);
+  if (!normalized) return false;
+  const terminalContext = normalized.slice(-DEFERRED_ACTION_CONTEXT_LENGTH);
+  const unquoted = removeBoundedQuotedSegments(terminalContext);
+  const boundedTail = unquoted.slice(-DEFERRED_ACTION_SCAN_LENGTH);
+  return DEFERRED_CHINESE_ACTION.test(boundedTail) || DEFERRED_ENGLISH_ACTION.test(boundedTail);
 }
 
 const SHELL_FENCE_LANGUAGES = new Set(['bash', 'sh', 'shell', 'zsh', 'console', 'terminal']);

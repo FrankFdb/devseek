@@ -950,20 +950,13 @@ test('ModelLedUserSimulation: late deferred prose after prior reads cannot end t
       };
     }
     if (calls === 2) {
-      const fencedPayload = [
-        '```json',
-        '[',
-        ...Array.from({ length: 12 }, (_, index) => (
-          `  {"id":"read_${index}","name":"read_file","args":{"path":"${root}/source-${index}.cpp"}},`
-        )),
-        ']',
-        '```',
-      ].join('\n');
+      const detailedAnalysis = Array.from({ length: 24 }, (_, index) => (
+        `分析项 ${index + 1}：独立验证说明交互状态和渲染像素仍需结合生产实现核对。`
+      )).join('');
       return {
         text: [
-          '基于已读取的证据，我现在理解问题的根因：像素颜色不足且非主色占比过低。',
-          '我现在需要查看完整的渲染函数，然后修改并验证结果。',
-          fencedPayload,
+          detailedAnalysis,
+          '当前目标已经整理完成。让我先读取项目文件了解当前实现状态。',
         ].join('\n\n'),
         tools: [],
       };
