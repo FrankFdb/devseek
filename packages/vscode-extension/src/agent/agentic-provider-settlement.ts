@@ -48,8 +48,7 @@ export function settleProviderFailureFromCompletedEvidence(
   if (input.writtenFiles.length > 0 && !input.currentWriteCohortValidated) {
     return { completed: false };
   }
-  if (isToolProtocolFailure(input.providerFailureStatus)
-    && input.writtenFiles.length === 0
+  if (input.writtenFiles.length === 0
     && !hasSettledEffectRequirement(input.semanticContract)) {
     return { completed: false };
   }
@@ -73,10 +72,6 @@ export function settleProviderFailureFromCompletedEvidence(
     completed: true,
     summary: buildCompletedEvidenceSummary(input.writtenFiles, input.terminalEvidence, input.workspaceRoot),
   };
-}
-
-function isToolProtocolFailure(status: string | undefined): boolean {
-  return String(status || '').toLowerCase().endsWith('tool-block');
 }
 
 function requiresCleanProviderRecovery(status: string | undefined): boolean {

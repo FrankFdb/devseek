@@ -152,7 +152,7 @@ test('provider failure settlement completes scoped Markdown deliverable before s
   }
 });
 
-test('tool protocol failure cannot settle from read-only evidence while an action remains unresolved', () => {
+test('provider failure cannot replace the missing final answer with read-only evidence', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-provider-settlement-read-only-'));
   try {
     const source = path.join(root, 'README.md');
@@ -176,7 +176,7 @@ test('tool protocol failure cannot settle from read-only evidence while an actio
     );
 
     const result = settleProviderFailureFromCompletedEvidence({
-      providerFailureStatus: 'invalid-tool-block',
+      providerFailureStatus: 'stream-error',
       promptRequiresTools: true,
       sawWorkTool: true,
       aborted: false,
