@@ -190,7 +190,7 @@ export function getTerminalRecoveryProtocol(cmd: string, attempt: number): strin
     `下一轮必须按以下顺序处理，禁止再次执行同一命令直到完成根因修复：`,
     `1. 根因分析：基于上一轮终端输出指出真正失败原因，不要只说“重试”。`,
     `2. 证据收集：使用 read_file / grep_search / get_errors 查看相关源码、配置或诊断。`,
-    `3. 最小修复：已有文件优先使用 replace_in_file 精确修改；仅在目标文件确实缺失时创建新文件；如果根因是命令参数错误，则改用正确命令。`,
+    `3. 最小修复：已有文件使用 replace_in_file 精确替换；插入/删除或长上下文修改使用单文件 apply_patch；仅在目标文件确实缺失时创建新文件；如果根因是命令参数错误，则改用正确命令。`,
     `4. 验证：只有在完成修复动作或换成正确命令后，才允许 run_terminal 编译/运行/测试。`,
     `完成报告必须说明根因、修复文件/命令、验证结果。`,
   ].join('\n');

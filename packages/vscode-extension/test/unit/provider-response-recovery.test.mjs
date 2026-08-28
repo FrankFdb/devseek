@@ -117,6 +117,10 @@ test('Agent provider recovery prompt keeps only durable facts and forces small t
   assert.match(prompt, /活动失败是下一轮最高优先级/);
   assert.match(prompt, /不要在恢复轮重新规划 Todo/);
   assert.doesNotMatch(prompt, /先用 manage_todo_list 校正当前步骤/);
+  assert.match(prompt, /模型计划清单（可能滞后/);
+  assert.match(prompt, /Todo 是模型计划，不是代码事实/);
+  assert.match(prompt, /已写入路径和最新终端\/验证结果优先/);
+  assert.match(prompt, /长 old_str 易失真时优先使用单文件 apply_patch/);
   assert.match(prompt, /可验证、可继续扩展的完整责任切片/);
   assert.match(prompt, /不得用占位骨架、近似接口或“最小可编译版本”冒充原始契约已经完成/);
   assert.match(prompt, /本轮只输出 1 个工具调用/);

@@ -287,7 +287,7 @@ function looksLikeInternalCommandTitle(value: string): boolean {
 }
 
 function looksLikeInternalToolTranscript(value: string): boolean {
-  return /(?:<TOOL_STREAM>|<\/TOOL_STREAM>|<TOOL\b|<\/TOOL>|\[TOOL:|(?:^|\s)(?:run_terminal|create_file|write_file|replace_in_file|read_file|list_dir|grep_search)\s*\(\s*\{)/i.test(value);
+  return /(?:<TOOL_STREAM>|<\/TOOL_STREAM>|<TOOL\b|<\/TOOL>|\[TOOL:|(?:^|\s)(?:run_terminal|create_file|write_file|replace_in_file|apply_patch|read_file|list_dir|grep_search)\s*\(\s*\{)/i.test(value);
 }
 
 function looksLikeSourceSnippet(value: string): boolean {

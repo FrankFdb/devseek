@@ -527,6 +527,43 @@ test('Agent auto validation gives structural C++ compile failures a recovery pro
   }
 });
 
+test('Agent auto validation directs C++ linker repair to the latest mutation caller', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-cpp-linker-'));
+  try {
+    seed(root, 'src/lesson_controller.cpp', 'void run() { handleFractionClick(1, 2, 3, 4); }\n');
+    const output = [
+      '/usr/bin/ld: lesson_controller.cpp.o: in function `run()`:',
+      "lesson_controller.cpp:(.text+0x2a): undefined reference to `LessonController::handleFractionClick(int, int, int, int)'",
+      'collect2: error: ld returned 1 exit status',
+    ].join('\n');
+    const context = verificationContext(root, ['src/lesson_controller.cpp'], [], [], async invocation => ({
+      ran: true,
+      ok: false,
+      command: invocation.command,
+      exitCode: 2,
+      stdout: '',
+      stderr: output,
+      output,
+      cwd: invocation.cwd,
+    }));
+
+    const result = await runAgentAutoValidationForWrites(
+      [written(root, 'src/lesson_controller.cpp')],
+      root,
+      '修复课程交互并验证',
+      context.callbacks,
+    );
+
+    assert.equal(result.qualityGate.status, 'fail');
+    assert.match(result.feedbackForAI, /C\/C\+\+ 链接失败恢复要求/);
+    assert.match(result.feedbackForAI, /最近变更批次：src\/lesson_controller\.cpp/);
+    assert.match(result.feedbackForAI, /优先撤销错误调用或改接项目现有语义所有者/);
+    assert.match(result.feedbackForAI, /单文件 apply_patch/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('Agent auto validation gives missing C++ standard headers a targeted recovery protocol', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-cpp-header-'));
   try {

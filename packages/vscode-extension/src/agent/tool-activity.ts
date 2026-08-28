@@ -21,6 +21,7 @@ export function getAgentToolActivity(tool: AgentToolActivityInput): AgentToolAct
     case 'write_file':
     case 'replace_file':
     case 'replace_in_file':
+    case 'apply_patch':
     case 'delete_file':
       return { kind: 'write', label: text(input, 'path', 'filePath') };
     case 'create_directory':

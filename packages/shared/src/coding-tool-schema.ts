@@ -95,6 +95,7 @@ export const CODING_TOOL_DESCRIPTORS: Readonly<Record<string, CodingToolDescript
   write_file: descriptor({ name: 'write_file', kind: 'edit', risk: 'medium', purpose: 'workspace-mutation', effects: ['workspace-mutation'], mutatesWorkspace: true, schema: schema(['path', 'content'], { path: { type: 'string' }, content: { type: 'string' } }) }),
   replace_file: descriptor({ name: 'replace_file', kind: 'edit', risk: 'medium', purpose: 'workspace-mutation', effects: ['workspace-mutation'], mutatesWorkspace: true, schema: schema(['path', 'content'], { path: { type: 'string' }, content: { type: 'string' } }) }),
   replace_in_file: descriptor({ name: 'replace_in_file', kind: 'edit', risk: 'medium', purpose: 'workspace-mutation', effects: ['workspace-mutation'], mutatesWorkspace: true, schema: schema(['path', 'old_str'], { path: { type: 'string' }, old_str: { type: 'string' }, new_str: { type: 'string' }, replaceAll: { type: 'boolean' } }) }),
+  apply_patch: descriptor({ name: 'apply_patch', kind: 'edit', risk: 'medium', purpose: 'workspace-mutation', effects: ['workspace-mutation'], mutatesWorkspace: true, schema: schema(['path', 'patch'], { path: { type: 'string' }, patch: { type: 'string' } }) }),
   delete_file: descriptor({ name: 'delete_file', kind: 'edit', risk: 'high', purpose: 'workspace-mutation', effects: ['workspace-mutation'], mutatesWorkspace: true, schema: schema(['path'], { path: { type: 'string' } }) }),
   run_terminal: descriptor({ name: 'run_terminal', kind: 'terminal', risk: 'high', purpose: 'verify', effects: ['process'], requiresTerminal: true, schema: schema(['command'], { command: { type: 'string' }, workdir: { type: 'string' } }) }),
   run_vscode_command: descriptor({ name: 'run_vscode_command', kind: 'vscode', risk: 'high', purpose: 'external-effect', effects: ['process'], schema: schema(['command'], { command: { type: 'string' }, args: { type: 'array' } }) }),
@@ -215,7 +216,7 @@ const FILE_WRITE_CONTENT_KEYS = [
   'source', 'code', 'newContent', 'new_content',
 ] as const;
 const FILE_WRITE_BATCH_KEYS = ['files', 'artifacts', 'changes', 'edits'] as const;
-const FILE_WRITE_TOOL_NAMES = new Set(['create_file', 'write_file', 'replace_file', 'replace_in_file']);
+const FILE_WRITE_TOOL_NAMES = new Set(['create_file', 'write_file', 'replace_file', 'replace_in_file', 'apply_patch']);
 
 export function normalizeCodingFileWriteInputs(input: Readonly<Record<string, unknown>>): CodingFileWriteInput[] {
   const batch = FILE_WRITE_BATCH_KEYS.flatMap(key => collectFileWriteBatch(input[key]));

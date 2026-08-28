@@ -232,7 +232,7 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
       readEvidenceLine,
       `已写入文件：${writtenPaths || '暂无'}`,
       `终端/验证证据：${terminalFacts || '暂无'}`,
-      `当前 Todo：${todos || '暂无'}`,
+      `模型计划清单（可能滞后，只用于定位未结算步骤，不能据此断言源码缺少实现）：${todos || '暂无'}`,
       activeRepairContext
         ? `\n当前活动修复契约（由独立需求审查账本保留，恢复会话必须继续完成）：\n${activeRepairContext}`
         : '',
@@ -250,7 +250,8 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
           : '- 先用 manage_todo_list 校正当前步骤；未完成项保持 in-progress 或 not-started。',
       contextReplayLine,
       '- 需要上下文时，只输出具体 read_file/list_dir/grep_search/file_search/只读 run_terminal 工具调用，不要同时输出长篇分析。',
-      '- 需要创建或修改文件时，只使用 create_file 或 replace_in_file；大产物应分轮交付可验证、可继续扩展的完整责任切片。不得用占位骨架、近似接口或“最小可编译版本”冒充原始契约已经完成。',
+      '- Todo 是模型计划，不是代码事实。已写入路径和最新终端/验证结果优先；不得因为 Todo 未完成或部分读取没看到某个符号，就断言实现不存在或重复实现。',
+      '- 需要创建或修改文件时，只使用 create_file、replace_in_file 或 apply_patch；插入/删除代码或长 old_str 易失真时优先使用单文件 apply_patch。大产物应分轮交付可验证、可继续扩展的完整责任切片。不得用占位骨架、近似接口或“最小可编译版本”冒充原始契约已经完成。',
       toolSerializationLine,
       readLimitLine,
       '- 不要在自然语言里粘贴大段 Markdown/源码代码块，不要一次性输出长报告；大产物分多轮通过工具落盘。',

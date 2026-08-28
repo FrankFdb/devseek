@@ -5,6 +5,7 @@ const PATH_KEYS = ['path', 'filePath', 'filepath', 'filename', 'targetPath'];
 const CONTENT_KEYS = ['content', 'contents', 'text', 'body', 'fileContent', 'file_content', 'source', 'code', 'newContent', 'new_content'];
 const OLD_TEXT_KEYS = ['old_str', 'oldString', 'old_string', 'oldText', 'old_text', 'search', 'find', 'target'];
 const NEW_TEXT_KEYS = ['new_str', 'newString', 'new_string', 'newText', 'new_text', 'replace', 'replacement', 'with'];
+const PATCH_KEYS = ['patch', 'diff', 'patchText', 'patch_text'];
 
 /** Parses nested XML mutation parameters without decoding source-code bytes. */
 export function parseLosslessXmlMutationInput(
@@ -32,6 +33,12 @@ export function parseLosslessXmlMutationInput(
       new_str: newStr,
       ...(replaceAll === undefined ? {} : { replaceAll: /^true$/i.test(replaceAll.trim()) }),
     };
+  }
+
+  if (name === 'apply_patch') {
+    const patch = extractXmlParameter(rawBody, PATCH_KEYS, true);
+    if (patch === undefined) return undefined;
+    return { path: path.trim(), patch };
   }
 
   return undefined;

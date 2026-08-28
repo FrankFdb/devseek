@@ -222,7 +222,7 @@ function buildMutationDeliveryFeedback(
     input.actionableRepairPending
       ? `独立审查已经给出可执行反例，本修复阶段连续 ${investigationRounds} 个工具轮没有新写盘进展。`
       : `当前已收集 ${input.gatheredEvidenceCount} 项证据，本交付阶段连续 ${investigationRounds} 个上下文工具轮没有新写盘进展。`,
-    '下一轮不要继续横向 grep/list/read 或重复验证；请提交一个能推进交付的最小修改。既有文件使用 replace_in_file，只有确认目标不存在时才使用 create_file，随后读取并运行适用验证。',
+    '下一轮不要继续横向 grep/list/read 或重复验证；请提交一个能推进交付的最小修改。既有文件使用 replace_in_file，插入/删除或长 old_str 使用单文件 apply_patch；只有确认目标不存在时才使用 create_file，随后读取并运行适用验证。',
     '如果仍缺少一个关键事实，只允许读取一个精确文件或行范围，并在紧接着的工具轮中落实修改。',
   ].join('\n');
 }

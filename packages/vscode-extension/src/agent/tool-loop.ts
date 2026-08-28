@@ -45,6 +45,7 @@ import {
 import { ToolLoopFileWriter } from './tool-loop-file-writer';
 import { observeSettledTerminalExecution } from './tool-loop-terminal-observation';
 import { resolveTextReplacement } from './text-replacement';
+import { applySingleFilePatch } from './single-file-patch';
 import type {
   ToolFileAccessEvent,
   ToolFailureEvidence,
@@ -140,7 +141,7 @@ function optionalLineNumber(input: Record<string, unknown>, ...keys: string[]): 
 
 function hasPollutedReplaceArgument(value: string): boolean {
   return /[\u200B-\u200D\u2060\uFEFF]/.test(value)
-    || /<\/?\s*(?:old_?str|new_?str|oldstr|newstr|replace_in_file|TOOL_[A-Za-z0-9_]+)\b/i.test(value);
+    || /<\/?\s*(?:old_?str|new_?str|oldstr|newstr|patch|replace_in_file|apply_patch|TOOL_[A-Za-z0-9_]+)\b/i.test(value);
 }
 
 function formatReplaceRecoverySnapshot(content: string): string {
@@ -465,7 +466,7 @@ export async function executeFakeToolsForLoop(
           const msg = [
             `[run_terminal: ${command}] 已阻止`,
             reason,
-            '请使用 create_directory/create_file/write_file/replace_in_file/delete_file；run_terminal 仅用于查询、编译、运行和测试。',
+            '请使用 create_directory/create_file/write_file/replace_in_file/apply_patch/delete_file；run_terminal 仅用于查询、编译、运行和测试。',
           ].join('\n');
           callbacks.onToolActivity?.('terminal', `阻止终端文件变更: ${shellMutation}`);
           await canonicalTools.deny(toolPlan, canonicalContext, reason);
@@ -1014,6 +1015,45 @@ export async function executeFakeToolsForLoop(
         await canonicalTools.fail(toolPlan, canonicalContext, 'replace-preflight-failed');
         recordToolFailure('replace_in_file', 'replace', rawPath, msg, strategyFingerprint);
         parts.push(`[replace_in_file: ${rawPath}] 错误: ${msg}`);
+      }
+    } else if (tool.name === 'apply_patch') {
+      const input = tool.input as Record<string, unknown>;
+      const rawPath = typeof input.path === 'string' ? input.path.trim() : '';
+      const patch = typeof input.patch === 'string' ? input.patch : '';
+      const strategyFingerprint = codingSemanticDigest({ tool: 'apply_patch', path: rawPath, patch });
+      markToolCall();
+      if (!rawPath || !patch.trim()) {
+        const reason = !rawPath ? '缺少 path，未修改任何文件。' : 'patch 为空，未修改任何文件。';
+        await canonicalTools.fail(toolPlan, canonicalContext, 'missing-apply-patch-input');
+        recordToolFailure('apply_patch', 'replace', rawPath || undefined, reason, strategyFingerprint);
+        parts.push(`[apply_patch${rawPath ? `: ${rawPath}` : ''}] 错误: ${reason}`);
+        continue;
+      }
+      const absPath = resolveAgentToolEvidencePath(rawPath, workspaceRoot, defaultWorkdir);
+      try {
+        if (!absPath || !fs.existsSync(absPath)) {
+          const reason = '目标文件不存在，单文件补丁只允许更新已读取的既有文件。';
+          await canonicalTools.fail(toolPlan, canonicalContext, 'apply-patch-target-missing');
+          recordToolFailure('apply_patch', 'replace', rawPath, reason, strategyFingerprint);
+          parts.push(`[apply_patch: ${rawPath}] 错误: ${reason}`);
+          continue;
+        }
+        if (fs.statSync(absPath).isDirectory()) {
+          const reason = `目标是目录，不是文件：${absPath}`;
+          await canonicalTools.fail(toolPlan, canonicalContext, 'apply-patch-target-is-directory');
+          recordToolFailure('apply_patch', 'replace', rawPath, reason, strategyFingerprint);
+          parts.push(`[apply_patch: ${rawPath}] 错误: ${reason}`);
+          continue;
+        }
+        const oldContent = fs.readFileSync(absPath, 'utf8');
+        const workspaceRelativePath = nodePath.relative(workspaceRoot, absPath).replace(/\\/g, '/');
+        const patched = applySingleFilePatch(oldContent, patch, [rawPath, workspaceRelativePath, absPath]);
+        await fileWriter.apply(toolPlan, canonicalContext, 'apply_patch', rawPath, patched.content);
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        await canonicalTools.fail(toolPlan, canonicalContext, 'apply-patch-preflight-failed');
+        recordToolFailure('apply_patch', 'replace', rawPath, reason, strategyFingerprint);
+        parts.push(`[apply_patch: ${rawPath}] 错误: ${reason}`);
       }
     } else if (isFileWriteToolName(tool.name)) {
       // Unified file create/overwrite — works for new files AND full rewrites.

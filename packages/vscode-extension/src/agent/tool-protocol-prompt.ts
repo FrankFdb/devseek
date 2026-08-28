@@ -27,12 +27,28 @@ export const FULL_FILE_WRITE_RAW_EXAMPLE = [
   '```',
 ].join('\n');
 
+export const APPLY_PATCH_RAW_EXAMPLE = [
+  '```xml',
+  '<apply_patch>',
+  '<path>src/foo.cpp</path>',
+  '<patch><![CDATA[*** Begin Patch',
+  '*** Update File: src/foo.cpp',
+  '@@',
+  ' void run() {',
+  '-  old_call();',
+  '+  new_call();',
+  ' }',
+  '*** End Patch]]></patch>',
+  '</apply_patch>',
+  '```',
+].join('\n');
+
 export function buildFullFileWriteToolPrompt(session?: TextToolProtocolSession): string {
   return [
     '使用文本工具协议创建或完整覆写多行源码、Markdown、JSON、脚本时，必须使用 XML 代码围栏包裹的 CDATA 无损原始格式：',
     renderProtocolExample(FULL_FILE_WRITE_RAW_EXAMPLE, session),
     '整个工具块必须保留在 ```xml 代码围栏内，不要输出裸 XML；CDATA 中的反斜杠、双引号、Markdown 代码块和真实换行不得改写。',
-    '既有源码的聚焦修复必须优先使用 replace_in_file；不能因为参数传输或 old_str 匹配失败就改成整文件覆写。只有用户要求整体生成/重构，或修改确实覆盖文件大部分结构时，才完整覆写既有文件，并必须保留无关行为。',
+    '既有源码的聚焦修复使用 replace_in_file；插入/删除或完整 old_str 很长时使用单文件 apply_patch。不能因为参数传输或匹配失败就改成整文件覆写。只有用户要求整体生成/重构，或修改确实覆盖文件大部分结构时，才完整覆写既有文件，并必须保留无关行为。',
     '每轮最多输出 1 个较大的整文件写入工具；输出工具块后立即停止，等待真实写盘结果。',
     '只有无反斜杠、无双引号的短单行内容才可使用 [TOOL:create_file {...}] JSON 格式。',
     '若 Provider 已提供原生 function calling，则直接调用原生 create_file，不输出文本伪工具块。',
@@ -45,6 +61,16 @@ export function buildReplaceInFileToolPrompt(session?: TextToolProtocolSession):
     renderProtocolExample(REPLACE_IN_FILE_RAW_EXAMPLE, session),
     '整个工具块必须保留在 ```xml 代码围栏内，不要输出裸 XML。',
     '每轮最多输出 1 个多行 replace_in_file；输出工具块后立即停止，等待真实写盘结果。',
+  ].join('\n');
+}
+
+export function buildApplyPatchToolPrompt(session?: TextToolProtocolSession): string {
+  return [
+    '当聚焦修改需要插入/删除代码，且完整 old_str 很长或容易因传输失真而失败时，使用单文件 apply_patch：',
+    renderProtocolExample(APPLY_PATCH_RAW_EXAMPLE, session),
+    'path 与 *** Update File 必须指向同一个工作区内既有文件；每个 hunk 必须包含足以唯一定位的未修改上下文。',
+    'apply_patch 只支持单文件文本更新，不支持新建、删除、移动、二进制补丁或工作区外路径；它仍经过与其他写入相同的权限、沙箱、事务、源码护栏和读回验证。',
+    '每轮最多输出 1 个 apply_patch；整个工具块保留在 ```xml 代码围栏内，patch 使用 CDATA，输出后立即停止等待真实结果。',
   ].join('\n');
 }
 
@@ -98,6 +124,7 @@ function selectObservedRecoveryTool(observedToolNames: readonly string[] | undef
   return observedToolNames?.find(name => (
     Object.prototype.hasOwnProperty.call(SIMPLE_RECOVERY_EXAMPLES, name)
     || name === 'replace_in_file'
+    || name === 'apply_patch'
     || name === 'create_file'
     || name === 'write_file'
   ));
@@ -105,6 +132,7 @@ function selectObservedRecoveryTool(observedToolNames: readonly string[] | undef
 
 function recoveryExampleForTool(toolName: string | undefined): string {
   if (toolName === 'replace_in_file') return REPLACE_IN_FILE_RAW_EXAMPLE;
+  if (toolName === 'apply_patch') return APPLY_PATCH_RAW_EXAMPLE;
   if (toolName === 'create_file' || toolName === 'write_file') return FULL_FILE_WRITE_RAW_EXAMPLE;
   return SIMPLE_RECOVERY_EXAMPLES[toolName || 'read_file'] || SIMPLE_RECOVERY_EXAMPLES.read_file;
 }
@@ -112,6 +140,9 @@ function recoveryExampleForTool(toolName: string | undefined): string {
 function mutationRecoveryGuidance(toolName: string | undefined): string {
   if (toolName === 'replace_in_file') {
     return '- 多行 old_str/new_str 必须保持 fenced CDATA；只修复一个唯一匹配片段，不得升级为整文件覆写。';
+  }
+  if (toolName === 'apply_patch') {
+    return '- patch 必须保持 fenced CDATA；只更新一个既有文件，每个 hunk 使用唯一的最小上下文。';
   }
   if (toolName === 'create_file' || toolName === 'write_file') {
     return '- 多行源码 content 必须保持 fenced CDATA；每轮只交付一个可验证的完整责任切片。';

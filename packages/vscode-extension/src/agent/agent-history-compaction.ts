@@ -162,7 +162,7 @@ function summarizeProviderIntent(prose: string): string {
     .filter(line => !/^\[DevSeek (?:已执行工具请求摘要|上下文压缩(?:事实)?)\]/.test(line))
     .filter(line => !/^\[工具结果 Round\b/.test(line))
     .filter(line => !/^(?:工具调用：|大段 content\/源码\/Markdown 已从对话历史省略)/.test(line))
-    .filter(line => !/^-\s+(?:read_file|list_dir|grep_search|file_search|semantic_search|create_file|write_file|replace_in_file|delete_file|run_terminal)\b/.test(line))
+    .filter(line => !/^-\s+(?:read_file|list_dir|grep_search|file_search|semantic_search|create_file|write_file|replace_in_file|apply_patch|delete_file|run_terminal)\b/.test(line))
     .filter(line => !/^意图：.*\[DevSeek 已执行工具请求摘要\]/.test(line));
   return truncateOneLine(cleanLines.slice(0, 4).join(' '), 260);
 }
@@ -185,6 +185,8 @@ function describeToolForHistory(tool: FakeTool): string {
   }
   const content = stringField(input.content);
   if (content) parts.push(`contentChars=${content.length}`);
+  const patch = stringField(input.patch);
+  if (patch) parts.push(`patchChars=${patch.length}`);
   const todoList = Array.isArray(input.todoList) ? input.todoList : undefined;
   if (todoList) parts.push(`todos=${todoList.length}`);
   return parts.join(' ');
@@ -193,6 +195,7 @@ function describeToolForHistory(tool: FakeTool): string {
 function hasLargeToolPayload(tool: FakeTool): boolean {
   const input = (tool.input ?? {}) as Record<string, unknown>;
   return stringField(input.content).length > 0
+    || stringField(input.patch).length > 0
     || stringField(input.new_str).length > 500
     || stringField(input.old_str).length > 500;
 }

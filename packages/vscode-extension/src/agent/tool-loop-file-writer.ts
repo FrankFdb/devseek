@@ -147,7 +147,7 @@ export class ToolLoopFileWriter {
         const guard = shouldBlockUnverifiedSourceOverwrite({
           absPath,
           existed: baseline.snapshot.existed,
-          readEvidencePaths: toolName === 'replace_in_file'
+          readEvidencePaths: toolName === 'replace_in_file' || toolName === 'apply_patch'
             ? this.options.targetedReadEvidencePaths
             : this.options.readEvidencePaths,
         });
@@ -292,8 +292,8 @@ export class ToolLoopFileWriter {
     let message = `[${toolName}: ${rawPath}] 错误: ${reason}`;
     if (count >= 2) {
       message += mentionReplace
-        ? '\n请不要改用 run_terminal 写文件；继续使用 create_file/write_file/replace_in_file，并检查 path、content/old_str/new_str 和目标目录。'
-        : '\n请不要改用 run_terminal 写文件；继续使用 create_file/write_file/replace_in_file，并检查 path 与内容参数是否正确。';
+        ? '\n请不要改用 run_terminal 写文件；继续使用 create_file/write_file/replace_in_file/apply_patch，并检查 path、content/old_str/new_str/patch 和目标目录。'
+        : '\n请不要改用 run_terminal 写文件；继续使用 create_file/write_file/replace_in_file/apply_patch，并检查 path 与内容参数是否正确。';
     }
     return message;
   }

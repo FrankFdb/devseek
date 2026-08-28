@@ -29,6 +29,7 @@ const CPP_STD_SYMBOL_HEADERS: Readonly<Record<string, string>> = Object.freeze({
 export interface StructuralCompileFailureInput {
   output?: string;
   changedPaths?: readonly string[];
+  latestMutationPaths?: readonly string[];
   failureFiles?: readonly string[];
 }
 
@@ -49,8 +50,45 @@ export function buildStructuralCompileFailureRecoveryProtocol(
   const protocols = [
     buildCppMissingStandardHeaderRecoveryProtocol(input),
     buildCppStructuralTranslationUnitRecoveryProtocol(input),
+    buildCppUndefinedReferenceRecoveryProtocol(input),
   ].filter(Boolean);
   return protocols.join('\n');
+}
+
+function buildCppUndefinedReferenceRecoveryProtocol(
+  input: StructuralCompileFailureInput,
+): string {
+  const output = input.output || '';
+  const paths = [...(input.changedPaths ?? []), ...(input.latestMutationPaths ?? [])];
+  if (!paths.some(path => CPP_SOURCE_EXT_RE.test(path || '')) && !CPP_SOURCE_IN_OUTPUT_RE.test(output)) {
+    return '';
+  }
+  const symbols = findUndefinedReferenceSymbols(output);
+  if (symbols.length === 0) return '';
+  const latest = Array.from(new Set(input.latestMutationPaths ?? []))
+    .filter(path => CPP_SOURCE_EXT_RE.test(path || ''));
+  return [
+    'C/C++ 链接失败恢复要求：',
+    `- 未解析符号：${symbols.join('、')}。`,
+    latest.length > 0 ? `- 最近变更批次：${latest.join('、')}。` : '',
+    '- 头文件中的声明只证明接口可见，不证明当前任务应新增实现；不得看到声明后就盲目补一套并行逻辑。',
+    '- 先检查最近变更批次中的调用点：若该调用由本批次新增，优先撤销错误调用或改接项目现有语义所有者；只有需求契约确实要求该接口且没有现有实现时，才在正确责任边界补实现。',
+    '- 编译器已经给出失败类型，不要重新读取测试入口或横向探索。最多精确读取一个包含调用点/实现点的源码范围，然后提交一个最小 replace_in_file 或单文件 apply_patch，紧接着原样重跑失败命令。',
+  ].filter(Boolean).join('\n');
+}
+
+function findUndefinedReferenceSymbols(output: string): string[] {
+  const symbols: string[] = [];
+  const seen = new Set<string>();
+  const pattern = /undefined reference to\s+[`'‘]([^`'’\n]+)[`'’]/giu;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(output)) !== null) {
+    const symbol = match[1].trim();
+    if (!symbol || seen.has(symbol)) continue;
+    seen.add(symbol);
+    symbols.push(symbol);
+  }
+  return symbols.slice(0, 8);
 }
 
 function buildCppStructuralTranslationUnitRecoveryProtocol(

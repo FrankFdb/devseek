@@ -42,6 +42,7 @@ const FILE_CONTENT_MUTATION_TOOLS = new Set([
   'write_file',
   'replace_file',
   'replace_in_file',
+  'apply_patch',
 ]);
 
 export function createTextToolProtocolSession(channelId = crypto.randomBytes(18).toString('base64url')): TextToolProtocolSession {
@@ -295,6 +296,9 @@ function hasRequiredCdataParameters(block: string, toolName: string): boolean {
   if (toolName === 'replace_in_file') {
     return hasCdataField(body, ['old_str', 'oldString', 'old_string', 'oldText', 'old_text'])
       && hasCdataField(body, ['new_str', 'newString', 'new_string', 'newText', 'new_text']);
+  }
+  if (toolName === 'apply_patch') {
+    return hasCdataField(body, ['patch', 'diff', 'patchText', 'patch_text']);
   }
   return hasCdataField(body, [
     'content', 'contents', 'text', 'body', 'fileContent', 'file_content',

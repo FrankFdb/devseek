@@ -40,13 +40,21 @@ test('CanonicalToolSchemaRegistry owns canonical names, descriptors, and model v
   assert.equal(getCodingToolDescriptor('run_terminal').completionImpact, 'required');
   assert.equal(getCodingToolDescriptor('memory_write').completionImpact, 'advisory');
   assert.deepEqual(getCodingToolDescriptor('memory_write').effects, ['local-state']);
+  assert.deepEqual(getCodingToolDescriptor('apply_patch').schema.required, ['path', 'patch']);
+  assert.equal(getCodingToolDescriptor('apply_patch').mutatesWorkspace, true);
   assert.equal(getCodingToolDescriptor('mcp__repo__search').kind, 'mcp');
   assert.equal(isFileWriteToolName('search_replace'), true);
+  assert.equal(isFileWriteToolName('apply_patch'), true);
   assert.equal(isFileWriteToolName('run_terminal'), false);
   assert.equal(listCodingToolNames(true).includes('search_content'), true);
   assert.equal(listCodingToolNames(true).includes('execute_command'), true);
   assert.equal(schemas.listNames().includes('apply_workspace_artifacts'), false);
+  assert.equal(schemas.listNames().includes('apply_patch'), true);
   assert.equal(schemas.listNames({ includeInternal: true }).includes('apply_workspace_artifacts'), true);
+  assert.deepEqual(
+    schemas.validate(getCodingToolDescriptor('apply_patch'), { path: 'src/main.cpp' }),
+    { valid: false, missingFields: ['patch'] },
+  );
 });
 
 test('CanonicalToolSchemaRegistry normalizes provider aliases without mutating provider input', () => {

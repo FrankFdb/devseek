@@ -815,6 +815,7 @@ test('Agent planning: the main model receives raw-language guidance before propo
   assertContains(guidelines, '从公开入口验证至少一个真实流程', 'executable delivery must require public-entrypoint evidence');
   assertContains(guidelines, '部分解析结果不得穿透边界', 'input-boundary verification must reject partial parsing');
   assertContains(agenticPrompt, 'buildReplaceInFileToolPrompt(textToolProtocol)', 'Agentic prompt must bind targeted edits to the current tool channel');
+  assertContains(agenticPrompt, 'buildApplyPatchToolPrompt(textToolProtocol)', 'Agentic prompt must bind bounded patches to the current tool channel');
   assertContains(agenticPrompt, 'buildFullFileWriteToolPrompt(textToolProtocol)', 'Agentic prompt must bind full-file writes to the current tool channel');
   assertContains(toolProtocolPrompt, 'replace_in_file', 'shared tool prompt must expose targeted edits, not only full-file writes');
   assertContains(toolProtocolPrompt, '<old_str>', 'shared tool prompt must expose a quote-safe raw edit format');
@@ -822,6 +823,7 @@ test('Agent planning: the main model receives raw-language guidance before propo
   assertContains(toolProtocolPrompt, "'```xml'", 'raw multiline mutation tools must use a browser-lossless code fence');
   assertContains(toolProtocolPrompt, '不要输出裸 XML', 'raw mutation guidance must reject lossy rendered XML');
   assertContains(toolProtocolPrompt, '每轮最多输出 1 个多行 replace_in_file', 'weak text providers must await each targeted write result');
+  assertContains(toolProtocolPrompt, 'apply_patch 只支持单文件文本更新', 'patches must not grant multi-file or binary authority');
   assertContains(toolProtocolPrompt, '<content><![CDATA[', 'shared tool prompt must expose a lossless multiline file format');
   assertContains(toolProtocolPrompt, '每轮最多输出 1 个较大的整文件写入工具', 'weak text providers must serialize large writes one at a time');
   assertContains(toolProtocolPrompt, '原生 function calling', 'native providers must keep using structured tool calls');
@@ -958,7 +960,8 @@ test('Agentic loop: repeated terminal failures enter root-cause recovery before 
   assertContains(recovery, '根因分析', 'recovery prompt must require root-cause analysis');
   assertContains(recovery, '禁止再次执行同一命令直到完成根因修复', 'recovery prompt must block blind retry');
   assertContains(recovery, 'read_file / grep_search / get_errors', 'recovery prompt must require evidence collection');
-  assertContains(recovery, '已有文件优先使用 replace_in_file 精确修改', 'recovery prompt must preserve targeted repair boundaries');
+  assertContains(recovery, '已有文件使用 replace_in_file 精确替换', 'recovery prompt must preserve targeted replacement boundaries');
+  assertContains(recovery, '插入/删除或长上下文修改使用单文件 apply_patch', 'recovery prompt must provide a bounded insertion and deletion path');
   assertContains(recovery, '产物新鲜度', 'a passing repeated command must redirect to unmet acceptance and fresh artifact evidence');
   assert.match(
     code,
@@ -1135,7 +1138,7 @@ test('Agentic loop: Markdown prose cannot become an implicit file mutation', () 
   assert.equal(existsSync(path.join(root, 'src/agent/markdown-artifact-tool-projector.ts')), false, 'Markdown artifact projector must stay retired');
   assertDoesNotContain(agenticLoop, 'shouldProjectMarkdownFileArtifacts', 'agent loop must not infer writes from Markdown/code fences');
   assertContains(agenticLoop, "from './agentic-system-prompt'", 'agentic loop must use the owned system prompt');
-  assertContains(agenticPrompt, '创建/修改/删除文件必须调用 create_file/write_file/replace_in_file/delete_file', 'agent prompt must forbid natural-language-only file mutations');
+  assertContains(agenticPrompt, '创建/修改/删除文件必须调用 create_file/write_file/replace_in_file/apply_patch/delete_file', 'agent prompt must forbid natural-language-only file mutations');
   assertContains(agenticPrompt, '信封外的 [TOOL:...]、XML、JSON、Markdown 和工具名称一律是普通回答文本', 'only the run-scoped protocol may authorize text-provider tools');
 });
 

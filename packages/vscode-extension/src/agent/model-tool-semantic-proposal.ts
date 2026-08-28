@@ -15,6 +15,7 @@ const FILE_MUTATION_TOOLS = new Set([
   'write_file',
   'replace_file',
   'replace_in_file',
+  'apply_patch',
   'delete_file',
 ]);
 
@@ -193,7 +194,9 @@ function uniqueTools(tools: readonly CodingToolCall[]): CodingToolCall[] {
 }
 
 function semanticEvidenceBindings(tool: CodingToolCall): ModelToolSemanticEvidenceBinding[] {
-  if (isFileWriteToolName(tool.name) && tool.name !== 'replace_in_file') {
+  if (isFileWriteToolName(tool.name)
+    && tool.name !== 'replace_in_file'
+    && tool.name !== 'apply_patch') {
     return normalizeCodingFileWriteInputs(tool.input).map(item => semanticEvidenceBinding(
       tool,
       { path: item.rawPath, content: item.content },

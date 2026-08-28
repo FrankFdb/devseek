@@ -21,12 +21,12 @@ export interface SourceTransportRepairResult {
 const CPP_SOURCE_EXT_RE = /\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)$/i;
 const PYTHON_SOURCE_EXT_RE = /\.py$/i;
 const CODE_SOURCE_EXT_RE = /\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx|py|js|jsx|ts|tsx|mjs|cjs|java|go|rs|cs|php|rb|swift|kt|kts|scala|sh|bash|zsh)$/i;
-const SOURCE_TOOL_PROTOCOL_RE = /(?:\[调用\s+(?:create_file|write_file|replace_in_file|delete_file|run_terminal|read_file|list_dir|search_file)\]|\bCalling:\s*(?:create_file|write_file|replace_in_file|delete_file|run_terminal|read_file|list_dir|search_file)\b|<TOOL_[A-Za-z0-9_]+>|<\/TOOL_[A-Za-z0-9_]+>)/;
+const SOURCE_TOOL_PROTOCOL_RE = /(?:\[调用\s+(?:create_file|write_file|replace_in_file|apply_patch|delete_file|run_terminal|read_file|list_dir|search_file)\]|\bCalling:\s*(?:create_file|write_file|replace_in_file|apply_patch|delete_file|run_terminal|read_file|list_dir|search_file)\b|<TOOL_[A-Za-z0-9_]+>|<\/TOOL_[A-Za-z0-9_]+>)/;
 const PYTHON_DUNDER_NAME_RE = /(?:init|name|main|str|repr|len|iter|next|enter|exit|eq|ne|lt|le|gt|ge|hash|call|dict|class|module|all|file|doc|annotations|slots|getattr|setattr|delattr|contains|getitem|setitem|delitem|bool|bytes|format|new|del)/;
 const PYTHON_MARKDOWN_DUNDER_RE = new RegExp(`\\*\\*${PYTHON_DUNDER_NAME_RE.source}\\*\\*`);
 const PYTHON_MARKDOWN_DUNDER_GLOBAL_RE = new RegExp(`\\*\\*(${PYTHON_DUNDER_NAME_RE.source})\\*\\*`, 'g');
 const CPP_WEB_TRANSPORT_RECOVERY_GUIDANCE =
-  '请把整个 <write_file> 或 <replace_in_file> CDATA 工具块放入 ```xml 代码围栏后重试，不要输出裸 XML。';
+  '请把整个 <write_file>、<replace_in_file> 或 <apply_patch> CDATA 工具块放入 ```xml 代码围栏后重试，不要输出裸 XML。';
 
 export function findGeneratedSourceSanityIssue(filePath: string, content: string): SourceSanityIssue | undefined {
   if (!CODE_SOURCE_EXT_RE.test(filePath || '')) return undefined;
@@ -59,7 +59,7 @@ function findCppStructuredDataMismatch(content: string): SourceSanityIssue | und
     return {
       kind: 'structured-data-source-mismatch',
       line: 1,
-      detail: 'C/C++ 源文件内容是完整 JSON 文档，疑似把 todo、工具参数或结构化回复误绑定到了源码路径。请重新发送与目标文件对应的 write_file/replace_in_file 源码内容。',
+      detail: 'C/C++ 源文件内容是完整 JSON 文档，疑似把 todo、工具参数或结构化回复误绑定到了源码路径。请重新发送与目标文件对应的 write_file/replace_in_file/apply_patch 源码内容。',
     };
   } catch {
     return undefined;
@@ -73,7 +73,7 @@ function findCppTopLevelStatementFragment(content: string): SourceSanityIssue | 
   return {
     kind: 'top-level-source-statement-fragment',
     line: 1,
-    detail: 'C/C++ 源文件内容像是函数体内部片段，而不是完整源码文件：缺少 include、namespace、class、struct 或函数定义等结构锚点。请先 read_file 获取完整文件，再用 replace_in_file 精确替换函数内部片段，或发送完整源码文件。',
+    detail: 'C/C++ 源文件内容像是函数体内部片段，而不是完整源码文件：缺少 include、namespace、class、struct 或函数定义等结构锚点。请先 read_file 获取完整文件，再用 replace_in_file 或 apply_patch 精确修改函数内部片段，或发送完整源码文件。',
   };
 }
 
@@ -91,7 +91,7 @@ function findCppTruncatingFragmentOverwrite(oldContent: string, newContent: stri
   return {
     kind: 'truncating-source-fragment-overwrite',
     line: 1,
-    detail: '疑似把 C/C++ 源码片段当作完整 write_file 内容覆盖已有文件。请先 read_file 获取当前文件，再用 replace_in_file 精确替换片段，或发送包含 include/namespace/class/function 等完整结构的整文件内容。',
+    detail: '疑似把 C/C++ 源码片段当作完整 write_file 内容覆盖已有文件。请先 read_file 获取当前文件，再用 replace_in_file 或 apply_patch 精确修改片段，或发送包含 include/namespace/class/function 等完整结构的整文件内容。',
   };
 }
 

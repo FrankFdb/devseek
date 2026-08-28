@@ -294,6 +294,34 @@ test('labeled or plain fenced CDATA grants mutation authority but naked XML does
   });
 });
 
+test('a fenced single-file patch preserves exact patch bytes', () => {
+  const patch = [
+    '*** Begin Patch',
+    '*** Update File: src/lesson_controller.cpp',
+    '@@',
+    ' void run() {',
+    '-  old_call();',
+    '+  new_call();',
+    ' }',
+    '*** End Patch',
+  ].join('\n');
+  const payload = [
+    '```xml',
+    '<apply_patch>',
+    '<path>src/lesson_controller.cpp</path>',
+    `<patch><![CDATA[${patch}]]></patch>`,
+    '</apply_patch>',
+    '```',
+  ].join('\n');
+  const [tool] = parseAuthorizedTextToolCalls(
+    renderTextToolProtocolEnvelope(session, payload),
+    session,
+  );
+
+  assert.equal(tool.name, 'apply_patch');
+  assert.deepEqual(tool.input, { path: 'src/lesson_controller.cpp', patch });
+});
+
 test('an adjacent Markdown fence closed after the authenticated envelope is normalized losslessly', () => {
   const xmlPayload = [
     '```xml',
