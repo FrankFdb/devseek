@@ -352,3 +352,42 @@ test('Bridge recovers a strict unclosed observation envelope without widening ef
     content: `${open}[TOOL:create_file {"path":"/tmp/workspace/x","content":"y"}]`,
   }, boundary).tools.length, 0);
 });
+
+test('Bridge accepts one strict read_file shorthand as a locally arbitrated observation', () => {
+  const providerEvents = new CanonicalProviderEventService();
+  const toolDispatch = new CanonicalToolDispatchService();
+  const boundary = bindProviderNormalizationBoundary(
+    providerEvents,
+    toolDispatch,
+    { workspaceRoot: '/tmp/workspace' },
+    { version: 'devseek.text-tools/v1', channelId: 'bridge-read-shorthand-channel' },
+  );
+  const content = '让我先读取关键源码：read_file path=/tmp/workspace/src/main.cpp lines=140-220';
+  const [tool] = normalizeProviderMessage({
+    type: 'message', provider: 'bridge', content,
+  }, boundary).tools;
+
+  assert.equal(tool.name, 'read_file');
+  assert.deepEqual(tool.input, {
+    path: '/tmp/workspace/src/main.cpp',
+    startLine: 140,
+    endLine: 220,
+  });
+  assert.equal(tool.source, 'provider-native-text');
+  assert.equal(tool.executable, true);
+
+  for (const invalid of [
+    `${content} 然后修改`,
+    'read_file path=/tmp/workspace/src/main.cpp lines=220-140',
+    `read_file path=/tmp/workspace/src/main.cpp lines=${'9'.repeat(400)}-${'9'.repeat(400)}`,
+    'create_file path=/tmp/workspace/src/main.cpp',
+    'read_file path=`/tmp/workspace/src/main.cpp` lines=140-220',
+  ]) {
+    assert.equal(normalizeProviderMessage({
+      type: 'message', provider: 'bridge', content: invalid,
+    }, boundary).tools.length, 0, invalid);
+  }
+  assert.equal(normalizeProviderMessage({
+    type: 'message', provider: 'deepseek-api', content,
+  }, boundary).tools.length, 0);
+});

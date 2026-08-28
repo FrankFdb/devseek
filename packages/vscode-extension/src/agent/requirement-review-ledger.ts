@@ -18,6 +18,7 @@ export interface RequirementReviewFinding {
   requirementId: string;
   requirement: string;
   evidenceAuthority: 'source-snapshot' | 'reported-validation';
+  evidenceQuote?: string;
   title: string;
   observedBehavior: string;
   expectedBehavior: string;
@@ -306,7 +307,10 @@ function renderBlockingDecision(decision: RequirementReviewDecision): string {
     `实际行为：${finding.observedBehavior}`,
     `期望行为：${finding.expectedBehavior}`,
     `可复现反例：${finding.counterexample}`,
-  ].join('\n'));
+    finding.evidenceAuthority === 'reported-validation' && finding.evidenceQuote
+      ? `原始验证事实（逐字）：${finding.evidenceQuote}`
+      : undefined,
+  ].filter(Boolean).join('\n'));
   return [
     '【独立需求审查：未通过】',
     decision.explanation,

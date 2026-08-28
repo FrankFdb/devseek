@@ -186,6 +186,24 @@ test('Agent history compaction: executed Bridge JSON arrays become durable summa
   assert.doesNotMatch(messages[1].content, /"arguments"/);
 });
 
+test('Agent history compaction: executed Bridge read shorthand becomes a durable summary', () => {
+  const content = '继续定位入口：read_file path=/repo/src/main.cpp lines=140-220';
+  const messages = [
+    { role: 'user', content: '任务' },
+    { role: 'assistant', content },
+  ];
+
+  const changed = replaceLatestAssistantToolHistory(messages, textToolProtocol, [{
+    name: 'read_file',
+    input: { path: '/repo/src/main.cpp', startLine: 140, endLine: 220 },
+  }]);
+
+  assert.equal(changed, true);
+  assert.match(messages[1].content, /意图：继续定位入口/);
+  assert.match(messages[1].content, /read_file path=\/repo\/src\/main\.cpp lines=140-220/);
+  assert.doesNotMatch(messages[1].content, /继续定位入口：read_file/);
+});
+
 test('Agent history compaction: replaces every assistant tool message before provider send', () => {
   const messages = [
     { role: 'user', content: '任务' },

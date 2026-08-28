@@ -7,6 +7,7 @@ const CLOSING_FENCE_RE = /(?:^|\r?\n)[ \t]*```[ \t]*(?=\r?\n|$)/g;
 const TOOL_ARGUMENTS_HEADER_RE = /Tool:[ \t]*`?([A-Za-z0-9_]+)`?[ \t]*Arguments:[ \t]*/g;
 const BARE_JSON_HEADER_RE = /([A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+)[ \t]+(?=\{)/g;
 const FENCED_JSON_ARRAY_RE = /```(?:json)?[ \t]*\r?\n[ \t]*(?=\[)/gi;
+const READ_FILE_SHORTHAND_RE = /\bread_file[ \t]+path=([^\s`]+)(?:[ \t]+lines=(\d+)-(\d+))?[ \t]*$/i;
 const CALLING_MARKER_RE = /\*\*Calling:\*\*/i;
 const TOOL_ARGUMENTS_MARKER_RE = /Tool:[ \t]*`?[A-Za-z0-9_]+`?[ \t]*Arguments:/i;
 const BARE_JSON_MARKER_RE = /[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+[ \t]+\{/;
@@ -30,10 +31,36 @@ export function projectProviderNativeTextToolResponse(
   if (hasCalling) return projectCallingResponse(text);
   const jsonArray = projectJsonArrayResponse(text);
   if (jsonArray) return jsonArray;
+  const observation = projectObservationShorthandResponse(text);
+  if (observation) return observation;
   return projectInlineJsonResponse(
     text,
     hasToolArguments ? TOOL_ARGUMENTS_HEADER_RE : BARE_JSON_HEADER_RE,
   );
+}
+
+function projectObservationShorthandResponse(text: string): ProviderNativeTextToolResponse | undefined {
+  const match = READ_FILE_SHORTHAND_RE.exec(text);
+  if (!match) return undefined;
+  const startLine = match[2] ? Number.parseInt(match[2], 10) : undefined;
+  const endLine = match[3] ? Number.parseInt(match[3], 10) : undefined;
+  if ((startLine !== undefined || endLine !== undefined)
+      && (startLine === undefined
+        || endLine === undefined
+        || !Number.isSafeInteger(startLine)
+        || !Number.isSafeInteger(endLine)
+        || startLine < 1
+        || endLine < startLine)) {
+    return undefined;
+  }
+  const input = Object.freeze({
+    path: match[1],
+    ...(startLine !== undefined && endLine !== undefined ? { startLine, endLine } : {}),
+  });
+  return Object.freeze({
+    prose: text.slice(0, match.index).trim(),
+    tools: Object.freeze([Object.freeze({ name: 'read_file', input })]),
+  });
 }
 
 function projectJsonArrayResponse(text: string): ProviderNativeTextToolResponse | undefined {

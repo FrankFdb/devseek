@@ -304,6 +304,41 @@ test('failed independent review renders a domain-neutral counterexample protocol
   assert.match(ledger.recoveryContext(), /Submit an unmatched buy with quantity 5/);
 });
 
+test('failed review replays reported validation evidence without model paraphrase', () => {
+  const ledger = new RequirementReviewLedger();
+  const firstWrite = sourceWrite('src/main.cpp');
+  ledger.request({ qualityGate: passedGate, writtenFiles: [firstWrite], roundReadFiles: [] });
+  ledger.request({
+    qualityGate: undefined,
+    writtenFiles: [firstWrite],
+    roundReadFiles: ['src/main.cpp'],
+  });
+  ledger.takeIndependentReviewCandidate();
+  const quote = '"expected":{"fraction":{"selected":3,"total":4}},"actual":{"fraction.selected":3}';
+
+  const feedback = ledger.settleIndependentReview({
+    status: 'failed',
+    explanation: 'The reported state validation remains unresolved.',
+    findings: [{
+      requirementId: 'R1',
+      requirement: 'Produce the required state JSON.',
+      evidenceAuthority: 'reported-validation',
+      evidenceQuote: quote,
+      title: 'Preserve the nested state contract',
+      observedBehavior: 'The state uses a flat key.',
+      expectedBehavior: 'The state uses a nested fraction object.',
+      counterexample: 'Run the deterministic state command.',
+      priority: 1,
+      confidence: 0.98,
+      path: 'src/main.cpp',
+      line: 10,
+    }],
+  });
+
+  assert.match(feedback, new RegExp(quote.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(feedback, /原始验证事实（逐字）/);
+});
+
 test('indeterminate independent review retries through final-source evidence instead of blind source edits', () => {
   const ledger = new RequirementReviewLedger();
   const firstWrite = sourceWrite('src/order_book.cpp');

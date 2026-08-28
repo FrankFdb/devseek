@@ -51,6 +51,7 @@ function finding(source, prompt, overrides = {}) {
   return {
     requirement_id: 'R1',
     evidence_authority: 'source-snapshot',
+    evidence_quote: '',
     title: 'Return the required value',
     observed_behavior: 'Calling the exported function returns 1.',
     expected_behavior: 'The request requires the exported function to return 2.',
@@ -268,6 +269,7 @@ test('validates finding evidence fields, priority, and confidence', () => {
   const prompt = 'Return 2.';
   const invalidOverrides = [
     { evidence_authority: 'provider-opinion' },
+    { evidence_quote: 'source output should not claim a validation quote' },
     { title: '' },
     { observed_behavior: '' },
     { expected_behavior: '' },
@@ -281,6 +283,38 @@ test('validates finding evidence fields, priority, and confidence', () => {
   for (const overrides of invalidOverrides) {
     const body = failBody(source, prompt, { findings: [finding(source, prompt, overrides)] });
     assert.equal(parseIndependentReviewResponse(response(body), [source], prompt).status, 'indeterminate');
+  }
+});
+
+test('binds reported validation findings to a verbatim supplied evidence quote', () => {
+  const source = snapshot();
+  const fact = 'Observed uniqueSampledColors=4; required minimumUniqueSampledColors=6.';
+  const prompt = 'Repair the renderer.';
+  const body = failBody(source, prompt, {
+    findings: [finding(source, prompt, {
+      evidence_authority: 'reported-validation',
+      evidence_quote: fact,
+    })],
+  });
+
+  const decision = parseIndependentReviewResponse(response(body), [source], prompt, fact);
+  assert.equal(decision.status, 'failed');
+  assert.equal(decision.findings[0].evidenceQuote, fact);
+
+  for (const evidence_quote of [
+    'uniqueSampledColors was reportedly below the required value.',
+    'too short',
+  ]) {
+    const invalid = failBody(source, prompt, {
+      findings: [finding(source, prompt, {
+        evidence_authority: 'reported-validation',
+        evidence_quote,
+      })],
+    });
+    assert.equal(
+      parseIndependentReviewResponse(response(invalid), [source], prompt, fact).status,
+      'indeterminate',
+    );
   }
 });
 
@@ -374,6 +408,7 @@ test('review prompt delegates semantics to the model and keeps raw multilingual 
   assert.match(messages[0].content, /blank, placeholder, misleading mathematical result/);
   assert.match(messages[0].content, /directly traceable to words in the requirement bound to that inventory ID/);
   assert.match(messages[0].content, /reported-validation only when the original requirements or VALIDATION FACT explicitly supplies/);
+  assert.match(messages[0].content, /copy one exact contiguous expected\/actual fact into evidence_quote/);
   assert.match(messages[0].content, /static source appearance cannot disprove it/);
   assert.doesNotMatch(messages[0].content, /order book|best bid|FIFO\/LIFO|std::invalid_argument/i);
   assert.match(messages[1].content, /MODEL_LATEST_OK/);

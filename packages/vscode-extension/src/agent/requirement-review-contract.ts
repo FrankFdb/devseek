@@ -5,6 +5,8 @@ import type {
 
 const MIN_REVIEW_CONFIDENCE = 0.8;
 const MAX_FINDING_TITLE_CHARS = 80;
+const MIN_REPORTED_EVIDENCE_QUOTE_CHARS = 24;
+const MAX_REPORTED_EVIDENCE_QUOTE_CHARS = 4_000;
 
 export interface RequirementReviewInvocationResult {
   text: string;
@@ -32,6 +34,7 @@ interface RawRequirementCheck {
 interface RawReviewFinding {
   requirement_id?: unknown;
   evidence_authority?: unknown;
+  evidence_quote?: unknown;
   title?: unknown;
   observed_behavior?: unknown;
   expected_behavior?: unknown;
@@ -76,6 +79,7 @@ export const REQUIREMENT_REVIEW_SCHEMA = [
   '  "findings": [{',
   '    "requirement_id": "R1",',
   '    "evidence_authority": "source-snapshot" | "reported-validation",',
+  '    "evidence_quote": "exact contiguous quote from original requirements or validation fact; empty for source-snapshot",',
   '    "title": "imperative finding title, <= 80 chars",',
   '    "observed_behavior": "caller-observable behavior reached in final source",',
   '    "expected_behavior": "behavior required by the quoted requirement",',
@@ -114,6 +118,7 @@ export function parseIndependentReviewResponse(
   response: RequirementReviewInvocationResult,
   snapshots: readonly RequirementReviewSourceSnapshot[],
   userPrompt = '',
+  validationSummary = '',
 ): RequirementReviewDecision {
   if (response.toolCount > 0) {
     return indeterminateDecision('隔离审查者违反只读协议并请求了工具。');
@@ -137,7 +142,12 @@ export function parseIndependentReviewResponse(
     return indeterminateDecision('隔离审查未按原始需求清单逐项、原文返回有效检查。');
   }
 
-  const normalizedFindings = normalizeFindings(raw.findings, snapshots, checks);
+  const normalizedFindings = normalizeFindings(
+    raw.findings,
+    snapshots,
+    checks,
+    [userPrompt, validationSummary],
+  );
   if (!normalizedFindings.ok) {
     return indeterminateDecision([
       '隔离审查 finding 缺少有效的需求引用、源码位置或可复现证据。',
@@ -238,13 +248,19 @@ function normalizeFindings(
   rawFindings: unknown,
   snapshots: readonly RequirementReviewSourceSnapshot[],
   checks: ReadonlyMap<string, NormalizedRequirementCheck>,
+  reportedEvidenceSources: readonly string[],
 ): FindingNormalizationResult {
   if (!Array.isArray(rawFindings)) {
     return { ok: false, diagnostic: 'findings 必须是 JSON 数组。' };
   }
   const findings: RequirementReviewFinding[] = [];
   for (let index = 0; index < rawFindings.length; index += 1) {
-    const result = normalizeFinding(rawFindings[index] as RawReviewFinding, snapshots, checks);
+    const result = normalizeFinding(
+      rawFindings[index] as RawReviewFinding,
+      snapshots,
+      checks,
+      reportedEvidenceSources,
+    );
     if (!result.ok) {
       return {
         ok: false,
@@ -260,6 +276,7 @@ function normalizeFinding(
   raw: RawReviewFinding,
   snapshots: readonly RequirementReviewSourceSnapshot[],
   checks: ReadonlyMap<string, NormalizedRequirementCheck>,
+  reportedEvidenceSources: readonly string[],
 ): FindingValidationResult {
   if (!raw || typeof raw !== 'object') {
     return { ok: false, errors: ['必须是 JSON 对象'] };
@@ -273,12 +290,23 @@ function normalizeFinding(
 
   const title = normalizeFindingTitle(raw.title);
   const evidenceAuthority = raw.evidence_authority;
+  const evidenceQuote = nonEmptyString(raw.evidence_quote);
   const observedBehavior = nonEmptyString(raw.observed_behavior);
   const expectedBehavior = nonEmptyString(raw.expected_behavior);
   const counterexample = nonEmptyString(raw.counterexample);
   if (!title) errors.push('title 必须是非空字符串');
   if (evidenceAuthority !== 'source-snapshot' && evidenceAuthority !== 'reported-validation') {
     errors.push('evidence_authority 必须是 source-snapshot 或 reported-validation');
+  }
+  if (evidenceAuthority === 'reported-validation') {
+    if (!evidenceQuote
+        || evidenceQuote.length < MIN_REPORTED_EVIDENCE_QUOTE_CHARS
+        || evidenceQuote.length > MAX_REPORTED_EVIDENCE_QUOTE_CHARS
+        || !reportedEvidenceSources.some(source => source.includes(evidenceQuote))) {
+      errors.push('reported-validation 的 evidence_quote 必须逐字引用已提供的原始需求或验证事实');
+    }
+  } else if (evidenceQuote) {
+    errors.push('source-snapshot 的 evidence_quote 必须为空');
   }
   if (!observedBehavior) errors.push('observed_behavior 必须是非空字符串');
   if (!expectedBehavior) errors.push('expected_behavior 必须是非空字符串');
@@ -311,6 +339,7 @@ function normalizeFinding(
       requirementId,
       requirement: check!.requirement.quote,
       evidenceAuthority: evidenceAuthority as RequirementReviewFinding['evidenceAuthority'],
+      ...(evidenceQuote ? { evidenceQuote } : {}),
       title: title!,
       observedBehavior: observedBehavior!,
       expectedBehavior: expectedBehavior!,

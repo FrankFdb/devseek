@@ -69,7 +69,12 @@ export class IndependentRequirementReviewer {
     for (let attempt = 1; attempt <= MAX_REVIEW_CONTRACT_ATTEMPTS; attempt++) {
       try {
         const response = await this.invoke(messages);
-        const decision = parseIndependentReviewResponse(response, snapshots, input.userPrompt);
+        const decision = parseIndependentReviewResponse(
+          response,
+          snapshots,
+          input.userPrompt,
+          input.validationSummary,
+        );
         if (decision.status !== 'indeterminate' || attempt === MAX_REVIEW_CONTRACT_ATTEMPTS) {
           return decision;
         }
@@ -118,6 +123,7 @@ export function buildIndependentReviewMessages(
         'Use declarations, types, comparators, and ownership shown in every supplied source file. Never infer a default or missing declaration when another snapshot defines it.',
         'Report only defects reached by a concrete execution path in the supplied source. Omit speculative bypasses, irrelevant language-lawyer hypotheticals, and confidence below 0.80.',
         'Set evidence_authority to reported-validation only when the original requirements or VALIDATION FACT explicitly supplies the observed execution result. Otherwise use source-snapshot.',
+        'For reported-validation, copy one exact contiguous expected/actual fact into evidence_quote without paraphrasing; for source-snapshot use an empty string. The host rejects quotes that are not present verbatim in the supplied evidence.',
         'A reported-validation fact remains authoritative until the exact counterexample is rerun; static source appearance cannot disprove it.',
         'Never put a non-defect, speculation, or hedged concern in findings. If analysis concludes correct, safe, valid, no defect, unlikely, unspecified, or no concrete reachable path, mark the check satisfied and omit the finding.',
         'Honor user-requested data structures and complexity. Flag dead state, wrong ownership, and scans that defeat the requested design.',
@@ -175,6 +181,7 @@ function buildReviewCorrectionMessages(
         'The rejection reason above comes from host schema validation and identifies the first invalid object and fields. Correct that exact object before returning the complete result.',
         'Re-evaluate the original requirements and every supplied source file from scratch.',
         'Fix the specific rejected JSON field instead of repeating the same wording. If evidence was rejected, name the concrete input/state scenario plus the caller-observable source or validation fact that proves it.',
+        'For reported-validation, evidence_quote must be a verbatim contiguous substring of ORIGINAL USER REQUIREMENTS or VALIDATION FACT, not a summary.',
         'Delete any finding whose own text concludes N/A, no violation, correct, satisfied, speculative, or below the required confidence. Never fill mandatory fields for a non-defect merely to satisfy the schema.',
         'Return every requirement_check and the complete JSON object again. Omit non-defects, low-confidence or unreachable concerns, and never reverse an explicit requirement.',
       ].join('\n'),
