@@ -8,8 +8,9 @@ import { DEEPSEEK_URL } from './config';
 import { DEEPSEEK_DOM_SELECTORS as SELECTORS } from './deepseek-dom-selectors';
 import {
   extractDeepSeekResponse,
-  isFreshDeepSeekResponseText,
+  isCorrelatedDeepSeekResponseText,
   isLoginUrl,
+  type DeepSeekResponseIdentityEvidence,
 } from './response-extractor';
 import { getStorageStatePath, loadCookies, saveCookies } from './session';
 import { BrowserSession } from './browser-session';
@@ -934,7 +935,9 @@ export class DeepSeekAgent {
     accumulatedPrefix: string,
     lastText: string,
     onDelta: (delta: string) => void,
+    identity: DeepSeekResponseIdentityEvidence,
   ): Promise<string> {
+    if (!identity.currentTurnObserved) return '';
     await this._clickCodeTabs(page).catch(() => undefined);
     const finalText = await this.getLastAssistantText(page).catch(() => '');
     const streamingText = await this.getStreamingAssistantText(page).catch(() => '');
@@ -944,7 +947,8 @@ export class DeepSeekAgent {
 
     for (const candidate of candidates) {
       const combinedText = mergeContinuedAssistantText(accumulatedPrefix, candidate);
-      if (!isSubstantiveAssistantTextDiff(combinedText, baselineText)) continue;
+      if (!looksLikeSubstantiveAssistantText(combinedText)) continue;
+      if (!isCorrelatedDeepSeekResponseText(combinedText, baselineText, identity)) continue;
       if (combinedText !== lastText) onDelta('\x00RESET\x00' + combinedText);
       await saveCookies(this.context!);
       return combinedText;
@@ -970,8 +974,9 @@ export class DeepSeekAgent {
     let stableFor = 0;
     let lastTextChangedAt = Date.now();
     // Count growth or a substantive text diff identifies a candidate response.
-    // The identity gate below still requires extracted text to differ from the pre-submit baseline.
     let newMsgSeen = false;
+    let currentTurnObserved = false;
+    let assistantMessageCountAdvanced = false;
     const resumeAfterContinueClick = async (source: string): Promise<void> => {
       console.log(`[agent] Clicked "继续生成" (${source}), resuming generation...`);
       try {
@@ -1019,6 +1024,8 @@ export class DeepSeekAgent {
         if (aiMsgCount > baselineAiMsgCount) {
           console.log(`[agent] New AI message detected (count: ${baselineAiMsgCount} → ${aiMsgCount})`);
           newMsgSeen = true;
+          currentTurnObserved = true;
+          assistantMessageCountAdvanced = true;
           // 不 continue，立即进入下方内容读取
         } else {
           // 方案2：文本内容变化（DeepSeek 复用容器，计数不变但内容已更新）
@@ -1029,6 +1036,7 @@ export class DeepSeekAgent {
             const reason = (sawStopButton || generationBusyForTextDiff) ? 'busy-text-diff' : 'visible-text-diff';
             console.log(`[agent] New AI content detected via ${reason} (len: ${t.length})`);
             newMsgSeen = true;
+            currentTurnObserved = true;
             lastText = t;
             onDelta('\x00RESET\x00' + t);
             stableFor = 0;
@@ -1042,7 +1050,11 @@ export class DeepSeekAgent {
       }
 
       const currentText = await this.getStreamingAssistantText(page);
-      if (!accumulatedPrefix && !isFreshDeepSeekResponseText(currentText, baselineText)) {
+      if (!accumulatedPrefix && !isCorrelatedDeepSeekResponseText(
+        currentText,
+        baselineText,
+        { currentTurnObserved, assistantMessageCountAdvanced },
+      )) {
         stableFor = 0;
         await page.waitForTimeout(STREAM_POLL_INTERVAL_MS);
         continue;
@@ -1153,26 +1165,40 @@ export class DeepSeekAgent {
     }
 
     if (Date.now() >= absoluteDeadline) {
-      const recovered = await this.recoverVisibleStreamingResponseBeforeTimeout(page, baselineText, accumulatedPrefix, lastText, onDelta);
+      const recovered = await this.recoverVisibleStreamingResponseBeforeTimeout(
+        page,
+        baselineText,
+        accumulatedPrefix,
+        lastText,
+        onDelta,
+        { currentTurnObserved, assistantMessageCountAdvanced },
+      );
       if (recovered) return recovered;
       await this.abortActiveGeneration(page, 'streaming-absolute-deadline');
       throw responseStreamTimeoutError({
         timeoutMs,
         absoluteTimeoutMs,
         partialChars: lastText.length,
-        newMessageSeen: newMsgSeen,
+        newMessageSeen: currentTurnObserved,
         phase: 'streaming-absolute-deadline',
       });
     }
     if (Date.now() >= deadline) {
-      const recovered = await this.recoverVisibleStreamingResponseBeforeTimeout(page, baselineText, accumulatedPrefix, lastText, onDelta);
+      const recovered = await this.recoverVisibleStreamingResponseBeforeTimeout(
+        page,
+        baselineText,
+        accumulatedPrefix,
+        lastText,
+        onDelta,
+        { currentTurnObserved, assistantMessageCountAdvanced },
+      );
       if (recovered) return recovered;
       await this.abortActiveGeneration(page, 'streaming-idle-deadline');
       throw responseStreamTimeoutError({
         timeoutMs,
         absoluteTimeoutMs,
         partialChars: lastText.length,
-        newMessageSeen: newMsgSeen,
+        newMessageSeen: currentTurnObserved,
         phase: 'streaming-idle-deadline',
       });
     }
@@ -1184,8 +1210,12 @@ export class DeepSeekAgent {
     // Only fire the final RESET if we actually saw a new AI message.
     // Without this guard, a timed-out request (newMsgSeen=false) would read
     // the previous response from the DOM and replay it as the current response.
-    if (newMsgSeen
-      && isFreshDeepSeekResponseText(finalText, baselineText)
+    if (currentTurnObserved
+      && isCorrelatedDeepSeekResponseText(
+        finalText,
+        baselineText,
+        { currentTurnObserved, assistantMessageCountAdvanced },
+      )
       && finalText !== lastText) {
       onDelta('\x00RESET\x00' + finalText);
       lastText = finalText;

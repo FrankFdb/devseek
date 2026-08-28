@@ -293,3 +293,39 @@ test('labeled or plain fenced CDATA grants mutation authority but naked XML does
     observedToolNames: ['create_file'],
   });
 });
+
+test('an adjacent Markdown fence closed after the authenticated envelope is normalized losslessly', () => {
+  const xmlPayload = [
+    '```xml',
+    '<replace_in_file>',
+    '<path>src/lesson_controller.cpp</path>',
+    '<old_str><![CDATA[return "old\\n";]]></old_str>',
+    '<new_str><![CDATA[return "new\\n";]]></new_str>',
+    '</replace_in_file>',
+    '```',
+  ].join('\n');
+  const canonical = renderTextToolProtocolEnvelope(session, xmlPayload);
+  const detachedFence = canonical.replace(
+    `\n\`\`\`\n</devseek_tool_calls channel="${session.channelId}">`,
+    '\n</devseek_tool_calls>\n```',
+  );
+
+  const [tool] = parseAuthorizedTextToolCalls(detachedFence, session);
+  assert.equal(tool.name, 'replace_in_file');
+  assert.deepEqual(tool.input, {
+    path: 'src/lesson_controller.cpp',
+    old_str: 'return "old\\n";',
+    new_str: 'return "new\\n";',
+  });
+  assert.equal(countCompletedAuthorizedTextToolEnvelopes(detachedFence, session), 1);
+  assert.equal(stripAuthorizedTextToolEnvelopes(detachedFence, session), '');
+  assert.equal(inspectInvalidAuthorizedTextToolProtocol(detachedFence, session).found, false);
+  assert.equal(inspectOutOfEnvelopeTextToolProtocol(detachedFence, session).found, false);
+
+  const separatedFence = detachedFence.replace(
+    '</devseek_tool_calls>\n```',
+    '</devseek_tool_calls>\ntrailing prose\n```',
+  );
+  assert.deepEqual(parseAuthorizedTextToolCalls(separatedFence, session), []);
+  assert.equal(inspectInvalidAuthorizedTextToolProtocol(separatedFence, session).found, true);
+});

@@ -14,6 +14,7 @@ const MUTATION_ROUNDS_BEFORE_CORRECTION = 2;
 const MUTATION_EVIDENCE_BEFORE_CORRECTION = 6;
 const UNCLASSIFIED_ROUNDS_BEFORE_CORRECTION = 6;
 const UNCLASSIFIED_EVIDENCE_BEFORE_CORRECTION = 12;
+const MIN_ROUNDS_BEFORE_EVIDENCE_SATURATION = 2;
 const MAX_MUTATION_DELIVERY_CORRECTIONS = 2;
 const MAX_UNCLASSIFIED_DELIVERY_CORRECTIONS = 3;
 const MAX_ACTIONABLE_REPAIR_CORRECTIONS = 3;
@@ -135,7 +136,6 @@ export class DeliveryConvergenceLedger {
       this.expectation = input.expectation;
       this.progressEpoch = input.deliveryProgressEpoch;
       this.resetCohort();
-      return CONTINUE_RESULT;
     }
     if (input.expectation === 'none' || !input.deliveryPending) {
       this.resetCohort();
@@ -154,9 +154,10 @@ export class DeliveryConvergenceLedger {
     const evidenceBeforeCorrection = input.expectation === 'mutation'
       ? MUTATION_EVIDENCE_BEFORE_CORRECTION
       : UNCLASSIFIED_EVIDENCE_BEFORE_CORRECTION;
-    const deliveryEvidenceReady = input.actionableRepairPending === true
-      || input.gatheredEvidenceCount >= evidenceBeforeCorrection;
-    if (this.investigationRounds < roundsBeforeCorrection || !deliveryEvidenceReady) {
+    const roundBudgetExhausted = this.investigationRounds >= roundsBeforeCorrection;
+    const evidenceSaturated = this.investigationRounds >= MIN_ROUNDS_BEFORE_EVIDENCE_SATURATION
+      && input.gatheredEvidenceCount >= evidenceBeforeCorrection;
+    if (!roundBudgetExhausted && !evidenceSaturated) {
       return CONTINUE_RESULT;
     }
 

@@ -57,13 +57,13 @@ test('DeepSeekAgent: reused-container visible text diff must be substantive befo
   assert.doesNotMatch(streaming, /t\.length > 0 && t !== baselineText/);
 });
 
-test('DeepSeekAgent: a new DOM message cannot replay the pre-submit assistant response', () => {
+test('DeepSeekAgent: every response extraction path requires current-turn correlation', () => {
   const agent = src('src/deepseek-agent.ts');
   const streaming = agent.match(/private async pollForStreamingResponse[\s\S]*?await this\._clickCodeTabs/)?.[0] || '';
 
-  assert.match(agent, /isFreshDeepSeekResponseText/);
-  assert.match(streaming, /!accumulatedPrefix && !isFreshDeepSeekResponseText\(currentText, baselineText\)/);
-  assert.match(agent, /isFreshDeepSeekResponseText\(finalText, baselineText\)/);
+  assert.match(agent, /isCorrelatedDeepSeekResponseText/);
+  assert.match(streaming, /!accumulatedPrefix && !isCorrelatedDeepSeekResponseText/);
+  assert.match(agent, /isCorrelatedDeepSeekResponseText\(\s*finalText/);
 });
 
 test('DeepSeekAgent: streaming has an absolute wall-clock timeout', () => {
@@ -96,7 +96,10 @@ test('DeepSeekAgent: streaming timeout recovers visible assistant text before fa
   assert.match(agent, /recoverVisibleStreamingResponseBeforeTimeout/);
   assert.match(agent, /getLastAssistantText\(page\)/);
   assert.match(agent, /getStreamingAssistantText\(page\)/);
-  assert.match(agent, /isSubstantiveAssistantTextDiff\(combinedText, baselineText\)/);
+  assert.match(agent, /if \(!identity\.currentTurnObserved\) return ''/);
+  assert.match(agent, /assistantMessageCountAdvanced/);
+  assert.match(agent, /isCorrelatedDeepSeekResponseText\(combinedText, baselineText, identity\)/);
+  assert.match(streaming, /\{ currentTurnObserved, assistantMessageCountAdvanced \}/);
   assert.match(streaming, /recoverVisibleStreamingResponseBeforeTimeout[\s\S]*streaming-absolute-deadline/);
   assert.match(streaming, /recoverVisibleStreamingResponseBeforeTimeout[\s\S]*streaming-idle-deadline/);
 });

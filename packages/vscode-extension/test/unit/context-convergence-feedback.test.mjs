@@ -134,7 +134,6 @@ test('delivery convergence corrects twice and then stops a mutation cohort witho
   const ledger = new DeliveryConvergenceLedger();
 
   assert.equal(ledger.observe(unresolvedMutation).kind, 'continue');
-  assert.equal(ledger.observe(unresolvedMutation).kind, 'continue');
   const firstCorrection = ledger.observe(unresolvedMutation);
   assert.equal(firstCorrection.kind, 'correct');
   assert.match(firstCorrection.feedback, /replace_in_file/u);
@@ -161,16 +160,11 @@ test('delivery convergence ignores non-investigation turns and opens a new cohor
   assert.equal(ledger.observe({
     ...unresolvedMutation,
     deliveryProgressEpoch: 1,
-  }).kind, 'continue');
-  assert.equal(ledger.observe({
-    ...unresolvedMutation,
-    deliveryProgressEpoch: 1,
   }).kind, 'correct');
 });
 
 test('only accepted progress starts a fresh pure-investigation cohort', () => {
   const ledger = new DeliveryConvergenceLedger();
-  assert.equal(ledger.observe(unresolvedMutation).kind, 'continue');
   assert.equal(ledger.observe(unresolvedMutation).kind, 'continue');
   assert.equal(ledger.observe(unresolvedMutation).kind, 'correct');
 
@@ -196,7 +190,6 @@ test('actionable review repair corrects read-only drift without requiring broad 
   };
 
   assert.equal(ledger.observe(reviewRepair).kind, 'continue');
-  assert.equal(ledger.observe(reviewRepair).kind, 'continue');
   const correction = ledger.observe(reviewRepair);
   assert.equal(correction.kind, 'correct');
   assert.match(correction.feedback, /独立审查已经给出可执行反例/u);
@@ -216,7 +209,6 @@ test('actionable review repair gets one final bounded correction after dependenc
   };
 
   assert.equal(ledger.observe(reviewRepair).kind, 'continue');
-  assert.equal(ledger.observe(reviewRepair).kind, 'continue');
   assert.equal(ledger.observe(reviewRepair).kind, 'correct');
   assert.equal(ledger.observe(reviewRepair).kind, 'correct');
   assert.equal(ledger.observe(reviewRepair).kind, 'correct');
@@ -226,21 +218,22 @@ test('actionable review repair gets one final bounded correction after dependenc
   assert.match(stopped.reason, /3 次交付纠正/u);
 });
 
-test('explicit read-only work and insufficient evidence never acquire delivery pressure', () => {
+test('explicit read-only work stays open while low-density mutation investigation is still bounded', () => {
   const ledger = new DeliveryConvergenceLedger();
   for (let round = 0; round < 6; round++) {
     assert.equal(ledger.observe({
       ...unresolvedMutation,
       expectation: 'none',
     }).kind, 'continue');
-    assert.equal(ledger.observe({
-      ...unresolvedMutation,
-      gatheredEvidenceCount: 2,
-    }).kind, 'continue');
   }
+
+  const mutationLedger = new DeliveryConvergenceLedger();
+  const lowDensityMutation = { ...unresolvedMutation, gatheredEvidenceCount: 2 };
+  assert.equal(mutationLedger.observe(lowDensityMutation).kind, 'continue');
+  assert.equal(mutationLedger.observe(lowDensityMutation).kind, 'correct');
 });
 
-test('unclassified model-led investigation receives neutral pressure before it can run unbounded', () => {
+test('evidence-saturated unclassified investigation receives early neutral delivery pressure', () => {
   const ledger = new DeliveryConvergenceLedger();
   const observation = {
     ...unresolvedMutation,
@@ -248,9 +241,7 @@ test('unclassified model-led investigation receives neutral pressure before it c
     gatheredEvidenceCount: 16,
   };
 
-  for (let round = 0; round < 6; round++) {
-    assert.equal(ledger.observe(observation).kind, 'continue');
-  }
+  assert.equal(ledger.observe(observation).kind, 'continue');
   const firstCorrection = ledger.observe(observation);
   assert.equal(firstCorrection.kind, 'correct');
   assert.match(firstCorrection.feedback, /如果原始需求要求实现或修复/u);
@@ -264,6 +255,20 @@ test('unclassified model-led investigation receives neutral pressure before it c
   assert.match(stopped.reason, /3 次交付纠正/u);
 });
 
+test('sparse unclassified investigation is bounded by its round budget', () => {
+  const ledger = new DeliveryConvergenceLedger();
+  const observation = {
+    ...unresolvedMutation,
+    expectation: 'unclassified',
+    gatheredEvidenceCount: 2,
+  };
+
+  for (let round = 0; round < 5; round++) {
+    assert.equal(ledger.observe(observation).kind, 'continue');
+  }
+  assert.equal(ledger.observe(observation).kind, 'correct');
+});
+
 test('unclassified delivery gets one bounded choice round beyond a known mutation cohort', () => {
   const mutationLedger = new DeliveryConvergenceLedger();
   const unclassifiedLedger = new DeliveryConvergenceLedger();
@@ -274,14 +279,11 @@ test('unclassified delivery gets one bounded choice round beyond a known mutatio
   };
 
   assert.equal(mutationLedger.observe(unresolvedMutation).kind, 'continue');
-  assert.equal(mutationLedger.observe(unresolvedMutation).kind, 'continue');
   assert.equal(mutationLedger.observe(unresolvedMutation).kind, 'correct');
   assert.equal(mutationLedger.observe(unresolvedMutation).kind, 'correct');
   assert.equal(mutationLedger.observe(unresolvedMutation).kind, 'stop');
 
-  for (let round = 0; round < 6; round++) {
-    assert.equal(unclassifiedLedger.observe(unclassified).kind, 'continue');
-  }
+  assert.equal(unclassifiedLedger.observe(unclassified).kind, 'continue');
   assert.equal(unclassifiedLedger.observe(unclassified).kind, 'correct');
   assert.equal(unclassifiedLedger.observe(unclassified).kind, 'correct');
   assert.equal(unclassifiedLedger.observe(unclassified).kind, 'correct');
@@ -292,7 +294,6 @@ test('delivery convergence owns one final precise read and bounds suppressed inv
   const ledger = new DeliveryConvergenceLedger();
   assert.equal(ledger.contextToolAdmission(), 'open');
 
-  assert.equal(ledger.observe(unresolvedMutation).kind, 'continue');
   assert.equal(ledger.observe(unresolvedMutation).kind, 'continue');
   assert.equal(ledger.observe(unresolvedMutation).kind, 'correct');
   assert.equal(ledger.contextToolAdmission(), 'one-precise-read');

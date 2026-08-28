@@ -334,8 +334,12 @@ export function extractAuthorizedTextToolPayloads(
   session: TextToolProtocolSession,
 ): string[] {
   const payloads: string[] = [];
-  scanCompletedAuthorizedTextToolEnvelopes(text, session, (raw, start, end) => {
-    payloads.push(raw.slice(start, end).trim());
+  scanCompletedAuthorizedTextToolEnvelopes(text, session, (raw, start, end, envelopeEnd) => {
+    const detachedFenceEnd = findDetachedMarkdownFenceEnd(raw, start, end, envelopeEnd);
+    const detachedFence = detachedFenceEnd > envelopeEnd
+      ? raw.slice(envelopeEnd, detachedFenceEnd)
+      : '';
+    payloads.push(`${raw.slice(start, end)}${detachedFence}`.trim());
   });
   return payloads;
 }
@@ -351,7 +355,12 @@ export function countCompletedAuthorizedTextToolEnvelopes(
 function scanCompletedAuthorizedTextToolEnvelopes(
   text: string,
   session: TextToolProtocolSession,
-  visitPayload?: (raw: string, start: number, end: number) => void,
+  visitPayload?: (
+    raw: string,
+    start: number,
+    end: number,
+    envelopeEnd: number,
+  ) => void,
 ): number {
   const raw = String(text || '');
   const open = openMarker(session);
@@ -364,9 +373,14 @@ function scanCompletedAuthorizedTextToolEnvelopes(
     const payloadStart = start + open.length;
     const envelopeClose = findEnvelopeClose(raw, payloadStart, close);
     if (!envelopeClose) break;
-    visitPayload?.(raw, payloadStart, envelopeClose.start);
+    visitPayload?.(raw, payloadStart, envelopeClose.start, envelopeClose.end);
     count++;
-    cursor = envelopeClose.end;
+    cursor = findDetachedMarkdownFenceEnd(
+      raw,
+      payloadStart,
+      envelopeClose.start,
+      envelopeClose.end,
+    );
   }
   return count;
 }
@@ -401,7 +415,12 @@ export function stripAuthorizedTextToolEnvelopes(
       break;
     }
     visible += raw.slice(cursor, start);
-    cursor = envelopeClose.end;
+    cursor = findDetachedMarkdownFenceEnd(
+      raw,
+      start + open.length,
+      envelopeClose.start,
+      envelopeClose.end,
+    );
   }
   return visible.replace(/\n{3,}/g, '\n\n');
 }
@@ -431,6 +450,26 @@ function openMarker(session: TextToolProtocolSession): string {
 
 function closeMarker(session: TextToolProtocolSession): string {
   return `</devseek_tool_calls channel="${session.channelId}">`;
+}
+
+/**
+ * Some text Providers close the authenticated envelope one line before the
+ * Markdown fence that began inside it. Absorb only that adjacent delimiter so
+ * the authenticated payload can be checked losslessly; no trailing prose or
+ * tool syntax crosses the authority boundary.
+ */
+function findDetachedMarkdownFenceEnd(
+  text: string,
+  payloadStart: number,
+  payloadEnd: number,
+  envelopeEnd: number,
+): number {
+  const payload = text.slice(payloadStart, payloadEnd).trim();
+  if (!/^```(?:xml)?[ \t]*\r?\n/i.test(payload)) return envelopeEnd;
+  if (payload.indexOf('```', 3) >= 0) return envelopeEnd;
+
+  const detached = /^[ \t]*\r?\n[ \t]*```[ \t]*(?=\r?\n|$)/.exec(text.slice(envelopeEnd));
+  return detached ? envelopeEnd + detached[0].length : envelopeEnd;
 }
 
 function findEnvelopeClose(

@@ -12,6 +12,11 @@ export interface DeepSeekResponseExtraction {
   isLoggedIn: boolean;
 }
 
+export interface DeepSeekResponseIdentityEvidence {
+  readonly currentTurnObserved: boolean;
+  readonly assistantMessageCountAdvanced: boolean;
+}
+
 export function isLoginUrl(url: string): boolean {
   return /sign[_-]?in|login|auth|register/i.test(url);
 }
@@ -28,6 +33,19 @@ export function normalizeDeepSeekAnswer(text: string): string {
 export function isFreshDeepSeekResponseText(currentText: string, baselineText: string): boolean {
   const current = normalizeDeepSeekAnswer(currentText);
   return Boolean(current) && current !== normalizeDeepSeekAnswer(baselineText);
+}
+
+/** Correlates visible assistant text with evidence observed after prompt submission. */
+export function isCorrelatedDeepSeekResponseText(
+  currentText: string,
+  baselineText: string,
+  identity: DeepSeekResponseIdentityEvidence,
+): boolean {
+  if (!identity.currentTurnObserved) return false;
+  const current = normalizeDeepSeekAnswer(currentText);
+  if (!current) return false;
+  return identity.assistantMessageCountAdvanced
+    || current !== normalizeDeepSeekAnswer(baselineText);
 }
 
 export function extractDeepSeekResponse(snapshot: DeepSeekResponseSnapshot): DeepSeekResponseExtraction {

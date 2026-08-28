@@ -22,6 +22,7 @@ execSync(
 const req = createRequire(import.meta.url);
 const {
   extractDeepSeekResponse,
+  isCorrelatedDeepSeekResponseText,
   isFreshDeepSeekResponseText,
   isLoginUrl,
   normalizeDeepSeekAnswer,
@@ -57,6 +58,18 @@ test('ResponseExtractor: a response must be non-empty and distinct from the pre-
   assert.equal(isFreshDeepSeekResponseText('', 'previous answer'), false);
   assert.equal(isFreshDeepSeekResponseText(' previous answer\r\n', 'previous answer'), false);
   assert.equal(isFreshDeepSeekResponseText('ok', 'previous answer'), true);
+});
+
+test('ResponseExtractor: response identity requires current-turn evidence', () => {
+  const noIdentity = { currentTurnObserved: false, assistantMessageCountAdvanced: false };
+  const reusedContainer = { currentTurnObserved: true, assistantMessageCountAdvanced: false };
+  const newMessage = { currentTurnObserved: true, assistantMessageCountAdvanced: true };
+
+  assert.equal(isCorrelatedDeepSeekResponseText('new answer', 'old answer', noIdentity), false);
+  assert.equal(isCorrelatedDeepSeekResponseText('old answer', 'old answer', reusedContainer), false);
+  assert.equal(isCorrelatedDeepSeekResponseText('new answer', 'old answer', reusedContainer), true);
+  assert.equal(isCorrelatedDeepSeekResponseText('old answer', 'old answer', newMessage), true);
+  assert.equal(isCorrelatedDeepSeekResponseText('', 'old answer', newMessage), false);
 });
 
 console.log('\nBridge response extractor tests passed.\n');
