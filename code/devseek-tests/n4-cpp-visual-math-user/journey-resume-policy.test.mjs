@@ -59,6 +59,8 @@ test('repair continuation preserves the original requirement after its evidence-
   assert.match(prompt, /expectedMatcher 是验收匹配器/);
   assert.match(prompt, /minimum 写入产物/);
   assert.match(prompt, /"observedValue"/);
+  assert.match(prompt, /"verifiedChecks"/);
+  assert.match(prompt, /"public-build"/);
   assert.match(prompt, /外部证据路径仅用于说明独立验证结果/);
   assert.match(prompt, /reproduction\.command/);
   assert.match(prompt, /reproduction\.acceptanceCommand/);
@@ -104,6 +106,7 @@ test('bounded visual failure preserves workspace reproduction and spatial diagno
           semanticOwner: 'LessonController::render',
           executionPath: 'runScript -> LessonController::render -> RasterCanvas lesson renderer',
           activeLesson: 'number-line',
+          activeRenderer: 'RasterCanvas::renderNumberLine',
         },
         ppm: {
           topHalfNonDominantSampledPixels: 0,
@@ -124,6 +127,7 @@ test('bounded visual failure preserves workspace reproduction and spatial diagno
   assert.match(projection, /"renderedState"/);
   assert.match(projection, /"lesson": "number-line"/);
   assert.match(projection, /"semanticOwner": "LessonController::render"/);
+  assert.match(projection, /"activeRenderer": "RasterCanvas::renderNumberLine"/);
   assert.match(projection, /runScript -> LessonController::render -> RasterCanvas lesson renderer/);
   assert.match(projection, /"topHalfNonDominantSampledPixels": 0/);
   assert.match(projection, /"nonDominantBounds"/);

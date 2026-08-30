@@ -49,10 +49,20 @@ export function buildRepairContinuationPrompt(prompt, verification) {
 }
 
 export function projectRepairVerificationFailures(verification) {
+  const passedChecks = Array.isArray(verification?.checks)
+    ? verification.checks
+      .filter(item => item && item.ok === true)
+      .map(item => String(item.id || 'unknown-check'))
+      .slice(0, 24)
+    : [];
   const failedChecks = Array.isArray(verification?.checks)
     ? verification.checks.filter(item => item && item.ok === false).slice(0, 8)
     : [];
   if (failedChecks.length === 0) return '';
+  const verifiedContext = boundedJson({
+    verifiedChecks: passedChecks,
+    semantics: 'These checks passed on the same workspace revision. Preserve them and do not infer that their behavior is absent unless new direct evidence contradicts the verifier.',
+  }, 1_200);
   const excerpts = failedChecks.map(item => boundedJson({
     check: String(item.id || 'unknown-check'),
     status: 'failed',
@@ -62,7 +72,7 @@ export function projectRepairVerificationFailures(verification) {
     } : {}),
     observedValue: item.details ?? null,
   }, 1_600));
-  return excerpts.join('\n').slice(0, 9_000);
+  return [verifiedContext, ...excerpts].join('\n').slice(0, 9_000);
 }
 
 function boundedJson(value, limit) {

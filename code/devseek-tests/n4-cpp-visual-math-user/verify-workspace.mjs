@@ -348,6 +348,7 @@ function visualCaseDetails(result) {
       semanticOwner: 'LessonController::render',
       executionPath: 'runScript -> LessonController::render -> RasterCanvas lesson renderer',
       activeLesson: result.state?.lesson ?? null,
+      activeRenderer: activeLessonRenderer(result.state?.lesson),
     },
     ppm: stats ? {
       width: stats.width,
@@ -363,6 +364,14 @@ function visualCaseDetails(result) {
       topSampledColors: stats.topSampledColors,
     } : null,
   };
+}
+
+function activeLessonRenderer(lesson) {
+  return {
+    fractions: 'RasterCanvas::renderFraction',
+    'number-line': 'RasterCanvas::renderNumberLine',
+    quiz: 'RasterCanvas::renderQuiz',
+  }[lesson] ?? null;
 }
 
 function sourceMatches(sources, pattern) {
