@@ -2,12 +2,14 @@ import type { AgenticHistoryQualityGate } from './agentic-history';
 import {
   coalesceWrittenFileEvidence,
   isCodeArtifactPath,
+  type TerminalEvidence,
   type WrittenFileEvidence,
 } from './completion-evidence';
 import type { RequirementReviewPolicyDecision } from './requirement-review-policy';
 
 export interface RequirementReviewInput {
   qualityGate?: AgenticHistoryQualityGate;
+  validationEvidence?: readonly TerminalEvidence[];
   writtenFiles: readonly WrittenFileEvidence[];
   roundReadFiles: readonly string[];
   readEvidencePaths?: readonly string[];

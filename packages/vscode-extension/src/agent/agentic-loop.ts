@@ -827,6 +827,7 @@ export async function runAgenticLoop(
     const unresolvedProviderActionFeedback = providerRecovery.unresolvedToolActionFeedback(textToolProtocol);
     if (unresolvedProviderActionFeedback) loopWarnings.push(unresolvedProviderActionFeedback);
     const progressEpochBeforeTools = progressEpoch;
+    const terminalEvidenceCountBeforeRound = allTerminalEvidence.length;
 
     const loopRes = await executeScheduledToolLoop(
       toolsToExecute,
@@ -951,7 +952,10 @@ export async function runAgenticLoop(
     }
     const pendingAutoValidationWrites = allWrittenFiles.slice(autoValidatedWriteCount);
     if (pendingAutoValidationWrites.length > 0) {
-      sourceValidation.beginWriteCohort(allWrittenFiles.length);
+      sourceValidation.beginWriteCohort(
+        allWrittenFiles.length,
+        terminalEvidenceCountBeforeRound,
+      );
     }
     const deferAutoValidation = shouldDeferAgentAutoValidation({
       pendingWriteCount: pendingAutoValidationWrites.length,
@@ -1132,6 +1136,7 @@ export async function runAgenticLoop(
     })) {
       const reviewOutcome = await requirementReview.request({
         qualityGate: sourceValidation.qualityGateForCurrentSource(),
+        validationEvidence: sourceValidation.terminalEvidenceForCurrentSource(allTerminalEvidence),
         writtenFiles: allWrittenFiles,
         roundReadFiles: loopRes.readFiles ?? [],
         readEvidencePaths: [...allReadEvidencePaths],

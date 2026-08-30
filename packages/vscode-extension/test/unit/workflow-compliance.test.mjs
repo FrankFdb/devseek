@@ -2486,6 +2486,8 @@ test('Architecture: validated source changes require fresh source review before 
   const reviewRepairWindow = src('src/agent/requirement-review-repair-window.ts');
   const executionEvidence = src('src/agent/agentic-execution-evidence.ts');
   const contextConvergence = src('src/agent/context-convergence-feedback.ts');
+  const sourceValidation = src('src/agent/source-validation-ledger.ts');
+  const validationEvidence = src('src/agent/validation-evidence-semantics.ts');
 
   assertContains(
     reviewNoToolRecovery,
@@ -2763,6 +2765,26 @@ test('Architecture: validated source changes require fresh source review before 
     agenticLoop,
     'hostFinalSourceEvidenceReady: sourceValidation.currentSourceIsValidated()',
     'validated final source must be eligible for host-captured isolated review instead of provider read_file loops',
+  );
+  assertContains(
+    agenticLoop,
+    'validationEvidence: sourceValidation.terminalEvidenceForCurrentSource(allTerminalEvidence)',
+    'isolated review must receive the complete current-source validation frontier',
+  );
+  assertContains(
+    sourceValidation,
+    'evidence.slice(this.snapshot.terminalEvidenceStartIndex)',
+    'source validation must exclude terminal facts that predate the current write cohort',
+  );
+  assertContains(
+    providerReview,
+    'renderCurrentCohortValidationFact({',
+    'both independent review passes and finding adjudication must share one host validation fact',
+  );
+  assertContains(
+    validationEvidence,
+    'exact current-cohort command directly supersedes an older failure',
+    'current command success must defeat a stale historical counterexample of the same command',
   );
   assertContains(
     reviewLedger,

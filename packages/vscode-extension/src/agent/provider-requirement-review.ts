@@ -19,6 +19,7 @@ import {
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import type { CodingKernelTaskContract } from '@devseek-netai/shared';
 import { isCodeArtifactPath } from './completion-evidence';
+import { renderCurrentCohortValidationFact } from './validation-evidence-semantics';
 
 export interface ProviderRequirementReviewInput {
   userPrompt: () => string;
@@ -114,7 +115,10 @@ export function createProviderRequirementReviewService(
         workspaceRoot: input.workspaceRoot,
         sourcePaths: candidate.sourcePaths,
         contextPaths: candidate.contextPaths,
-        validationSummary: reviewInput.qualityGate?.summary,
+        validationSummary: renderCurrentCohortValidationFact({
+          qualityGate: reviewInput.qualityGate,
+          terminalEvidence: reviewInput.validationEvidence,
+        }),
       };
       const proposedDecision = await reviewer.review(candidateInput);
       const decision = await adjudicator.adjudicate({

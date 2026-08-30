@@ -59,3 +59,37 @@ test('manual-review validation cannot inherit a prior passing gate', () => {
   assert.equal(ledger.qualityGateForCurrentSource(), undefined);
   assert.equal(ledger.currentSourceIsValidated(), false);
 });
+
+test('current-source validation facts exclude pre-write failures and retain the superseding rerun', () => {
+  const ledger = new SourceValidationLedger();
+  const oldFailure = {
+    command: 'node verify-render.mjs',
+    kind: 'run',
+    ok: false,
+    exitCode: 1,
+  };
+  const currentFailure = { ...oldFailure };
+  const currentSuccess = { ...oldFailure, ok: true, exitCode: 0 };
+  const evidence = [oldFailure, currentFailure, currentSuccess];
+
+  ledger.beginWriteCohort(1, 1);
+  ledger.settleWriteCohort(1, passedGate);
+
+  assert.deepEqual(ledger.terminalEvidenceForCurrentSource(evidence), [currentSuccess]);
+});
+
+test('a newer write invalidates the prior cohort terminal facts', () => {
+  const ledger = new SourceValidationLedger();
+  const evidence = [{
+    command: 'npm test',
+    kind: 'test',
+    ok: true,
+    exitCode: 0,
+  }];
+  ledger.beginWriteCohort(1, 0);
+  ledger.settleWriteCohort(1, passedGate);
+  assert.equal(ledger.terminalEvidenceForCurrentSource(evidence).length, 1);
+
+  ledger.beginWriteCohort(2, 1);
+  assert.deepEqual(ledger.terminalEvidenceForCurrentSource(evidence), []);
+});
