@@ -117,7 +117,7 @@ test('agentic history budget delegates over-budget pruning to the canonical comp
   ]);
 });
 
-test('agentic tool feedback fairly preserves every parallel read with an exact continuation', () => {
+test('agentic tool feedback fairly preserves every parallel read as a coherent continuation', () => {
   const segments = Array.from({ length: 9 }, (_, index) => readFileFeedback(
     `/repo/src/unit-${index + 1}.cpp`,
     140,
@@ -139,15 +139,15 @@ test('agentic tool feedback exposes only source lines actually delivered to the 
 
   assert.ok(projection.message.length <= 8_000);
   assert.match(projection.message, /文件行 \d+-\d+ 存在但尚未交付给模型/u);
-  assert.equal(projection.readExposures.length, 2);
-  assert.deepEqual(projection.readExposures.map(exposure => exposure.path), [
-    '/repo/src/main.cpp',
-    '/repo/src/main.cpp',
-  ]);
+  assert.equal(projection.readExposures.length, 1);
+  assert.deepEqual(projection.readExposures.map(exposure => exposure.path), ['/repo/src/main.cpp']);
   assert.equal(projection.readExposures[0].startLine, 1);
-  assert.equal(projection.readExposures[1].endLine, 280);
-  assert.deepEqual(projection.readExposures.map(exposure => exposure.sourceSegmentIndex), [0, 0]);
-  assert.ok(projection.readExposures[0].endLine + 1 < projection.readExposures[1].startLine);
+  assert.ok(projection.readExposures[0].endLine < 280);
+  assert.equal(projection.readExposures[0].sourceRangeStartLine, 1);
+  assert.equal(projection.readExposures[0].sourceRangeEndLine, 280);
+  assert.deepEqual(projection.readExposures.map(exposure => exposure.sourceSegmentIndex), [0]);
+  assert.match(projection.message, /line 1: source-context/u);
+  assert.doesNotMatch(projection.message, /line 280: source-context/u);
 });
 
 test('agentic tool feedback retains source segment identity across empty feedback', () => {

@@ -247,6 +247,30 @@ test('projected read debt corrects a stale same-file range and closes after visi
   assert.equal(settled.inputOverrides.size, 0);
 });
 
+test('coherent read projection records the declared undelivered tail as continuation debt', () => {
+  const ledger = new ContextInvestigationLedger('/workspace');
+  ledger.recordVisibleReadExposures([{
+    path: '/workspace/src/controller.cpp',
+    startLine: 40,
+    endLine: 96,
+    totalLines: 369,
+    sourceSegmentIndex: 0,
+    sourceRangeStartLine: 40,
+    sourceRangeEndLine: 240,
+  }], visibleRead('/workspace/src/controller.cpp', 0, 7));
+
+  const continuation = ledger.reconcileProjectedReadContinuations([{
+    name: 'read_file',
+    input: { path: 'src/controller.cpp', startLine: 40, endLine: 96 },
+  }]);
+
+  assert.deepEqual(continuation.inputOverrides.get(0), {
+    path: 'src/controller.cpp',
+    startLine: 97,
+    endLine: 240,
+  });
+});
+
 test('separate partial reads never create host-owned projected read debt', () => {
   const ledger = new ContextInvestigationLedger('/workspace');
   ledger.recordVisibleReadExposures([

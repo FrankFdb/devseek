@@ -7,7 +7,8 @@ export interface SourceSanityIssue {
     | 'collapsed-preprocessor-directive'
     | 'collapsed-line-comment-code'
     | 'top-level-source-statement-fragment'
-    | 'truncating-source-fragment-overwrite';
+    | 'truncating-source-fragment-overwrite'
+    | 'unbalanced-structural-brace';
   line: number;
   detail: string;
 }
@@ -47,7 +48,8 @@ export function findSourceOverwriteSanityIssue(
   newContent: string,
 ): SourceSanityIssue | undefined {
   if (!CPP_SOURCE_EXT_RE.test(filePath || '')) return undefined;
-  return findCppTruncatingFragmentOverwrite(oldContent || '', newContent || '');
+  return findCppTruncatingFragmentOverwrite(oldContent || '', newContent || '')
+    || findCppStructuralBraceRegression(oldContent || '', newContent || '');
 }
 
 function findCppStructuredDataMismatch(content: string): SourceSanityIssue | undefined {
@@ -93,6 +95,101 @@ function findCppTruncatingFragmentOverwrite(oldContent: string, newContent: stri
     line: 1,
     detail: '疑似把 C/C++ 源码片段当作完整 write_file 内容覆盖已有文件。请先 read_file 获取当前文件，再用 replace_in_file 或 apply_patch 精确修改片段，或发送包含 include/namespace/class/function 等完整结构的整文件内容。',
   };
+}
+
+interface CppStructuralBraceIssue {
+  readonly line: number;
+  readonly unexpectedClosing: boolean;
+}
+
+function findCppStructuralBraceRegression(
+  oldContent: string,
+  newContent: string,
+): SourceSanityIssue | undefined {
+  if (scanCppStructuralBraces(oldContent)) return undefined;
+  const regression = scanCppStructuralBraces(newContent);
+  if (!regression) return undefined;
+  return {
+    kind: 'unbalanced-structural-brace',
+    line: regression.line,
+    detail: regression.unexpectedClosing
+      ? `第 ${regression.line} 行附近出现无对应开括号的 }。当前文件在修改前结构平衡，请缩小 apply_patch/replace_in_file 范围并重新读取相关函数与 namespace 边界。`
+      : `第 ${regression.line} 行附近的 { 在文件结束前没有闭合。当前文件在修改前结构平衡，请补齐真实结构，不能提交未闭合的函数、类型或 namespace。`,
+  };
+}
+
+function scanCppStructuralBraces(content: string): CppStructuralBraceIssue | undefined {
+  const openingLines: number[] = [];
+  let line = 1;
+  let inLineComment = false;
+  let inBlockComment = false;
+  let inString = false;
+  let inChar = false;
+  let escape = false;
+
+  for (let index = 0; index < content.length; index += 1) {
+    const ch = content[index];
+    const next = content[index + 1];
+    if (ch === '\n') {
+      line += 1;
+      inLineComment = false;
+      if (!inBlockComment && !inString && !inChar) escape = false;
+      continue;
+    }
+    if (inLineComment) continue;
+    if (inBlockComment) {
+      if (ch === '*' && next === '/') {
+        inBlockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+    if (inString || inChar) {
+      if (escape) escape = false;
+      else if (ch === '\\') escape = true;
+      else if ((inString && ch === '"') || (inChar && ch === "'")) {
+        inString = false;
+        inChar = false;
+      }
+      continue;
+    }
+    if (ch === '/' && next === '/') {
+      inLineComment = true;
+      index += 1;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      inBlockComment = true;
+      index += 1;
+      continue;
+    }
+    if (ch === 'R' && next === '"') {
+      const rawEnd = findRawStringLiteralEnd(content, index);
+      if (rawEnd !== -1) {
+        line += countNewlines(content.slice(index, rawEnd + 1));
+        index = rawEnd;
+        continue;
+      }
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "'") {
+      inChar = true;
+      continue;
+    }
+    if (ch === '{') {
+      openingLines.push(line);
+      continue;
+    }
+    if (ch !== '}') continue;
+    if (openingLines.length === 0) return { line, unexpectedClosing: true };
+    openingLines.pop();
+  }
+
+  const openingLine = openingLines[openingLines.length - 1];
+  return openingLine === undefined ? undefined : { line: openingLine, unexpectedClosing: false };
 }
 
 function countNonBlankLines(content: string): number {

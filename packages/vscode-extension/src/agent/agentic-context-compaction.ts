@@ -365,57 +365,43 @@ function compactReadFileFeedback(
     lines[0],
     '[file_context]',
     `returnedLines=${returnedMatch[1]}-${returnedMatch[2]}/${returnedMatch[3]}`,
-    'contextProjection=devseek-fair-tool-feedback/v1',
+    'contextProjection=devseek-coherent-tool-feedback/v2',
     '[/file_context]',
   ];
-  const render = (headCount: number, tailCount: number): string => {
-    const omittedStart = returnedStart + headCount;
-    const omittedEnd = returnedEnd - tailCount;
-    const notice = omittedStart <= omittedEnd
-      ? `[DevSeek 读取结果 ${index + 1}/${total} 已压缩；文件行 ${omittedStart}-${omittedEnd} 存在但尚未交付给模型，严禁据此判断代码缺失或修改该文件。必须继续：read_file 使用同一 path，startLine=${omittedStart}, endLine=${omittedEnd}。]`
+  const render = (visibleLineCount: number): string => {
+    const omittedStart = returnedStart + visibleLineCount;
+    const notice = omittedStart <= returnedEnd
+      ? `[DevSeek 读取结果 ${index + 1}/${total} 已压缩；文件行 ${omittedStart}-${returnedEnd} 存在但尚未交付给模型，严禁据此判断代码缺失或修改该文件。必须继续：read_file 使用同一 path，startLine=${omittedStart}, endLine=${returnedEnd}。]`
       : '';
     return [
       ...identity,
-      ...sourceLines.slice(0, headCount),
+      ...sourceLines.slice(0, visibleLineCount),
       notice,
-      ...sourceLines.slice(sourceLines.length - tailCount),
     ].filter(Boolean).join('\n');
   };
 
-  let headCount = 0;
-  let tailCount = 0;
-  let projected = render(headCount, tailCount);
+  let visibleLineCount = 0;
+  let projected = render(visibleLineCount);
   if (projected.length > maxChars) {
     const notice = `[DevSeek 读取结果 ${index + 1}/${total} 已压缩；继续：read_file 使用同一 path 和更小行范围。]`;
     return { content: retainFeedbackHeadAndTail(lines[0], notice, maxChars), readExposures: [] };
   }
-  while (headCount + tailCount < sourceLines.length) {
-    const growHead = headCount <= tailCount;
-    const nextHead = headCount + (growHead ? 1 : 0);
-    const nextTail = tailCount + (growHead ? 0 : 1);
-    const candidate = render(nextHead, nextTail);
+  while (visibleLineCount < sourceLines.length) {
+    const candidate = render(visibleLineCount + 1);
     if (candidate.length > maxChars) break;
-    headCount = nextHead;
-    tailCount = nextTail;
+    visibleLineCount += 1;
     projected = candidate;
   }
   const readExposures: ProviderVisibleReadExposure[] = [];
-  if (headCount > 0) {
+  if (visibleLineCount > 0) {
     readExposures.push({
       path: pathMatch[1],
       startLine: returnedStart,
-      endLine: returnedStart + headCount - 1,
+      endLine: returnedStart + visibleLineCount - 1,
       totalLines: Number(returnedMatch[3]),
       sourceSegmentIndex,
-    });
-  }
-  if (tailCount > 0) {
-    readExposures.push({
-      path: pathMatch[1],
-      startLine: returnedEnd - tailCount + 1,
-      endLine: returnedEnd,
-      totalLines: Number(returnedMatch[3]),
-      sourceSegmentIndex,
+      sourceRangeStartLine: returnedStart,
+      sourceRangeEndLine: returnedEnd,
     });
   }
   return { content: projected, readExposures };
@@ -434,6 +420,8 @@ function parseCompleteReadExposure(
     endLine: Number(returned[2]),
     totalLines: Number(returned[3]),
     sourceSegmentIndex,
+    sourceRangeStartLine: Number(returned[1]),
+    sourceRangeEndLine: Number(returned[2]),
   }];
 }
 

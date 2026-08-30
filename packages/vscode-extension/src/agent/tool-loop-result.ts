@@ -40,6 +40,9 @@ export interface ProviderVisibleReadExposure {
   endLine: number;
   totalLines: number;
   sourceSegmentIndex: number;
+  /** Full line range returned by the host before bounded Provider projection. */
+  sourceRangeStartLine?: number;
+  sourceRangeEndLine?: number;
 }
 
 export interface ToolFileAccessEvent {

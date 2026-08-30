@@ -164,8 +164,7 @@ export class PendingEditCoordinator {
   }
 
   beginReviewScope(webview: vscode.Webview): void {
-    const staleRecords = this.pendingEdits.resetForNewScope();
-    for (const record of staleRecords) closePendingEditDiffTabAsync(record);
+    for (const record of this.pendingEdits.values()) closePendingEditDiffTabAsync(record);
     this.diffDecoManager?.deactivateAll();
     this.post(webview);
     webview.postMessage({ type: 'todoUpdate', items: [] });

@@ -304,22 +304,50 @@ export class ContextInvestigationLedger {
     }
     for (const group of groups.values()) {
       const sorted = [...group].sort((left, right) => left.startLine - right.startLine);
-      for (let index = 1; index < sorted.length; index += 1) {
-        const left = sorted[index - 1];
-        const right = sorted[index];
-        if (left.totalLines !== right.totalLines || left.endLine + 1 >= right.startLine) continue;
-        const gap: ProjectedReadGap = {
-          startLine: left.endLine + 1,
-          endLine: right.startLine - 1,
-          totalLines: left.totalLines,
-          pathRevision: this.pathRevision(left.path),
-        };
-        const current = this.projectedReadGaps.get(left.path) ?? [];
+      const first = sorted[0];
+      if (!first) continue;
+      const declaredRange = sorted.every(exposure => (
+        Number.isSafeInteger(exposure.sourceRangeStartLine)
+        && Number.isSafeInteger(exposure.sourceRangeEndLine)
+        && exposure.sourceRangeStartLine! >= 1
+        && exposure.sourceRangeStartLine! <= exposure.startLine
+        && exposure.sourceRangeEndLine! >= exposure.endLine
+        && exposure.sourceRangeEndLine! <= exposure.totalLines
+        && exposure.totalLines === first.totalLines
+        && exposure.sourceRangeStartLine === first.sourceRangeStartLine
+        && exposure.sourceRangeEndLine === first.sourceRangeEndLine
+      ));
+      const gaps = declaredRange
+        ? sorted.reduce<ProjectedReadGap[]>(
+          (remaining, exposure) => remaining.flatMap(gap => subtractRange(
+            gap,
+            exposure.startLine,
+            exposure.endLine,
+          )),
+          [{
+            startLine: first.sourceRangeStartLine!,
+            endLine: first.sourceRangeEndLine!,
+            totalLines: first.totalLines,
+            pathRevision: this.pathRevision(first.path),
+          }],
+        )
+        : sorted.slice(1).flatMap((right, index) => {
+          const left = sorted[index];
+          if (left.totalLines !== right.totalLines || left.endLine + 1 >= right.startLine) return [];
+          return [{
+            startLine: left.endLine + 1,
+            endLine: right.startLine - 1,
+            totalLines: left.totalLines,
+            pathRevision: this.pathRevision(left.path),
+          }];
+        });
+      const current = this.projectedReadGaps.get(first.path) ?? [];
+      for (const gap of gaps) {
         if (!current.some(existing => existing.startLine === gap.startLine
           && existing.endLine === gap.endLine
           && existing.pathRevision === gap.pathRevision)) current.push(gap);
-        this.projectedReadGaps.set(left.path, current);
       }
+      this.projectedReadGaps.set(first.path, current);
     }
   }
 

@@ -1044,15 +1044,16 @@ test('Agentic loop: workspace writes use the canonical verification pipeline', (
   assertContains(autoValidation, '自动验证命令未通过，不能把编译/运行/测试标记为完成', 'failed automatic validation must block task completion');
 });
 
-test('Agent run boundaries reset stale todo and pending-edit review scope', () => {
+test('Agent run boundaries reset stale todos while retaining unresolved pending edits', () => {
   const ext = src('src/extension.ts');
   const presenter = src('src/ui/agent-turn-presenter.ts');
   const pending = src('src/app/pending-edit-service.ts');
   const coordinator = src('src/pending-edit-coordinator.ts');
   const webview = webviewRuntime();
-  assertContains(pending, 'resetForNewScope', 'pending edit service must expose a new review-scope reset');
+  assertDoesNotContain(pending, 'resetForNewScope', 'new turns must not discard unresolved pending-edit baselines');
   assertContains(ext, 'new AgentTurnPresenter(webview, pendingEditCoordinator, agentRunContext)', 'agent runs must use the turn presenter boundary');
-  assertContains(presenter, 'this.pendingEdits.beginReviewScope(this.webview)', 'agent runs must start with a fresh file-review scope');
+  assertContains(presenter, 'this.pendingEdits.beginReviewScope(this.webview)', 'agent runs must refresh the file-review surface');
+  assertContains(coordinator, 'for (const record of this.pendingEdits.values())', 'review refresh must preserve and repost unresolved edits');
   assertContains(coordinator, "webview.postMessage({ type: 'todoUpdate', items: [] })", 'agent runs must clear stale visible todos at start');
   assertContains(webview, 'if (!items || !items.length)', 'webview todo handler must accept empty todo reset messages');
   assertContains(webview, "todosWidgetEl.style.display = 'none'", 'empty todo reset must hide the stale todo widget');

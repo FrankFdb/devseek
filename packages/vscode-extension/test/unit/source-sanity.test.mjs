@@ -23,7 +23,11 @@ execSync(
 );
 
 const req = createRequire(import.meta.url);
-const { findGeneratedSourceSanityIssue, repairGeneratedSourceTransportEscapes } = req(bundlePath);
+const {
+  findGeneratedSourceSanityIssue,
+  findSourceOverwriteSanityIssue,
+  repairGeneratedSourceTransportEscapes,
+} = req(bundlePath);
 
 test('source sanity detects raw newlines inside C++ string literals', () => {
   const issue = findGeneratedSourceSanityIssue('main.cpp', [
@@ -202,4 +206,41 @@ test('source sanity ignores non C/C++ files', () => {
     findGeneratedSourceSanityIssue('note.md', '```cpp\nstd::cout << "\nbroken";\n```\n'),
     undefined,
   );
+});
+
+test('source overwrite sanity rejects a new unmatched closing C++ brace', () => {
+  const oldContent = 'namespace demo {\nint value() { return 1; }\n}\n';
+  const newContent = 'namespace demo {\nint value() { return 2; }\n}\n}\n';
+
+  const issue = findSourceOverwriteSanityIssue('value.cpp', oldContent, newContent);
+
+  assert.equal(issue?.kind, 'unbalanced-structural-brace');
+  assert.equal(issue?.line, 4);
+  assert.match(issue?.detail ?? '', /无对应开括号/u);
+});
+
+test('source overwrite sanity rejects a new unclosed C++ scope', () => {
+  const oldContent = 'namespace demo {\nint value() { return 1; }\n}\n';
+  const newContent = 'namespace demo {\nint value() { return 2; }\n';
+
+  const issue = findSourceOverwriteSanityIssue('value.cpp', oldContent, newContent);
+
+  assert.equal(issue?.kind, 'unbalanced-structural-brace');
+  assert.equal(issue?.line, 1);
+  assert.match(issue?.detail ?? '', /没有闭合/u);
+});
+
+test('source overwrite sanity ignores braces in C++ comments and literals', () => {
+  const oldContent = 'int value() { return 1; }\n';
+  const newContent = [
+    'int value() {',
+    '  // } remains documentation',
+    '  const char* text = "{";',
+    '  const char* raw = R"tag(})tag";',
+    "  const char brace = '}';",
+    '  return 2;',
+    '}',
+  ].join('\n');
+
+  assert.equal(findSourceOverwriteSanityIssue('value.cpp', oldContent, newContent), undefined);
 });
