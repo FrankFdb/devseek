@@ -2907,7 +2907,7 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   assertContains(agentProviderRecovery, '最多 6 个只读工具', 'provider recovery must force small context batches');
   assertContains(agentProviderRecovery, '最多 1 个写入工具', 'provider recovery must force small write batches');
   assertContains(agentProviderRecovery, '不要引用、续写或执行上一轮损坏文本', 'provider recovery must never trust corrupted response text');
-  assertContains(agentProviderRecovery, 'projectCurrentTerminalEvidence', 'provider recovery must not replay validation failures cleared by newer evidence');
+  assertContains(agentProviderRecovery, 'resolveCurrentTerminalEvidenceState', 'provider recovery must consume the canonical current terminal state instead of replaying cleared failures');
   assertContains(agentProviderRecovery, 'shouldResetProviderSessionForRecovery', 'provider recovery must decide when a web session is wedged');
   assertContains(agenticLoop, 'parseAgentProviderFailure(error)', 'agentic loop must catch provider corruption before extension-level failure');
   assertContains(agenticProviderRecoveryBoundary, 'buildAgentProviderRecoveryPrompt', 'agentic provider recovery boundary must recover inside the current task from safe facts');

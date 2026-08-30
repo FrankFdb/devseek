@@ -1,8 +1,7 @@
 import type { ChatMessage } from '../llm/types';
 import { canAgentRecoverDeepSeekStreamError } from '@devseek-netai/shared';
 import {
-  findBlockingTerminalFailureEvidence,
-  projectCurrentTerminalEvidence,
+  resolveCurrentTerminalEvidenceState,
   type TerminalEvidence,
   type WrittenFileEvidence,
 } from './completion-evidence';
@@ -166,9 +165,10 @@ export function describeAgentProviderRecoveryForUser(
 export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPromptInput): ChatMessage {
   const readPaths = summarizeList(input.readEvidencePaths, 12);
   const writtenPaths = summarizeList(input.writtenFiles.map(file => file.path), 12);
-  const blockingTerminalFailure = findBlockingTerminalFailureEvidence(input.terminalEvidence);
+  const terminalState = resolveCurrentTerminalEvidenceState(input.terminalEvidence);
+  const blockingTerminalFailure = terminalState.blockingFailure;
   const terminalFacts = summarizeList(
-    projectCurrentTerminalEvidence(input.terminalEvidence).map(evidence => [
+    terminalState.facts.map(evidence => [
       `${isDiagnosticProjectionCommand(evidence.command)
         ? 'diagnostic-observation'
         : evidence.ok ? 'ok' : 'active-failure'}: ${evidence.command}`,
@@ -218,6 +218,9 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
     })
     : '';
   const activeRepairContext = truncateMultiline(input.activeRepairContext ?? '', 6000);
+  const validationPrecedenceLine = terminalState.supersedingSuccess
+    ? `当前验证状态：后续成功命令 ${truncateSingleLine(terminalState.supersedingSuccess.command, 300)} 已清除先前同类失败。原始任务文本和历史输出中的旧诊断仅作审计，不得继续调查或修复；只有新的失败证据才能重新激活。`
+    : '';
 
   return {
     role: 'user',
@@ -234,6 +237,7 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
       readEvidenceLine,
       `已写入文件：${writtenPaths || '暂无'}`,
       `终端/验证证据：${terminalFacts || '暂无'}`,
+      validationPrecedenceLine,
       `模型计划清单（可能滞后，只用于定位未结算步骤，不能据此断言源码缺少实现）：${todos || '暂无'}`,
       activeRepairContext
         ? `\n当前活动修复契约（由独立需求审查账本保留，恢复会话必须继续完成）：\n${activeRepairContext}`
@@ -245,8 +249,10 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
       '恢复要求：',
       `- ${sideEffectLine}`,
       resetProviderSession ? '- 本轮会重建 Provider 会话：必须沿用当前消息历史和下列已验证事实继续，不得要求用户重新发送需求。' : '',
-      resetProviderSession
-        ? '- 若原任务包含编译或链接诊断，重建会话的首次 read_file 必须读取诊断直接指向的生产源码调用点；不要先读取头文件声明、测试入口或需求文档。'
+      resetProviderSession && blockingTerminalFailure
+        ? '- 上方活动失败仍是当前最高优先级；首次工具必须直接针对该失败。若诊断指向生产源码，先读取对应调用点，不要先读取头文件声明、测试入口或需求文档。'
+        : resetProviderSession && terminalState.supersedingSuccess
+          ? '- 最新成功验证已使旧诊断失效；不得因原始任务仍含旧错误文本而回退到已完成的修复。'
         : '',
       blockingTerminalFailure
         ? '- 不要在恢复轮重新规划 Todo；先清除活动验证失败。'

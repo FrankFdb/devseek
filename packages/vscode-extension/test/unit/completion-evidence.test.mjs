@@ -185,7 +185,24 @@ test('diagnostic filter commands enrich but cannot replace or clear the public v
   assert.match(active.detail, /raster_canvas\.cpp:252/);
   assert.deepEqual(
     projectCurrentTerminalEvidence([publicFailure, filteredFailure, filteredSuccess]),
-    [filteredSuccess, active],
+    [active],
+  );
+});
+
+test('successful diagnostic projections are not replayed after canonical validation clears the failure', () => {
+  const publicFailure = terminal('./test.sh', 'run', false, 2, 'build failed');
+  const diagnosticObservation = terminal(
+    './test.sh 2>&1 | head -100',
+    'run',
+    true,
+    0,
+    'src/raster_canvas.cpp:320: error: no declaration matches',
+  );
+  const canonicalSuccess = terminal('bash test.sh', 'run', true, 0, 'All tests passed!');
+
+  assert.deepEqual(
+    projectCurrentTerminalEvidence([publicFailure, diagnosticObservation, canonicalSuccess]),
+    [canonicalSuccess],
   );
 });
 

@@ -112,7 +112,8 @@ test('Agent provider recovery prompt keeps only durable facts and forces small t
   assert.match(prompt, /重建会话不包含先前只读工具返回的文件内容/);
   assert.match(prompt, /最多 3 个不同的必要路径或行区间/);
   assert.match(prompt, /相同区间只重放一次/);
-  assert.match(prompt, /首次 read_file 必须读取诊断直接指向的生产源码调用点/);
+  assert.match(prompt, /首次工具必须直接针对该失败/);
+  assert.match(prompt, /若诊断指向生产源码，先读取对应调用点/);
   assert.match(prompt, /不要先读取头文件声明、测试入口或需求文档/);
   assert.doesNotMatch(prompt, /不要重复已读取路径/);
   assert.match(prompt, /未执行动作恢复轮只允许 1 个具体工具/);
@@ -167,6 +168,46 @@ test('Agent provider recovery omits validation failures cleared by newer success
   assert.doesNotMatch(prompt, /failed: cmake --build build/);
   assert.match(prompt, /ok: cmake --build build2/);
   assert.match(prompt, /ok: \.\/build2\/math_visual_lab --self-test/);
+  assert.match(prompt, /已清除先前同类失败/);
+  assert.match(prompt, /旧诊断仅作审计/);
+  assert.doesNotMatch(prompt, /首次工具必须直接针对该失败/);
+});
+
+test('Agent provider recovery does not replay successful diagnostic projections as current facts', () => {
+  const failure = parseAgentProviderFailure(
+    new Error('RESPONSE_CORRUPTED:incomplete-tool-block:Tool block is incomplete.'),
+  );
+  const prompt = buildAgentProviderRecoveryPrompt({
+    userPrompt: '上一轮编译失败，请继续完成剩余视觉验收',
+    failure,
+    recoveryAttempt: 1,
+    maxRecoveryAttempts: 3,
+    promptRequiresTools: true,
+    currentTodos: [],
+    readEvidencePaths: ['src/raster_canvas.cpp'],
+    writtenFiles: [],
+    terminalEvidence: [
+      { command: './test.sh', kind: 'run', ok: false, exitCode: 2, detail: 'invalid use of this' },
+      {
+        command: './test.sh 2>&1 | head -100',
+        kind: 'run',
+        ok: true,
+        exitCode: 0,
+        detail: 'src/raster_canvas.cpp:475: error: invalid use of this',
+      },
+      { command: 'bash test.sh', kind: 'run', ok: true, exitCode: 0, detail: 'All tests passed!' },
+    ],
+    textToolProtocol: {
+      version: 'devseek.text-tools/v1',
+      channelId: 'superseded-diagnostic-channel',
+    },
+  }).content;
+
+  assert.match(prompt, /ok: bash test\.sh/);
+  assert.match(prompt, /旧诊断仅作审计/);
+  assert.doesNotMatch(prompt, /diagnostic-observation/);
+  assert.doesNotMatch(prompt, /invalid use of this/);
+  assert.doesNotMatch(prompt, /首次工具必须直接针对该失败/);
 });
 
 test('Agent provider recovery prompt tightens the last retry', () => {

@@ -44,6 +44,12 @@ export type TerminalEvidence = {
   reviewRequired?: boolean;
 };
 
+export interface CurrentTerminalEvidenceState {
+  readonly facts: readonly TerminalEvidence[];
+  readonly blockingFailure?: TerminalEvidence;
+  readonly supersedingSuccess?: TerminalEvidence;
+}
+
 const READ_ONLY_TERMINAL_EVIDENCE_RE = /\b(?:cat|ls|test|grep|head|tail|sed|wc|stat|file|find|file-readback|workspace-readback|artifact-readback)\b/i;
 const FILE_CONTENT_TERMINAL_EVIDENCE_RE = /\b(?:cat|grep|head|tail|sed)\b/i;
 
@@ -211,21 +217,46 @@ export function isBlockingTerminalFailureEvidence(evidence: TerminalEvidence): b
 export function findBlockingTerminalFailureEvidence(
   evidence: readonly TerminalEvidence[] | undefined,
 ): TerminalEvidence | undefined {
-  if (!evidence?.length) return undefined;
+  return resolveCurrentTerminalEvidenceState(evidence ?? []).blockingFailure;
+}
+
+/**
+ * Resolves the current terminal state in execution order. Diagnostic projection
+ * commands can enrich failures, but they are never durable success evidence.
+ */
+export function resolveCurrentTerminalEvidenceState(
+  evidence: readonly TerminalEvidence[],
+  maxSuccessfulFacts = 3,
+): CurrentTerminalEvidenceState {
   let blockingFailure: TerminalEvidence | undefined;
+  let supersedingSuccess: TerminalEvidence | undefined;
   for (const item of evidence) {
     if (item.reviewRequired) {
       blockingFailure = undefined;
+      supersedingSuccess = undefined;
       continue;
     }
     if (blockingFailure && terminalSuccessClearsFailure(item, blockingFailure)) {
       blockingFailure = undefined;
+      supersedingSuccess = item;
     }
     if (isBlockingTerminalFailureEvidence(item)) {
       blockingFailure = mergeDiagnosticProjection(blockingFailure, item);
+      supersedingSuccess = undefined;
+      continue;
+    }
+    if (supersedingSuccess && isDurableSuccessfulTerminalFact(item)) {
+      supersedingSuccess = item;
     }
   }
-  return blockingFailure;
+  const successfulFacts = evidence
+    .filter(isDurableSuccessfulTerminalFact)
+    .slice(-maxSuccessfulFacts);
+  return {
+    facts: blockingFailure ? [...successfulFacts, blockingFailure] : successfulFacts,
+    ...(blockingFailure ? { blockingFailure } : {}),
+    ...(supersedingSuccess ? { supersedingSuccess } : {}),
+  };
 }
 
 /** Projects current durable state without replaying failures cleared by later validation. */
@@ -233,9 +264,11 @@ export function projectCurrentTerminalEvidence(
   evidence: readonly TerminalEvidence[],
   maxSuccessfulFacts = 3,
 ): TerminalEvidence[] {
-  const blockingFailure = findBlockingTerminalFailureEvidence(evidence);
-  const successfulFacts = evidence.filter(item => item.ok).slice(-maxSuccessfulFacts);
-  return blockingFailure ? [...successfulFacts, blockingFailure] : successfulFacts;
+  return [...resolveCurrentTerminalEvidenceState(evidence, maxSuccessfulFacts).facts];
+}
+
+function isDurableSuccessfulTerminalFact(evidence: TerminalEvidence): boolean {
+  return evidence.ok && !isDiagnosticProjectionCommand(evidence.command);
 }
 
 function terminalSuccessClearsFailure(success: TerminalEvidence, failure: TerminalEvidence): boolean {
