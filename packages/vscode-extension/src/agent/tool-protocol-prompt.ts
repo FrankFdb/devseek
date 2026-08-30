@@ -116,6 +116,30 @@ export function buildUnexecutedShellActionRecoveryPrompt(session: TextToolProtoc
   ].join('\n');
 }
 
+export interface NoToolActionRecoveryPromptOptions {
+  readonly actionEvidenceExpected: boolean;
+  readonly freshProviderSession: boolean;
+}
+
+export function buildNoToolActionRecoveryPrompt(
+  session: TextToolProtocolSession,
+  options: NoToolActionRecoveryPromptOptions,
+): string {
+  const actionInstruction = options.actionEvidenceExpected
+    ? '- 当前任务需要真实工作区证据。请自行决定一个最小、具体的下一动作，只输出 1 个工具调用，不要再输出计划、确认语或未来时说明。'
+    : '- 请现在给出完整直接答案；如果判断必须先取得真实证据，则自行决定一个最小、具体的下一动作，并只输出 1 个工具调用。';
+  return [
+    options.freshProviderSession
+      ? '- 原 Provider 会话已连续停在动作预告，本轮已用完整任务历史重建会话；不得再次复述计划。'
+      : '- 上一轮只是动作预告，没有执行，也不是完整答案；不要重复“我将”“让我先”或“立即开始”等说明。',
+    actionInstruction,
+    '- 文本 Provider 的工具调用必须完整包在以下本轮授权信封中。下面只演示序列化格式；必须把示例路径替换成基于当前任务事实选择的真实路径：',
+    renderTextToolProtocolEnvelope(session, SIMPLE_RECOVERY_EXAMPLES.read_file),
+    '- 不要输出裸 [TOOL:...]、Markdown 工具示例或信封外说明。闭合信封后立即停止，等待宿主返回真实结果。',
+    '- 本提示不替模型选择动作，也不授予额外权限；具体调用仍会经过范围、风险、确认和沙箱仲裁。',
+  ].join('\n');
+}
+
 function renderProtocolExample(payload: string, session?: TextToolProtocolSession): string {
   return session ? renderTextToolProtocolEnvelope(session, payload) : payload;
 }

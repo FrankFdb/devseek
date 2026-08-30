@@ -40,7 +40,27 @@ test('NoToolActionRecovery: retries an initial deferred action announcement', ()
 
   assert.ok(result);
   assert.equal(result.kind, 'retry');
-  assert.match(result.feedback, /立即调用对应工具/u);
+  assert.equal(result.useFreshProviderSession, false);
+  assert.match(result.feedback, /<devseek_tool_calls[^>]+channel="no-tool-action-recovery-test">/u);
+  assert.match(result.feedback, /\[TOOL:read_file/u);
+  assert.match(result.feedback, /必须把示例路径替换/u);
+});
+
+test('NoToolActionRecovery: a repeated announcement rebuilds Provider context with the current envelope', () => {
+  const result = resolveNoToolActionRecovery({
+    text: '我将立即读取关键文件来了解当前状态。',
+    noToolRounds: 1,
+    missingEvidenceCount: 0,
+    promptRequiresTools: true,
+    sawWorkTool: false,
+    textToolProtocol,
+  });
+
+  assert.ok(result);
+  assert.equal(result.kind, 'retry');
+  assert.equal(result.useFreshProviderSession, true);
+  assert.match(result.feedback, /完整任务历史重建会话/u);
+  assert.match(result.feedback, /<\/devseek_tool_calls channel="no-tool-action-recovery-test">/u);
 });
 
 test('NoToolActionRecovery: exhausted deferred actions stop instead of becoming completion', () => {
@@ -55,7 +75,41 @@ test('NoToolActionRecovery: exhausted deferred actions stop instead of becoming 
 
   assert.ok(result);
   assert.equal(result.kind, 'stop');
-  assert.match(result.reason, /没有形成可执行工具调用/u);
+  assert.match(result.reason, /没有可执行工具调用/u);
+});
+
+test('NoToolActionRecovery: evidence-required planning prose uses the authenticated tool envelope', () => {
+  const result = resolveNoToolActionRecovery({
+    text: '需要先分析项目结构、确定修改范围，然后完成实现并运行测试。',
+    noToolRounds: 0,
+    missingEvidenceCount: 0,
+    promptRequiresTools: true,
+    sawWorkTool: false,
+    textToolProtocol,
+  });
+
+  assert.ok(result);
+  assert.equal(result.kind, 'retry');
+  assert.equal(result.useFreshProviderSession, false);
+  assert.match(result.feedback, /需要真实工作区证据/u);
+  assert.match(result.feedback, /<devseek_tool_calls[^>]+channel="no-tool-action-recovery-test">/u);
+});
+
+test('NoToolActionRecovery: repeated unexecuted shell presentation rebuilds Provider context', () => {
+  const result = resolveNoToolActionRecovery({
+    text: '```bash\ncmake --build build\n```',
+    noToolRounds: 1,
+    missingEvidenceCount: 1,
+    promptRequiresTools: true,
+    sawWorkTool: true,
+    textToolProtocol,
+  });
+
+  assert.ok(result);
+  assert.equal(result.kind, 'retry');
+  assert.equal(result.useFreshProviderSession, true);
+  assert.match(result.feedback, /完整任务历史重建会话/u);
+  assert.match(result.feedback, /<\/devseek_tool_calls channel="no-tool-action-recovery-test">/u);
 });
 
 test('NoToolActionRecovery: investigation conclusions with a pending next action retry', () => {
@@ -78,5 +132,5 @@ test('NoToolActionRecovery: investigation conclusions with a pending next action
 
   assert.ok(result);
   assert.equal(result.kind, 'retry');
-  assert.match(result.feedback, /立即调用对应工具/u);
+  assert.match(result.feedback, /只输出 1 个工具调用/u);
 });

@@ -892,7 +892,7 @@ test('ModelLedUserSimulation: repeated deferred actions fail instead of settling
     assert.equal(calls, 4, simulation.result.historyText);
     assert.equal(simulation.result.tasksFailed, 1, simulation.result.historyText);
     assert.equal(simulation.result.changedPaths.length, 0);
-    assert.match(simulation.result.historyText, /没有形成可执行工具调用/u);
+    assert.match(simulation.result.historyText, /没有可执行工具调用/u);
   } finally {
     rmSync(simulation.root, { recursive: true, force: true });
   }
@@ -932,6 +932,39 @@ test('ModelLedUserSimulation: investigation prose from a repair turn cannot sett
       true,
       simulation.result.historyText,
     );
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
+test('ModelLedUserSimulation: repeated action announcements rebuild the Provider session before tool execution', async () => {
+  const prompt = '继续修复现有程序，先读取生产实现再修改并验证。';
+  const providerSessions = [];
+  let calls = 0;
+  const simulation = await runSimulation(prompt, async (messages, providerContext) => {
+    calls += 1;
+    providerSessions.push(providerContext.newSession);
+    if (calls <= 2) {
+      if (calls === 2) {
+        assert.match(messages.at(-1).content, /<devseek_tool_calls[^>]+channel=/u);
+      }
+      return { text: '我将立即读取关键文件来了解当前状态。', tools: [] };
+    }
+    assert.match(messages.at(-1).content, /完整任务历史重建会话/u);
+    const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'recovered.txt');
+    return {
+      text: '执行恢复后的真实动作。',
+      tools: [
+        { name: 'create_file', input: { path: target, content: 'RECOVERED\n' } },
+        { name: 'read_file', input: { path: target } },
+        { name: 'task_complete', input: { summary: '恢复后完成真实工具执行。' } },
+      ],
+    };
+  }, { runDisplayAction: 'fix' });
+  try {
+    assert.deepEqual(providerSessions, [true, false, true]);
+    assert.equal(readFileSync(path.join(simulation.root, 'recovered.txt'), 'utf8'), 'RECOVERED\n');
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
   } finally {
     rmSync(simulation.root, { recursive: true, force: true });
   }

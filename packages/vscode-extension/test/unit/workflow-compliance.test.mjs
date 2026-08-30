@@ -2324,6 +2324,7 @@ test('R2-07E: DeepSeek Web stream correlation and recovery protocol has one shar
   const streamProtocol = src('../shared/src/bridge-stream-protocol.ts');
   const connectorProtocol = src('../shared/src/deepseek-web-connector-protocol.ts');
   const connector = src('../bridge/src/deepseek-web-connector.ts');
+  const providerRequestExecutor = src('../bridge/src/bridge-provider-request-executor.ts');
   const server = src('../bridge/src/server.ts');
   const bridgeClient = src('src/bridge-client.ts');
   const cliBridgeClient = src('../cli/src/bridge-client.ts');
@@ -2339,7 +2340,8 @@ test('R2-07E: DeepSeek Web stream correlation and recovery protocol has one shar
   assertContains(connector, 'CanonicalDeepSeekWebConnectorService', 'request lifecycle and terminal frames must have one connector owner');
   assertContains(connector, 'DEEPSEEK_WEB_CONNECTOR_MAX_ATTEMPTS = 2', 'provider retry must be explicitly bounded');
   assertContains(connector, "reason: 'partial-output'", 'connector must never retry after partial provider output');
-  assertContains(server, 'connectorExecution.execute', 'Bridge route must dispatch through the connector state machine');
+  assertContains(server, 'providerRequestExecutor.execute', 'Bridge routes must dispatch through the shared Provider request owner');
+  assertContains(providerRequestExecutor, 'connectorExecution.execute', 'Provider request owner must delegate retry state to the connector state machine');
   assertContains(server, 'connectorSession.acceptProviderDelta', 'Bridge route must delegate SSE frame creation to the connector owner');
   assertContains(server, 'streamRequestId', 'Bridge server must bind SSE frames to the request operation id');
   assertContains(server, 'connector.cancel(targetRequestId', 'Bridge cancel must target a correlated request');

@@ -654,34 +654,16 @@ export async function runAgenticLoop(
           break;
         }
         noToolRounds++;
+        if (actionRecovery.useFreshProviderSession) {
+          forceProviderNewSessionNextTurn = true;
+          contextInvestigation.reset();
+        }
         await emitAgenticCorrectionStatus(
           actionRecovery.statusTitle,
           actionRecovery.statusDetail,
           actionRecovery.activityLabel,
         );
         appendUserFeedback(actionRecovery.feedback);
-        continue;
-      }
-      if (!callbacks.signal?.aborted && promptRequiresTools && !sawWorkTool && noToolRounds < 2) {
-        noToolRounds++;
-        const userAnnouncement = normalizeAgentUserAnnouncement(stripped);
-        const userAnnouncementKey = agentAnnouncementKey(userAnnouncement);
-        if (userAnnouncement && userAnnouncementKey && !announcedProseKeys.has(userAnnouncementKey)) {
-          announcedProseKeys.add(userAnnouncementKey);
-          // No-tool round: route to Working box label (not a bubble) — AI said something but used no tools.
-          // This keeps the chat clean; user sees the intent in the Working box header.
-          const firstSentence = userAnnouncement.split(/[。！\n]/)[0].slice(0, 60).trim();
-          if (firstSentence && callbacks.onToolActivity) {
-            callbacks.onToolActivity('label', firstSentence);
-          }
-        }
-        await emitAgenticCorrectionStatus(
-          '等待真实工具执行',
-          '当前回复没有任何工具调用，不能把规划或说明当作完成结果。DevSeek 正在要求模型先建立任务清单，再读取、写入或运行验证命令。',
-          '要求模型调用真实工具',
-        );
-        const retryMessage = '【系统反馈】本轮没有检测到任何工具调用，不能把需要创建/修改/运行的任务标记为完成。请继续执行：先更新 manage_todo_list，然后调用 read_file/list_dir/create_file/run_terminal 等实际工具；完成前必须提供可验证的文件或命令结果。';
-        appendUserFeedback(retryMessage);
         continue;
       }
       const missingWithoutTools = evidenceWithoutTools.missingEvidence;
