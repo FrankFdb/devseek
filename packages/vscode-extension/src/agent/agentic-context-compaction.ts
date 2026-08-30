@@ -11,7 +11,9 @@ import type { ProviderVisibleReadExposure } from './tool-loop-result';
 import {
   CONTEXT_COMPACTION_SUMMARY_MARKER,
   compactAgentMessageHistoryWithFidelity,
+  isProviderCausalFrontierMessage,
   redactAgentMessageHistory,
+  retainProviderSessionCausalFrontier,
   replaceAllAssistantToolHistory,
 } from './agent-history-compaction';
 
@@ -160,31 +162,8 @@ export function rebuildAgenticHistoryForFreshProviderSession(
       trigger: 'provider-recovery',
     });
   }
-  retainFreshProviderContext(input.messages);
+  retainProviderSessionCausalFrontier(input.messages);
   return totalMessageChars(input.messages);
-}
-
-function retainFreshProviderContext(messages: ChatMessage[]): void {
-  const retained = [
-    messages[0],
-    findLatestMessage(messages, content => content.trimStart().startsWith(CONTEXT_COMPACTION_SUMMARY_MARKER)),
-    findLatestMessage(messages, content => /^\[工具结果 Round\b/u.test(content.trimStart())),
-    messages[messages.length - 1],
-  ].filter((message, index, candidates): message is ChatMessage => (
-    Boolean(message) && candidates.indexOf(message) === index
-  ));
-  messages.splice(0, messages.length, ...retained);
-}
-
-function findLatestMessage(
-  messages: readonly ChatMessage[],
-  predicate: (content: string) => boolean,
-): ChatMessage | undefined {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (typeof message?.content === 'string' && predicate(message.content)) return message;
-  }
-  return undefined;
 }
 
 /** Binds transport pruning to the Kernel-owned semantic compaction receipt. */
@@ -209,6 +188,7 @@ export function compactCanonicalAgenticHistory(
   compactAgentMessageHistoryWithFidelity(input.messages, {
     receipt,
     maxMessages: positiveInteger(input.maxMessages, 'invalid-max-messages'),
+    isProtectedMessage: message => isProviderCausalFrontierMessage(message),
   });
   return receipt;
 }

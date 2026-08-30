@@ -6,7 +6,7 @@ import {
 } from '@devseek-netai/shared';
 import type { ChatMessage } from '../llm/types';
 import { projectProviderNativeTextToolResponse } from '../llm/provider-native-text-tools';
-import type { FakeTool } from './fake-tool-parser';
+import { stripToolCallBlocks, type FakeTool } from './fake-tool-parser';
 import {
   findFirstAuthorizedTextToolEnvelopeStart,
   parseAuthorizedTextToolCalls,
@@ -69,26 +69,71 @@ export function applyProviderRecoveryHistory(
   recoveryMessage: ChatMessage,
   preserveProviderSession = false,
 ): void {
-  if (preserveProviderSession) {
-    const responseIndex = findLatestAssistantMessageIndex(messages);
-    if (responseIndex >= 0) {
-      messages[responseIndex].content = [
-        QUARANTINED_PROVIDER_RESPONSE_MARKER,
-        '该响应未通过当前工具协议门禁，未执行其中任何动作；恢复要求见下一条用户消息。',
-      ].join('\n');
-    }
-    messages.push(recoveryMessage);
-    return;
+  const responseIndex = findLatestAssistantMessageIndex(messages);
+  if (responseIndex >= 0) {
+    const response = messages[responseIndex];
+    const responseText = typeof response.content === 'string' ? response.content : '';
+    const intent = summarizeProviderIntent(stripToolCallBlocks(responseText));
+    response.content = [
+      QUARANTINED_PROVIDER_RESPONSE_MARKER,
+      '该响应未通过当前工具协议门禁，未执行其中任何动作；恢复要求见下一条用户消息。',
+      ...(intent ? [`恢复线索（仅为模型意图，无事实或执行权）：${intent}`] : []),
+    ].join('\n');
   }
-  const taskPrompt = messages[0];
-  messages.splice(0, messages.length, taskPrompt, recoveryMessage);
+  messages.push(recoveryMessage);
+  if (!preserveProviderSession) retainProviderSessionCausalFrontier(messages);
 }
 
 function findLatestAssistantMessageIndex(messages: readonly ChatMessage[]): number {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (messages[index]?.role === 'assistant') return index;
+    if (messages[index]?.role === 'assistant' && typeof messages[index].content === 'string') return index;
   }
   return -1;
+}
+
+/** Keeps the canonical task plus the latest sanitized intent/result/recovery frontier. */
+export function retainProviderSessionCausalFrontier(messages: ChatMessage[]): void {
+  const candidates = [
+    messages[0],
+    findLatestHistoryMessage(messages, message => (
+      typeof message.content === 'string' && isContextCompactionSummary(message.content)
+    )),
+    findLatestHistoryMessage(messages, isProviderIntentFrontierMessage),
+    findLatestHistoryMessage(messages, message => (
+      typeof message.content === 'string'
+      && /^\[工具结果 Round\b/u.test(message.content.trimStart())
+    )),
+    messages[messages.length - 1],
+  ].filter((message): message is ChatMessage => Boolean(message));
+  const selected = new Set(candidates);
+  const retained = messages.filter(message => selected.has(message));
+  messages.splice(0, messages.length, ...retained);
+}
+
+export function isProviderCausalFrontierMessage(message: ChatMessage): boolean {
+  if (typeof message.content !== 'string') return false;
+  const content = message.content.trimStart();
+  if (/^\[工具结果 Round\b/u.test(content)) return true;
+  return isProviderIntentFrontierMessage(message);
+}
+
+function isProviderIntentFrontierMessage(message: ChatMessage): boolean {
+  if (message.role !== 'assistant' || typeof message.content !== 'string') return false;
+  const content = message.content.trimStart();
+  return (
+    content.startsWith(EXECUTED_TOOL_SUMMARY_MARKER)
+    || content.startsWith(QUARANTINED_PROVIDER_RESPONSE_MARKER)
+  );
+}
+
+function findLatestHistoryMessage(
+  messages: readonly ChatMessage[],
+  predicate: (message: ChatMessage) => boolean,
+): ChatMessage | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (predicate(messages[index])) return messages[index];
+  }
+  return undefined;
 }
 
 export function compactAgentMessageHistoryWithFidelity(
@@ -219,30 +264,27 @@ function rewriteMessagesWithContextSummary(
   options: AgentHistoryCompactionOptions,
   maxMessages: number,
 ): void {
-  const compacted: ChatMessage[] = [];
-  const seen = new Set<ChatMessage>();
-  const push = (message: ChatMessage | undefined) => {
-    if (!message || seen.has(message) || shouldDropFromCompactedTail(message)) return;
-    seen.add(message);
-    compacted.push(message);
-  };
-
-  push(messages[0]);
-  if (options.isProtectedMessage) {
-    const protectedMessages = messages
+  const taskPrompt = messages[0];
+  const protectedKeepCount = Math.max(0, Math.min(2, maxMessages - 2));
+  const protectedMessages = options.isProtectedMessage && protectedKeepCount > 0
+    ? messages
       .map((message, index) => ({ message, index }))
       .filter(item => options.isProtectedMessage?.(item.message, item.index))
+      .slice(-protectedKeepCount)
       .map(item => item.message)
-      .slice(-1);
-    for (const message of protectedMessages) push(message);
-  }
-
-  const tailKeepCount = Math.max(0, maxMessages - compacted.length - 1);
-  const tail = messages
-    .filter(message => !seen.has(message) && !shouldDropFromCompactedTail(message))
-    .slice(-tailKeepCount);
-  for (const message of tail) push(message);
-
+    : [];
+  const reserved = new Set([taskPrompt, ...protectedMessages].filter(Boolean));
+  const tailKeepCount = Math.max(0, maxMessages - reserved.size - 1);
+  const tail = tailKeepCount > 0
+    ? messages
+      .filter(message => !reserved.has(message) && !shouldDropFromCompactedTail(message))
+      .slice(-tailKeepCount)
+    : [];
+  const retained = new Set([...protectedMessages, ...tail].filter(Boolean));
+  const compacted = [
+    taskPrompt,
+    ...messages.filter(message => retained.has(message)),
+  ].filter((message): message is ChatMessage => Boolean(message));
   const summaryMessage: ChatMessage = { role: 'user', content: summary };
   compacted.splice(Math.min(1, compacted.length), 0, summaryMessage);
   messages.splice(0, messages.length, ...compacted.slice(0, maxMessages));

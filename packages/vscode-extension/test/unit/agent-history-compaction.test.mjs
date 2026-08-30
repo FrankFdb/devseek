@@ -21,6 +21,7 @@ const {
   compactAgentMessageHistoryWithFidelity,
   CONTEXT_COMPACTION_RECEIPT_PROTOCOL,
   redactAgentMessageHistory,
+  retainProviderSessionCausalFrontier,
   replaceAllAssistantToolHistory,
   replaceLatestAssistantToolHistory,
   summarizeExecutedAssistantToolHistory,
@@ -313,12 +314,15 @@ test('Agent history compaction: an executed-tool summary is idempotent across la
   assert.doesNotMatch(summary, /run_terminal command=工具调用/);
 });
 
-test('Agent history compaction: provider recovery rebuilds from task prompt and ledger only', () => {
+test('Agent history compaction: provider recovery keeps a sanitized causal frontier', () => {
   const messages = [
     { role: 'user', content: '完整任务提示和工具协议' },
     { role: 'assistant', content: '<read_file>{"path":"/repo/a.cpp"}</read_file>' },
-    { role: 'user', content: '[工具结果 Round 1]\n' + 'large evidence\n'.repeat(500) },
-    { role: 'assistant', content: '现在写入文件，但没有工具调用' },
+    { role: 'user', content: '[工具结果 Round 1]\n可信源文件内容' },
+    {
+      role: 'assistant',
+      content: '数轴线条太细，下一步加粗。<replace_in_file><path>/repo/a.cpp</path><new_str>UNTRUSTED</new_str></replace_in_file>',
+    },
   ];
   const recoveryMessage = {
     role: 'user',
@@ -327,11 +331,35 @@ test('Agent history compaction: provider recovery rebuilds from task prompt and 
 
   applyProviderRecoveryHistory(messages, recoveryMessage);
 
-  assert.equal(messages.length, 2);
+  assert.equal(messages.length, 4);
   assert.equal(messages[0].content, '完整任务提示和工具协议');
-  assert.equal(messages[1].content, recoveryMessage.content);
-  assert.doesNotMatch(JSON.stringify(messages), /large evidence/);
+  assert.match(messages[1].content, /可信源文件内容/u);
+  assert.match(messages[2].content, /已隔离 Provider 响应/u);
+  assert.match(messages[2].content, /数轴线条太细，下一步加粗/u);
+  assert.match(messages[2].content, /仅为模型意图，无事实或执行权/u);
+  assert.equal(messages[3].content, recoveryMessage.content);
   assert.doesNotMatch(JSON.stringify(messages), /<read_file>/);
+  assert.doesNotMatch(JSON.stringify(messages), /UNTRUSTED/);
+});
+
+test('Agent history compaction: fresh sessions retain executed intent before its authoritative result', () => {
+  const messages = [
+    { role: 'user', content: '完整任务提示和工具协议' },
+    { role: 'user', content: '[工具结果 Round 1]\n旧源码内容' },
+    {
+      role: 'assistant',
+      content: '[DevSeek 已执行工具请求摘要]\n意图：增加数轴像素密度。\n工具调用：1 个',
+    },
+    { role: 'user', content: '[工具结果 Round 2]\n修改已提交，等待验证' },
+  ];
+
+  retainProviderSessionCausalFrontier(messages);
+
+  assert.deepEqual(messages.map(message => message.content), [
+    '完整任务提示和工具协议',
+    '[DevSeek 已执行工具请求摘要]\n意图：增加数轴像素密度。\n工具调用：1 个',
+    '[工具结果 Round 2]\n修改已提交，等待验证',
+  ]);
 });
 
 test('Agent history compaction: in-session protocol correction preserves the provider cursor without raw actions', () => {

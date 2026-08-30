@@ -371,7 +371,13 @@ test('ModelLedUserSimulation: native XML mutation recovery retains verified read
     if (calls === 3) {
       assert.equal(providerContext.newSession, false);
       assert.match(JSON.stringify(messages), /OLD_VALUE/u);
-      assert.doesNotMatch(JSON.stringify(messages), /原生 XML 提交修复/u);
+      assert.match(JSON.stringify(messages), /原生 XML 提交修复/u);
+      assert.match(JSON.stringify(messages), /仅为模型意图，无事实或执行权/u);
+      const quarantined = messages.find(message => (
+        message.role === 'assistant' && /已隔离 Provider 响应/u.test(message.content)
+      ));
+      assert.ok(quarantined);
+      assert.doesNotMatch(quarantined.content, /<replace_in_file>/u);
       assert.match(messages.at(-1).content, /当前 Provider 会话保留先前真实工具结果/u);
       return {
         text: '通过当前授权协议重发唯一修改。',
@@ -959,8 +965,11 @@ test('ModelLedUserSimulation: repeated action announcements rebuild the Provider
       }
       return { text: '我将立即读取关键文件来了解当前状态。', tools: [] };
     }
-    assert.equal(messages.length, 2);
+    assert.equal(messages.length, 3);
     assert.match(messages[0].content, new RegExp(prompt, 'u'));
+    assert.match(messages[1].content, /已隔离 Provider 响应/u);
+    assert.match(messages[1].content, /立即读取关键文件/u);
+    assert.match(messages[1].content, /无事实或执行权/u);
     assert.match(messages.at(-1).content, /原始任务、最新工具结果和验证事实重建会话/u);
     const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'recovered.txt');
     return {
