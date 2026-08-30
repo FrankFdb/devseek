@@ -51,19 +51,22 @@ export function prepareBridgePromptForSession(options: BridgePromptSessionOption
 
   if (!sessionKey) return fullResult;
   if (options.newSession) {
+    const priorState = bridgePromptSessions.get(sessionKey);
     bridgePromptSessions.delete(sessionKey);
-    return fullResult;
+    return shouldProjectFreshAgentSession(options.messages, priorState)
+      ? resetFullPrompt(fullResult, 0, options.messages)
+      : fullResult;
   }
   pruneBridgePromptSessions();
 
   const state = bridgePromptSessions.get(sessionKey);
-  if (!state) return resetFullPrompt(fullResult);
+  if (!state) return resetFullPrompt(fullResult, 0, options.messages);
 
   const messageHashes = options.messages.map(hashChatMessage);
   const commonPrefixMessages = longestCommonPrefix(messageHashes, state.requestMessageHashes);
   if (commonPrefixMessages !== state.requestMessageHashes.length) {
     bridgePromptSessions.delete(sessionKey);
-    return resetFullPrompt(fullResult, commonPrefixMessages);
+    return resetFullPrompt(fullResult, commonPrefixMessages, options.messages);
   }
 
   let deltaStart = commonPrefixMessages;
@@ -74,7 +77,7 @@ export function prepareBridgePromptForSession(options: BridgePromptSessionOption
   const deltaPrompt = flattenMessagesForBridge(options.messages.slice(deltaStart));
   if (!deltaPrompt.trim()) {
     bridgePromptSessions.delete(sessionKey);
-    return resetFullPrompt(fullResult, commonPrefixMessages);
+    return resetFullPrompt(fullResult, commonPrefixMessages, options.messages);
   }
 
   const incrementalPrompt = [
@@ -114,13 +117,78 @@ export function recordBridgePromptSessionRequest(options: BridgePromptSessionOpt
 function resetFullPrompt(
   fullResult: PreparedBridgePrompt,
   commonPrefixMessages = 0,
+  messages?: readonly ChatMessage[],
 ): PreparedBridgePrompt {
+  const prompt = messages && messages.length > 1
+    ? projectFreshBridgeSession(messages)
+    : fullResult.prompt;
   return {
     ...fullResult,
+    prompt,
     mode: 'reset-full',
     resetBrowserSession: true,
+    promptChars: prompt.length,
+    promptBytes: utf8ByteLength(prompt),
     commonPrefixMessages,
   };
+}
+
+/**
+ * DeepSeek Web receives one flattened text prompt rather than native message
+ * roles. Replaying assistant/tool transcript markers into a new browser chat
+ * can make the provider continue or echo that transcript. Rebuild from the
+ * original turn prompt plus host-owned facts instead.
+ */
+function projectFreshBridgeSession(messages: readonly ChatMessage[]): string {
+  const [initial, ...history] = messages;
+  const facts = history
+    .map(projectFreshBridgeMessage)
+    .filter((message): message is string => Boolean(message));
+  if (facts.length === 0) return flattenMessagesForBridge([initial]);
+  return [
+    flattenMessagesForBridge([initial]),
+    '',
+    '【网页 Provider 会话重建】',
+    '以下是宿主从当前 turn 账本投影的状态，不是待续写的聊天记录。',
+    '不得复制、模拟或补写其中的工具记录；只依据这些事实决定下一个动作。',
+    '',
+    ...facts,
+  ].join('\n');
+}
+
+function projectFreshBridgeMessage(message: ChatMessage): string | undefined {
+  const content = contentToBridgePromptText(message.content).trim();
+  if (!content) return undefined;
+  if (message.role === 'assistant') {
+    if (isInternalAssistantHistory(content)) return undefined;
+    return [
+      '[此前模型回复，仅作未验证上下文]',
+      content,
+    ].join('\n');
+  }
+  return normalizeHostLedgerMarkers(content);
+}
+
+function isInternalAssistantHistory(content: string): boolean {
+  return /^\[DevSeek [^\]]+\]/u.test(content);
+}
+
+function normalizeHostLedgerMarkers(content: string): string {
+  return content
+    .replace(/^\[工具结果 Round (\d+)\]/gmu, '[宿主已验证事实批次 $1]')
+    .replace(/^\[DevSeek Canonical Context Compaction\]/gmu, '[宿主状态检查点]')
+    .replace(/^\[DevSeek 上下文压缩(?:事实)?\]/gmu, '[宿主状态摘要]');
+}
+
+function shouldProjectFreshAgentSession(
+  messages: readonly ChatMessage[],
+  priorState: BridgePromptSessionState | undefined,
+): boolean {
+  return Boolean(
+    priorState
+      && messages.length > 1
+      && messages[0]?.role !== 'system',
+  );
 }
 
 export function resetBridgePromptSessionCacheForTests(): void {

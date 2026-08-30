@@ -26,6 +26,7 @@ export function buildEngineeringGuidelinesPrompt(role: 'agent' | 'planner' = 'ag
     '- 生产实现不得留下 TODO、FIXME、placeholder、空壳分支或“以后实现”；受限范围内无法完成时必须明确报告阻塞，不能用占位行为冒充交付。',
     '- 修复缺陷类别而非单一复现：检查同类入口、状态流、协议边界、验证、恢复和 UI 投影；重复规则应归并到唯一责任方。',
     '- 对 CLI、API、UI 或其他用户入口，除内部单元测试和构建外，还应从公开入口验证至少一个真实流程，并覆盖用户要求的失败与边界分支。',
+    '- 用户提供了失败验收项、expected/observed 对照或可复现反例时，每一项都是活动验收义务：沿用户声明的公开或确定性入口重现产物并重新计算同一可观测条件。必须从实际产物反向追踪当前执行路径和语义责任方，不能根据 check 名、文件名或旧实现猜测修改位置；不覆盖该条件的公开测试通过不能清除失败项。',
     '- 用户输入在系统边界按结构归一化和校验；空值、缺失参数、未知枚举和部分解析结果不得穿透边界。',
     `- 修改 ${CODE_FILE_REVIEW_LINE_LIMIT} 行以上代码文件前先审计职责；超过 ${CODE_FILE_SPLIT_PLAN_LINE_LIMIT} 行应评估迁移方案，超过 ${CODE_FILE_REFACTOR_PRIORITY_LINE_LIMIT} 行提高重构优先级。阈值是风险提示，不是机械拆分目标。`,
     `- 普通函数以 ${FUNCTION_LINE_LIMIT} 行以内为风险参考；复杂编排函数超过 ${COMPLEX_FUNCTION_LINE_LIMIT} 行时应评估职责拆分。`,

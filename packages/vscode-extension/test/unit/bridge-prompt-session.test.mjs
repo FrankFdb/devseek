@@ -144,6 +144,71 @@ test('BridgePromptSession: missing cursor or rewritten request prefix resets the
   assert.match(rewritten.prompt, /压缩后重建/);
 });
 
+test('BridgePromptSession: a compacted agent turn rebuilds from host facts without replaying tool transcripts', () => {
+  resetBridgePromptSessionCacheForTests();
+  const run = { traceRunId: 'run-compacted-reset', traceWorkspaceRoot: '/repo' };
+  const initial = { role: 'user', content: '实现 src/main.cpp，并满足 nonDominantRatio >= 0.02。' };
+  const firstMessages = [initial];
+  prepareBridgePromptForSession({ ...run, newSession: true, messages: firstMessages });
+  recordBridgePromptSessionRequest({ ...run, newSession: true, messages: firstMessages });
+  const preCompactionMessages = [
+    initial,
+    { role: 'assistant', content: '[DevSeek 已执行工具请求摘要]\n- read_file path=src/main.cpp' },
+    { role: 'user', content: '[工具结果 Round 18]\n已读取 main.cpp。' },
+  ];
+  prepareBridgePromptForSession({ ...run, messages: preCompactionMessages });
+  recordBridgePromptSessionRequest({ ...run, messages: preCompactionMessages });
+
+  const rebuilt = prepareBridgePromptForSession({
+    ...run,
+    messages: [
+      initial,
+      { role: 'user', content: '[DevSeek Canonical Context Compaction]\npendingUnits: verify pixels' },
+      { role: 'assistant', content: '[DevSeek 已执行工具请求摘要]\n- read_file path=src/main.cpp' },
+      { role: 'assistant', content: '[DevSeek 未来新增宿主摘要]\n不得回放。' },
+      { role: 'user', content: '[工具结果 Round 19]\nstate.json missing fraction' },
+    ],
+  });
+
+  assert.equal(rebuilt.mode, 'reset-full');
+  assert.equal(rebuilt.resetBrowserSession, true);
+  assert.match(rebuilt.prompt, /网页 Provider 会话重建/);
+  assert.match(rebuilt.prompt, /宿主状态检查点/);
+  assert.match(rebuilt.prompt, /宿主已验证事实批次 19/);
+  assert.match(rebuilt.prompt, /nonDominantRatio >= 0\.02/);
+  assert.doesNotMatch(rebuilt.prompt, /DevSeek 已执行工具请求摘要|DevSeek 未来新增宿主摘要|\[工具结果 Round/);
+  assert.doesNotMatch(rebuilt.prompt, /read_file path=src\/main\.cpp/);
+});
+
+test('BridgePromptSession: an explicit agent-session replacement projects facts but preserves reviewer roles', () => {
+  resetBridgePromptSessionCacheForTests();
+  const run = { traceRunId: 'run-explicit-reset', traceWorkspaceRoot: '/repo' };
+  const initial = { role: 'user', content: '修复现有项目。' };
+  prepareBridgePromptForSession({ ...run, newSession: true, messages: [initial] });
+  recordBridgePromptSessionRequest({ ...run, newSession: true, messages: [initial] });
+
+  const recovery = prepareBridgePromptForSession({
+    ...run,
+    newSession: true,
+    messages: [initial, { role: 'user', content: '[工具结果 Round 7]\n最新验证失败。' }],
+  });
+  assert.equal(recovery.mode, 'reset-full');
+  assert.match(recovery.prompt, /宿主已验证事实批次 7/);
+
+  recordBridgePromptSessionRequest({ ...run, messages: [initial] });
+  const reviewerMessages = [
+    { role: 'system', content: 'You are an independent reviewer.' },
+    { role: 'user', content: 'Review this source snapshot.' },
+  ];
+  const reviewer = prepareBridgePromptForSession({
+    ...run,
+    newSession: true,
+    messages: reviewerMessages,
+  });
+  assert.equal(reviewer.mode, 'full');
+  assert.equal(reviewer.prompt, flattenMessagesForBridge(reviewerMessages));
+});
+
 test('BridgePromptSession: missing trace key keeps ordinary chat self-contained', () => {
   resetBridgePromptSessionCacheForTests();
   const messages = [{ role: 'user', content: '短问题' }];

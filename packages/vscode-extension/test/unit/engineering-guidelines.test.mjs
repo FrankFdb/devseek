@@ -46,6 +46,9 @@ test('EngineeringGuidelines: agent prompt carries file and function size constra
   assert.match(prompt, /审计直接递归和互相递归/);
   assert.match(prompt, /生产实现不得留下 TODO、FIXME、placeholder/);
   assert.match(prompt, /重复规则应归并到唯一责任方/);
+  assert.match(prompt, /每一项都是活动验收义务/);
+  assert.match(prompt, /从实际产物反向追踪当前执行路径和语义责任方/);
+  assert.match(prompt, /公开测试通过不能清除失败项/);
   assert.match(prompt, /不得为了展示流程而创建无关设计、报告、Markdown/);
   assert.match(prompt, /完成声明必须由真实文件、工具回执和验证结果支持/);
 });
