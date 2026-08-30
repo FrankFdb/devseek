@@ -71,7 +71,13 @@ export class DeepSeekAgentRuntime {
     const initialization = (async () => {
       if (this.recovery) await this.recovery;
       if (this.closed) throw new DeepSeekAgentRuntimeClosedError();
-      await operation();
+      try {
+        await operation();
+      } catch (error) {
+        this.ready = false;
+        await this.agent.close().catch(() => {});
+        throw error;
+      }
       if (this.closed) {
         await this.agent.close().catch(() => {});
         throw new DeepSeekAgentRuntimeClosedError();

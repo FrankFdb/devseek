@@ -93,8 +93,11 @@ export class BridgeProviderLifecycle {
   beginAttempt(attempt: number): void {
     this.observeProfile('attempt-started', profiler => {
       profiler.markAttemptStarted(attempt);
-      profiler.transition('prompt-preparation');
     });
+  }
+
+  beginPromptPreparation(): void {
+    this.transition('prompt-preparation');
   }
 
   promptPrepared(prompt: string): void {

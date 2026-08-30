@@ -12,7 +12,7 @@ import {
   type DeepSeekStreamFrame,
   type DevSeekTraceLogger,
 } from '@devseek-netai/shared';
-import { DeepSeekAgent, LoginRequiredError } from './deepseek-agent';
+import { DeepSeekAgent } from './deepseek-agent';
 import { RequestQueue } from './queue';
 import { DeepSeekAgentRuntime } from './deepseek-agent-runtime';
 import {
@@ -22,6 +22,10 @@ import {
 } from './bridge-runtime-lifecycle';
 import { attachBridgeRunEvidence, type BridgeRunEvidence } from './run-evidence';
 import { BridgeProviderLifecycle } from './bridge-provider-lifecycle';
+import {
+  BridgeProviderExecutionError,
+  BridgeProviderRequestExecutor,
+} from './bridge-provider-request-executor';
 import {
   CanonicalDeepSeekWebConnectorExecutionService,
   CanonicalDeepSeekWebConnectorService,
@@ -57,6 +61,10 @@ const connector = new CanonicalDeepSeekWebConnectorService();
 const connectorExecution = new CanonicalDeepSeekWebConnectorExecutionService({
   exclusive: { execute: (operation, requestId) => queue.enqueue(operation, { id: requestId }) },
   classifyError: error => classifyDeepSeekStreamErrorMessage(safeBridgeErrorMessage(error)),
+});
+const providerRequestExecutor = new BridgeProviderRequestExecutor({
+  runtime: { ensureReady: ensureAgent },
+  connectorExecution,
 });
 let runtimeLifecycle: BridgeRuntimeLifecycle | undefined;
 
@@ -95,7 +103,7 @@ function createRequestTrace(req: Request): DevSeekTraceLogger {
   });
 }
 
-function createBridgeRequestId(req: Request, kind: 'chat' | 'cancel'): string {
+function createBridgeRequestId(req: Request, kind: 'chat' | 'cancel' | 'preattach'): string {
   const operationId = String(req.header(TRACE_OPERATION_ID_HEADER) || '').trim();
   return operationId || `bridge-${kind}-${crypto.randomUUID()}`;
 }
@@ -322,20 +330,43 @@ app.post('/preattach', async (req: Request, res: Response) => {
     return;
   }
 
+  const requestId = createBridgeRequestId(req, 'preattach');
+  let connectorSession: DeepSeekWebConnectorSessionPort;
   try {
-    await ensureAgent();
-  } catch (e) {
-    res.status(503).json({ error: `Agent init failed: ${safeBridgeErrorMessage(e)}` });
+    connectorSession = connector.open({ requestId, stream: false });
+  } catch (error) {
+    res.status(409).json({ error: safeBridgeErrorMessage(error) });
     return;
   }
+  res.once('close', () => {
+    if (res.writableEnded) return;
+    const decision = connector.cancel(requestId);
+    queue.cancel(requestId);
+    if (decision.shouldInterruptProvider) agentRuntime.cancel();
+  });
 
   try {
-    await queue.enqueue(async () => {
+    await providerRequestExecutor.execute(connectorSession, async () => {
+      connectorSession.confirmProviderSubmission();
       await agent.preAttachFiles(body.files!);
-    });
+    }, {});
+    connectorSession.complete();
     res.json({ ok: true, count: body.files!.length });
   } catch (e) {
-    res.status(500).json({ error: safeBridgeErrorMessage(e) });
+    const message = safeBridgeErrorMessage(e);
+    const category = classifyDeepSeekStreamErrorMessage(message);
+    const phase = e instanceof BridgeProviderExecutionError ? e.phase : 'generation';
+    const terminalFrame = settleConnectorFailure(connectorSession, message, category);
+    resetAgentAfterSessionLoss(category);
+    if (category === 'browser-session-lost' || category === 'login-required') {
+      res.status(401).json({ error: 'LOGIN_REQUIRED' });
+    } else if (terminalFrame.event === 'cancelled') {
+      res.status(499).json({ error: 'Cancelled by client' });
+    } else if (phase === 'initialization') {
+      res.status(503).json({ error: `Agent init failed: ${message}` });
+    } else {
+      res.status(500).json({ error: message });
+    }
   }
 });
 
@@ -400,49 +431,6 @@ app.post('/chat', async (req: Request, res: Response) => {
     evidence,
     trace,
   });
-  providerLifecycle.beginInitialization();
-
-  // 初始化 agent（异步，第一次请求会等待浏览器启动）
-  try {
-    await ensureAgent();
-  } catch (e) {
-    const safeMessage = safeBridgeErrorMessage(e);
-    const category = classifyDeepSeekStreamErrorMessage(safeMessage);
-    const terminalFrame = connectorSession.rejectBeforeDispatch(safeMessage, category);
-    providerLifecycle.fail({
-      message: safeMessage,
-      category: terminalFrame.event === 'cancelled' ? 'cancelled' : category,
-      phase: 'initialization',
-      retryAfterMs: terminalFrame.retryAfterMs,
-    });
-    if (terminalFrame.event === 'cancelled') {
-      trace.info('bridge-server', 'chat-request-cancelled-before-dispatch', { operationId: streamRequestId });
-      res.status(499).json({ error: 'Cancelled by client' });
-    } else if (e instanceof LoginRequiredError) {
-      trace.error('bridge-server', 'chat-request-login-required');
-      res.status(401).json({ error: 'LOGIN_REQUIRED' });
-    } else {
-      trace.error('bridge-server', 'chat-request-agent-init-failed', { message: safeMessage });
-      res.status(503).json({ error: `Agent init failed: ${safeMessage}` });
-    }
-    return;
-  }
-
-  if (connectorSession.snapshot().cancelRequested) {
-    connectorSession.settleCancelled();
-    providerLifecycle.fail({
-      message: 'Cancelled by client',
-      category: 'cancelled',
-      phase: 'initialization',
-    });
-    trace.info('bridge-server', 'chat-request-cancelled-after-initialization', {
-      operationId: streamRequestId,
-    });
-    if (!res.headersSent) res.status(499).json({ error: 'Cancelled by client' });
-    return;
-  }
-
-  providerLifecycle.beginAdmission();
   const agentLifecycle = {
     onPromptPrepared: (effectivePrompt: string) => providerLifecycle.promptPrepared(effectivePrompt),
     onSubmitConfirmed: () => providerLifecycle.submitConfirmed(),
@@ -451,17 +439,20 @@ app.post('/chat', async (req: Request, res: Response) => {
 
   if (useStream) {
     // ---- SSE 流式响应 ----
-    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders();
-
+    const beginStream = () => {
+      if (res.headersSent) return;
+      res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders();
+    };
     const sendEvent = (frame: DeepSeekStreamFrame) => {
+      beginStream();
       res.write(`data: ${JSON.stringify(frame)}\n\n`);
     };
 
     try {
-      const content = await connectorExecution.execute(connectorSession, async () => {
+      const content = await providerRequestExecutor.execute(connectorSession, async () => {
         const responseGuard = new DevSeekCapabilityTextStreamGuard();
         const content = requireBridgePrimitiveText(await agent.sendMessage(prompt.trim(), {
           newSession: body.newSession,
@@ -486,16 +477,15 @@ app.post('/chat', async (req: Request, res: Response) => {
         }
         return content;
       }, {
-        onAttemptStarted: attempt => providerLifecycle.beginAttempt(attempt),
-        onRetryScheduled: () => providerLifecycle.retryScheduled(),
-        onRetryFrame: frame => {
+        lifecycle: providerLifecycle,
+        observer: { onRetryFrame: frame => {
           trace.info('bridge-server', 'chat-request-retry', {
             operationId: streamRequestId,
             attempt: frame.attempt,
             retryAfterMs: frame.retryAfterMs,
           });
           sendEvent(frame);
-        },
+        } },
       });
       trace.info('bridge-server', 'chat-request-complete', { response: summarizeTraceText(content) });
       const terminalFrame = connectorSession.complete();
@@ -504,15 +494,28 @@ app.post('/chat', async (req: Request, res: Response) => {
     } catch (e) {
       const msg = safeBridgeErrorMessage(e);
       const errorCategory = classifyDeepSeekStreamErrorMessage(msg);
+      const phase = e instanceof BridgeProviderExecutionError ? e.phase : 'generation';
       trace.error('bridge-server', 'chat-request-failed', { message: msg });
       const terminalFrame = settleConnectorFailure(connectorSession, msg, errorCategory);
       providerLifecycle.fail({
         message: msg,
         category: terminalFrame.event === 'cancelled' ? 'cancelled' : errorCategory,
-        phase: 'generation',
+        phase,
         retryAfterMs: terminalFrame.retryAfterMs,
       });
       resetAgentAfterSessionLoss(errorCategory);
+      if (!res.headersSent && errorCategory === 'login-required') {
+        res.status(401).json({ error: 'LOGIN_REQUIRED' });
+        return;
+      }
+      if (!res.headersSent && terminalFrame.event === 'cancelled') {
+        res.status(499).json({ error: 'Cancelled by client' });
+        return;
+      }
+      if (!res.headersSent && phase === 'initialization') {
+        res.status(503).json({ error: `Agent init failed: ${msg}` });
+        return;
+      }
       sendEvent(terminalFrame);
     }
 
@@ -520,7 +523,7 @@ app.post('/chat', async (req: Request, res: Response) => {
   } else {
     // ---- 非流式，等待全量响应 ----
     try {
-      const content = await connectorExecution.execute(connectorSession, async () => {
+      const content = await providerRequestExecutor.execute(connectorSession, async () => {
         return agent.sendMessage(prompt.trim(), {
           newSession: body.newSession,
           timeoutMs: body.timeoutMs,
@@ -533,8 +536,7 @@ app.post('/chat', async (req: Request, res: Response) => {
           },
         });
       }, {
-        onAttemptStarted: attempt => providerLifecycle.beginAttempt(attempt),
-        onRetryScheduled: () => providerLifecycle.retryScheduled(),
+        lifecycle: providerLifecycle,
       });
       const safeContent = requireBridgePrimitiveText(content, 'response');
       connectorSession.complete();
@@ -545,12 +547,13 @@ app.post('/chat', async (req: Request, res: Response) => {
     } catch (e) {
       const msg = safeBridgeErrorMessage(e);
       const errorCategory = classifyDeepSeekStreamErrorMessage(msg);
+      const phase = e instanceof BridgeProviderExecutionError ? e.phase : 'generation';
       const terminalFrame = settleConnectorFailure(connectorSession, msg, errorCategory);
       trace.error('bridge-server', 'chat-request-failed', { message: msg });
       providerLifecycle.fail({
         message: msg,
         category: terminalFrame.event === 'cancelled' ? 'cancelled' : errorCategory,
-        phase: 'generation',
+        phase,
         retryAfterMs: terminalFrame.retryAfterMs,
       });
       resetAgentAfterSessionLoss(errorCategory);
@@ -558,6 +561,8 @@ app.post('/chat', async (req: Request, res: Response) => {
         res.status(401).json({ error: 'LOGIN_REQUIRED' });
       } else if (terminalFrame.event === 'cancelled') {
         res.status(499).json({ error: 'Cancelled by client' });
+      } else if (phase === 'initialization') {
+        res.status(503).json({ error: `Agent init failed: ${msg}` });
       } else {
         res.status(500).json({ error: msg });
       }

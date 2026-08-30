@@ -90,6 +90,33 @@ test('DeepSeekAgentRuntime shares initialization and closes a late initializatio
   assert.equal(runtime.isReady, false);
 });
 
+test('DeepSeekAgentRuntime rolls back resources after failed initialization and can recover', async () => {
+  const { DeepSeekAgentRuntime } = agentRuntimeModule;
+  const failure = new Error('page.goto: Timeout 30000ms exceeded');
+  const fake = {
+    isReady: false,
+    initCalls: 0,
+    closeCalls: 0,
+    async init() {
+      this.initCalls += 1;
+      if (this.initCalls === 1) throw failure;
+      this.isReady = true;
+    },
+    async loginWithVisibleBrowser() {},
+    cancel() {},
+    async close() { this.closeCalls += 1; this.isReady = false; },
+  };
+  const runtime = new DeepSeekAgentRuntime(fake);
+
+  await assert.rejects(runtime.ensureReady(), error => error === failure);
+  assert.equal(fake.closeCalls, 1);
+  assert.equal(runtime.isReady, false);
+
+  await runtime.ensureReady();
+  assert.equal(fake.initCalls, 2);
+  assert.equal(runtime.isReady, true);
+});
+
 test('BridgeRuntimeLifecycle cancels correlated requests, drains once, and closes resources once', async () => {
   const { RequestQueue } = queueModule;
   const { CanonicalDeepSeekWebConnectorService } = connectorModule;

@@ -55,11 +55,13 @@ test('T9 bridge lifecycle joins retries, effective prompt bytes, TTFO, and one t
   lifecycle.beginInitialization();
   lifecycle.beginAdmission();
   lifecycle.beginAttempt(1);
+  lifecycle.beginPromptPreparation();
   lifecycle.promptPrepared('说明 GPU\n\n附件内容');
   lifecycle.submitConfirmed();
   lifecycle.observeProviderOutput('首');
   lifecycle.retryScheduled();
   lifecycle.beginAttempt(2);
+  lifecycle.beginPromptPreparation();
   lifecycle.promptPrepared('说明 GPU\n\n附件内容');
   lifecycle.submitConfirmed();
   lifecycle.observeProviderOutput('终');
