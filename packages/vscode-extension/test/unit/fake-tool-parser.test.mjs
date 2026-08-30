@@ -1494,6 +1494,23 @@ test('FakeToolParser: parses and strips function-style pseudo tool calls', () =>
   assert.equal(containsFakeToolCallProtocol(text), true);
 });
 
+test('FakeToolParser: parses and strips DeepSeek direct JSON tool batches', () => {
+  const text = [
+    '继续核对两个渲染责任边界。',
+    'read_file{"path":"/tmp/workspace/lesson_controller.cpp","startLine":1,"endLine":220}',
+    'read_file{"path":"/tmp/workspace/raster_canvas.cpp","startLine":300,"endLine":430}',
+  ].join('');
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.deepEqual(tools.map(tool => tool.name), ['read_file', 'read_file']);
+  assert.equal(tools[0].input.path, '/tmp/workspace/lesson_controller.cpp');
+  assert.equal(tools[1].input.startLine, 300);
+  assert.equal(findFirstToolCallStart(text), text.indexOf('read_file'));
+  assert.equal(stripToolCallBlocks(text), '继续核对两个渲染责任边界。');
+  assert.equal(containsFakeToolCallProtocol(text), true);
+});
+
 test('FakeToolParser: a restarted response keeps only the final full-file write', () => {
   const text = [
     '开始创建文档。create_file({"path":"/tmp/design.md","content":"# Design\\npartial WARRANTY_EL',

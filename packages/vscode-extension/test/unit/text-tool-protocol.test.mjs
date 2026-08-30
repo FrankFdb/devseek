@@ -74,6 +74,31 @@ test('out-of-envelope structured actions are observable only as quarantined prot
   });
 });
 
+test('DeepSeek direct JSON tool batches are quarantined and reissued through the current channel', () => {
+  const directBatch = [
+    'read_file{"path":"/tmp/workspace/lesson_controller.cpp","startLine":1,"endLine":220}',
+    'read_file{"path":"/tmp/workspace/raster_canvas.cpp","startLine":300,"endLine":430}',
+  ].join('');
+
+  assert.deepEqual(parseAuthorizedTextToolCalls(directBatch, session), []);
+  assert.deepEqual(inspectOutOfEnvelopeTextToolProtocol(directBatch, session), {
+    found: true,
+    dialects: ['direct-json-tool-call'],
+    observedToolNames: ['read_file'],
+  });
+});
+
+test('DeepSeek direct JSON mutations remain quarantined outside an authorized envelope', () => {
+  const directMutation = 'replace_in_file{"path":"/tmp/workspace/main.cpp","old_str":"old","new_str":"new"}';
+
+  assert.deepEqual(parseAuthorizedTextToolCalls(directMutation, session), []);
+  assert.deepEqual(inspectOutOfEnvelopeTextToolProtocol(directMutation, session), {
+    found: true,
+    dialects: ['direct-json-tool-call'],
+    observedToolNames: ['replace_in_file'],
+  });
+});
+
 test('provider text content blocks are quarantined and reissued instead of becoming no-tool prose', () => {
   const transcript = [
     '需要读取精确范围。',

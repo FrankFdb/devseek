@@ -169,12 +169,15 @@ function makeToolArgumentsRegex(): RegExp {
   );
 }
 
-function makeFunctionStyleToolCallRegex(): RegExp {
+type NamedJsonToolCallSyntax = 'function-style' | 'direct-json';
+
+function makeNamedJsonToolCallRegex(syntax: NamedJsonToolCallSyntax): RegExp {
   const names = listAgentToolNames(true)
     .sort((a, b) => b.length - a.length)
     .map(escapeRegExp)
     .join('|');
-  return new RegExp(`(${names}|mcp__[A-Za-z0-9_]+)\\s*\\(\\s*\\{`, 'g');
+  const inputStart = syntax === 'function-style' ? '\\s*\\(\\s*\\{' : '\\{';
+  return new RegExp(`(${names}|mcp__[A-Za-z0-9_]+)${inputStart}`, 'g');
 }
 
 function makeToolCallEnvelopeOpenRegex(flags = 'gi'): RegExp {
@@ -299,7 +302,7 @@ function stripCallingToolBlocks(text: string): string {
   return out;
 }
 
-function extractFunctionStyleToolCall(
+function extractNamedJsonToolCall(
   text: string,
   match: RegExpExecArray,
 ): { tool: FakeTool; start: number; end: number } | null {
@@ -324,17 +327,25 @@ function extractFunctionStyleToolCall(
   }
 }
 
-function parseFunctionStyleToolCalls(text: string): FakeTool[] {
+function parseNamedJsonToolCalls(text: string, syntax: NamedJsonToolCallSyntax): FakeTool[] {
   const tools: FakeTool[] = [];
-  const callRe = makeFunctionStyleToolCallRegex();
+  const callRe = makeNamedJsonToolCallRegex(syntax);
   let m: RegExpExecArray | null;
   while ((m = callRe.exec(text)) !== null) {
-    const extracted = extractFunctionStyleToolCall(text, m);
+    const extracted = extractNamedJsonToolCall(text, m);
     if (!extracted) continue;
     tools.push(extracted.tool);
     callRe.lastIndex = extracted.end;
   }
   return tools.map(normalizeFakeTool);
+}
+
+function parseFunctionStyleToolCalls(text: string): FakeTool[] {
+  return parseNamedJsonToolCalls(text, 'function-style');
+}
+
+function parseDirectJsonToolCalls(text: string): FakeTool[] {
+  return parseNamedJsonToolCalls(text, 'direct-json');
 }
 
 function parseToolCallEnvelopeInput(name: string, rawBody: string): Record<string, unknown> | null {
@@ -591,12 +602,16 @@ function stripToolCallEnvelopeBlocks(text: string): string {
   return out.replace(TOOL_CALL_INCOMPLETE_TAIL_PATTERN, '').trimEnd();
 }
 
-function findNextFunctionStyleToolCallStart(text: string, startAt = 0): number {
-  const callRe = makeFunctionStyleToolCallRegex();
+function findNextNamedJsonToolCallStart(
+  text: string,
+  syntax: NamedJsonToolCallSyntax,
+  startAt = 0,
+): number {
+  const callRe = makeNamedJsonToolCallRegex(syntax);
   callRe.lastIndex = startAt;
   let m: RegExpExecArray | null;
   while ((m = callRe.exec(text)) !== null) {
-    const extracted = extractFunctionStyleToolCall(text, m);
+    const extracted = extractNamedJsonToolCall(text, m);
     if (extracted) return extracted.start;
     const name = m[1];
     if (isRegisteredFakeToolName(name) && (m.index === 0 || !/[A-Za-z0-9_]/.test(text[m.index - 1]))) return m.index;
@@ -604,10 +619,18 @@ function findNextFunctionStyleToolCallStart(text: string, startAt = 0): number {
   return -1;
 }
 
-function stripFunctionStyleToolCallBlocks(text: string): string {
+function findNextFunctionStyleToolCallStart(text: string, startAt = 0): number {
+  return findNextNamedJsonToolCallStart(text, 'function-style', startAt);
+}
+
+function findNextDirectJsonToolCallStart(text: string, startAt = 0): number {
+  return findNextNamedJsonToolCallStart(text, 'direct-json', startAt);
+}
+
+function stripNamedJsonToolCallBlocks(text: string, syntax: NamedJsonToolCallSyntax): string {
   let out = '';
   let i = 0;
-  const callRe = makeFunctionStyleToolCallRegex();
+  const callRe = makeNamedJsonToolCallRegex(syntax);
   while (i < text.length) {
     callRe.lastIndex = i;
     const m = callRe.exec(text);
@@ -617,7 +640,7 @@ function stripFunctionStyleToolCallBlocks(text: string): string {
     }
     const start = m.index;
     const name = m[1];
-    const extracted = extractFunctionStyleToolCall(text, m);
+    const extracted = extractNamedJsonToolCall(text, m);
     if (!extracted) {
       if (isRegisteredFakeToolName(name)) {
         out += text.slice(i, start).replace(/[ \t]+$/, '');
@@ -631,6 +654,14 @@ function stripFunctionStyleToolCallBlocks(text: string): string {
     i = extracted.end;
   }
   return out;
+}
+
+function stripFunctionStyleToolCallBlocks(text: string): string {
+  return stripNamedJsonToolCallBlocks(text, 'function-style');
+}
+
+function stripDirectJsonToolCallBlocks(text: string): string {
+  return stripNamedJsonToolCallBlocks(text, 'direct-json');
 }
 
 function extractToolArgumentsPayload(
@@ -1628,6 +1659,12 @@ const MODEL_TOOL_PROTOCOL_DIALECTS: readonly ModelToolProtocolDialect<FakeTool>[
     parse: parseFunctionStyleToolCalls,
     findStart: findNextFunctionStyleToolCallStart,
     strip: stripFunctionStyleToolCallBlocks,
+  },
+  {
+    name: 'direct-json-tool-call',
+    parse: parseDirectJsonToolCalls,
+    findStart: findNextDirectJsonToolCallStart,
+    strip: stripDirectJsonToolCallBlocks,
   },
   ...xmlToolDialects,
   asPayloadDialect(createBareJsonToolCallDialect<FakeTool>({
