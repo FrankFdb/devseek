@@ -222,6 +222,7 @@ export async function runAgenticLoop(
   const announcedProseKeys = new Set<string>();
   const allReadEvidencePaths = new Set<string>();
   const toolFailureRecovery = new ToolFailureRecoveryLedger({ workspaceRoot });
+  const contextInvestigation = new ContextInvestigationLedger(workspaceRoot);
   const deliveryConvergence = new DeliveryConvergenceLedger();
   const qualityGateStagnation = new QualityGateStagnationLedger();
   const requirementReview = createProviderRequirementReviewService({
@@ -312,19 +313,53 @@ export async function runAgenticLoop(
       detail,
     });
   };
+  const rebuildProviderSessionWithCausalFeedback = (feedback: string): void => {
+    forceProviderNewSessionNextTurn = true;
+    contextInvestigation.reset();
+    applyProviderRecoveryHistory(
+      messages,
+      { role: 'user', content: feedback },
+      true,
+    );
+    totalChars = rebuildAgenticHistoryForFreshProviderSession({
+      messages,
+      session: executionContext.contextCompaction,
+      currentTodos,
+      workspaceRoot,
+      round: roundCount,
+      evidenceRefs: allEvidenceRefs,
+      trigger: 'provider-recovery',
+      textToolProtocol,
+    });
+  };
   const recoverBlockingTerminalFailure = async (
     failure: TerminalEvidence | undefined,
     missingEvidence: readonly string[],
     maxNoToolRounds: number,
   ): Promise<boolean> => {
     if (!failure || callbacks.signal?.aborted || noToolRounds >= maxNoToolRounds) return false;
-    noToolRounds++;
+    const recoveryAttempt = noToolRounds + 1;
+    const useFreshProviderSession = recoveryAttempt === 2;
+    noToolRounds = recoveryAttempt;
+    const feedback = [
+      buildTerminalFailureRepairFeedback(failure, missingEvidence),
+      useFreshProviderSession
+        ? '原 Provider 会话已连续停在验证后的说明或动作预告，本轮将用原始任务、活动失败结果和最近修复意图重建会话；重建不会放宽任何工具权限。'
+        : '',
+    ].filter(Boolean).join('\n');
     await emitAgenticCorrectionStatus(
       '验证失败，继续依据证据修复',
-      describeBlockingTerminalFailure(failure),
+      [
+        describeBlockingTerminalFailure(failure),
+        useFreshProviderSession ? '当前 Provider 会话将按活动失败因果前沿重建。' : '',
+      ].filter(Boolean).join('。'),
       '回流未清除的验证失败',
     );
-    appendUserFeedback(buildTerminalFailureRepairFeedback(failure, missingEvidence));
+    if (useFreshProviderSession) {
+      rebuildProviderSessionWithCausalFeedback(feedback);
+    } else {
+      appendUserFeedback(feedback);
+    }
     return true;
   };
   const settleOrRecoverProviderFailureInsideCurrentTask = async (
@@ -413,7 +448,6 @@ export async function runAgenticLoop(
   let requirementReviewRepairGraceRounds = 0;
   let steeringRevisionGraceRounds = 0;
   const terminalCommandProgress = new TerminalCommandProgressLedger();
-  const contextInvestigation = new ContextInvestigationLedger(workspaceRoot);
   const currentRoundLimit = () => Math.max(
     executionConvergenceRoundLimit,
     maxAgenticRounds + requirementReviewRepairGraceRounds + steeringRevisionGraceRounds,
@@ -684,23 +718,7 @@ export async function runAgenticLoop(
         }
         noToolRounds++;
         if (actionRecovery.useFreshProviderSession) {
-          forceProviderNewSessionNextTurn = true;
-          contextInvestigation.reset();
-          applyProviderRecoveryHistory(
-            messages,
-            { role: 'user', content: actionRecovery.feedback },
-            true,
-          );
-          totalChars = rebuildAgenticHistoryForFreshProviderSession({
-            messages,
-            session: executionContext.contextCompaction,
-            currentTodos,
-            workspaceRoot,
-            round: roundCount,
-            evidenceRefs: allEvidenceRefs,
-            trigger: 'provider-recovery',
-            textToolProtocol,
-          });
+          rebuildProviderSessionWithCausalFeedback(actionRecovery.feedback);
         } else {
           appendUserFeedback(actionRecovery.feedback);
         }

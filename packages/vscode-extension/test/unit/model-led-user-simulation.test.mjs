@@ -952,6 +952,116 @@ test('ModelLedUserSimulation: investigation prose from a repair turn cannot sett
   }
 });
 
+test('ModelLedUserSimulation: repeated prose after a failed verifier rebuilds from the causal repair frontier', async () => {
+  const prompt = '修复 render-state.txt 的输出密度状态，并运行 node verify-render.mjs 验证通过。';
+  const providerSessions = [];
+  let calls = 0;
+  let terminalCalls = 0;
+  const simulation = await runSimulation(prompt, async (messages, providerContext) => {
+    calls += 1;
+    providerSessions.push(providerContext.newSession);
+    const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'render-state.txt');
+    if (calls === 1) {
+      return {
+        text: '先形成当前实现并运行公开验证。',
+        tools: [
+          { name: 'create_file', input: { path: target, content: 'LOW_DENSITY\n' } },
+          { name: 'run_terminal', input: { command: 'node verify-render.mjs' } },
+        ],
+      };
+    }
+    if (calls <= 3) {
+      assert.match(messages.at(-1).content, /公开失败命令: node verify-render\.mjs/u);
+      return {
+        text: '非主色比例仍是 0.009，我将把渲染密度提高到验收阈值。',
+        tools: [],
+      };
+    }
+
+    if (calls === 4) {
+      const rebuilt = messages.map(message => message.content).join('\n');
+      assert.equal(providerContext.newSession, true, JSON.stringify(providerSessions));
+      assert.match(rebuilt, /expected>=0\.02 observed=0\.009/u);
+      assert.match(rebuilt, /非主色比例仍是 0\.009/u);
+      assert.match(rebuilt, /仅为模型意图，无事实或执行权/u);
+      assert.match(rebuilt, /不会放宽任何工具权限/u);
+      return {
+        text: '重建后先读取唯一修复文件的当前版本。',
+        tools: [{ name: 'read_file', input: { path: target } }],
+      };
+    }
+
+    assert.equal(providerContext.newSession, false);
+    const currentContext = messages.map(message => message.content).join('\n');
+    if (calls === 5) {
+      assert.match(currentContext, /LOW_DENSITY/u);
+      return {
+        text: '依据保留的失败证据提交定点修复并原样重跑验证。',
+        tools: [
+          {
+            name: 'replace_in_file',
+            input: { path: target, old_str: 'LOW_DENSITY', new_str: 'DENSE_RENDERING' },
+          },
+          { name: 'run_terminal', input: { command: 'node verify-render.mjs' } },
+        ],
+      };
+    }
+
+    if (calls === 6) {
+      assert.match(currentContext, /当前轮已经产生文件修改/u);
+      return {
+        text: '写入已提交，现在原样重跑公开验证。',
+        tools: [{ name: 'run_terminal', input: { command: 'node verify-render.mjs' } }],
+      };
+    }
+
+    if (calls === 7) {
+      assert.match(currentContext, /render verification passed/u);
+      return {
+        text: '公开验证已通过，读回写后源码。',
+        tools: [{ name: 'read_file', input: { path: target } }],
+      };
+    }
+
+    assert.equal(calls, 8);
+    assert.match(currentContext, /DENSE_RENDERING/u);
+    return {
+      text: '写后源码与公开验证证据齐备，现在结算。',
+      tools: [{ name: 'task_complete', input: { summary: '渲染密度修复且公开验证通过。' } }],
+    };
+  }, {
+    runDisplayAction: 'fix',
+    verificationRequired: true,
+    terminalHost: async command => {
+      terminalCalls += 1;
+      assert.equal(command, 'node verify-render.mjs');
+      const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'render-state.txt');
+      return readFileSync(target, 'utf8').includes('DENSE_RENDERING')
+        ? 'render verification passed\n[exitCode=0]'
+        : 'render verification failed: expected>=0.02 observed=0.009\n[exitCode=1]';
+    },
+  });
+  try {
+    assert.deepEqual(providerSessions, [true, false, false, true, false, false, false, false]);
+    assert.equal(terminalCalls, 2, simulation.result.historyText);
+    assert.equal(
+      readFileSync(path.join(simulation.root, 'render-state.txt'), 'utf8'),
+      'DENSE_RENDERING\n',
+    );
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+    assert.equal(
+      simulation.harness.statuses.some(status => (
+        status.title === '验证失败，继续依据证据修复'
+        && /活动失败因果前沿重建/u.test(status.detail)
+      )),
+      true,
+      simulation.result.historyText,
+    );
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
 test('ModelLedUserSimulation: repeated action announcements rebuild the Provider session before tool execution', async () => {
   const prompt = '继续修复现有程序，先读取生产实现再修改并验证。';
   const providerSessions = [];
