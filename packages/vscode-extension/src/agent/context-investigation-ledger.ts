@@ -148,9 +148,19 @@ export class ContextInvestigationLedger {
     const inputOverrides = new Map<number, Readonly<Record<string, unknown>>>();
     const continuationToolIndexes = new Set<number>();
     const warnings: string[] = [];
+    const assignedGapKeys = new Set<string>();
+    const directlyRequestedGaps = new Map<number, ProjectedReadGap>();
     tools.forEach((tool, toolIndex) => {
-      const gap = this.projectedReadGapFor(tool);
+      const gap = this.projectedReadGapFor(tool, assignedGapKeys, false);
       if (!gap) return;
+      directlyRequestedGaps.set(toolIndex, gap);
+      assignedGapKeys.add(this.projectedReadGapKey(tool, gap));
+    });
+    tools.forEach((tool, toolIndex) => {
+      const directGap = directlyRequestedGaps.get(toolIndex);
+      const gap = directGap ?? this.projectedReadGapFor(tool, assignedGapKeys, true);
+      if (!gap) return;
+      if (!directGap) assignedGapKeys.add(this.projectedReadGapKey(tool, gap));
       continuationToolIndexes.add(toolIndex);
       const startLine = optionalPositiveInteger(tool.input, 'startLine', 'start_line', 'lineStart', 'fromLine');
       const endLine = optionalPositiveInteger(tool.input, 'endLine', 'end_line', 'lineEnd', 'toLine');
@@ -261,11 +271,16 @@ export class ContextInvestigationLedger {
     return this.readRangeIsCovered(path, startLine, endLine);
   }
 
-  private projectedReadGapFor(tool: InvestigationTool): ProjectedReadGap | undefined {
+  private projectedReadGapFor(
+    tool: InvestigationTool,
+    excludedGapKeys: ReadonlySet<string>,
+    allowCoveredFallback: boolean,
+  ): ProjectedReadGap | undefined {
     if (tool.name !== 'read_file' || typeof tool.input.path !== 'string') return undefined;
     const path = this.resolvePath(tool.input.path);
     const gaps = (this.projectedReadGaps.get(path) ?? [])
       .filter(gap => gap.pathRevision === this.pathRevision(path))
+      .filter(gap => !excludedGapKeys.has(this.projectedReadGapKey(tool, gap)))
       .sort((left, right) => left.startLine - right.startLine);
     if (gaps.length === 0) return undefined;
     const startLine = optionalPositiveInteger(tool.input, 'startLine', 'start_line', 'lineStart', 'fromLine');
@@ -273,7 +288,12 @@ export class ContextInvestigationLedger {
     if (startLine === undefined || endLine === undefined) return gaps[0];
     const intersecting = gaps.find(gap => startLine <= gap.endLine && endLine >= gap.startLine);
     if (intersecting) return intersecting;
-    return this.readRequestIsCovered(tool) ? gaps[0] : undefined;
+    return allowCoveredFallback && this.readRequestIsCovered(tool) ? gaps[0] : undefined;
+  }
+
+  private projectedReadGapKey(tool: InvestigationTool, gap: ProjectedReadGap): string {
+    const path = typeof tool.input.path === 'string' ? this.resolvePath(tool.input.path) : '';
+    return `${path}\u0000${gap.pathRevision}\u0000${gap.startLine}\u0000${gap.endLine}`;
   }
 
   private subtractVisibleExposuresFromProjectedGaps(exposures: readonly AcceptedReadExposure[]): void {

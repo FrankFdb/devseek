@@ -271,6 +271,33 @@ test('coherent read projection records the declared undelivered tail as continua
   });
 });
 
+test('an explicit gap request takes priority over a disjoint covered reread in the same round', () => {
+  const ledger = new ContextInvestigationLedger('/workspace');
+  ledger.recordVisibleReadExposures([{
+    path: '/workspace/src/controller.cpp',
+    startLine: 1,
+    endLine: 422,
+    totalLines: 478,
+    sourceSegmentIndex: 0,
+    sourceRangeStartLine: 1,
+    sourceRangeEndLine: 478,
+  }], visibleRead('/workspace/src/controller.cpp', 0, 7));
+
+  const resolution = ledger.reconcileProjectedReadContinuations([
+    { name: 'read_file', input: { path: 'src/controller.cpp', startLine: 300, endLine: 330 } },
+    { name: 'read_file', input: { path: 'src/controller.cpp', startLine: 460, endLine: 490 } },
+  ]);
+
+  assert.equal(resolution.inputOverrides.has(0), false);
+  assert.deepEqual(resolution.inputOverrides.get(1), {
+    path: 'src/controller.cpp',
+    startLine: 423,
+    endLine: 478,
+  });
+  assert.deepEqual([...resolution.continuationToolIndexes], [1]);
+  assert.equal(resolution.warnings.length, 1);
+});
+
 test('separate partial reads never create host-owned projected read debt', () => {
   const ledger = new ContextInvestigationLedger('/workspace');
   ledger.recordVisibleReadExposures([
