@@ -97,6 +97,8 @@ test('bounded visual failure preserves workspace reproduction and spatial diagno
           acceptanceCommand: 'node tools/verify-ppm.mjs verification.ppm',
         },
         ppm: {
+          topHalfNonDominantSampledPixels: 0,
+          bottomHalfNonDominantSampledPixels: 46,
           nonDominantBounds: { minX: 130, minY: 181, maxX: 670, maxY: 599 },
           nonDominantQuadrants: { topLeft: 0, topRight: 2, bottomLeft: 19, bottomRight: 25 },
           topSampledColors: Array.from({ length: 20 }, (_, index) => ({
@@ -110,6 +112,7 @@ test('bounded visual failure preserves workspace reproduction and spatial diagno
 
   assert.match(projection, /\.\/build\/app --snapshot verification\.ppm/);
   assert.match(projection, /node tools\/verify-ppm\.mjs verification\.ppm/);
+  assert.match(projection, /"topHalfNonDominantSampledPixels": 0/);
   assert.match(projection, /"nonDominantBounds"/);
   assert.match(projection, /"nonDominantQuadrants"/);
 });

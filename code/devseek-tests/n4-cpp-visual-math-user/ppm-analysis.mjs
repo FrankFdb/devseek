@@ -34,6 +34,7 @@ export function readPpmStats(filePath) {
   const rankedColors = [...colors.entries()].sort((left, right) => right[1] - left[1]);
   const [dominantKey, dominant = 0] = rankedColors[0] ?? [null, 0];
   const nonDominantSamples = dominantKey === null ? [] : samples.filter(sample => sample.key !== dominantKey);
+  const nonDominantVerticalHalves = sampleVerticalHalves(nonDominantSamples, parsed.height);
   return {
     filePath,
     magic: parsed.magic,
@@ -47,6 +48,8 @@ export function readPpmStats(filePath) {
     dominantSampledColor: dominantKey === null ? null : colorSummary(dominantKey, dominant, sampled),
     topSampledColors: rankedColors.slice(0, 4).map(([key, count]) => colorSummary(key, count, sampled)),
     nonDominantSampledPixels: nonDominantSamples.length,
+    topHalfNonDominantSampledPixels: nonDominantVerticalHalves.top,
+    bottomHalfNonDominantSampledPixels: nonDominantVerticalHalves.bottom,
     nonDominantBounds: sampleBounds(nonDominantSamples),
     nonDominantQuadrants: sampleQuadrants(nonDominantSamples, parsed.width, parsed.height),
   };
@@ -58,7 +61,9 @@ export function ppmLooksGraphical(stats) {
     && stats.width >= expected.minimumWidth
     && stats.height >= expected.minimumHeight
     && stats.uniqueSampledColors >= expected.minimumUniqueSampledColors
-    && stats.nonDominantRatio >= expected.minimumNonDominantRatio);
+    && stats.nonDominantRatio >= expected.minimumNonDominantRatio
+    && stats.topHalfNonDominantSampledPixels >= expected.minimumTopHalfNonDominantSampledPixels
+    && stats.bottomHalfNonDominantSampledPixels >= expected.minimumBottomHalfNonDominantSampledPixels);
 }
 
 export function graphicalPpmExpectation() {
@@ -67,6 +72,8 @@ export function graphicalPpmExpectation() {
     minimumHeight: 480,
     minimumUniqueSampledColors: 6,
     minimumNonDominantRatio: 0.02,
+    minimumTopHalfNonDominantSampledPixels: 8,
+    minimumBottomHalfNonDominantSampledPixels: 8,
   };
 }
 
@@ -121,6 +128,13 @@ function sampleQuadrants(samples, width, height) {
     counts[`${vertical}${horizontal}`] += 1;
   }
   return counts;
+}
+
+function sampleVerticalHalves(samples, height) {
+  return samples.reduce((counts, sample) => {
+    counts[sample.y < height / 2 ? 'top' : 'bottom'] += 1;
+    return counts;
+  }, { top: 0, bottom: 0 });
 }
 
 function addColor(colors, red, green, blue) {

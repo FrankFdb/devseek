@@ -350,6 +350,8 @@ function visualCaseDetails(result) {
       uniqueSampledColors: stats.uniqueSampledColors,
       nonDominantRatio: stats.nonDominantRatio,
       nonDominantSampledPixels: stats.nonDominantSampledPixels,
+      topHalfNonDominantSampledPixels: stats.topHalfNonDominantSampledPixels,
+      bottomHalfNonDominantSampledPixels: stats.bottomHalfNonDominantSampledPixels,
       nonDominantBounds: stats.nonDominantBounds,
       nonDominantQuadrants: stats.nonDominantQuadrants,
       topSampledColors: stats.topSampledColors,

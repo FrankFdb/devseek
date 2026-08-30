@@ -7,6 +7,7 @@ import test from 'node:test';
 import {
   findInteractionDispatcherCycles,
   inspectScriptRenderOwnership,
+  ppmLooksGraphical,
   readPpmStats,
 } from './verify-workspace.mjs';
 
@@ -104,4 +105,23 @@ test('PPM diagnostics expose the spatial distribution of visible pixels', t => {
     bottomLeft: 0,
     bottomRight: 1,
   });
+  assert.equal(stats.topHalfNonDominantSampledPixels, 0);
+  assert.equal(stats.bottomHalfNonDominantSampledPixels, 1);
+});
+
+test('PPM acceptance rejects graphics confined to one vertical half', () => {
+  const base = {
+    width: 800,
+    height: 600,
+    uniqueSampledColors: 10,
+    nonDominantRatio: 0.2,
+    topHalfNonDominantSampledPixels: 20,
+    bottomHalfNonDominantSampledPixels: 20,
+  };
+
+  assert.equal(ppmLooksGraphical(base), true);
+  assert.equal(ppmLooksGraphical({
+    ...base,
+    topHalfNonDominantSampledPixels: 0,
+  }), false);
 });
