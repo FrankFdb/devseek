@@ -35,6 +35,7 @@ const unresolvedMutation = Object.freeze({
   deliveryPending: true,
   gatheredEvidenceCount: 8,
   investigationActivity: true,
+  novelInvestigationProgress: false,
   cohortBoundaryActivity: false,
 });
 
@@ -101,6 +102,7 @@ test('delivery pending resolution preserves read-only and review-repair boundari
 test('delivery activity separates pure context drift from locally accepted progress boundaries', () => {
   const pureContext = {
     hasContextInvestigationActivity: true,
+    hasNovelContextEvidence: false,
     hasAcceptedWorkspaceMutation: false,
     acceptedRecoveryContextRefresh: false,
     expectation: 'mutation',
@@ -109,25 +111,30 @@ test('delivery activity separates pure context drift from locally accepted progr
 
   assert.deepEqual(resolveDeliveryRoundActivity(pureContext), {
     investigationActivity: true,
+    novelInvestigationProgress: false,
     cohortBoundaryActivity: false,
   });
   assert.deepEqual(resolveDeliveryRoundActivity({
     ...pureContext,
     hasAcceptedWorkspaceMutation: true,
-  }), { investigationActivity: false, cohortBoundaryActivity: true });
+  }), { investigationActivity: false, novelInvestigationProgress: false, cohortBoundaryActivity: true });
   assert.deepEqual(resolveDeliveryRoundActivity({
     ...pureContext,
     acceptedRecoveryContextRefresh: true,
-  }), { investigationActivity: false, cohortBoundaryActivity: true });
+  }), { investigationActivity: false, novelInvestigationProgress: false, cohortBoundaryActivity: true });
   assert.deepEqual(resolveDeliveryRoundActivity({
     ...pureContext,
     expectation: 'unclassified',
     hasNovelValidationTerminalProgress: true,
-  }), { investigationActivity: false, cohortBoundaryActivity: false });
+  }), { investigationActivity: false, novelInvestigationProgress: false, cohortBoundaryActivity: false });
   assert.deepEqual(resolveDeliveryRoundActivity({
     ...pureContext,
     hasContextInvestigationActivity: false,
-  }), { investigationActivity: false, cohortBoundaryActivity: false });
+  }), { investigationActivity: false, novelInvestigationProgress: false, cohortBoundaryActivity: false });
+  assert.deepEqual(resolveDeliveryRoundActivity({
+    ...pureContext,
+    hasNovelContextEvidence: true,
+  }), { investigationActivity: true, novelInvestigationProgress: true, cohortBoundaryActivity: false });
 });
 
 test('delivery convergence corrects twice and then stops a mutation cohort without progress', () => {
@@ -290,26 +297,30 @@ test('unclassified delivery gets one bounded choice round beyond a known mutatio
   assert.equal(unclassifiedLedger.observe(unclassified).kind, 'stop');
 });
 
-test('delivery convergence owns one final precise read and bounds suppressed investigation', () => {
+test('novel source exposure remains progress while repeated suppressed investigation is bounded', () => {
   const ledger = new DeliveryConvergenceLedger();
-  assert.equal(ledger.contextToolAdmission(), 'open');
+  let corrections = 0;
+  for (let round = 0; round < 16; round++) {
+    const result = ledger.observe({
+      ...unresolvedMutation,
+      gatheredEvidenceCount: round + 1,
+      novelInvestigationProgress: true,
+    });
+    assert.notEqual(result.kind, 'stop');
+    if (result.kind === 'correct') corrections++;
+  }
+  assert.equal(corrections, 9);
 
-  assert.equal(ledger.observe(unresolvedMutation).kind, 'continue');
-  assert.equal(ledger.observe(unresolvedMutation).kind, 'correct');
-  assert.equal(ledger.contextToolAdmission(), 'one-precise-read');
-
-  ledger.closeFinalContextAllowance();
-  assert.equal(ledger.contextToolAdmission(), 'closed');
-  assert.equal(ledger.recordSuppressedContextRound(18), undefined);
+  assert.equal(ledger.recordSuppressedInvestigationRound(18), undefined);
   assert.match(
-    ledger.recordSuppressedContextRound(19),
-    /最终精确读取额度也已用尽/u,
+    ledger.recordSuppressedInvestigationRound(19),
+    /重复或已覆盖/u,
   );
 
   ledger.observe({
     ...unresolvedMutation,
-    deliveryProgressEpoch: 1,
-    cohortBoundaryActivity: true,
+    gatheredEvidenceCount: 20,
+    novelInvestigationProgress: true,
   });
-  assert.equal(ledger.contextToolAdmission(), 'open');
+  assert.equal(ledger.recordSuppressedInvestigationRound(20), undefined);
 });

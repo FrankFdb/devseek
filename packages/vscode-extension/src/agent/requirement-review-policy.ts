@@ -36,6 +36,21 @@ export interface RequirementReviewPolicyInput {
   readonly canonicalTaskContract?: CodingKernelTaskContract;
 }
 
+export interface RequirementReviewEntryInput {
+  readonly workObserved: boolean;
+  readonly completionSignaled: boolean;
+  readonly missingEvidenceCount: number;
+  readonly hasBlockingTerminalFailure: boolean;
+}
+
+/** Independent final-source review starts only at an evidence-ready completion boundary. */
+export function shouldEnterRequirementReview(input: RequirementReviewEntryInput): boolean {
+  return input.workObserved
+    && input.completionSignaled
+    && input.missingEvidenceCount === 0
+    && !input.hasBlockingTerminalFailure;
+}
+
 const HOST_EVIDENCE_SOURCE_LIMIT = 2;
 const HOST_EVIDENCE_CONSTRAINTS = new Set([
   'workspace-root-only',

@@ -8,7 +8,6 @@ import {
   buildRepeatedContextToolFeedback,
   isContextGatheringToolName,
   makeContextToolSignature,
-  type DeliveryContextAdmission,
   type ContextToolRequest,
 } from './context-convergence-feedback';
 
@@ -21,9 +20,13 @@ export interface ContextInvestigationScreenResult {
   readonly suppressedTools: readonly ToolSuppressionEvidence[];
   readonly warnings: readonly string[];
   readonly acceptedRecoveryContextRefresh: boolean;
-  readonly consumedPreciseContextRead: boolean;
-  readonly exhaustedPreciseContextAllowance: boolean;
-  readonly deliveryBlockedToolCount: number;
+  readonly admittedNovelContextToolCount: number;
+  readonly admittedNovelReadToolCount: number;
+  readonly suppressedContextToolCount: number;
+}
+
+export interface VisibleReadCoverageUpdate {
+  readonly novelExposureCount: number;
 }
 
 export interface ProjectedReadContinuationResolution {
@@ -38,7 +41,6 @@ interface ContextInvestigationScreenInput {
   readonly consumeContextRefresh: (path: string | undefined) => boolean;
   readonly alreadyBlockedToolIndexes?: ReadonlySet<number>;
   readonly providerRecoveryContextRefreshToolIndexes?: ReadonlySet<number>;
-  readonly deliveryContextAdmission?: DeliveryContextAdmission;
 }
 
 interface ContextInvestigationRecordInput {
@@ -110,12 +112,13 @@ export class ContextInvestigationLedger {
   recordVisibleReadExposures(
     exposures: readonly ProviderVisibleReadExposure[],
     fileAccessEvents: readonly ToolFileAccessEvent[],
-  ): void {
+  ): VisibleReadCoverageUpdate {
     const events = fileAccessEvents.map(event => ({ ...event, path: this.resolvePath(event.path) }));
     for (const event of events) {
       if (event.kind === 'write') this.advancePathRevision(event.path);
     }
     const acceptedExposures: AcceptedReadExposure[] = [];
+    let novelExposureCount = 0;
     for (const exposure of exposures) {
       const path = this.resolvePath(exposure.path);
       const readEvent = events.find(event => (
@@ -132,10 +135,11 @@ export class ContextInvestigationLedger {
       if (stale) continue;
       const acceptedExposure = { ...exposure, path, readSequence: readEvent.sequence };
       acceptedExposures.push(acceptedExposure);
-      this.recordReadExposure(acceptedExposure);
+      if (this.recordReadExposure(acceptedExposure)) novelExposureCount++;
     }
     this.subtractVisibleExposuresFromProjectedGaps(acceptedExposures);
     this.recordProjectedReadGaps(acceptedExposures);
+    return Object.freeze({ novelExposureCount });
   }
 
   reconcileProjectedReadContinuations(
@@ -173,22 +177,21 @@ export class ContextInvestigationLedger {
     const suppressedTools: ToolSuppressionEvidence[] = [];
     const warnings: string[] = [];
     let acceptedRecoveryContextRefresh = false;
-    let consumedPreciseContextRead = false;
-    let exhaustedPreciseContextAllowance = false;
-    let deliveryBlockedToolCount = 0;
+    let admittedNovelContextToolCount = 0;
+    let admittedNovelReadToolCount = 0;
+    let suppressedContextToolCount = 0;
     if (input.hasWorkspaceMutation) {
       return {
         blockedToolIndexes,
         suppressedTools,
         warnings,
         acceptedRecoveryContextRefresh,
-        consumedPreciseContextRead,
-        exhaustedPreciseContextAllowance,
-        deliveryBlockedToolCount,
+        admittedNovelContextToolCount,
+        admittedNovelReadToolCount,
+        suppressedContextToolCount,
       };
     }
 
-    const deliveryAdmission = input.deliveryContextAdmission ?? 'open';
     tools.forEach((tool, toolIndex) => {
       if (input.alreadyBlockedToolIndexes?.has(toolIndex)) return;
       if (!isContextGatheringToolName(tool.name)) return;
@@ -205,37 +208,13 @@ export class ContextInvestigationLedger {
         return;
       }
       if (input.providerRecoveryContextRefreshToolIndexes?.has(toolIndex)) return;
+      if (!exactRepeat && !coveredRead) {
+        admittedNovelContextToolCount++;
+        if (tool.name === 'read_file') admittedNovelReadToolCount++;
+        return;
+      }
 
-      // Prompt projection can intentionally expose the head and tail of a large
-      // read while instructing the Provider to request the omitted middle. That
-      // exact continuation is host-created context debt, not renewed discovery.
-      const completesProjectedRead = this.readRequestCompletesVisibleGap(tool);
-      if (completesProjectedRead) {
-        consumedPreciseContextRead = true;
-        return;
-      }
-      const admitsPreciseRead = deliveryAdmission === 'one-precise-read'
-        && !consumedPreciseContextRead
-        && !exactRepeat
-        && !coveredRead
-        && tool.name === 'read_file'
-        && typeof tool.input.path === 'string';
-      if (admitsPreciseRead) {
-        consumedPreciseContextRead = true;
-        return;
-      }
-      if (deliveryAdmission !== 'open') {
-        if (deliveryAdmission === 'one-precise-read' && !consumedPreciseContextRead) {
-          exhaustedPreciseContextAllowance = true;
-        }
-        deliveryBlockedToolCount++;
-        blockedToolIndexes.add(toolIndex);
-        suppressedTools.push({ tool: tool.name, reason: 'delivery-context-budget-exhausted' });
-        warnings.push(buildDeliveryContextBlockedFeedback(tool));
-        return;
-      }
-      if (!exactRepeat && !coveredRead) return;
-
+      suppressedContextToolCount++;
       const nextCount = exactRepeat ? (seen?.count ?? 1) + 1 : 2;
       if (exactRepeat) {
         this.signatures.set(signature, { count: nextCount, progressEpoch: input.progressEpoch });
@@ -254,9 +233,9 @@ export class ContextInvestigationLedger {
       suppressedTools,
       warnings,
       acceptedRecoveryContextRefresh,
-      consumedPreciseContextRead,
-      exhaustedPreciseContextAllowance,
-      deliveryBlockedToolCount,
+      admittedNovelContextToolCount,
+      admittedNovelReadToolCount,
+      suppressedContextToolCount,
     };
   }
 
@@ -279,19 +258,7 @@ export class ContextInvestigationLedger {
     const endLine = optionalPositiveInteger(tool.input, 'endLine', 'end_line', 'lineEnd', 'toLine');
     if (endLine === undefined || endLine < startLine) return false;
     const path = this.resolvePath(tool.input.path);
-    return (this.readCoverage.get(path) ?? []).some(coverage => (
-      coverage.pathRevision === this.pathRevision(path)
-      && coverage.startLine <= startLine
-      && coverage.endLine >= endLine
-    ));
-  }
-
-  private readRequestCompletesVisibleGap(tool: InvestigationTool): boolean {
-    const gap = this.projectedReadGapFor(tool);
-    if (!gap) return false;
-    const startLine = optionalPositiveInteger(tool.input, 'startLine', 'start_line', 'lineStart', 'fromLine');
-    const endLine = optionalPositiveInteger(tool.input, 'endLine', 'end_line', 'lineEnd', 'toLine');
-    return startLine === gap.startLine && endLine === gap.endLine;
+    return this.readRangeIsCovered(path, startLine, endLine);
   }
 
   private projectedReadGapFor(tool: InvestigationTool): ProjectedReadGap | undefined {
@@ -356,15 +323,16 @@ export class ContextInvestigationLedger {
     }
   }
 
-  private recordReadExposure(exposure: ProviderVisibleReadExposure): void {
+  private recordReadExposure(exposure: ProviderVisibleReadExposure): boolean {
     if (!exposure.path
       || !Number.isSafeInteger(exposure.startLine)
       || !Number.isSafeInteger(exposure.endLine)
       || !Number.isSafeInteger(exposure.totalLines)
       || exposure.startLine < 1
       || exposure.endLine < exposure.startLine
-      || exposure.totalLines < exposure.endLine) return;
+      || exposure.totalLines < exposure.endLine) return false;
     const path = this.resolvePath(exposure.path);
+    const novel = !this.readRangeIsCovered(path, exposure.startLine, exposure.endLine);
     const entries = this.readCoverage.get(path) ?? [];
     entries.push({
       startLine: exposure.startLine,
@@ -373,6 +341,20 @@ export class ContextInvestigationLedger {
       pathRevision: this.pathRevision(path),
     });
     this.readCoverage.set(path, entries);
+    return novel;
+  }
+
+  private readRangeIsCovered(path: string, startLine: number, endLine: number): boolean {
+    const entries = (this.readCoverage.get(path) ?? [])
+      .filter(entry => entry.pathRevision === this.pathRevision(path) && entry.endLine >= startLine)
+      .sort((left, right) => left.startLine - right.startLine || left.endLine - right.endLine);
+    let coveredThrough = startLine - 1;
+    for (const entry of entries) {
+      if (entry.startLine > coveredThrough + 1) return false;
+      coveredThrough = Math.max(coveredThrough, entry.endLine);
+      if (coveredThrough >= endLine) return true;
+    }
+    return false;
   }
 
   private pathRevision(path: string): number {
@@ -425,14 +407,5 @@ function buildCoveredContextReadFeedback(tool: InvestigationTool): string {
     `【系统反馈】已跳过被既有证据覆盖的重复读取：${path}`,
     '请求的行范围已由本轮较早的成功读取完整覆盖，期间没有写盘使证据失效。',
     '请直接依据模型已经收到的内容实施修改或形成结论；只有写入失败、文件变化或缺少未覆盖行时才重新读取。',
-  ].join('\n');
-}
-
-function buildDeliveryContextBlockedFeedback(tool: InvestigationTool): string {
-  const path = typeof tool.input.path === 'string' ? tool.input.path : tool.name;
-  return [
-    `【系统反馈】已跳过交付收敛后的额外上下文请求：${path}`,
-    '模型已经使用最终精确读取机会，但仍未形成写入或可交付结论。',
-    '下一轮必须依据已有证据提交最小修改或明确结论；不要继续横向 read/list/grep/search。',
   ].join('\n');
 }

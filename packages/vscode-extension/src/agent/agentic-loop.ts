@@ -105,6 +105,7 @@ import { ToolFailureRecoveryLedger } from './tool-failure-recovery';
 import { QualityGateStagnationLedger } from './quality-gate-stagnation';
 import { SourceValidationLedger } from './source-validation-ledger';
 import { createProviderRequirementReviewService } from './provider-requirement-review';
+import { shouldEnterRequirementReview } from './requirement-review-policy';
 import { buildAgenticSystemPrompt } from './agentic-system-prompt';
 import { projectModelToolSemanticProposal } from './model-tool-semantic-proposal';
 import { executeScheduledToolLoop } from './tool-loop-scheduler';
@@ -749,11 +750,7 @@ export async function runAgenticLoop(
       consumeContextRefresh: path => toolFailureRecovery.consumeContextRefresh(path),
       alreadyBlockedToolIndexes: blockedRepeatedToolIndexes,
       providerRecoveryContextRefreshToolIndexes: providerRecoveryScreen.contextRefreshToolIndexes,
-      deliveryContextAdmission: deliveryConvergence.contextToolAdmission(),
     });
-    if (contextScreen.consumedPreciseContextRead || contextScreen.exhaustedPreciseContextAllowance) {
-      deliveryConvergence.closeFinalContextAllowance();
-    }
     for (const toolIndex of contextScreen.blockedToolIndexes) blockedRepeatedToolIndexes.add(toolIndex);
     suppressedTools.push(...contextScreen.suppressedTools);
     loopWarnings.push(...contextScreen.warnings);
@@ -876,7 +873,7 @@ export async function runAgenticLoop(
     // Tool outputs become Provider history before any settlement branch can
     // break or continue. A completion-fence correction must see the exact
     // results produced by the turn it is reopening.
-    deliverAgenticToolFeedback({
+    const toolFeedbackDelivery = deliverAgenticToolFeedback({
       round: roundCount,
       result: loopRes,
       additionalSegments: loopWarnings,
@@ -1001,6 +998,11 @@ export async function runAgenticLoop(
       mutationRequired: promptRequiresFileChange || requirementReviewSourceRepairPending,
       modelLedUnclassified: writeAuthority.canonicalSemanticContract.signals.includes('model-led-unclassified-turn'),
     });
+    const novelNonReadContextToolCount = contextScreen.admittedNovelContextToolCount
+      - contextScreen.admittedNovelReadToolCount;
+    const repeatedTerminalSuppressed = suppressedTools.some(
+      suppression => suppression.reason === 'repeated-terminal-without-progress',
+    );
     const deliveryConvergenceResult = deliveryConvergence.observe({
       expectation: deliveryExpectation,
       deliveryProgressEpoch: progressEpoch,
@@ -1015,15 +1017,21 @@ export async function runAgenticLoop(
       gatheredEvidenceCount: allReadEvidencePaths.size + allEvidenceRefs.length,
       ...resolveDeliveryRoundActivity({
         hasContextInvestigationActivity: roundHasContextInvestigationActivity,
+        hasNovelContextEvidence: !repeatedTerminalSuppressed && (
+          toolFeedbackDelivery.novelReadExposureCount > 0
+          || novelNonReadContextToolCount > 0
+        ),
         hasAcceptedWorkspaceMutation: (loopRes.writtenFiles?.length ?? 0) > 0,
         acceptedRecoveryContextRefresh: contextScreen.acceptedRecoveryContextRefresh,
         expectation: deliveryExpectation,
         hasNovelValidationTerminalProgress: roundHasNovelValidationTerminalProgress,
       }),
     });
-    const deliveryContextStopReason = contextScreen.deliveryBlockedToolCount > 0
+    const deliveryContextStopReason = contextScreen.suppressedContextToolCount > 0
+      && toolFeedbackDelivery.novelReadExposureCount === 0
+      && novelNonReadContextToolCount === 0
       && !roundHasNovelValidationTerminalProgress
-      ? deliveryConvergence.recordSuppressedContextRound(
+      ? deliveryConvergence.recordSuppressedInvestigationRound(
         allReadEvidencePaths.size + allEvidenceRefs.length,
       )
       : undefined;
@@ -1044,10 +1052,12 @@ export async function runAgenticLoop(
     }
 
     let reviewFeedback: string | undefined;
-    if (!callbacks.signal?.aborted
-      && sawWorkTool
-      && missingAfterTools.length === 0
-      && !blockingFailureAfterTools) {
+    if (!callbacks.signal?.aborted && shouldEnterRequirementReview({
+      workObserved: sawWorkTool,
+      completionSignaled: Boolean(loopRes.taskComplete || loopRes.allTodosCompleted),
+      missingEvidenceCount: missingAfterTools.length,
+      hasBlockingTerminalFailure: Boolean(blockingFailureAfterTools),
+    })) {
       const reviewOutcome = await requirementReview.request({
         qualityGate: sourceValidation.qualityGateForCurrentSource(),
         writtenFiles: allWrittenFiles,

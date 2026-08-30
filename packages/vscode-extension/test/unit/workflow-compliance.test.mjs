@@ -984,7 +984,7 @@ test('Agentic loop: repeated terminal failures enter root-cause recovery before 
   assertContains(investigation, 'advancePathRevision(event.path)', 'writes must invalidate same-path read coverage');
   assertContains(
     investigation,
-    'coverage.pathRevision === this.pathRevision(path)',
+    'entry.pathRevision === this.pathRevision(path)',
     'read authority must bind to the current path revision',
   );
   assertContains(investigation, 'input.consumeContextRefresh', 'failed mutations must permit one fresh read before repeat suppression');
@@ -2633,6 +2633,16 @@ test('Architecture: validated source changes require fresh source review before 
     agenticLoop,
     "reviewOutcome.kind === 'settled'",
     'only an explicitly settled source review may close the tool round',
+  );
+  assertContains(
+    agenticLoop,
+    'shouldEnterRequirementReview({',
+    'independent review must enter through the completion-boundary policy',
+  );
+  assertContains(
+    reviewPolicy,
+    'input.completionSignaled',
+    'independent review must not freeze a source cohort before the model signals completion',
   );
   assertContains(
     executionEvidence,

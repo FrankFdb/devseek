@@ -11,8 +11,10 @@ const CONTEXT_GATHERING_TOOL_NAMES = new Set([
 ]);
 
 const MUTATION_ROUNDS_BEFORE_CORRECTION = 2;
+const MUTATION_PROGRESS_ROUNDS_BEFORE_CORRECTION = 8;
 const MUTATION_EVIDENCE_BEFORE_CORRECTION = 6;
 const UNCLASSIFIED_ROUNDS_BEFORE_CORRECTION = 6;
+const UNCLASSIFIED_PROGRESS_ROUNDS_BEFORE_CORRECTION = 6;
 const UNCLASSIFIED_EVIDENCE_BEFORE_CORRECTION = 12;
 const MIN_ROUNDS_BEFORE_EVIDENCE_SATURATION = 2;
 const MAX_MUTATION_DELIVERY_CORRECTIONS = 2;
@@ -20,7 +22,6 @@ const MAX_UNCLASSIFIED_DELIVERY_CORRECTIONS = 3;
 const MAX_ACTIONABLE_REPAIR_CORRECTIONS = 3;
 
 export type DeliveryConvergenceExpectation = 'mutation' | 'unclassified' | 'none';
-export type DeliveryContextAdmission = 'open' | 'one-precise-read' | 'closed';
 
 export function resolveDeliveryConvergenceExpectation(input: {
   readonly mutationRequired: boolean;
@@ -51,6 +52,7 @@ export function resolveDeliveryConvergencePending(input: DeliveryConvergencePend
 
 export interface DeliveryRoundActivityInput {
   readonly hasContextInvestigationActivity: boolean;
+  readonly hasNovelContextEvidence: boolean;
   readonly hasAcceptedWorkspaceMutation: boolean;
   readonly acceptedRecoveryContextRefresh: boolean;
   readonly expectation: DeliveryConvergenceExpectation;
@@ -59,6 +61,7 @@ export interface DeliveryRoundActivityInput {
 
 export interface DeliveryRoundActivity {
   readonly investigationActivity: boolean;
+  readonly novelInvestigationProgress: boolean;
   readonly cohortBoundaryActivity: boolean;
 }
 
@@ -70,10 +73,12 @@ export function resolveDeliveryRoundActivity(
     || input.acceptedRecoveryContextRefresh;
   const novelUnclassifiedValidation = input.expectation === 'unclassified'
     && input.hasNovelValidationTerminalProgress;
+  const investigationActivity = input.hasContextInvestigationActivity
+    && !cohortBoundaryActivity
+    && !novelUnclassifiedValidation;
   return Object.freeze({
-    investigationActivity: input.hasContextInvestigationActivity
-      && !cohortBoundaryActivity
-      && !novelUnclassifiedValidation,
+    investigationActivity,
+    novelInvestigationProgress: investigationActivity && input.hasNovelContextEvidence,
     cohortBoundaryActivity,
   });
 }
@@ -85,6 +90,7 @@ export interface DeliveryConvergenceObservation {
   readonly actionableRepairPending?: boolean;
   readonly gatheredEvidenceCount: number;
   readonly investigationActivity: boolean;
+  readonly novelInvestigationProgress: boolean;
   readonly cohortBoundaryActivity: boolean;
 }
 
@@ -109,25 +115,17 @@ export class DeliveryConvergenceLedger {
   private expectation: DeliveryConvergenceExpectation | undefined;
   private progressEpoch: number | undefined;
   private investigationRounds = 0;
+  private progressiveInvestigationRounds = 0;
+  private progressiveDeliveryPressureActive = false;
   private correctionCount = 0;
-  private contextAdmission: DeliveryContextAdmission = 'open';
   private suppressedContextRounds = 0;
 
-  contextToolAdmission(): DeliveryContextAdmission {
-    return this.contextAdmission;
-  }
-
-  closeFinalContextAllowance(): void {
-    if (this.contextAdmission === 'one-precise-read') this.contextAdmission = 'closed';
-  }
-
-  recordSuppressedContextRound(gatheredEvidenceCount: number): string | undefined {
-    if (this.contextAdmission !== 'closed') return undefined;
+  recordSuppressedInvestigationRound(gatheredEvidenceCount: number): string | undefined {
     this.suppressedContextRounds++;
     if (this.suppressedContextRounds < 2) return undefined;
     return [
-      `已收集 ${gatheredEvidenceCount} 项项目证据，最终精确读取额度也已用尽。`,
-      '模型仍只请求更多上下文工具而没有产生写入或交付；为避免自主模式无界调查，当前任务已停止。',
+      `已收集 ${gatheredEvidenceCount} 项项目证据，但连续上下文请求都被判定为重复或已覆盖。`,
+      '模型没有扩大可见源码事实，也没有产生写入或交付；为避免自主模式无界重复，当前任务已停止。',
     ].join('');
   }
 
@@ -146,6 +144,21 @@ export class DeliveryConvergenceLedger {
       return CONTINUE_RESULT;
     }
     if (!input.investigationActivity) return CONTINUE_RESULT;
+    if (input.novelInvestigationProgress) {
+      this.resetStalledInvestigationPressure();
+      if (this.progressiveDeliveryPressureActive) {
+        return buildDeliveryCorrection(input, this.progressiveInvestigationRounds);
+      }
+      this.progressiveInvestigationRounds++;
+      const progressRoundsBeforeCorrection = input.expectation === 'mutation'
+        ? MUTATION_PROGRESS_ROUNDS_BEFORE_CORRECTION
+        : UNCLASSIFIED_PROGRESS_ROUNDS_BEFORE_CORRECTION;
+      if (this.progressiveInvestigationRounds < progressRoundsBeforeCorrection) {
+        return CONTINUE_RESULT;
+      }
+      this.progressiveDeliveryPressureActive = true;
+      return buildDeliveryCorrection(input, progressRoundsBeforeCorrection);
+    }
 
     this.investigationRounds++;
     const roundsBeforeCorrection = input.expectation === 'mutation'
@@ -173,25 +186,7 @@ export class DeliveryConvergenceLedger {
     }
 
     this.correctionCount++;
-    if (this.contextAdmission === 'open') this.contextAdmission = 'one-precise-read';
-    const mutationExpected = input.expectation === 'mutation';
-    return Object.freeze({
-      kind: 'correct',
-      statusTitle: mutationExpected
-        ? '项目证据已收集，正在切换到交付落盘'
-        : '项目证据已收集，正在要求形成交付',
-      statusDetail: mutationExpected
-        ? input.actionableRepairPending
-          ? '独立审查已经给出可执行反例，但当前修复阶段尚无新写入。DevSeek 正在要求模型停止横向调查并落实定点修改。'
-          : `已读取、搜索或验证 ${input.gatheredEvidenceCount} 项项目证据，但当前修改阶段尚无新写入。DevSeek 正在要求模型停止横向调查并落实一个最小修改。`
-        : `已读取、搜索或验证 ${input.gatheredEvidenceCount} 项项目证据，但模型仍未形成可结算交付。DevSeek 正在要求模型依据原始需求选择实施或给出结论。`,
-      activityLabel: mutationExpected
-        ? '项目证据已足够，切换到交付落盘'
-        : '项目证据已足够，切换到交付',
-      feedback: mutationExpected
-        ? buildMutationDeliveryFeedback(input, this.investigationRounds)
-        : buildUnclassifiedDeliveryFeedback(input, this.investigationRounds),
-    });
+    return buildDeliveryCorrection(input, this.investigationRounds);
   }
 
   reset(): void {
@@ -199,11 +194,44 @@ export class DeliveryConvergenceLedger {
   }
 
   private resetCohort(): void {
+    this.resetInvestigationPressure();
+  }
+
+  private resetInvestigationPressure(): void {
+    this.progressiveInvestigationRounds = 0;
+    this.progressiveDeliveryPressureActive = false;
+    this.resetStalledInvestigationPressure();
+  }
+
+  private resetStalledInvestigationPressure(): void {
     this.investigationRounds = 0;
     this.correctionCount = 0;
-    this.contextAdmission = 'open';
     this.suppressedContextRounds = 0;
   }
+}
+
+function buildDeliveryCorrection(
+  input: DeliveryConvergenceObservation,
+  investigationRounds: number,
+): Extract<DeliveryConvergenceResult, { kind: 'correct' }> {
+  const mutationExpected = input.expectation === 'mutation';
+  return Object.freeze({
+    kind: 'correct',
+    statusTitle: mutationExpected
+      ? '项目证据已收集，正在切换到交付落盘'
+      : '项目证据已收集，正在要求形成交付',
+    statusDetail: mutationExpected
+      ? input.actionableRepairPending
+        ? '独立审查已经给出可执行反例，但当前修复阶段尚无新写入。DevSeek 正在要求模型停止横向调查并落实定点修改。'
+        : `已读取、搜索或验证 ${input.gatheredEvidenceCount} 项项目证据，但当前修改阶段尚无新写入。DevSeek 正在要求模型停止横向调查并落实一个最小修改。`
+      : `已读取、搜索或验证 ${input.gatheredEvidenceCount} 项项目证据，但模型仍未形成可结算交付。DevSeek 正在要求模型依据原始需求选择实施或给出结论。`,
+    activityLabel: mutationExpected
+      ? '项目证据已足够，切换到交付落盘'
+      : '项目证据已足够，切换到交付',
+    feedback: mutationExpected
+      ? buildMutationDeliveryFeedback(input, investigationRounds)
+      : buildUnclassifiedDeliveryFeedback(input, investigationRounds),
+  });
 }
 
 function resolveCorrectionLimit(input: DeliveryConvergenceObservation): number {
@@ -223,7 +251,7 @@ function buildMutationDeliveryFeedback(
       ? `独立审查已经给出可执行反例，本修复阶段连续 ${investigationRounds} 个工具轮没有新写盘进展。`
       : `当前已收集 ${input.gatheredEvidenceCount} 项证据，本交付阶段连续 ${investigationRounds} 个上下文工具轮没有新写盘进展。`,
     '下一轮不要继续横向 grep/list/read 或重复验证；请提交一个能推进交付的最小修改。既有文件使用 replace_in_file，插入/删除或长 old_str 使用单文件 apply_patch；只有确认目标不存在时才使用 create_file，随后读取并运行适用验证。',
-    '如果仍缺少一个关键事实，只允许读取一个精确文件或行范围，并在紧接着的工具轮中落实修改。',
+    '如果仍缺少直接阻塞修改的源码事实，只读取尚未覆盖的精确文件或行范围；新增可见源码范围可以继续推进，重复或已覆盖读取会被阻止。完成直接依赖闭包后立即落实修改。',
   ].join('\n');
 }
 

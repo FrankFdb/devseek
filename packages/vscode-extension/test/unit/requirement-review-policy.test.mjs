@@ -14,7 +14,7 @@ execSync(
   { cwd: rootDir, stdio: 'pipe' },
 );
 
-const { RequirementReviewPolicy } = createRequire(import.meta.url)(bundlePath);
+const { RequirementReviewPolicy, shouldEnterRequirementReview } = createRequire(import.meta.url)(bundlePath);
 const { RequirementReviewLedger } = createRequire(import.meta.url)(
   path.join(rootDir, 'test/unit/requirement-review-ledger.bundle.cjs'),
 );
@@ -89,6 +89,21 @@ function evaluate(overrides = {}) {
     ...overrides,
   });
 }
+
+test('independent review waits for an evidence-ready completion candidate', () => {
+  const ready = {
+    workObserved: true,
+    completionSignaled: true,
+    missingEvidenceCount: 0,
+    hasBlockingTerminalFailure: false,
+  };
+
+  assert.equal(shouldEnterRequirementReview(ready), true);
+  assert.equal(shouldEnterRequirementReview({ ...ready, completionSignaled: false }), false);
+  assert.equal(shouldEnterRequirementReview({ ...ready, workObserved: false }), false);
+  assert.equal(shouldEnterRequirementReview({ ...ready, missingEvidenceCount: 1 }), false);
+  assert.equal(shouldEnterRequirementReview({ ...ready, hasBlockingTerminalFailure: true }), false);
+});
 
 test('RequirementReviewPolicy accepts a bounded standalone creation only after host validation and readback', () => {
   assert.deepEqual(evaluate(), {

@@ -1226,10 +1226,10 @@ test('ModelLedUserSimulation: repeated validation cannot keep unclassified inves
     },
   });
   try {
-    assert.ok(calls <= 10, simulation.result.historyText);
+    assert.ok(calls <= 20, simulation.result.historyText);
     assert.equal(terminalCalls, 1, simulation.result.historyText);
     assert.equal(simulation.result.tasksFailed, 1, simulation.result.historyText);
-    assert.match(simulation.result.historyText, /最终精确读取额度也已用尽/u);
+    assert.match(simulation.result.historyText, /交付纠正后仍未产生可结算进展/u);
   } finally {
     rmSync(simulation.root, { recursive: true, force: true });
   }

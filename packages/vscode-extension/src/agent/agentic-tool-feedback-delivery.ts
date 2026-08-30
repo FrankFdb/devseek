@@ -10,17 +10,24 @@ interface AgenticToolFeedbackDeliveryInput {
   readonly appendUserFeedback: (feedback: string) => void;
 }
 
+export interface AgenticToolFeedbackDeliveryResult {
+  readonly novelReadExposureCount: number;
+}
+
 /** Delivers bounded tool output and binds read authority to the visible projection. */
-export function deliverAgenticToolFeedback(input: AgenticToolFeedbackDeliveryInput): void {
+export function deliverAgenticToolFeedback(
+  input: AgenticToolFeedbackDeliveryInput,
+): AgenticToolFeedbackDeliveryResult {
   const projection = projectAgenticToolFeedback(input.round, [
     ...(input.result.feedbackSegmentsForAI?.length
       ? input.result.feedbackSegmentsForAI
       : [input.result.feedbackForAI]),
     ...(input.additionalSegments ?? []),
   ]);
-  input.contextInvestigation.recordVisibleReadExposures(
+  const coverageUpdate = input.contextInvestigation.recordVisibleReadExposures(
     projection.readExposures,
     input.result.fileAccessEvents ?? [],
   );
   input.appendUserFeedback(projection.message);
+  return Object.freeze({ novelReadExposureCount: coverageUpdate.novelExposureCount });
 }

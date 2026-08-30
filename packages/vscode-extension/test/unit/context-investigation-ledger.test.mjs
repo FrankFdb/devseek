@@ -57,6 +57,36 @@ test('a successful broad read covers a later narrow request in the same progress
   assert.match(result.warnings[0], /模型已经收到的内容实施修改或形成结论/u);
 });
 
+test('visible read progress advances only when the Provider receives uncovered source lines', () => {
+  const ledger = new ContextInvestigationLedger('/workspace');
+  const first = ledger.recordVisibleReadExposures([{
+    ...fullRead,
+    endLine: 120,
+  }], visibleRead(fullRead.path, 0, 1));
+  const overlap = ledger.recordVisibleReadExposures([{
+    ...fullRead,
+    startLine: 40,
+    endLine: 80,
+  }], visibleRead(fullRead.path, 0, 2));
+  const extension = ledger.recordVisibleReadExposures([{
+    ...fullRead,
+    startLine: 100,
+    endLine: 180,
+  }], visibleRead(fullRead.path, 0, 3));
+
+  assert.equal(first.novelExposureCount, 1);
+  assert.equal(overlap.novelExposureCount, 0);
+  assert.equal(extension.novelExposureCount, 1);
+  assert.deepEqual([...ledger.screen([{
+    name: 'read_file',
+    input: { path: 'src/controller.cpp', startLine: 1, endLine: 180 },
+  }], {
+    progressEpoch: 0,
+    hasWorkspaceMutation: false,
+    consumeContextRefresh: () => false,
+  }).blockedToolIndexes], [0]);
+});
+
 test('only a same-path write, uncovered lines, or an authorized failure refresh permits another read', () => {
   const ledger = new ContextInvestigationLedger('/workspace');
   ledger.record({
@@ -111,38 +141,35 @@ test('an authorized failure refresh is reported even for a previously unread ran
   assert.equal(result.acceptedRecoveryContextRefresh, true);
 });
 
-test('delivery convergence admits one precise read and blocks later investigation tools', () => {
+test('distinct context proposals stay open while repeated proposals are suppressed', () => {
   const ledger = new ContextInvestigationLedger('/workspace');
-  const finalRead = ledger.screen([
+  const proposals = [
     { name: 'read_file', input: { path: 'src/controller.cpp', startLine: 300, endLine: 340 } },
     { name: 'grep_search', input: { path: 'src', pattern: 'render' } },
-  ], {
+  ];
+  const first = ledger.screen(proposals, {
     progressEpoch: 0,
     hasWorkspaceMutation: false,
     consumeContextRefresh: () => false,
-    deliveryContextAdmission: 'one-precise-read',
   });
+  assert.equal(first.blockedToolIndexes.size, 0);
+  assert.equal(first.admittedNovelContextToolCount, 2);
+  assert.equal(first.admittedNovelReadToolCount, 1);
+  assert.equal(first.suppressedContextToolCount, 0);
 
-  assert.equal(finalRead.consumedPreciseContextRead, true);
-  assert.equal(finalRead.exhaustedPreciseContextAllowance, false);
-  assert.deepEqual([...finalRead.blockedToolIndexes], [1]);
-  assert.equal(finalRead.deliveryBlockedToolCount, 1);
-  assert.equal(finalRead.suppressedTools[0].reason, 'delivery-context-budget-exhausted');
-
-  const closed = ledger.screen([
-    { name: 'read_file', input: { path: 'src/view.cpp', startLine: 1, endLine: 40 } },
-  ], {
+  ledger.record({ tools: proposals, progressEpoch: 0 });
+  const repeated = ledger.screen(proposals, {
     progressEpoch: 0,
     hasWorkspaceMutation: false,
     consumeContextRefresh: () => false,
-    deliveryContextAdmission: 'closed',
   });
-
-  assert.deepEqual([...closed.blockedToolIndexes], [0]);
-  assert.match(closed.warnings[0], /必须依据已有证据提交最小修改/u);
+  assert.deepEqual([...repeated.blockedToolIndexes], [0, 1]);
+  assert.equal(repeated.admittedNovelContextToolCount, 0);
+  assert.equal(repeated.suppressedContextToolCount, 2);
+  assert.equal(repeated.suppressedTools[0].reason, 'repeated-context-without-progress');
 });
 
-test('delivery convergence admits only exact continuations created by fair read projection', () => {
+test('fair read projection preserves continuations without closing unrelated novel context', () => {
   const ledger = new ContextInvestigationLedger('/workspace');
   const projectedExposures = [
     { path: '/workspace/src/controller.cpp', startLine: 1, endLine: 30, totalLines: 358, sourceSegmentIndex: 0 },
@@ -164,12 +191,10 @@ test('delivery convergence admits only exact continuations created by fair read 
     progressEpoch: 0,
     hasWorkspaceMutation: false,
     consumeContextRefresh: () => false,
-    deliveryContextAdmission: 'closed',
   });
 
-  assert.equal(result.consumedPreciseContextRead, true);
-  assert.deepEqual([...result.blockedToolIndexes], [2, 3]);
-  assert.equal(result.deliveryBlockedToolCount, 2);
+  assert.deepEqual([...result.blockedToolIndexes], []);
+  assert.equal(result.suppressedContextToolCount, 0);
 
   const widened = ledger.screen([{
     name: 'read_file',
@@ -178,9 +203,8 @@ test('delivery convergence admits only exact continuations created by fair read 
     progressEpoch: 0,
     hasWorkspaceMutation: false,
     consumeContextRefresh: () => false,
-    deliveryContextAdmission: 'closed',
   });
-  assert.deepEqual([...widened.blockedToolIndexes], [0]);
+  assert.deepEqual([...widened.blockedToolIndexes], []);
 });
 
 test('projected read debt corrects a stale same-file range and closes after visible delivery', () => {
@@ -208,10 +232,8 @@ test('projected read debt corrects a stale same-file range and closes after visi
     progressEpoch: 0,
     hasWorkspaceMutation: false,
     consumeContextRefresh: () => false,
-    deliveryContextAdmission: 'closed',
   });
   assert.deepEqual([...screened.blockedToolIndexes], []);
-  assert.equal(screened.consumedPreciseContextRead, true);
 
   ledger.recordVisibleReadExposures([{
     path: '/workspace/src/controller.cpp',
@@ -278,7 +300,7 @@ test('projected read debt tracks only the undelivered remainder and expires on m
   assert.equal(invalidated.inputOverrides.size, 0);
 });
 
-test('an ineligible final context request exhausts the allowance instead of leaving it open', () => {
+test('a novel search remains admitted until duplicate evidence proves stagnation', () => {
   const ledger = new ContextInvestigationLedger('/workspace');
   const result = ledger.screen([
     { name: 'grep_search', input: { path: 'src', pattern: 'render' } },
@@ -286,16 +308,15 @@ test('an ineligible final context request exhausts the allowance instead of leav
     progressEpoch: 0,
     hasWorkspaceMutation: false,
     consumeContextRefresh: () => false,
-    deliveryContextAdmission: 'one-precise-read',
   });
 
-  assert.equal(result.consumedPreciseContextRead, false);
-  assert.equal(result.exhaustedPreciseContextAllowance, true);
-  assert.equal(result.deliveryBlockedToolCount, 1);
-  assert.deepEqual([...result.blockedToolIndexes], [0]);
+  assert.equal(result.suppressedContextToolCount, 0);
+  assert.equal(result.admittedNovelContextToolCount, 1);
+  assert.equal(result.admittedNovelReadToolCount, 0);
+  assert.deepEqual([...result.blockedToolIndexes], []);
 });
 
-test('a mutation wave or explicit failed-write refresh bypasses delivery context closure', () => {
+test('a mutation wave and explicit failed-write refresh leave dependency reads available', () => {
   const ledger = new ContextInvestigationLedger('/workspace');
   const mutationWave = ledger.screen([
     { name: 'read_file', input: { path: 'src/controller.cpp', startLine: 1, endLine: 40 } },
@@ -304,7 +325,6 @@ test('a mutation wave or explicit failed-write refresh bypasses delivery context
     progressEpoch: 0,
     hasWorkspaceMutation: true,
     consumeContextRefresh: () => false,
-    deliveryContextAdmission: 'closed',
   });
   assert.equal(mutationWave.blockedToolIndexes.size, 0);
 
@@ -321,7 +341,6 @@ test('a mutation wave or explicit failed-write refresh bypasses delivery context
       }
       return false;
     },
-    deliveryContextAdmission: 'closed',
   });
 
   assert.equal(failedWriteRefresh.acceptedRecoveryContextRefresh, true);
@@ -330,22 +349,23 @@ test('a mutation wave or explicit failed-write refresh bypasses delivery context
 
 test('a Provider-recovery-authorized read bypasses only its concrete tool index', () => {
   const ledger = new ContextInvestigationLedger('/workspace');
-  const result = ledger.screen([
+  const proposals = [
     { name: 'read_file', input: { path: 'src/rejected-write.cpp' } },
     { name: 'read_file', input: { path: 'src/unrelated.cpp' } },
-  ], {
+  ];
+  ledger.record({ tools: proposals, progressEpoch: 0 });
+  const result = ledger.screen(proposals, {
     progressEpoch: 0,
     hasWorkspaceMutation: false,
     consumeContextRefresh: () => false,
     providerRecoveryContextRefreshToolIndexes: new Set([0]),
-    deliveryContextAdmission: 'closed',
   });
 
   assert.deepEqual([...result.blockedToolIndexes], [1]);
-  assert.equal(result.deliveryBlockedToolCount, 1);
+  assert.equal(result.suppressedContextToolCount, 1);
 });
 
-test('delivery convergence does not recount a tool rejected by an earlier admission owner', () => {
+test('context investigation does not recount a tool rejected by an earlier admission owner', () => {
   const ledger = new ContextInvestigationLedger('/workspace');
   const result = ledger.screen([
     { name: 'read_file', input: { path: 'src/rejected-by-provider.cpp' } },
@@ -354,11 +374,10 @@ test('delivery convergence does not recount a tool rejected by an earlier admiss
     hasWorkspaceMutation: false,
     consumeContextRefresh: () => false,
     alreadyBlockedToolIndexes: new Set([0]),
-    deliveryContextAdmission: 'closed',
   });
 
   assert.equal(result.blockedToolIndexes.size, 0);
-  assert.equal(result.deliveryBlockedToolCount, 0);
+  assert.equal(result.suppressedContextToolCount, 0);
   assert.equal(result.suppressedTools.length, 0);
 });
 
