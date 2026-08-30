@@ -94,6 +94,7 @@ export class AgenticProviderRecoveryLifecycle {
     this.pending = true;
     this.allowRejectedWriteContextRefresh = options.allowRejectedWriteContextRefresh === true;
     this.rejectedWriteContextRefreshSignatures.clear();
+    this.observedToolNames.clear();
     if (operationId?.trim()) this.targetOperationIds.add(operationId.trim());
     for (const name of observedToolNames) {
       if (name?.trim()) this.observedToolNames.add(name.trim());
@@ -153,6 +154,19 @@ export class AgenticProviderRecoveryLifecycle {
     });
 
     return Object.freeze({ blockedToolIndexes, contextRefreshToolIndexes });
+  }
+
+  /** Settles Provider protocol recovery before independent local action arbitration. */
+  async completeAdmittedToolProposal(
+    tools: readonly ProviderRecoveryToolProposal[],
+    screen: AgenticProviderRecoveryToolScreen,
+    resultOperationId?: string,
+  ): Promise<boolean> {
+    const acceptedToolNames = tools
+      .filter((_, toolIndex) => !screen.blockedToolIndexes.has(toolIndex))
+      .map(tool => tool.name);
+    if (acceptedToolNames.length === 0) return false;
+    return this.completeAcceptedResponse('tool-protocol', resultOperationId, acceptedToolNames);
   }
 
   private isRecoveryActionAllowed(

@@ -49,6 +49,43 @@ test('provider recovery lifecycle identifies only the first accepted recovery re
   }]);
 });
 
+test('provider recovery settles a valid proposal before local duplicate suppression', async () => {
+  const lifecycle = new AgenticProviderRecoveryLifecycle('src/main.cpp', 'repair', {
+    onAgentStatus() {},
+  });
+  lifecycle.begin('malformed-read', ['read_file']);
+  const tools = [{ name: 'read_file', input: { path: 'src/main.cpp' } }];
+  const screen = lifecycle.screenToolProposals(tools);
+
+  assert.equal(
+    await lifecycle.completeAdmittedToolProposal(tools, screen, 'valid-read-proposal'),
+    true,
+  );
+  assert.equal(lifecycle.hasUnresolvedToolAction(), false);
+  assert.equal(lifecycle.unresolvedToolActionFeedback({
+    version: 'devseek.text-tools/v1',
+    channelId: 'recovery-channel-1234',
+  }), '');
+});
+
+test('a newer quarantined response replaces stale recovery action names', () => {
+  const lifecycle = new AgenticProviderRecoveryLifecycle('src/main.cpp', 'repair', {
+    onAgentStatus() {},
+  });
+  lifecycle.begin('malformed-read', ['read_file']);
+  lifecycle.begin('malformed-write', ['apply_patch']);
+
+  assert.deepEqual(lifecycle.pendingObservedToolNames(), ['apply_patch']);
+  assert.deepEqual(
+    [...lifecycle.screenToolProposals([{ name: 'read_file' }]).blockedToolIndexes],
+    [0],
+  );
+  assert.deepEqual(
+    [...lifecycle.screenToolProposals([{ name: 'apply_patch' }]).blockedToolIndexes],
+    [],
+  );
+});
+
 test('provider recovery lifecycle keeps a rejected mutation pending across reads and validation', async () => {
   const statuses = [];
   const lifecycle = new AgenticProviderRecoveryLifecycle('src/x11_app.cpp', 'repair', {

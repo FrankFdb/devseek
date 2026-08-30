@@ -769,6 +769,11 @@ export async function runAgenticLoop(
     const providerRecoveryScreen = providerRecovery.screenToolProposals(screenedTools, {
       projectedReadContinuationToolIndexes: projectedReadContinuations.continuationToolIndexes,
     });
+    await providerRecovery.completeAdmittedToolProposal(
+      screenedTools,
+      providerRecoveryScreen,
+      providerOperationId,
+    );
     for (const toolIndex of providerRecoveryScreen.blockedToolIndexes) {
       blockedRepeatedToolIndexes.add(toolIndex);
       suppressedTools.push({
@@ -801,11 +806,6 @@ export async function runAgenticLoop(
     const toolsToExecute = blockedRepeatedToolIndexes.size > 0
       ? screenedTools.filter((_, toolIndex) => !blockedRepeatedToolIndexes.has(toolIndex))
       : screenedTools;
-    if (toolsToExecute.length > 0) {
-      await providerRecovery.completeAcceptedResponse(
-        'tool-protocol', providerOperationId, toolsToExecute.map(tool => tool.name),
-      );
-    }
     const unresolvedProviderActionFeedback = providerRecovery.unresolvedToolActionFeedback(textToolProtocol);
     if (unresolvedProviderActionFeedback) loopWarnings.push(unresolvedProviderActionFeedback);
     const progressEpochBeforeTools = progressEpoch;
