@@ -15,6 +15,7 @@ import {
   buildAgentProviderRecoveryPrompt,
   canRecoverAgentProviderFailure,
   describeAgentProviderRecoveryForUser,
+  REJECTED_WRITE_CONTEXT_REPLAY_LIMIT,
   shouldResetProviderSessionForRecovery,
   type AgentProviderFailure,
 } from './provider-response-recovery';
@@ -58,6 +59,11 @@ interface ProviderRecoveryToolScreenOptions {
   readonly projectedReadContinuationToolIndexes?: ReadonlySet<number>;
 }
 
+interface ProviderRecoveryToolProposal {
+  readonly name: string;
+  readonly input?: Readonly<Record<string, unknown>>;
+}
+
 const PROVIDER_RECOVERY_META_TOOL_NAMES = new Set(['manage_todo_list', 'task_complete']);
 
 export interface AgenticProviderRecoveryBoundaryResult {
@@ -70,7 +76,7 @@ export interface AgenticProviderRecoveryBoundaryResult {
 export class AgenticProviderRecoveryLifecycle {
   private pending = false;
   private allowRejectedWriteContextRefresh = false;
-  private rejectedWriteContextRefreshConsumed = false;
+  private readonly rejectedWriteContextRefreshSignatures = new Set<string>();
   private readonly targetOperationIds = new Set<string>();
   private readonly observedToolNames = new Set<string>();
 
@@ -87,7 +93,7 @@ export class AgenticProviderRecoveryLifecycle {
   ): void {
     this.pending = true;
     this.allowRejectedWriteContextRefresh = options.allowRejectedWriteContextRefresh === true;
-    this.rejectedWriteContextRefreshConsumed = false;
+    this.rejectedWriteContextRefreshSignatures.clear();
     if (operationId?.trim()) this.targetOperationIds.add(operationId.trim());
     for (const name of observedToolNames) {
       if (name?.trim()) this.observedToolNames.add(name.trim());
@@ -104,7 +110,7 @@ export class AgenticProviderRecoveryLifecycle {
 
   /** Admits one concrete action while a rejected Provider action is being reconstructed. */
   screenToolProposals(
-    tools: readonly { readonly name: string }[],
+    tools: readonly ProviderRecoveryToolProposal[],
     options: ProviderRecoveryToolScreenOptions = {},
   ): AgenticProviderRecoveryToolScreen {
     const blockedToolIndexes = new Set<number>();
@@ -119,10 +125,11 @@ export class AgenticProviderRecoveryLifecycle {
 
     let admittedAction = false;
     tools.forEach((tool, toolIndex) => {
+      const projectedReadContinuation = options.projectedReadContinuationToolIndexes?.has(toolIndex) === true;
       if (PROVIDER_RECOVERY_META_TOOL_NAMES.has(tool.name)
         || !this.isRecoveryActionAllowed(
-          tool.name,
-          options.projectedReadContinuationToolIndexes?.has(toolIndex) === true,
+          tool,
+          projectedReadContinuation,
         )) {
         blockedToolIndexes.add(toolIndex);
         return;
@@ -132,9 +139,9 @@ export class AgenticProviderRecoveryLifecycle {
         return;
       }
       admittedAction = true;
-      if (this.isRejectedWriteContextRefresh(tool.name)) {
+      if (!projectedReadContinuation && this.isRejectedWriteContextRefresh(tool)) {
         contextRefreshToolIndexes.add(toolIndex);
-        this.rejectedWriteContextRefreshConsumed = true;
+        this.rejectedWriteContextRefreshSignatures.add(recoveryReadSignature(tool));
       }
     });
 
@@ -146,30 +153,45 @@ export class AgenticProviderRecoveryLifecycle {
     return Object.freeze({ blockedToolIndexes, contextRefreshToolIndexes, warnings });
   }
 
-  private isRecoveryActionAllowed(name: string, projectedReadContinuation: boolean): boolean {
-    if (projectedReadContinuation && name === 'read_file') return true;
-    if (this.observedToolNames.has(name)) return true;
-    const restoresRejectedWrite = isFileWriteToolName(name)
-      && [...this.observedToolNames].some(isFileWriteToolName);
+  private isRecoveryActionAllowed(
+    tool: ProviderRecoveryToolProposal,
+    projectedReadContinuation: boolean,
+  ): boolean {
+    if (projectedReadContinuation && tool.name === 'read_file') return true;
+    const recoversRejectedWrite = [...this.observedToolNames].some(isFileWriteToolName);
+    if (recoversRejectedWrite && tool.name === 'read_file') {
+      return this.isRejectedWriteContextRefresh(tool);
+    }
+    if (this.observedToolNames.has(tool.name)) return true;
+    const restoresRejectedWrite = isFileWriteToolName(tool.name)
+      && recoversRejectedWrite;
     if (restoresRejectedWrite) return true;
-    return this.isRejectedWriteContextRefresh(name);
+    return this.isRejectedWriteContextRefresh(tool);
   }
 
-  private isRejectedWriteContextRefresh(name: string): boolean {
+  private isRejectedWriteContextRefresh(tool: ProviderRecoveryToolProposal): boolean {
     return this.allowRejectedWriteContextRefresh
-      && !this.rejectedWriteContextRefreshConsumed
-      && name === 'read_file'
-      && [...this.observedToolNames].some(isFileWriteToolName);
+      && tool.name === 'read_file'
+      && [...this.observedToolNames].some(isFileWriteToolName)
+      && this.rejectedWriteContextRefreshSignatures.size < REJECTED_WRITE_CONTEXT_REPLAY_LIMIT
+      && !this.rejectedWriteContextRefreshSignatures.has(recoveryReadSignature(tool));
   }
 
   unresolvedToolActionFeedback(session: TextToolProtocolSession): string {
     if (!this.hasUnresolvedToolAction()) return '';
+    const remainingContextReplays = Math.max(
+      0,
+      REJECTED_WRITE_CONTEXT_REPLAY_LIMIT - this.rejectedWriteContextRefreshSignatures.size,
+    );
     return [
       '【系统恢复】刚执行的工具只补充了上下文或验证事实，尚未解决上一轮被隔离的结构化动作。不得把该工具结果当作原动作恢复完成。',
+      this.allowRejectedWriteContextRefresh && remainingContextReplays > 0
+        ? `若当前返回是截断读取且仍缺少写入所需源码，可继续请求不同的精确 read_file 路径或行区间；剩余额度 ${remainingContextReplays}，相同区间不会重复执行。取得足够上下文后立即重发被隔离写入。`
+        : '',
       buildTextToolEnvelopeRecoveryPrompt(session, {
         observedToolNames: this.pendingObservedToolNames(),
       }),
-    ].join('\n');
+    ].filter(Boolean).join('\n');
   }
 
   async completeAcceptedResponse(
@@ -236,11 +258,32 @@ export class AgenticProviderRecoveryLifecycle {
     }
     this.pending = false;
     this.allowRejectedWriteContextRefresh = false;
-    this.rejectedWriteContextRefreshConsumed = false;
+    this.rejectedWriteContextRefreshSignatures.clear();
     this.targetOperationIds.clear();
     this.observedToolNames.clear();
     return true;
   }
+}
+
+function recoveryReadSignature(tool: ProviderRecoveryToolProposal): string {
+  const input = tool.input ?? {};
+  const path = typeof input.path === 'string'
+    ? input.path.trim().replace(/\\/gu, '/')
+    : '';
+  const startLine = positiveInteger(input, 'startLine', 'start_line', 'lineStart', 'fromLine');
+  const endLine = positiveInteger(input, 'endLine', 'end_line', 'lineEnd', 'toLine');
+  return `${path}\u0000${startLine ?? '*'}\u0000${endLine ?? '*'}`;
+}
+
+function positiveInteger(
+  input: Readonly<Record<string, unknown>>,
+  ...keys: readonly string[]
+): number | undefined {
+  for (const key of keys) {
+    const value = input[key];
+    if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return value;
+  }
+  return undefined;
 }
 
 export async function recoverAgenticProviderFailure(

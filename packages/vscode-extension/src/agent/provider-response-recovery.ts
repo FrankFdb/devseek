@@ -68,6 +68,8 @@ const UNRESOLVED_TOOL_ACTION_STATUSES = new Set([
   'provider-authored-tool-transcript',
 ]);
 
+export const REJECTED_WRITE_CONTEXT_REPLAY_LIMIT = 3;
+
 const IN_SESSION_PROTOCOL_CORRECTION_STATUSES = new Set([
   'out-of-envelope-tool-block',
   'invalid-tool-block',
@@ -194,7 +196,7 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
   const readLimitLine = unresolvedToolAction && retainedReadEvidence
     ? '- 当前 Provider 会话仍保留先前真实工具结果；本轮只允许 1 个匹配被隔离动作的具体工具，不允许重新读取、重复验证或横向调查。'
     : unresolvedToolAction
-    ? '- 未执行动作恢复轮只允许 1 个写入工具；仅当当前参数无法从可信上下文重建时，才允许 1 个精确只读工具。不得用重复验证或横向读取代替动作重发。'
+    ? `- 未执行动作恢复轮只允许 1 个具体工具；仅当当前参数无法从可信上下文重建时，才允许最多 ${REJECTED_WRITE_CONTEXT_REPLAY_LIMIT} 个不同路径或行区间的精确 read_file。相同区间不得重复，不得用验证或横向调查代替动作重发。`
     : blockingTerminalFailure
     ? '- 活动失败恢复轮只允许一个精确只读工具或一个写入工具；不得重新做全量项目探索。写入后下一轮立即原样重跑公开失败命令。'
     : finalAttempt
@@ -204,11 +206,11 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
     ? `已读取路径（仅审计，文件内容未注入重建会话）：${readPaths || '暂无'}`
     : `已读取证据：${readPaths || '暂无'}`;
   const contextReplayLine = resetProviderSession
-    ? '- 重建会话不包含先前只读工具返回的文件内容；若下一步依赖这些内容，先精确重读必要路径。每个必要路径只重放一次，不做全量探索。'
+    ? `- 重建会话不包含先前只读工具返回的文件内容；若下一步依赖这些内容，可按需重放最多 ${REJECTED_WRITE_CONTEXT_REPLAY_LIMIT} 个不同的必要路径或行区间。相同区间只重放一次，不做全量探索。`
     : unresolvedToolAction && retainedReadEvidence
       ? '- 当前 Provider 会话保留先前真实工具结果；直接用这些内容重发被隔离动作，不要重复任何读取、搜索或验证。'
       : unresolvedToolAction
-        ? '- 当前 Provider 会话没有可复用的读取证据；如覆盖写入需要当前内容，只允许一次精确 read_file，紧接着必须重发被隔离动作。'
+        ? `- 当前 Provider 会话没有可复用的读取证据；如覆盖写入需要当前内容，可按需读取最多 ${REJECTED_WRITE_CONTEXT_REPLAY_LIMIT} 个不同的精确路径或行区间，相同区间不得重复；取得足够上下文后立即重发被隔离动作。`
       : '- 不要重复已读取路径、相同 list_dir、相同 grep_search 或相同 file_search；如确实缺少内容，只读取更精确的新文件或行范围。';
   const toolSerializationLine = unresolvedToolAction
     ? buildTextToolEnvelopeRecoveryPrompt(input.textToolProtocol, {

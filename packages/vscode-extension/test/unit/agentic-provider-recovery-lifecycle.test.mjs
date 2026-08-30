@@ -100,7 +100,7 @@ test('provider recovery lifecycle locally admits only one concrete recovery acti
   assert.equal(lifecycle.hasUnresolvedToolAction(), true);
 });
 
-test('provider recovery spends one generic context refresh but admits host-created read debt', () => {
+test('provider recovery admits bounded distinct read ranges while rebuilding a rejected write', () => {
   const lifecycle = new AgenticProviderRecoveryLifecycle('src/lesson_controller.cpp', 'repair', {
     onAgentStatus() {},
   });
@@ -108,23 +108,83 @@ test('provider recovery spends one generic context refresh but admits host-creat
     allowRejectedWriteContextRefresh: true,
   });
 
-  const initialRefresh = lifecycle.screenToolProposals([{ name: 'read_file' }]);
+  const initialRefresh = lifecycle.screenToolProposals([{
+    name: 'read_file',
+    input: { path: 'src/raster_canvas.cpp', startLine: 107, endLine: 215 },
+  }]);
   assert.deepEqual([...initialRefresh.blockedToolIndexes], []);
   assert.deepEqual([...initialRefresh.contextRefreshToolIndexes], [0]);
 
-  const repeatedRefresh = lifecycle.screenToolProposals([{ name: 'read_file' }]);
+  const repeatedRefresh = lifecycle.screenToolProposals([{
+    name: 'read_file',
+    input: { path: 'src/raster_canvas.cpp', startLine: 107, endLine: 215 },
+  }]);
   assert.deepEqual([...repeatedRefresh.blockedToolIndexes], [0]);
   assert.deepEqual([...repeatedRefresh.contextRefreshToolIndexes], []);
 
-  const projectedContinuation = lifecycle.screenToolProposals([{ name: 'read_file' }], {
+  const tailRefresh = lifecycle.screenToolProposals([{
+    name: 'read_file',
+    input: { path: 'src/raster_canvas.cpp', startLine: 216, endLine: 320 },
+  }]);
+  assert.deepEqual([...tailRefresh.blockedToolIndexes], []);
+  assert.deepEqual([...tailRefresh.contextRefreshToolIndexes], [0]);
+
+  const headRefresh = lifecycle.screenToolProposals([{
+    name: 'read_file',
+    input: { path: 'src/raster_canvas.cpp', startLine: 1, endLine: 106 },
+  }]);
+  assert.deepEqual([...headRefresh.blockedToolIndexes], []);
+  assert.deepEqual([...headRefresh.contextRefreshToolIndexes], [0]);
+
+  const exhaustedRefresh = lifecycle.screenToolProposals([{
+    name: 'read_file',
+    input: { path: 'src/raster_canvas.cpp', startLine: 321, endLine: 420 },
+  }]);
+  assert.deepEqual([...exhaustedRefresh.blockedToolIndexes], [0]);
+  assert.deepEqual([...exhaustedRefresh.contextRefreshToolIndexes], []);
+  assert.deepEqual([...lifecycle.screenToolProposals([{ name: 'apply_patch' }]).blockedToolIndexes], []);
+});
+
+test('provider recovery admits a host-created projected continuation without spending replay budget', () => {
+  const lifecycle = new AgenticProviderRecoveryLifecycle('src/lesson_controller.cpp', 'repair', {
+    onAgentStatus() {},
+  });
+  lifecycle.begin('malformed-mutation', ['replace_in_file'], {
+    allowRejectedWriteContextRefresh: true,
+  });
+
+  const projectedContinuation = lifecycle.screenToolProposals([{
+    name: 'read_file',
+    input: { path: 'src/raster_canvas.cpp', startLine: 107, endLine: 215 },
+  }], {
     projectedReadContinuationToolIndexes: new Set([0]),
   });
   assert.deepEqual([...projectedContinuation.blockedToolIndexes], []);
   assert.deepEqual([...projectedContinuation.contextRefreshToolIndexes], []);
 
-  const afterContinuation = lifecycle.screenToolProposals([{ name: 'read_file' }]);
-  assert.deepEqual([...afterContinuation.blockedToolIndexes], [0]);
-  assert.deepEqual([...lifecycle.screenToolProposals([{ name: 'apply_patch' }]).blockedToolIndexes], []);
+  const firstReplay = lifecycle.screenToolProposals([{
+    name: 'read_file',
+    input: { path: 'src/raster_canvas.cpp', startLine: 216, endLine: 320 },
+  }]);
+  assert.deepEqual([...firstReplay.blockedToolIndexes], []);
+  assert.deepEqual([...firstReplay.contextRefreshToolIndexes], [0]);
+});
+
+test('provider recovery applies the replay budget when a damaged response exposed reads and a write', () => {
+  const lifecycle = new AgenticProviderRecoveryLifecycle('src/raster_canvas.cpp', 'repair', {
+    onAgentStatus() {},
+  });
+  lifecycle.begin('malformed-mixed-response', ['read_file', 'replace_in_file'], {
+    allowRejectedWriteContextRefresh: false,
+  });
+
+  const read = lifecycle.screenToolProposals([{
+    name: 'read_file',
+    input: { path: 'src/raster_canvas.cpp', startLine: 1, endLine: 100 },
+  }]);
+  assert.deepEqual([...read.blockedToolIndexes], [0]);
+  assert.deepEqual([...read.contextRefreshToolIndexes], []);
+  assert.deepEqual([...lifecycle.screenToolProposals([{ name: 'replace_in_file' }]).blockedToolIndexes], []);
 });
 
 test('provider recovery lifecycle blocks actions unrelated to the quarantined proposal', () => {
