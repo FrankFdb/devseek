@@ -61,6 +61,8 @@ test('repair continuation preserves the original requirement after its evidence-
   assert.match(prompt, /"observedValue"/);
   assert.match(prompt, /外部证据路径仅用于说明独立验证结果/);
   assert.match(prompt, /reproduction\.command/);
+  assert.match(prompt, /reproduction\.acceptanceCommand/);
+  assert.match(prompt, /不能用文件存在、大小或格式代替验收命令结果/);
   assert.match(prompt, /只把诊断产物写入该工作区/);
   assert.doesNotMatch(prompt, /"check": "public-build"/);
   assert.match(prompt, /不要从头重写项目/);
@@ -92,6 +94,7 @@ test('bounded visual failure preserves workspace reproduction and spatial diagno
         reproduction: {
           cwd: '.',
           command: './build/app --snapshot verification.ppm',
+          acceptanceCommand: 'node tools/verify-ppm.mjs verification.ppm',
         },
         ppm: {
           nonDominantBounds: { minX: 130, minY: 181, maxX: 670, maxY: 599 },
@@ -106,6 +109,7 @@ test('bounded visual failure preserves workspace reproduction and spatial diagno
   });
 
   assert.match(projection, /\.\/build\/app --snapshot verification\.ppm/);
+  assert.match(projection, /node tools\/verify-ppm\.mjs verification\.ppm/);
   assert.match(projection, /"nonDominantBounds"/);
   assert.match(projection, /"nonDominantQuadrants"/);
 });

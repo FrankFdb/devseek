@@ -9,6 +9,7 @@ export const protectedWorkspacePaths = Object.freeze([
   'CMakeLists.txt',
   'test.sh',
   'USER_STORY.md',
+  'tools/verify-ppm.mjs',
   'assets/fraction-number-line.actions',
   'assets/quiz.actions',
   'assets/invalid.actions',
@@ -22,6 +23,7 @@ export function prepareWorkspace(workspace) {
       'CMakeLists.txt',
       'test.sh',
       'USER_STORY.md',
+      'tools/verify-ppm.mjs',
       'assets/**',
     ],
   }, null, 2)}\n`);
@@ -44,8 +46,14 @@ export function prepareWorkspace(workspace) {
     'submit',
   ].join('\n'));
   write(path.join(workspace, 'assets/invalid.actions'), 'set-total 0\n');
+  installWorkspaceVerificationTools(workspace);
   const gitInit = cp.spawnSync('git', ['init', '--quiet'], { cwd: workspace, encoding: 'utf8' });
   if (gitInit.status !== 0) throw new Error(`Could not initialize isolated fixture repository: ${gitInit.stderr || gitInit.stdout}`);
+}
+
+export function installWorkspaceVerificationTools(workspace) {
+  const source = fs.readFileSync(path.join(here, 'ppm-analysis.mjs'), 'utf8');
+  write(path.join(workspace, 'tools/verify-ppm.mjs'), source);
 }
 
 function cmakeContract() {
@@ -105,6 +113,7 @@ The final command contract is:
     math_visual_lab --self-test
     math_visual_lab --script ACTIONS --snapshot OUTPUT.ppm --state OUTPUT.json [--width 800 --height 600]
     math_visual_lab --smoke-frames 3 [--width 800 --height 600]
+    node tools/verify-ppm.mjs OUTPUT.ppm
 
 Actions are one per line:
 
@@ -128,7 +137,7 @@ Quiz questions are deterministic: 3+4 and 8-3. Bounds are total 1..12,
 selected 0..total, and marker -10..10. Unknown actions and invalid values return
 a non-zero exit code with a readable diagnostic.
 
-Do not modify CMakeLists.txt, test.sh, USER_STORY.md, or assets/. Do not bypass
+Do not modify CMakeLists.txt, test.sh, USER_STORY.md, tools/verify-ppm.mjs, or assets/. Do not bypass
 the X11 smoke path, duplicate controller behavior for tests, invoke shell commands
 from production code, or leave TODO/FIXME placeholders.
 `;

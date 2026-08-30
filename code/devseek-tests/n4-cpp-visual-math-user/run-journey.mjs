@@ -10,7 +10,11 @@ import {
   planResumePreflight,
   selectJourneyRounds,
 } from './journey-resume-policy.mjs';
-import { prepareWorkspace, protectedWorkspacePaths } from './prepare-workspace.mjs';
+import {
+  installWorkspaceVerificationTools,
+  prepareWorkspace,
+  protectedWorkspacePaths,
+} from './prepare-workspace.mjs';
 import { verifyWorkspace } from './verify-workspace.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -56,6 +60,7 @@ if (requestedWorkspace) {
 } else {
   prepareWorkspace(workspace);
 }
+installWorkspaceVerificationTools(workspace);
 const protectedBaseline = hashWorkspacePaths(workspace, protectedWorkspacePaths);
 const resumePlan = requestedWorkspace
   ? planResumePreflight(selectedRounds, repairCurrent)
