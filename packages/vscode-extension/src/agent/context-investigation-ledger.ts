@@ -66,6 +66,9 @@ interface AcceptedReadExposure extends ProviderVisibleReadExposure {
   readonly readSequence: number;
 }
 
+const MAX_NOVEL_CONTEXT_TOOLS_PER_ROUND = 6;
+const MAX_NOVEL_READ_TOOLS_PER_ROUND = 3;
+
 /** Owns duplicate investigation suppression for the evidence visible to one Provider session. */
 export class ContextInvestigationLedger {
   private readonly signatures = new Map<string, { count: number; progressEpoch: number }>();
@@ -190,6 +193,7 @@ export class ContextInvestigationLedger {
     let admittedNovelContextToolCount = 0;
     let admittedNovelReadToolCount = 0;
     let suppressedContextToolCount = 0;
+    const deferredContextTools: InvestigationTool[] = [];
     if (input.hasWorkspaceMutation) {
       return {
         blockedToolIndexes,
@@ -219,6 +223,16 @@ export class ContextInvestigationLedger {
       }
       if (input.providerRecoveryContextRefreshToolIndexes?.has(toolIndex)) return;
       if (!exactRepeat && !coveredRead) {
+        const exceedsReadBudget = tool.name === 'read_file'
+          && admittedNovelReadToolCount >= MAX_NOVEL_READ_TOOLS_PER_ROUND;
+        const exceedsContextBudget = admittedNovelContextToolCount >= MAX_NOVEL_CONTEXT_TOOLS_PER_ROUND;
+        if (exceedsReadBudget || exceedsContextBudget) {
+          suppressedContextToolCount++;
+          blockedToolIndexes.add(toolIndex);
+          suppressedTools.push({ tool: tool.name, reason: 'context-batch-budget' });
+          deferredContextTools.push(tool);
+          return;
+        }
         admittedNovelContextToolCount++;
         if (tool.name === 'read_file') admittedNovelReadToolCount++;
         return;
@@ -238,6 +252,9 @@ export class ContextInvestigationLedger {
         ? buildCoveredContextReadFeedback(tool)
         : buildRepeatedContextToolFeedback(tool, nextCount));
     });
+    if (deferredContextTools.length > 0) {
+      warnings.push(buildDeferredContextBatchFeedback(deferredContextTools));
+    }
     return {
       blockedToolIndexes,
       suppressedTools,
@@ -420,6 +437,19 @@ export class ContextInvestigationLedger {
       : nodePath.resolve(this.workspaceRoot, value);
     return process.platform === 'win32' ? path.toLowerCase() : path;
   }
+}
+
+function buildDeferredContextBatchFeedback(tools: readonly InvestigationTool[]): string {
+  const labels = tools.slice(0, 6).map(tool => {
+    const path = typeof tool.input.path === 'string' ? tool.input.path : '';
+    return path ? `${tool.name}:${path}` : tool.name;
+  });
+  const omitted = tools.length - labels.length;
+  return [
+    `【系统反馈】本轮延后了 ${tools.length} 个上下文工具，以保证已执行读取获得足够的可见源码。`,
+    `延后项：${labels.join('；')}${omitted > 0 ? `；另有 ${omitted} 项` : ''}。`,
+    '这些动作没有执行，也不代表对应内容缺失。先依据本轮已返回证据实施；若仍缺少事实，下一轮只重发最相关的未执行读取或查询。',
+  ].join('\n');
 }
 
 function subtractRange(

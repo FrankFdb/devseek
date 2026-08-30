@@ -169,6 +169,35 @@ test('distinct context proposals stay open while repeated proposals are suppress
   assert.equal(repeated.suppressedTools[0].reason, 'repeated-context-without-progress');
 });
 
+test('large read batches are deferred so admitted source results retain useful context', () => {
+  const ledger = new ContextInvestigationLedger('/workspace');
+  const proposals = Array.from({ length: 7 }, (_, index) => ({
+    name: 'read_file',
+    input: { path: `src/file-${index}.cpp` },
+  }));
+
+  const result = ledger.screen(proposals, {
+    progressEpoch: 0,
+    hasWorkspaceMutation: false,
+    consumeContextRefresh: () => false,
+  });
+
+  assert.deepEqual([...result.blockedToolIndexes], [3, 4, 5, 6]);
+  assert.equal(result.admittedNovelContextToolCount, 3);
+  assert.equal(result.admittedNovelReadToolCount, 3);
+  assert.equal(result.suppressedContextToolCount, 4);
+  assert.deepEqual(result.suppressedTools.map(tool => tool.reason), [
+    'context-batch-budget',
+    'context-batch-budget',
+    'context-batch-budget',
+    'context-batch-budget',
+  ]);
+  assert.equal(result.warnings.length, 1);
+  assert.match(result.warnings[0], /本轮延后了 4 个上下文工具/u);
+  assert.match(result.warnings[0], /这些动作没有执行/u);
+  assert.match(result.warnings[0], /file-6\.cpp/u);
+});
+
 test('fair read projection preserves continuations without closing unrelated novel context', () => {
   const ledger = new ContextInvestigationLedger('/workspace');
   const projectedExposures = [
