@@ -26,7 +26,13 @@ const ACTIONABLE_DIAGNOSTIC_LINE_PATTERNS = [
   /\b(?:undefined reference|unresolved external symbol|collect2:\s*error|ninja:\s+build stopped|tests? failed)\b/i,
 ];
 
-const DIAGNOSTIC_CONTINUATION_LINE = /^\s*(?:\^|~|\||note:|required from|in instantiation of|at\s+)/i;
+const DIAGNOSTIC_CONTINUATION_LINE = /^\s*(?:\d+\s*\||\^|~|\||note:|required from|in instantiation of|at\s+)/i;
+
+interface DiagnosticBlock {
+  readonly startIndex: number;
+  readonly endIndex: number;
+  readonly text: string;
+}
 
 /** Preserve actionable diagnostics even when build progress surrounds them. */
 export function projectActionableDiagnosticExcerpt(output: string, maxChars: number): string {
@@ -34,26 +40,62 @@ export function projectActionableDiagnosticExcerpt(output: string, maxChars: num
   if (maxChars <= 0) return '';
 
   const lines = output.split(/\r?\n/);
-  const selectedIndexes = new Set<number>();
-  for (let index = 0; index < lines.length; index++) {
-    if (!ACTIONABLE_DIAGNOSTIC_LINE_PATTERNS.some(pattern => pattern.test(lines[index]))) continue;
-    selectedIndexes.add(index);
-    if (index + 1 < lines.length && DIAGNOSTIC_CONTINUATION_LINE.test(lines[index + 1])) {
-      selectedIndexes.add(index + 1);
-    }
-  }
-  if (selectedIndexes.size === 0) return projectDiagnosticOutputExcerpt(output, maxChars);
+  const diagnostics = collectDiagnosticBlocks(lines);
+  if (diagnostics.length === 0) return projectDiagnosticOutputExcerpt(output, maxChars);
 
   const lastIndex = lines.length - 1;
-  selectedIndexes.add(0);
-  selectedIndexes.add(lastIndex);
-  const selected = [...selectedIndexes].sort((left, right) => left - right);
-  const projected: string[] = [];
-  let previous = -1;
-  for (const index of selected) {
-    if (previous >= 0 && index > previous + 1) projected.push('...[已省略非诊断输出]...');
-    projected.push(lines[index]);
-    previous = index;
+  const context: DiagnosticBlock = { startIndex: 0, endIndex: 0, text: lines[0] };
+  const tail: DiagnosticBlock = { startIndex: lastIndex, endIndex: lastIndex, text: lines[lastIndex] };
+  const selected: DiagnosticBlock[] = [];
+  const addUnique = (block: DiagnosticBlock): void => {
+    if (!selected.some(existing => existing.startIndex === block.startIndex && existing.text === block.text)) {
+      selected.push(block);
+    }
+  };
+  addUnique(context);
+
+  // Compiler diagnostics are causal: preserve the earliest failures before
+  // later cascades such as out-of-scope members and the final build summary.
+  for (const diagnostic of diagnostics) {
+    const candidate = [...selected, diagnostic, tail];
+    if (renderDiagnosticBlocks(candidate).length > maxChars) break;
+    addUnique(diagnostic);
   }
-  return projectDiagnosticOutputExcerpt(projected.join('\n'), maxChars);
+  addUnique(tail);
+  const rendered = renderDiagnosticBlocks(selected);
+  if (rendered.length <= maxChars) return rendered;
+  return projectDiagnosticOutputExcerpt(rendered, maxChars);
+}
+
+function collectDiagnosticBlocks(lines: readonly string[]): DiagnosticBlock[] {
+  const blocks: DiagnosticBlock[] = [];
+  const seen = new Set<string>();
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!ACTIONABLE_DIAGNOSTIC_LINE_PATTERNS.some(pattern => pattern.test(lines[index]))) continue;
+    let endIndex = index;
+    while (endIndex + 1 < lines.length && DIAGNOSTIC_CONTINUATION_LINE.test(lines[endIndex + 1])) {
+      endIndex += 1;
+    }
+    const text = lines.slice(index, endIndex + 1).join('\n');
+    if (!seen.has(text)) {
+      blocks.push({ startIndex: index, endIndex, text });
+      seen.add(text);
+    }
+    index = endIndex;
+  }
+  return blocks;
+}
+
+function renderDiagnosticBlocks(blocks: readonly DiagnosticBlock[]): string {
+  const ordered = [...blocks].sort((left, right) => left.startIndex - right.startIndex);
+  const projected: string[] = [];
+  let previousEnd = -1;
+  for (const block of ordered) {
+    if (previousEnd >= 0 && block.startIndex > previousEnd + 1) {
+      projected.push('...[已省略非诊断输出]...');
+    }
+    projected.push(block.text);
+    previousEnd = Math.max(previousEnd, block.endIndex);
+  }
+  return projected.join('\n');
 }

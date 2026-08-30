@@ -42,3 +42,18 @@ test('linker recovery stays silent for unrelated non-C++ failures', () => {
     changedPaths: ['src/index.ts'],
   }), '');
 });
+
+test('member definition mismatch recovery rejects blind public API expansion', () => {
+  const feedback = buildStructuralCompileFailureRecoveryProtocol({
+    output: [
+      'src/raster_canvas.cpp:320:6: error: no declaration matches ‘void math_visual::RasterCanvas::renderPieChart(int, int, int, int, int)’',
+      'src/raster_canvas.cpp:360:9: error: expected unqualified-id before ‘for’',
+    ].join('\n'),
+    changedPaths: ['src/raster_canvas.cpp'],
+  });
+
+  assert.match(feedback, /C\+\+ 成员定义与类契约不一致/);
+  assert.match(feedback, /renderPieChart/);
+  assert.match(feedback, /不得直接在头文件新增公开 API/);
+  assert.match(feedback, /误生成的重复代码/);
+});

@@ -67,3 +67,28 @@ test('preserves compiler diagnostics buried between parallel build progress', ()
   assert.match(projected, /ninja: build stopped/);
   assert.doesNotMatch(projected, /dependency_40/);
 });
+
+test('prioritizes root compiler errors over a long cascade of later diagnostics', () => {
+  const output = [
+    'cmake: building math visual lab',
+    'src/raster_canvas.cpp:320:6: error: no declaration matches void RasterCanvas::renderPieChart(int)',
+    '  320 | void RasterCanvas::renderPieChart(int selected) {',
+    '      |      ^~~~~~~~~~~~',
+    'src/raster_canvas.cpp:360:9: error: expected unqualified-id before for',
+    '  360 |         for (int a = 0; a < 10; ++a) {',
+    '      |         ^~~',
+    ...Array.from({ length: 30 }, (_, index) => (
+      `src/raster_canvas.cpp:${440 + index}:5: error: cascade_${index} was not declared`
+    )),
+    'gmake: *** build failed',
+  ].join('\n');
+
+  const projected = projectActionableDiagnosticExcerpt(output, 700);
+
+  assert.match(projected, /^cmake: building math visual lab/);
+  assert.match(projected, /raster_canvas\.cpp:320:6: error: no declaration matches/);
+  assert.match(projected, /320 \| void RasterCanvas::renderPieChart/);
+  assert.match(projected, /raster_canvas\.cpp:360:9: error: expected unqualified-id/);
+  assert.match(projected, /gmake: \*\*\* build failed$/);
+  assert.doesNotMatch(projected, /cascade_29/);
+});

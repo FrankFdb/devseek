@@ -6,6 +6,8 @@ const CPP_STRUCTURAL_ERROR_RE =
   /(?:error:|fatal error:)[^\n]*(?:expected\s+unqualified-id|does\s+not\s+name\s+a\s+type|expected\s+declaration|expected\s+initializer\s+before)/i;
 const CPP_STD_MEMBER_MISSING_RE =
   /(?:error:|fatal error:)[^\n]*(?:['‘`]([A-Za-z_]\w*)['’`]?\s+is\s+not\s+a\s+member\s+of\s+['‘`]?std['’`]?|std\s*::\s*([A-Za-z_]\w*)[^\n]*(?:has\s+not\s+been\s+declared|was\s+not\s+declared|not\s+declared))/gi;
+const CPP_MEMBER_DEFINITION_MISMATCH_RE =
+  /(?:error:|fatal error:)[^\n]*no declaration matches[^\n]*?::([A-Za-z_]\w*)\s*\(/gi;
 
 const CPP_STD_SYMBOL_HEADERS: Readonly<Record<string, string>> = Object.freeze({
   bad_alloc: 'new',
@@ -49,10 +51,34 @@ export function buildStructuralCompileFailureRecoveryProtocol(
 ): string {
   const protocols = [
     buildCppMissingStandardHeaderRecoveryProtocol(input),
+    buildCppMemberDefinitionMismatchRecoveryProtocol(input),
     buildCppStructuralTranslationUnitRecoveryProtocol(input),
     buildCppUndefinedReferenceRecoveryProtocol(input),
   ].filter(Boolean);
   return protocols.join('\n');
+}
+
+function buildCppMemberDefinitionMismatchRecoveryProtocol(
+  input: StructuralCompileFailureInput,
+): string {
+  const output = input.output || '';
+  const symbols: string[] = [];
+  const seen = new Set<string>();
+  CPP_MEMBER_DEFINITION_MISMATCH_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = CPP_MEMBER_DEFINITION_MISMATCH_RE.exec(output)) !== null) {
+    const symbol = match[1];
+    if (seen.has(symbol)) continue;
+    seen.add(symbol);
+    symbols.push(symbol);
+  }
+  if (symbols.length === 0) return '';
+  return [
+    'C++ 成员定义与类契约不一致：',
+    `- 编译器报告这些类外定义没有匹配声明：${symbols.slice(0, 8).join('、')}。`,
+    '- 不得直接在头文件新增公开 API 来迎合错误实现。先核对现有同职责声明、实现和调用点，判断该定义是需求必需、签名漂移，还是最近修复误生成的重复代码。',
+    '- 若已有同职责实现或该定义不属于需求契约，删除错误定义及其残留片段；只有真实调用契约需要且没有现有所有者时，才统一修改声明、实现和全部调用方。',
+  ].join('\n');
 }
 
 function buildCppUndefinedReferenceRecoveryProtocol(
