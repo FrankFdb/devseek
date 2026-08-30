@@ -96,6 +96,15 @@ test('bounded visual failure preserves workspace reproduction and spatial diagno
           command: './build/app --snapshot verification.ppm',
           acceptanceCommand: 'node tools/verify-ppm.mjs verification.ppm',
         },
+        renderedState: {
+          lesson: 'number-line',
+          numberLine: { marker: 6, min: -10, max: 10 },
+        },
+        renderContract: {
+          semanticOwner: 'LessonController::render',
+          executionPath: 'runScript -> LessonController::render -> RasterCanvas lesson renderer',
+          activeLesson: 'number-line',
+        },
         ppm: {
           topHalfNonDominantSampledPixels: 0,
           bottomHalfNonDominantSampledPixels: 46,
@@ -112,6 +121,10 @@ test('bounded visual failure preserves workspace reproduction and spatial diagno
 
   assert.match(projection, /\.\/build\/app --snapshot verification\.ppm/);
   assert.match(projection, /node tools\/verify-ppm\.mjs verification\.ppm/);
+  assert.match(projection, /"renderedState"/);
+  assert.match(projection, /"lesson": "number-line"/);
+  assert.match(projection, /"semanticOwner": "LessonController::render"/);
+  assert.match(projection, /runScript -> LessonController::render -> RasterCanvas lesson renderer/);
   assert.match(projection, /"topHalfNonDominantSampledPixels": 0/);
   assert.match(projection, /"nonDominantBounds"/);
   assert.match(projection, /"nonDominantQuadrants"/);

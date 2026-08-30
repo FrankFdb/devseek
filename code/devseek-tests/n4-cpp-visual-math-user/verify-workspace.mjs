@@ -343,6 +343,12 @@ function visualCaseDetails(result) {
   const stats = result.ppm;
   return {
     reproduction: result.reproduction,
+    renderedState: result.state ?? null,
+    renderContract: {
+      semanticOwner: 'LessonController::render',
+      executionPath: 'runScript -> LessonController::render -> RasterCanvas lesson renderer',
+      activeLesson: result.state?.lesson ?? null,
+    },
     ppm: stats ? {
       width: stats.width,
       height: stats.height,
