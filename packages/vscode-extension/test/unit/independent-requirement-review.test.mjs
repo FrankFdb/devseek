@@ -318,6 +318,23 @@ test('binds reported validation findings to a verbatim supplied evidence quote',
   }
 });
 
+test('historical validation in the user request cannot override the current validation fact', () => {
+  const source = snapshot();
+  const staleFact = 'The previous build failed with undefined references in lesson_controller.cpp.';
+  const currentFact = 'Current write cohort verification passed: command="cmake --build build --clean-first"; exitCode=0.';
+  const prompt = `Repair the implementation. Historical report: ${staleFact}`;
+  const body = failBody(source, prompt, {
+    findings: [finding(source, prompt, {
+      evidence_authority: 'reported-validation',
+      evidence_quote: staleFact,
+    })],
+  });
+
+  const decision = parseIndependentReviewResponse(response(body), [source], prompt, currentFact);
+  assert.equal(decision.status, 'indeterminate');
+  assert.match(decision.explanation, /当前 VALIDATION FACT/u);
+});
+
 test('reports the exact malformed finding and fields for provider correction', () => {
   const source = snapshot();
   const prompt = 'Return 2.';
@@ -407,9 +424,10 @@ test('review prompt delegates semantics to the model and keeps raw multilingual 
   assert.match(messages[0].content, /do not choose one and fail the others/);
   assert.match(messages[0].content, /blank, placeholder, misleading mathematical result/);
   assert.match(messages[0].content, /directly traceable to words in the requirement bound to that inventory ID/);
-  assert.match(messages[0].content, /reported-validation only when the original requirements or VALIDATION FACT explicitly supplies/);
+  assert.match(messages[0].content, /reported-validation only when VALIDATION FACT explicitly supplies/);
+  assert.match(messages[0].content, /Historical validation text inside ORIGINAL USER REQUIREMENTS/u);
   assert.match(messages[0].content, /copy one exact contiguous expected\/actual fact into evidence_quote/);
-  assert.match(messages[0].content, /static source appearance cannot disprove it/);
+  assert.match(messages[0].content, /bound to the current write cohort/u);
   assert.doesNotMatch(messages[0].content, /order book|best bid|FIFO\/LIFO|std::invalid_argument/i);
   assert.match(messages[1].content, /MODEL_LATEST_OK/);
   assert.match(messages[1].content, new RegExp(JSON.stringify(prompt).slice(1, -1).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));

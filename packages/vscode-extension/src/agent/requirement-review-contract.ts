@@ -79,7 +79,7 @@ export const REQUIREMENT_REVIEW_SCHEMA = [
   '  "findings": [{',
   '    "requirement_id": "R1",',
   '    "evidence_authority": "source-snapshot" | "reported-validation",',
-  '    "evidence_quote": "exact contiguous quote from original requirements or validation fact; empty for source-snapshot",',
+  '    "evidence_quote": "exact contiguous quote from the current validation fact; empty for source-snapshot",',
   '    "title": "imperative finding title, <= 80 chars",',
   '    "observed_behavior": "caller-observable behavior reached in final source",',
   '    "expected_behavior": "behavior required by the quoted requirement",',
@@ -146,7 +146,7 @@ export function parseIndependentReviewResponse(
     raw.findings,
     snapshots,
     checks,
-    [userPrompt, validationSummary],
+    validationSummary ? [validationSummary] : [],
   );
   if (!normalizedFindings.ok) {
     return indeterminateDecision([
@@ -303,7 +303,7 @@ function normalizeFinding(
         || evidenceQuote.length < MIN_REPORTED_EVIDENCE_QUOTE_CHARS
         || evidenceQuote.length > MAX_REPORTED_EVIDENCE_QUOTE_CHARS
         || !reportedEvidenceSources.some(source => source.includes(evidenceQuote))) {
-      errors.push('reported-validation 的 evidence_quote 必须逐字引用已提供的原始需求或验证事实');
+      errors.push('reported-validation 的 evidence_quote 必须逐字引用当前 VALIDATION FACT');
     }
   } else if (evidenceQuote) {
     errors.push('source-snapshot 的 evidence_quote 必须为空');

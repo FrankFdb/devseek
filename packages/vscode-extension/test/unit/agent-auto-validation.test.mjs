@@ -282,6 +282,10 @@ test('Agent auto validation reuses a later same-run terminal proof without rerun
     assert.equal(commandRuns, 0);
     assert.equal(result.verificationReceipt, undefined);
     assert.equal(result.qualityGate.status, 'pass');
+    assert.match(result.qualityGate.summary, /当前写入批次之后/u);
+    assert.match(result.qualityGate.summary, /command="npm test"/u);
+    assert.match(result.qualityGate.summary, /exitCode=0/u);
+    assert.match(result.qualityGate.summary, /Focused verification passed\./u);
     assert.match(result.feedbackForAI, /无需重复启动自动验证器/);
     assert.deepEqual(statuses.map(status => `${status.phase}:${status.state}`), [
       'validate:started',

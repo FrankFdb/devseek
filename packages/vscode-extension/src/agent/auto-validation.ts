@@ -150,6 +150,23 @@ export function selectReusableVerificationReceipt(
     : undefined;
 }
 
+function projectReusableVerificationFact(receipt: CodingVerificationReceipt): string {
+  const checks = receipt.checks
+    .filter(check => check.status === 'passed')
+    .slice(-4)
+    .map(check => [
+      `check=${check.checkId}`,
+      check.command ? `command=${JSON.stringify(check.command)}` : '',
+      check.exitCode === undefined ? '' : `exitCode=${String(check.exitCode)}`,
+      `summary=${check.summary}`,
+    ].filter(Boolean).join('; '));
+  return projectDiagnosticOutputExcerpt([
+    'QualityGate 通过：当前写入批次之后的终端验证证据已通过。',
+    `verifier=${receipt.verifier}`,
+    ...checks,
+  ].join('\n'), 1600);
+}
+
 function acceptanceHasReusableChecks(
   receipt: CodingVerificationReceipt,
   acceptanceIds: ReadonlySet<string>,
@@ -475,7 +492,7 @@ export async function runAgentAutoValidationForWrites(
     if (reusableVerification) {
       const qualityGate = policyQuality?.qualityGate ?? {
         status: 'pass' as const,
-        summary: '已复用当前写入批次之后通过的终端验证证据。',
+        summary: projectReusableVerificationFact(reusableVerification),
         evidenceRefs: [...reusableVerification.evidenceRefs],
       };
       const feedbackForAI = [
