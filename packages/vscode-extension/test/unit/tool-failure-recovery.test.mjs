@@ -81,6 +81,7 @@ test('ToolFailureRecoveryLedger: failed mutation grants one context refresh for 
   assert.equal(ledger.consumeContextRefresh('/repo/src/verify.sh'), true);
   assert.equal(ledger.consumeContextRefresh('/repo/src/verify.sh'), false);
   assert.equal(ledger.hasPendingMutationRepair(), true);
+  assert.match(ledger.completionBlocker(), /失败后尚未产生新的有效写盘/u);
 });
 
 test('ToolFailureRecoveryLedger: terminal failures do not grant file context refreshes', () => {
@@ -102,6 +103,7 @@ test('ToolFailureRecoveryLedger: successful write clears a pending context refre
 
   assert.equal(ledger.consumeContextRefresh('/repo/src/verify.sh'), false);
   assert.equal(ledger.hasPendingMutationRepair(), false);
+  assert.equal(ledger.completionBlocker(), undefined);
 });
 
 test('ToolFailureRecoveryLedger: terminal failures do not create mutation delivery debt', () => {
@@ -114,6 +116,7 @@ test('ToolFailureRecoveryLedger: terminal failures do not create mutation delive
   }]);
 
   assert.equal(ledger.hasPendingMutationRepair(), false);
+  assert.equal(ledger.completionBlocker(), undefined);
 });
 
 test('ToolFailureRecoveryLedger: missing terminal capability requires an alternate runtime or authorization', () => {

@@ -20,7 +20,10 @@ execFileSync('npx', [
   `--outfile=${bundlePath}`,
 ], { cwd: rootDir, stdio: 'pipe' });
 
-const { AgenticProviderRecoveryLifecycle } = createRequire(import.meta.url)(bundlePath);
+const {
+  AgenticProviderRecoveryLifecycle,
+  projectProviderRecoveryScreenFeedback,
+} = createRequire(import.meta.url)(bundlePath);
 
 after(() => rmSync(tempRoot, { recursive: true, force: true }));
 
@@ -56,6 +59,7 @@ test('provider recovery lifecycle keeps a rejected mutation pending across reads
     allowRejectedWriteContextRefresh: true,
   });
   assert.equal(lifecycle.hasUnresolvedToolAction(), true);
+  assert.match(lifecycle.completionBlocker(), /replace_in_file[\s\S]*此前证据/u);
   assert.equal(
     await lifecycle.completeAcceptedResponse('tool-protocol', 'validation-op', ['run_terminal']),
     false,
@@ -75,7 +79,19 @@ test('provider recovery lifecycle keeps a rejected mutation pending across reads
     true,
   );
   assert.equal(lifecycle.hasUnresolvedToolAction(), false);
+  assert.equal(lifecycle.completionBlocker(), undefined);
   assert.deepEqual(statuses.map(status => status.state), ['completed']);
+});
+
+test('provider recovery lifecycle blocks completion while a transport response is rebuilding', async () => {
+  const lifecycle = new AgenticProviderRecoveryLifecycle('src/main.cpp', 'repair', {
+    onAgentStatus() {},
+  });
+
+  lifecycle.begin('truncated-response');
+  assert.match(lifecycle.completionBlocker(), /响应恢复仍未完成/u);
+  assert.equal(await lifecycle.completeAcceptedResponse('plain-response', 'clean-response'), true);
+  assert.equal(lifecycle.completionBlocker(), undefined);
 });
 
 test('provider recovery lifecycle locally admits only one concrete recovery action', () => {
@@ -96,7 +112,11 @@ test('provider recovery lifecycle locally admits only one concrete recovery acti
 
   assert.deepEqual([...screened.blockedToolIndexes], [0, 2, 3, 4]);
   assert.deepEqual([...screened.contextRefreshToolIndexes], [1]);
-  assert.match(screened.warnings[0], /只执行一个具体工具/u);
+  assert.match(projectProviderRecoveryScreenFeedback(
+    screened,
+    {},
+    true,
+  )[0], /只执行一个具体工具[\s\S]*仍未解决/u);
   assert.equal(lifecycle.hasUnresolvedToolAction(), true);
 });
 
@@ -201,7 +221,7 @@ test('provider recovery lifecycle blocks actions unrelated to the quarantined pr
 
   assert.deepEqual([...screened.blockedToolIndexes], [0, 2]);
   assert.deepEqual([...screened.contextRefreshToolIndexes], []);
-  assert.match(screened.warnings[0], /不匹配/u);
+  assert.match(projectProviderRecoveryScreenFeedback(screened, {}, true)[0], /不匹配/u);
 });
 
 test('provider recovery lifecycle preserves an in-session rejected write without admitting more reads', () => {
@@ -220,7 +240,11 @@ test('provider recovery lifecycle preserves an in-session rejected write without
 
   assert.deepEqual([...screened.blockedToolIndexes], [0, 1]);
   assert.deepEqual([...screened.contextRefreshToolIndexes], []);
-  assert.match(screened.warnings[0], /必须匹配被隔离动作/u);
+  assert.match(projectProviderRecoveryScreenFeedback(
+    screened,
+    { toolFailures: [{ tool: 'replace_in_file' }] },
+    false,
+  )[0], /执行失败[\s\S]*改变参数或工具策略/u);
   assert.equal(lifecycle.hasUnresolvedToolAction(), true);
 });
 
@@ -236,5 +260,17 @@ test('provider recovery lifecycle does not screen ordinary provider turns', () =
 
   assert.deepEqual([...screened.blockedToolIndexes], []);
   assert.deepEqual([...screened.contextRefreshToolIndexes], []);
-  assert.deepEqual(screened.warnings, []);
+  assert.deepEqual(projectProviderRecoveryScreenFeedback(screened, {}, false), []);
+});
+
+test('provider recovery screen feedback does not reissue an accepted write', () => {
+  const feedback = projectProviderRecoveryScreenFeedback({
+    blockedToolIndexes: new Set([1, 2]),
+    contextRefreshToolIndexes: new Set(),
+  }, {
+    writtenFiles: [{ path: 'result.txt' }],
+  }, false);
+
+  assert.match(feedback[0], /已形成真实写盘[\s\S]*不要重发/u);
+  assert.doesNotMatch(feedback[0], /仍未解决/u);
 });

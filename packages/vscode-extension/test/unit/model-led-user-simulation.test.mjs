@@ -595,11 +595,20 @@ test('ModelLedUserSimulation: quarantined mutation recovery reaches a matching w
         tools: [{ name: 'read_file', input: { path: target } }],
       };
     }
-    if (/必须匹配被隔离动作/u.test(latestMessage)) {
+    if (/匹配的恢复动作/u.test(latestMessage)) {
       return {
         text: '依据既有精确证据重新提交被隔离的修改。',
         tools: [
           { name: 'replace_in_file', input: { path: target, old_str: 'OLD', new_str: 'RECOVERED_COHORT_OK' } },
+          { name: 'read_file', input: { path: target } },
+          { name: 'task_complete', input: { summary: '已完成恢复修改并读回。' } },
+        ],
+      };
+    }
+    if (/已形成真实写盘/u.test(latestMessage)) {
+      return {
+        text: '恢复写入已经成功，现在只读回并结算。',
+        tools: [
           { name: 'read_file', input: { path: target } },
           { name: 'task_complete', input: { summary: '已完成恢复修改并读回。' } },
         ],

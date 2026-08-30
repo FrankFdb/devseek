@@ -9,6 +9,7 @@ import type { TerminalEvidence, WrittenFileEvidence } from './completion-evidenc
 import type { TodoItem } from './evidence-recovery';
 import type { EvidenceRef } from './tool-executor';
 import type { TextToolProtocolSession } from './text-tool-protocol';
+import type { ToolLoopResult } from './tool-loop-result';
 import { applyProviderRecoveryHistory } from './agent-history-compaction';
 import { compactAgenticMessageHistory } from './agentic-context-compaction';
 import {
@@ -48,7 +49,6 @@ export interface AgenticProviderRecoveryBoundaryInput {
 export interface AgenticProviderRecoveryToolScreen {
   readonly blockedToolIndexes: ReadonlySet<number>;
   readonly contextRefreshToolIndexes: ReadonlySet<number>;
-  readonly warnings: readonly string[];
 }
 
 interface ProviderRecoveryActionOptions {
@@ -104,6 +104,14 @@ export class AgenticProviderRecoveryLifecycle {
     return this.pending && this.observedToolNames.size > 0;
   }
 
+  completionBlocker(): string | undefined {
+    if (!this.pending) return undefined;
+    const tools = [...this.observedToolNames];
+    return tools.length > 0
+      ? `Provider 被隔离的工具动作仍未恢复：${tools.join('、')}；任务不能使用此前证据结算为完成。`
+      : 'Provider 响应恢复仍未完成；任务不能使用此前证据结算为完成。';
+  }
+
   pendingObservedToolNames(): readonly string[] {
     return Object.freeze([...this.observedToolNames]);
   }
@@ -119,7 +127,6 @@ export class AgenticProviderRecoveryLifecycle {
       return Object.freeze({
         blockedToolIndexes,
         contextRefreshToolIndexes,
-        warnings: Object.freeze([]),
       });
     }
 
@@ -145,12 +152,7 @@ export class AgenticProviderRecoveryLifecycle {
       }
     });
 
-    const warnings = blockedToolIndexes.size > 0
-      ? Object.freeze([
-        `【系统恢复】未解决动作的恢复轮只执行一个具体工具，且该工具必须匹配被隔离动作；宿主已跳过 ${blockedToolIndexes.size} 个额外、不匹配或元状态工具。请依据唯一真实结果继续，未执行动作必须在下一轮重新提议。`,
-      ])
-      : Object.freeze([]);
-    return Object.freeze({ blockedToolIndexes, contextRefreshToolIndexes, warnings });
+    return Object.freeze({ blockedToolIndexes, contextRefreshToolIndexes });
   }
 
   private isRecoveryActionAllowed(
@@ -263,6 +265,34 @@ export class AgenticProviderRecoveryLifecycle {
     this.observedToolNames.clear();
     return true;
   }
+}
+
+/** Builds recovery guidance only after the admitted tool has a real receipt. */
+export function projectProviderRecoveryScreenFeedback(
+  screen: AgenticProviderRecoveryToolScreen,
+  result: Pick<ToolLoopResult, 'writtenFiles' | 'toolFailures'>,
+  recoveryStillPending: boolean,
+): readonly string[] {
+  if (screen.blockedToolIndexes.size === 0) return Object.freeze([]);
+  const prefix = `【系统恢复】恢复轮只执行一个具体工具；宿主已跳过 ${screen.blockedToolIndexes.size} 个额外、不匹配或元状态工具。`;
+  if ((result.toolFailures?.length ?? 0) > 0) {
+    return Object.freeze([
+      `${prefix}被准入动作执行失败；下一轮必须依据真实错误改变参数或工具策略，不能 task_complete。`,
+    ]);
+  }
+  if ((result.writtenFiles?.length ?? 0) > 0) {
+    return Object.freeze([
+      `${prefix}被准入动作已形成真实写盘；下一轮不要重发该写入，只执行必要的读回、验证或结算。`,
+    ]);
+  }
+  if (recoveryStillPending) {
+    return Object.freeze([
+      `${prefix}本轮结果只补充了上下文，被隔离动作仍未解决；下一轮必须提议匹配的恢复动作。`,
+    ]);
+  }
+  return Object.freeze([
+    `${prefix}请只依据本轮唯一真实结果继续，不得假定被跳过动作已经执行。`,
+  ]);
 }
 
 function recoveryReadSignature(tool: ProviderRecoveryToolProposal): string {

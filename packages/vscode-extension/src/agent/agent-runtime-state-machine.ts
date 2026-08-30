@@ -6,6 +6,7 @@ import {
   describeProviderOutputIntegrity,
   isProviderOutputFatal,
   type ProviderOutputIntegrity,
+  type ProviderOutputObservation,
 } from './provider-output-integrity';
 
 export type AgentRuntimeState =
@@ -34,6 +35,8 @@ export interface AgentRuntimeStateInput {
   taskComplete?: boolean;
   allTodosCompleted?: boolean;
   failedReason?: string;
+  completionBlocker?: string;
+  providerOutputObservation?: Omit<ProviderOutputObservation, 'toolCallCount'>;
   recoveryAttempts?: number;
   maxRecoveryAttempts?: number;
 }
@@ -73,7 +76,7 @@ export function resolveAgentRuntimeTaskAction(
 export function settleAgentRuntimeState(input: AgentRuntimeStateInput): AgentRuntimeSettlement {
   const providerOutput = classifyProviderOutputIntegrity(
     input.roundText || input.providerText || '',
-    { toolCallCount: input.toolRequests },
+    { ...input.providerOutputObservation, toolCallCount: input.toolRequests },
   );
   const toolRequests = input.toolRequests ?? providerOutput.toolCallCount;
   const toolExecutions = input.toolExecutions ?? 0;
@@ -90,6 +93,9 @@ export function settleAgentRuntimeState(input: AgentRuntimeStateInput): AgentRun
 
   if (input.failedReason) {
     return failed(providerOutput, input.failedReason);
+  }
+  if (input.completionBlocker) {
+    return failed(providerOutput, input.completionBlocker);
   }
   if (input.validationFailedReason) {
     return failed(providerOutput, input.validationFailedReason);

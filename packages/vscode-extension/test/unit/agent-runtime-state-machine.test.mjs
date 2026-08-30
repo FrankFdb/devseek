@@ -197,4 +197,50 @@ test('agent runtime state machine: provider fatal output fails immediately', () 
   assert.match(settlement.failedReason, /错误页|服务异常/);
 });
 
+test('agent runtime state machine: unresolved recovery debt outranks stale passing evidence', () => {
+  const settlement = settleAgentRuntimeState({
+    taskAction: 'modify',
+    providerText: '已完成。',
+    writtenEvidenceCount: 1,
+    terminalEvidenceCount: 1,
+    validationPassed: true,
+    allTodosCompleted: true,
+    completionBlocker: 'Provider 被隔离的 apply_patch 仍未恢复。',
+  });
+
+  assert.equal(settlement.state, 'failed');
+  assert.match(settlement.failedReason, /仍未恢复/u);
+});
+
+test('agent runtime state machine: malformed final tool protocol cannot inherit prior evidence', () => {
+  const settlement = settleAgentRuntimeState({
+    taskAction: 'modify',
+    roundText: '<devseek_tool_calls>[TOOL:apply_patch {"path":"src/main.cpp"}]',
+    writtenEvidenceCount: 1,
+    terminalEvidenceCount: 1,
+    validationPassed: true,
+    allTodosCompleted: true,
+    providerOutputObservation: { incompleteToolProtocol: true },
+  });
+
+  assert.equal(settlement.state, 'failed');
+  assert.match(settlement.failedReason, /截断/u);
+});
+
+test('agent runtime state machine: current unexecuted request cannot use earlier tool evidence', () => {
+  const settlement = settleAgentRuntimeState({
+    taskAction: 'modify',
+    roundText: '[TOOL:apply_patch {"path":"src/main.cpp"}]',
+    toolRequests: 1,
+    toolExecutions: 0,
+    writtenEvidenceCount: 1,
+    terminalEvidenceCount: 1,
+    validationPassed: true,
+    allTodosCompleted: true,
+  });
+
+  assert.equal(settlement.state, 'tool_requested');
+  assert.equal(runtimeStateCanDeliver(settlement), false);
+});
+
 console.log('\nAgent runtime state machine tests passed.\n');

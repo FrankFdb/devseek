@@ -100,6 +100,11 @@ export class ToolFailureRecoveryLedger {
     return this.pendingMutationRepair;
   }
 
+  completionBlocker(): string | undefined {
+    if (!this.pendingMutationRepair) return undefined;
+    return '最近的写入动作失败后尚未产生新的有效写盘；任务不能使用失败前的验证证据结算为完成。';
+  }
+
   private normalizePath(pathValue: string | undefined): string {
     const trimmed = pathValue?.trim();
     if (!trimmed) return '';

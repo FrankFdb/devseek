@@ -14,7 +14,10 @@ execSync(
   { cwd: rootDir, stdio: 'pipe' },
 );
 
-const { selectAgenticFinalFailure } = createRequire(import.meta.url)(bundlePath);
+const {
+  resolveAgenticRoundBudgetFailure,
+  selectAgenticFinalFailure,
+} = createRequire(import.meta.url)(bundlePath);
 
 test('specific completion obligations outrank stale provider output state', () => {
   assert.deepEqual(selectAgenticFinalFailure({
@@ -43,4 +46,30 @@ test('existing loop failures remain authoritative and empty values are ignored',
     reason: '用户拒绝了必需的外部操作。',
   });
   assert.equal(selectAgenticFinalFailure({ providerRuntimeFailure: '   ' }), undefined);
+});
+
+test('natural round-budget exhaustion is a failure unless the loop reached settlement', () => {
+  assert.match(resolveAgenticRoundBudgetFailure({
+    roundCount: 25,
+    roundLimit: 25,
+    settlementReached: false,
+    aborted: false,
+  }), /25 轮执行预算[\s\S]*任务未完成/u);
+
+  assert.equal(resolveAgenticRoundBudgetFailure({
+    roundCount: 25,
+    roundLimit: 25,
+    settlementReached: true,
+    aborted: false,
+  }), undefined);
+});
+
+test('round-budget exhaustion reports the concrete pending recovery obligation', () => {
+  assert.equal(resolveAgenticRoundBudgetFailure({
+    roundCount: 25,
+    roundLimit: 25,
+    settlementReached: false,
+    aborted: false,
+    completionBlockers: [undefined, '  Provider 被隔离的 apply_patch 仍未恢复。  '],
+  }), 'Provider 被隔离的 apply_patch 仍未恢复。');
 });

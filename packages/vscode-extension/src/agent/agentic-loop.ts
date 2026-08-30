@@ -92,7 +92,11 @@ import { describeProviderOutputIntegrity } from './provider-output-integrity';
 import {
   parseAgentProviderFailure,
 } from './provider-response-recovery';
-import { AgenticProviderRecoveryLifecycle, recoverAgenticProviderFailure } from './agentic-provider-recovery-boundary';
+import {
+  AgenticProviderRecoveryLifecycle,
+  projectProviderRecoveryScreenFeedback,
+  recoverAgenticProviderFailure,
+} from './agentic-provider-recovery-boundary';
 import {
   replaceLatestAssistantToolHistory,
 } from './agent-history-compaction';
@@ -118,7 +122,10 @@ import {
 } from './requirement-review-repair-window';
 import { renewExecutionConvergenceRoundLimit } from './execution-convergence-window';
 import { settleAgenticLoopFinal } from './agentic-final-settlement';
-import { selectAgenticFinalFailure } from './agentic-final-failure';
+import {
+  resolveAgenticRoundBudgetFailure,
+  selectAgenticFinalFailure,
+} from './agentic-final-failure';
 import {
   DeliveryConvergenceLedger,
   isContextGatheringToolName,
@@ -203,7 +210,7 @@ export async function runAgenticLoop(
   let lastMissingEvidence: string[] = [];
   let lastProviderText = '';
   let lastRoundToolRequestCount = 0;
-  let executedToolRoundCount = 0;
+  let lastRoundToolExecutionCount = 0;
   let providerRecoveryAttempts = 0;
   let forceProviderNewSessionNextTurn = false;
   const resetProviderRecoveryAttemptsAfterProgress = () => {
@@ -276,6 +283,11 @@ export async function runAgenticLoop(
     : requestedDisplayAction;
   const initialDisplayTarget = callbacks.runDisplayTarget || '';
   const providerRecovery = new AgenticProviderRecoveryLifecycle(initialDisplayTarget, initialDisplayAction, callbacks);
+  const currentCompletionBlockers = () => [
+    requirementReview.completionBlocker(),
+    providerRecovery.completionBlocker(),
+    toolFailureRecovery.completionBlocker(),
+  ];
   const emitAgenticCorrectionStatus = async (
     title: string,
     detail: string,
@@ -330,7 +342,7 @@ export async function runAgenticLoop(
       workspaceRoot,
       semanticContract: writeAuthority.completionSemanticContract,
       canonicalTaskContract: callbacks.canonicalTaskContract,
-      completionBlockers: [requirementReview.completionBlocker()],
+      completionBlockers: currentCompletionBlockers(),
     });
     if (providerSettlement.completed) {
       completeSummary = completeSummary || providerSettlement.summary;
@@ -400,13 +412,18 @@ export async function runAgenticLoop(
   let steeringRevisionGraceRounds = 0;
   const terminalCommandProgress = new TerminalCommandProgressLedger();
   const contextInvestigation = new ContextInvestigationLedger(workspaceRoot);
-  for (;;) {
-  while (roundCount < Math.max(
+  const currentRoundLimit = () => Math.max(
     executionConvergenceRoundLimit,
     maxAgenticRounds + requirementReviewRepairGraceRounds + steeringRevisionGraceRounds,
-  )) {
+  );
+  let loopSettlementReached = false;
+  for (;;) {
+  loopSettlementReached = false;
+  while (roundCount < currentRoundLimit()) {
     if (callbacks.signal?.aborted) break;
     roundCount++;
+    lastRoundToolRequestCount = 0;
+    lastRoundToolExecutionCount = 0;
 
     // ── Streaming delta: early manage_todo_list detection ───────────────────
     // Preview each newly completed authenticated envelope once so Todo and tool
@@ -517,7 +534,10 @@ export async function runAgenticLoop(
         providerFailure,
         sAccum.trim().length,
       );
-      if (disposition === 'completed') break;
+      if (disposition === 'completed') {
+        loopSettlementReached = true;
+        break;
+      }
       if (disposition === 'recovered') continue;
       throw error;
     } finally {
@@ -599,7 +619,10 @@ export async function runAgenticLoop(
             ...invalidAuthorizedProtocol.observedToolNames,
           ])],
         }, text.trim().length);
-        if (disposition === 'completed') break;
+        if (disposition === 'completed') {
+          loopSettlementReached = true;
+          break;
+        }
         if (disposition === 'recovered') {
           continue;
         }
@@ -616,7 +639,10 @@ export async function runAgenticLoop(
           recoverable: true,
           observedToolNames: providerRecovery.pendingObservedToolNames(),
         }, text.trim().length);
-        if (disposition === 'completed') break;
+        if (disposition === 'completed') {
+          loopSettlementReached = true;
+          break;
+        }
         if (disposition === 'recovered') continue;
         failedReason = 'Provider 安全恢复后仍未形成有效工具调用。';
         break;
@@ -691,6 +717,7 @@ export async function runAgenticLoop(
         const visibleStripped = cleanAgentFinalSummaryForUser(stripped);
         if (visibleStripped) completeSummary = visibleStripped;
       }
+      loopSettlementReached = !failedReason;
       break;
     }
 
@@ -731,7 +758,6 @@ export async function runAgenticLoop(
         reason: 'provider-recovery-action-budget',
       });
     }
-    loopWarnings.push(...providerRecoveryScreen.warnings);
     screenedTools.forEach((tool, toolIndex) => {
       if (tool.name !== 'run_terminal') return;
       const command = typeof tool.input.command === 'string' ? tool.input.command.trim() : '';
@@ -787,6 +813,11 @@ export async function runAgenticLoop(
         },
       ),
     );
+    loopWarnings.push(...projectProviderRecoveryScreenFeedback(
+      providerRecoveryScreen,
+      loopRes,
+      providerRecovery.hasUnresolvedToolAction(),
+    ));
     const providerNativeTextTools = screenedTools.filter(tool => tool.source === 'provider-native-text');
     if (loopRes.toolCallsMade || providerNativeTextTools.length > 0) {
       replaceLatestAssistantToolHistory(messages, textToolProtocol, providerNativeTextTools);
@@ -796,9 +827,7 @@ export async function runAgenticLoop(
       sawWorkTool = true;
       noToolRounds = 0;
     }
-    if (loopRes.toolCallsMade) {
-      executedToolRoundCount++;
-    }
+    lastRoundToolExecutionCount = loopRes.toolCallsMade ? 1 : 0;
 
     if (loopRes.todoItems?.length) {
       currentTodos = loopRes.todoItems;
@@ -1087,6 +1116,7 @@ export async function runAgenticLoop(
       } else if (reviewOutcome.kind === 'settled') {
         hadTaskComplete = hadTaskComplete || loopRes.taskComplete;
         if (loopRes.completeSummary !== undefined) completeSummary = loopRes.completeSummary ?? '';
+        loopSettlementReached = true;
         break;
       }
     }
@@ -1132,6 +1162,7 @@ export async function runAgenticLoop(
       }
       hadTaskComplete = true;
       completeSummary = loopRes.completeSummary ?? '';
+      loopSettlementReached = true;
       break;
     }
 
@@ -1143,6 +1174,7 @@ export async function runAgenticLoop(
     if (!reviewFeedback
       && loopRes.allTodosCompleted
       && (!promptRequiresTools || (sawWorkTool && !blockingFailureAfterTools))) {
+      loopSettlementReached = true;
       break;
     }
     if (loopRes.allTodosCompleted && promptRequiresTools && !sawWorkTool && noToolRounds < 2 && !callbacks.signal?.aborted) {
@@ -1159,6 +1191,7 @@ export async function runAgenticLoop(
       if (await recoverBlockingTerminalFailure(blockingFailureNow, missingNow, 2)) {
         continue;
       }
+      loopSettlementReached = true;
       break;
     }
 
@@ -1173,7 +1206,16 @@ export async function runAgenticLoop(
 
   if (callbacks.signal?.aborted) break;
   const completionFenceMessages = writeAuthority.closeForCompletionAndDrain();
-  if (completionFenceMessages.length === 0) break;
+  if (completionFenceMessages.length === 0) {
+    failedReason = failedReason || resolveAgenticRoundBudgetFailure({
+      roundCount,
+      roundLimit: currentRoundLimit(),
+      settlementReached: loopSettlementReached,
+      aborted: callbacks.signal?.aborted ?? false,
+      completionBlockers: currentCompletionBlockers(),
+    }) || '';
+    break;
+  }
   if (!writeAuthority.reopenAfterCompletionFence()) {
     failedReason = failedReason || '收到新的用户要求，但当前 turn 无法重新打开输入窗口。';
     break;
@@ -1204,6 +1246,15 @@ export async function runAgenticLoop(
     ? latestAutoQualityGate.summary
     : undefined;
   const finalRequirementReviewBlocker = requirementReview.completionBlocker();
+  const finalRecoveryBlocker = providerRecovery.completionBlocker()
+    ?? toolFailureRecovery.completionBlocker();
+  const finalProviderProtocolInvalid = inspectIncompleteAuthorizedTextToolProtocol(
+    lastProviderText, textToolProtocol,
+  ).found || inspectInvalidAuthorizedTextToolProtocol(
+    lastProviderText, textToolProtocol,
+  ).found || inspectOutOfEnvelopeTextToolProtocol(
+    lastProviderText, textToolProtocol,
+  ).found;
   const policyRefusalEvidenceSatisfied = hasUnsafeSecretHarvestingRefusalEvidence(
     writeAuthority.currentPrompt, `${completeSummary}\n${lastProviderText}`, { workToolUsed: sawWorkTool, changedFileCount: allWrittenFiles.length },
   );
@@ -1213,7 +1264,7 @@ export async function runAgenticLoop(
     providerText: completeSummary || lastProviderText,
     roundText: lastProviderText,
     toolRequests: lastRoundToolRequestCount,
-    toolExecutions: executedToolRoundCount,
+    toolExecutions: lastRoundToolExecutionCount,
     evidenceRefs: allEvidenceRefs,
     readEvidenceCount: allReadEvidencePaths.size,
     writtenEvidenceCount: allWrittenFiles.length,
@@ -1224,6 +1275,10 @@ export async function runAgenticLoop(
     taskComplete: hadTaskComplete,
     allTodosCompleted: currentTodos.length > 0 && currentTodos.every(todo => todo.status === 'completed'),
     failedReason: failedReason || undefined,
+    completionBlocker: finalRecoveryBlocker,
+    providerOutputObservation: {
+      incompleteToolProtocol: finalProviderProtocolInvalid,
+    },
   });
   let providerRuntimeFailure: string | undefined;
   if (finalRuntimeSettlement.state === 'failed') {
