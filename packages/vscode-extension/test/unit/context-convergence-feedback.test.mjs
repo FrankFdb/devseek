@@ -193,7 +193,7 @@ test('actionable review repair corrects read-only drift without requiring broad 
   const reviewRepair = {
     ...unresolvedMutation,
     gatheredEvidenceCount: 1,
-    actionableRepairPending: true,
+    actionableRepairSource: 'requirement-review',
   };
 
   assert.equal(ledger.observe(reviewRepair).kind, 'continue');
@@ -212,7 +212,7 @@ test('actionable review repair gets one final bounded correction after dependenc
   const reviewRepair = {
     ...unresolvedMutation,
     gatheredEvidenceCount: 1,
-    actionableRepairPending: true,
+    actionableRepairSource: 'requirement-review',
   };
 
   assert.equal(ledger.observe(reviewRepair).kind, 'continue');
@@ -323,4 +323,51 @@ test('novel source exposure remains progress while repeated suppressed investiga
     novelInvestigationProgress: true,
   });
   assert.equal(ledger.recordSuppressedInvestigationRound(20), undefined);
+});
+
+test('a failed mutation cannot turn distinct source ranges into an unbounded recovery loop', () => {
+  const ledger = new DeliveryConvergenceLedger();
+  const failedMutationRepair = {
+    ...unresolvedMutation,
+    actionableRepairSource: 'failed-mutation',
+    novelInvestigationProgress: true,
+  };
+
+  assert.equal(ledger.observe(failedMutationRepair).kind, 'continue');
+  const firstCorrection = ledger.observe(failedMutationRepair);
+  assert.equal(firstCorrection.kind, 'correct');
+  assert.match(firstCorrection.feedback, /此前写入已失败或被拒绝/u);
+  assert.doesNotMatch(firstCorrection.feedback, /独立审查/u);
+  assert.equal(ledger.observe(failedMutationRepair).kind, 'correct');
+  assert.equal(ledger.observe(failedMutationRepair).kind, 'correct');
+
+  const stopped = ledger.observe(failedMutationRepair);
+  assert.equal(stopped.kind, 'stop');
+  assert.match(stopped.reason, /3 次交付纠正/u);
+});
+
+test('accepted write progress opens a fresh cohort after failed-mutation recovery pressure', () => {
+  const ledger = new DeliveryConvergenceLedger();
+  const failedMutationRepair = {
+    ...unresolvedMutation,
+    actionableRepairSource: 'failed-mutation',
+    novelInvestigationProgress: true,
+  };
+
+  assert.equal(ledger.observe(failedMutationRepair).kind, 'continue');
+  assert.equal(ledger.observe(failedMutationRepair).kind, 'correct');
+  assert.equal(ledger.observe({
+    ...failedMutationRepair,
+    deliveryProgressEpoch: 1,
+    actionableRepairSource: undefined,
+    cohortBoundaryActivity: true,
+  }).kind, 'continue');
+
+  for (let round = 0; round < 8; round++) {
+    assert.notEqual(ledger.observe({
+      ...failedMutationRepair,
+      deliveryProgressEpoch: 1,
+      actionableRepairSource: undefined,
+    }).kind, 'stop');
+  }
 });

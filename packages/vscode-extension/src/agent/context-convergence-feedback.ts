@@ -87,7 +87,7 @@ export interface DeliveryConvergenceObservation {
   readonly expectation: DeliveryConvergenceExpectation;
   readonly deliveryProgressEpoch: number;
   readonly deliveryPending: boolean;
-  readonly actionableRepairPending?: boolean;
+  readonly actionableRepairSource?: 'requirement-review' | 'failed-mutation';
   readonly gatheredEvidenceCount: number;
   readonly investigationActivity: boolean;
   readonly novelInvestigationProgress: boolean;
@@ -117,6 +117,7 @@ export class DeliveryConvergenceLedger {
   private investigationRounds = 0;
   private progressiveInvestigationRounds = 0;
   private progressiveDeliveryPressureActive = false;
+  private progressiveRepairCorrectionCount = 0;
   private correctionCount = 0;
   private suppressedContextRounds = 0;
 
@@ -147,16 +148,17 @@ export class DeliveryConvergenceLedger {
     if (input.novelInvestigationProgress) {
       this.resetStalledInvestigationPressure();
       if (this.progressiveDeliveryPressureActive) {
+        const repairStop = this.recordProgressiveRepairCorrection(input);
+        if (repairStop) return repairStop;
         return buildDeliveryCorrection(input, this.progressiveInvestigationRounds);
       }
       this.progressiveInvestigationRounds++;
-      const progressRoundsBeforeCorrection = input.expectation === 'mutation'
-        ? MUTATION_PROGRESS_ROUNDS_BEFORE_CORRECTION
-        : UNCLASSIFIED_PROGRESS_ROUNDS_BEFORE_CORRECTION;
+      const progressRoundsBeforeCorrection = resolveProgressiveRoundsBeforeCorrection(input);
       if (this.progressiveInvestigationRounds < progressRoundsBeforeCorrection) {
         return CONTINUE_RESULT;
       }
       this.progressiveDeliveryPressureActive = true;
+      this.progressiveRepairCorrectionCount = hasActionableRepair(input) ? 1 : 0;
       return buildDeliveryCorrection(input, progressRoundsBeforeCorrection);
     }
 
@@ -176,13 +178,7 @@ export class DeliveryConvergenceLedger {
 
     const correctionLimit = resolveCorrectionLimit(input);
     if (this.correctionCount >= correctionLimit) {
-      return Object.freeze({
-        kind: 'stop',
-        reason: [
-          `已收集 ${input.gatheredEvidenceCount} 项项目证据，但当前交付阶段连续 ${this.investigationRounds} 个工具轮只有上下文调查。`,
-          `模型在 ${this.correctionCount} 次交付纠正后仍未产生可结算进展；为避免自主模式继续无界调查，当前任务已停止。`,
-        ].join(''),
-      });
+      return buildDeliveryStop(input, this.investigationRounds, this.correctionCount);
     }
 
     this.correctionCount++;
@@ -200,6 +196,7 @@ export class DeliveryConvergenceLedger {
   private resetInvestigationPressure(): void {
     this.progressiveInvestigationRounds = 0;
     this.progressiveDeliveryPressureActive = false;
+    this.progressiveRepairCorrectionCount = 0;
     this.resetStalledInvestigationPressure();
   }
 
@@ -208,6 +205,25 @@ export class DeliveryConvergenceLedger {
     this.correctionCount = 0;
     this.suppressedContextRounds = 0;
   }
+
+  private recordProgressiveRepairCorrection(
+    input: DeliveryConvergenceObservation,
+  ): Extract<DeliveryConvergenceResult, { kind: 'stop' }> | undefined {
+    if (!hasActionableRepair(input)) return undefined;
+    const correctionLimit = resolveCorrectionLimit(input);
+    if (this.progressiveRepairCorrectionCount >= correctionLimit) {
+      return buildDeliveryStop(input, this.progressiveInvestigationRounds, correctionLimit);
+    }
+    this.progressiveRepairCorrectionCount++;
+    return undefined;
+  }
+}
+
+function resolveProgressiveRoundsBeforeCorrection(input: DeliveryConvergenceObservation): number {
+  if (hasActionableRepair(input)) return MUTATION_ROUNDS_BEFORE_CORRECTION;
+  return input.expectation === 'mutation'
+    ? MUTATION_PROGRESS_ROUNDS_BEFORE_CORRECTION
+    : UNCLASSIFIED_PROGRESS_ROUNDS_BEFORE_CORRECTION;
 }
 
 function buildDeliveryCorrection(
@@ -221,8 +237,10 @@ function buildDeliveryCorrection(
       ? '项目证据已收集，正在切换到交付落盘'
       : '项目证据已收集，正在要求形成交付',
     statusDetail: mutationExpected
-      ? input.actionableRepairPending
-        ? '独立审查已经给出可执行反例，但当前修复阶段尚无新写入。DevSeek 正在要求模型停止横向调查并落实定点修改。'
+      ? hasActionableRepair(input)
+        ? input.actionableRepairSource === 'failed-mutation'
+          ? '此前写入没有通过工具执行边界，但当前恢复阶段仍只有源码调查。DevSeek 正在要求模型依据最新文件事实改变写入参数或策略。'
+          : '独立审查已经给出可执行反例，但当前修复阶段尚无新写入。DevSeek 正在要求模型停止横向调查并落实定点修改。'
         : `已读取、搜索或验证 ${input.gatheredEvidenceCount} 项项目证据，但当前修改阶段尚无新写入。DevSeek 正在要求模型停止横向调查并落实一个最小修改。`
       : `已读取、搜索或验证 ${input.gatheredEvidenceCount} 项项目证据，但模型仍未形成可结算交付。DevSeek 正在要求模型依据原始需求选择实施或给出结论。`,
     activityLabel: mutationExpected
@@ -235,7 +253,7 @@ function buildDeliveryCorrection(
 }
 
 function resolveCorrectionLimit(input: DeliveryConvergenceObservation): number {
-  if (input.actionableRepairPending === true) return MAX_ACTIONABLE_REPAIR_CORRECTIONS;
+  if (hasActionableRepair(input)) return MAX_ACTIONABLE_REPAIR_CORRECTIONS;
   return input.expectation === 'unclassified'
     ? MAX_UNCLASSIFIED_DELIVERY_CORRECTIONS
     : MAX_MUTATION_DELIVERY_CORRECTIONS;
@@ -247,12 +265,32 @@ function buildMutationDeliveryFeedback(
 ): string {
   return [
     '【系统反馈】项目调查证据已足够，必须从调查阶段切换到交付阶段。',
-    input.actionableRepairPending
-      ? `独立审查已经给出可执行反例，本修复阶段连续 ${investigationRounds} 个工具轮没有新写盘进展。`
+    hasActionableRepair(input)
+      ? input.actionableRepairSource === 'failed-mutation'
+        ? `此前写入已失败或被拒绝，本恢复阶段连续 ${investigationRounds} 个工具轮没有新的写盘进展。`
+        : `独立审查已经给出可执行反例，本修复阶段连续 ${investigationRounds} 个工具轮没有新写盘进展。`
       : `当前已收集 ${input.gatheredEvidenceCount} 项证据，本交付阶段连续 ${investigationRounds} 个上下文工具轮没有新写盘进展。`,
     '下一轮不要继续横向 grep/list/read 或重复验证；请提交一个能推进交付的最小修改。既有文件使用 replace_in_file，插入/删除或长 old_str 使用单文件 apply_patch；只有确认目标不存在时才使用 create_file，随后读取并运行适用验证。',
     '如果仍缺少直接阻塞修改的源码事实，只读取尚未覆盖的精确文件或行范围；新增可见源码范围可以继续推进，重复或已覆盖读取会被阻止。完成直接依赖闭包后立即落实修改。',
   ].join('\n');
+}
+
+function hasActionableRepair(input: DeliveryConvergenceObservation): boolean {
+  return input.actionableRepairSource !== undefined;
+}
+
+function buildDeliveryStop(
+  input: DeliveryConvergenceObservation,
+  investigationRounds: number,
+  correctionLimit: number,
+): Extract<DeliveryConvergenceResult, { kind: 'stop' }> {
+  return Object.freeze({
+    kind: 'stop',
+    reason: [
+      `已收集 ${input.gatheredEvidenceCount} 项项目证据，但当前交付阶段连续 ${investigationRounds} 个工具轮只有上下文调查。`,
+      `模型在 ${correctionLimit} 次交付纠正后仍未产生可结算进展；为避免自主模式继续无界调查，当前任务已停止。`,
+    ].join(''),
+  });
 }
 
 function buildUnclassifiedDeliveryFeedback(

@@ -2571,8 +2571,8 @@ test('Architecture: validated source changes require fresh source review before 
   );
   assertContains(
     agenticLoop,
-    'actionableRepairPending: requirementReviewSourceRepairPending',
-    'failed independent review must enter bounded delivery convergence',
+    'const actionableRepairPending = requirementReviewSourceRepairPending || failedMutationRepairPending;',
+    'failed independent review and failed mutations must enter bounded delivery convergence',
   );
   assertContains(
     agenticLoop,

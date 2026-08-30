@@ -27,6 +27,7 @@ const DEFAULT_STOP_AFTER_ROUNDS = 4;
 export class ToolFailureRecoveryLedger {
   private readonly failures = new Map<string, FailureRoundState>();
   private readonly pendingContextRefreshPaths = new Set<string>();
+  private pendingMutationRepair = false;
   private readonly warnAfterRounds: number;
   private readonly stopAfterRounds: number;
   private readonly workspaceRoot?: string;
@@ -41,6 +42,7 @@ export class ToolFailureRecoveryLedger {
     const grouped = new Map<string, { failure: ToolFailureEvidence; occurrences: number }>();
     for (const failure of failures) {
       if (failure.kind === 'write' || failure.kind === 'replace') {
+        this.pendingMutationRepair = true;
         const refreshPath = this.normalizePath(failure.path);
         if (refreshPath) this.pendingContextRefreshPaths.add(refreshPath);
       }
@@ -74,6 +76,7 @@ export class ToolFailureRecoveryLedger {
   clearForWrittenPaths(paths: readonly string[]): void {
     const normalizedPaths = paths.map(pathValue => this.normalizePath(pathValue)).filter(Boolean);
     if (normalizedPaths.length === 0) return;
+    this.pendingMutationRepair = false;
     for (const normalizedPath of normalizedPaths) {
       this.pendingContextRefreshPaths.delete(normalizedPath);
     }
@@ -90,6 +93,11 @@ export class ToolFailureRecoveryLedger {
     if (!normalizedPath || !this.pendingContextRefreshPaths.has(normalizedPath)) return false;
     this.pendingContextRefreshPaths.delete(normalizedPath);
     return true;
+  }
+
+  /** A failed write remains delivery debt until a later write establishes progress. */
+  hasPendingMutationRepair(): boolean {
+    return this.pendingMutationRepair;
   }
 
   private normalizePath(pathValue: string | undefined): string {

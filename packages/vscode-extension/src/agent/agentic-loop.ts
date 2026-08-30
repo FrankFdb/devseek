@@ -998,6 +998,13 @@ export async function runAgenticLoop(
       mutationRequired: promptRequiresFileChange || requirementReviewSourceRepairPending,
       modelLedUnclassified: writeAuthority.canonicalSemanticContract.signals.includes('model-led-unclassified-turn'),
     });
+    const failedMutationRepairPending = toolFailureRecovery.hasPendingMutationRepair();
+    const actionableRepairPending = requirementReviewSourceRepairPending || failedMutationRepairPending;
+    const actionableRepairSource = requirementReviewSourceRepairPending
+      ? 'requirement-review' as const
+      : failedMutationRepairPending
+        ? 'failed-mutation' as const
+        : undefined;
     const novelNonReadContextToolCount = contextScreen.admittedNovelContextToolCount
       - contextScreen.admittedNovelReadToolCount;
     const repeatedTerminalSuppressed = suppressedTools.some(
@@ -1011,9 +1018,9 @@ export async function runAgenticLoop(
         deliveryProgressEstablished: progressEpoch > 0,
         completionSignaled: Boolean(loopRes.taskComplete || loopRes.allTodosCompleted),
         unresolvedExecution: missingAfterTools.length > 0 || Boolean(blockingFailureAfterTools),
-        actionableRepairPending: requirementReviewSourceRepairPending,
+        actionableRepairPending,
       }),
-      actionableRepairPending: requirementReviewSourceRepairPending,
+      actionableRepairSource,
       gatheredEvidenceCount: allReadEvidencePaths.size + allEvidenceRefs.length,
       ...resolveDeliveryRoundActivity({
         hasContextInvestigationActivity: roundHasContextInvestigationActivity,

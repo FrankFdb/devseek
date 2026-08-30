@@ -76,9 +76,11 @@ test('ToolFailureRecoveryLedger: failed mutation grants one context refresh for 
   const ledger = new ToolFailureRecoveryLedger({ workspaceRoot: '/repo' });
   ledger.recordRound([{ ...staleReplaceFailure, path: 'src/verify.sh' }]);
 
+  assert.equal(ledger.hasPendingMutationRepair(), true);
   assert.equal(ledger.consumeContextRefresh('/repo/src/other.sh'), false);
   assert.equal(ledger.consumeContextRefresh('/repo/src/verify.sh'), true);
   assert.equal(ledger.consumeContextRefresh('/repo/src/verify.sh'), false);
+  assert.equal(ledger.hasPendingMutationRepair(), true);
 });
 
 test('ToolFailureRecoveryLedger: terminal failures do not grant file context refreshes', () => {
@@ -99,6 +101,19 @@ test('ToolFailureRecoveryLedger: successful write clears a pending context refre
   ledger.clearForWrittenPaths(['/repo/src/verify.sh']);
 
   assert.equal(ledger.consumeContextRefresh('/repo/src/verify.sh'), false);
+  assert.equal(ledger.hasPendingMutationRepair(), false);
+});
+
+test('ToolFailureRecoveryLedger: terminal failures do not create mutation delivery debt', () => {
+  const ledger = new ToolFailureRecoveryLedger();
+  ledger.recordRound([{
+    tool: 'run_terminal',
+    kind: 'terminal-capability',
+    path: 'missing-runtime',
+    reason: 'runtime missing',
+  }]);
+
+  assert.equal(ledger.hasPendingMutationRepair(), false);
 });
 
 test('ToolFailureRecoveryLedger: missing terminal capability requires an alternate runtime or authorization', () => {
