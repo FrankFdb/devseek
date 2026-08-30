@@ -16,6 +16,17 @@ export interface SingleFilePatchResult {
   readonly removedLines: number;
 }
 
+export class SingleFilePatchError extends Error {
+  constructor(
+    readonly reason: string,
+    readonly expectedText?: string,
+    readonly preferredStartLine?: number,
+  ) {
+    super(`single-file-patch:${reason}`);
+    this.name = 'SingleFilePatchError';
+  }
+}
+
 /** Applies one text-only update patch without granting process or multi-file authority. */
 export function applySingleFilePatch(
   originalContent: string,
@@ -57,7 +68,13 @@ export function applySingleFilePatch(
       ? undefined
       : Math.max(0, hunk.oldStart - 1 + offset);
     const index = findUniqueHunk(output, oldLines, preferred);
-    if (index < 0) patchFailure('hunk-context-not-found-or-ambiguous');
+    if (index < 0) {
+      patchFailure(
+        'hunk-context-not-found-or-ambiguous',
+        oldLines.join('\n'),
+        hunk.oldStart,
+      );
+    }
     const replacement = materializeReplacement(
       output,
       index,
@@ -217,6 +234,6 @@ function normalizeLines(value: string): string {
   return String(value || '').replace(/\r\n?/g, '\n');
 }
 
-function patchFailure(reason: string): never {
-  throw new Error(`single-file-patch:${reason}`);
+function patchFailure(reason: string, expectedText?: string, preferredStartLine?: number): never {
+  throw new SingleFilePatchError(reason, expectedText, preferredStartLine);
 }

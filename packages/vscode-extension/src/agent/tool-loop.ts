@@ -45,7 +45,8 @@ import {
 import { ToolLoopFileWriter } from './tool-loop-file-writer';
 import { observeSettledTerminalExecution } from './tool-loop-terminal-observation';
 import { resolveTextReplacement } from './text-replacement';
-import { applySingleFilePatch } from './single-file-patch';
+import { formatFileMutationRecoverySnapshot } from './file-mutation-recovery-snapshot';
+import { applySingleFilePatch, SingleFilePatchError } from './single-file-patch';
 import type {
   ToolFileAccessEvent,
   ToolFailureEvidence,
@@ -142,21 +143,6 @@ function optionalLineNumber(input: Record<string, unknown>, ...keys: string[]): 
 function hasPollutedReplaceArgument(value: string): boolean {
   return /[\u200B-\u200D\u2060\uFEFF]/.test(value)
     || /<\/?\s*(?:old_?str|new_?str|oldstr|newstr|patch|replace_in_file|apply_patch|TOOL_[A-Za-z0-9_]+)\b/i.test(value);
-}
-
-function formatReplaceRecoverySnapshot(content: string): string {
-  const maxChars = 4_200;
-  if (content.length <= maxChars) {
-    return `[current_file_snapshot chars=${content.length}]\n${content}`;
-  }
-  const head = content.slice(0, 2_400);
-  const tail = content.slice(-1_400);
-  return [
-    `[current_file_snapshot chars=${content.length} truncated=${content.length - head.length - tail.length}]`,
-    head,
-    '... [中间内容已省略，请用 read_file 指定行范围继续读取] ...',
-    tail,
-  ].join('\n');
 }
 
 function inferWorkspaceRootForAgentTool(defaultWorkdir?: string): string {
@@ -1005,7 +991,7 @@ export async function executeFakeToolsForLoop(
           const snapshotKey = nodePath.normalize(absPath);
           const snapshot = replaceMissSnapshots.has(snapshotKey)
             ? '当前文件快照已在本轮前一个失败结果中提供，请不要继续猜测 old_str。'
-            : formatReplaceRecoverySnapshot(oldContent);
+            : formatFileMutationRecoverySnapshot(oldContent, { expectedText: oldStr });
           replaceMissSnapshots.add(snapshotKey);
           parts.push(`[replace_in_file: ${rawPath}] 错误: ${reason}\n${snapshot}`);
           continue;
@@ -1055,7 +1041,12 @@ export async function executeFakeToolsForLoop(
         const reason = err instanceof Error ? err.message : String(err);
         await canonicalTools.fail(toolPlan, canonicalContext, 'apply-patch-preflight-failed');
         recordToolFailure('apply_patch', 'replace', rawPath, reason, strategyFingerprint);
-        const snapshot = currentContent ? `\n${formatReplaceRecoverySnapshot(currentContent)}` : '';
+        const recoveryHint = err instanceof SingleFilePatchError
+          ? { expectedText: err.expectedText, preferredStartLine: err.preferredStartLine }
+          : undefined;
+        const snapshot = currentContent
+          ? `\n${formatFileMutationRecoverySnapshot(currentContent, recoveryHint)}`
+          : '';
         parts.push(`[apply_patch: ${rawPath}] 错误: ${reason}${snapshot}`);
       }
     } else if (isFileWriteToolName(tool.name)) {

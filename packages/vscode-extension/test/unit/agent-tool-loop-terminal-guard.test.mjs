@@ -1359,6 +1359,50 @@ test('ToolLoop apply_patch reports stale context without corrupting canonical ac
   }
 });
 
+test('ToolLoop apply_patch returns localized current evidence for a stale middle-file hunk', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-apply-patch-local-recovery-'));
+  try {
+    const filePath = path.join(workspaceRoot, 'worker.cpp');
+    const sourceLines = Array.from({ length: 220 }, (_, index) => {
+      const line = index + 1;
+      if (line === 118) return 'void repair_target() {';
+      if (line === 119) return '  current_call();';
+      if (line === 120) return '}';
+      return `const char* line_${line} = "${'padding'.repeat(6)}";`;
+    });
+    writeFileSync(filePath, `${sourceLines.join('\n')}\n`, 'utf8');
+    const patchText = [
+      '*** Begin Patch',
+      '*** Update File: worker.cpp',
+      '@@ -118,3 +118,3 @@',
+      ' void repair_target() {',
+      '-  stale_call();',
+      '+  repaired_call();',
+      ' }',
+      '*** End Patch',
+    ].join('\n');
+
+    const result = await executeFakeToolsForLoop(
+      [{ name: 'apply_patch', input: { path: 'worker.cpp', patch: patchText } }],
+      {
+        onAppliedChange: async () => assert.fail('stale patch must not apply'),
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      workspaceRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot },
+    );
+
+    assert.match(result.feedbackForAI, /scope=localized/);
+    assert.match(result.feedbackForAI, /firstMismatchLine=119/);
+    assert.match(result.feedbackForAI, /current_call\(\)/);
+    assert.doesNotMatch(result.feedbackForAI, /const char\* line_1 =/);
+    assert.equal(readFileSync(filePath, 'utf8'), `${sourceLines.join('\n')}\n`);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('ToolLoop replace_in_file tolerates only line-indentation loss from web transport', async () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-replace-whitespace-tool-'));
   try {

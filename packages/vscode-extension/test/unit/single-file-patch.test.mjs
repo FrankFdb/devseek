@@ -16,7 +16,7 @@ execFileSync('npx', [
   '--platform=node',
 ], { cwd: rootDir, stdio: 'pipe' });
 
-const { applySingleFilePatch } = createRequire(import.meta.url)(bundlePath);
+const { applySingleFilePatch, SingleFilePatchError } = createRequire(import.meta.url)(bundlePath);
 
 function patch(pathValue, body) {
   return [
@@ -120,4 +120,33 @@ test('single-file patch rejects ambiguous context and cross-file operations', ()
     patch('src/a.txt', ['@@', '-old', '\\ No newline at end of file', '+new']),
     'src/a.txt',
   ), /unsupported-no-newline-marker/);
+});
+
+test('single-file patch exposes failed hunk evidence without applying it', () => {
+  const patchText = patch('src/a.txt', [
+    '@@ -40,3 +40,3 @@',
+    ' begin_target();',
+    '-stale_value();',
+    '+new_value();',
+    ' end_target();',
+  ]);
+
+  assert.throws(
+    () => applySingleFilePatch(
+      'begin_target();\ncurrent_value();\nend_target();\n',
+      patchText,
+      'src/a.txt',
+    ),
+    error => {
+      assert.equal(error instanceof SingleFilePatchError, true);
+      assert.equal(error.reason, 'hunk-context-not-found-or-ambiguous');
+      assert.equal(error.preferredStartLine, 40);
+      assert.equal(error.expectedText, [
+        'begin_target();',
+        'stale_value();',
+        'end_target();',
+      ].join('\n'));
+      return true;
+    },
+  );
 });
