@@ -1,9 +1,10 @@
 import type { ChatMessage } from '../llm/types';
 import type { RequirementReviewDecision } from './requirement-review-ledger';
 import {
-  parseIndependentReviewResponse,
+  parseIndependentReviewResponseWithCorrections,
   renderRequirementInventory,
   REQUIREMENT_REVIEW_SCHEMA,
+  type RequirementReviewCorrectionKind,
   type RequirementReviewInvocationResult,
   type RequirementReviewSourceSnapshot,
 } from './requirement-review-contract';
@@ -30,7 +31,7 @@ export type RequirementReviewInvoker = (
 ) => Promise<RequirementReviewInvocationResult>;
 
 type RequirementReviewPosture = 'initial' | 'challenge-pass';
-const MAX_REVIEW_CONTRACT_ATTEMPTS = 3;
+const MAX_REVIEW_CONTRACT_ATTEMPTS = 4;
 
 /** Requires an initial review and a fresh pass challenge before accepting final source. */
 export class IndependentRequirementReviewer {
@@ -67,19 +68,27 @@ export class IndependentRequirementReviewer {
     posture: RequirementReviewPosture,
   ): Promise<RequirementReviewDecision> {
     let messages = buildIndependentReviewMessages(input, snapshots, contextSnapshots, posture);
+    const activeCorrections = new Set<RequirementReviewCorrectionKind>();
     for (let attempt = 1; attempt <= MAX_REVIEW_CONTRACT_ATTEMPTS; attempt++) {
       try {
         const response = await this.invoke(messages);
-        const decision = parseIndependentReviewResponse(
+        const parsed = parseIndependentReviewResponseWithCorrections(
           response,
           snapshots,
           input.userPrompt,
           input.validationSummary,
         );
+        const decision = parsed.decision;
         if (decision.status !== 'indeterminate' || attempt === MAX_REVIEW_CONTRACT_ATTEMPTS) {
           return decision;
         }
-        messages = buildReviewCorrectionMessages(messages, response.text, decision.explanation);
+        parsed.correctionKinds.forEach(kind => activeCorrections.add(kind));
+        messages = buildReviewCorrectionMessages(
+          messages,
+          response.text,
+          decision.explanation,
+          [...activeCorrections],
+        );
       } catch (error) {
         if (attempt === MAX_REVIEW_CONTRACT_ATTEMPTS) {
           return indeterminateDecision(`隔离审查调用失败：${errorText(error)}`);
@@ -172,7 +181,9 @@ function buildReviewCorrectionMessages(
   messages: readonly ChatMessage[],
   rejectedResponse: string,
   reason: string,
+  activeCorrections: readonly RequirementReviewCorrectionKind[],
 ): ChatMessage[] {
+  const correctionInstructions = new Set(activeCorrections);
   return [
     ...messages,
     { role: 'assistant', content: rejectedResponse.slice(0, 24_000) },
@@ -184,9 +195,15 @@ function buildReviewCorrectionMessages(
         'Re-evaluate the original requirements and every supplied source file from scratch.',
         'Fix the specific rejected JSON field instead of repeating the same wording. If evidence was rejected, name the concrete input/state scenario plus the caller-observable source or validation fact that proves it.',
         'For reported-validation, evidence_quote must be a verbatim contiguous substring of the current VALIDATION FACT, not ORIGINAL USER REQUIREMENTS or a paraphrase.',
+        correctionInstructions.has('reported-validation-source')
+          ? 'At least one reported-validation quote was absent from the current VALIDATION FACT. Do not resubmit that finding as reported-validation. If the final source snapshot independently proves its concrete reachable behavior, use source-snapshot with an empty evidence_quote; otherwise delete the finding. This obligation remains active on later retries.'
+          : '',
+        correctionInstructions.has('strict-json-document')
+          ? 'Return exactly one pretty-printed JSON object, optionally inside one json code fence. Escape every quote inside string values, and emit no prose, second fence, or content after the object. Check that a strict JSON parser can read the complete response.'
+          : '',
         'Delete any finding whose own text concludes N/A, no violation, correct, satisfied, speculative, or below the required confidence. Never fill mandatory fields for a non-defect merely to satisfy the schema.',
         'Return every requirement_check and the complete JSON object again. Omit non-defects, low-confidence or unreachable concerns, and never reverse an explicit requirement.',
-      ].join('\n'),
+      ].filter(Boolean).join('\n'),
     },
   ];
 }

@@ -507,6 +507,58 @@ test('isolated reviewer retries a rejected proposal and accepts the corrected co
   assert.equal(decision.status, 'passed');
 });
 
+test('review correction preserves evidence-source debt across a later malformed JSON response', async () => {
+  const workspace = path.join(tempRoot, 'persistent-correction-workspace');
+  mkdirSync(path.join(workspace, 'src'), { recursive: true });
+  const sourcePath = path.join(workspace, 'src/main.cpp');
+  const sourceContent = 'int value() { return 1; }\n';
+  writeFileSync(sourcePath, sourceContent);
+  const source = {
+    path: 'src/main.cpp',
+    absolutePath: sourcePath,
+    content: sourceContent,
+    lineCount: 2,
+  };
+  const staleFact = 'Historical validation observed uniqueSampledColors equal to four.';
+  const currentFact = 'Current write cohort verification passed with exitCode=0.';
+  const prompt = `Return 2. Previous report: ${staleFact}`;
+  const staleFinding = finding(source, prompt, {
+    evidence_authority: 'reported-validation',
+    evidence_quote: staleFact,
+  });
+  let calls = 0;
+  const reviewer = new IndependentRequirementReviewer(async messages => {
+    calls += 1;
+    if (calls === 1) {
+      return response(failBody(source, prompt, { findings: [staleFinding] }));
+    }
+    assert.match(messages.at(-1).content, /Do not resubmit that finding as reported-validation/u);
+    if (calls === 2) {
+      return response(failBody(source, prompt, { findings: [staleFinding] }));
+    }
+    if (calls === 3) {
+      return {
+        text: '{"requirement_checks":[{"evidence":"quoted "value" is malformed"}]}',
+        toolCount: 0,
+      };
+    }
+    assert.match(messages.at(-1).content, /strict JSON parser/u);
+    return response(failBody(source, prompt));
+  });
+
+  const decision = await reviewer.review({
+    userPrompt: prompt,
+    workspaceRoot: workspace,
+    sourcePaths: ['src/main.cpp'],
+    validationSummary: currentFact,
+  });
+
+  assert.equal(calls, 4);
+  assert.equal(decision.status, 'failed');
+  assert.equal(decision.findings[0].evidenceAuthority, 'source-snapshot');
+  assert.equal(decision.findings[0].evidenceQuote, undefined);
+});
+
 test('a fresh falsification review can overturn a superficial validation-only pass', async () => {
   const workspace = path.join(tempRoot, 'pass-challenge-workspace');
   mkdirSync(path.join(workspace, 'src'), { recursive: true });

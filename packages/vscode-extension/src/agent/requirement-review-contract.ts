@@ -63,11 +63,28 @@ interface NormalizedRequirementCheck {
 
 type FindingNormalizationResult =
   | { ok: true; findings: RequirementReviewFinding[] }
-  | { ok: false; diagnostic: string };
+  | {
+    ok: false;
+    diagnostic: string;
+    correctionKinds: readonly RequirementReviewCorrectionKind[];
+  };
 
 type FindingValidationResult =
   | { ok: true; finding: RequirementReviewFinding }
-  | { ok: false; errors: string[] };
+  | {
+    ok: false;
+    errors: string[];
+    correctionKinds: readonly RequirementReviewCorrectionKind[];
+  };
+
+export type RequirementReviewCorrectionKind =
+  | 'reported-validation-source'
+  | 'strict-json-document';
+
+export interface RequirementReviewParseResult {
+  readonly decision: RequirementReviewDecision;
+  readonly correctionKinds: readonly RequirementReviewCorrectionKind[];
+}
 
 export const REQUIREMENT_REVIEW_SCHEMA = [
   '{',
@@ -120,26 +137,43 @@ export function parseIndependentReviewResponse(
   userPrompt = '',
   validationSummary = '',
 ): RequirementReviewDecision {
+  return parseIndependentReviewResponseWithCorrections(
+    response,
+    snapshots,
+    userPrompt,
+    validationSummary,
+  ).decision;
+}
+
+export function parseIndependentReviewResponseWithCorrections(
+  response: RequirementReviewInvocationResult,
+  snapshots: readonly RequirementReviewSourceSnapshot[],
+  userPrompt = '',
+  validationSummary = '',
+): RequirementReviewParseResult {
   if (response.toolCount > 0) {
-    return indeterminateDecision('隔离审查者违反只读协议并请求了工具。');
+    return rejectedParseResult('隔离审查者违反只读协议并请求了工具。');
   }
   if (snapshots.length === 0) {
-    return indeterminateDecision('隔离审查缺少最终源码快照。');
+    return rejectedParseResult('隔离审查缺少最终源码快照。');
   }
 
   const requirements = requirementInventory(userPrompt);
   if (requirements.length === 0) {
-    return indeterminateDecision('原始用户需求为空，无法形成可追溯审查。');
+    return rejectedParseResult('原始用户需求为空，无法形成可追溯审查。');
   }
 
   const raw = parseStrictReviewJson(response.text);
   if (!raw) {
-    return indeterminateDecision('隔离审查输出不是单一严格 JSON 对象。');
+    return rejectedParseResult(
+      '隔离审查输出不是单一严格 JSON 对象。',
+      ['strict-json-document'],
+    );
   }
 
   const checks = normalizeRequirementChecks(raw.requirement_checks, requirements);
   if (!checks) {
-    return indeterminateDecision('隔离审查未按原始需求清单逐项、原文返回有效检查。');
+    return rejectedParseResult('隔离审查未按原始需求清单逐项、原文返回有效检查。');
   }
 
   const normalizedFindings = normalizeFindings(
@@ -149,20 +183,23 @@ export function parseIndependentReviewResponse(
     validationSummary ? [validationSummary] : [],
   );
   if (!normalizedFindings.ok) {
-    return indeterminateDecision([
-      '隔离审查 finding 缺少有效的需求引用、源码位置或可复现证据。',
-      normalizedFindings.diagnostic,
-    ].join(' '));
+    return rejectedParseResult(
+      [
+        '隔离审查 finding 缺少有效的需求引用、源码位置或可复现证据。',
+        normalizedFindings.diagnostic,
+      ].join(' '),
+      normalizedFindings.correctionKinds,
+    );
   }
   const findings = normalizedFindings.findings;
 
   const explanation = nonEmptyString(raw.overall_explanation);
   if (!explanation || !isReviewConfidence(raw.overall_confidence_score)) {
-    return indeterminateDecision('隔离审查缺少可信的总体解释或置信度。');
+    return rejectedParseResult('隔离审查缺少可信的总体解释或置信度。');
   }
   if (raw.overall_correctness !== 'patch is correct'
     && raw.overall_correctness !== 'patch is incorrect') {
-    return indeterminateDecision('隔离审查缺少有效的 overall_correctness。');
+    return rejectedParseResult('隔离审查缺少有效的 overall_correctness。');
   }
 
   const violatedIds = [...checks.values()]
@@ -170,18 +207,21 @@ export function parseIndependentReviewResponse(
     .map(check => check.requirement.id);
   const findingIds = findings.map(finding => finding.requirementId);
   if (!sameStringSet(violatedIds, findingIds)) {
-    return indeterminateDecision('隔离审查的 violated 清单与 findings 引用不一致。');
+    return rejectedParseResult('隔离审查的 violated 清单与 findings 引用不一致。');
   }
 
   const shouldPass = violatedIds.length === 0;
   if ((raw.overall_correctness === 'patch is correct') !== shouldPass) {
-    return indeterminateDecision('隔离审查总体结论与逐项检查不一致。');
+    return rejectedParseResult('隔离审查总体结论与逐项检查不一致。');
   }
 
   return {
-    status: shouldPass ? 'passed' : 'failed',
-    explanation,
-    findings,
+    decision: {
+      status: shouldPass ? 'passed' : 'failed',
+      explanation,
+      findings,
+    },
+    correctionKinds: [],
   };
 }
 
@@ -251,7 +291,7 @@ function normalizeFindings(
   reportedEvidenceSources: readonly string[],
 ): FindingNormalizationResult {
   if (!Array.isArray(rawFindings)) {
-    return { ok: false, diagnostic: 'findings 必须是 JSON 数组。' };
+    return { ok: false, diagnostic: 'findings 必须是 JSON 数组。', correctionKinds: [] };
   }
   const findings: RequirementReviewFinding[] = [];
   for (let index = 0; index < rawFindings.length; index += 1) {
@@ -265,6 +305,7 @@ function normalizeFindings(
       return {
         ok: false,
         diagnostic: `finding #${index + 1} 无效：${result.errors.join('；')}。`,
+        correctionKinds: result.correctionKinds,
       };
     }
     findings.push(result.finding);
@@ -279,9 +320,10 @@ function normalizeFinding(
   reportedEvidenceSources: readonly string[],
 ): FindingValidationResult {
   if (!raw || typeof raw !== 'object') {
-    return { ok: false, errors: ['必须是 JSON 对象'] };
+    return { ok: false, errors: ['必须是 JSON 对象'], correctionKinds: [] };
   }
   const errors: string[] = [];
+  const correctionKinds = new Set<RequirementReviewCorrectionKind>();
   const requirementId = typeof raw.requirement_id === 'string' ? raw.requirement_id : '';
   const check = checks.get(requirementId);
   if (!check || check.status !== 'violated') {
@@ -304,6 +346,7 @@ function normalizeFinding(
         || evidenceQuote.length > MAX_REPORTED_EVIDENCE_QUOTE_CHARS
         || !reportedEvidenceSources.some(source => source.includes(evidenceQuote))) {
       errors.push('reported-validation 的 evidence_quote 必须逐字引用当前 VALIDATION FACT');
+      correctionKinds.add('reported-validation-source');
     }
   } else if (evidenceQuote) {
     errors.push('source-snapshot 的 evidence_quote 必须为空');
@@ -331,7 +374,9 @@ function normalizeFinding(
       || (end as number) > snapshot.lineCount) {
     errors.push(`code_location.line_range 必须是 1..${snapshot.lineCount} 内有界的整数行号`);
   }
-  if (errors.length > 0) return { ok: false, errors };
+  if (errors.length > 0) {
+    return { ok: false, errors, correctionKinds: [...correctionKinds] };
+  }
 
   return {
     ok: true,
@@ -385,4 +430,14 @@ function sameStringSet(left: readonly string[], right: readonly string[]): boole
 
 function indeterminateDecision(explanation: string): RequirementReviewDecision {
   return { status: 'indeterminate', explanation, findings: [] };
+}
+
+function rejectedParseResult(
+  explanation: string,
+  correctionKinds: readonly RequirementReviewCorrectionKind[] = [],
+): RequirementReviewParseResult {
+  return {
+    decision: indeterminateDecision(explanation),
+    correctionKinds,
+  };
 }
