@@ -60,7 +60,7 @@ export function resolveNoToolActionRecovery(
       feedback: [
         '【系统反馈】当前任务仍缺少真实工具证据，上一轮展示的 shell 命令没有执行。',
         useFreshProviderSession
-          ? '原 Provider 会话已连续停在未执行的动作展示，本轮将用完整任务历史重建会话。'
+          ? '原 Provider 会话已连续停在未执行的动作展示，本轮将用原始任务、最新工具结果和验证事实重建会话。'
           : '',
         buildUnexecutedShellActionRecoveryPrompt(input.textToolProtocol),
       ].filter(Boolean).join('\n'),

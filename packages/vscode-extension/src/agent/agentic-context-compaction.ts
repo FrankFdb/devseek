@@ -22,6 +22,8 @@ const AGENTIC_TOOL_FEEDBACK_CHAR_BUDGET = 8_000;
 const AGENTIC_ASSISTANT_HISTORY_CHAR_BUDGET = 6_000;
 const AGENTIC_USER_HISTORY_CHAR_BUDGET = 8_000;
 const AGENTIC_RECENT_MESSAGE_KEEP_COUNT = 5;
+const AGENTIC_FRESH_PROVIDER_CHAR_BUDGET = 24_000;
+const AGENTIC_FRESH_PROVIDER_MESSAGE_KEEP_COUNT = 5;
 const TOOL_FEEDBACK_SEPARATOR = '\n\n';
 
 export interface AgenticCompactionEvidenceRef {
@@ -137,6 +139,52 @@ export function compactAgenticMessageHistory(input: AgenticMessageCompactionInpu
     message.content = truncateHistoryText(message.content, 2_500, '早期轮次历史');
   }
   return fitWithinTotalBudget(input.messages);
+}
+
+/** Rebuilds a fresh Provider session from the canonical task and latest actionable evidence. */
+export function rebuildAgenticHistoryForFreshProviderSession(
+  input: AgenticMessageCompactionInput,
+): number {
+  const compactedTotal = compactAgenticMessageHistory(input);
+  if (input.session && compactedTotal > AGENTIC_FRESH_PROVIDER_CHAR_BUDGET) {
+    compactCanonicalAgenticHistory({
+      messages: input.messages,
+      session: input.session,
+      currentTodos: input.currentTodos,
+      workspaceRoot: input.workspaceRoot,
+      observedChars: compactedTotal,
+      maxChars: AGENTIC_FRESH_PROVIDER_CHAR_BUDGET,
+      maxMessages: AGENTIC_FRESH_PROVIDER_MESSAGE_KEEP_COUNT,
+      round: input.round,
+      evidenceRefs: projectEvidenceRefs(input.evidenceRefs),
+      trigger: 'provider-recovery',
+    });
+  }
+  retainFreshProviderContext(input.messages);
+  return totalMessageChars(input.messages);
+}
+
+function retainFreshProviderContext(messages: ChatMessage[]): void {
+  const retained = [
+    messages[0],
+    findLatestMessage(messages, content => content.trimStart().startsWith(CONTEXT_COMPACTION_SUMMARY_MARKER)),
+    findLatestMessage(messages, content => /^\[工具结果 Round\b/u.test(content.trimStart())),
+    messages[messages.length - 1],
+  ].filter((message, index, candidates): message is ChatMessage => (
+    Boolean(message) && candidates.indexOf(message) === index
+  ));
+  messages.splice(0, messages.length, ...retained);
+}
+
+function findLatestMessage(
+  messages: readonly ChatMessage[],
+  predicate: (content: string) => boolean,
+): ChatMessage | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (typeof message?.content === 'string' && predicate(message.content)) return message;
+  }
+  return undefined;
 }
 
 /** Binds transport pruning to the Kernel-owned semantic compaction receipt. */

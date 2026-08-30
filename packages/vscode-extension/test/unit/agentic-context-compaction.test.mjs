@@ -20,6 +20,7 @@ const {
   compactAgenticMessageHistory,
   compactCanonicalAgenticHistory,
   projectAgenticToolFeedback,
+  rebuildAgenticHistoryForFreshProviderSession,
 } = req(bundlePath);
 const {
   CanonicalCheckpointService,
@@ -115,6 +116,58 @@ test('agentic history budget delegates over-budget pruning to the canonical comp
     'agentic:context-budget:round-3',
     'evidence:resume',
   ]);
+});
+
+test('fresh Provider rebuild keeps the task, canonical receipt, and latest actionable evidence', () => {
+  const compaction = session();
+  const history = messages();
+  history[2].content += `\n${'old read evidence '.repeat(1_000)}`;
+  history[3].content += `\n${'stale investigation '.repeat(400)}`;
+  history[4].content += `\n${'old validation evidence '.repeat(1_000)}`;
+  history[5].content += `\n${'stale edit intent '.repeat(400)}`;
+  history.push({ role: 'user', content: 'Retry one concrete tool action now.' });
+
+  const total = rebuildAgenticHistoryForFreshProviderSession({
+    messages: history,
+    session: compaction,
+    currentTodos: [{ id: 1, title: 'Edit src/resume.ts', status: 'in-progress' }],
+    workspaceRoot: '/repo',
+    round: 4,
+    evidenceRefs: [{ kind: 'terminal', label: 'latest validation', evidenceId: 'evidence:test' }],
+    textToolProtocol,
+  });
+
+  assert.equal(history.length, 4);
+  assert.equal(history[0].content, 'Task contract and prompt');
+  assert.match(history[1].content, /\[DevSeek Canonical Context Compaction\]/u);
+  assert.match(history.map(message => message.content).join('\n'), /\[工具结果 Round 3\]\ntest pending/u);
+  assert.match(history.at(-1).content, /Retry one concrete tool action now/u);
+  assert.doesNotMatch(history.map(message => message.content).join('\n'), /Round 1|Round 2/u);
+  assert.equal(compaction.receipts().at(-1).trigger, 'provider-recovery');
+  assert.ok(total > 0 && total <= 24_000);
+});
+
+test('fresh Provider rebuild drops stale in-budget rounds without claiming budget compaction', () => {
+  const compaction = session();
+  const history = messages();
+  history.push({ role: 'user', content: 'Retry one concrete tool action now.' });
+
+  rebuildAgenticHistoryForFreshProviderSession({
+    messages: history,
+    session: compaction,
+    currentTodos: [{ id: 1, title: 'Edit src/resume.ts', status: 'in-progress' }],
+    workspaceRoot: '/repo',
+    round: 4,
+    evidenceRefs: [],
+    textToolProtocol,
+  });
+
+  assert.deepEqual(history.map(message => message.content), [
+    'Task contract and prompt',
+    '[工具结果 Round 3]\ntest pending',
+    'Retry one concrete tool action now.',
+  ]);
+  assert.equal(compaction.receipts().length, 0);
 });
 
 test('agentic tool feedback fairly preserves every parallel read as a coherent continuation', () => {

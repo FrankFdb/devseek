@@ -959,7 +959,9 @@ test('ModelLedUserSimulation: repeated action announcements rebuild the Provider
       }
       return { text: '我将立即读取关键文件来了解当前状态。', tools: [] };
     }
-    assert.match(messages.at(-1).content, /完整任务历史重建会话/u);
+    assert.equal(messages.length, 2);
+    assert.match(messages[0].content, new RegExp(prompt, 'u'));
+    assert.match(messages.at(-1).content, /原始任务、最新工具结果和验证事实重建会话/u);
     const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'recovered.txt');
     return {
       text: '执行恢复后的真实动作。',

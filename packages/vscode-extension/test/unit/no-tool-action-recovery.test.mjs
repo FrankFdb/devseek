@@ -59,7 +59,7 @@ test('NoToolActionRecovery: a repeated announcement rebuilds Provider context wi
   assert.ok(result);
   assert.equal(result.kind, 'retry');
   assert.equal(result.useFreshProviderSession, true);
-  assert.match(result.feedback, /完整任务历史重建会话/u);
+  assert.match(result.feedback, /原始任务、最新工具结果和验证事实重建会话/u);
   assert.match(result.feedback, /<\/devseek_tool_calls channel="no-tool-action-recovery-test">/u);
 });
 
@@ -108,7 +108,7 @@ test('NoToolActionRecovery: repeated unexecuted shell presentation rebuilds Prov
   assert.ok(result);
   assert.equal(result.kind, 'retry');
   assert.equal(result.useFreshProviderSession, true);
-  assert.match(result.feedback, /完整任务历史重建会话/u);
+  assert.match(result.feedback, /原始任务、最新工具结果和验证事实重建会话/u);
   assert.match(result.feedback, /<\/devseek_tool_calls channel="no-tool-action-recovery-test">/u);
 });
 

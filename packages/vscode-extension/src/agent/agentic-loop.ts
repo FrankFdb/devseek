@@ -98,11 +98,13 @@ import {
   recoverAgenticProviderFailure,
 } from './agentic-provider-recovery-boundary';
 import {
+  applyProviderRecoveryHistory,
   replaceLatestAssistantToolHistory,
 } from './agent-history-compaction';
 import {
   compactAgenticMessageHistory,
   projectAgenticToolFeedback,
+  rebuildAgenticHistoryForFreshProviderSession,
 } from './agentic-context-compaction';
 import { deliverAgenticToolFeedback } from './agentic-tool-feedback-delivery';
 import { ToolFailureRecoveryLedger } from './tool-failure-recovery';
@@ -684,13 +686,29 @@ export async function runAgenticLoop(
         if (actionRecovery.useFreshProviderSession) {
           forceProviderNewSessionNextTurn = true;
           contextInvestigation.reset();
+          applyProviderRecoveryHistory(
+            messages,
+            { role: 'user', content: actionRecovery.feedback },
+            true,
+          );
+          totalChars = rebuildAgenticHistoryForFreshProviderSession({
+            messages,
+            session: executionContext.contextCompaction,
+            currentTodos,
+            workspaceRoot,
+            round: roundCount,
+            evidenceRefs: allEvidenceRefs,
+            trigger: 'provider-recovery',
+            textToolProtocol,
+          });
+        } else {
+          appendUserFeedback(actionRecovery.feedback);
         }
         await emitAgenticCorrectionStatus(
           actionRecovery.statusTitle,
           actionRecovery.statusDetail,
           actionRecovery.activityLabel,
         );
-        appendUserFeedback(actionRecovery.feedback);
         continue;
       }
       const missingWithoutTools = evidenceWithoutTools.missingEvidence;
