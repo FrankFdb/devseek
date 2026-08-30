@@ -494,7 +494,19 @@ export async function executeFakeToolsForLoop(
           callbacks.onToolActivity?.('terminal', `阻止未分类终端命令: ${terminalPermission.risk}`);
           await canonicalTools.deny(toolPlan, canonicalContext, reason);
           recordToolFailure('run_terminal', 'terminal-guard', resolvedCommand, reason);
-          parts.push(`[run_terminal: ${resolvedCommand}] 已阻止\n${reason}\n请改用结构化文件工具；run_terminal 仅允许只读查询和已分类验证命令。`);
+          const recoveryGuidance = terminalPermission.reason === 'unclassified-command'
+            ? [
+              '若这是验证命令，请拆成工作区内的构建、程序运行、test/check/verify 命令，并按顺序分别调用 run_terminal。',
+              '不要用重复读取文件替代必须执行的验证；若这是文件修改，请改用结构化文件工具。',
+            ]
+            : [
+              '请把命令及工作目录限制在当前工作区内后重试；文件修改请改用结构化文件工具。',
+            ];
+          parts.push([
+            `[run_terminal: ${resolvedCommand}] 已阻止`,
+            reason,
+            ...recoveryGuidance,
+          ].join('\n'));
           continue;
         }
         callbacks.onToolActivity?.('terminal', resolvedCommand);

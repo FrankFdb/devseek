@@ -393,7 +393,7 @@ function isValidationSegment(rawSegment: string, workspaceRoot?: string, workdir
   if (command === 'go') return /\bgo\s+test\b/i.test(segment);
   if (command === 'cargo') return /\bcargo\s+test\b/i.test(segment);
   if (command === 'dotnet') return /\bdotnet\s+test\b/i.test(segment);
-  if (command === 'make') return isMakeValidationSegment(segment);
+  if (command === 'make') return isMakeValidationSegment(segment, workspaceRoot, workdir);
   if (isCppCompilerCommand(command)) return isCppCompilerValidationSegment(segment);
   if (isWorkspaceExecutableValidationSegment(token, workspaceRoot, workdir)) return true;
   return false;
@@ -433,7 +433,7 @@ function isCmakeValidationSegment(segment: string): boolean {
   return hasSource && hasBuild;
 }
 
-function isMakeValidationSegment(segment: string): boolean {
+function isMakeValidationSegment(segment: string, workspaceRoot?: string, workdir?: string): boolean {
   const words = splitShellWords(stripLeadingAssignments(segment))
     .slice(1)
     .map(cleanToken)
@@ -446,6 +446,18 @@ function isMakeValidationSegment(segment: string): boolean {
       continue;
     }
     if (/^(?:-j\d+|--jobs=\d+|-l\d+(?:\.\d+)?|--load-average=\d+(?:\.\d+)?)$/u.test(word)) {
+      continue;
+    }
+    if (/^(?:-C|--directory)$/u.test(word)) {
+      const directory = words[index + 1] ?? '';
+      if (!directory || !isWorkspacePath(directory, workspaceRoot, workdir)) return false;
+      index += 1;
+      continue;
+    }
+    const directoryOption = word.match(/^(?:-C(.+)|--directory=(.+))$/u);
+    if (directoryOption) {
+      const directory = directoryOption[1] || directoryOption[2] || '';
+      if (!isWorkspacePath(directory, workspaceRoot, workdir)) return false;
       continue;
     }
     if (word.startsWith('-') || /^[A-Za-z_][A-Za-z0-9_]*=/u.test(word)) return false;

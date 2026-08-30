@@ -625,7 +625,8 @@ test('ToolLoop terminal guard fail-closes destructive, mutating, and unclassifie
   assert.match(result.toolFailures?.[0].reason || '', /destructive-command/);
   assert.match(result.toolFailures?.[1].reason || '', /unclassified-command/);
   assert.match(result.toolFailures?.[2].reason || '', /mutating-command/);
-  assert.match(result.feedbackForAI, /仅允许只读查询和已分类验证命令/);
+  assert.match(result.feedbackForAI, /拆成工作区内的构建、程序运行、test\/check\/verify 命令/);
+  assert.match(result.feedbackForAI, /不要用重复读取文件替代必须执行的验证/);
 });
 
 test('ToolLoop terminal guard allows workspace-local C++ compile-run validation', async () => {
@@ -685,6 +686,46 @@ test('ToolLoop terminal guard allows a default Make build in a workspace build d
     assert.equal(terminalCalls, 1);
     assert.equal(result.toolFailures?.length ?? 0, 0);
     assert.deepEqual(result.terminalCommands, [command]);
+  } finally {
+    rmSync(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test('ToolLoop terminal guard dispatches the real multi-step C++ visual verification command', async () => {
+  const projectRoot = mkdtempSync(path.join(tmpdir(), 'devseek-tool-loop-cpp-visual-'));
+  try {
+    mkdirSync(path.join(projectRoot, 'assets'));
+    mkdirSync(path.join(projectRoot, 'build'));
+    mkdirSync(path.join(projectRoot, 'tools'));
+    writeFileSync(path.join(projectRoot, 'assets/quiz.actions'), 'quiz\n');
+    writeFileSync(path.join(projectRoot, 'build/math_visual_lab'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    writeFileSync(path.join(projectRoot, 'tools/verify-ppm.mjs'), 'process.exit(0);\n');
+    const command = [
+      `cd ${projectRoot}`,
+      'make -C build -j4',
+      './build/math_visual_lab --script assets/quiz.actions --snapshot verification-quiz.ppm --state verification-quiz.json --width 800 --height 600',
+      'node tools/verify-ppm.mjs verification-quiz.ppm',
+    ].join(' && ');
+    let terminalCalls = 0;
+
+    const result = await executeFakeToolsForLoop(
+      [{ name: 'run_terminal', input: { command } }],
+      {
+        ...preparedTerminalCallbacks(async () => {
+          terminalCalls += 1;
+          return `[终端命令] ${command}\n[退出码] 0\n[stdout]\nPIXEL_VERIFICATION_OK\n`;
+        }),
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      projectRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: projectRoot },
+    );
+
+    assert.equal(terminalCalls, 1);
+    assert.equal(result.toolFailures?.length ?? 0, 0);
+    assert.deepEqual(result.terminalCommands, [command]);
+    assert.equal(result.terminalEvidence?.[0]?.ok, true);
   } finally {
     rmSync(projectRoot, { recursive: true, force: true });
   }

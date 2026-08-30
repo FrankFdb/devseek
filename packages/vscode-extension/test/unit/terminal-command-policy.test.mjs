@@ -323,6 +323,10 @@ test('TerminalCommandPolicy: bounded Make builds are validation but lifecycle ta
   for (const command of [
     'cd /workspace/devseek/build && make -j4 2>&1',
     'make -j 4',
+    'make -C build -j4',
+    'make -Cbuild --jobs=4',
+    'make --directory build check',
+    'make --directory=build verify',
     'make all',
     'make build check',
   ]) {
@@ -336,6 +340,10 @@ test('TerminalCommandPolicy: bounded Make builds are validation but lifecycle ta
     'make clean',
     'make deploy',
     'make -j install',
+    'make -C build clean',
+    'make --directory=build install',
+    'make -C ../outside build',
+    'make --directory=/tmp build',
     'make OUTPUT=release all',
   ]) {
     assert.equal(decideTerminalCommandPermission({ command, workspaceRoot }).risk, 'unknown', command);
@@ -344,6 +352,20 @@ test('TerminalCommandPolicy: bounded Make builds are validation but lifecycle ta
     decideTerminalCommandPermission({ command: "make --eval='all:; touch pwned'", workspaceRoot }).risk,
     'mutating',
   );
+});
+
+test('TerminalCommandPolicy: accepts the real multi-step C++ visual verification command', () => {
+  const command = [
+    'cd /workspace/devseek',
+    'make -C build -j4',
+    './build/math_visual_lab --script assets/quiz.actions --snapshot verification-quiz.ppm --state verification-quiz.json --width 800 --height 600',
+    'node tools/verify-ppm.mjs verification-quiz.ppm',
+  ].join(' && ');
+
+  const decision = decideTerminalCommandPermission({ command, workspaceRoot });
+  assert.equal(decision.risk, 'validation');
+  assert.equal(decision.requiresConfirmation, true);
+  assert.equal(decision.canRememberDecision, true);
 });
 
 test('TerminalCommandPolicy: canonical workspace paths reject symlink escapes for reads and workdirs', t => {
