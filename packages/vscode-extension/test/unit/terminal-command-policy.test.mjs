@@ -301,6 +301,33 @@ test('TerminalCommandPolicy: project scripts and bounded CMake builds remain val
   }
 });
 
+test('TerminalCommandPolicy: bounded Make builds are validation but lifecycle targets remain unclassified', () => {
+  for (const command of [
+    'cd /workspace/devseek/build && make -j4 2>&1',
+    'make -j 4',
+    'make all',
+    'make build check',
+  ]) {
+    const decision = decideTerminalCommandPermission({ command, workspaceRoot });
+    assert.equal(decision.risk, 'validation', command);
+    assert.equal(decision.requiresConfirmation, true, command);
+  }
+  for (const command of [
+    'make install',
+    'make package',
+    'make clean',
+    'make deploy',
+    'make -j install',
+    'make OUTPUT=release all',
+  ]) {
+    assert.equal(decideTerminalCommandPermission({ command, workspaceRoot }).risk, 'unknown', command);
+  }
+  assert.equal(
+    decideTerminalCommandPermission({ command: "make --eval='all:; touch pwned'", workspaceRoot }).risk,
+    'mutating',
+  );
+});
+
 test('TerminalCommandPolicy: canonical workspace paths reject symlink escapes for reads and workdirs', t => {
   const actualWorkspace = mkdtempSync(path.join(tmpdir(), 'devseek-terminal-policy-workspace-'));
   const outsideRoot = mkdtempSync(path.join(tmpdir(), 'devseek-terminal-policy-outside-'));

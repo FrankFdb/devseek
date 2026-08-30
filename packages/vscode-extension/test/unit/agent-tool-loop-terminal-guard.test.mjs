@@ -661,6 +661,35 @@ test('ToolLoop terminal guard allows workspace-local C++ compile-run validation'
   }
 });
 
+test('ToolLoop terminal guard allows a default Make build in a workspace build directory', async () => {
+  const projectRoot = mkdtempSync(path.join(tmpdir(), 'devseek-tool-loop-make-build-'));
+  try {
+    const buildDir = path.join(projectRoot, 'build');
+    mkdirSync(buildDir);
+    const command = `cd ${buildDir} && make -j4 2>&1`;
+    let terminalCalls = 0;
+    const result = await executeFakeToolsForLoop(
+      [{ name: 'run_terminal', input: { command } }],
+      {
+        ...preparedTerminalCallbacks(async () => {
+          terminalCalls += 1;
+          return `[终端命令] ${command}\n[退出码] 0\n[stdout]\nBuilt target math_visual_lab\n`;
+        }),
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      projectRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: projectRoot },
+    );
+
+    assert.equal(terminalCalls, 1);
+    assert.equal(result.toolFailures?.length ?? 0, 0);
+    assert.deepEqual(result.terminalCommands, [command]);
+  } finally {
+    rmSync(projectRoot, { recursive: true, force: true });
+  }
+});
+
 test('ToolLoop terminal guard executes a public shell verifier with fd merging and returns failure evidence', async () => {
   const projectRoot = mkdtempSync(path.join(tmpdir(), 'devseek-tool-loop-shell-verifier-'));
   try {

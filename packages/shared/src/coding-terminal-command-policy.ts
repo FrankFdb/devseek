@@ -392,7 +392,7 @@ function isValidationSegment(rawSegment: string, workspaceRoot?: string, workdir
   if (command === 'go') return /\bgo\s+test\b/i.test(segment);
   if (command === 'cargo') return /\bcargo\s+test\b/i.test(segment);
   if (command === 'dotnet') return /\bdotnet\s+test\b/i.test(segment);
-  if (command === 'make') return /\bmake\s+(?:test|check)\b/i.test(segment);
+  if (command === 'make') return isMakeValidationSegment(segment);
   if (isCppCompilerCommand(command)) return isCppCompilerValidationSegment(segment);
   if (isWorkspaceExecutableValidationSegment(token, workspaceRoot, workdir)) return true;
   return false;
@@ -430,6 +430,27 @@ function isCmakeValidationSegment(segment: string): boolean {
   const hasSource = args.some((arg, index) => arg === '-S' ? Boolean(args[index + 1]) : arg.startsWith('-S') && arg.length > 2);
   const hasBuild = args.some((arg, index) => arg === '-B' ? Boolean(args[index + 1]) : arg.startsWith('-B') && arg.length > 2);
   return hasSource && hasBuild;
+}
+
+function isMakeValidationSegment(segment: string): boolean {
+  const words = splitShellWords(stripLeadingAssignments(segment))
+    .slice(1)
+    .map(cleanToken)
+    .filter(word => word && !isNonPersistingOutputRedirection(word));
+  const targets: string[] = [];
+  for (let index = 0; index < words.length; index++) {
+    const word = words[index];
+    if (/^(?:-j|--jobs|-l|--load-average)$/u.test(word)) {
+      if (/^\d+(?:\.\d+)?$/u.test(words[index + 1] ?? '')) index += 1;
+      continue;
+    }
+    if (/^(?:-j\d+|--jobs=\d+|-l\d+(?:\.\d+)?|--load-average=\d+(?:\.\d+)?)$/u.test(word)) {
+      continue;
+    }
+    if (word.startsWith('-') || /^[A-Za-z_][A-Za-z0-9_]*=/u.test(word)) return false;
+    targets.push(word.toLowerCase());
+  }
+  return targets.every(target => /^(?:all|build|test|tests|check|verify)$/u.test(target));
 }
 
 function isPythonValidationSegment(segment: string, workspaceRoot?: string, workdir?: string): boolean {
