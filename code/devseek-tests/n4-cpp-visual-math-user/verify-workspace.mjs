@@ -55,6 +55,25 @@ export function findInteractionDispatcherCycles(sourceText) {
   return [...cycles].sort();
 }
 
+export function inspectScriptRenderOwnership(sourceText) {
+  const body = extractCppFunctionCode(sourceText, 'runScript');
+  if (body === null) {
+    return {
+      functionFound: false,
+      delegatesToLessonController: false,
+      directLessonRendererCalls: [],
+    };
+  }
+
+  const directLessonRendererCalls = ['renderFraction', 'renderNumberLine', 'renderQuiz']
+    .filter(name => new RegExp(`\\bcanvas\\s*\\.\\s*${name}\\s*\\(`, 'u').test(body));
+  return {
+    functionFound: true,
+    delegatesToLessonController: /\bcontroller\s*\.\s*render\s*\(\s*canvas\s*\)/u.test(body),
+    directLessonRendererCalls,
+  };
+}
+
 function extractCppFunctionCode(sourceText, qualifiedName) {
   const escapedName = qualifiedName.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
   const signature = new RegExp(`\\b${escapedName}\\s*\\([^;{}]*\\)\\s*(?:const\\s*)?(?:noexcept\\s*)?\\{`, 'u');
@@ -155,6 +174,16 @@ export function verifyWorkspace(workspace, stage, evidenceDir) {
     }, {
       cycles: [],
     });
+
+    const mainSource = existingSources.find(source => source.rel === 'src/main.cpp')?.text ?? '';
+    const scriptRenderOwnership = inspectScriptRenderOwnership(mainSource);
+    check(checks, 'script-render-shares-controller', scriptRenderOwnership.functionFound
+      && scriptRenderOwnership.delegatesToLessonController
+      && scriptRenderOwnership.directLessonRendererCalls.length === 0, scriptRenderOwnership, {
+      functionFound: true,
+      delegatesToLessonController: true,
+      directLessonRendererCalls: [],
+    });
   }
 
   const publicTest = run('./test.sh', [], root, 180_000);
@@ -175,7 +204,7 @@ export function verifyWorkspace(workspace, stage, evidenceDir) {
       fraction: { selected: 3, total: 4 },
       numberLine: { marker: 6 },
     });
-    check(checks, 'fraction-number-line-pixels', ppmLooksGraphical(result.ppm), result.ppm, graphicalPpmExpectation());
+    check(checks, 'fraction-number-line-pixels', ppmLooksGraphical(result.ppm), visualCaseDetails(result), graphicalPpmExpectation());
   }
 
   if (stage >= 3 && publicTest.status === 0) {
@@ -190,7 +219,7 @@ export function verifyWorkspace(workspace, stage, evidenceDir) {
       lesson: 'quiz',
       quiz: { answered: 2, correct: 2, feedback: { nonEmptyString: true } },
     });
-    check(checks, 'quiz-pixels', ppmLooksGraphical(result.ppm), result.ppm, graphicalPpmExpectation());
+    check(checks, 'quiz-pixels', ppmLooksGraphical(result.ppm), visualCaseDetails(result), graphicalPpmExpectation());
   }
 
   if (stage >= 4 && publicTest.status === 0) {
@@ -199,7 +228,7 @@ export function verifyWorkspace(workspace, stage, evidenceDir) {
       artifacts[name] = result.artifacts;
       check(checks, `${name}-render-command`, result.command.status === 0, commandSummary(result.command));
       check(checks, `${name}-render-size`, result.ppm?.width === width && result.ppm?.height === height, result.ppm);
-      check(checks, `${name}-render-pixels`, ppmLooksGraphical(result.ppm), result.ppm, graphicalPpmExpectation());
+      check(checks, `${name}-render-pixels`, ppmLooksGraphical(result.ppm), visualCaseDetails(result), graphicalPpmExpectation());
     }
 
     const invalid = run(path.join(root, 'build/math_visual_lab'), [
@@ -287,7 +316,30 @@ function runVisualCase(root, evidence, name, actionsRel, width, height) {
     command,
     state,
     ppm,
+    reproduction: {
+      cwd: '.',
+      command: `./build/math_visual_lab --script ${actionsRel} --snapshot verification-${name}.ppm --state verification-${name}.json --width ${width} --height ${height}`,
+      artifactPolicy: 'Generate diagnostic outputs inside the selected workspace. Evidence artifact paths outside it are read-only and are not tool-authorized.',
+    },
     artifacts: { snapshot, statePath, commandLog },
+  };
+}
+
+function visualCaseDetails(result) {
+  const stats = result.ppm;
+  return {
+    reproduction: result.reproduction,
+    ppm: stats ? {
+      width: stats.width,
+      height: stats.height,
+      sampledPixels: stats.sampledPixels,
+      uniqueSampledColors: stats.uniqueSampledColors,
+      nonDominantRatio: stats.nonDominantRatio,
+      nonDominantSampledPixels: stats.nonDominantSampledPixels,
+      nonDominantBounds: stats.nonDominantBounds,
+      nonDominantQuadrants: stats.nonDominantQuadrants,
+      topSampledColors: stats.topSampledColors,
+    } : null,
   };
 }
 
@@ -297,6 +349,7 @@ export function readPpmStats(filePath) {
   const parsed = ppmHeader(bytes);
   if (!parsed || parsed.maxValue <= 0 || parsed.maxValue > 65_535) return null;
   const colors = new Map();
+  const samples = [];
   let sampled = 0;
   if (parsed.magic === 'P6' && parsed.maxValue <= 255) {
     const pixelCount = parsed.width * parsed.height;
@@ -304,7 +357,8 @@ export function readPpmStats(filePath) {
     for (let pixel = 0; pixel < pixelCount; pixel += stride) {
       const offset = parsed.dataOffset + pixel * 3;
       if (offset + 2 >= bytes.length) break;
-      addColor(colors, bytes[offset], bytes[offset + 1], bytes[offset + 2]);
+      const key = addColor(colors, bytes[offset], bytes[offset + 1], bytes[offset + 2]);
+      samples.push({ key, x: pixel % parsed.width, y: Math.floor(pixel / parsed.width) });
       sampled += 1;
     }
   } else if (parsed.magic === 'P3') {
@@ -313,11 +367,14 @@ export function readPpmStats(filePath) {
     const stride = Math.max(1, Math.floor(pixelCount / 25_000));
     for (let pixel = 0; pixel < pixelCount; pixel += stride) {
       const offset = pixel * 3;
-      addColor(colors, values[offset], values[offset + 1], values[offset + 2]);
+      const key = addColor(colors, values[offset], values[offset + 1], values[offset + 2]);
+      samples.push({ key, x: pixel % parsed.width, y: Math.floor(pixel / parsed.width) });
       sampled += 1;
     }
   }
-  const dominant = Math.max(0, ...colors.values());
+  const rankedColors = [...colors.entries()].sort((left, right) => right[1] - left[1]);
+  const [dominantKey, dominant = 0] = rankedColors[0] ?? [null, 0];
+  const nonDominantSamples = dominantKey === null ? [] : samples.filter(sample => sample.key !== dominantKey);
   return {
     filePath,
     magic: parsed.magic,
@@ -328,7 +385,45 @@ export function readPpmStats(filePath) {
     sampledPixels: sampled,
     uniqueSampledColors: colors.size,
     nonDominantRatio: sampled > 0 ? Number((1 - dominant / sampled).toFixed(4)) : 0,
+    dominantSampledColor: dominantKey === null ? null : colorSummary(dominantKey, dominant, sampled),
+    topSampledColors: rankedColors.slice(0, 4).map(([key, count]) => colorSummary(key, count, sampled)),
+    nonDominantSampledPixels: nonDominantSamples.length,
+    nonDominantBounds: sampleBounds(nonDominantSamples),
+    nonDominantQuadrants: sampleQuadrants(nonDominantSamples, parsed.width, parsed.height),
   };
+}
+
+function colorSummary(key, count, sampled) {
+  return {
+    rgb: key.split(',').map(Number),
+    count,
+    ratio: sampled > 0 ? Number((count / sampled).toFixed(4)) : 0,
+  };
+}
+
+function sampleBounds(samples) {
+  if (samples.length === 0) return null;
+  return samples.reduce((bounds, sample) => ({
+    minX: Math.min(bounds.minX, sample.x),
+    minY: Math.min(bounds.minY, sample.y),
+    maxX: Math.max(bounds.maxX, sample.x),
+    maxY: Math.max(bounds.maxY, sample.y),
+  }), {
+    minX: Number.POSITIVE_INFINITY,
+    minY: Number.POSITIVE_INFINITY,
+    maxX: Number.NEGATIVE_INFINITY,
+    maxY: Number.NEGATIVE_INFINITY,
+  });
+}
+
+function sampleQuadrants(samples, width, height) {
+  const counts = { topLeft: 0, topRight: 0, bottomLeft: 0, bottomRight: 0 };
+  for (const sample of samples) {
+    const vertical = sample.y < height / 2 ? 'top' : 'bottom';
+    const horizontal = sample.x < width / 2 ? 'Left' : 'Right';
+    counts[`${vertical}${horizontal}`] += 1;
+  }
+  return counts;
 }
 
 function ppmHeader(bytes) {
@@ -381,6 +476,7 @@ function sourceMatches(sources, pattern) {
 function addColor(colors, red, green, blue) {
   const key = `${red},${green},${blue}`;
   colors.set(key, (colors.get(key) || 0) + 1);
+  return key;
 }
 
 function run(command, args, cwd, timeout, extraEnv = {}) {

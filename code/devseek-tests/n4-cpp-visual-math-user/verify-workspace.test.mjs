@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 
-import { findInteractionDispatcherCycles } from './verify-workspace.mjs';
+import {
+  findInteractionDispatcherCycles,
+  inspectScriptRenderOwnership,
+  readPpmStats,
+} from './verify-workspace.mjs';
 
 test('interaction call graph accepts helpers that delegate to domain mutations', () => {
   const source = `
@@ -39,4 +46,62 @@ bool LessonController::handleNumberLineClick(int, int, int, int) {
   assert.deepEqual(findInteractionDispatcherCycles(source), [
     'handleMouseClick -> handleFractionClick -> handleMouseClick',
   ]);
+});
+
+test('script rendering accepts delegation to the production controller', () => {
+  const source = `
+int runScript() {
+  LessonController controller;
+  RasterCanvas canvas;
+  controller.render(canvas);
+  return 0;
+}
+`;
+
+  assert.deepEqual(inspectScriptRenderOwnership(source), {
+    functionFound: true,
+    delegatesToLessonController: true,
+    directLessonRendererCalls: [],
+  });
+});
+
+test('script rendering exposes direct lesson renderer bypasses', () => {
+  const source = `
+int runScript() {
+  LessonController controller;
+  RasterCanvas canvas;
+  canvas.renderFraction(3, 4);
+  canvas.renderNumberLine(6);
+  return 0;
+}
+`;
+
+  assert.deepEqual(inspectScriptRenderOwnership(source), {
+    functionFound: true,
+    delegatesToLessonController: false,
+    directLessonRendererCalls: ['renderFraction', 'renderNumberLine'],
+  });
+});
+
+test('PPM diagnostics expose the spatial distribution of visible pixels', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'devseek-ppm-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const ppmPath = path.join(directory, 'sample.ppm');
+  fs.writeFileSync(ppmPath, [
+    'P3',
+    '4 4',
+    '255',
+    ...Array.from({ length: 16 }, (_, pixel) => pixel === 14 ? '255 0 0' : '255 255 255'),
+    '',
+  ].join('\n'));
+
+  const stats = readPpmStats(ppmPath);
+  assert.deepEqual(stats.dominantSampledColor, { rgb: [255, 255, 255], count: 15, ratio: 0.9375 });
+  assert.deepEqual(stats.nonDominantBounds, { minX: 2, minY: 3, maxX: 2, maxY: 3 });
+  assert.deepEqual(stats.nonDominantQuadrants, {
+    topLeft: 0,
+    topRight: 0,
+    bottomLeft: 0,
+    bottomRight: 1,
+  });
 });

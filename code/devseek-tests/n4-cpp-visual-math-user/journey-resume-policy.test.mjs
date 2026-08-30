@@ -59,6 +59,9 @@ test('repair continuation preserves the original requirement after its evidence-
   assert.match(prompt, /expectedMatcher 是验收匹配器/);
   assert.match(prompt, /minimum 写入产物/);
   assert.match(prompt, /"observedValue"/);
+  assert.match(prompt, /外部证据路径仅用于说明独立验证结果/);
+  assert.match(prompt, /reproduction\.command/);
+  assert.match(prompt, /只把诊断产物写入该工作区/);
   assert.doesNotMatch(prompt, /"check": "public-build"/);
   assert.match(prompt, /不要从头重写项目/);
   assert.match(prompt, /执行 \.\/test\.sh 并完成第二轮/);
@@ -78,4 +81,31 @@ test('repair verification projection is bounded and includes only failed checks'
   assert.match(projection, /detail truncated/);
   assert.doesNotMatch(projection, /"check": "passed"/);
   assert.ok(projection.length < 2_000);
+});
+
+test('bounded visual failure preserves workspace reproduction and spatial diagnosis', () => {
+  const projection = projectRepairVerificationFailures({
+    checks: [{
+      id: 'pixels',
+      ok: false,
+      details: {
+        reproduction: {
+          cwd: '.',
+          command: './build/app --snapshot verification.ppm',
+        },
+        ppm: {
+          nonDominantBounds: { minX: 130, minY: 181, maxX: 670, maxY: 599 },
+          nonDominantQuadrants: { topLeft: 0, topRight: 2, bottomLeft: 19, bottomRight: 25 },
+          topSampledColors: Array.from({ length: 20 }, (_, index) => ({
+            rgb: [index, index, index],
+            count: 1_000 - index,
+          })),
+        },
+      },
+    }],
+  });
+
+  assert.match(projection, /\.\/build\/app --snapshot verification\.ppm/);
+  assert.match(projection, /"nonDominantBounds"/);
+  assert.match(projection, /"nonDominantQuadrants"/);
 });
