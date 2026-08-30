@@ -162,6 +162,24 @@ test('TerminalCommandPolicy: assertion-only Node inline checks are validation co
   assert.equal(decision.reason, 'validation-command');
 });
 
+test('TerminalCommandPolicy: named Node verification scripts inside the workspace are validation commands', () => {
+  for (const command of [
+    'node tools/verify-ppm.mjs verification.ppm',
+    'cd /workspace/devseek && node tools/check-layout.cjs fixture.json 2>&1',
+    'node ./test-render.js',
+  ]) {
+    const decision = decideTerminalCommandPermission({ command, workspaceRoot });
+    assert.equal(decision.risk, 'validation', command);
+    assert.equal(decision.reason, 'validation-command', command);
+  }
+  for (const command of [
+    'node tools/render-ppm.mjs verification.ppm',
+    'node tools/verify-ppm.mjs --write verification.ppm',
+  ]) {
+    assert.notEqual(decideTerminalCommandPermission({ command, workspaceRoot }).risk, 'validation', command);
+  }
+});
+
 test('TerminalCommandPolicy: Node inline snippets retain a narrow side-effect boundary', () => {
   const counterexamples = [
     `node -e "console.log('no assertion')"`,

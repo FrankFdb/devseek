@@ -874,6 +874,7 @@ test('ToolLoop terminal guard still allows classified inspection and validation 
       { name: 'run_terminal', input: { command: 'npx eslint . --fix-dry-run' } },
       { name: 'run_terminal', input: { command: 'npx tsc --noEmit' } },
       { name: 'run_terminal', input: { command: 'npm test' } },
+      { name: 'run_terminal', input: { command: 'node tools/verify-ppm.mjs verification.ppm' } },
       { name: 'run_terminal', input: { command: `node -e "const { add } = require('./src/math.js'); if (add(2, 3) !== 5) process.exit(1); console.log('ADD_OK')"` } },
     ],
     {
@@ -893,6 +894,7 @@ test('ToolLoop terminal guard still allows classified inspection and validation 
     'npx eslint . --fix-dry-run',
     'npx tsc --noEmit',
     'npm test',
+    'node tools/verify-ppm.mjs verification.ppm',
     `node -e "const { add } = require('./src/math.js'); if (add(2, 3) !== 5) process.exit(1); console.log('ADD_OK')"`,
   ]);
   assert.equal(result.toolFailures, undefined);

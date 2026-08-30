@@ -381,7 +381,8 @@ function isValidationSegment(rawSegment: string, workspaceRoot?: string, workdir
   }
   if (command === 'node') {
     return /\bnode\s+(?:--test\b|(?:\.\/)?test\/|[\w./-]+\.test\.(?:mjs|cjs|js))\b/i.test(segment)
-      || isNodeInlineValidationSegment(segment);
+      || isNodeInlineValidationSegment(segment)
+      || isWorkspaceNodeValidationSegment(segment, workspaceRoot, workdir);
   }
   if (command === 'bash' || command === 'sh') {
     return isWorkspaceShellValidationSegment(segment, workspaceRoot, workdir);
@@ -494,6 +495,20 @@ function isNodeInlineValidationSegment(segment: string): boolean {
   // Inline JavaScript is only a validation route when it carries an explicit
   // failing assertion. Plain snippets remain outside the unattended boundary.
   return NODE_INLINE_ASSERTION_RE.test(code);
+}
+
+function isWorkspaceNodeValidationSegment(
+  segment: string,
+  workspaceRoot?: string,
+  workdir?: string,
+): boolean {
+  const words = splitShellWords(stripLeadingAssignments(segment));
+  if (words.length < 2) return false;
+  const script = cleanToken(words[1]);
+  if (!/^(?:test|tests|check|verify)(?:[-_.][A-Za-z0-9_.-]+)?\.(?:mjs|cjs|js)$/iu.test(nodePath.basename(script))) {
+    return false;
+  }
+  return isWorkspacePath(script, workspaceRoot, workdir);
 }
 
 function isWorkspacePythonPath(rawPath: string, workspaceRoot?: string, workdir?: string): boolean {
