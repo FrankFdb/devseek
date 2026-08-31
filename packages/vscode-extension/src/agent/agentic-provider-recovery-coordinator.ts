@@ -80,6 +80,7 @@ export class AgenticProviderRecoveryCoordinator {
 
   requestFreshProviderSession(): void {
     this.freshSessionRequested = true;
+    this.input.contextInvestigation.reset();
   }
 
   takeFreshProviderSession(round: number): boolean {
@@ -116,9 +117,8 @@ export class AgenticProviderRecoveryCoordinator {
   }
 
   rebuildWithCausalFeedback(feedback: string): void {
-    const { contextInvestigation, evidenceRefs, executionContext, messages, state } = this.input;
+    const { evidenceRefs, executionContext, messages, state } = this.input;
     this.requestFreshProviderSession();
-    contextInvestigation.reset();
     applyProviderRecoveryHistory(messages, { role: 'user', content: feedback }, true);
     state.setTotalChars(rebuildAgenticHistoryForFreshProviderSession({
       messages,
@@ -169,7 +169,7 @@ export class AgenticProviderRecoveryCoordinator {
     failure: AgentProviderFailure | undefined,
     partialResponseLength = 0,
   ): Promise<'completed' | 'recovered' | 'unrecoverable'> {
-    const { callbacks, contextInvestigation, readEvidencePaths, requirementReview,
+    const { callbacks, readEvidencePaths, requirementReview,
       sourceValidation, state, terminalEvidence, writeAuthority, writtenFiles } = this.input;
     const settlement = settleProviderFailureFromCompletedEvidence({
       providerFailureStatus: failure?.status,
@@ -217,7 +217,6 @@ export class AgenticProviderRecoveryCoordinator {
     state.setTotalChars(recovery.totalChars);
     if (recovery.forceFreshProviderSession) {
       this.requestFreshProviderSession();
-      contextInvestigation.reset();
     }
     if (recovery.recovered) {
       this.lifecycle.begin(failure?.operationId, failure?.observedToolNames, {

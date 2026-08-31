@@ -188,7 +188,6 @@ export async function runAgenticLoop(
   const refreshPromptRequirements = (): void => {
     ({ currentTaskIntent, promptRequiresFileChange, promptRequiresTools } = resolvePromptRequirements());
   };
-  // Full conversation history (Claude Code pattern: accumulate all rounds)
   const initialPromptContext = createAgenticInitialPromptContext(systemPrompt, userPrompt, sessionContextText, recoveryContextText);
   const messages = initialPromptContext.messages;
   let roundCount = 0;
@@ -446,6 +445,7 @@ export async function runAgenticLoop(
           { workspaceRoot },
           textToolProtocol,
         ),
+        () => contextInvestigation.reset(),
       );
       providerWaitFeedback.complete();
     } catch (error) {

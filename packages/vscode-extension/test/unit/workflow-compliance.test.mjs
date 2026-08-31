@@ -981,7 +981,8 @@ test('Agentic loop: repeated terminal failures enter root-cause recovery before 
   assertContains(code, 'isContextGatheringToolName', 'agent loop must delegate context-tool classification');
   assertContains(convergence, 'CONTEXT_GATHERING_TOOL_NAMES', 'context gathering repeats must share the same no-progress guard');
   assertContains(code, 'ContextInvestigationLedger', 'agent loop must delegate duplicate investigation ownership');
-  assertContains(recoveryCoordinator, 'contextInvestigation.reset()', 'a rebuilt Provider session must forget evidence it can no longer see');
+  assertContains(code, 'contextInvestigation.reset()', 'a rebuilt Provider session must forget evidence it can no longer see');
+  assertContains(recoveryCoordinator, 'this.input.contextInvestigation.reset()', 'Provider recovery must invalidate context through the session-lifecycle boundary');
   assertContains(investigation, 'private readonly signatures', 'exact context repeats must be tracked across rounds');
   assertContains(investigation, 'private readonly readCoverage', 'successful broad reads must cover later narrow requests');
   assertContains(investigation, 'recordVisibleReadExposures', 'read coverage must come from post-projection Provider-visible lines');
@@ -3196,7 +3197,8 @@ test('Architecture: Bridge chat owns browser reset boundaries and trace-scoped p
   assert.match(service, /buildBridgeTransportRequest[\s\S]*?newSession: true/, 'bridge transport requests must reset browser-side history');
   assertContains(bridgeProvider, 'prepareBridgePromptForSession', 'BridgeProvider must prepare trace-scoped prompt reuse centrally');
   assertContains(bridgeProvider, 'recordBridgePromptSessionRequest', 'BridgeProvider must remember successful logical request cursors');
-  assert.match(bridgeProvider, /newSession: Boolean\(opts\.newSession \|\| preparedPrompt\.resetBrowserSession\)/, 'BridgeProvider must honor caller resets and cursor-invalidating resets');
+  assertContains(bridgeProvider, 'const resetsBrowserSession = Boolean(opts.newSession || preparedPrompt.resetBrowserSession)', 'BridgeProvider must honor caller resets and cursor-invalidating resets');
+  assertContains(bridgeProvider, 'opts.onProviderSessionReset?.({', 'BridgeProvider must report effective browser-session replacement to Agent Core');
   assert.match(
     bridgeProvider,
     /new ResponseIntegrityChecker\(\)\.assertSafeForExecution\(response\);[\s\S]*?assertProviderTurnIntegrity\(response\);[\s\S]*?recordBridgePromptSessionRequest/,
@@ -3217,6 +3219,7 @@ test('Agentic loop: visible correction and context convergence are owned by Agen
   const textProtocol = src('src/agent/text-tool-protocol.ts');
 
   assertContains(recoveryCoordinator, 'emitCorrectionStatus', 'Agent Core recovery must surface internal recovery as user-visible status');
+  assertContains(agenticLoop, '() => contextInvestigation.reset()', 'Agent Core must invalidate Provider-visible evidence when a Provider session is replaced');
   assertContains(agenticProviderRecoveryBoundary, "'provider-response-corruption'", 'provider response recovery must have a stable evidence reason');
   assertContains(agenticLoop, 'providerRecovery.completeAcceptedResponse', 'agent loop must close provider recovery at the provider response boundary');
   assertContains(agenticProviderRecoveryBoundary, 'class AgenticProviderRecoveryLifecycle', 'provider recovery boundary must own its pending lifecycle');

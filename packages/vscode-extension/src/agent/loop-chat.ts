@@ -4,6 +4,7 @@ import {
   measureProviderMessagePrompt,
   summarizeTraceText,
   type CodingToolCall,
+  type LLMProviderSessionResetEvent,
 } from '@devseek-netai/shared';
 import { getActiveProvider } from '../llm/provider-router';
 import { type ChatMessage } from '../llm/types';
@@ -32,6 +33,7 @@ interface LoopChatInput {
   traceEvidenceParticipantToken?: string;
   onTraceEvidenceError?: (error: unknown) => void;
   normalization?: ProviderNormalizationBoundary;
+  onProviderSessionReset?: (event: LLMProviderSessionResetEvent) => void;
 }
 
 const providerInvocationRetry = new ProviderInvocationRetryService();
@@ -47,6 +49,7 @@ export async function chatWithMessages(
   traceEvidenceParticipantToken?: string,
   onTraceEvidenceError?: (error: unknown) => void,
   normalization?: ProviderNormalizationBoundary,
+  onProviderSessionReset?: (event: LLMProviderSessionResetEvent) => void,
 ): Promise<{ text: string; tools: CodingToolCall[]; providerOperationId?: string }> {
   return invokeLoopChat({
     messages,
@@ -60,6 +63,7 @@ export async function chatWithMessages(
     traceEvidenceParticipantToken,
     onTraceEvidenceError,
     normalization,
+    onProviderSessionReset,
   });
 }
 
@@ -75,6 +79,7 @@ export async function chatViaProvider(
   traceEvidenceParticipantToken?: string,
   onTraceEvidenceError?: (error: unknown) => void,
   normalization?: ProviderNormalizationBoundary,
+  onProviderSessionReset?: (event: LLMProviderSessionResetEvent) => void,
 ): Promise<{ text: string; tools: CodingToolCall[]; providerOperationId?: string }> {
   const messages: ChatMessage[] = [
     ...(history ?? []),
@@ -92,6 +97,7 @@ export async function chatViaProvider(
     traceEvidenceParticipantToken,
     onTraceEvidenceError,
     normalization,
+    onProviderSessionReset,
   });
 }
 
@@ -135,6 +141,7 @@ async function invokeLoopChat(input: LoopChatInput): Promise<{
           mode: input.mode,
           signal: input.signal,
           newSession: input.newSession,
+          onProviderSessionReset: input.onProviderSessionReset,
           traceRunId: input.traceRunId,
           traceWorkspaceRoot: input.traceWorkspaceRoot,
           traceOperationId,

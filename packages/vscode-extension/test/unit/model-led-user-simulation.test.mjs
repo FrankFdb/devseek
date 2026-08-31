@@ -40,11 +40,13 @@ await build({
           export async function chatWithMessages(
             messages, mode, onDelta, signal, newSession,
             traceRunId, traceWorkspaceRoot, traceEvidenceParticipantToken,
-            onTraceEvidenceError, normalization,
+            onTraceEvidenceError, normalization, onProviderSessionReset,
           ) {
             const handler = globalThis.__DEVSEEK_MODEL_LED_CHAT_STUB__;
             if (typeof handler !== 'function') throw new Error('model-led chat stub is not installed');
-            const response = await handler(messages, { mode, onDelta, signal, newSession });
+            const response = await handler(messages, {
+              mode, onDelta, signal, newSession, onProviderSessionReset,
+            });
             if (typeof response === 'string') return { text: response, tools: [] };
             const tools = (response.tools ?? []).map(tool => (
               tool && typeof tool === 'object' && 'registered' in tool
@@ -1786,6 +1788,53 @@ test('ModelLedUserSimulation: a correction accepted at the completion fence reop
       simulation.harness.activities.some(item => item.label.includes('完成前收到最新要求')),
       true,
     );
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
+test('ModelLedUserSimulation: an internally rebuilt Provider session can reread previously covered source', async () => {
+  const prompt = '读取 result.txt 后把 OLD 改为 SESSION_RESET_OK，并读回确认。';
+  let calls = 0;
+  let rebuiltReadWasDelivered = false;
+  const simulation = await runSimulation(prompt, async (messages, providerContext) => {
+    calls += 1;
+    const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'result.txt');
+    if (calls === 1) {
+      writeFileSync(target, 'OLD\n');
+      return {
+        text: '先读取待修改文件。',
+        tools: [{ name: 'read_file', input: { path: target } }],
+      };
+    }
+    if (calls === 2) {
+      assert.equal(providerContext.newSession, false);
+      providerContext.onProviderSessionReset?.({ reason: 'provider-context-rebuild' });
+      return {
+        text: '网页会话已因上下文投影重建，重新读取模型当前不可见的源码。',
+        tools: [{ name: 'read_file', input: { path: target } }],
+      };
+    }
+    const latestFeedback = String(messages.at(-1)?.content ?? '');
+    rebuiltReadWasDelivered = /工具结果 Round 2/u.test(latestFeedback)
+      && /\[file_context\][\s\S]*OLD/u.test(latestFeedback)
+      && !/已跳过被既有证据覆盖的重复读取/u.test(latestFeedback);
+    return {
+      text: '依据重建会话后重新取得的源码完成修改。',
+      tools: [
+        { name: 'replace_in_file', input: { path: target, old_str: 'OLD', new_str: 'SESSION_RESET_OK' } },
+        { name: 'read_file', input: { path: target } },
+        { name: 'task_complete', input: { summary: '已完成修改并读回。' } },
+      ],
+    };
+  }, {
+    runDisplayAction: 'repair',
+    verificationRequired: false,
+  });
+  try {
+    assert.equal(rebuiltReadWasDelivered, true, simulation.result.historyText);
+    assert.equal(readFileSync(path.join(simulation.root, 'result.txt'), 'utf8'), 'SESSION_RESET_OK\n');
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
   } finally {
     rmSync(simulation.root, { recursive: true, force: true });
   }

@@ -29,6 +29,11 @@ export interface TokenUsage {
   totalTokens: number;
 }
 
+export interface LLMProviderSessionResetEvent {
+  /** Whether the caller requested the reset or the Provider rebuilt hidden context. */
+  reason: 'requested' | 'provider-context-rebuild';
+}
+
 export interface LLMChatOptions {
   messages: ChatMessage[];
   model?: string;
@@ -40,6 +45,8 @@ export interface LLMChatOptions {
   mode?: 'fast' | 'r1';
   files?: string[];
   newSession?: boolean;
+  /** Reports an effective Provider session replacement before the new turn is sampled. */
+  onProviderSessionReset?: (event: LLMProviderSessionResetEvent) => void;
   /** Top-level run trace id shared by routing, provider calls, tools and validation. */
   traceRunId?: string;
   /** Filesystem root where all logs for this top-level run should be written. */
