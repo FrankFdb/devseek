@@ -147,16 +147,47 @@ function extractCppFunctionCode(sourceText, qualifiedName) {
   return null;
 }
 
-export function verifyWorkspace(workspace, stage, evidenceDir) {
+const verificationCheckIds = Object.freeze([
+  'source-contract',
+  'source-hygiene',
+  'interaction-dispatch-acyclic',
+  'script-render-shares-controller',
+  'public-build-and-self-test',
+  'fraction-number-line-command',
+  'fraction-number-line-state',
+  'fraction-number-line-pixels',
+  'quiz-command',
+  'quiz-state',
+  'quiz-pixels',
+  'compact-render-command',
+  'compact-render-size',
+  'compact-render-pixels',
+  'wide-render-command',
+  'wide-render-size',
+  'wide-render-pixels',
+  'invalid-action-rejected',
+  'real-x11-window-smoke',
+  'sanitizer-configure',
+  'sanitizer-build',
+  'sanitizer-x11-repeated-frame',
+  'operator-readme',
+]);
+
+export function verifyWorkspace(workspace, stage, evidenceDir, options = {}) {
   const checks = [];
   const artifacts = {};
   const root = path.resolve(workspace);
   const evidence = path.resolve(evidenceDir);
+  const selected = selectVerificationChecks(options.checkIds);
+  const wants = id => selected === null || selected.has(id);
+  const wantsAny = ids => ids.some(wants);
   fs.mkdirSync(evidence, { recursive: true });
 
-  check(checks, 'source-contract', sourcePaths.every(rel => fileHasContent(root, rel)), {
-    missing: sourcePaths.filter(rel => !fileHasContent(root, rel)),
-  });
+  if (wants('source-contract')) {
+    check(checks, 'source-contract', sourcePaths.every(rel => fileHasContent(root, rel)), {
+      missing: sourcePaths.filter(rel => !fileHasContent(root, rel)),
+    });
+  }
   const existingSources = sourcePaths
     .filter(rel => fileHasContent(root, rel))
     .map(rel => ({ rel, text: fs.readFileSync(path.join(root, rel), 'utf8') }));
@@ -164,50 +195,80 @@ export function verifyWorkspace(workspace, stage, evidenceDir) {
   const unfinishedImplementation = hasUnfinishedImplementation(sourceText);
   const unfinishedMatches = sourceMatches(existingSources, unfinishedSource);
   const systemCallMatches = sourceMatches(existingSources, /\bsystem\s*\(/u);
-  check(checks, 'source-hygiene', !unfinishedImplementation && !/\bsystem\s*\(/u.test(sourceText), {
-    unfinishedImplementation,
-    systemCall: /\bsystem\s*\(/u.test(sourceText),
-    unfinishedMatches,
-    systemCallMatches,
-  }, {
-    unfinishedImplementation: false,
-    systemCall: false,
-  });
+  if (wants('source-hygiene')) {
+    check(checks, 'source-hygiene', !unfinishedImplementation && !/\bsystem\s*\(/u.test(sourceText), {
+      unfinishedImplementation,
+      systemCall: /\bsystem\s*\(/u.test(sourceText),
+      unfinishedMatches,
+      systemCallMatches,
+    }, {
+      unfinishedImplementation: false,
+      systemCall: false,
+    });
+  }
 
   if (stage >= 2) {
     const lessonControllerSource = existingSources.find(source => source.rel === 'src/lesson_controller.cpp')?.text ?? '';
     const interactionCycles = findInteractionDispatcherCycles(lessonControllerSource);
-    check(checks, 'interaction-dispatch-acyclic', interactionCycles.length === 0, {
-      cycles: interactionCycles,
-    }, {
-      cycles: [],
-    });
+    if (wants('interaction-dispatch-acyclic')) {
+      check(checks, 'interaction-dispatch-acyclic', interactionCycles.length === 0, {
+        cycles: interactionCycles,
+      }, {
+        cycles: [],
+      });
+    }
 
     const mainSource = existingSources.find(source => source.rel === 'src/main.cpp')?.text ?? '';
     const scriptRenderOwnership = inspectScriptRenderOwnership(mainSource);
-    check(checks, 'script-render-shares-controller', scriptRenderOwnership.functionFound
-      && scriptRenderOwnership.delegatesToLessonController
-      && scriptRenderOwnership.directLessonRendererCalls.length === 0, {
-      semanticOwner: 'src/main.cpp::runScript',
-      requiredFlow: 'runScript -> LessonController::render(canvas) -> RasterCanvas lesson renderer',
-      forbiddenStrategy: 'Do not inline lesson drawing in runScript or remove the RasterCanvas calls owned by LessonController::render.',
-      ...scriptRenderOwnership,
-    }, {
-      functionFound: true,
-      delegatesToLessonController: true,
-      directLessonRendererCalls: [],
-    });
+    if (wants('script-render-shares-controller')) {
+      check(checks, 'script-render-shares-controller', scriptRenderOwnership.functionFound
+        && scriptRenderOwnership.delegatesToLessonController
+        && scriptRenderOwnership.directLessonRendererCalls.length === 0, {
+        semanticOwner: 'src/main.cpp::runScript',
+        requiredFlow: 'runScript -> LessonController::render(canvas) -> RasterCanvas lesson renderer',
+        forbiddenStrategy: 'Do not inline lesson drawing in runScript or remove the RasterCanvas calls owned by LessonController::render.',
+        ...scriptRenderOwnership,
+      }, {
+        functionFound: true,
+        delegatesToLessonController: true,
+        directLessonRendererCalls: [],
+      });
+    }
   }
 
-  const publicTest = run('./test.sh', [], root, 180_000);
-  artifacts.publicTest = recordCommand(evidence, 'public-test', publicTest);
-  check(checks, 'public-build-and-self-test', publicTest.status === 0, commandSummary(publicTest));
+  const runtimeCheckIds = verificationCheckIds.filter(id => (
+    id.includes('-command')
+      || id.includes('-state')
+      || id.includes('-pixels')
+      || id.includes('-size')
+      || id === 'invalid-action-rejected'
+      || id === 'real-x11-window-smoke'
+  ));
+  let buildReady = true;
+  if (wants('public-build-and-self-test')) {
+    const publicTest = run('./test.sh', [], root, 180_000);
+    artifacts.publicTest = recordCommand(evidence, 'public-test', publicTest);
+    check(checks, 'public-build-and-self-test', publicTest.status === 0, commandSummary(publicTest));
+    buildReady = publicTest.status === 0;
+  } else if (selected !== null && wantsAny(runtimeCheckIds)) {
+    const incrementalBuild = runIncrementalBuild(root, evidence);
+    artifacts.incrementalBuild = incrementalBuild.artifacts;
+    buildReady = incrementalBuild.configure.status === 0 && incrementalBuild.build?.status === 0;
+    if (!buildReady) {
+      check(checks, 'incremental-build-prerequisite', false, {
+        configure: commandSummary(incrementalBuild.configure),
+        build: commandSummary(incrementalBuild.build),
+      });
+    }
+  }
 
-  if (stage >= 2 && publicTest.status === 0) {
+  if (stage >= 2 && buildReady && wantsAny([
+    'fraction-number-line-command', 'fraction-number-line-state', 'fraction-number-line-pixels',
+  ])) {
     const result = runVisualCase(root, evidence, 'fraction-number-line', 'assets/fraction-number-line.actions', 800, 600);
     artifacts.fractionNumberLine = result.artifacts;
-    check(checks, 'fraction-number-line-command', result.command.status === 0, commandSummary(result.command));
-    check(checks, 'fraction-number-line-state', result.state?.lesson === 'number-line'
+    if (wants('fraction-number-line-command')) check(checks, 'fraction-number-line-command', result.command.status === 0, commandSummary(result.command));
+    if (wants('fraction-number-line-state')) check(checks, 'fraction-number-line-state', result.state?.lesson === 'number-line'
       && result.state?.fraction?.total === 4
       && result.state?.fraction?.selected === 3
       && result.state?.numberLine?.marker === 6
@@ -217,14 +278,14 @@ export function verifyWorkspace(workspace, stage, evidenceDir) {
       fraction: { selected: 3, total: 4 },
       numberLine: { marker: 6 },
     });
-    check(checks, 'fraction-number-line-pixels', ppmLooksGraphical(result.ppm), visualCaseDetails(result), graphicalPpmExpectation());
+    if (wants('fraction-number-line-pixels')) check(checks, 'fraction-number-line-pixels', ppmLooksGraphical(result.ppm), visualCaseDetails(result), graphicalPpmExpectation());
   }
 
-  if (stage >= 3 && publicTest.status === 0) {
+  if (stage >= 3 && buildReady && wantsAny(['quiz-command', 'quiz-state', 'quiz-pixels'])) {
     const result = runVisualCase(root, evidence, 'quiz', 'assets/quiz.actions', 800, 600);
     artifacts.quiz = result.artifacts;
-    check(checks, 'quiz-command', result.command.status === 0, commandSummary(result.command));
-    check(checks, 'quiz-state', result.state?.lesson === 'quiz'
+    if (wants('quiz-command')) check(checks, 'quiz-command', result.command.status === 0, commandSummary(result.command));
+    if (wants('quiz-state')) check(checks, 'quiz-state', result.state?.lesson === 'quiz'
       && result.state?.quiz?.answered === 2
       && result.state?.quiz?.correct === 2
       && typeof result.state?.quiz?.feedback === 'string'
@@ -232,48 +293,62 @@ export function verifyWorkspace(workspace, stage, evidenceDir) {
       lesson: 'quiz',
       quiz: { answered: 2, correct: 2, feedback: { nonEmptyString: true } },
     });
-    check(checks, 'quiz-pixels', ppmLooksGraphical(result.ppm), visualCaseDetails(result), graphicalPpmExpectation());
+    if (wants('quiz-pixels')) check(checks, 'quiz-pixels', ppmLooksGraphical(result.ppm), visualCaseDetails(result), graphicalPpmExpectation());
   }
 
-  if (stage >= 4 && publicTest.status === 0) {
+  if (stage >= 4 && buildReady) {
     for (const [name, width, height] of [['compact', 640, 480], ['wide', 1024, 640]]) {
+      const groupIds = [`${name}-render-command`, `${name}-render-size`, `${name}-render-pixels`];
+      if (!wantsAny(groupIds)) continue;
       const result = runVisualCase(root, evidence, name, 'assets/fraction-number-line.actions', width, height);
       artifacts[name] = result.artifacts;
-      check(checks, `${name}-render-command`, result.command.status === 0, commandSummary(result.command));
-      check(checks, `${name}-render-size`, result.ppm?.width === width && result.ppm?.height === height, result.ppm);
-      check(checks, `${name}-render-pixels`, ppmLooksGraphical(result.ppm), visualCaseDetails(result), graphicalPpmExpectation());
+      if (wants(groupIds[0])) check(checks, groupIds[0], result.command.status === 0, commandSummary(result.command));
+      if (wants(groupIds[1])) check(checks, groupIds[1], result.ppm?.width === width && result.ppm?.height === height, result.ppm);
+      if (wants(groupIds[2])) check(checks, groupIds[2], ppmLooksGraphical(result.ppm), visualCaseDetails(result), graphicalPpmExpectation());
     }
 
-    const invalid = run(path.join(root, 'build/math_visual_lab'), [
-      '--script', path.join(root, 'assets/invalid.actions'),
-      '--snapshot', path.join(evidence, 'invalid.ppm'),
-      '--state', path.join(evidence, 'invalid.json'),
-    ], root, 30_000);
-    artifacts.invalid = recordCommand(evidence, 'invalid-actions', invalid);
-    check(checks, 'invalid-action-rejected', invalid.status !== 0 && /(?:invalid|range|total|1\.\.12)/iu.test(`${invalid.stdout}\n${invalid.stderr}`), commandSummary(invalid));
+    if (wants('invalid-action-rejected')) {
+      const invalid = run(path.join(root, 'build/math_visual_lab'), [
+        '--script', path.join(root, 'assets/invalid.actions'),
+        '--snapshot', path.join(evidence, 'invalid.ppm'),
+        '--state', path.join(evidence, 'invalid.json'),
+      ], root, 30_000);
+      artifacts.invalid = recordCommand(evidence, 'invalid-actions', invalid);
+      check(checks, 'invalid-action-rejected', invalid.status !== 0 && /(?:invalid|range|total|1\.\.12)/iu.test(`${invalid.stdout}\n${invalid.stderr}`), commandSummary(invalid));
+    }
 
-    const smoke = run(path.join(root, 'build/math_visual_lab'), [
-      '--smoke-frames', '3', '--width', '800', '--height', '600',
-    ], root, 30_000, { DISPLAY: process.env.DISPLAY || ':0' });
-    artifacts.x11Smoke = recordCommand(evidence, 'x11-smoke', smoke);
-    check(checks, 'real-x11-window-smoke', smoke.status === 0, commandSummary(smoke));
+    if (wants('real-x11-window-smoke')) {
+      const smoke = run(path.join(root, 'build/math_visual_lab'), [
+        '--smoke-frames', '3', '--width', '800', '--height', '600',
+      ], root, 30_000, { DISPLAY: process.env.DISPLAY || ':0' });
+      artifacts.x11Smoke = recordCommand(evidence, 'x11-smoke', smoke);
+      check(checks, 'real-x11-window-smoke', smoke.status === 0, commandSummary(smoke));
+    }
+  }
 
+  if (stage >= 4 && wantsAny(['sanitizer-configure', 'sanitizer-build', 'sanitizer-x11-repeated-frame'])) {
     const sanitizer = runSanitizerSmoke(root, evidence);
     artifacts.sanitizer = sanitizer.artifacts;
-    check(checks, 'sanitizer-configure', sanitizer.configure.status === 0, commandSummary(sanitizer.configure));
-    check(checks, 'sanitizer-build', sanitizer.build?.status === 0, commandSummary(sanitizer.build));
-    check(checks, 'sanitizer-x11-repeated-frame', sanitizer.smoke?.status === 0, commandSummary(sanitizer.smoke));
+    if (wants('sanitizer-configure')) check(checks, 'sanitizer-configure', sanitizer.configure.status === 0, commandSummary(sanitizer.configure));
+    if (wants('sanitizer-build')) check(checks, 'sanitizer-build', sanitizer.build?.status === 0, commandSummary(sanitizer.build));
+    if (wants('sanitizer-x11-repeated-frame')) check(checks, 'sanitizer-x11-repeated-frame', sanitizer.smoke?.status === 0, commandSummary(sanitizer.smoke));
+  }
 
+  if (stage >= 4 && wants('operator-readme')) {
     const readme = fileText(root, 'README.md');
     check(checks, 'operator-readme', /(?:build|cmake)/iu.test(readme)
       && /(?:keyboard|mouse|键盘|鼠标)/iu.test(readme)
       && /--smoke-frames/u.test(readme), { bytes: Buffer.byteLength(readme) });
   }
 
+  if (checks.length === 0) throw new Error('Selected verification checks are not available at this stage.');
+
   const report = {
     schemaVersion: 'devseek.n4-cpp-visual-math-verification/v1',
     workspace: root,
     stage,
+    mode: selected === null ? 'full' : 'targeted',
+    requestedChecks: selected === null ? verificationCheckIdsForStage(stage) : [...selected],
     ok: checks.every(item => item.ok),
     checks,
     artifacts,
@@ -281,6 +356,37 @@ export function verifyWorkspace(workspace, stage, evidenceDir) {
   };
   fs.writeFileSync(path.join(evidence, 'verification.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   return report;
+}
+
+function selectVerificationChecks(checkIds) {
+  if (checkIds === undefined || checkIds === null) return null;
+  if (!Array.isArray(checkIds) || checkIds.length === 0) {
+    throw new Error('checkIds must be a non-empty array when targeted verification is requested.');
+  }
+  const selected = new Set(checkIds.map(value => String(value || '').trim()).filter(Boolean));
+  const unknown = [...selected].filter(id => !verificationCheckIds.includes(id));
+  if (unknown.length > 0) throw new Error(`Unknown verification checks: ${unknown.join(', ')}`);
+  return selected;
+}
+
+export function verificationCheckIdsForStage(stage) {
+  if (stage === 1) return verificationCheckIds.slice(0, 5);
+  if (stage === 2) return verificationCheckIds.slice(0, 11 - 3);
+  if (stage === 3) return verificationCheckIds.slice(0, 11);
+  return [...verificationCheckIds];
+}
+
+function runIncrementalBuild(root, evidence) {
+  const configure = run('cmake', [
+    '-S', '.', '-B', 'build', '-DCMAKE_BUILD_TYPE=Release',
+  ], root, 60_000);
+  const artifacts = {
+    configure: recordCommand(evidence, 'incremental-configure', configure),
+  };
+  if (configure.status !== 0) return { configure, artifacts };
+  const build = run('cmake', ['--build', 'build', '--parallel', '2'], root, 180_000);
+  artifacts.build = recordCommand(evidence, 'incremental-build', build);
+  return { configure, build, artifacts };
 }
 
 function runSanitizerSmoke(root, evidence) {
@@ -460,10 +566,14 @@ if (entryPath === fileURLToPath(import.meta.url)) {
   const evidence = process.argv[4]
     ? path.resolve(process.argv[4])
     : path.join(workspace, '.devseek-visual-math-verification');
+  const checksArg = process.argv.find(value => value.startsWith('--checks='));
+  const checkIds = checksArg
+    ? checksArg.slice('--checks='.length).split(',').map(value => value.trim()).filter(Boolean)
+    : undefined;
   if (!workspace || !Number.isInteger(stage) || stage < 1 || stage > 4) {
-    throw new Error('Usage: node verify-workspace.mjs <workspace> <stage 1..4> [evidence-dir]');
+    throw new Error('Usage: node verify-workspace.mjs <workspace> <stage 1..4> [evidence-dir] [--checks=id,id]');
   }
-  const report = verifyWorkspace(workspace, stage, evidence);
+  const report = verifyWorkspace(workspace, stage, evidence, { checkIds });
   console.log(JSON.stringify(report, null, 2));
   process.exitCode = report.ok ? 0 : 1;
 }

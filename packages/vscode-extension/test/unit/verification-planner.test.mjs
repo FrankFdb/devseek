@@ -76,6 +76,38 @@ test('VerificationPlanner gives explicit verifier configuration precedence over 
   });
 });
 
+test('VerificationPlanner preserves path triggers and explicit verifier dependencies', () => {
+  const candidates = discover(['src/x11_app.cpp'], {
+    '/repo/devseek.verify.json': JSON.stringify({
+      commands: [
+        { id: 'build', cmd: 'cmake', args: ['--build', 'build'], paths: ['src', 'include'] },
+        {
+          id: 'x11-smoke',
+          cmd: 'bash',
+          args: ['-lc', './build/app --smoke'],
+          paths: ['src/x11_app.cpp', 'include/x11_app.hpp'],
+          dependsOn: ['build'],
+        },
+        { id: 'readme', cmd: 'node', args: ['tools/check-readme.mjs'], paths: ['README.md'] },
+      ],
+    }),
+  });
+
+  assert.deepEqual(candidates[0].steps.map(step => ({
+    id: step.id,
+    triggerPaths: step.triggerPaths,
+    dependsOnStepIds: step.dependsOnStepIds,
+  })), [
+    { id: 'vscode-config-build', triggerPaths: ['src', 'include'], dependsOnStepIds: undefined },
+    {
+      id: 'vscode-config-x11-smoke',
+      triggerPaths: ['src/x11_app.cpp', 'include/x11_app.hpp'],
+      dependsOnStepIds: ['vscode-config-build'],
+    },
+    { id: 'vscode-config-readme', triggerPaths: ['README.md'], dependsOnStepIds: undefined },
+  ]);
+});
+
 test('VerificationPlanner maps package build and test scripts to ordered structured steps', () => {
   const candidates = discover(['src/value.ts'], {
     '/repo/package.json': JSON.stringify({ scripts: { build: 'tsc', test: 'node --test' } }),
@@ -158,6 +190,11 @@ test('VerificationPlanner fails closed on malformed or disallowed explicit comma
   assert.throws(() => discover(['src/app.js'], {
     '/repo/devseek.verify.json': JSON.stringify({ commands: [{ cmd: 'curl', args: ['example.com'] }] }),
   }), /command is not allowed: curl/);
+  assert.throws(() => discover(['src/app.js'], {
+    '/repo/devseek.verify.json': JSON.stringify({
+      commands: [{ id: 'test', cmd: 'node', args: ['test.js'], dependsOn: ['missing'] }],
+    }),
+  }), /dependency is unknown/);
 });
 
 test('VerificationPlanner source has no prompt-driven command selection boundary', () => {

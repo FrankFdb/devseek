@@ -47,7 +47,7 @@ export interface RegressionSelectionServicePort {
   bind(input: { readonly runId: string }): RegressionSelectionPort;
 }
 
-/** Selects the smallest verifier prefix that preserves failed-check and acceptance coverage. */
+/** Selects the smallest dependency-closed verifier set that preserves acceptance coverage. */
 export class CanonicalRegressionSelectionService implements RegressionSelectionServicePort {
   bind(input: { readonly runId: string }): RegressionSelectionPort {
     return new CanonicalRegressionSelectionSession(
@@ -97,7 +97,7 @@ function selectRegression(
       ? 'dependent'
       : 'targeted';
   const selectedSteps = selection.status === 'selected'
-    ? chooseSteps(selection.steps, failedCheckIds, strategy)
+    ? chooseSteps(selection.steps, input.changedPaths, failedCheckIds, strategy)
     : [];
   const coveredAcceptance = new Set(selectedSteps.flatMap(step => step.acceptanceIds));
   const requiredAcceptance = selection.acceptance
@@ -150,6 +150,37 @@ function selectRegression(
 
 function chooseSteps(
   steps: readonly CodingVerifierSelectionStep[],
+  changedPaths: readonly string[],
+  failedCheckIds: ReadonlySet<string>,
+  strategy: CodingRegressionStrategy,
+): CodingVerifierSelectionStep[] {
+  if (strategy === 'full-risk') return [...steps];
+  if (steps.every(step => step.triggerPaths === undefined && step.dependsOnStepIds === undefined)) {
+    return chooseLegacyStepPrefix(steps, failedCheckIds, strategy);
+  }
+
+  const selectedIds = new Set<string>();
+  for (const step of steps) {
+    if (failedCheckIds.has(step.id) || stepTriggeredByChanges(step, changedPaths)) {
+      selectedIds.add(step.id);
+    }
+  }
+  if (selectedIds.size === 0) return [...steps];
+
+  const byId = new Map(steps.map(step => [step.id, step]));
+  const includeDependencies = (stepId: string): void => {
+    for (const dependencyId of byId.get(stepId)?.dependsOnStepIds ?? []) {
+      if (selectedIds.has(dependencyId)) continue;
+      selectedIds.add(dependencyId);
+      includeDependencies(dependencyId);
+    }
+  };
+  for (const stepId of [...selectedIds]) includeDependencies(stepId);
+  return steps.filter(step => selectedIds.has(step.id));
+}
+
+function chooseLegacyStepPrefix(
+  steps: readonly CodingVerifierSelectionStep[],
   failedCheckIds: ReadonlySet<string>,
   strategy: CodingRegressionStrategy,
 ): CodingVerifierSelectionStep[] {
@@ -160,6 +191,25 @@ function chooseSteps(
   );
   if (lastFailedIndex < 0) return [...steps];
   return steps.filter((step, index) => index <= lastFailedIndex || step.role === 'file-readback');
+}
+
+function stepTriggeredByChanges(
+  step: CodingVerifierSelectionStep,
+  changedPaths: readonly string[],
+): boolean {
+  if (step.triggerPaths === undefined) return true;
+  return step.triggerPaths.some(trigger => (
+    trigger === 'workspace'
+      || changedPaths.some(changed => pathScopesOverlap(trigger, changed))
+  ));
+}
+
+function pathScopesOverlap(left: string, right: string): boolean {
+  const normalizedLeft = left.replace(/\\/gu, '/').replace(/^\.\//u, '').replace(/\/$/u, '');
+  const normalizedRight = right.replace(/\\/gu, '/').replace(/^\.\//u, '').replace(/\/$/u, '');
+  return normalizedLeft === normalizedRight
+    || normalizedLeft.startsWith(`${normalizedRight}/`)
+    || normalizedRight.startsWith(`${normalizedLeft}/`);
 }
 
 function requiresFullRegression(paths: readonly string[]): boolean {

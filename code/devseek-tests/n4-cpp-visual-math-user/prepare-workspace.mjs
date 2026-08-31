@@ -8,6 +8,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const protectedWorkspacePaths = Object.freeze([
   'CMakeLists.txt',
   'test.sh',
+  'devseek.verify.json',
   'USER_STORY.md',
   'tools/verify-ppm.mjs',
   'assets/fraction-number-line.actions',
@@ -22,6 +23,7 @@ export function prepareWorkspace(workspace) {
     'devseek.protectedFiles': [
       'CMakeLists.txt',
       'test.sh',
+      'devseek.verify.json',
       'USER_STORY.md',
       'tools/verify-ppm.mjs',
       'assets/**',
@@ -29,6 +31,7 @@ export function prepareWorkspace(workspace) {
   }, null, 2)}\n`);
   write(path.join(workspace, 'CMakeLists.txt'), cmakeContract());
   write(path.join(workspace, 'test.sh'), testContract(), 0o755);
+  write(path.join(workspace, 'devseek.verify.json'), JSON.stringify(verificationContract(), null, 2));
   write(path.join(workspace, 'USER_STORY.md'), userStory());
   write(path.join(workspace, 'assets/fraction-number-line.actions'), [
     'lesson fractions',
@@ -54,6 +57,54 @@ export function prepareWorkspace(workspace) {
 export function installWorkspaceVerificationTools(workspace) {
   const source = fs.readFileSync(path.join(here, 'ppm-analysis.mjs'), 'utf8');
   write(path.join(workspace, 'tools/verify-ppm.mjs'), source);
+  write(path.join(workspace, 'devseek.verify.json'), JSON.stringify(verificationContract(), null, 2));
+}
+
+function verificationContract() {
+  return {
+    commands: [
+      {
+        id: 'public',
+        cmd: 'bash',
+        args: ['test.sh'],
+        paths: ['src', 'include', 'CMakeLists.txt', 'test.sh'],
+      },
+      {
+        id: 'wide-render',
+        cmd: 'bash',
+        args: ['-lc', './build/math_visual_lab --script assets/fraction-number-line.actions --snapshot verification-wide.ppm --state verification-wide.json --width 1024 --height 640 && node tools/verify-ppm.mjs verification-wide.ppm'],
+        paths: [
+          'src/main.cpp',
+          'src/math_model.cpp',
+          'src/lesson_controller.cpp',
+          'src/raster_canvas.cpp',
+          'include/math_model.hpp',
+          'include/lesson_controller.hpp',
+          'include/raster_canvas.hpp',
+        ],
+        dependsOn: ['public'],
+      },
+      {
+        id: 'x11-smoke',
+        cmd: 'bash',
+        args: ['-lc', 'DISPLAY=${DISPLAY:-:0} ./build/math_visual_lab --smoke-frames 3 --width 800 --height 600'],
+        paths: ['src/x11_app.cpp', 'include/x11_app.hpp'],
+        dependsOn: ['public'],
+      },
+      {
+        id: 'x11-sanitizer',
+        cmd: 'bash',
+        args: ['-lc', 'cmake -S . -B build-sanitizer -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" && cmake --build build-sanitizer --parallel 2 && ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 DISPLAY=${DISPLAY:-:0} ./build-sanitizer/math_visual_lab --smoke-frames 3 --width 800 --height 600'],
+        paths: ['src/x11_app.cpp', 'include/x11_app.hpp'],
+      },
+      {
+        id: 'operator-readme',
+        cmd: 'node',
+        args: ['-e', 'const s=require("fs").readFileSync("README.md","utf8");if(!/(build|cmake)/i.test(s)||!/(keyboard|mouse|键盘|鼠标)/i.test(s)||!/--smoke-frames/.test(s))process.exit(1)'],
+        paths: ['README.md'],
+      },
+    ],
+  };
 }
 
 function cmakeContract() {

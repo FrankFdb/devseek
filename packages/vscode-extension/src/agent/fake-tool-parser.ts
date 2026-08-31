@@ -25,47 +25,16 @@ import {
   parseXmlToolParameterBody,
   primaryScalarInputKeyForTool,
 } from './xml-tool-dialects';
+import {
+  findRawNamedToolAttemptStart,
+  KNOWN_TEXT_TOOL_NAMES,
+  stripRawNamedToolAttempts,
+} from './raw-named-tool-attempt';
 
 export { findJsonArrayEnd, findJsonObjectEnd };
 export type { FakeTool } from './fake-tool-json-utils';
 
-export const KNOWN_FAKE_TOOL_NAMES = new Set(listAgentToolNames());
-
-function makeRawNamedToolAttemptRegex(flags = 'gi'): RegExp {
-  return new RegExp(String.raw`<\s*TOOL\s+name\s*=\s*(["'])([A-Za-z0-9_]+)\1\s*>\s*\{`, flags);
-}
-
-function findRawNamedToolAttemptStart(text: string): number {
-  const regex = makeRawNamedToolAttemptRegex();
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(text)) !== null) {
-    const name = normalizeAgentToolName(match[2]);
-    if (KNOWN_FAKE_TOOL_NAMES.has(name) || /^mcp__[A-Za-z0-9_]+$/.test(name)) return match.index;
-  }
-  return -1;
-}
-
-function stripRawNamedToolAttempts(text: string): { text: string; removed: boolean } {
-  const regex = makeRawNamedToolAttemptRegex();
-  let output = '';
-  let cursor = 0;
-  let removed = false;
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(text)) !== null) {
-    const name = normalizeAgentToolName(match[2]);
-    if (!KNOWN_FAKE_TOOL_NAMES.has(name) && !/^mcp__[A-Za-z0-9_]+$/.test(name)) continue;
-    output += text.slice(cursor, match.index).replace(/[ \t]+$/, '');
-    const close = /<\/\s*TOOL\s*>/gi;
-    close.lastIndex = regex.lastIndex;
-    const closeMatch = close.exec(text);
-    cursor = closeMatch ? close.lastIndex : text.length;
-    regex.lastIndex = cursor;
-    removed = true;
-  }
-  if (!removed) return { text, removed: false };
-  output += text.slice(cursor);
-  return { text: output, removed: true };
-}
+export const KNOWN_FAKE_TOOL_NAMES = KNOWN_TEXT_TOOL_NAMES;
 
 const SHELL_TRANSCRIPT_NAMES = new Set([
   'bash', 'shell', 'sh', 'zsh', 'console', 'terminal', 'cmd', 'powershell', 'pwsh',

@@ -208,6 +208,17 @@ test('terminal verification reuse requires current run, full scope, current acce
   assert.equal(selectReusableVerificationReceipt(base)?.actionId, 'terminal-verify-7');
   assert.equal(selectReusableVerificationReceipt({
     ...base,
+    requiredEvidenceRefs: ['config:devseek.verify.json'],
+  }), undefined);
+  assert.equal(selectReusableVerificationReceipt({
+    ...base,
+    requiredEvidenceRefs: ['config:devseek.verify.json'],
+    verificationReceipts: [priorVerificationReceipt({
+      evidenceRefs: ['terminal:verify-7:exit-0', 'config:devseek.verify.json'],
+    })],
+  })?.actionId, 'terminal-verify-7');
+  assert.equal(selectReusableVerificationReceipt({
+    ...base,
     runId: 'another-run',
   }), undefined);
   assert.equal(selectReusableVerificationReceipt({
@@ -347,6 +358,70 @@ test('a diagnostic projection receipt cannot suppress canonical auto validation'
 
     assert.equal(commandRuns, 1);
     assert.equal(result.verificationReceipt.status, 'passed');
+    assert.doesNotMatch(result.feedbackForAI, /无需重复启动自动验证器/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('explicit project verification rejects a weaker proof and runs only path-triggered steps', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-explicit-targeted-'));
+  try {
+    seed(root, 'src/x11_app.cpp', 'void render_frame() {}\n');
+    seed(root, 'README.md', '# Existing documentation\n');
+    seed(root, 'devseek.verify.json', JSON.stringify({
+      commands: [
+        { id: 'public', cmd: 'bash', args: ['test.sh'], paths: ['src', 'include'] },
+        { id: 'x11', cmd: 'bash', args: ['x11-smoke.sh'], paths: ['src/x11_app.cpp'], dependsOn: ['public'] },
+        { id: 'readme', cmd: 'node', args: ['check-readme.mjs'], paths: ['README.md'] },
+      ],
+    }));
+    const invocations = [];
+    const context = verificationContext(
+      root,
+      ['src/x11_app.cpp'],
+      [],
+      [],
+      async invocation => {
+        invocations.push(invocation.command);
+        return {
+          ran: true,
+          ok: true,
+          command: invocation.command,
+          exitCode: 0,
+          stdout: 'PASS\n',
+          stderr: '',
+          output: 'PASS\n',
+          cwd: invocation.cwd,
+        };
+      },
+    );
+    const weakerProof = priorVerificationReceipt({
+      runId: context.callbacks.traceRunId,
+      scopePaths: ['src/x11_app.cpp'],
+      evidenceRefs: ['script:test.sh', 'terminal:verify-7:exit-0'],
+    });
+
+    const result = await runAgentAutoValidationForWrites(
+      [written(root, 'src/x11_app.cpp')],
+      root,
+      '修复现有 X11 实现并验证失败点',
+      context.callbacks,
+      {
+        verificationAcceptance: context.acceptance,
+        priorVerificationReceipts: [weakerProof],
+        changeReceipts: [committedChangeReceipt(['src/x11_app.cpp'], {
+          runId: context.callbacks.traceRunId,
+        })],
+      },
+    );
+
+    assert.deepEqual(invocations, ['bash test.sh', 'bash x11-smoke.sh']);
+    assert.deepEqual(result.verificationReceipt.checks.map(check => check.checkId), [
+      'vscode-config-public',
+      'vscode-config-x11',
+    ]);
+    assert.equal(result.verificationReceipt.evidenceRefs.includes('config:devseek.verify.json'), true);
     assert.doesNotMatch(result.feedbackForAI, /无需重复启动自动验证器/);
   } finally {
     rmSync(root, { recursive: true, force: true });

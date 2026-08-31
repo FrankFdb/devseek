@@ -120,3 +120,63 @@ test('C9 regression selection rejects action identity drift', () => {
   port.select(input);
   assert.throws(() => port.select({ ...input, changedPaths: ['src/other.ts'] }), /conflicting-action-identity/);
 });
+
+test('I19-REG-03 path-triggered verification selects only the dependency closure', () => {
+  const selection = verifierSelection();
+  const [readback, build, testStep, runtime] = selection.steps;
+  const decision = new CanonicalRegressionSelectionService().bind({ runId: 'run-regression' }).select({
+    sequence: 2,
+    actionId: 'regression-targeted-x11',
+    changedPaths: ['src/x11_app.cpp'],
+    verifierSelection: {
+      ...selection,
+      scopePaths: ['src/x11_app.cpp'],
+      steps: [
+        { ...readback, triggerPaths: ['README.md'] },
+        { ...build, triggerPaths: ['src', 'include'] },
+        {
+          ...testStep,
+          id: 'wide-render',
+          triggerPaths: ['src/raster_canvas.cpp', 'src/lesson_controller.cpp'],
+          dependsOnStepIds: ['build'],
+        },
+        {
+          ...runtime,
+          id: 'x11-smoke',
+          triggerPaths: ['src/x11_app.cpp', 'include/x11_app.hpp'],
+          dependsOnStepIds: ['build'],
+        },
+      ],
+    },
+    previousVerifications: [],
+    evidenceRefs: ['mutation:x11-repair'],
+  });
+
+  assert.equal(decision.strategy, 'targeted');
+  assert.deepEqual(decision.selectedStepIds, ['build', 'x11-smoke']);
+  assert.deepEqual(decision.omittedStepIds, ['readback', 'wide-render']);
+});
+
+test('I19-REG-04 a prior failed check remains selected with its declared prerequisites', () => {
+  const selection = verifierSelection();
+  const decision = new CanonicalRegressionSelectionService().bind({ runId: 'run-regression' }).select({
+    sequence: 2,
+    actionId: 'regression-failed-only',
+    changedPaths: ['README.md'],
+    verifierSelection: {
+      ...selection,
+      scopePaths: ['README.md'],
+      steps: selection.steps.map(step => ({
+        ...step,
+        triggerPaths: step.id === 'readback' ? ['README.md'] : ['src'],
+        ...(step.id === 'test' ? { dependsOnStepIds: ['build'] } : {}),
+      })),
+    },
+    previousVerifications: [failedTestReceipt()],
+    evidenceRefs: ['mutation:readme'],
+  });
+
+  assert.equal(decision.strategy, 'dependent');
+  assert.deepEqual(decision.selectedStepIds, ['readback', 'build', 'test']);
+  assert.deepEqual(decision.omittedStepIds, ['runtime']);
+});

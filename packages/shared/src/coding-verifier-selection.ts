@@ -56,6 +56,10 @@ export interface CodingVerifierCandidateStep {
   readonly cwd: string;
   readonly timeoutMs: number;
   readonly outputPolicy: CodingVerifierOutputPolicy;
+  /** Workspace path prefixes whose mutation makes this step relevant. */
+  readonly triggerPaths?: readonly string[];
+  /** Stable step ids that must execute before this step. */
+  readonly dependsOnStepIds?: readonly string[];
   readonly evidenceRefs: readonly string[];
 }
 
@@ -340,6 +344,7 @@ function snapshotCandidate(candidate: CodingVerifierCandidate, workspaceRoot: st
     return snapshot;
   });
   if (steps.length === 0) selectionFailure('missing-candidate-steps');
+  assertCandidateStepGraph(steps, stepIds);
   return Object.freeze({
     id,
     source: normalizedCodingId(candidate.source, 'verifier-candidate-source'),
@@ -370,8 +375,44 @@ function snapshotCandidateStep(
     cwd,
     timeoutMs: step.timeoutMs,
     outputPolicy: requireOutputPolicy(step.outputPolicy),
+    ...(step.triggerPaths === undefined ? {} : {
+      triggerPaths: Object.freeze(uniqueCodingRefs(step.triggerPaths.map(normalizeScopeRef))),
+    }),
+    ...(step.dependsOnStepIds === undefined ? {} : {
+      dependsOnStepIds: Object.freeze(uniqueCodingRefs(
+        step.dependsOnStepIds.map(id => normalizedCodingId(id, 'verifier-step-dependency-id')),
+      )),
+    }),
     evidenceRefs: Object.freeze(uniqueCodingRefs(step.evidenceRefs)),
   });
+}
+
+function assertCandidateStepGraph(
+  steps: readonly CodingVerifierCandidateStep[],
+  stepIds: ReadonlySet<string>,
+): void {
+  for (const step of steps) {
+    if ((step.triggerPaths?.length ?? 0) === 0 && step.triggerPaths !== undefined) {
+      selectionFailure('empty-step-trigger-paths');
+    }
+    for (const dependencyId of step.dependsOnStepIds ?? []) {
+      if (dependencyId === step.id) selectionFailure('self-dependent-candidate-step');
+      if (!stepIds.has(dependencyId)) selectionFailure('unknown-candidate-step-dependency');
+    }
+  }
+
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const byId = new Map(steps.map(step => [step.id, step]));
+  const visit = (stepId: string): void => {
+    if (visited.has(stepId)) return;
+    if (visiting.has(stepId)) selectionFailure('cyclic-candidate-step-dependency');
+    visiting.add(stepId);
+    for (const dependencyId of byId.get(stepId)?.dependsOnStepIds ?? []) visit(dependencyId);
+    visiting.delete(stepId);
+    visited.add(stepId);
+  };
+  for (const step of steps) visit(step.id);
 }
 
 function snapshotInvocation(invocation: CodingVerifierInvocation): CodingVerifierInvocation {

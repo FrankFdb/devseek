@@ -17,6 +17,7 @@ import {
 } from './completion-evidence';
 import type { TodoItem } from './evidence-recovery';
 import type { AgentLoopCallbacks, AgentLoopResult } from './loop-types';
+import { buildAgenticFailureCheckpointTask } from './agentic-failure-checkpoint';
 
 export interface AgenticFinalSettlementInput {
   userPrompt: string;
@@ -77,6 +78,15 @@ export async function settleAgenticLoopFinal(input: AgenticFinalSettlementInput)
 
   if (!(cleanAbort || failedReason)) {
     await callbacks.onTaskCheckpoint?.(null, [], 'completed');
+  } else if (!policyRefusalEvidenceSatisfied) {
+    const pendingTask = buildAgenticFailureCheckpointTask({
+      userPrompt,
+      failureReason: cleanAbort ? '用户中断。' : failedReason,
+      writtenFiles: finalWrittenFiles,
+      terminalEvidence,
+      todos: currentTodos,
+    });
+    await callbacks.onTaskCheckpoint?.(0, [pendingTask], 'paused');
   }
 
   const derivedQualityGate = buildAgenticQualityGateForHistory({

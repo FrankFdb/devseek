@@ -926,6 +926,7 @@ test('Agent parser: malformed file tool JSON is recovered for code payloads', ()
 
 test('Execution failures remain in the canonical model-tool-result repair loop', () => {
   const agenticLoop = src('src/agent/agentic-loop.ts');
+  const recoveryCoordinator = src('src/agent/agentic-provider-recovery-coordinator.ts');
   const terminalRepair = src('src/agent/terminal-failure-repair.ts');
   const writeGuard = src('src/agent/write-guard.ts');
   for (const retired of [
@@ -940,11 +941,11 @@ test('Execution failures remain in the canonical model-tool-result repair loop',
   assertContains(terminalRepair, '该活动失败是下一轮最高优先级', 'active failures must constrain every continuing tool round');
   assertContains(terminalRepair, '原样重跑上面的失败命令', 'a successful repair write must return to the public validation command');
   assertContains(terminalRepair, '过滤结果只能补充诊断，不能作为通过证据', 'diagnostic filters must not impersonate public validation');
-  assertContains(agenticLoop, 'recoverBlockingTerminalFailure', 'all no-tool exits must share one terminal-failure recovery owner');
+  assertContains(recoveryCoordinator, 'recoverBlockingTerminalFailure', 'all no-tool exits must share one terminal-failure recovery owner');
   assertContains(agenticLoop, 'evidenceWithoutTools.blockingTerminalFailure', 'completion prose must not suppress an unresolved terminal failure');
   assert.match(
     agenticLoop,
-    /if \(await recoverBlockingTerminalFailure\([\s\S]*?evidenceWithoutTools\.blockingTerminalFailure[\s\S]*?\)\) \{[\s\S]*?continue;/,
+    /if \(await providerRecoveryCoordinator\.recoverBlockingTerminalFailure\([\s\S]*?evidenceWithoutTools\.blockingTerminalFailure[\s\S]*?\)\) \{[\s\S]*?continue;/,
     'a no-tool response with adverse terminal evidence must continue the repair loop',
   );
   assertContains(agenticLoop, 'getTerminalRecoveryProtocol', 'repeated failures must enter bounded root-cause recovery');
@@ -954,6 +955,7 @@ test('Execution failures remain in the canonical model-tool-result repair loop',
 
 test('Agentic loop: repeated terminal failures enter root-cause recovery before retry', () => {
   const code = src('src/agent/agentic-loop.ts');
+  const recoveryCoordinator = src('src/agent/agentic-provider-recovery-coordinator.ts');
   const recovery = src('src/agent/write-guard.ts');
   const failureProgress = src('src/agent/terminal-failure-progress.ts');
   const terminalRepair = src('src/agent/terminal-failure-repair.ts');
@@ -979,7 +981,7 @@ test('Agentic loop: repeated terminal failures enter root-cause recovery before 
   assertContains(code, 'isContextGatheringToolName', 'agent loop must delegate context-tool classification');
   assertContains(convergence, 'CONTEXT_GATHERING_TOOL_NAMES', 'context gathering repeats must share the same no-progress guard');
   assertContains(code, 'ContextInvestigationLedger', 'agent loop must delegate duplicate investigation ownership');
-  assertContains(code, 'contextInvestigation.reset()', 'a rebuilt Provider session must forget evidence it can no longer see');
+  assertContains(recoveryCoordinator, 'contextInvestigation.reset()', 'a rebuilt Provider session must forget evidence it can no longer see');
   assertContains(investigation, 'private readonly signatures', 'exact context repeats must be tracked across rounds');
   assertContains(investigation, 'private readonly readCoverage', 'successful broad reads must cover later narrow requests');
   assertContains(investigation, 'recordVisibleReadExposures', 'read coverage must come from post-projection Provider-visible lines');
@@ -1111,26 +1113,28 @@ test('Agent validation completion settles spinner instead of leaving validation 
 
 test('Agentic loop: provider failure after satisfied local evidence does not overturn completion', () => {
   const code = src('src/agent/agentic-loop.ts');
+  const coordinator = src('src/agent/agentic-provider-recovery-coordinator.ts');
+  const finalDecision = src('src/agent/agentic-final-decision.ts');
   const settlement = src('src/agent/agentic-provider-settlement.ts');
-  assertContains(code, 'settleProviderFailureFromCompletedEvidence', 'agent loop must delegate completed-evidence provider-failure settlement');
+  assertContains(coordinator, 'settleProviderFailureFromCompletedEvidence', 'Provider recovery coordinator must delegate completed-evidence settlement');
   assertContains(settlement, 'assessMissingCompletionEvidence', 'provider failure settlement must use the shared semantic completion evidence boundary');
   assertContains(settlement, 'findBlockingTerminalFailureEvidence', 'provider failure settlement must preserve terminal failure authority');
   assertContains(settlement, 'input.completionBlockers?.some', 'provider failure settlement must preserve independent completion gates');
   assertContains(settlement, 'input.unsettledToolProposal', 'an unarbitrated Provider action must block completed-evidence settlement');
-  assertContains(code, 'unsettledToolProposal: Boolean(providerFailure?.observedToolNames?.length)', 'the loop must project observed failed actions into settlement');
+  assertContains(coordinator, 'unsettledToolProposal: Boolean(failure?.observedToolNames?.length)', 'the coordinator must project observed failed actions into settlement');
   assertContains(code, 'requirementReview.completionBlocker()', 'stale local evidence must not bypass pending independent requirement review');
   assertContains(code, 'providerRecovery.completionBlocker()', 'stale local evidence must not bypass pending provider-action recovery');
   assertContains(code, 'toolFailureRecovery.completionBlocker()', 'stale local evidence must not bypass pending mutation repair');
   assertContains(code, 'resolveAgenticRoundBudgetFailure', 'natural round exhaustion must become an explicit non-delivery result');
-  assertContains(code, 'toolExecutions: lastRoundToolExecutionCount', 'final settlement must compare current requests with current executions');
+  assertContains(finalDecision, 'toolExecutions: input.lastRoundToolExecutionCount', 'final settlement must compare current requests with current executions');
   assert.match(
-    code,
-    /const settleOrRecoverProviderFailureInsideCurrentTask[\s\S]*?settleProviderFailureFromCompletedEvidence[\s\S]*?if \(providerSettlement\.completed\)/,
+    coordinator,
+    /async settleOrRecover[\s\S]*?settleProviderFailureFromCompletedEvidence[\s\S]*?if \(settlement\.completed\)/,
     'the shared provider-failure entry must settle completed local evidence before recovery',
   );
   assert.match(
     code,
-    /catch \(error\) \{[\s\S]*?parseAgentProviderFailure\(error\)[\s\S]*?settleOrRecoverProviderFailureInsideCurrentTask/,
+    /catch \(error\) \{[\s\S]*?parseAgentProviderFailure\(error\)[\s\S]*?providerRecoveryCoordinator\.settleOrRecover/,
     'transport provider failures must use the shared settle-or-recover entry',
   );
 });
@@ -1512,6 +1516,7 @@ test('Safety refusal: no-mutation delivery has one explicit evidence path', () =
   const safetyIntent = src('src/intent/safety-intent.ts');
   const safetyPolicy = src('../shared/src/coding-safety-policy.ts');
   const agenticLoop = src('src/agent/agentic-loop.ts');
+  const finalDecision = src('src/agent/agentic-final-decision.ts');
   const settlement = src('src/agent/agentic-final-settlement.ts');
   const runtimeState = src('src/agent/agent-runtime-state-machine.ts');
   assertContains(safetyIntent, "from '@devseek-netai/shared'", 'VS Code safety intent must delegate to the shared owner');
@@ -1519,9 +1524,9 @@ test('Safety refusal: no-mutation delivery has one explicit evidence path', () =
   assertContains(safetyPolicy, 'isUnsafeSecretHarvestingImplementationRequest(requestText)', 'refusal evidence must consume the canonical safety intent owner');
   assertContains(safetyPolicy, 'runtime.workToolUsed !== true', 'a refusal receipt must reject work-tool side effects');
   assertContains(safetyPolicy, '(runtime.changedFileCount ?? 0) === 0', 'a refusal receipt must reject file mutations');
-  assertContains(agenticLoop, '{ workToolUsed: sawWorkTool, changedFileCount: allWrittenFiles.length }', 'exploratory completion must project real side-effect facts');
-  assertContains(agenticLoop, 'policyRefusalEvidenceSatisfied,', 'Agent runtime settlement must receive explicit refusal evidence');
-  assertContains(agenticLoop, 'settleAgenticLoopFinal', 'canonical completion must delegate acceptance evidence settlement');
+  assertContains(finalDecision, '{ workToolUsed: input.sawWorkTool, changedFileCount: input.writtenFiles.length }', 'exploratory completion must project real side-effect facts');
+  assertContains(finalDecision, 'policyRefusalEvidenceSatisfied,', 'Agent runtime settlement must receive explicit refusal evidence');
+  assertContains(finalDecision, 'settleAgenticLoopFinal', 'canonical completion must delegate acceptance evidence settlement');
   assertContains(settlement, 'buildSecretHarvestingRefusalAcceptanceEvidence()', 'canonical completion must receive direct refusal acceptance evidence');
   assertContains(runtimeState, 'if (input.policyRefusalEvidenceSatisfied && hasDeliverySignal)', 'RuntimeState must own no-mutation refusal delivery');
   assert.match(
@@ -2896,6 +2901,7 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   const productKernelExecutor = src('src/product-coding-kernel-executor.ts');
   const agentProviderRecovery = src('src/agent/provider-response-recovery.ts');
   const agenticProviderRecoveryBoundary = src('src/agent/agentic-provider-recovery-boundary.ts');
+  const agenticProviderRecoveryCoordinator = src('src/agent/agentic-provider-recovery-coordinator.ts');
   const agentHistoryCompaction = src('src/agent/agent-history-compaction.ts');
   const agenticContextCompaction = src('src/agent/agentic-context-compaction.ts');
   const runDisplay = src('src/agent/agent-run-display.ts');
@@ -2943,17 +2949,17 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   assertContains(agentProviderRecovery, 'shouldResetProviderSessionForRecovery', 'provider recovery must decide when a web session is wedged');
   assertContains(agenticLoop, 'parseAgentProviderFailure(error)', 'agentic loop must catch provider corruption before extension-level failure');
   assertContains(agenticProviderRecoveryBoundary, 'buildAgentProviderRecoveryPrompt', 'agentic provider recovery boundary must recover inside the current task from safe facts');
-  assertContains(agenticLoop, 'forceProviderNewSessionNextTurn', 'agentic loop must rebuild a wedged Provider session from task history');
-  assertContains(agenticProviderRecoveryBoundary, 'applyProviderRecoveryHistory', 'provider recovery must rebuild a minimal ledger context instead of replaying raw history');
+  assertContains(agenticLoop, 'providerRecoveryCoordinator.takeFreshProviderSession', 'agentic loop must consume Provider session recovery through its coordinator');
+  assertContains(agenticProviderRecoveryCoordinator, 'applyProviderRecoveryHistory', 'provider recovery must rebuild a minimal ledger context instead of replaying raw history');
   assertContains(agenticProviderRecoveryBoundary, 'forceFreshProviderSession', 'provider recovery boundary must report when the loop needs a fresh Provider session');
-  assertContains(agenticLoop, 'resetProviderRecoveryAttemptsAfterProgress', 'provider recovery budget must reset after real tool progress');
+  assertContains(agenticLoop, 'providerRecoveryCoordinator.resetAfterProgress', 'agentic loop must reset the Provider recovery budget after real tool progress');
+  assertContains(agenticProviderRecoveryCoordinator, 'MAX_PROVIDER_RECOVERY_ATTEMPTS = 3', 'provider recovery coordinator must own a bounded retry budget');
   assertContains(agenticContextCompaction, 'replaceAllAssistantToolHistory', 'context compaction adapter must summarize all executed assistant tool calls before provider sends');
   assertContains(agenticLoop, 'replaceLatestAssistantToolHistory', 'agentic loop must summarize executed tool calls before the next provider round');
   assertContains(agentHistoryCompaction, 'applyProviderRecoveryHistory', 'agent history compaction must own provider recovery history rebuilding');
   assertContains(agentHistoryCompaction, 'replaceAllAssistantToolHistory', 'agent history compaction must support whole-history tool request summarization');
   assertContains(agentHistoryCompaction, 'summarizeExecutedAssistantToolHistory', 'agent history compaction must summarize executed tool requests');
   assertContains(agentHistoryCompaction, 'contentChars=', 'agent history compaction must preserve write payload size without resending content');
-  assertContains(agenticLoop, 'AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS', 'agentic loop provider recovery must be bounded');
   assertContains(extension, 'new ProviderRecoveryService().classify', 'agent provider errors must be classified before showing UI errors');
   assertContains(extension, 'buildProviderRecoveryCheckpointRecord', 'provider recovery must save a canonical resumable record');
   assertContains(recoveryCheckpoint, 'buildProviderRecoveryCheckpointTasks', 'provider recovery checkpoint must derive pending work from task facts');
@@ -3205,11 +3211,12 @@ test('Architecture: Bridge chat owns browser reset boundaries and trace-scoped p
 
 test('Agentic loop: visible correction and context convergence are owned by Agent Core', () => {
   const agenticLoop = src('src/agent/agentic-loop.ts');
+  const recoveryCoordinator = src('src/agent/agentic-provider-recovery-coordinator.ts');
   const agenticProviderRecoveryBoundary = src('src/agent/agentic-provider-recovery-boundary.ts');
   const runContext = src('src/app/run-context.ts');
   const textProtocol = src('src/agent/text-tool-protocol.ts');
 
-  assertContains(agenticLoop, 'emitAgenticCorrectionStatus', 'agentic loop must surface internal recovery as user-visible status');
+  assertContains(recoveryCoordinator, 'emitCorrectionStatus', 'Agent Core recovery must surface internal recovery as user-visible status');
   assertContains(agenticProviderRecoveryBoundary, "'provider-response-corruption'", 'provider response recovery must have a stable evidence reason');
   assertContains(agenticLoop, 'providerRecovery.completeAcceptedResponse', 'agent loop must close provider recovery at the provider response boundary');
   assertContains(agenticProviderRecoveryBoundary, 'class AgenticProviderRecoveryLifecycle', 'provider recovery boundary must own its pending lifecycle');
@@ -3220,7 +3227,7 @@ test('Agentic loop: visible correction and context convergence are owned by Agen
     'host-created read debt must be reconciled before provider recovery action admission',
   );
   assertContains(agenticLoop, 'providerRecovery.screenToolProposals(screenedTools', 'agent loop must apply the local recovery action budget before tool execution');
-  assertContains(agenticLoop, 'activeRepairContext: requirementReview.recoveryContext()', 'provider rebuilds must preserve the active independent-review repair contract');
+  assertContains(recoveryCoordinator, 'activeRepairContext: requirementReview.recoveryContext()', 'provider rebuilds must preserve the active independent-review repair contract');
   assertContains(runContext, 'provider-recovery-status-observed', 'RunContext must observe provider retry progress without claiming workspace recovery authority');
   assertDoesNotContain(runContext, 'collectRecoverableAdverseOperationIds', 'one recovery lane must not sweep unrelated adverse operations from the shared ledger');
   assertContains(agenticLoop, 'inspectIncompleteAuthorizedTextToolProtocol(text, textToolProtocol)', 'incomplete current-channel envelopes must preserve observed action names without granting execution authority');
@@ -3229,7 +3236,7 @@ test('Agentic loop: visible correction and context convergence are owned by Agen
   assertContains(textProtocol, 'QuarantinedTextToolProtocol', 'text protocol boundary must expose quarantine evidence separately from authorized calls');
   assertContains(textProtocol, "match.dialect === 'bare-json-tool-call'", 'strict JSON must remain a lossless mutation authority path');
   assertContains(textProtocol, 'losslessFencedXmlMutationIdentities', 'fenced CDATA must own text-provider source mutation authority');
-  assertContains(agenticLoop, 'settleOrRecoverProviderFailureInsideCurrentTask({', 'all provider failures must settle completed evidence before entering recovery');
+  assertContains(agenticLoop, 'providerRecoveryCoordinator.settleOrRecover({', 'all provider failures must settle completed evidence before entering recovery');
   assertContains(agenticLoop, "'incomplete-tool-block'", 'damaged authorized envelopes must get a stable recoverable failure status');
   assertContains(agenticLoop, "'invalid-tool-block'", 'empty or malformed authorized envelopes must get a stable recoverable failure status');
   assertContains(agenticLoop, "'out-of-envelope-tool-block'", 'quarantined provider actions must get a distinct recoverable failure status');
@@ -3576,11 +3583,12 @@ test('R3-03 Steering: raw user correction invalidates pending actions and requir
 test('Extension execution boundary: ordinary source prose cannot enter a write path', () => {
   const extension = src('src/extension.ts');
   const loop = src('src/agent/agentic-loop.ts');
+  const recoveryCoordinator = src('src/agent/agentic-provider-recovery-coordinator.ts');
   const writer = src('src/agent/tool-loop-file-writer.ts');
   assertDoesNotContain(extension, 'looksLikeTargetScopedSourceResponse', 'the extension must not infer write authority from source-shaped prose');
   assertDoesNotContain(extension, 'applyGeneratedArtifactsWithPrompt', 'the retired response-to-workspace mutation path must stay absent');
   assertContains(loop, 'parseAuthorizedTextToolCalls(sAccum, textToolProtocol)', 'text tool execution must require the current run-scoped protocol channel');
-  assertContains(loop, 'currentWriteCohortValidated: sourceValidation.currentSourceIsValidated()', 'provider corruption must not settle against stale validation evidence');
+  assertContains(recoveryCoordinator, 'currentWriteCohortValidated: sourceValidation.currentSourceIsValidated()', 'provider corruption must not settle against stale validation evidence');
   assertContains(writer, 'rawPath: string', 'the canonical writer must require the concrete path projected from a typed tool call');
   assertContains(writer, 'normalizeFileWritePath(', 'the concrete tool path must pass through the local path boundary');
 });

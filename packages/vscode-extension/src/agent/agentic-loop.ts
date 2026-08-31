@@ -61,7 +61,6 @@ import {
 } from './task-execution-result';
 import type { AgentLoopCallbacks, AgentLoopResult } from './loop-types';
 import { copyAgentLoopCallbacks } from './loop-callbacks';
-import type { AgentRecoveryReason } from './events';
 import type { EvidenceRef } from './tool-executor';
 import { chatWithMessages } from './loop-chat';
 import { projectTaskContractAcceptance } from './task-contract-acceptance';
@@ -89,24 +88,19 @@ import {
   runtimeStateCanDeliver,
   settleAgentRuntimeState,
 } from './agent-runtime-state-machine';
-import { settleProviderFailureFromCompletedEvidence } from './agentic-provider-settlement';
 import { describeProviderOutputIntegrity } from './provider-output-integrity';
 import {
   parseAgentProviderFailure,
 } from './provider-response-recovery';
 import {
-  AgenticProviderRecoveryLifecycle,
   projectProviderRecoveryScreenFeedback,
-  recoverAgenticProviderFailure,
 } from './agentic-provider-recovery-boundary';
 import {
-  applyProviderRecoveryHistory,
   replaceLatestAssistantToolHistory,
 } from './agent-history-compaction';
 import {
   compactAgenticMessageHistory,
   projectAgenticToolFeedback,
-  rebuildAgenticHistoryForFreshProviderSession,
 } from './agentic-context-compaction';
 import { deliverAgenticToolFeedback } from './agentic-tool-feedback-delivery';
 import { ToolFailureRecoveryLedger } from './tool-failure-recovery';
@@ -140,7 +134,8 @@ import {
 import { ContextInvestigationLedger } from './context-investigation-ledger';
 import { createModelSemanticSettlementService } from './model-semantic-settlement';
 import { resolveAgenticPromptRequirements } from './agentic-prompt-requirements';
-const AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS = 3;
+import { AgenticProviderRecoveryCoordinator } from './agentic-provider-recovery-coordinator';
+import { settleAgenticFinalDecision } from './agentic-final-decision';
 
 // ----------------------------------------------------------------
 // Canonical agentic loop (Claude Code/Codex style)
@@ -215,12 +210,6 @@ export async function runAgenticLoop(
   let lastProviderText = '';
   let lastRoundToolRequestCount = 0;
   let lastRoundToolExecutionCount = 0;
-  let providerRecoveryAttempts = 0;
-  let forceProviderNewSessionNextTurn = false;
-  const resetProviderRecoveryAttemptsAfterProgress = () => {
-    providerRecoveryAttempts = 0;
-    forceProviderNewSessionNextTurn = false;
-  };
   const announcedProseKeys = new Set<string>();
   const allReadEvidencePaths = new Set<string>();
   const toolFailureRecovery = new ToolFailureRecoveryLedger({ workspaceRoot });
@@ -228,12 +217,13 @@ export async function runAgenticLoop(
   const deliveryConvergence = new DeliveryConvergenceLedger();
   const qualityGateStagnation = new QualityGateStagnationLedger();
   const terminalFailureProgress = new TerminalFailureProgressLedger();
+  let providerRecoveryCoordinator: AgenticProviderRecoveryCoordinator;
   const requirementReview = createProviderRequirementReviewService({
     userPrompt: () => writeAuthority.currentPrompt,
     workspaceRoot,
     mode,
     callbacks,
-    onProviderSessionReplaced: () => { forceProviderNewSessionNextTurn = true; },
+    onProviderSessionReplaced: () => providerRecoveryCoordinator.requestFreshProviderSession(),
     semanticContract: () => writeAuthority.completionSemanticContract,
     canonicalTaskContract: () => callbacks.canonicalTaskContract,
   });
@@ -288,155 +278,46 @@ export async function runAgenticLoop(
     ? 'explore'
     : requestedDisplayAction;
   const initialDisplayTarget = callbacks.runDisplayTarget || '';
-  const providerRecovery = new AgenticProviderRecoveryLifecycle(initialDisplayTarget, initialDisplayAction, callbacks);
   const currentCompletionBlockers = () => [
     requirementReview.completionBlocker(),
-    providerRecovery.completionBlocker(),
+    providerRecoveryCoordinator.lifecycle.completionBlocker(),
     toolFailureRecovery.completionBlocker(),
   ];
-  const emitAgenticCorrectionStatus = async (
-    title: string,
-    detail: string,
-    activityLabel?: string,
-    recoveryReason?: AgentRecoveryReason,
-  ) => {
-    if (callbacks.signal?.aborted) return;
-    callbacks.onToolActivity?.('label', activityLabel || title);
-    await callbacks.onAgentStatus({
-      type: 'agentStatus',
-      phase: 'execute',
-      taskId: 'agentic',
-      taskFile: initialDisplayTarget,
-      taskAction: initialDisplayAction,
-      recoveryReason,
-      taskIndex: 1,
-      taskTotal: 1,
-      state: 'started',
-      title,
-      detail,
-    });
-  };
-  const rebuildProviderSessionWithCausalFeedback = (feedback: string): void => {
-    forceProviderNewSessionNextTurn = true;
-    contextInvestigation.reset();
-    applyProviderRecoveryHistory(
-      messages,
-      { role: 'user', content: feedback },
-      true,
-    );
-    totalChars = rebuildAgenticHistoryForFreshProviderSession({
-      messages,
-      session: executionContext.contextCompaction,
-      currentTodos,
-      workspaceRoot,
-      round: roundCount,
-      evidenceRefs: allEvidenceRefs,
-      trigger: 'provider-recovery',
-      textToolProtocol,
-    });
-  };
-  const recoverBlockingTerminalFailure = async (
-    failure: TerminalEvidence | undefined,
-    missingEvidence: readonly string[],
-    maxNoToolRounds: number,
-  ): Promise<boolean> => {
-    if (!failure || callbacks.signal?.aborted || noToolRounds >= maxNoToolRounds) return false;
-    const recoveryAttempt = noToolRounds + 1;
-    const useFreshProviderSession = recoveryAttempt === 2;
-    noToolRounds = recoveryAttempt;
-    const feedback = [
-      buildTerminalFailureRepairFeedback(
-        failure,
-        missingEvidence,
-        terminalFailureProgress.requiresInvestigation() ? 'investigate' : 'repair',
-      ),
-      useFreshProviderSession
-        ? '原 Provider 会话已连续停在验证后的说明或动作预告，本轮将用原始任务、活动失败结果和最近修复意图重建会话；重建不会放宽任何工具权限。'
-        : '',
-    ].filter(Boolean).join('\n');
-    await emitAgenticCorrectionStatus(
-      '验证失败，继续依据证据修复',
-      [
-        describeBlockingTerminalFailure(failure),
-        useFreshProviderSession ? '当前 Provider 会话将按活动失败因果前沿重建。' : '',
-      ].filter(Boolean).join('。'),
-      '回流未清除的验证失败',
-    );
-    if (useFreshProviderSession) {
-      rebuildProviderSessionWithCausalFeedback(feedback);
-    } else {
-      appendUserFeedback(feedback);
-    }
-    return true;
-  };
-  const settleOrRecoverProviderFailureInsideCurrentTask = async (
-    providerFailure: ReturnType<typeof parseAgentProviderFailure>,
-    partialResponseLength = 0,
-  ): Promise<'completed' | 'recovered' | 'unrecoverable'> => {
-    const providerSettlement = settleProviderFailureFromCompletedEvidence({
-      providerFailureStatus: providerFailure?.status,
-      unsettledToolProposal: Boolean(providerFailure?.observedToolNames?.length),
-      promptRequiresTools,
-      sawWorkTool,
-      aborted: callbacks.signal?.aborted,
-      currentWriteCohortValidated: sourceValidation.currentSourceIsValidated(),
-      writtenFiles: allWrittenFiles,
-      terminalEvidence: allTerminalEvidence,
-      readEvidencePaths: [...allReadEvidencePaths],
-      workspaceRoot,
-      semanticContract: writeAuthority.completionSemanticContract,
-      canonicalTaskContract: callbacks.canonicalTaskContract,
-      completionBlockers: currentCompletionBlockers(),
-    });
-    if (providerSettlement.completed) {
-      completeSummary = completeSummary || providerSettlement.summary;
-      hadTaskComplete = true;
-      return 'completed';
-    }
-    const recovery = await recoverAgenticProviderFailure({
-      failure: providerFailure,
-      recoveryAttempts: providerRecoveryAttempts,
-      maxRecoveryAttempts: AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS,
-      partialResponseLength,
-      userPrompt: writeAuthority.currentPrompt,
-      promptRequiresTools,
-      currentTodos,
-      readEvidencePaths: [...allReadEvidencePaths],
-      writtenFiles: allWrittenFiles,
-      terminalEvidence: allTerminalEvidence,
-      activeRepairContext: requirementReview.recoveryContext(),
-      textToolProtocol,
-      messages,
-      totalChars,
-      contextCompaction: executionContext.contextCompaction,
-      workspaceRoot,
-      round: roundCount,
-      evidenceRefs: allEvidenceRefs,
-      taskFile: initialDisplayTarget,
-      taskAction: initialDisplayAction,
-      callbacks,
-    });
-    providerRecoveryAttempts = recovery.recoveryAttempts;
-    totalChars = recovery.totalChars;
-    if (recovery.forceFreshProviderSession) {
-      forceProviderNewSessionNextTurn = true;
-      // A rebuilt Provider session may replay file contents it no longer possesses.
-      contextInvestigation.reset();
-    }
-    if (recovery.recovered) {
-      providerRecovery.begin(
-        providerFailure?.operationId,
-        providerFailure?.observedToolNames,
-        {
-          allowRejectedWriteContextRefresh: recovery.forceFreshProviderSession
-            || allReadEvidencePaths.size === 0,
-        },
-      );
-      return 'recovered';
-    }
-    await providerRecovery.fail();
-    return 'unrecoverable';
-  };
+  providerRecoveryCoordinator = new AgenticProviderRecoveryCoordinator({
+    workspaceRoot,
+    taskFile: initialDisplayTarget,
+    taskAction: initialDisplayAction,
+    callbacks,
+    executionContext,
+    writeAuthority,
+    requirementReview,
+    sourceValidation,
+    terminalFailureProgress,
+    contextInvestigation,
+    textToolProtocol,
+    messages,
+    evidenceRefs: allEvidenceRefs,
+    readEvidencePaths: allReadEvidencePaths,
+    writtenFiles: allWrittenFiles,
+    terminalEvidence: allTerminalEvidence,
+    appendUserFeedback,
+    state: {
+      promptRequiresTools: () => promptRequiresTools,
+      sawWorkTool: () => sawWorkTool,
+      currentTodos: () => currentTodos,
+      noToolRounds: () => noToolRounds,
+      setNoToolRounds: value => { noToolRounds = value; },
+      round: () => roundCount,
+      totalChars: () => totalChars,
+      setTotalChars: value => { totalChars = value; },
+      completionBlockers: currentCompletionBlockers,
+      complete: summary => {
+        completeSummary = completeSummary || summary;
+        hadTaskComplete = true;
+      },
+    },
+  });
+  const providerRecovery = providerRecoveryCoordinator.lifecycle;
   await callbacks.onAgentStatus({
     type: 'agentStatus',
     phase: 'execute',
@@ -546,11 +427,7 @@ export async function runAgenticLoop(
       textToolProtocol,
     });
     let providerTurn: Awaited<ReturnType<typeof chatWithMessages>>;
-    const useFreshProviderSession = roundCount === 1 || forceProviderNewSessionNextTurn;
-    if (forceProviderNewSessionNextTurn) {
-      callbacks.onToolActivity?.('label', '重建模型会话并从任务事实恢复');
-    }
-    forceProviderNewSessionNextTurn = false;
+    const useFreshProviderSession = providerRecoveryCoordinator.takeFreshProviderSession(roundCount);
     const providerWaitFeedback = new ProviderWaitFeedback(callbacks.onToolActivity, roundCount);
     try {
       providerTurn = await chatWithMessages(
@@ -573,7 +450,7 @@ export async function runAgenticLoop(
       providerWaitFeedback.complete();
     } catch (error) {
       const providerFailure = parseAgentProviderFailure(error);
-      const disposition = await settleOrRecoverProviderFailureInsideCurrentTask(
+      const disposition = await providerRecoveryCoordinator.settleOrRecover(
         providerFailure,
         sAccum.trim().length,
       );
@@ -647,7 +524,7 @@ export async function runAgenticLoop(
           : incompleteAuthorizedProtocol.found
             ? 'incomplete-tool-block'
             : 'invalid-tool-block';
-        const disposition = await settleOrRecoverProviderFailureInsideCurrentTask({
+        const disposition = await providerRecoveryCoordinator.settleOrRecover({
           status,
           reason: quarantinedProtocol.found
             ? `检测到授权信封外的结构化工具动作（${quarantinedProtocol.dialects.join(', ')}）；已隔离且未执行。`
@@ -675,7 +552,7 @@ export async function runAgenticLoop(
       const stripped = stripAuthorizedTextToolEnvelopes(text, textToolProtocol).trim();
       if (!callbacks.signal?.aborted && providerRecovery.hasUnresolvedToolAction()) {
         noToolRounds++;
-        const disposition = await settleOrRecoverProviderFailureInsideCurrentTask({
+        const disposition = await providerRecoveryCoordinator.settleOrRecover({
           status: 'incomplete-tool-block',
           reason: '安全恢复后仍未形成有效工具调用，上一轮结构化动作尚未解决。',
           rawMessage: text,
@@ -692,7 +569,7 @@ export async function runAgenticLoop(
       }
       await providerRecovery.completeAcceptedResponse('plain-response', providerOperationId);
       const evidenceWithoutTools = assessCurrentEvidenceClosure();
-      if (await recoverBlockingTerminalFailure(
+      if (await providerRecoveryCoordinator.recoverBlockingTerminalFailure(
         evidenceWithoutTools.blockingTerminalFailure,
         evidenceWithoutTools.missingEvidence,
         4,
@@ -706,7 +583,7 @@ export async function runAgenticLoop(
           failedReason = reviewRecovery.reason;
           break;
         }
-        await emitAgenticCorrectionStatus(
+        await providerRecoveryCoordinator.emitCorrectionStatus(
           reviewRecovery.statusTitle,
           reviewRecovery.statusDetail,
           reviewRecovery.statusActivity,
@@ -725,11 +602,11 @@ export async function runAgenticLoop(
         }
         noToolRounds++;
         if (actionRecovery.useFreshProviderSession) {
-          rebuildProviderSessionWithCausalFeedback(actionRecovery.feedback);
+          providerRecoveryCoordinator.rebuildWithCausalFeedback(actionRecovery.feedback);
         } else {
           appendUserFeedback(actionRecovery.feedback);
         }
-        await emitAgenticCorrectionStatus(
+        await providerRecoveryCoordinator.emitCorrectionStatus(
           actionRecovery.statusTitle,
           actionRecovery.statusDetail,
           actionRecovery.activityLabel,
@@ -739,7 +616,7 @@ export async function runAgenticLoop(
       const missingWithoutTools = evidenceWithoutTools.missingEvidence;
       if (!callbacks.signal?.aborted && missingWithoutTools.length > 0 && noToolRounds < 4) {
         noToolRounds++;
-        await emitAgenticCorrectionStatus(
+        await providerRecoveryCoordinator.emitCorrectionStatus(
           '交付证据不足，继续要求执行',
           `当前仍缺少${missingWithoutTools.join('、')}。DevSeek 不会把目录检查或说明文字结算为完成，下一轮必须补齐真实写盘、读取或验证证据。`,
           '交付证据不足，继续执行',
@@ -927,7 +804,7 @@ export async function runAgenticLoop(
       || (loopRes.writtenFiles?.length ?? 0) > 0
       || (loopRes.terminalEvidence?.length ?? 0) > 0
       || (loopRes.evidenceRefs?.length ?? 0) > 0) {
-      resetProviderRecoveryAttemptsAfterProgress();
+      providerRecoveryCoordinator.resetAfterProgress();
     }
     const roundHasTerminalProgress = (loopRes.terminalCommands?.length ?? 0) > 0
       || (loopRes.terminalEvidence?.length ?? 0) > 0;
@@ -1045,7 +922,7 @@ export async function runAgenticLoop(
       freshTerminalEvidence.some(isBlockingTerminalFailureEvidence),
     );
     if (failureProgressObservation.newlyRequiresInvestigation && !callbacks.signal?.aborted) {
-      await emitAgenticCorrectionStatus(
+      await providerRecoveryCoordinator.emitCorrectionStatus(
         '修复未改变失败，转入根因取证',
         `连续 ${failureProgressObservation.unchangedRepairCohorts} 个修复批次未改变核心诊断。`,
         '公开验证已证伪当前修复假设',
@@ -1156,7 +1033,7 @@ export async function runAgenticLoop(
       )
       : undefined;
     if (!callbacks.signal?.aborted && deliveryConvergenceResult.kind === 'correct') {
-      await emitAgenticCorrectionStatus(
+      await providerRecoveryCoordinator.emitCorrectionStatus(
         deliveryConvergenceResult.statusTitle,
         deliveryConvergenceResult.statusDetail,
         deliveryConvergenceResult.activityLabel,
@@ -1195,7 +1072,7 @@ export async function runAgenticLoop(
         );
         requirementReviewRepairGraceRounds = repairWindow.graceRounds;
         if (repairWindow.failureStatus) {
-          await emitAgenticCorrectionStatus(...repairWindow.failureStatus);
+          await providerRecoveryCoordinator.emitCorrectionStatus(...repairWindow.failureStatus);
         }
         loopWarnings.push(reviewFeedback);
       } else if (reviewOutcome.kind === 'settled') {
@@ -1279,7 +1156,7 @@ export async function runAgenticLoop(
       const evidenceNow = assessCurrentEvidenceClosure();
       const missingNow = evidenceNow.missingEvidence;
       const blockingFailureNow = evidenceNow.blockingTerminalFailure;
-      if (await recoverBlockingTerminalFailure(blockingFailureNow, missingNow, 2)) {
+      if (await providerRecoveryCoordinator.recoverBlockingTerminalFailure(blockingFailureNow, missingNow, 2)) {
         continue;
       }
       loopSettlementReached = true;
@@ -1325,121 +1202,34 @@ export async function runAgenticLoop(
   }
 
   const finalEvidence = assessCurrentEvidenceClosure();
-  const finalMissingEvidence = finalEvidence.missingEvidence;
-  const finalBlockingFailure = finalEvidence.blockingTerminalFailure;
-  const runtimeTaskAction = resolveAgentRuntimeTaskAction({
-    routeChatKind: currentTaskIntent.chatKind,
-    taskComplete: hadTaskComplete,
-    toolReceipts: allToolExecutionReceipts,
-  });
   const latestAutoQualityGate = sourceValidation.qualityGateForCurrentSource();
-  const validationFailedReason = latestAutoQualityGate && latestAutoQualityGate.status !== 'pass'
-    ? latestAutoQualityGate.summary
-    : undefined;
-  const finalRequirementReviewBlocker = requirementReview.completionBlocker();
-  const finalRecoveryBlocker = providerRecovery.completionBlocker()
-    ?? toolFailureRecovery.completionBlocker();
-  const finalProviderProtocolInvalid = inspectIncompleteAuthorizedTextToolProtocol(
-    lastProviderText, textToolProtocol,
-  ).found || inspectInvalidAuthorizedTextToolProtocol(
-    lastProviderText, textToolProtocol,
-  ).found || inspectOutOfEnvelopeTextToolProtocol(
-    lastProviderText, textToolProtocol,
-  ).found;
-  const policyRefusalEvidenceSatisfied = hasUnsafeSecretHarvestingRefusalEvidence(
-    writeAuthority.currentPrompt, `${completeSummary}\n${lastProviderText}`, { workToolUsed: sawWorkTool, changedFileCount: allWrittenFiles.length },
-  );
-  const finalRuntimeSettlement = settleAgentRuntimeState({
-    taskAction: runtimeTaskAction,
-    taskTitle: userPrompt,
-    providerText: completeSummary || lastProviderText,
-    roundText: lastProviderText,
-    toolRequests: lastRoundToolRequestCount,
-    toolExecutions: lastRoundToolExecutionCount,
-    evidenceRefs: allEvidenceRefs,
-    readEvidenceCount: allReadEvidencePaths.size,
-    writtenEvidenceCount: allWrittenFiles.length,
-    terminalEvidenceCount: allTerminalEvidence.length,
-    validationPassed: latestAutoQualityGate?.status === 'pass',
-    validationFailedReason,
-    policyRefusalEvidenceSatisfied,
-    taskComplete: hadTaskComplete,
-    allTodosCompleted: currentTodos.length > 0 && currentTodos.every(todo => todo.status === 'completed'),
-    failedReason: failedReason || undefined,
-    completionBlocker: finalRecoveryBlocker,
-    providerOutputObservation: {
-      incompleteToolProtocol: finalProviderProtocolInvalid,
-    },
-  });
-  let providerRuntimeFailure: string | undefined;
-  if (finalRuntimeSettlement.state === 'failed') {
-    providerRuntimeFailure = finalRuntimeSettlement.failedReason
-      || describeProviderOutputIntegrity(finalRuntimeSettlement.providerOutput.kind);
-  } else if (finalRuntimeSettlement.state === 'tool_requested'
-    && finalRuntimeSettlement.providerOutput.toolCallCount > 0) {
-    providerRuntimeFailure = 'Provider 返回了工具调用，但本轮没有执行到任何工具；任务未完成。';
-  } else if (runtimeTaskAction === 'respond'
-    && !runtimeStateCanDeliver(finalRuntimeSettlement)) {
-    providerRuntimeFailure = describeProviderOutputIntegrity(finalRuntimeSettlement.providerOutput.kind);
-  } else if (runtimeTaskAction !== 'respond'
-    && !runtimeStateCanDeliver(finalRuntimeSettlement)) {
-    providerRuntimeFailure = finalRuntimeSettlement.failedReason
-      || `任务已有执行证据，但缺少完成信号、通过验证或可交付总结：${describeProviderOutputIntegrity(finalRuntimeSettlement.providerOutput.kind)}`;
-  }
-  const missingEvidenceFailure = finalMissingEvidence.length > 0
-    ? `实际执行证据不足：缺少${finalMissingEvidence.join('、')}。`
-    : lastMissingEvidence.length > 0
-      ? `实际执行证据不足：缺少${lastMissingEvidence.join('、')}。`
-      : undefined;
-  const finalFailure = selectAgenticFinalFailure({
-    existingFailure: failedReason,
-    terminalValidationFailure: finalBlockingFailure
-      ? describeBlockingTerminalFailure(finalBlockingFailure)
-      : undefined,
-    requirementReviewBlocker: finalRequirementReviewBlocker,
-    missingEvidenceFailure,
-    providerRuntimeFailure,
-  });
-  failedReason = finalFailure?.reason ?? '';
-  if (finalFailure?.kind === 'terminal-validation') {
-    if (callbacks.onTodoUpdate && currentTodos.length > 0) {
-      currentTodos = settleValidationFailureTodos(currentTodos);
-      await callbacks.onTodoUpdate(currentTodos);
-    }
-  } else if (finalFailure?.kind === 'missing-evidence') {
-    if (callbacks.onTodoUpdate && currentTodos.length > 0) {
-      currentTodos = settleMissingEvidenceTodos(
-        currentTodos,
-        finalMissingEvidence.length > 0 ? finalMissingEvidence : lastMissingEvidence,
-      );
-      await callbacks.onTodoUpdate(currentTodos);
-    }
-  }
-  if (!failedReason && !callbacks.signal?.aborted && callbacks.onTodoUpdate && currentTodos.length > 0) {
-    currentTodos = completeAgentTodos(currentTodos);
-    await callbacks.onTodoUpdate(currentTodos);
-  }
-
-  // Emit done phase from runAgenticLoop itself so editedFiles includes files
-  // accumulated across all rounds and task_complete cannot race endResponse.
-  // Use 'failed' state when aborted cleanly (signal fired between iterations rather than
-  // during an LLM call) so the Working box shows ✗ instead of misleading green ✓.
-  return settleAgenticLoopFinal({
+  return settleAgenticFinalDecision({
     userPrompt,
+    currentPrompt: writeAuthority.currentPrompt,
     workspaceRoot,
     roundCount,
-    failedReason,
+    routeChatKind: currentTaskIntent.chatKind,
+    hadTaskComplete,
     completeSummary,
+    existingFailure: failedReason,
+    lastProviderText,
+    lastRoundToolRequestCount,
+    lastRoundToolExecutionCount,
+    sawWorkTool,
     currentTodos,
+    lastMissingEvidence,
+    finalEvidence,
+    latestAutoQualityGate,
+    requirementReviewBlocker: requirementReview.completionBlocker(),
+    recoveryBlocker: providerRecovery.completionBlocker() ?? toolFailureRecovery.completionBlocker(),
+    textToolProtocol,
+    evidenceRefs: allEvidenceRefs,
+    readEvidenceCount: allReadEvidencePaths.size,
     writtenFiles: allWrittenFiles,
     terminalEvidence: allTerminalEvidence,
-    // Preserve the full failure/repair/reverification history for audit and
-    // conformance. Decision sites above consume currentVerificationReceipts().
     verificationReceipts: [...allVerificationReceipts],
     toolExecutionReceipts: allToolExecutionReceipts,
     changeReceipts: allChangeReceipts,
-    latestAutoQualityGate,
-    policyRefusalEvidenceSatisfied,
     callbacks,
   });
 }

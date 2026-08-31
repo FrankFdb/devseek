@@ -9,6 +9,7 @@ import {
   inspectScriptRenderOwnership,
   ppmLooksGraphical,
   readPpmStats,
+  verifyWorkspace,
 } from './verify-workspace.mjs';
 
 test('interaction call graph accepts helpers that delegate to domain mutations', () => {
@@ -124,4 +125,23 @@ test('PPM acceptance rejects graphics confined to one vertical half', () => {
     ...base,
     topHalfNonDominantSampledPixels: 0,
   }), false);
+});
+
+test('targeted verification runs only the requested independent check', t => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'devseek-targeted-verification-'));
+  const evidence = path.join(workspace, 'evidence');
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(workspace, 'README.md'), [
+    '# Math Visual Lab',
+    'Build with CMake.',
+    'Use the keyboard or mouse.',
+    'Run --smoke-frames 3 for X11 acceptance.',
+  ].join('\n'));
+
+  const report = verifyWorkspace(workspace, 4, evidence, { checkIds: ['operator-readme'] });
+
+  assert.equal(report.ok, true);
+  assert.equal(report.mode, 'targeted');
+  assert.deepEqual(report.checks.map(check => check.id), ['operator-readme']);
+  assert.equal(fs.existsSync(path.join(evidence, 'public-test.log')), false);
 });

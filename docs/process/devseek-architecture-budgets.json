@@ -38,17 +38,17 @@
       "boundary": "VS Code composition root and Surface Adapter"
     },
     "packages/vscode-extension/src/agent/agentic-loop.ts": {
-      "maxLines": 1255,
+      "maxLines": 1242,
       "targetLines": 1024,
       "boundary": "Canonical Agent Core orchestration"
     },
     "packages/vscode-extension/src/agent/tool-loop.ts": {
-      "maxLines": 1299,
+      "maxLines": 1282,
       "targetLines": 1024,
       "boundary": "normalized ToolCall execution"
     },
     "packages/vscode-extension/src/agent/fake-tool-parser.ts": {
-      "maxLines": 1747,
+      "maxLines": 1738,
       "targetLines": 1024,
       "boundary": "DeepSeek Web text-tool compatibility adapter"
     },
@@ -78,7 +78,7 @@
       "boundary": "DeepSeek Web loose JSON tool recovery helpers"
     },
     "packages/bridge/src/deepseek-agent.ts": {
-      "maxLines": 1725,
+      "maxLines": 1657,
       "targetLines": 1024,
       "boundary": "DeepSeek browser driver orchestration"
     },

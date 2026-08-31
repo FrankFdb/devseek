@@ -12,6 +12,8 @@ import type {
   VerifierSelectionPort,
 } from '@devseek-netai/shared';
 import { codingWorkspaceTargetMatchesScope } from '@devseek-netai/shared';
+import * as fs from 'fs';
+import * as nodePath from 'path';
 import type { AgentStatusEvent } from './events';
 import {
   type TerminalEvidence,
@@ -105,6 +107,8 @@ export interface ReusableVerificationReceiptInput {
   readonly acceptance: readonly CodingVerificationCriterion[];
   readonly verificationReceipts: readonly CodingVerificationReceipt[];
   readonly changeReceipts: readonly CodingWorkspaceMutationReceipt<unknown>[];
+  /** Factual project-verifier identity that a manual proof must also carry. */
+  readonly requiredEvidenceRefs?: readonly string[];
 }
 
 let autoValidationOperationSequence = 0;
@@ -133,11 +137,13 @@ export function selectReusableVerificationReceipt(
       ))))
     .reduce((latest, receipt) => Math.max(latest, receipt.sequence), 0);
   const acceptanceIds = new Set(input.acceptance.map(criterion => criterion.id));
+  const requiredEvidenceRefs = new Set(input.requiredEvidenceRefs ?? []);
   const latest = input.verificationReceipts
     .filter(receipt => (
       (!input.runId || receipt.runId === input.runId)
         && receipt.sequence > latestMutationSequence
         && receiptCoversPaths(receipt, input.changedPaths)
+        && [...requiredEvidenceRefs].every(ref => receipt.evidenceRefs.includes(ref))
         && [...acceptanceIds].every(id => receipt.acceptance.some(result => result.criterionId === id))
     ))
     .sort((left, right) => left.sequence - right.sequence)
@@ -488,6 +494,7 @@ export async function runAgentAutoValidationForWrites(
       acceptance: suppliedVerificationAcceptance,
       verificationReceipts: options.priorVerificationReceipts ?? [],
       changeReceipts: options.changeReceipts ?? [],
+      requiredEvidenceRefs: explicitProjectVerifierEvidenceRefs(workspaceRootFsPath),
     });
     if (reusableVerification) {
       const qualityGate = policyQuality?.qualityGate ?? {
@@ -704,6 +711,12 @@ export async function runAgentAutoValidationForWrites(
     };
     return settleAgentAutoValidation(settled, execution);
   }
+}
+
+function explicitProjectVerifierEvidenceRefs(workspaceRootFsPath: string): readonly string[] {
+  return fs.existsSync(nodePath.join(workspaceRootFsPath, 'devseek.verify.json'))
+    ? ['config:devseek.verify.json']
+    : [];
 }
 
 function settleAgentAutoValidation(

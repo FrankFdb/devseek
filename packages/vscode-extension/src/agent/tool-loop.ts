@@ -4,7 +4,6 @@ import * as vscode from 'vscode';
 import {
   codingSemanticDigest,
   codingToolExecutionFailureReason,
-  createDevSeekTraceLogger,
   decideTerminalCommandPermission,
   isFileWriteToolName,
   normalizeCodingFileWriteInputs,
@@ -12,7 +11,6 @@ import {
   type CodingToolExecutionReceipt,
   type CodingVerificationReceipt,
   type CodingWorkspaceMutationReceipt,
-  type DevSeekTraceLogger,
 } from '@devseek-netai/shared';
 import {
   WorkspaceEditService,
@@ -20,7 +18,6 @@ import {
 } from '../workspace/edit-service';
 import { VsCodeWorkspaceMutationAdapter } from '../workspace/coding-workspace-mutation-adapter';
 import type { EvidenceRef } from './tool-executor';
-import { getAgentToolActivity } from './tool-activity';
 import { ToolReadEvidenceRecorder } from './tool-read-evidence';
 import { containsFakeToolCallProtocol, type FakeTool } from './fake-tool-parser';
 import {
@@ -38,7 +35,6 @@ import type { TodoItem } from './evidence-recovery';
 import type { AgentLoopCallbacks } from './loop-types';
 import { resolveTerminalCommandCapabilities } from '../app/environment-capability-resolver';
 import { buildToolPolicy } from '../app/permission-service';
-import type { ToolKind } from '../intent/intent-types';
 import {
   createToolLoopCanonicalSession,
 } from './tool-loop-canonical-session';
@@ -53,92 +49,33 @@ import type {
   ToolLoopResult,
   ToolSuppressionEvidence,
 } from './tool-loop-result';
+import {
+  buildAgentMetaOnlyToolFeedback,
+  describeAgentToolActivity,
+  isAgentWorkToolName,
+  normalizeVisibleTodos,
+  optionalToolLineNumber,
+} from './tool-loop-projection';
+import { getToolLoopTraceLogger } from './tool-loop-tracing';
+import { hasEvidenceAwareToolAuthority } from './tool-loop-authority';
 
 export { analyzeTerminalEvidence } from './tool-loop-terminal-evidence';
 export type { ToolFailureEvidence, ToolLoopResult, ToolSuppressionEvidence } from './tool-loop-result';
+export {
+  buildAgentMetaOnlyToolFeedback,
+  describeAgentToolActivity,
+  isAgentWorkToolName,
+  normalizeVisibleTodos,
+} from './tool-loop-projection';
 
 const workspaceEditService = new WorkspaceEditService();
 const workspaceMutation = new VsCodeWorkspaceMutationAdapter(workspaceEditService);
-const NON_WORK_TOOL_NAMES = new Set(['manage_todo_list', 'task_complete']);
-const TOOL_TRACE_LOGGERS = new Map<string, DevSeekTraceLogger>();
-
-function hasEvidenceAwareToolAuthority(kind: ToolKind, callbacks: AgentLoopCallbacks): boolean {
-  switch (kind) {
-    case 'edit':
-      return typeof callbacks.onResolveFileWriteConstraint === 'function';
-    case 'terminal':
-      return typeof callbacks.onPrepareTerminalCommand === 'function';
-    case 'vscode':
-    case 'vscode-command':
-      return typeof callbacks.onPrepareVscodeCommand === 'function';
-    case 'memory':
-      return typeof callbacks.onPrepareMemoryWrite === 'function';
-    case 'mcp':
-      return typeof callbacks.onPrepareMcpToolCall === 'function';
-    default:
-      return false;
-  }
-}
-
-export function isAgentWorkToolName(name: string): boolean {
-  return !NON_WORK_TOOL_NAMES.has(name);
-}
-
-export function buildAgentMetaOnlyToolFeedback(taskDescription?: string): string {
-  const scope = taskDescription?.trim()
-    ? `当前任务：${taskDescription.trim()}`
-    : '当前任务仍缺少真实执行证据。';
-  return [
-    '【系统反馈】本轮只更新了 todo/完成状态，没有执行真实工作工具。',
-    scope,
-    '请继续调用 read_file/list_dir/grep_search/create_file/write_file/run_terminal 等真实工具。',
-    '需要编译、运行或验证时，必须使用 run_terminal 并提供可验证的退出码和输出；不要只更新任务清单。',
-  ].join('\n');
-}
-
-function getToolTraceLogger(workspaceRoot: string | undefined, runId: string | undefined): DevSeekTraceLogger | undefined {
-  if (!workspaceRoot || !runId) return undefined;
-  const key = `${nodePath.resolve(workspaceRoot)}::${runId}`;
-  const existing = TOOL_TRACE_LOGGERS.get(key);
-  if (existing) return existing;
-  const created = createDevSeekTraceLogger({
-    workspaceRoot,
-    runId,
-    source: 'vscode-extension.tool-loop',
-  });
-  TOOL_TRACE_LOGGERS.set(key, created);
-  return created;
-}
-
-export function describeAgentToolActivity(tool: FakeTool): { kind: string; label: string } | undefined {
-  return getAgentToolActivity(tool) ?? undefined;
-}
 
 // ── Multi-round tool executor ─────────────────────────────────────────────────
 // Handles all fake-tool dispatch: emits results via onDelta and returns
 // structured result data so the agentic mini-loop can feed tool outputs back
 // to the AI in the next LLM round (Copilot/Cursor style).
 // Used by both single-shot analysis paths and the full agentic loop.
-
-function isInternalMemoryTodo(item: TodoItem): boolean {
-  return /(?:项目记忆|智能体记忆|记忆体|memory|memory_write|写入记忆|记录.*记忆)/i.test(item.title || '');
-}
-
-export function normalizeVisibleTodos(items: unknown): TodoItem[] {
-  if (!Array.isArray(items)) return [];
-  return (items as TodoItem[])
-    .filter(item => item && typeof item.title === 'string' && item.title.trim() && !isInternalMemoryTodo(item))
-    .map((item, index) => ({ ...item, id: index + 1, title: item.title.trim() }));
-}
-
-function optionalLineNumber(input: Record<string, unknown>, ...keys: string[]): number | undefined {
-  for (const key of keys) {
-    const value = input[key];
-    if (typeof value === 'number' && Number.isFinite(value) && value > 0) return Math.floor(value);
-    if (typeof value === 'string' && /^\d+$/.test(value.trim())) return Number.parseInt(value.trim(), 10);
-  }
-  return undefined;
-}
 
 function hasPollutedReplaceArgument(value: string): boolean {
   return /[\u200B-\u200D\u2060\uFEFF]/.test(value)
@@ -232,7 +169,7 @@ export async function executeFakeToolsForLoop(
   const workspaceRoot = taskContext?.workspaceRoot ?? inferWorkspaceRootForAgentTool(defaultWorkdir);
   const readEvidencePaths = new Set(taskContext?.readEvidencePaths ?? []);
   const targetedReadEvidencePaths = new Set(taskContext?.targetedReadEvidencePaths ?? []);
-  const trace = getToolTraceLogger(callbacks.traceWorkspaceRoot ?? workspaceRoot, callbacks.traceRunId);
+  const trace = getToolLoopTraceLogger(callbacks.traceWorkspaceRoot ?? workspaceRoot, callbacks.traceRunId);
   const readEvidenceRecorder = taskContext?.readEvidenceRecorder
     ?? new ToolReadEvidenceRecorder(workspaceRoot, callbacks.traceRunId);
   const canonicalTools = createToolLoopCanonicalSession({
@@ -571,8 +508,8 @@ export async function executeFakeToolsForLoop(
           toolPlan,
           canonicalContext,
           () => callbacks.onReadFile!(filePath, defaultWorkdir, {
-            startLine: optionalLineNumber(tool.input, 'startLine', 'start_line', 'lineStart', 'fromLine'),
-            endLine: optionalLineNumber(tool.input, 'endLine', 'end_line', 'lineEnd', 'toLine'),
+            startLine: optionalToolLineNumber(tool.input, 'startLine', 'start_line', 'lineStart', 'fromLine'),
+            endLine: optionalToolLineNumber(tool.input, 'endLine', 'end_line', 'lineEnd', 'toLine'),
           }),
           content => readEvidenceRecorder.record(content, readEvidencePath || filePath),
         );
@@ -724,7 +661,7 @@ export async function executeFakeToolsForLoop(
       const query = typeof tool.input.query === 'string' ? tool.input.query.trim() : '';
       if (query) {
         markToolCall();
-        const maxResults = optionalLineNumber(tool.input, 'maxResults');
+        const maxResults = optionalToolLineNumber(tool.input, 'maxResults');
         const execution = await canonicalTools.observe(
           toolPlan,
           canonicalContext,
@@ -744,8 +681,8 @@ export async function executeFakeToolsForLoop(
       const memoryPath = typeof tool.input.path === 'string' ? tool.input.path.trim() : '';
       if (memoryPath) {
         markToolCall();
-        const startLine = optionalLineNumber(tool.input, 'startLine');
-        const maxLines = optionalLineNumber(tool.input, 'maxLines');
+        const startLine = optionalToolLineNumber(tool.input, 'startLine');
+        const maxLines = optionalToolLineNumber(tool.input, 'maxLines');
         const execution = await canonicalTools.observe(
           toolPlan,
           canonicalContext,

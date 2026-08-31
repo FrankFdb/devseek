@@ -15,7 +15,7 @@ import {
   prepareWorkspace,
   protectedWorkspacePaths,
 } from './prepare-workspace.mjs';
-import { verifyWorkspace } from './verify-workspace.mjs';
+import { verificationCheckIdsForStage, verifyWorkspace } from './verify-workspace.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../../..');
@@ -66,13 +66,27 @@ const resumePlan = requestedWorkspace
   ? planResumePreflight(selectedRounds, repairCurrent)
   : { stage: 0, allowFailure: false, skipFirstRoundWhenPassed: false };
 const resumePreflightStage = resumePlan.stage;
-const resumePreflight = resumePreflightStage > 0
+const priorVerification = repairCurrent
+  ? findLatestVerificationReport(workspace, attemptRoot)
+  : undefined;
+const repairCheckIds = repairCurrent
+  ? failedVerificationCheckIds(priorVerification, resumePreflightStage)
+  : [];
+const targetedResumePreflight = resumePreflightStage > 0
   ? verifyWorkspace(
     workspace,
     resumePreflightStage,
     path.join(attemptRoot, `resume-preflight-stage-${resumePreflightStage}`),
+    repairCheckIds.length > 0 ? { checkIds: repairCheckIds } : {},
   )
   : undefined;
+const resumePreflight = targetedResumePreflight?.ok && repairCheckIds.length > 0
+  ? verifyWorkspace(
+    workspace,
+    resumePreflightStage,
+    path.join(attemptRoot, `resume-preflight-final-stage-${resumePreflightStage}`),
+  )
+  : targetedResumePreflight;
 const report = {
   schemaVersion: 'devseek.n4-simulated-user-journey-result/v1',
   journeyId: journey.id,
@@ -88,6 +102,17 @@ const report = {
   waitBackgroundIdle: true,
   requestedRounds: selectedRounds,
   ...(resumePreflight ? { resumePreflight } : {}),
+  ...(targetedResumePreflight && targetedResumePreflight !== resumePreflight
+    ? { targetedResumePreflight }
+    : {}),
+  ...(priorVerification ? {
+    resumedVerification: {
+      verifiedAt: priorVerification.verifiedAt,
+      mode: priorVerification.mode ?? 'legacy-full',
+      failedChecks: priorVerification.checks.filter(check => !check.ok).map(check => check.id),
+    },
+  } : {}),
+  repairCheckIds,
   skippedVerifiedRounds: [],
   rounds: [],
   ok: false,
@@ -161,7 +186,16 @@ for (const roundNumber of roundsToExecute) {
 
   const harnessRoot = newestHarnessRoot(tmpBefore, workspace);
   const productReport = copyHarnessEvidence(harnessRoot, roundRoot);
-  const verification = verifyWorkspace(workspace, round.verificationStage, evidenceDir);
+  const targetedVerification = repairCheckIds.length > 0
+    ? verifyWorkspace(workspace, round.verificationStage, evidenceDir, { checkIds: repairCheckIds })
+    : verifyWorkspace(workspace, round.verificationStage, evidenceDir);
+  const verification = targetedVerification.ok && repairCheckIds.length > 0
+    ? verifyWorkspace(
+      workspace,
+      round.verificationStage,
+      path.join(roundRoot, 'verification-final'),
+    )
+    : targetedVerification;
   const protectedAfter = hashWorkspacePaths(workspace, protectedWorkspacePaths);
   const protectedUnchanged = protectedWorkspacePaths.every(rel => protectedBaseline[rel] === protectedAfter[rel]);
   const result = {
@@ -184,6 +218,7 @@ for (const roundNumber of roundsToExecute) {
       errors: productReport.errors || [],
       selectedRun: selectedProductRun(productReport),
     } : null,
+    ...(targetedVerification !== verification ? { targetedVerification } : {}),
     verification,
     protectedUnchanged,
     protectedMismatches: protectedWorkspacePaths.filter(rel => protectedBaseline[rel] !== protectedAfter[rel]),
@@ -281,4 +316,40 @@ function readJson(filePath) {
 
 function writeJourneyReport(value) {
   fs.writeFileSync(path.join(attemptRoot, 'journey-result.json'), `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+function failedVerificationCheckIds(report, stage) {
+  if (!report || !Array.isArray(report.checks)) return [];
+  const available = new Set(verificationCheckIdsForStage(stage));
+  return [...new Set(report.checks
+    .filter(check => check?.ok === false && available.has(String(check.id || '')))
+    .map(check => String(check.id)))];
+}
+
+function findLatestVerificationReport(expectedWorkspace, excludedRoot) {
+  const runsRoot = path.join(here, 'runs');
+  if (!fs.existsSync(runsRoot)) return undefined;
+  const candidates = [];
+  for (const attempt of fs.readdirSync(runsRoot, { withFileTypes: true })) {
+    if (!attempt.isDirectory()) continue;
+    const attemptPath = path.join(runsRoot, attempt.name);
+    if (path.resolve(attemptPath) === path.resolve(excludedRoot)) continue;
+    for (const reportPath of verificationReportsUnder(attemptPath, 4)) {
+      const report = readJson(reportPath);
+      if (path.resolve(report?.workspace || '') !== path.resolve(expectedWorkspace)) continue;
+      candidates.push({ report, mtimeMs: fs.statSync(reportPath).mtimeMs });
+    }
+  }
+  return candidates.sort((left, right) => right.mtimeMs - left.mtimeMs)[0]?.report;
+}
+
+function verificationReportsUnder(root, depth) {
+  if (depth < 0 || !fs.existsSync(root)) return [];
+  const reports = [];
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const entryPath = path.join(root, entry.name);
+    if (entry.isFile() && entry.name === 'verification.json') reports.push(entryPath);
+    if (entry.isDirectory()) reports.push(...verificationReportsUnder(entryPath, depth - 1));
+  }
+  return reports;
 }

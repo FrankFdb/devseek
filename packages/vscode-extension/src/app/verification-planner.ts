@@ -158,7 +158,11 @@ function discoverConfiguredCandidate(
   if (!Array.isArray(commands) || commands.length === 0) {
     throw new Error('devseek.verify.json must include a non-empty commands array.');
   }
-  const steps = commands.map((entry, index) => configuredStep(root, entry, index));
+  const configuredIds = commands.map((entry, index) => configuredCommandId(entry, index));
+  if (new Set(configuredIds).size !== configuredIds.length) {
+    throw new Error('devseek.verify.json command ids must be unique.');
+  }
+  const steps = commands.map((entry, index) => configuredStep(root, entry, index, configuredIds));
   return candidate({
     id: 'vscode-project-config',
     source: 'devseek.verify.json',
@@ -170,15 +174,23 @@ function discoverConfiguredCandidate(
   });
 }
 
-function configuredStep(root: string, entry: unknown, index: number): CodingVerifierCandidateStep {
+function configuredStep(
+  root: string,
+  entry: unknown,
+  index: number,
+  configuredIds: readonly string[],
+): CodingVerifierCandidateStep {
   if (!entry || typeof entry !== 'object') {
     throw new Error(`devseek.verify.json command ${index + 1} must be an object.`);
   }
   const value = entry as {
+    id?: unknown;
     cmd?: unknown;
     args?: unknown;
     stdin?: unknown;
     expectStdoutIncludes?: unknown;
+    paths?: unknown;
+    dependsOn?: unknown;
   };
   if (typeof value.cmd !== 'string' || !CONFIG_COMMANDS.has(value.cmd.trim())) {
     throw new Error(`devseek.verify.json command is not allowed: ${String(value.cmd ?? '')}`);
@@ -192,8 +204,20 @@ function configuredStep(root: string, entry: unknown, index: number): CodingVeri
           : [value.expectStdoutIncludes],
         `command ${index + 1} expectStdoutIncludes`,
       );
+  const triggerPaths = value.paths === undefined
+    ? undefined
+    : configuredPathArray(value.paths, `command ${index + 1} paths`);
+  const dependencyNames = value.dependsOn === undefined
+    ? undefined
+    : stringArray(value.dependsOn, `command ${index + 1} dependsOn`);
+  const dependsOnStepIds = dependencyNames?.map(name => configuredCommandId({ id: name }, index));
+  for (const dependencyId of dependsOnStepIds ?? []) {
+    if (!configuredIds.includes(dependencyId)) {
+      throw new Error(`devseek.verify.json command dependency is unknown: ${dependencyId}`);
+    }
+  }
   return processStep({
-    id: `vscode-config-${index + 1}`,
+    id: configuredIds[index],
     role: 'test',
     cwd: root,
     command: value.cmd.trim(),
@@ -201,7 +225,33 @@ function configuredStep(root: string, entry: unknown, index: number): CodingVeri
     timeoutMs: PROCESS_VALIDATION_TIMEOUT_MS,
     ...(typeof value.stdin === 'string' ? { stdin: value.stdin } : {}),
     ...(expected ? { expectedStdoutIncludes: expected } : {}),
+    ...(triggerPaths ? { triggerPaths } : {}),
+    ...(dependsOnStepIds ? { dependsOnStepIds } : {}),
     evidenceRefs: [`config:devseek.verify.json#command-${index + 1}`],
+  });
+}
+
+function configuredCommandId(entry: unknown, index: number): string {
+  const raw = entry && typeof entry === 'object' && typeof (entry as { id?: unknown }).id === 'string'
+    ? (entry as { id: string }).id.trim()
+    : String(index + 1);
+  if (!raw || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/u.test(raw)) {
+    throw new Error(`devseek.verify.json command id is invalid: ${raw}`);
+  }
+  return `vscode-config-${raw}`;
+}
+
+function configuredPathArray(value: unknown, label: string): string[] {
+  return stringArray(value, label).map(path => {
+    const normalized = path.replace(/\\/gu, '/').replace(/^\.\//u, '').replace(/\/$/u, '');
+    if (!normalized
+      || nodePath.isAbsolute(normalized)
+      || normalized === '..'
+      || normalized.startsWith('../')
+      || normalized.includes('/../')) {
+      throw new Error(`devseek.verify.json ${label} contains an invalid workspace path: ${path}`);
+    }
+    return normalized === '.' ? 'workspace' : normalized;
   });
 }
 
@@ -435,6 +485,8 @@ function processStep(input: {
   timeoutMs: number;
   stdin?: string;
   expectedStdoutIncludes?: readonly string[];
+  triggerPaths?: readonly string[];
+  dependsOnStepIds?: readonly string[];
   evidenceRefs: readonly string[];
 }): CodingVerifierCandidateStep {
   return {
@@ -452,6 +504,8 @@ function processStep(input: {
     cwd: input.cwd,
     timeoutMs: input.timeoutMs,
     outputPolicy: 'ephemeral',
+    ...(input.triggerPaths === undefined ? {} : { triggerPaths: input.triggerPaths }),
+    ...(input.dependsOnStepIds === undefined ? {} : { dependsOnStepIds: input.dependsOnStepIds }),
     evidenceRefs: input.evidenceRefs,
   };
 }

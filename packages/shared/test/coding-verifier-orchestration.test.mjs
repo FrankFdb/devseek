@@ -189,6 +189,31 @@ test('verifier selection keeps POSIX workspace containment case-sensitive', () =
   }), /candidate-step-cwd-outside-workspace/);
 });
 
+test('verifier selection rejects invalid dependency graphs and empty path triggers', () => {
+  for (const [actionId, steps, expected] of [
+    ['unknown-dependency', [{
+      ...candidate().steps[0],
+      dependsOnStepIds: ['missing'],
+    }], /unknown-candidate-step-dependency/],
+    ['dependency-cycle', [
+      { ...candidate().steps[0], id: 'build', dependsOnStepIds: ['test'] },
+      { ...candidate().steps[0], id: 'test', dependsOnStepIds: ['build'] },
+    ], /cyclic-candidate-step-dependency/],
+    ['empty-triggers', [{
+      ...candidate().steps[0],
+      triggerPaths: [],
+    }], /empty-step-trigger-paths/],
+  ]) {
+    assert.throws(() => selectionSession().select({
+      sequence: 1,
+      actionId,
+      scopePaths: ['src/value.ts'],
+      candidates: [candidate({ steps })],
+      evidenceRefs: [],
+    }), expected);
+  }
+});
+
 test('build orchestration executes in order, fails fast, and projects independent checks', async () => {
   const selected = selectionSession().select({
     sequence: 2,
