@@ -569,10 +569,17 @@ export async function runAgenticLoop(
       }
       await providerRecovery.completeAcceptedResponse('plain-response', providerOperationId);
       const evidenceWithoutTools = assessCurrentEvidenceClosure();
+      const actionRecovery = resolveNoToolActionRecovery({
+        text: stripped, noToolRounds, promptRequiresTools, sawWorkTool, textToolProtocol,
+        missingEvidenceCount: evidenceWithoutTools.missingEvidence.length,
+      });
+      if (actionRecovery?.kind === 'stop') {
+        if (!callbacks.signal?.aborted) failedReason = actionRecovery.reason;
+        break;
+      }
       if (await providerRecoveryCoordinator.recoverBlockingTerminalFailure(
         evidenceWithoutTools.blockingTerminalFailure,
-        evidenceWithoutTools.missingEvidence,
-        4,
+        evidenceWithoutTools.missingEvidence, 4, actionRecovery,
       )) {
         continue;
       }
@@ -591,15 +598,7 @@ export async function runAgenticLoop(
         appendUserFeedback(reviewRecovery.feedback);
         continue;
       }
-      const actionRecovery = resolveNoToolActionRecovery({
-        text: stripped, noToolRounds, promptRequiresTools, sawWorkTool, textToolProtocol,
-        missingEvidenceCount: evidenceWithoutTools.missingEvidence.length,
-      });
       if (!callbacks.signal?.aborted && actionRecovery) {
-        if (actionRecovery.kind === 'stop') {
-          failedReason = actionRecovery.reason;
-          break;
-        }
         noToolRounds++;
         if (actionRecovery.useFreshProviderSession) {
           providerRecoveryCoordinator.rebuildWithCausalFeedback(actionRecovery.feedback);

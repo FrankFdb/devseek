@@ -122,6 +122,14 @@ export function isDeferredAgentActionAnnouncement(text: string): boolean {
 
 const SHELL_FENCE_LANGUAGES = new Set(['bash', 'sh', 'shell', 'zsh', 'console', 'terminal']);
 const SHELL_COMMAND_LINE = /^(?:\$\s*)?(?:cd|pwd|ls|cat|head|tail|sed|awk|xxd|file|find|rg|grep|cmake|make|ninja|ctest|npm|pnpm|yarn|bun|node|python3?|pytest|cargo|go|dotnet|bash|sh|timeout|\.\.?\/\S+)(?:\s|$)/iu;
+const SOURCE_FENCE_LANGUAGES = new Set([
+  'c', 'cc', 'cpp', 'c++', 'cxx', 'h', 'hpp', 'java', 'javascript', 'js', 'jsx',
+  'typescript', 'ts', 'tsx', 'python', 'py', 'rust', 'rs', 'go', 'csharp', 'cs',
+  'swift', 'kotlin', 'kt', 'ruby', 'rb', 'php', 'scala', 'sql', 'css', 'html',
+  'json', 'yaml', 'yml', 'toml', 'xml',
+]);
+const SOURCE_CODE_SIGNAL = /(?:^|\n)\s*(?:#include\b|(?:export\s+)?(?:async\s+)?function\b|(?:export\s+)?(?:class|interface|type|enum|struct|namespace)\b|(?:const|let|var|def|fn|func|public|private|protected|static|void|int|bool|auto|std::\w+)\b)|[{};]\s*(?:\n|$)/u;
+const SOURCE_ACTION_COMMITMENT = /(?:现在|接下来).{0,20}(?:执行|应用|提交|写入|落地|修改|修复|重新验证)|(?:now|next)[ ,:].{0,20}(?:apply|commit|write|execute|implement|re-?verify)\b/iu;
 
 function looksLikeShellCommandBlock(content: string): boolean {
   const actionableLines = content.split(/\r?\n/u)
@@ -142,4 +150,24 @@ export function hasUnexecutedShellActionPresentation(text: string): boolean {
   if (!hasShellBlock) return false;
   const visibleText = projection.visibleText.replace(/\s+/gu, ' ').trim();
   return !visibleText || isDeferredAgentActionAnnouncement(normalized);
+}
+
+function looksLikeSourceCodeBlock(info: string, content: string): boolean {
+  const trimmed = content.trim();
+  if (!trimmed) return false;
+  if (SOURCE_FENCE_LANGUAGES.has(info)) return true;
+  return !info && SOURCE_CODE_SIGNAL.test(trimmed);
+}
+
+/** Detects a proposed source edit shown as Markdown data; it never applies or authorizes it. */
+export function hasUnexecutedCodeActionPresentation(text: string): boolean {
+  const normalized = normalizeAgentUserAnnouncement(text);
+  const projection = projectMarkdownFences(normalized);
+  if (!isDeferredAgentActionAnnouncement(normalized)
+    && !SOURCE_ACTION_COMMITMENT.test(projection.visibleText)) return false;
+  return projection.blocks.some(block => (
+    !SHELL_FENCE_LANGUAGES.has(block.info)
+    && !looksLikeShellCommandBlock(block.content)
+    && looksLikeSourceCodeBlock(block.info, block.content)
+  ));
 }

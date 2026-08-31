@@ -15,6 +15,7 @@ import type { AgentRecoveryReason } from './events';
 import type { EvidenceRef } from './tool-executor';
 import type { AgentLoopCallbacks } from './loop-types';
 import type { AgentProviderFailure } from './provider-response-recovery';
+import type { NoToolActionRecovery } from './no-tool-action-recovery';
 import type { ProviderRequirementReviewService } from './provider-requirement-review';
 import type { SourceValidationLedger } from './source-validation-ledger';
 import type { TerminalFailureProgressLedger } from './terminal-failure-progress';
@@ -136,11 +137,17 @@ export class AgenticProviderRecoveryCoordinator {
     failure: TerminalEvidence | undefined,
     missingEvidence: readonly string[],
     maxNoToolRounds: number,
+    actionRecovery?: NoToolActionRecovery,
   ): Promise<boolean> {
     const { callbacks, terminalFailureProgress, state } = this.input;
     if (!failure || callbacks.signal?.aborted || state.noToolRounds() >= maxNoToolRounds) return false;
+    const explicitActionRecovery = actionRecovery?.kind === 'retry'
+      && (actionRecovery.recoveryClass === 'code-action' || actionRecovery.recoveryClass === 'shell-action')
+      ? actionRecovery
+      : undefined;
     const recoveryAttempt = state.noToolRounds() + 1;
-    const useFreshProviderSession = recoveryAttempt === 2;
+    const useFreshProviderSession = explicitActionRecovery?.useFreshProviderSession
+      ?? recoveryAttempt === 2;
     state.setNoToolRounds(recoveryAttempt);
     const feedback = [
       buildTerminalFailureRepairFeedback(
@@ -148,17 +155,19 @@ export class AgenticProviderRecoveryCoordinator {
         missingEvidence,
         terminalFailureProgress.requiresInvestigation() ? 'investigate' : 'repair',
       ),
+      explicitActionRecovery?.feedback,
       useFreshProviderSession
         ? '原 Provider 会话已连续停在验证后的说明或动作预告，本轮将用原始任务、活动失败结果和最近修复意图重建会话；重建不会放宽任何工具权限。'
         : '',
     ].filter(Boolean).join('\n');
     await this.emitCorrectionStatus(
-      '验证失败，继续依据证据修复',
+      explicitActionRecovery?.statusTitle ?? '验证失败，继续依据证据修复',
       [
         describeBlockingTerminalFailure(failure),
+        explicitActionRecovery?.statusDetail,
         useFreshProviderSession ? '当前 Provider 会话将按活动失败因果前沿重建。' : '',
       ].filter(Boolean).join('。'),
-      '回流未清除的验证失败',
+      explicitActionRecovery?.activityLabel ?? '回流未清除的验证失败',
     );
     if (useFreshProviderSession) this.rebuildWithCausalFeedback(feedback);
     else this.input.appendUserFeedback(feedback);

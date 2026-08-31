@@ -112,6 +112,34 @@ test('NoToolActionRecovery: repeated unexecuted shell presentation rebuilds Prov
   assert.match(result.feedback, /<\/devseek_tool_calls channel="no-tool-action-recovery-test">/u);
 });
 
+test('NoToolActionRecovery: a displayed source repair requests one authenticated write action', () => {
+  const result = resolveNoToolActionRecovery({
+    text: [
+      '失败原因已经定位，建议替换当前绘制函数：',
+      '```',
+      'void RasterCanvas::renderNumberLine() {',
+      '  drawIntervalBands();',
+      '}',
+      '```',
+      '现在执行修改并重新验证。',
+    ].join('\n'),
+    noToolRounds: 0,
+    missingEvidenceCount: 1,
+    promptRequiresTools: true,
+    sawWorkTool: true,
+    textToolProtocol,
+  });
+
+  assert.ok(result);
+  assert.equal(result.kind, 'retry');
+  assert.equal(result.recoveryClass, 'code-action');
+  assert.equal(result.useFreshProviderSession, false);
+  assert.match(result.feedback, /源码修改没有写入工作区/u);
+  assert.match(result.feedback, /<apply_patch>/u);
+  assert.match(result.feedback, /<devseek_tool_calls[^>]+channel="no-tool-action-recovery-test">/u);
+  assert.doesNotMatch(result.feedback, /\[TOOL:read_file/u);
+});
+
 test('NoToolActionRecovery: investigation conclusions with a pending next action retry', () => {
   const result = resolveNoToolActionRecovery({
     text: [

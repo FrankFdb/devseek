@@ -1078,6 +1078,106 @@ test('ModelLedUserSimulation: repeated prose after a failed verifier rebuilds fr
   }
 });
 
+test('ModelLedUserSimulation: displayed source repair is rebound to the active verifier failure', async () => {
+  const prompt = '修复 render-state.txt 的输出密度状态，并运行 node verify-render.mjs 验证通过。';
+  const providerSessions = [];
+  let calls = 0;
+  let terminalCalls = 0;
+  const simulation = await runSimulation(prompt, async (messages, providerContext) => {
+    calls += 1;
+    providerSessions.push(providerContext.newSession);
+    const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'render-state.txt');
+    const history = messages.map(message => message.content).join('\n');
+    if (calls === 1) {
+      return {
+        text: '先建立当前公开验证基线。',
+        tools: [
+          { name: 'create_file', input: { path: target, content: 'LOW_DENSITY\n' } },
+          { name: 'run_terminal', input: { command: 'node verify-render.mjs' } },
+        ],
+      };
+    }
+    if (calls === 2) {
+      assert.match(history, /expected>=0\.02 observed=0\.009/u);
+      return {
+        text: '读取唯一失败文件的当前内容。',
+        tools: [{ name: 'read_file', input: { path: target } }],
+      };
+    }
+    if (calls === 3) {
+      assert.match(history, /LOW_DENSITY/u);
+      return {
+        text: [
+          '已定位密度状态，建议采用以下完整修复：',
+          '```',
+          'void renderState() {',
+          '  emit("DENSE_RENDERING");',
+          '}',
+          '```',
+          '现在执行修改并重新验证。',
+        ].join('\n'),
+        tools: [],
+      };
+    }
+    if (calls === 4) {
+      assert.equal(providerContext.newSession, false);
+      assert.match(messages.at(-1).content, /公开失败命令: node verify-render\.mjs/u);
+      assert.match(messages.at(-1).content, /源码修改没有写入工作区/u);
+      assert.match(messages.at(-1).content, /<apply_patch>/u);
+      return {
+        text: '将已确认的最小修复写入并原样重跑公开验证。',
+        tools: [
+          {
+            name: 'replace_in_file',
+            input: { path: target, old_str: 'LOW_DENSITY', new_str: 'DENSE_RENDERING' },
+          },
+          { name: 'run_terminal', input: { command: 'node verify-render.mjs' } },
+        ],
+      };
+    }
+    if (calls === 5) {
+      assert.match(history, /render verification passed/u);
+      return {
+        text: '公开验证已通过，读回写后文件。',
+        tools: [{ name: 'read_file', input: { path: target } }],
+      };
+    }
+    assert.equal(calls, 6);
+    assert.match(history, /DENSE_RENDERING/u);
+    return {
+      text: '源码读回和公开验证均已闭环。',
+      tools: [{ name: 'task_complete', input: { summary: '渲染密度修复且公开验证通过。' } }],
+    };
+  }, {
+    runDisplayAction: 'fix',
+    verificationRequired: true,
+    terminalHost: async command => {
+      terminalCalls += 1;
+      assert.equal(command, 'node verify-render.mjs');
+      const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'render-state.txt');
+      return readFileSync(target, 'utf8').includes('DENSE_RENDERING')
+        ? 'render verification passed\n[exitCode=0]'
+        : 'render verification failed: expected>=0.02 observed=0.009\n[exitCode=1]';
+    },
+  });
+  try {
+    assert.deepEqual(providerSessions, [true, false, false, false, false, false]);
+    assert.equal(terminalCalls, 2, simulation.result.historyText);
+    assert.equal(readFileSync(path.join(simulation.root, 'render-state.txt'), 'utf8'), 'DENSE_RENDERING\n');
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+    assert.equal(
+      simulation.harness.statuses.some(status => (
+        status.title === '等待展示的源码通过写工具落地'
+        && /render verification failed/u.test(status.detail)
+      )),
+      true,
+      simulation.result.historyText,
+    );
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
 test('ModelLedUserSimulation: unchanged post-write failures force evidence before another repair', async () => {
   const prompt = '修复 render-state.txt 的运行时布局错误，并运行 node verify-layout.mjs 验证通过。';
   let calls = 0;

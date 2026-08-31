@@ -116,6 +116,17 @@ export function buildUnexecutedShellActionRecoveryPrompt(session: TextToolProtoc
   ].join('\n');
 }
 
+export function buildUnexecutedCodeActionRecoveryPrompt(session: TextToolProtocolSession): string {
+  return [
+    '- 上一轮只在普通 Markdown 代码块中展示了源码修改；代码块是说明数据，不是已授权的写工具调用，因此工作区没有变化。不要重复展示整段源码。',
+    '- 若该修改仍是当前验证失败的最小修复，请依据已读取的当前文件重新确认上下文，只输出 1 个单文件 apply_patch；仅当唯一 old_str 明显更小时才改用 replace_in_file。',
+    '- 文本 Provider 的写操作必须完整包在以下当前授权信封中；示例仅说明 apply_patch 的序列化格式，必须替换为当前文件、真实补丁和最小修改：',
+    renderTextToolProtocolEnvelope(session, APPLY_PATCH_RAW_EXAMPLE),
+    '- 不要输出裸补丁、源码代码块或未来动作说明。闭合信封后立即停止，等待宿主返回真实写盘结果。',
+    '- 本提示只恢复动作提案的传输格式，不授予额外权限；写操作仍会独立经过路径、权限、事务、源码护栏和读回验证。',
+  ].join('\n');
+}
+
 export interface NoToolActionRecoveryPromptOptions {
   readonly actionEvidenceExpected: boolean;
   readonly freshProviderSession: boolean;

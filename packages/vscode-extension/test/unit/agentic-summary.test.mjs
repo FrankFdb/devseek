@@ -18,6 +18,7 @@ execSync(
 );
 
 const {
+  hasUnexecutedCodeActionPresentation,
   hasUnexecutedShellActionPresentation,
   isDeferredAgentActionAnnouncement,
 } = createRequire(import.meta.url)(bundlePath);
@@ -142,6 +143,33 @@ test('recognizes unexecuted shell action presentations without treating source e
     '可供人工执行的示例命令如下，本回答没有执行它：',
     '```bash',
     'npm test',
+    '```',
+  ].join('\n')), false);
+});
+
+test('recognizes deferred source edits without treating explanatory examples as applied changes', () => {
+  assert.equal(hasUnexecutedCodeActionPresentation([
+    '当前失败来自数轴绘制密度不足，使用下面的最小修改：',
+    '```',
+    'void RasterCanvas::renderNumberLine() {',
+    '  drawIntervalBands();',
+    '}',
+    '```',
+    '现在执行修改并重新验证。',
+  ].join('\n')), true);
+  assert.equal(hasUnexecutedCodeActionPresentation([
+    '下面只是一个独立的 C++ 语法示例：',
+    '```cpp',
+    'int main() { // now apply the local style',
+    '  return 0;',
+    '}',
+    '```',
+    '以上示例已经完整回答问题。',
+  ].join('\n')), false);
+  assert.equal(hasUnexecutedCodeActionPresentation([
+    '我会执行验证命令：',
+    '```bash',
+    'cmake --build build',
     '```',
   ].join('\n')), false);
 });
