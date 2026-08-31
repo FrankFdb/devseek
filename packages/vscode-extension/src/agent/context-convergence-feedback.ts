@@ -7,7 +7,8 @@ export interface ContextToolRequest {
 
 const CONTEXT_GATHERING_TOOL_NAMES = new Set([
   'read_file', 'list_dir', 'grep_search', 'file_search',
-  'semantic_search', 'memory_search', 'memory_read',
+  'semantic_search', 'memory_search', 'memory_read', 'get_errors',
+  'get_changed_files', 'vscode_listCodeUsages',
 ]);
 
 const MUTATION_ROUNDS_BEFORE_CORRECTION = 2;

@@ -20,10 +20,12 @@ import {
 import {
   describeBlockingTerminalFailure,
   isCodeArtifactPath,
+  isBlockingTerminalFailureEvidence,
   type TerminalEvidence,
   type WrittenFileEvidence,
 } from './completion-evidence';
 import { buildTerminalFailureRepairFeedback } from './terminal-failure-repair';
+import { TerminalFailureProgressLedger } from './terminal-failure-progress';
 import type { AgenticHistoryQualityGate } from './agentic-history';
 import { runAgentAutoValidationForWrites, type AgentAutoValidationResult } from './auto-validation';
 import {
@@ -225,6 +227,7 @@ export async function runAgenticLoop(
   const contextInvestigation = new ContextInvestigationLedger(workspaceRoot);
   const deliveryConvergence = new DeliveryConvergenceLedger();
   const qualityGateStagnation = new QualityGateStagnationLedger();
+  const terminalFailureProgress = new TerminalFailureProgressLedger();
   const requirementReview = createProviderRequirementReviewService({
     userPrompt: () => writeAuthority.currentPrompt,
     workspaceRoot,
@@ -342,7 +345,11 @@ export async function runAgenticLoop(
     const useFreshProviderSession = recoveryAttempt === 2;
     noToolRounds = recoveryAttempt;
     const feedback = [
-      buildTerminalFailureRepairFeedback(failure, missingEvidence),
+      buildTerminalFailureRepairFeedback(
+        failure,
+        missingEvidence,
+        terminalFailureProgress.requiresInvestigation() ? 'investigate' : 'repair',
+      ),
       useFreshProviderSession
         ? '原 Provider 会话已连续停在验证后的说明或动作预告，本轮将用原始任务、活动失败结果和最近修复意图重建会话；重建不会放宽任何工具权限。'
         : '',
@@ -777,7 +784,6 @@ export async function runAgenticLoop(
     const blockedRepeatedToolIndexes = new Set<number>();
     const suppressedTools: ToolSuppressionEvidence[] = [];
     const loopWarnings: string[] = [];
-    const hasFileWriteIntentThisRound = tools.some(tool => tool.purpose === 'workspace-mutation');
     const projectedReadContinuations = contextInvestigation.reconcileProjectedReadContinuations(tools);
     const screenedTools = tools.map((tool, toolIndex) => {
       const input = projectedReadContinuations.inputOverrides.get(toolIndex);
@@ -799,12 +805,21 @@ export async function runAgenticLoop(
         reason: 'provider-recovery-action-budget',
       });
     }
+    const failureInvestigationScreen = terminalFailureProgress.screen(screenedTools);
+    for (const toolIndex of failureInvestigationScreen.blockedToolIndexes) {
+      blockedRepeatedToolIndexes.add(toolIndex);
+    }
+    suppressedTools.push(...failureInvestigationScreen.suppressedTools);
+    loopWarnings.push(...failureInvestigationScreen.warnings);
+    const hasAdmittedFileWriteIntentThisRound = screenedTools.some((tool, toolIndex) => (
+      tool.purpose === 'workspace-mutation' && !blockedRepeatedToolIndexes.has(toolIndex)
+    ));
     screenedTools.forEach((tool, toolIndex) => {
       if (tool.name !== 'run_terminal') return;
       const command = typeof tool.input.command === 'string' ? tool.input.command.trim() : '';
       if (!command) return;
       const commandProgress = terminalCommandProgress.inspect(command, progressEpoch);
-      if (commandProgress.repeatedWithoutProgress && !hasFileWriteIntentThisRound) {
+      if (commandProgress.repeatedWithoutProgress && !hasAdmittedFileWriteIntentThisRound) {
         blockedRepeatedToolIndexes.add(toolIndex);
         suppressedTools.push({ tool: tool.name, reason: 'repeated-terminal-without-progress' });
         loopWarnings.push(getTerminalRecoveryProtocol(command, commandProgress.nextAttempt));
@@ -813,7 +828,7 @@ export async function runAgenticLoop(
     });
     const contextScreen = contextInvestigation.screen(screenedTools, {
       progressEpoch,
-      hasWorkspaceMutation: hasFileWriteIntentThisRound,
+      hasWorkspaceMutation: hasAdmittedFileWriteIntentThisRound,
       consumeContextRefresh: path => toolFailureRecovery.consumeContextRefresh(path),
       alreadyBlockedToolIndexes: blockedRepeatedToolIndexes,
       providerRecoveryContextRefreshToolIndexes: providerRecoveryScreen.contextRefreshToolIndexes,
@@ -947,6 +962,15 @@ export async function runAgenticLoop(
       appendUserFeedback,
     });
     const deliveredLoopWarningCount = loopWarnings.length;
+    const investigationEvidenceFeedback = terminalFailureProgress.recordInvestigationEvidence(
+      toolFeedbackDelivery.novelReadExposureCount > 0
+        || (loopRes.evidenceRefs ?? []).some(evidence => (
+          evidence.kind === 'search'
+            || evidence.kind === 'diagnostics'
+            || evidence.kind === 'memory'
+        )),
+    );
+    if (investigationEvidenceFeedback) loopWarnings.push(investigationEvidenceFeedback);
     if (failedReason) {
       break;
     }
@@ -1011,7 +1035,27 @@ export async function runAgenticLoop(
     if (failedReason) {
       break;
     }
-    const autoValidationFeedback = [normalizedAutoValidation.feedbackForAI, qualityGateFeedback].filter(Boolean).join('\n\n');
+    const freshTerminalEvidence = [
+      ...(loopRes.terminalEvidence ?? []),
+      ...normalizedAutoValidation.evidence,
+    ];
+    const failureProgressObservation = terminalFailureProgress.observe(
+      assessCurrentEvidenceClosure().blockingTerminalFailure,
+      progressEpoch,
+      freshTerminalEvidence.some(isBlockingTerminalFailureEvidence),
+    );
+    if (failureProgressObservation.newlyRequiresInvestigation && !callbacks.signal?.aborted) {
+      await emitAgenticCorrectionStatus(
+        '修复未改变失败，转入根因取证',
+        `连续 ${failureProgressObservation.unchangedRepairCohorts} 个修复批次未改变核心诊断。`,
+        '公开验证已证伪当前修复假设',
+      );
+    }
+    const autoValidationFeedback = [
+      normalizedAutoValidation.feedbackForAI,
+      qualityGateFeedback,
+      failureProgressObservation.feedback,
+    ].filter(Boolean).join('\n\n');
 
     const validationCommandsThisRound = (loopRes.terminalEvidence ?? [])
       .filter(evidence => evidence.kind !== 'other')
@@ -1173,17 +1217,23 @@ export async function runAgenticLoop(
         await callbacks.onTodoUpdate(currentTodos);
       }
       const retryMessage = blockingFailureAfterTools
-        ? `${buildTerminalFailureRepairFeedback(blockingFailureAfterTools, missingAfterTools)}${autoValidationFeedback ? `\n\n${autoValidationFeedback}` : ''}`
+        ? `${buildTerminalFailureRepairFeedback(
+          blockingFailureAfterTools,
+          missingAfterTools,
+          terminalFailureProgress.requiresInvestigation() ? 'investigate' : 'repair',
+        )}${autoValidationFeedback ? `\n\n${autoValidationFeedback}` : ''}`
         : `【系统反馈】不能结束任务。当前仍缺少可验证的${missingAfterTools.join('、')}。请继续调用实际工具完成缺失项：需要读取时用 read_file/list_dir/只读 run_terminal；需要代码时用 create_file/write_file 写入源码；需要验证时用合适的验证命令，文档/配置只需文件存在和内容证据，代码才需要编译/运行/测试。完成后再调用 task_complete，summary 必须只基于真实工具结果。${autoValidationFeedback ? `\n\n${autoValidationFeedback}` : ''}`;
       appendUserFeedback(retryMessage);
       continue;
     }
 
     if (blockingFailureAfterTools && loopRes.toolCallsMade && !callbacks.signal?.aborted) {
-      const repairPhase = (loopRes.writtenFiles?.length ?? 0) > 0
+      const repairPhase = terminalFailureProgress.requiresInvestigation()
+        ? 'investigate'
+        : (loopRes.writtenFiles?.length ?? 0) > 0
         && !roundHasValidationTerminalProgress
-        ? 'rerun'
-        : 'repair';
+          ? 'rerun'
+          : 'repair';
       loopWarnings.push(buildTerminalFailureRepairFeedback(
         blockingFailureAfterTools,
         missingAfterTools,

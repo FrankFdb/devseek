@@ -22,12 +22,26 @@ execFileSync('npx', [
 
 const {
   DeliveryConvergenceLedger,
+  isContextGatheringToolName,
   resolveDeliveryConvergenceExpectation,
   resolveDeliveryRoundActivity,
   resolveDeliveryConvergencePending,
 } = createRequire(import.meta.url)(bundlePath);
 
 after(() => rmSync(tempRoot, { recursive: true, force: true }));
+
+test('all local observation entry points share context convergence governance', () => {
+  for (const toolName of [
+    'read_file',
+    'grep_search',
+    'get_errors',
+    'get_changed_files',
+    'vscode_listCodeUsages',
+  ]) {
+    assert.equal(isContextGatheringToolName(toolName), true, toolName);
+  }
+  assert.equal(isContextGatheringToolName('replace_in_file'), false);
+});
 
 const unresolvedMutation = Object.freeze({
   expectation: 'mutation',

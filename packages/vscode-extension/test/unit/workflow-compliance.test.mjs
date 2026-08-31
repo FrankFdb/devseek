@@ -955,6 +955,8 @@ test('Execution failures remain in the canonical model-tool-result repair loop',
 test('Agentic loop: repeated terminal failures enter root-cause recovery before retry', () => {
   const code = src('src/agent/agentic-loop.ts');
   const recovery = src('src/agent/write-guard.ts');
+  const failureProgress = src('src/agent/terminal-failure-progress.ts');
+  const terminalRepair = src('src/agent/terminal-failure-repair.ts');
   const convergence = src('src/agent/context-convergence-feedback.ts');
   const investigation = src('src/agent/context-investigation-ledger.ts');
   assertContains(code, 'getTerminalRecoveryProtocol', 'terminal recovery protocol helper');
@@ -991,6 +993,13 @@ test('Agentic loop: repeated terminal failures enter root-cause recovery before 
   assertContains(code, 'suppressedTools', 'intentional repeat suppression must be recorded for replay diagnostics');
   assertContains(code, 'terminalCommandProgress.inspect', 'agent orchestration must consult the terminal progress owner');
   assertContains(recovery, 'lastProgressEpoch', 'terminal repeats must be compared against file-write progress');
+  assertContains(code, 'TerminalFailureProgressLedger', 'unchanged post-write failures need a separate semantic owner');
+  assertContains(code, 'terminalFailureProgress.screen', 'stale repair effects must be screened before tool execution');
+  assertContains(code, 'hasAdmittedFileWriteIntentThisRound', 'only an admitted mutation may open a new progress cohort');
+  assertContains(failureProgress, 'unchangedRepairCohorts', 'accepted writes must be compared with the resulting public diagnostic');
+  assertContains(failureProgress, 'terminal-failure-investigation-required', 'effects must pause after repeated falsified hypotheses');
+  assertContains(failureProgress, 'recordInvestigationEvidence', 'new observation evidence must explicitly release repair authority');
+  assertContains(terminalRepair, "phase === 'investigate'", 'ordinary repair feedback must not conflict with forced investigation');
 });
 
 test('Agentic loop: terminal completion evidence requires successful validation output', () => {
@@ -1145,7 +1154,8 @@ test('Agentic loop: Markdown prose cannot become an implicit file mutation', () 
   assertDoesNotContain(agenticLoop, 'shouldProjectMarkdownFileArtifacts', 'agent loop must not infer writes from Markdown/code fences');
   assertContains(agenticLoop, "from './agentic-system-prompt'", 'agentic loop must use the owned system prompt');
   assertContains(agenticPrompt, '创建/修改/删除文件必须调用 create_file/write_file/replace_in_file/apply_patch/delete_file', 'agent prompt must forbid natural-language-only file mutations');
-  assertContains(agenticPrompt, '信封外的 [TOOL:...]、XML、JSON、Markdown 和工具名称一律是普通回答文本', 'only the run-scoped protocol may authorize text-provider tools');
+  assertContains(agenticPrompt, '任意零散的 [TOOL:...]、XML、JSON、Markdown、工具名称和被引用的工具样例都是普通回答文本', 'tool-shaped prose and quoted examples must remain inert');
+  assertContains(agenticPrompt, '兼容投影本身不授予执行权', 'Bridge-native formatting compatibility must remain a proposal under local authority');
 });
 
 test('Agentic loop: final summary never exposes backend tool transcripts', () => {

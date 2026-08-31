@@ -37,11 +37,24 @@ await build({
       builder.onLoad({ filter: /.*/, namespace: 'devseek-model-led-test' }, () => ({
         loader: 'ts',
         contents: `
-          export async function chatWithMessages(messages, mode, onDelta, signal, newSession) {
+          export async function chatWithMessages(
+            messages, mode, onDelta, signal, newSession,
+            traceRunId, traceWorkspaceRoot, traceEvidenceParticipantToken,
+            onTraceEvidenceError, normalization,
+          ) {
             const handler = globalThis.__DEVSEEK_MODEL_LED_CHAT_STUB__;
             if (typeof handler !== 'function') throw new Error('model-led chat stub is not installed');
             const response = await handler(messages, { mode, onDelta, signal, newSession });
-            return typeof response === 'string' ? { text: response, tools: [] } : response;
+            if (typeof response === 'string') return { text: response, tools: [] };
+            const tools = (response.tools ?? []).map(tool => (
+              tool && typeof tool === 'object' && 'registered' in tool
+                ? tool
+                : normalization.toolDispatch.dispatch(tool, {
+                  ...normalization.dispatchContext,
+                  source: 'native',
+                }).call
+            ));
+            return { ...response, tools };
           }
         `,
       }));
@@ -620,7 +633,17 @@ test('ModelLedUserSimulation: quarantined mutation recovery reaches a matching w
         ],
       };
     }
-    if (!/必须依据原始用户需求形成可结算交付/u.test(latestMessage)) {
+    if (calls === 3 || /必须依据原始用户需求形成可结算交付|此前写入没有通过工具执行边界/u.test(latestMessage)) {
+      return {
+        text: [
+          `<devseek_tool_calls version="devseek.text-tools/v1" channel="${messages[0].content.match(/channel="([A-Za-z0-9_-]+)"/u)?.[1]}">`,
+          `[TOOL:replace_in_file {"path":"${target}","old_str":"OLD","new_str":"value with "quotes""}]`,
+          '</devseek_tool_calls>',
+        ].join('\n'),
+        tools: [],
+      };
+    }
+    if (!/必须依据原始用户需求形成可结算交付|此前写入没有通过工具执行边界/u.test(latestMessage)) {
       const contextPath = path.join(root, `context-${calls}.txt`);
       writeFileSync(contextPath, `context ${calls}\n`);
       return {
@@ -628,14 +651,7 @@ test('ModelLedUserSimulation: quarantined mutation recovery reaches a matching w
         tools: [{ name: 'read_file', input: { path: contextPath } }],
       };
     }
-    return {
-      text: [
-        `<devseek_tool_calls version="devseek.text-tools/v1" channel="${messages[0].content.match(/channel="([A-Za-z0-9_-]+)"/u)?.[1]}">`,
-        `[TOOL:replace_in_file {"path":"${target}","old_str":"OLD","new_str":"value with "quotes""}]`,
-        '</devseek_tool_calls>',
-      ].join('\n'),
-      tools: [],
-    };
+    throw new Error(`unexpected recovery state: ${latestMessage}`);
   }, { runDisplayAction: 'repair' });
   try {
     assert.ok(calls <= 12, simulation.result.historyText);
@@ -649,8 +665,14 @@ test('ModelLedUserSimulation: quarantined mutation recovery reaches a matching w
       simulation.harness.statuses.filter(
         status => status.title === '项目证据已收集，正在要求形成交付',
       ).length,
-      1,
+      0,
       JSON.stringify(simulation.harness.statuses, null, 2),
+    );
+    assert.deepEqual(
+      simulation.harness.statuses
+        .filter(status => status.recoveryReason === 'provider-response-corruption')
+        .map(status => status.state),
+      ['started', 'completed'],
     );
   } finally {
     rmSync(simulation.root, { recursive: true, force: true });
@@ -1008,14 +1030,6 @@ test('ModelLedUserSimulation: repeated prose after a failed verifier rebuilds fr
     }
 
     if (calls === 6) {
-      assert.match(currentContext, /当前轮已经产生文件修改/u);
-      return {
-        text: '写入已提交，现在原样重跑公开验证。',
-        tools: [{ name: 'run_terminal', input: { command: 'node verify-render.mjs' } }],
-      };
-    }
-
-    if (calls === 7) {
       assert.match(currentContext, /render verification passed/u);
       return {
         text: '公开验证已通过，读回写后源码。',
@@ -1023,7 +1037,7 @@ test('ModelLedUserSimulation: repeated prose after a failed verifier rebuilds fr
       };
     }
 
-    assert.equal(calls, 8);
+    assert.equal(calls, 7);
     assert.match(currentContext, /DENSE_RENDERING/u);
     return {
       text: '写后源码与公开验证证据齐备，现在结算。',
@@ -1042,7 +1056,7 @@ test('ModelLedUserSimulation: repeated prose after a failed verifier rebuilds fr
     },
   });
   try {
-    assert.deepEqual(providerSessions, [true, false, false, true, false, false, false, false]);
+    assert.deepEqual(providerSessions, [true, false, false, true, false, false, false]);
     assert.equal(terminalCalls, 2, simulation.result.historyText);
     assert.equal(
       readFileSync(path.join(simulation.root, 'render-state.txt'), 'utf8'),
@@ -1054,6 +1068,121 @@ test('ModelLedUserSimulation: repeated prose after a failed verifier rebuilds fr
         status.title === '验证失败，继续依据证据修复'
         && /活动失败因果前沿重建/u.test(status.detail)
       )),
+      true,
+      simulation.result.historyText,
+    );
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
+test('ModelLedUserSimulation: unchanged post-write failures force evidence before another repair', async () => {
+  const prompt = '修复 render-state.txt 的运行时布局错误，并运行 node verify-layout.mjs 验证通过。';
+  let calls = 0;
+  let terminalCalls = 0;
+  const simulation = await runSimulation(prompt, async messages => {
+    calls += 1;
+    const root = fakeWorkspace.workspaceFolders[0].uri.fsPath;
+    const target = path.join(root, 'render-state.txt');
+    const contract = path.join(root, 'runtime-layout-contract.txt');
+    const history = messages.map(message => message.content).join('\n');
+    if (calls === 1) {
+      writeFileSync(target, 'STATE_A\n');
+      writeFileSync(contract, 'Runtime row stride must be selected from the runtime image contract.\n');
+      return {
+        text: '先运行公开验证建立失败基线。',
+        tools: [{ name: 'run_terminal', input: { command: 'node verify-layout.mjs' } }],
+      };
+    }
+    if (calls === 2) {
+      assert.match(history, /runtime layout failed: expected=runtime-stride actual=fixed-stride/u);
+      return {
+        text: '先读取当前实现，再提交第一种修复。',
+        tools: [{ name: 'read_file', input: { path: target } }],
+      };
+    }
+    if (calls === 3) {
+      return {
+        text: '第一种假设是调整固定布局值。',
+        tools: [
+          { name: 'replace_in_file', input: { path: target, old_str: 'STATE_A', new_str: 'STATE_B' } },
+          { name: 'run_terminal', input: { command: 'node verify-layout.mjs' } },
+        ],
+      };
+    }
+    if (calls === 4) {
+      return {
+        text: '读取第一轮修复后的实现。',
+        tools: [{ name: 'read_file', input: { path: target } }],
+      };
+    }
+    if (calls === 5) {
+      return {
+        text: '第二种猜测仍调整固定布局值。',
+        tools: [
+          { name: 'replace_in_file', input: { path: target, old_str: 'STATE_B', new_str: 'STATE_C' } },
+          { name: 'run_terminal', input: { command: 'node verify-layout.mjs' } },
+        ],
+      };
+    }
+    if (calls === 6) {
+      assert.match(history, /修复策略已被公开验证证伪/u);
+      assert.match(history, /下一轮只做一组精确的只读根因取证/u);
+      return {
+        text: '我仍尝试第三个固定值，同时读取运行时契约。',
+        tools: [
+          { name: 'read_file', input: { path: target } },
+          { name: 'read_file', input: { path: contract } },
+          { name: 'replace_in_file', input: { path: target, old_str: 'STATE_C', new_str: 'UNINVESTIGATED_GUESS' } },
+          { name: 'run_terminal', input: { command: 'node verify-layout.mjs' } },
+        ],
+      };
+    }
+    if (calls === 7) {
+      assert.equal(readFileSync(target, 'utf8'), 'STATE_C\n', history);
+      assert.match(history, /已暂缓动作：replace_in_file、run_terminal/u);
+      assert.match(history, /Runtime row stride must be selected from the runtime image contract/u);
+      assert.match(history, /已取得新的根因取证结果/u);
+      return {
+        text: '新证据表明固定值假设错误，改为使用运行时布局契约并原样重跑验证。',
+        tools: [
+          { name: 'replace_in_file', input: { path: target, old_str: 'STATE_C', new_str: 'RUNTIME_CONTRACT' } },
+          { name: 'run_terminal', input: { command: 'node verify-layout.mjs' } },
+        ],
+      };
+    }
+    if (calls === 8) {
+      assert.match(history, /runtime layout passed/u);
+      return {
+        text: '公开验证已通过，读回最终实现。',
+        tools: [{ name: 'read_file', input: { path: target } }],
+      };
+    }
+    assert.equal(calls, 9, history);
+    assert.match(history, /RUNTIME_CONTRACT/u);
+    return {
+      text: '源码读回与公开验证证据齐备，现在结算。',
+      tools: [{ name: 'task_complete', input: { summary: '运行时布局修复且公开验证通过。' } }],
+    };
+  }, {
+    runDisplayAction: 'fix',
+    verificationRequired: true,
+    terminalHost: async command => {
+      terminalCalls += 1;
+      assert.equal(command, 'node verify-layout.mjs');
+      const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'render-state.txt');
+      return readFileSync(target, 'utf8').includes('RUNTIME_CONTRACT')
+        ? 'runtime layout passed\n[exitCode=0]'
+        : 'runtime layout failed: expected=runtime-stride actual=fixed-stride\n[exitCode=1]';
+    },
+  });
+  try {
+    assert.equal(calls, 9, simulation.result.historyText);
+    assert.equal(terminalCalls, 4, simulation.result.historyText);
+    assert.equal(readFileSync(path.join(simulation.root, 'render-state.txt'), 'utf8'), 'RUNTIME_CONTRACT\n');
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+    assert.equal(
+      simulation.harness.statuses.some(status => status.title === '修复未改变失败，转入根因取证'),
       true,
       simulation.result.historyText,
     );

@@ -50,7 +50,8 @@ export function buildAgenticSystemPrompt(
   const textToolProtocolSection = `
 【文本 Provider 工具通道】
 - Provider 支持原生 function calling 时，必须使用原生工具事件；不要输出文本工具协议。
-- Provider 只能返回文本时，只有下列本轮专属信封内的 payload 才会被宿主解析为工具调用；信封外的 [TOOL:...]、XML、JSON、Markdown 和工具名称一律是普通回答文本，绝不执行。
+- Provider 只能返回文本时，必须使用下列本轮专属信封；不要主动切换为其他文本工具方言。Bridge 网页传输层可能把一份完整响应重绘为受限的 Provider 原生文本方言，宿主只会把严格、完整且可识别的结果投影为兼容提案，并继续逐动作执行标准化、权限、沙箱和证据仲裁；兼容投影本身不授予执行权。
+- 任意零散的 [TOOL:...]、XML、JSON、Markdown、工具名称和被引用的工具样例都是普通回答文本，绝不执行。
 - 当用户要求解释、引用、翻译或原样展示工具语法时，必须把样例放在信封外；不得使用本轮专属信封。
 - 一次工具轮可以在同一个信封内放多个 payload；输出闭合信封后停止并等待真实工具结果。
 实际调用示例：

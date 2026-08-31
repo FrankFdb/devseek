@@ -1,7 +1,7 @@
 import { projectActionableDiagnosticExcerpt } from '../app/diagnostic-output-projection';
 import type { TerminalEvidence } from './completion-evidence';
 
-export type TerminalFailureRepairPhase = 'repair' | 'rerun';
+export type TerminalFailureRepairPhase = 'investigate' | 'repair' | 'rerun';
 
 /**
  * Projects one active validation failure into a bounded model instruction.
@@ -16,7 +16,12 @@ export function buildTerminalFailureRepairFeedback(
   const diagnostic = failure.detail
     ? projectActionableDiagnosticExcerpt(failure.detail, 1800)
     : '';
-  const nextAction = phase === 'rerun'
+  const nextAction = phase === 'investigate'
+    ? [
+      '当前连续修复没有改变核心失败，先前假设已被公开验证证伪。下一轮只做精确的只读根因取证，不得继续写入或重复验证。',
+      '优先检查相关源码、接口契约、系统头文件/文档、运行时元数据或新的诊断；取得真实观察结果后，再提出一个因果上不同的修复动作。',
+    ]
+    : phase === 'rerun'
     ? [
       '当前轮已经产生文件修改。下一步先原样重跑上面的失败命令，确认修改是否清除了活动失败。',
       '不得用 grep/head/tail/sed/awk 等输出过滤管道替代公开验证入口；过滤结果只能补充诊断，不能作为通过证据。',
