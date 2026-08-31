@@ -572,6 +572,7 @@ export async function runAgenticLoop(
       const actionRecovery = resolveNoToolActionRecovery({
         text: stripped, noToolRounds, promptRequiresTools, sawWorkTool, textToolProtocol,
         missingEvidenceCount: evidenceWithoutTools.missingEvidence.length,
+        blockingTerminalFailure: Boolean(evidenceWithoutTools.blockingTerminalFailure),
       });
       if (actionRecovery?.kind === 'stop') {
         if (!callbacks.signal?.aborted) failedReason = actionRecovery.reason;

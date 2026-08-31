@@ -16,6 +16,7 @@ export interface NoToolActionRecoveryInput {
   readonly missingEvidenceCount: number;
   readonly promptRequiresTools: boolean;
   readonly sawWorkTool: boolean;
+  readonly blockingTerminalFailure?: boolean;
   readonly textToolProtocol: TextToolProtocolSession;
 }
 
@@ -56,7 +57,12 @@ export function resolveNoToolActionRecovery(
     || input.sawWorkTool
     || input.missingEvidenceCount > 0;
   if (!actionEvidenceExpected && !deferredAction) return undefined;
-  if (input.noToolRounds >= 2) {
+  const maxNoToolRounds = input.blockingTerminalFailure
+    && recoveryClass !== 'code-action'
+    && recoveryClass !== 'shell-action'
+    ? 4
+    : 2;
+  if (input.noToolRounds >= maxNoToolRounds) {
     return {
       kind: 'stop',
       recoveryClass,

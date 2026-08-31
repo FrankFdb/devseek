@@ -238,6 +238,36 @@ test('agentic tool feedback exposes only source lines actually delivered to the 
   assert.doesNotMatch(projection.message, /line 280: source-context/u);
 });
 
+test('agentic tool feedback preserves read authority when a compressed range ends with a blank line', () => {
+  const sourceLines = [
+    ...Array.from({ length: 96 }, (_, index) => `line ${index + 274}: ${'source-context '.repeat(4)}`),
+    '',
+  ];
+  const target = [
+    '[read_file: /repo/src/raster_canvas.cpp]',
+    '[file_context]',
+    'version=devseek.file-context/v1',
+    'returnedLines=274-370/663',
+    'complete=false',
+    'truncated=true',
+    '[/file_context]',
+    ...sourceLines,
+  ].join('\n');
+  const projection = projectAgenticToolFeedback(7, [
+    target,
+    readFileFeedback('/repo/src/controller.cpp', 80),
+    '[read_file: /repo/include/missing.hpp] Error: file not found',
+  ]);
+
+  assert.ok(projection.message.length <= 8_000);
+  assert.deepEqual(projection.readExposures.map(exposure => exposure.path), [
+    '/repo/src/raster_canvas.cpp',
+    '/repo/src/controller.cpp',
+  ]);
+  assert.equal(projection.readExposures[0].startLine, 274);
+  assert.equal(projection.readExposures[0].sourceRangeEndLine, 370);
+});
+
 test('agentic tool feedback retains source segment identity across empty feedback', () => {
   const projection = projectAgenticToolFeedback(7, [
     '',

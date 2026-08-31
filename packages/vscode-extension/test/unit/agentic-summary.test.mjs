@@ -172,4 +172,10 @@ test('recognizes deferred source edits without treating explanatory examples as 
     'cmake --build build',
     '```',
   ].join('\n')), false);
+  assert.equal(hasUnexecutedCodeActionPresentation([
+    '让我先定位当前文件：',
+    '```',
+    '[{"path":"src/RasterCanvas.cpp","startLine":1,"endLine":50}]',
+    '```',
+  ].join('\n')), false);
 });

@@ -712,6 +712,60 @@ test('ModelLedUserSimulation: a current ranged read permits an exact targeted re
   }
 });
 
+test('ModelLedUserSimulation: a parallel ranged read ending in a blank line retains targeted write authority', async () => {
+  const prompt = '读取 result.txt 的当前失败范围，把 BROKEN_TARGET 精确修复为 FIXED_TARGET，并读回。';
+  let calls = 0;
+  const simulation = await runSimulation(prompt, async messages => {
+    calls += 1;
+    const root = fakeWorkspace.workspaceFolders[0].uri.fsPath;
+    const target = path.join(root, 'result.txt');
+    const contextA = path.join(root, 'context-a.txt');
+    const contextB = path.join(root, 'context-b.txt');
+    if (calls === 1) {
+      const targetLines = [
+        `BROKEN_TARGET ${'target-context '.repeat(12)}`,
+        ...Array.from({ length: 95 }, (_, index) => `target line ${index + 2} ${'context '.repeat(12)}`),
+      ];
+      writeFileSync(target, `${targetLines.join('\n')}\n`);
+      writeFileSync(contextA, `${Array.from({ length: 80 }, (_, index) => `a ${index} ${'context '.repeat(12)}`).join('\n')}\n`);
+      writeFileSync(contextB, `${Array.from({ length: 80 }, (_, index) => `b ${index} ${'context '.repeat(12)}`).join('\n')}\n`);
+      return {
+        text: '并行读取目标失败范围和两个直接上下文。',
+        tools: [
+          { name: 'read_file', input: { path: target, startLine: 1, endLine: 97 } },
+          { name: 'read_file', input: { path: contextA, startLine: 1, endLine: 81 } },
+          { name: 'read_file', input: { path: contextB, startLine: 1, endLine: 81 } },
+        ],
+      };
+    }
+    if (calls === 2) {
+      assert.match(messages.at(-1).content, /BROKEN_TARGET/u);
+      return {
+        text: '依据已交付的目标范围实施唯一替换并读回。',
+        tools: [
+          { name: 'replace_in_file', input: { path: target, old_str: 'BROKEN_TARGET', new_str: 'FIXED_TARGET' } },
+          { name: 'read_file', input: { path: target, startLine: 1, endLine: 2 } },
+          { name: 'task_complete', input: { summary: '已完成聚焦修复并读回。' } },
+        ],
+      };
+    }
+    return {
+      text: '根据写入结果完成最后读回。',
+      tools: [
+        { name: 'read_file', input: { path: target, startLine: 1, endLine: 2 } },
+        { name: 'task_complete', input: { summary: '已完成聚焦修复并读回。' } },
+      ],
+    };
+  }, { runDisplayAction: 'repair' });
+  try {
+    assert.ok(calls <= 3, simulation.result.historyText);
+    assert.match(readFileSync(path.join(simulation.root, 'result.txt'), 'utf8'), /^FIXED_TARGET/u);
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
 test('ModelLedUserSimulation: invalid authenticated mutation recovers with its lossless write format', async () => {
   const prompt = '创建 recovered-format.txt，内容为 RECOVERED_FORMAT_OK，并读回确认。';
   let calls = 0;

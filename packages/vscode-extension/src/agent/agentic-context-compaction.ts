@@ -78,10 +78,10 @@ export function projectAgenticToolFeedback(
   const prefix = `[工具结果 Round ${positiveInteger(round, 'invalid-round')}]\n`;
   const normalized = segments
     .map((segment, sourceSegmentIndex) => ({
-      content: String(segment ?? '').trim(),
+      content: String(segment ?? ''),
       sourceSegmentIndex,
     }))
-    .filter(segment => Boolean(segment.content));
+    .filter(segment => Boolean(segment.content.trim()));
   if (normalized.length === 0) return { message: prefix.trimEnd(), readExposures: [] };
 
   const bodyBudget = AGENTIC_TOOL_FEEDBACK_CHAR_BUDGET - prefix.length;

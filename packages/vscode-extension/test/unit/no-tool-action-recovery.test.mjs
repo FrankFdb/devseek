@@ -78,6 +78,23 @@ test('NoToolActionRecovery: exhausted deferred actions stop instead of becoming 
   assert.match(result.reason, /没有可执行工具调用/u);
 });
 
+test('NoToolActionRecovery: an active verifier failure retains its wider causal recovery budget', () => {
+  const result = resolveNoToolActionRecovery({
+    text: '我需要先读取当前实现，再根据失败证据提交最小修复。',
+    noToolRounds: 2,
+    missingEvidenceCount: 1,
+    promptRequiresTools: true,
+    sawWorkTool: true,
+    blockingTerminalFailure: true,
+    textToolProtocol,
+  });
+
+  assert.ok(result);
+  assert.equal(result.kind, 'retry');
+  assert.equal(result.recoveryClass, 'deferred-action');
+  assert.equal(result.useFreshProviderSession, true);
+});
+
 test('NoToolActionRecovery: evidence-required planning prose uses the authenticated tool envelope', () => {
   const result = resolveNoToolActionRecovery({
     text: '需要先分析项目结构、确定修改范围，然后完成实现并运行测试。',

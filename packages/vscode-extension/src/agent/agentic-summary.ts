@@ -156,7 +156,18 @@ function looksLikeSourceCodeBlock(info: string, content: string): boolean {
   const trimmed = content.trim();
   if (!trimmed) return false;
   if (SOURCE_FENCE_LANGUAGES.has(info)) return true;
+  if (!info && looksLikeJsonDataBlock(trimmed)) return false;
   return !info && SOURCE_CODE_SIGNAL.test(trimmed);
+}
+
+function looksLikeJsonDataBlock(content: string): boolean {
+  if (!content.startsWith('{') && !content.startsWith('[')) return false;
+  try {
+    JSON.parse(content);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Detects a proposed source edit shown as Markdown data; it never applies or authorizes it. */
