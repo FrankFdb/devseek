@@ -164,6 +164,28 @@ test('the authenticated opening marker accepts the provider conventional close t
   assert.deepEqual(parseAuthorizedTextToolCalls(wrongChannel, session), []);
 });
 
+test('a matching one-character root-tag omission preserves the authenticated tool proposal', () => {
+  const terminalPayload = '[TOOL:run_terminal {"command":"bash test.sh"}]';
+  const compatible = renderTextToolProtocolEnvelope(session, terminalPayload)
+    .replaceAll('devseek_tool_calls', 'devsek_tool_calls');
+
+  const [tool] = parseAuthorizedTextToolCalls(compatible, session);
+  assert.equal(tool.name, 'run_terminal');
+  assert.deepEqual(tool.input, { command: 'bash test.sh' });
+  assert.equal(countCompletedAuthorizedTextToolEnvelopes(compatible, session), 1);
+  assert.equal(hasIncompleteAuthorizedTextToolEnvelope(compatible, session), false);
+  assert.equal(stripAuthorizedTextToolEnvelopes(compatible, session), '');
+  assert.equal(inspectOutOfEnvelopeTextToolProtocol(compatible, session).found, false);
+
+  const wrongChannel = compatible.replace(session.channelId, 'different-simulation-channel');
+  const twoOmissions = compatible.replaceAll('devsek_tool_calls', 'devsk_tool_calls');
+  const mismatchedClose = compatible.replace('</devsek_tool_calls', '</devseek_tool_calls');
+  const wrongVersion = compatible.replace(session.version, 'devseek.text-tools/v0');
+  for (const rejected of [wrongChannel, twoOmissions, mismatchedClose, wrongVersion]) {
+    assert.deepEqual(parseAuthorizedTextToolCalls(rejected, session), []);
+  }
+});
+
 test('incomplete recovery is scoped to an authorized envelope, not naked syntax', () => {
   assert.equal(hasIncompleteAuthorizedTextToolEnvelope(payload.slice(0, -2), session), false);
   const incomplete = renderTextToolProtocolEnvelope(session, payload)

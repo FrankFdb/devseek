@@ -37,6 +37,7 @@ export interface IncompleteAuthorizedTextToolProtocol {
 }
 
 const CHANNEL_ID_RE = /^[A-Za-z0-9_-]{16,96}$/;
+const TEXT_TOOL_ENVELOPE_TAG = 'devseek_tool_calls';
 const FILE_CONTENT_MUTATION_TOOLS = new Set([
   'create_file',
   'write_file',
@@ -94,12 +95,11 @@ function parseUnclosedAuthorizedObservationCalls(
   session: TextToolProtocolSession,
 ): FakeTool[] {
   const raw = String(text || '');
-  const open = openMarker(session);
-  const start = raw.indexOf(open);
-  if (start < 0 || raw.indexOf(open, start + open.length) >= 0) return [];
-  if (findEnvelopeClose(raw, start + open.length, closeMarker(session))) return [];
+  const opening = findNextAuthorizedEnvelopeOpen(raw, session, 0);
+  if (!opening || findNextAuthorizedEnvelopeOpen(raw, session, opening.payloadStart)) return [];
+  if (findEnvelopeClose(raw, opening.payloadStart, session, opening.tagName)) return [];
 
-  const tools = parseStrictBracketToolSequence(raw.slice(start + open.length));
+  const tools = parseStrictBracketToolSequence(raw.slice(opening.payloadStart));
   return tools.length > 0 && tools.every(isRecoverableObservationTool) ? tools : [];
 }
 
@@ -215,18 +215,15 @@ export function inspectIncompleteAuthorizedTextToolProtocol(
 ): IncompleteAuthorizedTextToolProtocol {
   if (!session) return Object.freeze({ found: false, observedToolNames: Object.freeze([]) });
   const raw = String(text || '');
-  const open = openMarker(session);
-  const close = closeMarker(session);
   let cursor = 0;
   while (cursor < raw.length) {
-    const start = raw.indexOf(open, cursor);
-    if (start < 0) break;
-    const payloadStart = start + open.length;
-    const envelopeClose = findEnvelopeClose(raw, payloadStart, close);
+    const opening = findNextAuthorizedEnvelopeOpen(raw, session, cursor);
+    if (!opening) break;
+    const envelopeClose = findEnvelopeClose(raw, opening.payloadStart, session, opening.tagName);
     if (!envelopeClose) {
       return Object.freeze({
         found: true,
-        observedToolNames: Object.freeze(observeUntrustedToolNames(raw.slice(payloadStart))),
+        observedToolNames: Object.freeze(observeUntrustedToolNames(raw.slice(opening.payloadStart))),
       });
     }
     cursor = envelopeClose.end;
@@ -387,21 +384,18 @@ function scanCompletedAuthorizedTextToolEnvelopes(
   ) => void,
 ): number {
   const raw = String(text || '');
-  const open = openMarker(session);
-  const close = closeMarker(session);
   let count = 0;
   let cursor = 0;
   while (cursor < raw.length) {
-    const start = raw.indexOf(open, cursor);
-    if (start < 0) break;
-    const payloadStart = start + open.length;
-    const envelopeClose = findEnvelopeClose(raw, payloadStart, close);
+    const opening = findNextAuthorizedEnvelopeOpen(raw, session, cursor);
+    if (!opening) break;
+    const envelopeClose = findEnvelopeClose(raw, opening.payloadStart, session, opening.tagName);
     if (!envelopeClose) break;
-    visitPayload?.(raw, payloadStart, envelopeClose.start, envelopeClose.end);
+    visitPayload?.(raw, opening.payloadStart, envelopeClose.start, envelopeClose.end);
     count++;
     cursor = findDetachedMarkdownFenceEnd(
       raw,
-      payloadStart,
+      opening.payloadStart,
       envelopeClose.start,
       envelopeClose.end,
     );
@@ -414,7 +408,7 @@ export function findFirstAuthorizedTextToolEnvelopeStart(
   session: TextToolProtocolSession | undefined,
 ): number {
   if (!session) return -1;
-  return String(text || '').indexOf(openMarker(session));
+  return findNextAuthorizedEnvelopeOpen(String(text || ''), session, 0)?.start ?? -1;
 }
 
 export function stripAuthorizedTextToolEnvelopes(
@@ -423,25 +417,23 @@ export function stripAuthorizedTextToolEnvelopes(
 ): string {
   if (!session) return String(text || '');
   const raw = String(text || '');
-  const open = openMarker(session);
-  const close = closeMarker(session);
   let cursor = 0;
   let visible = '';
   while (cursor < raw.length) {
-    const start = raw.indexOf(open, cursor);
-    if (start < 0) {
+    const opening = findNextAuthorizedEnvelopeOpen(raw, session, cursor);
+    if (!opening) {
       visible += raw.slice(cursor);
       break;
     }
-    const envelopeClose = findEnvelopeClose(raw, start + open.length, close);
+    const envelopeClose = findEnvelopeClose(raw, opening.payloadStart, session, opening.tagName);
     if (!envelopeClose) {
-      visible += raw.slice(cursor, start);
+      visible += raw.slice(cursor, opening.start);
       break;
     }
-    visible += raw.slice(cursor, start);
+    visible += raw.slice(cursor, opening.start);
     cursor = findDetachedMarkdownFenceEnd(
       raw,
-      start + open.length,
+      opening.payloadStart,
       envelopeClose.start,
       envelopeClose.end,
     );
@@ -455,13 +447,11 @@ export function hasIncompleteAuthorizedTextToolEnvelope(
 ): boolean {
   if (!session) return false;
   const raw = String(text || '');
-  const open = openMarker(session);
-  const close = closeMarker(session);
   let cursor = 0;
   while (cursor < raw.length) {
-    const start = raw.indexOf(open, cursor);
-    if (start < 0) return false;
-    const envelopeClose = findEnvelopeClose(raw, start + open.length, close);
+    const opening = findNextAuthorizedEnvelopeOpen(raw, session, cursor);
+    if (!opening) return false;
+    const envelopeClose = findEnvelopeClose(raw, opening.payloadStart, session, opening.tagName);
     if (!envelopeClose) return true;
     cursor = envelopeClose.end;
   }
@@ -469,11 +459,56 @@ export function hasIncompleteAuthorizedTextToolEnvelope(
 }
 
 function openMarker(session: TextToolProtocolSession): string {
-  return `<devseek_tool_calls version="${session.version}" channel="${session.channelId}">`;
+  return `<${TEXT_TOOL_ENVELOPE_TAG} version="${session.version}" channel="${session.channelId}">`;
 }
 
-function closeMarker(session: TextToolProtocolSession): string {
-  return `</devseek_tool_calls channel="${session.channelId}">`;
+function closeMarker(session: TextToolProtocolSession, tagName = TEXT_TOOL_ENVELOPE_TAG): string {
+  return `</${tagName} channel="${session.channelId}">`;
+}
+
+interface AuthorizedEnvelopeOpen {
+  readonly start: number;
+  readonly payloadStart: number;
+  readonly tagName: string;
+}
+
+/**
+ * DeepSeek Web occasionally omits one character from the outer tag while
+ * preserving the exact protocol version, random channel, matching close tag,
+ * and strict inner payload. Normalize only that bounded transport typo here;
+ * concrete actions still cross the ordinary local policy and sandbox gates.
+ */
+function findNextAuthorizedEnvelopeOpen(
+  text: string,
+  session: TextToolProtocolSession,
+  from: number,
+): AuthorizedEnvelopeOpen | undefined {
+  const pattern = new RegExp(
+    `<([A-Za-z_][A-Za-z0-9_]*) version="${escapeRegExp(session.version)}" channel="${escapeRegExp(session.channelId)}">`,
+    'g',
+  );
+  pattern.lastIndex = from;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) {
+    if (!isAuthorizedEnvelopeTag(match[1])) continue;
+    return Object.freeze({
+      start: match.index,
+      payloadStart: pattern.lastIndex,
+      tagName: match[1],
+    });
+  }
+  return undefined;
+}
+
+function isAuthorizedEnvelopeTag(candidate: string): boolean {
+  if (candidate === TEXT_TOOL_ENVELOPE_TAG) return true;
+  if (candidate.length !== TEXT_TOOL_ENVELOPE_TAG.length - 1) return false;
+  for (let omitted = 0; omitted < TEXT_TOOL_ENVELOPE_TAG.length; omitted++) {
+    if (`${TEXT_TOOL_ENVELOPE_TAG.slice(0, omitted)}${TEXT_TOOL_ENVELOPE_TAG.slice(omitted + 1)}` === candidate) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -507,10 +542,11 @@ function findDetachedMarkdownFenceEnd(
 function findEnvelopeClose(
   text: string,
   from: number,
-  canonicalClose: string,
+  session: TextToolProtocolSession,
+  tagName: string,
 ): { start: number; end: number } | undefined {
-  const compatibleClose = '</devseek_tool_calls>';
-  const candidates = [canonicalClose, compatibleClose]
+  const compatibleClose = `</${tagName}>`;
+  const candidates = [closeMarker(session, tagName), compatibleClose]
     .map(marker => ({ marker, start: text.indexOf(marker, from) }))
     .filter(candidate => candidate.start >= 0)
     .sort((left, right) => left.start - right.start);
