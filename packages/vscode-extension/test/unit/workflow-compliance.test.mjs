@@ -1124,7 +1124,7 @@ test('Agentic loop: provider failure after satisfied local evidence does not ove
   assertContains(settlement, 'input.unsettledToolProposal', 'an unarbitrated Provider action must block completed-evidence settlement');
   assertContains(coordinator, 'unsettledToolProposal: Boolean(failure?.observedToolNames?.length)', 'the coordinator must project observed failed actions into settlement');
   assertContains(code, 'requirementReview.completionBlocker()', 'stale local evidence must not bypass pending independent requirement review');
-  assertContains(code, 'providerRecovery.completionBlocker()', 'stale local evidence must not bypass pending provider-action recovery');
+  assertContains(code, 'providerRecoveryCoordinator.completionBlocker()', 'stale local evidence must not bypass pending provider-action recovery');
   assertContains(code, 'toolFailureRecovery.completionBlocker()', 'stale local evidence must not bypass pending mutation repair');
   assertContains(code, 'resolveAgenticRoundBudgetFailure', 'natural round exhaustion must become an explicit non-delivery result');
   assertContains(finalDecision, 'toolExecutions: input.lastRoundToolExecutionCount', 'final settlement must compare current requests with current executions');
@@ -1510,7 +1510,7 @@ test('Provider transport recovery: Bridge retries are bounded and side-effect aw
   assertContains(loopChat, 'transportAttempt: attempt', 'run evidence must retain the current transport attempt');
   assertContains(loopChat, 'traceTransportAttempt: attempt', 'Bridge transport must receive the current attempt');
   assertContains(bridgeClient, '!await ensureBridgeRunning()', 'an unverified Bridge must renegotiate or restart before retry');
-  assertContains(bridgeClient, 'if (isTransientProviderTransportError(error)) connectorContractVerified = false;', 'transport failures must invalidate Bridge capability state');
+  assertContains(bridgeClient, 'bridgeRuntimeContinuity.markUnverified()', 'transport failures must invalidate verification without discarding known process identity');
 });
 
 test('Safety refusal: no-mutation delivery has one explicit evidence path', () => {
@@ -3206,6 +3206,7 @@ test('Architecture: Bridge chat owns browser reset boundaries and trace-scoped p
   );
   assertContains(promptSession, '沿用本会话上一轮已经建立的 DevSeek 编程智能体规则', 'bridge prompt reuse must send a clear same-session continuation marker');
   assertContains(promptSession, 'traceRunId', 'bridge prompt reuse must be scoped to the current agent run');
+  assertContains(promptSession, 'providerSessionId', 'bridge prompt reuse must be scoped to the concrete browser-owning process');
   assertContains(promptSession, 'recordBridgePromptSessionRequest', 'bridge prompt reuse must advance a logical request cursor');
   assertContains(promptSession, 'resetBrowserSession', 'bridge prompt reuse must reset hidden browser state when the logical cursor cannot align');
   assertContains(extension, 'Bridge 网页侧历史不作为上下文来源', 'extension session history comment must document explicit context ownership');
@@ -3465,6 +3466,7 @@ test('Architecture: R2-02 shared requirement ports own acceptance and external-b
 
 test('Architecture: run traces and bridge lifecycle are build-aware', () => {
   const bridgeClient = src('src/bridge-client.ts');
+  const bridgeContinuity = src('src/bridge-runtime-continuity.ts');
   const bridgeProcessOwner = src('src/bridge-process-owner.ts');
   const ownedProcessTree = src('src/runtime/owned-process-tree.ts');
   const nodeProcessTreeEffects = src('src/runtime/node-process-tree-effects.ts');
@@ -3476,7 +3478,8 @@ test('Architecture: run traces and bridge lifecycle are build-aware', () => {
   const toolLoop = src('src/agent/tool-loop.ts');
   const extension = src('src/extension.ts');
 
-  assertContains(bridgeClient, 'bridgeStatusMatchesRuntime', 'bridge client must compare running bridge build with extension build');
+  assertContains(bridgeClient, 'decideBridgeRuntimePreparation', 'bridge client must arbitrate runtime reuse before process effects');
+  assertContains(bridgeContinuity, "return input.knownRuntimeInstanceId ? 'preserve-known' : 'blocked-unknown'", 'an ambiguous status probe must never authorize process destruction');
   assertContains(bridgeClient, 'terminateOnlineBridge', 'bridge client must restart stale bridge processes');
   assertContains(bridgeClient, 'DEVSEEK_BUILD_ID', 'bridge client must pass build id into spawned bridge');
   assertContains(bridgeClient, 'DEVSEEK_BRIDGE_PARENT_PID', 'bridge client must bind the child to its extension-host owner');
@@ -3490,6 +3493,7 @@ test('Architecture: run traces and bridge lifecycle are build-aware', () => {
   assertContains(bridgeLifecycle, 'BridgeRuntimeLifecycle', 'one service must coordinate queue, browser, and HTTP shutdown');
   assertContains(bridgeLifecycle, 'watchParentProcess', 'bridge must detect abrupt extension-host loss');
   assertContains(bridgeServer, 'buildId: process.env.DEVSEEK_BUILD_ID', 'bridge status must expose build id');
+  assertContains(bridgeServer, 'BRIDGE_RUNTIME_INSTANCE_ID', 'bridge must expose and enforce one concrete process identity');
   assertContains(bridgeClient, 'TRACE_WORKSPACE_ROOT_HEADER', 'bridge client must forward unified trace workspace root');
   assertContains(bridgeServer, 'TRACE_WORKSPACE_ROOT_HEADER', 'bridge server must honor unified trace workspace root');
   assertContains(loopTypes, 'traceWorkspaceRoot?: string', 'agent callbacks must carry unified trace root');

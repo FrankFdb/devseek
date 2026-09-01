@@ -8,6 +8,7 @@ export * from './agent-application-service';
 export * from './agent-command';
 export * from './agent-protocol';
 export * from './bridge-stream-protocol';
+export * from './bridge-runtime-protocol';
 export * from './build-profile';
 export * from './coding-codebase-exploration';
 export * from './coding-checkpoint';
@@ -96,6 +97,8 @@ export interface ChatRequest {
   stream?: boolean;
   /** 超时时间 ms（默认 60000）*/
   timeoutMs?: number;
+  /** Last Bridge process instance authenticated by the client. */
+  runtimeInstanceId?: string;
 }
 
 /** SSE 流中单个事件（stream=true）*/
@@ -126,6 +129,7 @@ export interface StatusResponse {
   buildChannel?: string;
   buildId?: string;
   gitCommit?: string;
+  runtimeInstanceId: string;
   connector: DeepSeekWebConnectorAdvertisement;
 }
 

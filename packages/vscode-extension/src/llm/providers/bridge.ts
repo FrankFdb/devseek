@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 import { knownCodingProviderCapabilities } from '@devseek-netai/shared';
 import { LLMProvider, LLMProviderType, LLMChatOptions } from '../types';
 import * as bridgeClient from '../../bridge-client';
+import { isBridgeRuntimeChangedError } from '../../bridge-runtime-continuity';
 import { assertProviderTurnIntegrity } from '../../agent/provider-turn-integrity';
 import { BridgeHealthMonitor, ResponseIntegrityChecker } from './web-reliability';
 import {
@@ -27,49 +28,59 @@ export class BridgeProvider implements LLMProvider {
   }
 
   async chat(opts: LLMChatOptions): Promise<string> {
-    // Bridge accepts one prompt string. For DeepSeek Web, the browser session
-    // already retains earlier turns, so subsequent Agent rounds send only
-    // incremental context when the trace/run key proves it is the same task.
-    const preparedPrompt = prepareBridgePromptForSession({
-      messages: opts.messages,
-      newSession: opts.newSession,
-      traceRunId: opts.traceRunId,
-      traceWorkspaceRoot: opts.traceWorkspaceRoot,
-    });
-    const resetsBrowserSession = Boolean(opts.newSession || preparedPrompt.resetBrowserSession);
-    if (resetsBrowserSession) {
-      opts.onProviderSessionReset?.({
-        reason: opts.newSession ? 'requested' : 'provider-context-rebuild',
-      });
-    }
     const cfg = vscode.workspace.getConfiguration('devseek');
-    const response = await bridgeClient.chat({
-      prompt: preparedPrompt.prompt,
-      // Resetting DeepSeek's browser-side conversation is a top-level task
-      // boundary decision. Agent loops call the provider several times inside
-      // one task, and those rounds must stay in the same web conversation.
-      newSession: resetsBrowserSession,
-      stream: opts.stream !== false,
-      onDelta: opts.onDelta,
-      timeoutMs: opts.timeoutMs ?? cfg.get<number>('requestTimeoutMs', 120000),
-      mode: opts.mode,
-      files: opts.files,
-      traceRunId: opts.traceRunId,
-      traceWorkspaceRoot: opts.traceWorkspaceRoot,
-      traceOperationId: opts.traceOperationId,
-      traceSamplingId: opts.traceSamplingId,
-      traceTransportAttempt: opts.traceTransportAttempt,
-      traceEvidenceParticipantToken: opts.evidenceCapability?.token,
-      signal: opts.signal,
-    });
-    new ResponseIntegrityChecker().assertSafeForExecution(response);
-    assertProviderTurnIntegrity(response);
-    recordBridgePromptSessionRequest({
-      messages: opts.messages,
-      newSession: opts.newSession,
-      traceRunId: opts.traceRunId,
-      traceWorkspaceRoot: opts.traceWorkspaceRoot,
-    });
-    return response;
+    for (let continuityAttempt = 0; continuityAttempt < 2; continuityAttempt++) {
+      if (!await bridgeClient.ensureBridgeRunning()) {
+        throw new Error('BRIDGE_CONNECTOR_UNAVAILABLE: Bridge capability negotiation failed.');
+      }
+      const providerSessionId = bridgeClient.getBridgeRuntimeInstanceId();
+      // Incremental prompts are valid only while both the logical turn and the
+      // concrete browser-owning Bridge instance remain unchanged.
+      const preparedPrompt = prepareBridgePromptForSession({
+        messages: opts.messages,
+        newSession: opts.newSession,
+        traceRunId: opts.traceRunId,
+        traceWorkspaceRoot: opts.traceWorkspaceRoot,
+        providerSessionId,
+      });
+      const resetsBrowserSession = Boolean(opts.newSession || preparedPrompt.resetBrowserSession);
+      if (resetsBrowserSession) {
+        opts.onProviderSessionReset?.({
+          reason: opts.newSession ? 'requested' : 'provider-context-rebuild',
+        });
+      }
+      try {
+        const response = await bridgeClient.chat({
+          prompt: preparedPrompt.prompt,
+          newSession: resetsBrowserSession,
+          stream: opts.stream !== false,
+          onDelta: opts.onDelta,
+          timeoutMs: opts.timeoutMs ?? cfg.get<number>('requestTimeoutMs', 120000),
+          mode: opts.mode,
+          files: opts.files,
+          traceRunId: opts.traceRunId,
+          traceWorkspaceRoot: opts.traceWorkspaceRoot,
+          traceOperationId: opts.traceOperationId,
+          traceSamplingId: opts.traceSamplingId,
+          traceTransportAttempt: opts.traceTransportAttempt,
+          traceEvidenceParticipantToken: opts.evidenceCapability?.token,
+          signal: opts.signal,
+        });
+        new ResponseIntegrityChecker().assertSafeForExecution(response);
+        assertProviderTurnIntegrity(response);
+        recordBridgePromptSessionRequest({
+          messages: opts.messages,
+          newSession: opts.newSession,
+          traceRunId: opts.traceRunId,
+          traceWorkspaceRoot: opts.traceWorkspaceRoot,
+          providerSessionId,
+        });
+        return response;
+      } catch (error) {
+        if (continuityAttempt === 0 && isBridgeRuntimeChangedError(error)) continue;
+        throw error;
+      }
+    }
+    throw new Error('BRIDGE_RUNTIME_CHANGED: Bridge process changed repeatedly before submission.');
   }
 }

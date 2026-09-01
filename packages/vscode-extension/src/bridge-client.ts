@@ -8,14 +8,22 @@ import {
   BridgeStreamCorrelator,
   createDevSeekTraceLogger,
   parseDeepSeekStreamFrameData,
+  requireBridgeRuntimeAdvertisement,
   requireDeepSeekWebConnectorAdvertisement,
   summarizeTraceText,
+  type BridgeRuntimeAdvertisement,
   type DeepSeekWebConnectorAdvertisement,
   type DevSeekTraceLogger,
 } from '@devseek-netai/shared';
 import { getWorkspaceRootFsPath, resolveWorkspaceFileUri } from './workspace-roots';
 import { isTransientProviderTransportError } from './llm/provider-transport-error';
 import { BridgeProcessOwner } from './bridge-process-owner';
+import {
+  bridgeRuntimeChangedErrorFromPayload,
+  BridgeRuntimeContinuity,
+  decideBridgeRuntimePreparation,
+  isBridgeRuntimeChangedError,
+} from './bridge-runtime-continuity';
 
 const DEFAULT_PORT = 3721;
 const TOKEN_REL_PATH = nodePath.join('.devseek', 'bridge-token');
@@ -28,8 +36,8 @@ const BRIDGE_STREAM_HTTP_TIMEOUT_MIN_MS = 120_000;
 const BRIDGE_STREAM_HTTP_TIMEOUT_MAX_MS = 210_000;
 const BRIDGE_STREAM_HTTP_TIMEOUT_FACTOR = 2;
 let extensionRootFsPath: string | undefined;
-let connectorContractVerified = false;
 const activeChatOperationIds = new Set<string>();
+const bridgeRuntimeContinuity = new BridgeRuntimeContinuity();
 
 interface DevSeekRuntimeBuildInfo {
   appVersion?: string;
@@ -39,6 +47,7 @@ interface DevSeekRuntimeBuildInfo {
 }
 
 interface BridgeStatusResponse extends DevSeekRuntimeBuildInfo {
+  runtimeInstanceId: string;
   idle: boolean;
   queueLength: number;
   browserReady: boolean;
@@ -221,17 +230,34 @@ export async function ping(): Promise<boolean> {
 
 /** 获取 bridge 状态 */
 export async function status(): Promise<BridgeStatusResponse | null> {
-  connectorContractVerified = false;
   try {
     const res = await fetch(`${baseUrl()}/status`, { headers: authHeaders(), signal: AbortSignal.timeout(800) });
     if (!res.ok) return null;
     const value = await res.json() as BridgeStatusResponse;
     requireDeepSeekWebConnectorAdvertisement(value.connector);
-    connectorContractVerified = true;
     return value;
   } catch {
     return null;
   }
+}
+
+async function runtimeAdvertisement(): Promise<BridgeRuntimeAdvertisement | null> {
+  try {
+    const res = await fetch(`${baseUrl()}/runtime`, {
+      headers: authHeaders(),
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) return null;
+    const runtime = requireBridgeRuntimeAdvertisement(await res.json());
+    bridgeRuntimeContinuity.observe(runtime);
+    return runtime;
+  } catch {
+    return null;
+  }
+}
+
+export function getBridgeRuntimeInstanceId(): string | undefined {
+  return bridgeRuntimeContinuity.runtimeInstanceId;
 }
 
 /** 精确取消指定请求；仅有一个本地活跃请求时可省略 id。 */
@@ -255,7 +281,7 @@ export async function cancel(targetOperationId?: string): Promise<void> {
 
 /** 关闭正在运行的 Bridge（用于重启前调用） */
 async function shutdownBridge(): Promise<void> {
-  connectorContractVerified = false;
+  bridgeRuntimeContinuity.clear();
   try {
     await fetch(`${baseUrl()}/shutdown`, { method: 'POST', headers: authHeaders(), signal: AbortSignal.timeout(2000) });
     await new Promise<void>(r => setTimeout(r, 400)); // 等待进程退出
@@ -306,15 +332,7 @@ function findBridgeRuntime(workspaceRoot: string): { bridgeDir: string; serverJs
   return null;
 }
 
-function bridgeStatusMatchesRuntime(statusValue: BridgeStatusResponse | null, expected: DevSeekRuntimeBuildInfo): boolean {
-  if (!statusValue) return false;
-  if (!expected.buildId && !expected.appVersion) return true;
-  if (expected.buildId) return statusValue.buildId === expected.buildId;
-  if (expected.appVersion) return statusValue.appVersion === expected.appVersion;
-  return true;
-}
-
-function bridgeStatusTraceData(statusValue: BridgeStatusResponse | null | undefined): Record<string, string | undefined> | undefined {
+function bridgeStatusTraceData(statusValue: DevSeekRuntimeBuildInfo | null | undefined): Record<string, string | undefined> | undefined {
   if (!statusValue) return undefined;
   return {
     appVersion: statusValue.appVersion,
@@ -324,7 +342,7 @@ function bridgeStatusTraceData(statusValue: BridgeStatusResponse | null | undefi
   };
 }
 
-function logBridgeRuntimeReady(reason: string, expected: DevSeekRuntimeBuildInfo, actual: BridgeStatusResponse | null | undefined): void {
+function logBridgeRuntimeReady(reason: string, expected: DevSeekRuntimeBuildInfo, actual: DevSeekRuntimeBuildInfo | null | undefined): void {
   createBridgeClientTraceLogger().info('bridge-client', 'bridge-status-ready', {
     reason,
     buildMatches: true,
@@ -354,22 +372,38 @@ async function terminateOnlineBridge(): Promise<void> {
  */
 export async function ensureBridgeRunning(forceRestart = false): Promise<boolean> {
   const buildInfo = getDevSeekRuntimeBuildInfo();
-  const onlineStatus = await status();
-  const bridgeOnline = onlineStatus ? true : await ping();
-  const buildMatches = bridgeStatusMatchesRuntime(onlineStatus, buildInfo);
+  const onlineRuntime = await runtimeAdvertisement();
+  const bridgeOnline = onlineRuntime ? true : await ping();
+  const decision = decideBridgeRuntimePreparation({
+    forceRestart,
+    reachable: bridgeOnline,
+    runtime: onlineRuntime ?? undefined,
+    knownRuntimeInstanceId: bridgeProcessOwner.hasRunningProcess
+      ? bridgeRuntimeContinuity.runtimeInstanceId
+      : undefined,
+    expectedBuild: buildInfo,
+  });
+  const buildMatches = decision === 'reuse';
   createBridgeClientTraceLogger().info('bridge-client', 'bridge-status-check', {
     forceRestart,
     bridgeOnline,
     buildMatches,
+    decision,
+    runtimeInstanceId: onlineRuntime?.runtimeInstanceId,
     expected: buildInfo,
-    actual: bridgeStatusTraceData(onlineStatus),
+    actual: bridgeStatusTraceData(onlineRuntime),
   });
-  if (!forceRestart && buildMatches) {
-    logBridgeRuntimeReady('existing-runtime', buildInfo, onlineStatus);
+  if (decision === 'reuse') {
+    logBridgeRuntimeReady('existing-runtime', buildInfo, onlineRuntime);
     return true;
   }
+  if (decision === 'preserve-known') {
+    logBridgeRuntimeReady('identity-probe-unavailable', buildInfo, undefined);
+    return true;
+  }
+  if (decision === 'blocked-unknown') return false;
 
-  if (forceRestart || bridgeOnline) {
+  if (decision === 'restart') {
     await terminateOnlineBridge();
   }
 
@@ -410,9 +444,14 @@ export async function ensureBridgeRunning(forceRestart = false): Promise<boolean
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
     await new Promise<void>(r => setTimeout(r, 600));
-    const startedStatus = await status();
-    if (bridgeStatusMatchesRuntime(startedStatus, buildInfo)) {
-      logBridgeRuntimeReady('started-runtime', buildInfo, startedStatus);
+    const startedRuntime = await runtimeAdvertisement();
+    if (startedRuntime && decideBridgeRuntimePreparation({
+      forceRestart: false,
+      reachable: true,
+      runtime: startedRuntime,
+      expectedBuild: buildInfo,
+    }) === 'reuse') {
+      logBridgeRuntimeReady('started-runtime', buildInfo, startedRuntime);
       return true;
     }
   }
@@ -422,7 +461,7 @@ export async function ensureBridgeRunning(forceRestart = false): Promise<boolean
 
 /** Releases only the Bridge process owned by this extension host. */
 export async function disposeBridgeRuntime(): Promise<void> {
-  connectorContractVerified = false;
+  bridgeRuntimeContinuity.clear();
   for (const operationId of activeChatOperationIds) await cancel(operationId);
   if (bridgeProcessOwner.hasRunningProcess) await bridgeProcessOwner.stop(shutdownBridge);
 }
@@ -467,7 +506,7 @@ export async function chat(opts: ChatOptions): Promise<string> {
   const useStream = opts.stream !== false;
   const trace = createBridgeClientTraceLogger(opts.traceRunId, opts.traceWorkspaceRoot);
   const operationId = opts.traceOperationId?.trim() || createBridgeOperationId('chat');
-  if (!connectorContractVerified && !await ensureBridgeRunning()) {
+  if (!bridgeRuntimeContinuity.isVerified && !await ensureBridgeRunning()) {
     throw new Error('BRIDGE_CONNECTOR_UNAVAILABLE: Bridge capability negotiation failed.');
   }
   activeChatOperationIds.add(operationId);
@@ -483,6 +522,7 @@ export async function chat(opts: ChatOptions): Promise<string> {
     files: opts.files,
     samplingId: opts.traceSamplingId,
     transportAttempt: opts.traceTransportAttempt,
+    runtimeInstanceId: bridgeRuntimeContinuity.runtimeInstanceId,
   });
 
   trace.info('bridge-client', 'chat-request-start', {
@@ -535,8 +575,10 @@ export async function chat(opts: ChatOptions): Promise<string> {
       signal: requestAbort.signal,
     });
 
-    const json = await res.json() as { content?: string; error?: string };
+    const json = await res.json() as { content?: string; error?: string; runtimeInstanceId?: string };
     if (!res.ok || json.error) {
+      const runtimeChanged = bridgeRuntimeChangedErrorFromPayload(json);
+      if (res.status === 409 && runtimeChanged) throw runtimeChanged;
       if (res.status === 401 || json.error === 'LOGIN_REQUIRED') throw new Error('LOGIN_REQUIRED');
       throw new Error(json.error || `HTTP ${res.status}`);
     }
@@ -550,7 +592,8 @@ export async function chat(opts: ChatOptions): Promise<string> {
       requestAbort.dispose();
     }
   } catch (error) {
-    if (isTransientProviderTransportError(error)) connectorContractVerified = false;
+    if (isBridgeRuntimeChangedError(error)) bridgeRuntimeContinuity.clear();
+    else if (isTransientProviderTransportError(error)) bridgeRuntimeContinuity.markUnverified();
     trace.error('bridge-client', 'chat-request-failed', { message: (error as Error).message });
     throw error;
   } finally {
@@ -604,6 +647,14 @@ async function chatStream(
       const text = await res.text();
       // 401 表示需要重新登录，使用特殊错误消息以便上层识别
       if (res.status === 401) throw new Error('LOGIN_REQUIRED');
+      if (res.status === 409) {
+        try {
+          const runtimeChanged = bridgeRuntimeChangedErrorFromPayload(JSON.parse(text));
+          if (runtimeChanged) throw runtimeChanged;
+        } catch (error) {
+          if (isBridgeRuntimeChangedError(error)) throw error;
+        }
+      }
       throw new Error(`HTTP ${res.status}: ${text}`);
     }
 

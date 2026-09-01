@@ -4,8 +4,10 @@ import { dirname, join, parse, resolve } from 'path';
 import {
   BridgeStreamCorrelator,
   parseDeepSeekStreamFrameData,
+  requireBridgeRuntimeAdvertisement,
   requireDeepSeekWebConnectorAdvertisement,
   type BridgeAgentChatRequest,
+  type BridgeRuntimeAdvertisement,
   type ChatResponse,
   type StatusResponse,
 } from '@devseek-netai/shared';
@@ -16,15 +18,11 @@ const TRACE_WORKSPACE_ROOT_HEADER = 'X-DevSeek-Trace-Workspace-Root';
 const TRACE_OPERATION_ID_HEADER = 'X-DevSeek-Operation-Id';
 const EVIDENCE_AUTHORITY_HEADER = 'X-DevSeek-Evidence-Authority';
 const TARGET_OPERATION_ID_HEADER = 'X-DevSeek-Target-Operation-Id';
-let verifiedConnector: { readonly endpoint: string; readonly token: string } | undefined;
-
 export async function bridgeChat(cwd: string, request: BridgeAgentChatRequest): Promise<string> {
   const port = Number(process.env.DEVSEEK_BRIDGE_PORT ?? DEFAULT_BRIDGE_PORT);
   const token = await readOrCreateBridgeToken(cwd);
   const endpoint = `http://127.0.0.1:${port}`;
-  if (verifiedConnector?.endpoint !== endpoint || verifiedConnector.token !== token) {
-    await bridgeStatus(cwd, endpoint, token);
-  }
+  const runtime = await bridgeRuntime(endpoint, token);
   const operationId = request.traceOperationId?.trim() || `bridge-chat-${randomUUID()}`;
   const response = await fetch(`${endpoint}/chat`, {
     method: 'POST',
@@ -47,6 +45,7 @@ export async function bridgeChat(cwd: string, request: BridgeAgentChatRequest): 
       timeoutMs: request.timeoutMs,
       mode: request.mode,
       files: resolveBridgeFiles(cwd, request.files),
+      runtimeInstanceId: runtime.runtimeInstanceId,
     }),
     signal: request.signal,
   });
@@ -85,6 +84,7 @@ export async function bridgeStatus(
   token?: string,
 ): Promise<StatusResponse> {
   const bridgeToken = token ?? await readOrCreateBridgeToken(cwd);
+  await bridgeRuntime(endpoint, bridgeToken);
   const response = await fetch(`${endpoint}/status`, {
     headers: { 'X-DevSeek-Token': bridgeToken },
     signal: AbortSignal.timeout(3000),
@@ -92,8 +92,16 @@ export async function bridgeStatus(
   if (!response.ok) throw new Error(`Bridge status HTTP ${response.status}`);
   const status = await response.json() as StatusResponse;
   requireDeepSeekWebConnectorAdvertisement(status.connector);
-  verifiedConnector = { endpoint, token: bridgeToken };
   return status;
+}
+
+async function bridgeRuntime(endpoint: string, token: string): Promise<BridgeRuntimeAdvertisement> {
+  const response = await fetch(`${endpoint}/runtime`, {
+    headers: { 'X-DevSeek-Token': token },
+    signal: AbortSignal.timeout(3000),
+  });
+  if (!response.ok) throw new Error(`Bridge runtime HTTP ${response.status}`);
+  return requireBridgeRuntimeAdvertisement(await response.json());
 }
 
 async function readBridgeStream(

@@ -15,6 +15,7 @@ const bin = path.join(cliRoot, 'dist/index.js');
 const require = createRequire(import.meta.url);
 const {
   createDeepSeekStreamFrame,
+  BRIDGE_RUNTIME_PROTOCOL_VERSION,
   DEEPSEEK_WEB_CONNECTOR_CAPABILITIES,
   DEEPSEEK_WEB_CONNECTOR_PROTOCOL_VERSION,
   ProductRunEvidenceSession,
@@ -819,6 +820,7 @@ test('CLI requires verifier evidence for explicit requested stdout outputs', asy
 
       assert.equal(result.status, 0, result.stderr);
       assert.equal(seenBodies.length, 2);
+      assert.equal(seenBodies.every(body => body.runtimeInstanceId === 'test-bridge-runtime-instance'), true);
       assert.match(seenBodies[1].prompt, /median/);
 
       const events = result.stdout.trim().split(/\r?\n/).map(line => JSON.parse(line));
@@ -1178,6 +1180,22 @@ async function withTestBridge(fn, responder = () => ({ content: 'delayed bridge 
         queueLength: 0,
         browserReady: true,
         loggedInLikely: true,
+        connector: {
+          protocolVersion: DEEPSEEK_WEB_CONNECTOR_PROTOCOL_VERSION,
+          provider: 'deepseek-web',
+          capabilities: DEEPSEEK_WEB_CONNECTOR_CAPABILITIES,
+          maxAttempts: 2,
+          activeRequestCount: 0,
+        },
+      }));
+      return;
+    }
+    if (req.method === 'GET' && req.url === '/runtime') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({
+        protocolVersion: BRIDGE_RUNTIME_PROTOCOL_VERSION,
+        runtimeInstanceId: 'test-bridge-runtime-instance',
+        buildId: 'test-build',
         connector: {
           protocolVersion: DEEPSEEK_WEB_CONNECTOR_PROTOCOL_VERSION,
           provider: 'deepseek-web',

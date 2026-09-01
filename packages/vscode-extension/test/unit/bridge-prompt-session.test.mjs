@@ -217,3 +217,38 @@ test('BridgePromptSession: missing trace key keeps ordinary chat self-contained'
   assert.equal(prepared.resetBrowserSession, false);
   assert.equal(prepared.prompt, flattenMessagesForBridge(messages));
 });
+
+test('BridgePromptSession: replacing the Bridge instance rebuilds from host-owned turn facts', () => {
+  resetBridgePromptSessionCacheForTests();
+  const run = { traceRunId: 'run-runtime-change', traceWorkspaceRoot: '/repo' };
+  const initial = { role: 'user', content: '修复现有项目并复跑失败验证。' };
+  const firstMessages = [initial];
+  prepareBridgePromptForSession({
+    ...run,
+    providerSessionId: 'bridge-runtime-a',
+    newSession: true,
+    messages: firstMessages,
+  });
+  recordBridgePromptSessionRequest({
+    ...run,
+    providerSessionId: 'bridge-runtime-a',
+    newSession: true,
+    messages: firstMessages,
+  });
+
+  const rebuilt = prepareBridgePromptForSession({
+    ...run,
+    providerSessionId: 'bridge-runtime-b',
+    messages: [
+      initial,
+      { role: 'assistant', content: '[DevSeek 已执行工具请求摘要]已写入 src/main.cpp。' },
+      { role: 'user', content: '[工具结果 Round 4]\n写入已验证；下一步运行 make test。' },
+    ],
+  });
+
+  assert.equal(rebuilt.mode, 'reset-full');
+  assert.equal(rebuilt.resetBrowserSession, true);
+  assert.match(rebuilt.prompt, /修复现有项目/);
+  assert.match(rebuilt.prompt, /宿主已验证事实批次 4/);
+  assert.doesNotMatch(rebuilt.prompt, /已执行工具请求摘要/);
+});

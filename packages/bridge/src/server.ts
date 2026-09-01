@@ -3,6 +3,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as nodePath from 'path';
 import {
+  BRIDGE_RUNTIME_PROTOCOL_VERSION,
   assertRunEvidencePersistedSecretBoundary,
   classifyDeepSeekStreamErrorMessage,
   createDevSeekTraceLogger,
@@ -10,6 +11,7 @@ import {
   redactDevSeekAuthorityCapabilities,
   summarizeTraceText,
   type DeepSeekStreamFrame,
+  type BridgeRuntimeAdvertisement,
   type DevSeekTraceLogger,
 } from '@devseek-netai/shared';
 import { DeepSeekAgent } from './deepseek-agent';
@@ -35,12 +37,14 @@ import type {
   ChatRequest,
   ChatResponse,
   PingResponse,
+  RuntimeResponse,
   StatusResponse,
   CancelResponse,
 } from './types';
 
 const PORT = Number(process.env.BRIDGE_PORT) || 3721;
 const VERSION = '0.1.0';
+const BRIDGE_RUNTIME_INSTANCE_ID = crypto.randomUUID();
 const TOKEN_FILE = '.devseek/bridge-token';
 const TRACE_RUN_ID_HEADER = 'x-devseek-run-id';
 const TRACE_WORKSPACE_ROOT_HEADER = 'x-devseek-trace-workspace-root';
@@ -67,6 +71,18 @@ const providerRequestExecutor = new BridgeProviderRequestExecutor({
   connectorExecution,
 });
 let runtimeLifecycle: BridgeRuntimeLifecycle | undefined;
+
+function bridgeRuntimeAdvertisement(): BridgeRuntimeAdvertisement {
+  return {
+    protocolVersion: BRIDGE_RUNTIME_PROTOCOL_VERSION,
+    runtimeInstanceId: BRIDGE_RUNTIME_INSTANCE_ID,
+    appVersion: process.env.DEVSEEK_VERSION || undefined,
+    buildChannel: process.env.DEVSEEK_BUILD_CHANNEL || undefined,
+    buildId: process.env.DEVSEEK_BUILD_ID || undefined,
+    gitCommit: process.env.DEVSEEK_GIT_COMMIT || undefined,
+    connector: connector.advertisement(),
+  };
+}
 
 async function ensureAgent(): Promise<void> {
   if (runtimeLifecycle?.isShuttingDown) throw new Error('Bridge is shutting down');
@@ -247,6 +263,14 @@ app.get('/ping', (_req: Request, res: Response) => {
 });
 
 // ----------------------------------------------------------------
+// GET /runtime - cheap process identity; does not inspect the browser DOM.
+// ----------------------------------------------------------------
+app.get('/runtime', (_req: Request, res: Response) => {
+  const body: RuntimeResponse = bridgeRuntimeAdvertisement();
+  res.json(body);
+});
+
+// ----------------------------------------------------------------
 // GET /status
 // ----------------------------------------------------------------
 app.get('/status', async (_req: Request, res: Response) => {
@@ -264,6 +288,7 @@ app.get('/status', async (_req: Request, res: Response) => {
     buildChannel: process.env.DEVSEEK_BUILD_CHANNEL || undefined,
     buildId: process.env.DEVSEEK_BUILD_ID || undefined,
     gitCommit: process.env.DEVSEEK_GIT_COMMIT || undefined,
+    runtimeInstanceId: BRIDGE_RUNTIME_INSTANCE_ID,
     connector: connector.advertisement(),
   };
   res.json(body);
@@ -377,6 +402,14 @@ app.post('/chat', async (req: Request, res: Response) => {
   const body = req.body as ChatRequest;
   const trace = createRequestTrace(req);
   const streamRequestId = createBridgeRequestId(req, 'chat');
+
+  if (body?.runtimeInstanceId && body.runtimeInstanceId !== BRIDGE_RUNTIME_INSTANCE_ID) {
+    res.status(409).json({
+      error: 'BRIDGE_RUNTIME_CHANGED',
+      runtimeInstanceId: BRIDGE_RUNTIME_INSTANCE_ID,
+    });
+    return;
+  }
 
   let prompt: string;
   try {
@@ -710,6 +743,7 @@ const server = app.listen(PORT, '127.0.0.1', () => {
   console.log(`[bridge] Workspace root: ${WORKSPACE_ROOT}`);
   console.log('[bridge] Endpoints:');
   console.log(`  GET  http://127.0.0.1:${PORT}/ping`);
+  console.log(`  GET  http://127.0.0.1:${PORT}/runtime`);
   console.log(`  GET  http://127.0.0.1:${PORT}/status`);
   console.log(`  GET  http://127.0.0.1:${PORT}/index/file?path=<rel-or-abs>`);
   console.log(`  GET  http://127.0.0.1:${PORT}/index/search?q=<name>&limit=<n>`);

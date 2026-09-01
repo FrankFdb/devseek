@@ -9,6 +9,7 @@ export interface BridgePromptSessionOptions {
   newSession?: boolean;
   traceRunId?: string;
   traceWorkspaceRoot?: string;
+  providerSessionId?: string;
 }
 
 export interface PreparedBridgePrompt {
@@ -207,7 +208,8 @@ export function flattenMessagesForBridge(messages: ChatMessage[]): string {
 function makeBridgePromptSessionKey(options: BridgePromptSessionOptions): string | undefined {
   const runId = options.traceRunId?.trim();
   if (!runId) return undefined;
-  return `${options.traceWorkspaceRoot || 'workspace'}::${runId}`;
+  const providerSessionId = options.providerSessionId?.trim() || 'unbound-provider-session';
+  return `${options.traceWorkspaceRoot || 'workspace'}::${runId}::${providerSessionId}`;
 }
 
 function pruneBridgePromptSessions(): void {
