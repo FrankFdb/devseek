@@ -89,6 +89,48 @@ test('single-file patch preserves untouched mixed endings and separates EOF inse
   assert.equal(eofInsertion.content, 'first\nsecond');
 });
 
+test('single-file patch recovers unique web-normalized whitespace without rewriting context', () => {
+  const original = [
+    'void render() {',
+    '    old_call();   ',
+    '    ',
+    '}',
+    '',
+  ].join('\n');
+  const result = applySingleFilePatch(original, patch('render.cpp', [
+    '@@',
+    ' void render() {',
+    '-    old_call();',
+    '-',
+    '+    new_call();',
+    ' }',
+  ]), 'render.cpp');
+
+  assert.equal(result.content, [
+    'void render() {',
+    '    new_call();',
+    '}',
+    '',
+  ].join('\n'));
+});
+
+test('single-file patch uses exact context before whitespace compatibility tiers', () => {
+  const result = applySingleFilePatch(
+    'target   \ntarget\n',
+    patch('file.txt', ['@@', '-target', '+changed']),
+    'file.txt',
+  );
+  assert.equal(result.content, 'target   \nchanged\n');
+});
+
+test('single-file patch rejects ambiguous whitespace-normalized context', () => {
+  assert.throws(() => applySingleFilePatch(
+    'target   \ntarget\t\n',
+    patch('file.txt', ['@@', '-target', '+changed']),
+    'file.txt',
+  ), /hunk-context-not-found-or-ambiguous/);
+});
+
 test('single-file patch rejects ambiguous context and cross-file operations', () => {
   assert.throws(() => applySingleFilePatch(
     'same\nsame\n',

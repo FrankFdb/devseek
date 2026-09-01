@@ -245,8 +245,12 @@ test('failed independent review blocks completion until repaired source is reval
   assert.match(failed, /counterexample 转成最小本地 probe/);
   assert.match(failed, /优先验证反例：Complete id A and submit A again/);
   assert.match(failed, /全部 finding 作为一个有界修复队列/);
+  assert.match(failed, /同一路径的 finding 先合并为一个最小责任范围，只读取该范围一次/);
+  assert.match(failed, /不要先读取整文件，再重复读取相互重叠的区间/);
   assert.match(failed, /围绕共同责任边界合并修复相邻状态流、边界值和同类入口/);
   assert.match(failed, /不要处理首条后就停止/);
+  assert.match(failed, /逐条对照每个 finding 的期望行为/);
+  assert.match(failed, /不能进入全量验证或 task_complete/);
   assert.doesNotMatch(failed, /定点修复协议|std::invalid_argument/);
   assert.match(failed, /全部成立的反例都取得针对性验证后，再运行项目既有验证作为大 case 回归/);
   assert.match(ledger.beforeNoToolCompletion(), /必须根据上述独立结论修复生产源码/);

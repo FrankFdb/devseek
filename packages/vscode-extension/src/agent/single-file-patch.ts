@@ -140,17 +140,51 @@ function findUniqueHunk(
   preferred: number | undefined,
 ): number {
   if (preferred !== undefined && linesMatchAt(lines, expected, preferred)) return preferred;
-  const candidates: number[] = [];
-  for (let index = 0; index <= lines.length - expected.length; index += 1) {
-    if (linesMatchAt(lines, expected, index)) candidates.push(index);
+
+  // Web providers commonly normalize trailing whitespace and indentation while
+  // serializing a patch. Match in Codex's strictness order, but require the
+  // whole hunk to remain unique before accepting either compatibility tier.
+  for (const normalize of [identityLine, trimLineEnd, trimLine] as const) {
+    const candidates = findHunkCandidates(lines, expected, normalize);
     if (candidates.length > 1) return -1;
+    if (candidates.length === 1) return candidates[0];
   }
-  return candidates[0] ?? -1;
+  return -1;
 }
 
-function linesMatchAt(lines: readonly SourceLine[], expected: readonly string[], index: number): boolean {
+function findHunkCandidates(
+  lines: readonly SourceLine[],
+  expected: readonly string[],
+  normalize: (value: string) => string,
+): readonly number[] {
+  const candidates: number[] = [];
+  for (let index = 0; index <= lines.length - expected.length; index += 1) {
+    if (linesMatchAt(lines, expected, index, normalize)) candidates.push(index);
+    if (candidates.length > 1) break;
+  }
+  return candidates;
+}
+
+function linesMatchAt(
+  lines: readonly SourceLine[],
+  expected: readonly string[],
+  index: number,
+  normalize: (value: string) => string = identityLine,
+): boolean {
   if (index < 0 || index + expected.length > lines.length) return false;
-  return expected.every((line, offset) => lines[index + offset].text === line);
+  return expected.every((line, offset) => normalize(lines[index + offset].text) === normalize(line));
+}
+
+function identityLine(value: string): string {
+  return value;
+}
+
+function trimLineEnd(value: string): string {
+  return value.trimEnd();
+}
+
+function trimLine(value: string): string {
+  return value.trim();
 }
 
 function materializeReplacement(

@@ -321,7 +321,9 @@ function renderBlockingDecision(decision: RequirementReviewDecision): string {
     primaryFinding
       ? `优先验证反例：${primaryFinding.counterexample}`
       : undefined,
+    '同一路径的 finding 先合并为一个最小责任范围，只读取该范围一次；不要先读取整文件，再重复读取相互重叠的区间。仅在当前证据缺少直接声明时补读最小依赖边界。',
     '核实其余 finding，并围绕共同责任边界合并修复相邻状态流、边界值和同类入口；不要只改当前一行，也不要处理首条后就停止。',
+    '修改后先对变更责任范围做一次定点读回，逐条对照每个 finding 的期望行为；任何一条仍被源码直接违反时都不能进入全量验证或 task_complete。',
     '全部成立的反例都取得针对性验证后，再运行项目既有验证作为大 case 回归。',
     '必须根据上述独立结论修复生产源码并重新运行项目验证；不要修改受保护测试，也不要仅用解释否定审查结果。',
   ].filter(Boolean).join('\n');
