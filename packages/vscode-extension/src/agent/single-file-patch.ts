@@ -10,6 +10,12 @@ interface SourceLine {
   readonly ending: string;
 }
 
+interface HunkMatch {
+  readonly index: number;
+  readonly sourceLength: number;
+  readonly oldOffsets: readonly number[];
+}
+
 export interface SingleFilePatchResult {
   readonly content: string;
   readonly addedLines: number;
@@ -67,8 +73,8 @@ export function applySingleFilePatch(
     const preferred = hunk.oldStart === undefined
       ? undefined
       : Math.max(0, hunk.oldStart - 1 + offset);
-    const index = findUniqueHunk(output, oldLines, preferred);
-    if (index < 0) {
+    const match = findUniqueHunk(output, oldLines, hunk.lines, preferred);
+    if (!match) {
       patchFailure(
         'hunk-context-not-found-or-ambiguous',
         oldLines.join('\n'),
@@ -77,13 +83,12 @@ export function applySingleFilePatch(
     }
     const replacement = materializeReplacement(
       output,
-      index,
-      oldLines.length,
+      match,
       hunk.lines,
       defaultLineEnding,
     );
-    output.splice(index, oldLines.length, ...replacement);
-    offset += replacement.length - oldLines.length;
+    output.splice(match.index, match.sourceLength, ...replacement);
+    offset += replacement.length - match.sourceLength;
     addedLines += hunk.lines.filter(line => line[0] === '+').length;
     removedLines += hunk.lines.filter(line => line[0] === '-').length;
   }
@@ -115,7 +120,6 @@ function parseHunks(body: string): PatchHunk[] {
     }
     if (!current) patchFailure('content-before-first-hunk');
     if (line === '\\ No newline at end of file') patchFailure('unsupported-no-newline-marker');
-    if (!/^[ +\-]/u.test(line)) patchFailure('invalid-hunk-line');
     current.lines.push(line);
   }
   if (current) settleHunk(hunks, current);
@@ -123,10 +127,28 @@ function parseHunks(body: string): PatchHunk[] {
 }
 
 function settleHunk(hunks: PatchHunk[], hunk: { oldStart?: number; lines: string[] }): void {
-  if (hunk.lines.length === 0 || !hunk.lines.some(line => line[0] === '+' || line[0] === '-')) {
+  const lines = normalizeBoundaryContextLines(hunk.lines);
+  if (lines.length === 0 || !lines.some(line => line[0] === '+' || line[0] === '-')) {
     patchFailure('empty-or-noop-hunk');
   }
-  hunks.push(Object.freeze({ oldStart: hunk.oldStart, lines: Object.freeze([...hunk.lines]) }));
+  hunks.push(Object.freeze({ oldStart: hunk.oldStart, lines: Object.freeze(lines) }));
+}
+
+function normalizeBoundaryContextLines(lines: readonly string[]): string[] {
+  const firstChange = lines.findIndex(line => line[0] === '+' || line[0] === '-');
+  let lastChange = -1;
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (lines[index][0] === '+' || lines[index][0] === '-') {
+      lastChange = index;
+      break;
+    }
+  }
+  if (firstChange < 0) return [...lines];
+  return lines.map((line, index) => {
+    if (/^[ +\-]/u.test(line)) return line;
+    if (index < firstChange || index > lastChange) return ` ${line}`;
+    patchFailure('invalid-hunk-line');
+  });
 }
 
 function parseOldStart(header: string): number | undefined {
@@ -137,19 +159,32 @@ function parseOldStart(header: string): number | undefined {
 function findUniqueHunk(
   lines: readonly SourceLine[],
   expected: readonly string[],
+  patchLines: readonly string[],
   preferred: number | undefined,
-): number {
-  if (preferred !== undefined && linesMatchAt(lines, expected, preferred)) return preferred;
+): HunkMatch | undefined {
+  if (preferred !== undefined && linesMatchAt(lines, expected, preferred)) {
+    return contiguousMatch(preferred, expected.length);
+  }
 
   // Web providers commonly normalize trailing whitespace and indentation while
   // serializing a patch. Match in Codex's strictness order, but require the
-  // whole hunk to remain unique before accepting either compatibility tier.
+  // whole hunk to remain unique before accepting any compatibility tier.
   for (const normalize of [identityLine, trimLineEnd, trimLine] as const) {
     const candidates = findHunkCandidates(lines, expected, normalize);
-    if (candidates.length > 1) return -1;
-    if (candidates.length === 1) return candidates[0];
+    if (candidates.length > 1) return undefined;
+    if (candidates.length === 1) return contiguousMatch(candidates[0], expected.length);
   }
-  return -1;
+  if (!supportsSparseBlankRecovery(patchLines)) return undefined;
+  const sparseCandidates = findSparseBlankCandidates(lines, expected);
+  return sparseCandidates.length === 1 ? sparseCandidates[0] : undefined;
+}
+
+function contiguousMatch(index: number, length: number): HunkMatch {
+  return {
+    index,
+    sourceLength: length,
+    oldOffsets: Array.from({ length }, (_, offset) => offset),
+  };
 }
 
 function findHunkCandidates(
@@ -187,20 +222,60 @@ function trimLine(value: string): string {
   return value.trim();
 }
 
+function supportsSparseBlankRecovery(patchLines: readonly string[]): boolean {
+  const oldPrefixes = patchLines.filter(line => line[0] !== '+').map(line => line[0]);
+  if (!patchLines.some(line => line[0] === '+') || !oldPrefixes.includes('-')) return false;
+  const contextOffsets = oldPrefixes
+    .map((prefix, index) => prefix === ' ' ? index : -1)
+    .filter(index => index >= 0);
+  return contextOffsets.every(index => index === 0 || index === oldPrefixes.length - 1);
+}
+
+function findSparseBlankCandidates(
+  lines: readonly SourceLine[],
+  expected: readonly string[],
+): HunkMatch[] {
+  const candidates: HunkMatch[] = [];
+  for (let start = 0; start < lines.length; start += 1) {
+    if (trimLine(lines[start].text) !== trimLine(expected[0])) continue;
+    let sourceIndex = start;
+    const oldOffsets: number[] = [];
+    let matched = true;
+    for (const expectedLine of expected) {
+      while (sourceIndex < lines.length
+        && lines[sourceIndex].text.trim().length === 0
+        && expectedLine.trim().length > 0) {
+        sourceIndex += 1;
+      }
+      if (sourceIndex >= lines.length
+        || trimLine(lines[sourceIndex].text) !== trimLine(expectedLine)) {
+        matched = false;
+        break;
+      }
+      oldOffsets.push(sourceIndex - start);
+      sourceIndex += 1;
+    }
+    if (matched) {
+      candidates.push({ index: start, sourceLength: sourceIndex - start, oldOffsets });
+      if (candidates.length > 1) break;
+    }
+  }
+  return candidates;
+}
+
 function materializeReplacement(
   source: readonly SourceLine[],
-  index: number,
-  oldLength: number,
+  match: HunkMatch,
   patchLines: readonly string[],
   defaultLineEnding: string,
 ): SourceLine[] {
-  const replaced = source.slice(index, index + oldLength);
+  const replaced = source.slice(match.index, match.index + match.sourceLength);
   const replacementEnding = selectReplacementLineEnding(replaced, patchLines, defaultLineEnding);
   const replacement: SourceLine[] = [];
   let oldOffset = 0;
   for (const patchLine of patchLines) {
     if (patchLine[0] === ' ') {
-      replacement.push(replaced[oldOffset]);
+      replacement.push(replaced[match.oldOffsets[oldOffset]]);
       oldOffset += 1;
     } else if (patchLine[0] === '-') {
       oldOffset += 1;
@@ -213,7 +288,7 @@ function materializeReplacement(
       replacement[lineIndex] = { ...replacement[lineIndex], ending: replacementEnding };
     }
   }
-  if (index + oldLength === source.length && replacement.length > 0) {
+  if (match.index + match.sourceLength === source.length && replacement.length > 0) {
     replacement[replacement.length - 1] = {
       ...replacement[replacement.length - 1],
       ending: replaced.at(-1)?.ending ?? '',

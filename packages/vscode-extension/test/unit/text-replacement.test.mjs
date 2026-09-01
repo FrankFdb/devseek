@@ -82,6 +82,94 @@ test('line-whitespace fallback can repair a unique block while changing its line
   });
 });
 
+test('line-structure fallback recovers a unique web replacement that omitted blank lines', () => {
+  const source = [
+    'void render() {',
+    '  const int width = 10;',
+    '',
+    '  draw(width);',
+    '',
+    '  finish();',
+    '}',
+    '',
+    'void keep() {}',
+    '',
+  ].join('\n');
+  const oldText = [
+    'void render() {',
+    'const int width = 10;',
+    'draw(width);',
+    'finish();',
+    '}',
+  ].join('\n');
+  const newText = [
+    'void render() {',
+    '  const int width = 20;',
+    '  draw(width);',
+    '  finish();',
+    '}',
+  ].join('\n');
+
+  const result = resolveTextReplacement(source, oldText, newText, false);
+
+  assert.deepEqual(result, {
+    status: 'matched',
+    content: [
+      'void render() {',
+      '  const int width = 20;',
+      '  draw(width);',
+      '  finish();',
+      '}',
+      '',
+      'void keep() {}',
+      '',
+    ].join('\n'),
+    matchMode: 'line-structure',
+    replacementCount: 1,
+  });
+});
+
+test('line-structure fallback rejects ambiguous blocks and whitespace-only rewrites', () => {
+  const duplicate = [
+    'void render() {',
+    '',
+    '  draw();',
+    '}',
+    'void render() {',
+    '',
+    '  draw();',
+    '}',
+    '',
+  ].join('\n');
+  assert.deepEqual(
+    resolveTextReplacement(
+      duplicate,
+      'void render() {\ndraw();\n}',
+      'void render() {\npaint();\n}',
+      false,
+    ),
+    { status: 'ambiguous' },
+  );
+  const replaceAll = resolveTextReplacement(
+    duplicate,
+    'void render() {\ndraw();\n}',
+    'void render() {\n  paint();\n}',
+    true,
+  );
+  assert.equal(replaceAll.status, 'matched');
+  assert.equal(replaceAll.replacementCount, 2);
+  assert.equal(replaceAll.content.match(/paint\(\)/g)?.length, 2);
+  assert.deepEqual(
+    resolveTextReplacement(
+      'void render() {\n\n  draw();\n}\n',
+      'void render() {\ndraw();\n}',
+      'void render() {\n  draw();\n}',
+      false,
+    ),
+    { status: 'not-found' },
+  );
+});
+
 test('exact replacement behavior remains unchanged', () => {
   const result = resolveTextReplacement('a\na\n', 'a', 'b', true);
   assert.deepEqual(result, {

@@ -418,6 +418,10 @@ test('review prompt delegates semantics to the model and keeps raw multilingual 
 
   assert.match(messages[0].content, /Interpret the original request semantically/);
   assert.match(messages[0].content, /likely spelling or homophone errors/);
+  assert.match(messages[0].content, /every independent sentence, numbered item/);
+  assert.match(messages[0].content, /fixed limiter that can change the decision/);
+  assert.match(messages[0].content, /declared operand types before casts/);
+  assert.match(messages[0].content, /maximum to end rather than end minus one/);
   assert.match(messages[0].content, /ownership transfer/);
   assert.match(messages[0].content, /passing first-use test/);
   assert.match(messages[0].content, /alternate default value/);

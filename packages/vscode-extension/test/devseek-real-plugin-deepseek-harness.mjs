@@ -2557,15 +2557,19 @@ module.exports = { activate };
 
 function attachReplayReport(report) {
   const logs = report?.runLogs?.logs;
-  if (!Array.isArray(logs) || logs.length === 0) {
+  const reportedLogs = Array.isArray(logs) ? logs : [];
+  const foregroundLog = report?.naturalUiSubmission?.foregroundDispatch?.evidence?.log;
+  const selected = selectProductRunLog(reportedLogs)?.absolutePath
+    || reportedLogs[0]?.absolutePath
+    || (typeof foregroundLog === 'string' ? foregroundLog : '');
+  if (!selected) {
     report.replay = { ok: false, skipped: true, reason: 'no run log found' };
     report.ok = false;
     report.errors = [...(report.errors || []), '真实插件链路没有生成可 replay 的运行日志。'];
     return;
   }
 
-  const selected = selectProductRunLog(logs)?.absolutePath || logs[0]?.absolutePath;
-  if (!selected || !fs.existsSync(selected)) {
+  if (!fs.existsSync(selected)) {
     report.replay = { ok: false, skipped: true, reason: 'selected run log missing', selected };
     report.ok = false;
     report.errors = [...(report.errors || []), '真实插件链路运行日志路径不可读，无法 replay。'];

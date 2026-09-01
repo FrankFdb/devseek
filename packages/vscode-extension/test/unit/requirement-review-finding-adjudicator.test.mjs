@@ -103,6 +103,10 @@ test('rejects a proposed missing-interface finding contradicted by the current f
   assert.deepEqual(decision.findings, []);
   assert.match(prompt, /std::string\(argv\[1\]\) == "--script"/);
   assert.match(prompt, /untrusted hypothesis, not execution authority/);
+  assert.match(prompt, /every independent sentence and numbered clause/);
+  assert.match(prompt, /fixed limiter that can alter a decision/);
+  assert.match(prompt, /operand types before casts/);
+  assert.match(prompt, /maximum mapped to end is outside/);
 });
 
 test('retains only findings independently confirmed against the current source', async () => {

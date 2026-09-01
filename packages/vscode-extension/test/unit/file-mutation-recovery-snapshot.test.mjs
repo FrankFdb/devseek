@@ -63,3 +63,31 @@ test('mutation recovery can localize a one-line stale replacement by lexical evi
   assert.match(snapshot, /int rendering_threshold = 7000;/);
   assert.doesNotMatch(snapshot, /int unrelated_1 = 1;/);
 });
+
+test('mutation recovery keeps declaration context before a body-only failed span', () => {
+  const lines = Array.from({ length: 180 }, (_, index) => `int padding_${index + 1} = ${index + 1};`);
+  lines[73] = 'void RasterCanvas::renderNumberLine(int marker, int min, int max) {';
+  lines[74] = '  const int margin = 20;';
+  lines[75] = '  const int start = margin;';
+  lines[76] = '';
+  lines[77] = '  prepare_axis(start);';
+  lines[78] = '';
+  lines[79] = '  const int current_range = max - min;';
+  lines[80] = '  draw_axis(current_range);';
+  lines[81] = '}';
+  const content = `${lines.join('\n')}\n`;
+
+  const snapshot = formatFileMutationRecoverySnapshot(content, {
+    expectedText: [
+      '  const int stale_range = max - min;',
+      '  draw_axis(stale_range);',
+      '}',
+    ].join('\n'),
+    preferredStartLine: 80,
+    maxChars: 1_000,
+  });
+
+  assert.match(snapshot, /void RasterCanvas::renderNumberLine/);
+  assert.match(snapshot, /current_range = max - min/);
+  assert.doesNotMatch(snapshot, /int padding_1 = 1;/);
+});

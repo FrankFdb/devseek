@@ -18,6 +18,8 @@ export interface FileMutationRecoveryHint {
 
 const DEFAULT_MAX_CHARS = 6_000;
 const MIN_FUZZY_LINE_CONFIDENCE = 0.5;
+const DECLARATION_CONTEXT_LINES = 6;
+const TRAILING_CONTEXT_LINES = 3;
 
 /** Returns bounded, current-file evidence near a failed mutation without weakening exact writes. */
 export function formatFileMutationRecoverySnapshot(
@@ -33,12 +35,14 @@ export function formatFileMutationRecoverySnapshot(
   const expectedLines = splitExpectedLines(hint.expectedText);
   const location = locateExpectedBlock(sourceLines, expectedLines, hint.preferredStartLine);
   if (location && sourceLines.length > 0) {
-    const targetStart = clamp(location.startIndex, 0, sourceLines.length - 1);
-    const targetEnd = clamp(
+    const matchedStart = clamp(location.startIndex, 0, sourceLines.length - 1);
+    const matchedEnd = clamp(
       location.startIndex + Math.max(1, expectedLines.length),
-      targetStart + 1,
+      matchedStart + 1,
       sourceLines.length,
     );
+    const targetStart = Math.max(0, matchedStart - DECLARATION_CONTEXT_LINES);
+    const targetEnd = Math.min(sourceLines.length, matchedEnd + TRAILING_CONTEXT_LINES);
     const focusIndex = clamp(
       location.startIndex + (location.firstMismatchOffset ?? Math.floor(expectedLines.length / 2)),
       targetStart,

@@ -933,7 +933,7 @@ export async function executeFakeToolsForLoop(
         const replacement = resolveTextReplacement(oldContent, oldStr, newStr, replaceAll);
         if (replacement.status !== 'matched') {
           const reason = replacement.status === 'ambiguous'
-            ? 'old_str 忽略行首空白后匹配到多个位置，无法确定唯一修改点。请缩小到包含唯一上下文的片段。'
+            ? 'old_str 经网页传输空白归一化后匹配到多个位置，无法确定唯一修改点。请缩小到包含唯一上下文的片段。'
             : 'old_str 未在当前文件中找到。请重新 read_file 读取最新内容后再精确替换。';
           await canonicalTools.fail(toolPlan, canonicalContext, 'replace-search-text-stale');
           recordToolFailure('replace_in_file', 'replace', rawPath, reason, strategyFingerprint);

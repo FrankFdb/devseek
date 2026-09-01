@@ -99,11 +99,11 @@ test('single-file patch recovers unique web-normalized whitespace without rewrit
   ].join('\n');
   const result = applySingleFilePatch(original, patch('render.cpp', [
     '@@',
-    ' void render() {',
+    'void render() {',
     '-    old_call();',
     '-',
     '+    new_call();',
-    ' }',
+    '}',
   ]), 'render.cpp');
 
   assert.equal(result.content, [
@@ -112,6 +112,89 @@ test('single-file patch recovers unique web-normalized whitespace without rewrit
     '}',
     '',
   ].join('\n'));
+});
+
+test('single-file patch recovers a unique full-block replacement with omitted blank lines', () => {
+  const original = [
+    'void render() {',
+    '    const int width = 10;',
+    '',
+    '    draw(width);',
+    '',
+    '    finish();',
+    '}',
+    '',
+    'void keep() {}',
+    '',
+  ].join('\n');
+  const result = applySingleFilePatch(original, patch('render.cpp', [
+    '@@',
+    ' void render() {',
+    '-    const int width = 10;',
+    '-    draw(width);',
+    '-    finish();',
+    '+    const int width = 20;',
+    '+    draw(width);',
+    '+    finish();',
+    ' }',
+  ]), 'render.cpp');
+
+  assert.equal(result.content, [
+    'void render() {',
+    '    const int width = 20;',
+    '    draw(width);',
+    '    finish();',
+    '}',
+    '',
+    'void keep() {}',
+    '',
+  ].join('\n'));
+});
+
+test('single-file patch rejects ambiguous or internally anchored sparse replacements', () => {
+  const duplicate = [
+    'void render() {',
+    '',
+    '    draw();',
+    '}',
+    'void render() {',
+    '',
+    '    draw();',
+    '}',
+    '',
+  ].join('\n');
+  assert.throws(() => applySingleFilePatch(duplicate, patch('render.cpp', [
+    '@@',
+    ' void render() {',
+    '-    draw();',
+    '+    paint();',
+    ' }',
+  ]), 'render.cpp'), /hunk-context-not-found-or-ambiguous/);
+
+  assert.throws(() => applySingleFilePatch([
+    'void render() {',
+    '',
+    '',
+    '    draw();',
+    '}',
+    '',
+  ].join('\n'), patch('render.cpp', [
+    '@@',
+    ' void render() {',
+    '     ',
+    '-    draw();',
+    '+    paint();',
+    ' }',
+  ]), 'render.cpp'), /hunk-context-not-found-or-ambiguous/);
+
+  assert.throws(() => applySingleFilePatch('void render() {\n  draw();\n}\n', patch('render.cpp', [
+    '@@',
+    'void render() {',
+    '-  draw();',
+    'unprefixed_internal_context();',
+    '+  paint();',
+    '}',
+  ]), 'render.cpp'), /invalid-hunk-line/);
 });
 
 test('single-file patch uses exact context before whitespace compatibility tiers', () => {

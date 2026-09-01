@@ -1236,6 +1236,13 @@ test('Real DeepSeek harness: run log evidence is bound to current run', () => {
   assertDoesNotContain(harness, 'logs.sort((a, b) => b.size - a.size)', 'real harness must not rank stale logs by size');
 });
 
+test('Real DeepSeek harness: timeout replay keeps natural UI dispatch evidence', () => {
+  const harness = src('test/devseek-real-plugin-deepseek-harness.mjs');
+  assertContains(harness, 'naturalUiSubmission?.foregroundDispatch?.evidence?.log', 'timeout replay must recover the exact foreground run log observed during submission');
+  assertContains(harness, "|| (typeof foregroundLog === 'string' ? foregroundLog : '')", 'foreground dispatch evidence must be a fallback after evaluated product logs');
+  assertContains(harness, 'if (!selected) {', 'no-log failure must occur only after every current-run evidence source is exhausted');
+});
+
 test('Real DeepSeek harness: timeout reports are marked as report-time snapshots', () => {
   const harness = src('test/devseek-real-plugin-deepseek-harness.mjs');
   assertContains(harness, "let pollExitReason = 'timeout'", 'real harness must keep timeout as an explicit poll exit reason');
