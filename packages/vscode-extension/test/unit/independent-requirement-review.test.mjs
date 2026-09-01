@@ -217,6 +217,71 @@ test('requires one ordered host-bound requirement check with evidence', () => {
   }
 });
 
+test('binds every top-level numbered clause to its own ordered review check', () => {
+  const source = snapshot('src/raster_canvas.cpp', 'void renderNumberLine() {}\n');
+  const prompt = [
+    'Continue from the current workspace without rebuilding it.',
+    'All of these constraints are binding:',
+    '1. Use overflow-safe half-open bounds.',
+    '  - Keep the nested explanation with clause one.',
+    '2. Draw each endpoint exactly once.',
+    '3. Measure labels instead of using fixed density.',
+  ].join('\n');
+  const messages = buildIndependentReviewMessages({
+    userPrompt: prompt,
+    workspaceRoot: '/workspace',
+    sourcePaths: [source.path],
+  }, [source]);
+  const inventoryText = messages[1].content
+    .split('[REQUIREMENT INVENTORY]\n')[1]
+    .split('\n\n[WORKSPACE CONTEXT READ BY IMPLEMENTING AGENT]')[0];
+  const inventory = JSON.parse(inventoryText);
+
+  assert.deepEqual(inventory, [
+    {
+      requirement_id: 'R1',
+      requirement_quote: 'Continue from the current workspace without rebuilding it.\nAll of these constraints are binding:',
+    },
+    {
+      requirement_id: 'R2',
+      requirement_quote: '1. Use overflow-safe half-open bounds.\n  - Keep the nested explanation with clause one.',
+    },
+    { requirement_id: 'R3', requirement_quote: '2. Draw each endpoint exactly once.' },
+    { requirement_id: 'R4', requirement_quote: '3. Measure labels instead of using fixed density.' },
+  ]);
+
+  const checks = inventory.map(item => ({
+    requirement_id: item.requirement_id,
+    status: 'satisfied',
+    evidence: `${item.requirement_id} is traced through the supplied source snapshot.`,
+  }));
+  const body = passBody(prompt, { requirement_checks: checks });
+  assert.equal(parseIndependentReviewResponse(response(body), [source], prompt).status, 'passed');
+  assert.equal(parseIndependentReviewResponse(response({
+    ...body,
+    requirement_checks: checks.slice(0, -1),
+  }), [source], prompt).status, 'indeterminate');
+});
+
+test('preserves CRLF text while splitting a structured requirement list', () => {
+  const source = snapshot();
+  const prompt = ['保留原始传输文本。', '1、第一条。', '2：第二条。'].join('\r\n');
+  const messages = buildIndependentReviewMessages({
+    userPrompt: prompt,
+    workspaceRoot: '/workspace',
+    sourcePaths: [source.path],
+  }, [source]);
+  const inventoryText = messages[1].content
+    .split('[REQUIREMENT INVENTORY]\n')[1]
+    .split('\n\n[WORKSPACE CONTEXT READ BY IMPLEMENTING AGENT]')[0];
+
+  assert.deepEqual(JSON.parse(inventoryText).map(item => item.requirement_quote), [
+    '保留原始传输文本。',
+    '1、第一条。',
+    '2：第二条。',
+  ]);
+});
+
 test('keeps the host requirement binding when a provider normalizes multilingual quotes', () => {
   const source = snapshot();
   const prompt = '键盘切换“分数/数轴”，并保持可操作。';
@@ -438,7 +503,7 @@ test('review prompt delegates semantics to the model and keeps raw multilingual 
   assert.match(messages[0].content, /never repeat or rewrite requirement_quote/);
 });
 
-test('isolated review captures a bounded module cohort around changed source', async () => {
+test('isolated review keeps mutation-owned source separate from explicit context', async () => {
   const workspace = path.join(tempRoot, 'module-cohort-workspace');
   mkdirSync(path.join(workspace, 'src'), { recursive: true });
   mkdirSync(path.join(workspace, 'include'), { recursive: true });
@@ -456,12 +521,13 @@ test('isolated review captures a bounded module cohort around changed source', a
     userPrompt: prompt,
     workspaceRoot: workspace,
     sourcePaths: ['src/changed.cpp'],
+    contextPaths: ['include/app.hpp'],
   });
 
   assert.equal(decision.status, 'passed');
   assert.match(reviewPrompt, /src\/changed\.cpp/);
-  assert.match(reviewPrompt, /src\/main\.cpp/);
   assert.match(reviewPrompt, /include\/app\.hpp/);
+  assert.doesNotMatch(reviewPrompt, /src\/main\.cpp/);
 });
 
 test('review prompt carries bounded workspace context only as user-delegated evidence', () => {

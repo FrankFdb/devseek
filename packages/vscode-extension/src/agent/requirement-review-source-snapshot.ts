@@ -4,23 +4,17 @@ import type { RequirementReviewSourceSnapshot } from './requirement-review-contr
 
 const MAX_SOURCE_BYTES = 96 * 1024;
 const MAX_REVIEW_SOURCE_CHARS = 180_000;
-const MAX_MODULE_COHORT_FILES = 24;
 const MAX_CONTEXT_BYTES = 48 * 1024;
-const MAX_REVIEW_CONTEXT_CHARS = 64_000;
-const SOURCE_EXTENSIONS = new Set([
-  '.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.hxx',
-  '.cs', '.go', '.java', '.js', '.jsx', '.kt', '.kts', '.mjs',
-  '.php', '.py', '.rb', '.rs', '.svelte', '.swift', '.ts', '.tsx', '.vue',
-]);
+const MAX_REVIEW_CONTEXT_CHARS = 32_000;
 
-/** Captures the complete, current source cohort at the host boundary. */
+/** Captures exactly the mutation-owned final source paths selected by the ledger. */
 export async function captureRequirementReviewSourceSnapshots(
   workspaceRoot: string,
   sourcePaths: readonly string[],
 ): Promise<RequirementReviewSourceSnapshot[]> {
   const root = nodePath.resolve(workspaceRoot);
   const realRoot = await fs.realpath(root);
-  const cohortPaths = await expandBoundedModuleCohort(root, realRoot, sourcePaths);
+  const cohortPaths = [...new Set(sourcePaths)];
   const snapshots: RequirementReviewSourceSnapshot[] = [];
   let totalChars = 0;
   for (const sourcePath of cohortPaths) {
@@ -39,87 +33,6 @@ export async function captureRequirementReviewSourceSnapshots(
   }
   if (snapshots.length === 0) throw new Error('empty-source-cohort');
   return snapshots;
-}
-
-async function expandBoundedModuleCohort(
-  root: string,
-  realRoot: string,
-  sourcePaths: readonly string[],
-): Promise<string[]> {
-  const authoritative = [...new Set(sourcePaths)].map(sourcePath => resolveWorkspacePath(root, sourcePath));
-  const cohort = [...authoritative];
-  const known = new Set(cohort);
-  let estimatedBytes = await estimateAuthoritativeBytes(root, realRoot, authoritative);
-  const directories = moduleCohortDirectories(root, authoritative);
-
-  for (const directory of directories) {
-    const siblings = await listBoundedSourceSiblings(root, realRoot, directory);
-    if (!siblings || siblings.length > MAX_MODULE_COHORT_FILES) continue;
-    const additions = siblings.filter(candidate => !known.has(candidate.path));
-    const addedBytes = additions.reduce((total, candidate) => total + candidate.bytes, 0);
-    if (estimatedBytes + addedBytes > MAX_REVIEW_SOURCE_CHARS) continue;
-    for (const candidate of additions) {
-      known.add(candidate.path);
-      cohort.push(candidate.path);
-    }
-    estimatedBytes += addedBytes;
-  }
-  return cohort;
-}
-
-async function estimateAuthoritativeBytes(
-  root: string,
-  realRoot: string,
-  paths: readonly string[],
-): Promise<number> {
-  let total = 0;
-  for (const absolutePath of paths) {
-    if (!isInsideWorkspace(root, absolutePath)) throw new Error(`outside-workspace:${absolutePath}`);
-    const realPath = await fs.realpath(absolutePath);
-    if (!isInsideWorkspace(realRoot, realPath)) throw new Error(`symlink-outside-workspace:${absolutePath}`);
-    const stat = await fs.stat(realPath);
-    if (!stat.isFile()) throw new Error(`not-a-file:${absolutePath}`);
-    if (stat.size > MAX_SOURCE_BYTES) throw new Error(`source-too-large:${absolutePath}`);
-    total += stat.size;
-  }
-  return total;
-}
-
-function moduleCohortDirectories(root: string, authoritative: readonly string[]): string[] {
-  const directories = new Set(authoritative.map(sourcePath => nodePath.dirname(sourcePath)));
-  for (const directory of [...directories]) {
-    const basename = nodePath.basename(directory).toLowerCase();
-    if (basename !== 'src' && basename !== 'include') continue;
-    const companion = nodePath.join(nodePath.dirname(directory), basename === 'src' ? 'include' : 'src');
-    if (isInsideWorkspace(root, companion)) directories.add(companion);
-  }
-  return [...directories];
-}
-
-async function listBoundedSourceSiblings(
-  root: string,
-  realRoot: string,
-  directory: string,
-): Promise<Array<{ path: string; bytes: number }> | undefined> {
-  try {
-    const entries = await fs.readdir(directory, { withFileTypes: true });
-    const sourceEntries = entries
-      .filter(entry => entry.isFile() && SOURCE_EXTENSIONS.has(nodePath.extname(entry.name).toLowerCase()))
-      .sort((left, right) => left.name.localeCompare(right.name));
-    if (sourceEntries.length > MAX_MODULE_COHORT_FILES) return undefined;
-    const siblings: Array<{ path: string; bytes: number }> = [];
-    for (const entry of sourceEntries) {
-      const absolutePath = nodePath.join(directory, entry.name);
-      const realPath = await fs.realpath(absolutePath);
-      if (!isInsideWorkspace(root, absolutePath) || !isInsideWorkspace(realRoot, realPath)) continue;
-      const stat = await fs.stat(realPath);
-      if (!stat.isFile() || stat.size > MAX_SOURCE_BYTES) return undefined;
-      siblings.push({ path: absolutePath, bytes: stat.size });
-    }
-    return siblings;
-  } catch {
-    return undefined;
-  }
 }
 
 /** Captures bounded project context without weakening the authoritative source cohort. */

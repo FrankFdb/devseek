@@ -2524,14 +2524,41 @@ function extractControlledRequirementInventory(promptText) {
   const marker = '[REQUIREMENT INVENTORY]';
   const start = text.indexOf(marker);
   if (start < 0) return [];
-  const end = text.indexOf('[VALIDATION FACT]', start);
+  const nextMarkers = [
+    '[WORKSPACE CONTEXT READ BY IMPLEMENTING AGENT]',
+    '[WORKSPACE CONTEXT]',
+    '[VALIDATION FACT]',
+  ].map(candidate => text.indexOf(candidate, start + marker.length)).filter(index => index >= 0);
+  const end = nextMarkers.length > 0 ? Math.min(...nextMarkers) : text.length;
   const section = text.slice(start + marker.length, end >= 0 ? end : text.length);
+  try {
+    const parsed = JSON.parse(section.trim());
+    if (Array.isArray(parsed)) {
+      return parsed.map(item => ({
+        id: String(item?.requirement_id || '').trim(),
+        quote: String(item?.requirement_quote || '').trim(),
+      })).filter(item => item.id && item.quote);
+    }
+  } catch {
+    // Older packaged candidates used a line-oriented inventory.
+  }
   return [...section.matchAll(/^\[(R\d+)\]\s+(.+)$/gmu)]
     .map(match => ({
       id: String(match[1] || '').trim(),
       quote: String(match[2] || '').trim(),
     }))
     .filter(item => item.id && item.quote);
+}
+
+function controlledInventoryCoversPrompt(inventory, expectedPrompt) {
+  const prompt = String(expectedPrompt || '').trim();
+  let cursor = 0;
+  for (const item of inventory) {
+    const index = prompt.indexOf(item.quote, cursor);
+    if (index < cursor || prompt.slice(cursor, index).trim()) return false;
+    cursor = index + item.quote.length;
+  }
+  return inventory.length > 0 && !prompt.slice(cursor).trim();
 }
 
 function extractControlledFinalSourcePaths(promptText) {
@@ -2578,7 +2605,7 @@ function bindControlledIndependentReviewPromptContract({
     ['review prompt uses the independent reviewer contract', isControlledIndependentReviewPrompt(text)],
     ['review has a bound prior agent request in the same run', priorRunBound],
     ['original user requirement remains bound', text.includes(expectedPrompt)],
-    ['requirement inventory includes the expected user requirement', inventory.some(item => item.quote === expectedPrompt)],
+    ['requirement inventory preserves the complete expected user requirement', controlledInventoryCoversPrompt(inventory, expectedPrompt)],
     ...(expectedSourcePaths.length > 0
       ? [['final source snapshot covers the declared review scope', missingExpectedSourcePaths.length === 0]]
       : []),

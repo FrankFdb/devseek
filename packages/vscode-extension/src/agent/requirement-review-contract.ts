@@ -115,9 +115,9 @@ export const REQUIREMENT_REVIEW_SCHEMA = [
 ].join('\n');
 
 /**
- * The local layer treats the user's text as opaque evidence. Semantic
- * decomposition belongs to the reviewer model, so typos and languages do not
- * change which requirements reach it.
+ * The local layer preserves the user's text as opaque evidence while exposing
+ * explicit top-level list structure. Semantic interpretation remains with the
+ * reviewer model, so wording, typos, and language never change a clause.
  */
 export function renderRequirementInventory(userPrompt: string): string {
   return JSON.stringify(requirementInventory(userPrompt).map(requirement => ({
@@ -227,7 +227,42 @@ export function parseIndependentReviewResponseWithCorrections(
 
 function requirementInventory(userPrompt: string): RequirementClause[] {
   const quote = userPrompt.trim();
-  return quote ? [{ id: 'R1', quote }] : [];
+  if (!quote) return [];
+  const clauses = splitTopLevelRequirementList(quote);
+  return clauses.map((clause, index) => ({ id: `R${index + 1}`, quote: clause }));
+}
+
+function splitTopLevelRequirementList(prompt: string): string[] {
+  const candidates: Array<{ offset: number; indent: number }> = [];
+  const markerPattern = /^([ \t]*)(?:(?:\d{1,3}[.)](?:[ \t]+|$))|(?:\d{1,3}[、:：][ \t]*)|(?:[（(]\d{1,3}[）)][ \t]*)|(?:[-*+](?:[ \t]+|$)))/gmu;
+  for (const marker of prompt.matchAll(markerPattern)) {
+    candidates.push({
+      offset: marker.index ?? 0,
+      indent: marker[1].replace(/\t/gu, '    ').length,
+    });
+  }
+
+  const countsByIndent = new Map<number, number>();
+  for (const candidate of candidates) {
+    countsByIndent.set(candidate.indent, (countsByIndent.get(candidate.indent) ?? 0) + 1);
+  }
+  const topLevelIndent = [...countsByIndent.entries()]
+    .filter(([, count]) => count >= 2)
+    .map(([indent]) => indent)
+    .sort((left, right) => left - right)[0];
+  if (topLevelIndent === undefined) return [prompt];
+
+  const boundaries = candidates
+    .filter(candidate => candidate.indent === topLevelIndent)
+    .map(candidate => candidate.offset);
+  const clauses: string[] = [];
+  const preamble = prompt.slice(0, boundaries[0]).trim();
+  if (preamble) clauses.push(preamble);
+  for (let index = 0; index < boundaries.length; index += 1) {
+    const clause = prompt.slice(boundaries[index], boundaries[index + 1] ?? prompt.length).trim();
+    if (clause) clauses.push(clause);
+  }
+  return clauses.length > 0 ? clauses : [prompt];
 }
 
 function parseStrictReviewJson(text: string): RawReviewResult | undefined {
