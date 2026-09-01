@@ -631,11 +631,15 @@ test('real plugin natural UI submission requires prompt-bound foreground dispatc
   const submitter = readFileSync(naturalUiPromptSubmitterPath, 'utf8');
 
   assert.match(harness, /submitNaturalUiPrompt\(\{/u);
+  assert.match(harness, /vscode\.env\.clipboard\.writeText\(prompt\)/u);
+  assert.match(harness, /clipboardPrompt !== prompt/u);
   assert.match(submitter, /captureNaturalUiDispatchBaseline\(this\.runsDir\)/u);
   assert.match(submitter, /waitForNaturalUiForegroundDispatch\(\{[\s\S]{0,180}baseline/u);
   assert.match(submitter, /ok: foregroundDispatch\.observed/u);
   assert.match(submitter, /inputVisualChanged/u);
-  assert.doesNotMatch(submitter, /route: 'vscode-webview-screen-coordinate-keyboard',[\s\S]{0,120}ok: true/u);
+  assert.match(submitter, /probe DevSeek webview DOM/u);
+  assert.match(submitter, /screen-coordinate-click-system-clipboard-paste/u);
+  assert.doesNotMatch(submitter, /screen-coordinate-click-system-clipboard-paste',[\s\S]{0,120}ok: true/u);
   assert.match(evidence, /baselineFile\.size/u);
   assert.match(evidence, /eventAtMs < baseline\.capturedAtMs/u);
   assert.match(evidence, /event\.data\?\.prompt\?\.sha256 !== expectedPrompt\.sha256/u);

@@ -7,6 +7,8 @@ import {
   waitForNaturalUiForegroundDispatch,
 } from './natural-ui-dispatch-evidence.mjs';
 
+const UI_ACTION_TIMEOUT_MS = 3_000;
+
 export async function submitNaturalUiPrompt(options) {
   return new NaturalUiPromptSubmitter(options).submit();
 }
@@ -55,7 +57,7 @@ class NaturalUiPromptSubmitter {
       }
       return await this.submitThroughDomFrame(found);
     } finally {
-      if (browser) await browser.close().catch(() => {});
+      if (browser) await withinUiDeadline(browser.close(), 'disconnect CDP').catch(() => {});
     }
   }
 
@@ -103,28 +105,32 @@ class NaturalUiPromptSubmitter {
     const page = await findWorkbenchPage(contexts);
     if (!page) throw new Error('Playwright CDP connection exposed no VS Code page');
     await this.dismissBlockingWorkbenchUi(page);
-    const viewport = await page.evaluate(() => ({
+    const viewport = await withinUiDeadline(page.evaluate(() => ({
       width: window.innerWidth,
       height: window.innerHeight,
       devicePixelRatio: window.devicePixelRatio,
-    }));
+    })), 'read workbench viewport');
+    const webviewBounds = await findVisibleWebviewBounds(page);
+    const surfaceRight = webviewBounds ? webviewBounds.x + webviewBounds.width : viewport.width;
+    const surfaceBottom = webviewBounds ? webviewBounds.y + webviewBounds.height : viewport.height;
     const inputPoint = {
-      x: Math.max(24, viewport.width - 175),
-      y: Math.max(24, viewport.height - 80),
+      x: Math.min(viewport.width - 24, Math.max(24, surfaceRight - 175)),
+      y: Math.min(viewport.height - 24, Math.max(24, surfaceBottom - 72)),
     };
     const sendPoint = {
-      x: Math.max(24, viewport.width - 24),
+      x: Math.min(viewport.width - 24, Math.max(24, surfaceRight - 24)),
       y: inputPoint.y,
     };
     const screenshotBeforeInput = path.join(this.artifactDir, 'natural-ui-before-input.png');
     const screenshotBeforeSend = path.join(this.artifactDir, 'natural-ui-input-before-send.png');
-    await page.screenshot({ path: screenshotBeforeInput, fullPage: false }).catch(() => {});
-    await page.mouse.click(inputPoint.x, inputPoint.y);
-    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A').catch(() => {});
-    await page.keyboard.press('Backspace').catch(() => {});
-    await page.keyboard.insertText(this.prompt);
+    await captureScreenshot(page, screenshotBeforeInput);
+    await withinUiDeadline(page.mouse.click(inputPoint.x, inputPoint.y), 'focus visible DevSeek input');
+    await withinUiDeadline(
+      page.keyboard.press(process.platform === 'darwin' ? 'Meta+V' : 'Control+V'),
+      'paste prompt into visible DevSeek input',
+    );
     await delay(250);
-    await page.screenshot({ path: screenshotBeforeSend, fullPage: false }).catch(() => {});
+    await captureScreenshot(page, screenshotBeforeSend);
 
     const screenshotBeforeInputSha256 = fileSha256(screenshotBeforeInput);
     const screenshotBeforeSendSha256 = fileSha256(screenshotBeforeSend);
@@ -135,6 +141,7 @@ class NaturalUiPromptSubmitter {
     );
     const sharedEvidence = {
       domFallbackError,
+      webviewBounds,
       inputPoint,
       sendPoint,
       viewport,
@@ -148,8 +155,8 @@ class NaturalUiPromptSubmitter {
       return this.finish({
         ok: false,
         error: '坐标输入后画面未变化，拒绝把未认证点击当作真实用户提交。',
-        route: 'vscode-webview-screen-coordinate-keyboard',
-        entryMethod: 'screen-coordinate-click-keyboard-insertText',
+        route: 'vscode-webview-screen-coordinate-clipboard',
+        entryMethod: 'screen-coordinate-click-system-clipboard-paste',
         userTurnObserved: false,
         foregroundDispatch: this.emptyDispatch(),
         ...sharedEvidence,
@@ -157,15 +164,15 @@ class NaturalUiPromptSubmitter {
     }
 
     const dispatchBaseline = captureNaturalUiDispatchBaseline(this.runsDir);
-    await page.mouse.click(sendPoint.x, sendPoint.y);
+    await withinUiDeadline(page.mouse.click(sendPoint.x, sendPoint.y), 'click visible DevSeek send button');
     const foregroundDispatch = await this.waitForDispatch(dispatchBaseline);
     const screenshotAfterSend = path.join(this.artifactDir, 'natural-ui-input-after-send.png');
-    await page.screenshot({ path: screenshotAfterSend, fullPage: false }).catch(() => {});
+    await captureScreenshot(page, screenshotAfterSend);
     return this.finish({
       ok: foregroundDispatch.observed,
       error: foregroundDispatch.observed ? '' : '坐标提交后没有出现属于本轮的新前台运行证据。',
-      route: 'vscode-webview-screen-coordinate-keyboard',
-      entryMethod: 'screen-coordinate-click-keyboard-insertText',
+      route: 'vscode-webview-screen-coordinate-clipboard',
+      entryMethod: 'screen-coordinate-click-system-clipboard-paste',
       userTurnObserved: foregroundDispatch.observed,
       foregroundDispatch,
       ...sharedEvidence,
@@ -184,9 +191,14 @@ class NaturalUiPromptSubmitter {
           for (const frame of page.frames()) {
             const frameUrl = frame.url();
             lastSummary.push({ title, url: frameUrl });
-            const inputCount = await frame.locator('#input').count({ timeout: 200 }).catch(() => 0);
-            const sendCount = await frame.locator('#send-btn').count({ timeout: 200 }).catch(() => 0);
-            if (inputCount > 0 && sendCount > 0) {
+            const hasControls = await withinUiDeadline(
+              frame.evaluate(() => Boolean(
+                document.querySelector('#input') && document.querySelector('#send-btn'),
+              )),
+              'probe DevSeek webview DOM',
+              250,
+            ).catch(() => false);
+            if (hasControls) {
               this.progress('natural-ui-input-found', { title, frameUrl });
               return { page, frame, title };
             }
@@ -209,11 +221,11 @@ class NaturalUiPromptSubmitter {
     ];
     for (const selector of selectors) {
       const controls = page.locator(selector);
-      const count = await controls.count().catch(() => 0);
+      const count = await withinUiDeadline(controls.count(), 'inspect workbench notification').catch(() => 0);
       for (let index = count - 1; index >= 0; index -= 1) {
         const control = controls.nth(index);
-        if (!await control.isVisible().catch(() => false)) continue;
-        if (await control.click({ timeout: 1000 }).then(() => true).catch(() => false)) dismissed += 1;
+        if (!await withinUiDeadline(control.isVisible(), 'inspect notification control').catch(() => false)) continue;
+        if (await withinUiDeadline(control.click(), 'dismiss workbench notification').then(() => true).catch(() => false)) dismissed += 1;
       }
     }
     await page.keyboard.press('Escape').catch(() => {});
@@ -252,11 +264,29 @@ async function findWorkbenchPage(contexts) {
   for (const context of contexts) {
     for (const page of context.pages()) {
       fallback ||= page;
-      const title = await page.title().catch(() => '');
+      const title = await withinUiDeadline(page.title(), 'read workbench title').catch(() => '');
       if (title.includes('Visual Studio Code')) return page;
     }
   }
   return fallback;
+}
+
+async function findVisibleWebviewBounds(page) {
+  return withinUiDeadline(page.evaluate(() => {
+    const candidates = [...document.querySelectorAll('iframe, webview')]
+      .map((element) => element.getBoundingClientRect())
+      .filter((rect) => rect.width >= 240 && rect.height >= 300 && rect.right > window.innerWidth / 2)
+      .sort((left, right) => right.right - left.right || right.height - left.height);
+    const rect = candidates[0];
+    return rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null;
+  }), 'locate visible DevSeek webview').catch(() => null);
+}
+
+async function captureScreenshot(page, filePath) {
+  await withinUiDeadline(
+    page.screenshot({ path: filePath, fullPage: false }),
+    `capture ${path.basename(filePath)}`,
+  ).catch(() => {});
 }
 
 async function waitForDebugEndpoint(port, waitMs) {
@@ -288,4 +318,18 @@ function fileSha256(filePath) {
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function withinUiDeadline(promise, action, timeoutMs = UI_ACTION_TIMEOUT_MS) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${action} exceeded ${timeoutMs}ms`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }

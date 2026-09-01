@@ -2388,8 +2388,17 @@ async function activate() {
     let commandError = '';
     let commandCompletedAt = 0;
     if (inputMode === 'natural-ui') {
+      await vscode.env.clipboard.writeText(prompt);
+      const clipboardPrompt = await vscode.env.clipboard.readText();
+      if (clipboardPrompt !== prompt) {
+        throw new Error('Natural UI clipboard preparation did not preserve the exact prompt.');
+      }
+      logProgress('natural-ui-clipboard-prepared', {
+        promptLength: prompt.length,
+        promptSha256: crypto.createHash('sha256').update(prompt).digest('hex'),
+      });
       logProgress('natural-ui-ready', {
-        route: 'vscode-webview-textarea-click',
+        route: 'vscode-webview-visible-paste-and-click',
         inputSelector: '#input',
         sendSelector: '#send-btn',
       });
