@@ -31,6 +31,7 @@ import {
   responseAbsoluteTimeoutMs,
   responseStreamTimeoutError,
 } from './deepseek-response-progress';
+import { startDeepSeekSession } from './deepseek-session-transition';
 
 const STREAM_POLL_INTERVAL_MS = 80;
 const STOP_DISAPPEARED_STABLE_TICKS = 5;
@@ -277,7 +278,7 @@ export class DeepSeekAgent {
     this.page = await this.context.newPage();
 
     console.log('[agent] Navigating to DeepSeek...');
-    await this.page.goto(DEEPSEEK_URL, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await this.page.goto(DEEPSEEK_URL, { waitUntil: 'commit', timeout: 30_000 });
   }
 
   private async checkLoginState(): Promise<boolean> {
@@ -364,7 +365,7 @@ export class DeepSeekAgent {
     });
 
     if (opts.newSession) {
-      await this.startNewSession();
+      await this.startNewSession(opts.trace);
     }
 
     // 切换模型模式（fast / r1），不阻断主流程
@@ -1591,20 +1592,17 @@ export class DeepSeekAgent {
   // 会话管理
   // ----------------------------------------------------------------
 
-  private async startNewSession(): Promise<void> {
+  private async startNewSession(trace?: DevSeekTraceLogger): Promise<void> {
     const page = this.requirePage();
     console.log('[agent] Starting new session...');
-    try {
-      const btn = await findElement(page, SELECTORS.newChatButton);
-      if (btn) {
-        await btn.click();
-      } else {
-        await page.goto(DEEPSEEK_URL, { waitUntil: 'domcontentloaded' });
-      }
-      await page.waitForTimeout(1200);
-    } catch (e) {
-      console.warn('[agent] New session failed, continuing:', (e as Error).message);
-    }
+    const result = await startDeepSeekSession({
+      findNewChatButton: () => findElement(page, SELECTORS.newChatButton),
+      navigateHome: options => page.goto(DEEPSEEK_URL, options),
+      waitForChatInput: timeoutMs => waitForAny(page, SELECTORS.chatInput, timeoutMs),
+      waitForTimeout: timeoutMs => page.waitForTimeout(timeoutMs),
+    });
+    trace?.info('deepseek-web', 'new-session-ready', result);
+    console.log(`[agent] New session ready via ${result.mechanism}.`);
   }
 
   // ----------------------------------------------------------------

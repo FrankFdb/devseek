@@ -2281,6 +2281,8 @@ test('Architecture: Bridge DOM selectors live in a DeepSeek selector registry', 
   assertContains(agent, "from './deepseek-dom-selectors'", 'DeepSeekAgent must use selector registry directly');
   assertContains(login, "from './deepseek-dom-selectors'", 'login flow must use selector registry directly');
   assertContains(config, "export { DEEPSEEK_DOM_SELECTORS, SELECTORS }", 'config must keep selector compatibility export');
+  assertDoesNotContain(agent, "page.goto(DEEPSEEK_URL, { waitUntil: 'domcontentloaded'", 'agent navigation must use later DOM evidence instead of SPA DOMContentLoaded');
+  assertDoesNotContain(login, "page.goto(DEEPSEEK_URL, { waitUntil: 'domcontentloaded'", 'login navigation must use later DOM evidence instead of SPA DOMContentLoaded');
 });
 
 test('Architecture: Bridge response extraction has a contract-tested boundary', () => {
@@ -2296,14 +2298,19 @@ test('Architecture: Bridge response extraction has a contract-tested boundary', 
 
 test('Architecture: Bridge has session, driver, and health-check boundaries', () => {
   const session = src('../bridge/src/browser-session.ts');
+  const transition = src('../bridge/src/deepseek-session-transition.ts');
   const driver = src('../bridge/src/conversation-driver.ts');
   const health = src('../bridge/src/bridge-health-check.ts');
   const agent = src('../bridge/src/deepseek-agent.ts');
   const contract = src('../bridge/test/bridge-health-check.test.mjs');
   assertContains(session, 'class BrowserSession', 'bridge browser session boundary must exist');
+  assertContains(transition, 'startDeepSeekSession', 'bridge session transition boundary must exist');
+  assertContains(transition, "waitUntil: 'commit'", 'session navigation must not wait indefinitely for SPA DOMContentLoaded');
+  assertContains(transition, 'DEEPSEEK_SESSION_TRANSITION_FAILED', 'failed session transitions must expose a stable runtime invalidation code');
   assertContains(driver, 'class ConversationDriver', 'bridge conversation driver boundary must exist');
   assertContains(health, 'checkBridgeHealth', 'bridge health check boundary must exist');
   assertContains(agent, "from './browser-session'", 'DeepSeekAgent must use BrowserSession');
+  assertContains(agent, "from './deepseek-session-transition'", 'DeepSeekAgent must delegate new-session transitions');
   assertContains(agent, "from './conversation-driver'", 'DeepSeekAgent must use ConversationDriver');
   assertContains(agent, "from './bridge-health-check'", 'DeepSeekAgent must use BridgeHealthCheck');
   assertContains(contract, 'BridgeHealthCheck: reports logged-in indicator', 'bridge health check must have contract test');

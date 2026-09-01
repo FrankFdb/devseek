@@ -146,6 +146,13 @@ test('DeepSeek stream errors distinguish rate limiter code from provider throttl
   assert.equal(classifyDeepSeekStreamErrorMessage('rate limiter.cpp failed to compile'), 'provider-error');
 });
 
+test('DeepSeek session transition failures invalidate the browser session', () => {
+  assert.equal(
+    classifyDeepSeekStreamErrorMessage('DEEPSEEK_SESSION_TRANSITION_FAILED:navigation:timeout'),
+    'browser-session-lost',
+  );
+});
+
 test('DeepSeek stream errors expose the categories safe for checkpoint recovery', () => {
   assert.equal(canAgentRecoverDeepSeekStreamError('provider-error'), true);
   assert.equal(canAgentRecoverDeepSeekStreamError('browser-session-lost'), true);

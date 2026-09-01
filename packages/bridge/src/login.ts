@@ -32,7 +32,7 @@ async function main() {
 
   if (!storageState) await loadCookies(context);
   const page = await context.newPage();
-  await page.goto(DEEPSEEK_URL, { waitUntil: 'domcontentloaded' });
+  await page.goto(DEEPSEEK_URL, { waitUntil: 'commit', timeout: 30_000 });
 
   // 等待聊天输入框出现，说明已登录
   console.log('等待登录完成（最多 5 分钟）...');

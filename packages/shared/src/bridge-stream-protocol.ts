@@ -105,6 +105,7 @@ export function classifyDeepSeekStreamErrorMessage(message: string): DeepSeekStr
   const text = message.toLowerCase();
   if (text === 'cancelled' || text.includes('cancelled by client')) return 'cancelled';
   if (text.includes('login_required') || text.includes('login required')) return 'login-required';
+  if (text.includes('deepseek_session_transition_failed')) return 'browser-session-lost';
   if (text.includes('closed') || text.includes('target page') || text.includes('browser')) return 'browser-session-lost';
   if (
     text.includes('429')
