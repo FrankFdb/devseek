@@ -67,9 +67,21 @@ export function parseAuthorizedTextToolCalls(
   const completed = extractAuthorizedTextToolPayloads(text, session)
     .flatMap(parseAuthorizedTextToolPayload);
   if (completed.length > 0) {
-    return hasIncompleteAuthorizedTextToolEnvelope(text, session) ? [] : completed;
+    return hasIncompleteAuthorizedTextToolEnvelope(text, session)
+      ? []
+      : deduplicateAuthorizedToolCalls(completed);
   }
   return parseUnclosedAuthorizedObservationCalls(text, session);
+}
+
+function deduplicateAuthorizedToolCalls(tools: readonly FakeTool[]): FakeTool[] {
+  const seen = new Set<string>();
+  return tools.filter(tool => {
+    const identity = toolIdentity(tool);
+    if (seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  });
 }
 
 /**
@@ -228,11 +240,13 @@ export function inspectIncompleteAuthorizedTextToolProtocol(
  * can cross the execution boundary: strict JSON or one fenced CDATA XML call.
  */
 function parseAuthorizedTextToolPayload(payload: string): FakeTool[] {
-  const tools = parseFakeToolCalls(payload);
+  const fencedXmlBlock = unwrapWholeMarkdownFence(payload);
+  const parseablePayload = fencedXmlBlock ?? payload;
+  const tools = parseFakeToolCalls(parseablePayload);
   const mutations = tools.filter(tool => FILE_CONTENT_MUTATION_TOOLS.has(tool.name));
   if (mutations.length === 0) return tools;
 
-  const analysis = analyzeFakeToolCallProtocol(payload);
+  const analysis = analyzeFakeToolCallProtocol(parseablePayload);
   const losslessIdentities = new Set(
     analysis.matches
       .filter(match => match.dialect === 'bare-json-tool-call')
@@ -240,7 +254,7 @@ function parseAuthorizedTextToolPayload(payload: string): FakeTool[] {
       .filter(tool => FILE_CONTENT_MUTATION_TOOLS.has(tool.name))
       .map(toolIdentity),
   );
-  for (const identity of strictJsonXmlMutationIdentities(payload)) {
+  for (const identity of strictJsonXmlMutationIdentities(parseablePayload)) {
     losslessIdentities.add(identity);
   }
   for (const identity of losslessFencedXmlMutationIdentities(payload)) {
@@ -272,17 +286,23 @@ function strictJsonXmlMutationIdentities(payload: string): string[] {
 }
 
 function losslessFencedXmlMutationIdentities(payload: string): string[] {
-  const identities: string[] = [];
-  const fencedXml = /```(?:xml)?[ \t]*\r?\n([\s\S]*?)```/gi;
-  let match: RegExpExecArray | null;
-  while ((match = fencedXml.exec(payload)) !== null) {
-    const block = match[1] || '';
-    const mutations = parseFakeToolCalls(block)
-      .filter(tool => FILE_CONTENT_MUTATION_TOOLS.has(tool.name));
-    if (mutations.length !== 1 || !hasRequiredCdataParameters(block, mutations[0].name)) continue;
-    identities.push(toolIdentity(mutations[0]));
-  }
-  return identities;
+  const block = unwrapWholeMarkdownFence(payload);
+  if (block === undefined) return [];
+  const tools = parseFakeToolCalls(block);
+  const mutations = tools.filter(tool => FILE_CONTENT_MUTATION_TOOLS.has(tool.name));
+  if (tools.length !== 1 || mutations.length !== 1) return [];
+  return hasRequiredCdataParameters(block, mutations[0].name)
+    ? [toolIdentity(mutations[0])]
+    : [];
+}
+
+function unwrapWholeMarkdownFence(payload: string): string | undefined {
+  const trimmed = payload.trim();
+  const opening = /^```(?:xml)?[ \t]*\r?\n/i.exec(trimmed);
+  if (!opening) return undefined;
+  const closing = /\r?\n```[ \t]*$/.exec(trimmed);
+  if (!closing || closing.index < opening[0].length) return undefined;
+  return trimmed.slice(opening[0].length, closing.index);
 }
 
 function hasRequiredCdataParameters(block: string, toolName: string): boolean {
@@ -469,8 +489,16 @@ function findDetachedMarkdownFenceEnd(
   envelopeEnd: number,
 ): number {
   const payload = text.slice(payloadStart, payloadEnd).trim();
-  if (!/^```(?:xml)?[ \t]*\r?\n/i.test(payload)) return envelopeEnd;
-  if (payload.indexOf('```', 3) >= 0) return envelopeEnd;
+  const opening = /^```(?:xml)?[ \t]*\r?\n/i.exec(payload);
+  if (!opening || unwrapWholeMarkdownFence(payload) !== undefined) return envelopeEnd;
+  const block = payload.slice(opening[0].length).trim();
+  const tools = parseFakeToolCalls(block);
+  const mutations = tools.filter(tool => FILE_CONTENT_MUTATION_TOOLS.has(tool.name));
+  if (
+    tools.length !== 1
+    || mutations.length !== 1
+    || !hasRequiredCdataParameters(block, mutations[0].name)
+  ) return envelopeEnd;
 
   const detached = /^[ \t]*\r?\n[ \t]*```[ \t]*(?=\r?\n|$)/.exec(text.slice(envelopeEnd));
   return detached ? envelopeEnd + detached[0].length : envelopeEnd;

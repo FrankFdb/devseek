@@ -319,6 +319,70 @@ test('labeled or plain fenced CDATA grants mutation authority but naked XML does
   });
 });
 
+test('fenced CDATA preserves nested Markdown blocks and duplicate provider envelopes are idempotent', () => {
+  const readme = [
+    '# Math Visual Lab',
+    '',
+    'Build and run:',
+    '',
+    '```bash',
+    'cmake -S . -B build',
+    'cmake --build build',
+    '```',
+    '',
+    'Expected output:',
+    '',
+    '```text',
+    'build/math_visual_lab lesson.ppm',
+    '```',
+    '',
+  ].join('\n');
+  const xmlPayload = [
+    '```',
+    '<create_file>',
+    '<path>README.md</path>',
+    `<content><![CDATA[${readme}]]></content>`,
+    '</create_file>',
+    '```',
+  ].join('\n');
+  const envelope = renderTextToolProtocolEnvelope(session, xmlPayload);
+  const duplicated = `${envelope}\n${envelope}`;
+
+  const tools = parseAuthorizedTextToolCalls(duplicated, session);
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'create_file');
+  assert.deepEqual(tools[0].input, { path: 'README.md', content: readme });
+  assert.equal(inspectInvalidAuthorizedTextToolProtocol(duplicated, session).found, false);
+
+  assert.deepEqual(parseAuthorizedTextToolCalls(xmlPayload, session), []);
+  assert.equal(inspectOutOfEnvelopeTextToolProtocol(xmlPayload, session).found, true);
+
+  const wrongSession = createTextToolProtocolSession('nested-markdown-wrong-channel');
+  assert.deepEqual(parseAuthorizedTextToolCalls(envelope, wrongSession), []);
+});
+
+test('a detached outer fence is recognized when CDATA contains nested Markdown blocks', () => {
+  const readme = '# Build\n\n```bash\ncmake --build build\n```\n';
+  const xmlPayload = [
+    '```xml',
+    '<write_file>',
+    '<path>README.md</path>',
+    `<content><![CDATA[${readme}]]></content>`,
+    '</write_file>',
+    '```',
+  ].join('\n');
+  const detached = renderTextToolProtocolEnvelope(session, xmlPayload).replace(
+    `\n\`\`\`\n</devseek_tool_calls channel="${session.channelId}">`,
+    '\n</devseek_tool_calls>\n```',
+  );
+
+  const [tool] = parseAuthorizedTextToolCalls(detached, session);
+  assert.equal(tool.name, 'write_file');
+  assert.equal(tool.input.content, readme);
+  assert.equal(stripAuthorizedTextToolEnvelopes(detached, session), '');
+  assert.equal(inspectOutOfEnvelopeTextToolProtocol(detached, session).found, false);
+});
+
 test('a fenced single-file patch preserves exact patch bytes', () => {
   const patch = [
     '*** Begin Patch',
