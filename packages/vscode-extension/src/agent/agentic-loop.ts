@@ -279,7 +279,7 @@ export async function runAgenticLoop(
   const initialDisplayTarget = callbacks.runDisplayTarget || '';
   const currentCompletionBlockers = () => [
     requirementReview.completionBlocker(),
-    providerRecoveryCoordinator.lifecycle.completionBlocker(),
+    providerRecoveryCoordinator.completionBlocker(),
     toolFailureRecovery.completionBlocker(),
   ];
   providerRecoveryCoordinator = new AgenticProviderRecoveryCoordinator({
@@ -601,16 +601,7 @@ export async function runAgenticLoop(
       }
       if (!callbacks.signal?.aborted && actionRecovery) {
         noToolRounds++;
-        if (actionRecovery.useFreshProviderSession) {
-          providerRecoveryCoordinator.rebuildWithCausalFeedback(actionRecovery.feedback);
-        } else {
-          appendUserFeedback(actionRecovery.feedback);
-        }
-        await providerRecoveryCoordinator.emitCorrectionStatus(
-          actionRecovery.statusTitle,
-          actionRecovery.statusDetail,
-          actionRecovery.activityLabel,
-        );
+        await providerRecoveryCoordinator.recoverUnexecutedAction(actionRecovery);
         continue;
       }
       const missingWithoutTools = evidenceWithoutTools.missingEvidence;
@@ -682,6 +673,7 @@ export async function runAgenticLoop(
         reason: 'provider-recovery-action-budget',
       });
     }
+    providerRecoveryCoordinator.screenUnexecutedActionProposals(screenedTools, blockedRepeatedToolIndexes, suppressedTools);
     const failureInvestigationScreen = terminalFailureProgress.screen(screenedTools);
     for (const toolIndex of failureInvestigationScreen.blockedToolIndexes) {
       blockedRepeatedToolIndexes.add(toolIndex);
@@ -747,6 +739,7 @@ export async function runAgenticLoop(
       loopRes,
       providerRecovery.hasUnresolvedToolAction(),
     ));
+    loopWarnings.push(...providerRecoveryCoordinator.projectUnexecutedActionFeedback(loopRes));
     const providerNativeTextTools = screenedTools.filter(tool => tool.source === 'provider-native-text');
     if (loopRes.toolCallsMade || providerNativeTextTools.length > 0) {
       replaceLatestAssistantToolHistory(messages, textToolProtocol, providerNativeTextTools);
@@ -754,7 +747,7 @@ export async function runAgenticLoop(
 
     if (loopRes.workToolCallsMade) {
       sawWorkTool = true;
-      noToolRounds = 0;
+      if (!providerRecoveryCoordinator.preserveNoToolRecoveryBudget()) noToolRounds = 0;
     }
     lastRoundToolExecutionCount = loopRes.toolCallsMade ? 1 : 0;
 
@@ -1065,7 +1058,7 @@ export async function runAgenticLoop(
       });
       if (reviewOutcome.kind === 'feedback') {
         reviewFeedback = reviewOutcome.feedback;
-        noToolRounds = 0;
+        if (!providerRecoveryCoordinator.preserveNoToolRecoveryBudget()) noToolRounds = 0;
         const repairWindow = updateRequirementReviewRepairWindow(
           requirementReviewRepairGraceRounds,
           reviewOutcome.failedReviewCohortStarted,
@@ -1196,7 +1189,7 @@ export async function runAgenticLoop(
   hadTaskComplete = false;
   completeSummary = '';
   failedReason = '';
-  noToolRounds = 0;
+  providerRecoveryCoordinator.resetAfterSteering();
   lastMissingEvidence = [];
   callbacks.onToolActivity?.('label', '完成前收到最新要求，正在继续当前任务');
   }
@@ -1221,7 +1214,7 @@ export async function runAgenticLoop(
     finalEvidence,
     latestAutoQualityGate,
     requirementReviewBlocker: requirementReview.completionBlocker(),
-    recoveryBlocker: providerRecovery.completionBlocker() ?? toolFailureRecovery.completionBlocker(),
+    recoveryBlocker: providerRecoveryCoordinator.completionBlocker() ?? toolFailureRecovery.completionBlocker(),
     textToolProtocol,
     evidenceRefs: allEvidenceRefs,
     readEvidenceCount: allReadEvidencePaths.size,

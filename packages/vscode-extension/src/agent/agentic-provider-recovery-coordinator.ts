@@ -15,12 +15,17 @@ import type { AgentRecoveryReason } from './events';
 import type { EvidenceRef } from './tool-executor';
 import type { AgentLoopCallbacks } from './loop-types';
 import type { AgentProviderFailure } from './provider-response-recovery';
-import type { NoToolActionRecovery } from './no-tool-action-recovery';
+import type { NoToolActionRecovery, NoToolActionRetry } from './no-tool-action-recovery';
 import type { ProviderRequirementReviewService } from './provider-requirement-review';
 import type { SourceValidationLedger } from './source-validation-ledger';
 import type { TerminalFailureProgressLedger } from './terminal-failure-progress';
 import { buildTerminalFailureRepairFeedback } from './terminal-failure-repair';
 import type { TextToolProtocolSession } from './text-tool-protocol';
+import type { ToolLoopResult, ToolSuppressionEvidence } from './tool-loop-result';
+import {
+  UnexecutedActionRecoveryLifecycle,
+  type UnexecutedActionRecoveryScreen,
+} from './unexecuted-action-recovery';
 import type { WriteAuthority } from './write-authority';
 import { describeBlockingTerminalFailure } from './completion-evidence';
 
@@ -63,6 +68,8 @@ export interface AgenticProviderRecoveryCoordinatorInput {
 /** Owns Provider retry state and recovery history for one model-led task. */
 export class AgenticProviderRecoveryCoordinator {
   readonly lifecycle: AgenticProviderRecoveryLifecycle;
+  private readonly unexecutedAction = new UnexecutedActionRecoveryLifecycle();
+  private unexecutedActionScreen: UnexecutedActionRecoveryScreen | undefined;
   private recoveryAttempts = 0;
   private freshSessionRequested = false;
 
@@ -79,9 +86,58 @@ export class AgenticProviderRecoveryCoordinator {
     this.freshSessionRequested = false;
   }
 
+  completionBlocker(): string | undefined {
+    return this.lifecycle.completionBlocker() ?? this.unexecutedAction.completionBlocker();
+  }
+
+  private beginUnexecutedActionRecovery(recovery: NoToolActionRetry): void {
+    this.unexecutedAction.begin(recovery);
+  }
+
+  async recoverUnexecutedAction(recovery: NoToolActionRetry): Promise<void> {
+    this.beginUnexecutedActionRecovery(recovery);
+    if (recovery.useFreshProviderSession) this.rebuildWithCausalFeedback(recovery.feedback);
+    else this.input.appendUserFeedback(recovery.feedback);
+    await this.emitCorrectionStatus(
+      recovery.statusTitle,
+      recovery.statusDetail,
+      recovery.activityLabel,
+    );
+  }
+
+  screenUnexecutedActionProposals(
+    tools: readonly { readonly name: string }[],
+    blockedToolIndexes: Set<number>,
+    suppressedTools: ToolSuppressionEvidence[],
+  ): void {
+    const screen = this.unexecutedAction.screenToolProposals(tools, blockedToolIndexes);
+    screen.blockedToolIndexes.forEach(toolIndex => blockedToolIndexes.add(toolIndex));
+    suppressedTools.push(...screen.suppressedTools);
+    this.unexecutedActionScreen = screen;
+  }
+
+  projectUnexecutedActionFeedback(result: ToolLoopResult): readonly string[] {
+    const screen = this.unexecutedActionScreen;
+    this.unexecutedActionScreen = undefined;
+    return screen
+      ? this.unexecutedAction.projectExecutionFeedback(screen, result, this.input.textToolProtocol)
+      : Object.freeze([]);
+  }
+
+  preserveNoToolRecoveryBudget(): boolean {
+    return this.unexecutedAction.hasPendingAction();
+  }
+
+  resetAfterSteering(): void {
+    this.input.state.setNoToolRounds(0);
+    this.unexecutedAction.reset();
+    this.unexecutedActionScreen = undefined;
+  }
+
   requestFreshProviderSession(): void {
     this.freshSessionRequested = true;
     this.input.contextInvestigation.reset();
+    this.unexecutedAction.onProviderSessionRebuilt();
   }
 
   takeFreshProviderSession(round: number): boolean {
@@ -145,6 +201,7 @@ export class AgenticProviderRecoveryCoordinator {
       && (actionRecovery.recoveryClass === 'code-action' || actionRecovery.recoveryClass === 'shell-action')
       ? actionRecovery
       : undefined;
+    if (explicitActionRecovery) this.unexecutedAction.begin(explicitActionRecovery);
     const recoveryAttempt = state.noToolRounds() + 1;
     const useFreshProviderSession = explicitActionRecovery?.useFreshProviderSession
       ?? recoveryAttempt === 2;

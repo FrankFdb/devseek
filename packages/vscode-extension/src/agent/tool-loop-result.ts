@@ -69,5 +69,6 @@ export interface ToolSuppressionEvidence {
     | 'covered-context-without-progress'
     | 'context-batch-budget'
     | 'provider-recovery-action-budget'
+    | 'unexecuted-action-recovery-budget'
     | 'terminal-failure-investigation-required';
 }

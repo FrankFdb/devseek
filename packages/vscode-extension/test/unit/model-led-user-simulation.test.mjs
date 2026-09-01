@@ -1190,13 +1190,20 @@ test('ModelLedUserSimulation: displayed source repair is rebound to the active v
       };
     }
     if (calls === 5) {
+      assert.doesNotMatch(history, /render verification passed/u);
+      return {
+        text: '写盘已确认，原样重跑公开验证。',
+        tools: [{ name: 'run_terminal', input: { command: 'node verify-render.mjs' } }],
+      };
+    }
+    if (calls === 6) {
       assert.match(history, /render verification passed/u);
       return {
         text: '公开验证已通过，读回写后文件。',
         tools: [{ name: 'read_file', input: { path: target } }],
       };
     }
-    assert.equal(calls, 6);
+    assert.equal(calls, 7);
     assert.match(history, /DENSE_RENDERING/u);
     return {
       text: '源码读回和公开验证均已闭环。',
@@ -1215,7 +1222,7 @@ test('ModelLedUserSimulation: displayed source repair is rebound to the active v
     },
   });
   try {
-    assert.deepEqual(providerSessions, [true, false, false, false, false, false]);
+    assert.deepEqual(providerSessions, [true, false, false, false, false, false, false]);
     assert.equal(terminalCalls, 2, simulation.result.historyText);
     assert.equal(readFileSync(path.join(simulation.root, 'render-state.txt'), 'utf8'), 'DENSE_RENDERING\n');
     assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
@@ -1227,6 +1234,108 @@ test('ModelLedUserSimulation: displayed source repair is rebound to the active v
       true,
       simulation.result.historyText,
     );
+  } finally {
+    rmSync(simulation.root, { recursive: true, force: true });
+  }
+});
+
+test('ModelLedUserSimulation: displayed source recovery survives read and search drift until a write receipt', async () => {
+  const prompt = '修复 render-state.txt 的输出密度状态，并运行 node verify-render.mjs 验证通过。';
+  let calls = 0;
+  let terminalCalls = 0;
+  let postWriteReadRequested = false;
+  const simulation = await runSimulation(prompt, async messages => {
+    calls += 1;
+    const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'render-state.txt');
+    const history = messages.map(message => message.content).join('\n');
+    if (calls === 1) {
+      return {
+        text: '建立当前失败基线。',
+        tools: [
+          { name: 'create_file', input: { path: target, content: 'LOW_DENSITY\nDETAIL\n' } },
+          { name: 'run_terminal', input: { command: 'node verify-render.mjs' } },
+        ],
+      };
+    }
+    if (calls === 2) {
+      return {
+        text: '读取失败状态所在行。',
+        tools: [{ name: 'read_file', input: { path: target, startLine: 1, endLine: 1 } }],
+      };
+    }
+    if (calls === 3) {
+      return {
+        text: '```cpp\nemit("DENSE_RENDERING");\n```\n现在执行修改并重新验证。',
+        tools: [],
+      };
+    }
+    if (calls === 4) {
+      assert.match(messages.at(-1).content, /源码修改没有写入工作区/u);
+      return {
+        text: '先刷新相邻的必要源码。',
+        tools: [{ name: 'read_file', input: { path: target, startLine: 2, endLine: 2 } }],
+      };
+    }
+    if (calls === 5) {
+      assert.match(history, /不再接受额外读取或搜索/u);
+      return {
+        text: '继续扩大调查范围。',
+        tools: [
+          { name: 'read_file', input: { path: target, startLine: 1, endLine: 2 } },
+          {
+            name: 'grep_search',
+            input: { query: 'LOW_DENSITY', path: fakeWorkspace.workspaceFolders[0].uri.fsPath },
+          },
+        ],
+      };
+    }
+    if (calls === 6) {
+      assert.match(messages.at(-1).content, /跳过 2 个偏离当前恢复目标的额外工具/u);
+      return {
+        text: '提交与活动失败匹配的最小写入。',
+        tools: [
+          { name: 'replace_in_file', input: { path: target, old_str: 'LOW_DENSITY', new_str: 'DENSE_RENDERING' } },
+          { name: 'run_terminal', input: { command: 'node verify-render.mjs' } },
+        ],
+      };
+    }
+    if (!/render verification passed/u.test(history)) {
+      return {
+        text: '原样重跑活动验证。',
+        tools: [{ name: 'run_terminal', input: { command: 'node verify-render.mjs' } }],
+      };
+    }
+    if (!postWriteReadRequested) {
+      postWriteReadRequested = true;
+      return {
+        text: '验证通过后读回当前文件。',
+        tools: [{ name: 'read_file', input: { path: target } }],
+      };
+    }
+    return {
+      text: '写盘、验证和读回均已闭环。',
+      tools: [{ name: 'task_complete', input: { summary: '输出密度修复已通过验证。' } }],
+    };
+  }, {
+    runDisplayAction: 'fix',
+    verificationRequired: true,
+    terminalHost: async command => {
+      terminalCalls += 1;
+      assert.equal(command, 'node verify-render.mjs');
+      const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'render-state.txt');
+      return readFileSync(target, 'utf8').includes('DENSE_RENDERING')
+        ? 'render verification passed\n[exitCode=0]'
+        : 'render verification failed: expected>=0.02 observed=0.009\n[exitCode=1]';
+    },
+  });
+  try {
+    assert.equal(calls < 10, true, simulation.result.historyText);
+    assert.equal(terminalCalls >= 2, true, simulation.result.historyText);
+    assert.equal(
+      readFileSync(path.join(simulation.root, 'render-state.txt'), 'utf8'),
+      'DENSE_RENDERING\nDETAIL\n',
+    );
+    assert.equal(simulation.result.tasksFailed, 0, simulation.result.historyText);
   } finally {
     rmSync(simulation.root, { recursive: true, force: true });
   }
@@ -1407,20 +1516,30 @@ test('ModelLedUserSimulation: a Markdown shell proposal is reissued through the 
         tools: [],
       };
     }
-    assert.match(messages.at(-1).content, /普通 Markdown 代码块/u);
-    assert.match(messages.at(-1).content, /run_terminal/u);
-    assert.match(messages.at(-1).content, /devseek_tool_calls/u);
+    if (calls === 3) {
+      assert.match(messages.at(-1).content, /普通 Markdown 代码块/u);
+      assert.match(messages.at(-1).content, /run_terminal/u);
+      assert.match(messages.at(-1).content, /devseek_tool_calls/u);
+      return {
+        text: '该 shell 调查已不必要，改用更直接的受认证写工具。',
+        tools: [
+          { name: 'replace_in_file', input: { path: target, old_str: 'SHELL_RECOVERY_DRAFT', new_str: 'SHELL_RECOVERY_READY' } },
+          { name: 'read_file', input: { path: target } },
+          { name: 'task_complete', input: { summary: '已创建并读回 shell-recovery.txt。' } },
+        ],
+      };
+    }
+    assert.match(messages.at(-1).content, /shell 仍保持未执行/u);
     return {
-      text: '通过真实工具完成写入和读回。',
+      text: '替代写入已有真实回执，现读回并结算。',
       tools: [
-        { name: 'replace_in_file', input: { path: target, old_str: 'SHELL_RECOVERY_DRAFT', new_str: 'SHELL_RECOVERY_READY' } },
         { name: 'read_file', input: { path: target } },
         { name: 'task_complete', input: { summary: '已创建并读回 shell-recovery.txt。' } },
       ],
     };
   }, { runDisplayAction: 'create' });
   try {
-    assert.equal(calls, 3, simulation.result.historyText);
+    assert.equal(calls, 4, simulation.result.historyText);
     const target = path.join(simulation.root, 'shell-recovery.txt');
     assert.equal(existsSync(target), true, simulation.result.historyText);
     assert.equal(readFileSync(target, 'utf8'), 'SHELL_RECOVERY_READY\n', simulation.result.historyText);
