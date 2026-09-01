@@ -40,6 +40,9 @@ test('repair phase keeps the active failure scoped to one evidence-driven action
   assert.match(feedback, /math\.cpp:42:7: error/);
   assert.match(feedback, /活动失败是下一轮最高优先级/);
   assert.match(feedback, /只精确读取一个相关文件或行范围/);
+  assert.match(feedback, /观测证据，不是新的产品需求/);
+  assert.match(feedback, /不得为了单一阈值、快照统计或测试计数制造无语义/);
+  assert.match(feedback, /不能用污染生产实现换取绿色结果/);
 });
 
 test('rerun phase returns a successful write to the unfiltered public command', () => {

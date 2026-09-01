@@ -55,7 +55,17 @@ function failedDecision(findings = [finding()]) {
 
 function verdicts(items, toolCount = 0) {
   return {
-    text: JSON.stringify({ finding_verdicts: items }),
+    text: JSON.stringify({
+      finding_verdicts: items.map(item => ({
+        source_assessment: item.verdict === 'confirmed'
+          ? 'supports-finding'
+          : 'contradicts-finding',
+        requirement_assessment: item.verdict === 'confirmed'
+          ? 'violates-requirement'
+          : 'compatible-with-requirement',
+        ...item,
+      })),
+    }),
     toolCount,
   };
 }
@@ -179,6 +189,8 @@ test('accepts one fenced JSON verdict document from the provider', async () => {
     text: `\`\`\`json\n${JSON.stringify({
       finding_verdicts: [{
         finding_index: 1,
+        source_assessment: 'supports-finding',
+        requirement_assessment: 'violates-requirement',
         verdict: 'confirmed',
         evidence: 'src/main.cpp:1 returns status 1 on the reachable default path.',
       }],
@@ -214,11 +226,52 @@ test('retries malformed verdict JSON with a bounded contract correction', async 
 
   const decision = await adjudicator.adjudicate(input(workspaceRoot));
 
-  assert.equal(invocationCount, 2);
+  assert.equal(invocationCount, 3);
   assert.equal(decision.status, 'passed');
   assert.match(prompts[0], /matcher notation such as minimum/);
   assert.match(prompts[1], /strict JSON only/);
   assert.match(prompts[1], /Escape embedded quotation marks/);
+});
+
+test('one independent confirmation prevents another adjudicator from erasing a source finding', async () => {
+  const workspaceRoot = workspaceWithMain('int main() { return 1; }\n');
+  let invocationCount = 0;
+  const adjudicator = new RequirementReviewFindingAdjudicator(async () => {
+    invocationCount += 1;
+    return verdicts([{
+      finding_index: 1,
+      verdict: invocationCount === 1 ? 'rejected' : 'confirmed',
+      evidence: invocationCount === 1
+        ? 'The first adjudicator claims the source contradicts the proposed behavior.'
+        : 'src/main.cpp:1 confirms the reachable default path returns status 1.',
+    }]);
+  });
+
+  const decision = await adjudicator.adjudicate(input(workspaceRoot));
+
+  assert.equal(invocationCount, 2);
+  assert.equal(decision.status, 'failed');
+  assert.deepEqual(decision.findings, [finding()]);
+});
+
+test('fails closed when a rejected verdict contradicts its own structured assessments', async () => {
+  const workspaceRoot = workspaceWithMain('int main() { return 1; }\n');
+  let invocationCount = 0;
+  const adjudicator = new RequirementReviewFindingAdjudicator(async () => {
+    invocationCount += 1;
+    return verdicts([{
+      finding_index: 1,
+      source_assessment: 'supports-finding',
+      requirement_assessment: 'violates-requirement',
+      verdict: 'rejected',
+      evidence: 'The source supports the defect and the behavior violates the binding requirement.',
+    }]);
+  });
+
+  const decision = await adjudicator.adjudicate(input(workspaceRoot));
+
+  assert.equal(invocationCount, 3);
+  assert.equal(decision.status, 'indeterminate');
 });
 
 test('retries transient adjudicator invocation failures before failing closed', async () => {

@@ -37,6 +37,9 @@ export function buildTerminalFailureRepairFeedback(
     `exitCode: ${failure.exitCode ?? 'unknown'}`,
     diagnostic ? `最新诊断:\n${diagnostic}` : '',
     '',
+    '验证诊断是当前实现的观测证据，不是新的产品需求。修复必须同时保持原始用户约束、行为契约和现有架构边界。',
+    '不得为了单一阈值、快照统计或测试计数制造无语义分支、数据、绘制、延迟或重复逻辑，也不得降低断言或修改受保护测试来过关。',
+    '若公开验证与原始需求冲突，先用针对性语义 probe 证明冲突，再修复验证契约或报告阻塞；不能用污染生产实现换取绿色结果。',
     ...nextAction,
   ].filter(Boolean).join('\n');
 }

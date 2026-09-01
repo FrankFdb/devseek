@@ -940,6 +940,8 @@ test('Execution failures remain in the canonical model-tool-result repair loop',
   }
   assertContains(agenticLoop, 'buildTerminalFailureRepairFeedback', 'failed terminal evidence must return to the main model loop');
   assertContains(terminalRepair, '该活动失败是下一轮最高优先级', 'active failures must constrain every continuing tool round');
+  assertContains(terminalRepair, '验证诊断是当前实现的观测证据，不是新的产品需求', 'validation repair must preserve the original product contract');
+  assertContains(terminalRepair, '不得为了单一阈值、快照统计或测试计数制造无语义', 'validation repair must reject metric-gaming production changes');
   assertContains(terminalRepair, '原样重跑上面的失败命令', 'a successful repair write must return to the public validation command');
   assertContains(terminalRepair, '过滤结果只能补充诊断，不能作为通过证据', 'diagnostic filters must not impersonate public validation');
   assertContains(recoveryCoordinator, 'recoverBlockingTerminalFailure', 'all no-tool exits must share one terminal-failure recovery owner');
