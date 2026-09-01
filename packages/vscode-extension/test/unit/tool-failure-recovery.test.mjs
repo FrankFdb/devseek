@@ -38,29 +38,48 @@ test('ToolFailureRecoveryLedger: duplicate failures in one provider response cou
   assert.equal(result.stopReason, undefined);
   assert.equal(result.warnings.length, 1);
   assert.match(result.warnings[0], /本轮同类失败调用 4 次/);
-  assert.match(result.warnings[0], /连续失败 1 轮/);
+  assert.match(result.warnings[0], /连续阻塞 1 轮/);
   assert.match(result.warnings[0], /改用带唯一上下文的单文件 apply_patch/);
   assert.match(result.warnings[0], /不能升级为 write_file 整文件覆写/);
 });
 
-test('ToolFailureRecoveryLedger: stops only after the same strategy fails across four rounds', () => {
+test('ToolFailureRecoveryLedger: stops after the same failure family blocks four rounds', () => {
   const ledger = new ToolFailureRecoveryLedger();
   ledger.recordRound([staleReplaceFailure]);
   ledger.recordRound([staleReplaceFailure]);
   ledger.recordRound([staleReplaceFailure]);
   const result = ledger.recordRound([staleReplaceFailure]);
 
-  assert.match(result.stopReason, /连续 4 轮失败/);
+  assert.match(result.stopReason, /连续 4 轮阻塞/);
 });
 
-test('ToolFailureRecoveryLedger: changed mutation parameters are distinct recovery strategies', () => {
+test('ToolFailureRecoveryLedger: parameter churn cannot evade failure-family convergence', () => {
   const ledger = new ToolFailureRecoveryLedger();
   let result;
   for (const strategyFingerprint of ['proposal-a', 'proposal-b', 'proposal-c', 'proposal-d']) {
     result = ledger.recordRound([{ ...staleReplaceFailure, strategyFingerprint }]);
   }
 
-  assert.equal(result.stopReason, undefined);
+  assert.match(result.stopReason, /连续 4 轮阻塞/);
+  assert.match(result.warnings.at(-1), /缩小到唯一的最小 old_str\/new_str/);
+});
+
+test('ToolFailureRecoveryLedger: repeated Markdown patch misses require stable non-fence context', () => {
+  const ledger = new ToolFailureRecoveryLedger();
+  const patchFailure = {
+    tool: 'apply_patch',
+    kind: 'replace',
+    path: '/repo/README.md',
+    reason: 'single-file-patch:hunk-context-not-found-or-ambiguous',
+  };
+  ledger.recordRound([{ ...patchFailure, strategyFingerprint: 'patch-a' }]);
+  const result = ledger.recordRound([{ ...patchFailure, strategyFingerprint: 'patch-b' }]);
+
+  assert.equal(result.warnings.length, 1);
+  assert.match(result.warnings[0], /当前文件快照/);
+  assert.match(result.warnings[0], /Markdown/);
+  assert.match(result.warnings[0], /标题或普通文本/);
+  assert.match(result.warnings[0], /围栏/);
 });
 
 test('ToolFailureRecoveryLedger: a successful write clears stale failure history for that path', () => {

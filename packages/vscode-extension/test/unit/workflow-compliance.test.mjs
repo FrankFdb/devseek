@@ -128,7 +128,8 @@ test('§1 Agent loop: repeated blocking tool failures are stateful', () => {
   assertContains(recovery, 'DEFAULT_WARN_AFTER_ROUNDS', 'recovery ledger must warn on repeated blocking failures');
   assertContains(recovery, 'DEFAULT_STOP_AFTER_ROUNDS', 'recovery ledger must stop no-progress repeated failures');
   assertContains(recovery, 'current.occurrences > 1', 'same-response duplicate failures must be grouped');
-  assertContains(recovery, 'failure.strategyFingerprint', 'failure identity must distinguish changed mutation parameters');
+  assertContains(recovery, 'makeToolFailureFamilySignature', 'parameter churn must remain inside one semantic failure family');
+  assertDoesNotContain(recovery, "failure.strategyFingerprint ?? 'unspecified-strategy'", 'convergence identity must not reset for cosmetic parameter changes');
   assertContains(recovery, 'buildRepeatedToolFailureFeedback', 'recovery ledger must tell the model how to change strategy');
   assertContains(toolLoop, "from './tool-loop-result'", 'tool loop must delegate its result contract to one owner');
   assertContains(toolLoopResult, 'toolFailures?: ToolFailureEvidence[]', 'tool loop result must expose structured blocking failure evidence');

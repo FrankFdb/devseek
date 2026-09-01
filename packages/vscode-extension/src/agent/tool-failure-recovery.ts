@@ -21,11 +21,11 @@ const DEFAULT_WARN_AFTER_ROUNDS = 2;
 const DEFAULT_STOP_AFTER_ROUNDS = 4;
 
 /**
- * Tracks failed mutation strategies by agent round. Multiple malformed calls in
- * one provider response are one failed strategy, not four independent rounds.
+ * Tracks semantic failure families by agent round. Cosmetic parameter changes
+ * remain in the same family; only a successful write clears unresolved history.
  */
 export class ToolFailureRecoveryLedger {
-  private readonly failures = new Map<string, FailureRoundState>();
+  private readonly failureFamilies = new Map<string, FailureRoundState>();
   private readonly pendingContextRefreshPaths = new Set<string>();
   private pendingMutationRepair = false;
   private readonly warnAfterRounds: number;
@@ -46,7 +46,7 @@ export class ToolFailureRecoveryLedger {
         const refreshPath = this.normalizePath(failure.path);
         if (refreshPath) this.pendingContextRefreshPaths.add(refreshPath);
       }
-      const signature = makeToolFailureSignature(failure);
+      const signature = makeToolFailureFamilySignature(failure);
       const existing = grouped.get(signature);
       if (existing) existing.occurrences += 1;
       else grouped.set(signature, { failure, occurrences: 1 });
@@ -55,9 +55,9 @@ export class ToolFailureRecoveryLedger {
     const warnings: string[] = [];
     let stopReason: string | undefined;
     for (const [signature, current] of grouped) {
-      const previous = this.failures.get(signature);
+      const previous = this.failureFamilies.get(signature);
       const rounds = (previous?.rounds ?? 0) + 1;
-      this.failures.set(signature, { rounds, failure: current.failure });
+      this.failureFamilies.set(signature, { rounds, failure: current.failure });
 
       if (current.occurrences > 1 || rounds >= this.warnAfterRounds) {
         warnings.push(buildRepeatedToolFailureFeedback(
@@ -80,10 +80,10 @@ export class ToolFailureRecoveryLedger {
     for (const normalizedPath of normalizedPaths) {
       this.pendingContextRefreshPaths.delete(normalizedPath);
     }
-    for (const [signature, state] of this.failures) {
+    for (const [signature, state] of this.failureFamilies) {
       const failurePath = this.normalizePath(state.failure.path);
       if (failurePath && normalizedPaths.includes(failurePath)) {
-        this.failures.delete(signature);
+        this.failureFamilies.delete(signature);
       }
     }
   }
@@ -119,12 +119,11 @@ function normalizeToolFailurePath(pathValue: string | undefined): string {
   return (pathValue || '').replace(/\\/g, '/').replace(/\/+/g, '/');
 }
 
-function makeToolFailureSignature(failure: ToolFailureEvidence): string {
+function makeToolFailureFamilySignature(failure: ToolFailureEvidence): string {
   return [
     failure.tool,
     failure.kind,
     normalizeToolFailurePath(failure.path),
-    failure.strategyFingerprint ?? 'unspecified-strategy',
     failure.reason.slice(0, 220),
   ].join('::');
 }
@@ -140,14 +139,16 @@ function buildRepeatedToolFailureFeedback(
 ): string {
   const target = describeToolFailureTarget(failure);
   const strategy = failure.kind === 'replace'
-    ? '当前文件快照已随工具结果返回。请缩小到唯一的最小 old_str/new_str；若需要插入/删除代码或完整 old_str 很长，改用带唯一上下文的单文件 apply_patch。两者都必须使用 fenced CDATA 保留真实换行；不能升级为 write_file 整文件覆写。'
+    ? failure.tool === 'apply_patch'
+      ? '当前文件快照已随工具结果返回。下一次只用快照中的最小稳定唯一上下文生成一个 hunk；Markdown 文档应锚定相邻标题或普通文本，不要把代码围栏作为补丁上下文。若短文本锚点更唯一，可改用 fenced CDATA replace_in_file；不能升级为 write_file 整文件覆写。'
+      : '当前文件快照已随工具结果返回。请缩小到唯一的最小 old_str/new_str；若需要插入/删除代码或完整 old_str 很长，改用带唯一上下文的单文件 apply_patch。两者都必须使用 fenced CDATA 保留真实换行；不能升级为 write_file 整文件覆写。'
     : failure.kind === 'terminal-guard'
       ? 'run_terminal 只用于查询、编译、运行和测试。创建、修改或删除文件必须使用 create_file/write_file/replace_in_file/apply_patch/delete_file。'
       : failure.kind === 'terminal-capability'
         ? '当前系统缺少该命令所需的运行时或工具。请先探测已安装的等价能力并改用可用命令；如果必须安装依赖，明确报告阻塞并请求用户授权，不得重复执行同一缺失命令。'
         : '不要重复提交同一份损坏内容。请缩小写入范围，保持源码真实换行，并先修复写入完整性问题再验证。';
   return [
-    `【系统反馈】同一工具策略已连续失败 ${rounds} 轮：${target}`,
+    `【系统反馈】同一工具失败类别已连续阻塞 ${rounds} 轮：${target}`,
     occurrences > 1 ? `本轮同类失败调用 ${occurrences} 次，已按一次失败策略结算。` : '',
     `失败原因：${failure.reason}`,
     strategy,
@@ -156,5 +157,5 @@ function buildRepeatedToolFailureFeedback(
 }
 
 function describeRepeatedToolFailureStop(failure: ToolFailureEvidence, rounds: number): string {
-  return `同一工具策略连续 ${rounds} 轮失败且无有效恢复：${describeToolFailureTarget(failure)}；${failure.reason}`;
+  return `同一工具失败类别连续 ${rounds} 轮阻塞且无有效恢复：${describeToolFailureTarget(failure)}；${failure.reason}`;
 }
