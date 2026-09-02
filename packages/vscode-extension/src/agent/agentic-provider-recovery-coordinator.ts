@@ -188,6 +188,17 @@ export class AgenticProviderRecoveryCoordinator {
     const requested = this.freshSessionRequested;
     this.freshSessionRequested = false;
     if (requested) {
+      upsertAgenticProviderProgressMessage(this.input.messages, this.renderProgressProjection());
+      this.input.state.setTotalChars(rebuildAgenticHistoryForFreshProviderSession({
+        messages: this.input.messages,
+        session: this.input.executionContext.contextCompaction,
+        currentTodos: this.input.state.currentTodos(),
+        workspaceRoot: this.input.workspaceRoot,
+        round,
+        evidenceRefs: this.input.evidenceRefs,
+        trigger: 'provider-recovery',
+        textToolProtocol: this.input.textToolProtocol,
+      }));
       this.input.callbacks.onToolActivity?.('label', '重建模型会话并从任务事实恢复');
     }
     return round === 1 || requested;
@@ -218,20 +229,9 @@ export class AgenticProviderRecoveryCoordinator {
   }
 
   rebuildWithCausalFeedback(feedback: string): void {
-    const { evidenceRefs, executionContext, messages, state } = this.input;
+    const { messages } = this.input;
     this.requestFreshProviderSession();
     applyProviderRecoveryHistory(messages, { role: 'user', content: feedback }, true);
-    upsertAgenticProviderProgressMessage(messages, this.renderProgressProjection());
-    state.setTotalChars(rebuildAgenticHistoryForFreshProviderSession({
-      messages,
-      session: executionContext.contextCompaction,
-      currentTodos: state.currentTodos(),
-      workspaceRoot: this.input.workspaceRoot,
-      round: state.round(),
-      evidenceRefs,
-      trigger: 'provider-recovery',
-      textToolProtocol: this.input.textToolProtocol,
-    }));
   }
 
   async recoverBlockingTerminalFailure(
