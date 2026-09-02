@@ -58,6 +58,14 @@
 
 该闸门不授予权限，不改变 sandbox，不把模型预测当执行依据。它只在现有权限仲裁之前消除已有真实效果的精确重放。
 
+## Fresh session 旁路收敛
+
+首轮实现后的同类入口审计发现：独立 requirement review 使用只读 Provider 会话时会替换共享 Provider session，原路径只调用 `requestFreshProviderSession()`。下一轮主模型虽然收到 `fresh=true`，但不会像协议恢复路径一样统一 upsert 当前进度并重建因果前沿，因此仍可能依据零散历史重新实现已经完成的源码。
+
+修复把 fresh-session 的最后准备收归 `AgenticProviderRecoveryCoordinator.takeFreshProviderSession()`：无论 fresh 原因来自协议恢复、no-tool recovery、终端失败还是独立审查替换，紧邻主模型调用前都使用最新 receipt/ledger 重新投影进度、重建 causal frontier 并更新字符预算。上游恢复函数只负责追加恢复事实，不再提前生成可能过期的重复投影。
+
+该旁路先由行为测试复现为 progress message 数量 `0`，修复后验证 context ledger reset、唯一最新 progress、旧 Provider 闲聊清除、权威工具结果保留和字符预算一致。实现提交为 `12630897893d294e76c76948a0dc22a6abd5764c`（`fix: prepare every fresh provider session`）。
+
 ## 缺陷类覆盖
 
 - 同一会话多次恢复只保留最新进度投影。
@@ -82,3 +90,12 @@
 - VSIX：`/home/ff/work/devseek_netai/devseek-netai-2.0.32-debug.20260902.t081937.g6bc1b75c.vsix`。
 - SHA-256：`5dc93a209bb3b9c8963dcfae45eb7aa70bdd0e948141b07e14c31e72fe42b447`。
 - 本机安装：`code --install-extension ... --force` 通过；VS Code 登记版本为 `devseek-netai.devseek-netai@2.0.32-debug.20260902.t081937.g6bc1b75c`。
+
+### Fresh session 旁路与 N4 增量复验
+
+- Provider progress、history/context compaction、recovery lifecycle/settlement、requirement review 和 model-led 用户仿真增量回归：126/126 通过。
+- `npm run extension:typecheck` 与 `npm run verify:architecture-drift`：通过，0 个 violation。
+- 最新 VSIX：`/home/ff/work/devseek_netai/devseek-netai-2.0.32-debug.20260902.t083102.g12630897.vsix`；SHA-256 `7117401a05c7b50cbd2b165b09b377a45f19bfd14c9cf4f4d17798b57cf97137`。
+- 本机安装版本：`devseek-netai.devseek-netai@2.0.32-debug.20260902.t083102.g12630897`。
+- N4 验证优先复验使用正式保留项目 `code/devseek-tests/n4-cpp-visual-math-user/runs/20260826T113355Z/workspace`，证据位于 `code/devseek-tests/n4-cpp-visual-math-user/runs/20260902T003141Z/`。
+- stage 4 独立 full preflight 23/23 通过，runner 返回 `ok:true`、`skippedVerifiedRounds:[4]`、`rounds:[]`；没有 Provider 请求和源码修改。该结果是最新候选上的增量产品验证，不替代 fresh workspace 四轮 wave、跨平台独立执行或 Gate 0 外部资格。
