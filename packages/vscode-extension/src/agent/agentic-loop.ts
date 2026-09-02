@@ -299,6 +299,9 @@ export async function runAgenticLoop(
     readEvidencePaths: allReadEvidencePaths,
     writtenFiles: allWrittenFiles,
     terminalEvidence: allTerminalEvidence,
+    toolExecutionReceipts: allToolExecutionReceipts,
+    changeReceipts: allChangeReceipts,
+    verificationReceipts: currentVerificationReceipts,
     appendUserFeedback,
     state: {
       promptRequiresTools: () => promptRequiresTools,
@@ -309,6 +312,8 @@ export async function runAgenticLoop(
       round: () => roundCount,
       totalChars: () => totalChars,
       setTotalChars: value => { totalChars = value; },
+      progressEpoch: () => progressEpoch,
+      missingEvidence: () => assessCurrentEvidenceClosure().missingEvidence,
       completionBlockers: currentCompletionBlockers,
       complete: summary => {
         completeSummary = completeSummary || summary;
@@ -680,6 +685,8 @@ export async function runAgenticLoop(
     }
     suppressedTools.push(...failureInvestigationScreen.suppressedTools);
     loopWarnings.push(...failureInvestigationScreen.warnings);
+    loopWarnings.push(...providerRecoveryCoordinator.screenCompletedActionReplays(
+      screenedTools, blockedRepeatedToolIndexes, suppressedTools));
     const hasAdmittedFileWriteIntentThisRound = screenedTools.some((tool, toolIndex) => (
       tool.purpose === 'workspace-mutation' && !blockedRepeatedToolIndexes.has(toolIndex)
     ));

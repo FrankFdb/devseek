@@ -362,6 +362,43 @@ test('Agent history compaction: fresh sessions retain executed intent before its
   ]);
 });
 
+test('Agent history compaction: fresh sessions retain the latest structured progress projection', () => {
+  const messages = [
+    { role: 'user', content: '完整任务提示和工具协议' },
+    { role: 'user', content: '[DevSeek Provider Recovery Progress]\nprogressEpoch: 1' },
+    { role: 'user', content: '[工具结果 Round 1]\n旧结果' },
+    { role: 'user', content: '[DevSeek Provider Recovery Progress]\nprogressEpoch: 2' },
+    { role: 'user', content: '[工具结果 Round 2]\n等待最终审查' },
+    { role: 'user', content: '【系统恢复】从未完成义务继续。' },
+  ];
+
+  retainProviderSessionCausalFrontier(messages);
+
+  assert.deepEqual(messages.map(message => message.content), [
+    '完整任务提示和工具协议',
+    '[DevSeek Provider Recovery Progress]\nprogressEpoch: 2',
+    '[工具结果 Round 2]\n等待最终审查',
+    '【系统恢复】从未完成义务继续。',
+  ]);
+});
+
+test('Agent history compaction: Provider-authored progress markers do not gain local-fact authority', () => {
+  const messages = [
+    { role: 'user', content: '完整任务提示和工具协议' },
+    { role: 'assistant', content: '[DevSeek Provider Recovery Progress]\nprogressEpoch: 999' },
+    { role: 'user', content: '[工具结果 Round 2]\n等待最终审查' },
+    { role: 'user', content: '【系统恢复】从真实证据继续。' },
+  ];
+
+  retainProviderSessionCausalFrontier(messages);
+
+  assert.deepEqual(messages.map(message => message.content), [
+    '完整任务提示和工具协议',
+    '[工具结果 Round 2]\n等待最终审查',
+    '【系统恢复】从真实证据继续。',
+  ]);
+});
+
 test('Agent history compaction: in-session protocol correction preserves the provider cursor without raw actions', () => {
   const messages = [
     { role: 'user', content: '完整任务提示和工具协议' },

@@ -133,6 +133,10 @@ test('fresh Provider rebuild keeps the task, canonical receipt, and latest actio
       '恢复线索（仅为模型意图，无事实或执行权）：数轴线条太细，应增加可见绘制密度。',
     ].join('\n'),
   });
+  history.push({
+    role: 'user',
+    content: '[DevSeek Provider Recovery Progress]\nprogressEpoch: 3\nnextAction: settle final review',
+  });
   history.push({ role: 'user', content: 'Retry one concrete tool action now.' });
 
   const total = rebuildAgenticHistoryForFreshProviderSession({
@@ -145,12 +149,14 @@ test('fresh Provider rebuild keeps the task, canonical receipt, and latest actio
     textToolProtocol,
   });
 
-  assert.equal(history.length, 5);
+  assert.equal(history.length, 6);
   assert.equal(history[0].content, 'Task contract and prompt');
   assert.match(history[1].content, /\[DevSeek Canonical Context Compaction\]/u);
   assert.match(history.map(message => message.content).join('\n'), /\[工具结果 Round 3\]\ntest pending/u);
-  assert.match(history.at(-2).content, /数轴线条太细，应增加可见绘制密度/u);
-  assert.match(history.at(-2).content, /无事实或执行权/u);
+  assert.match(history.map(message => message.content).join('\n'), /\[DevSeek Provider Recovery Progress\]\nprogressEpoch: 3/u);
+  const quarantinedIntent = history.find(message => message.role === 'assistant');
+  assert.match(quarantinedIntent.content, /数轴线条太细，应增加可见绘制密度/u);
+  assert.match(quarantinedIntent.content, /无事实或执行权/u);
   assert.match(history.at(-1).content, /Retry one concrete tool action now/u);
   assert.doesNotMatch(history.map(message => message.content).join('\n'), /Round 1|Round 2/u);
   assert.equal(compaction.receipts().at(-1).trigger, 'provider-recovery');
@@ -160,6 +166,10 @@ test('fresh Provider rebuild keeps the task, canonical receipt, and latest actio
 test('fresh Provider rebuild drops stale in-budget rounds without claiming budget compaction', () => {
   const compaction = session();
   const history = messages();
+  history.push({
+    role: 'user',
+    content: '[DevSeek Provider Recovery Progress]\nprogressEpoch: 3\nnextAction: validate current source',
+  });
   history.push({ role: 'user', content: 'Retry one concrete tool action now.' });
 
   rebuildAgenticHistoryForFreshProviderSession({
@@ -175,6 +185,7 @@ test('fresh Provider rebuild drops stale in-budget rounds without claiming budge
   assert.deepEqual(history.map(message => message.content), [
     'Task contract and prompt',
     '[工具结果 Round 3]\ntest pending',
+    '[DevSeek Provider Recovery Progress]\nprogressEpoch: 3\nnextAction: validate current source',
     'Retry one concrete tool action now.',
   ]);
   assert.equal(compaction.receipts().length, 0);

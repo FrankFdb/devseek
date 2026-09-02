@@ -342,7 +342,7 @@ test('real plugin VSIX harness selects product run terminal instead of pending-e
   assert.equal(selectHelperMatches.length, 1, 'real plugin harness must keep one source owner for product-run selection');
   assert.ok(helperIndex >= 0 && helperIndex < driverWriterIndex, 'product-run selection helper must be callable by outer replay reporting');
   assert.match(source, /\$\{productRunLogSelectionSource\(\)\}/, 'real plugin driver must inject the shared product-run selection helper');
-  assert.match(source, /const selected = selectProductRunLog\(logs\)\?\.absolutePath/, 'real plugin harness replay must reuse the product-run selection helper');
+  assert.match(source, /const selected = selectProductRunLog\(reportedLogs\)\?\.absolutePath/, 'real plugin harness replay must reuse the product-run selection helper over normalized logs');
   assert.doesNotMatch(source, /selectProductRunLogForReplay/, 'real plugin harness must not fork replay-only terminal selection');
   assert.match(source, /function productRunLogScore\(log\)/, 'real plugin harness must score product-like logs before replay fallback');
   assert.match(source, /log\.workloadRole === 'background-maintenance'/, 'real plugin harness must exclude background maintenance logs from product-run scoring');

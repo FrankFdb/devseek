@@ -13,6 +13,7 @@ import {
   stripAuthorizedTextToolEnvelopes,
   type TextToolProtocolSession,
 } from './text-tool-protocol';
+import { isAgenticProviderProgressMessage } from './agentic-provider-progress';
 
 const MAX_TOOL_SUMMARIES = 14;
 const EXECUTED_TOOL_SUMMARY_MARKER = '[DevSeek 已执行工具请求摘要]';
@@ -91,13 +92,14 @@ function findLatestAssistantMessageIndex(messages: readonly ChatMessage[]): numb
   return -1;
 }
 
-/** Keeps the canonical task plus the latest sanitized intent/result/recovery frontier. */
+/** Keeps the canonical task plus the latest sanitized progress/intent/result/recovery frontier. */
 export function retainProviderSessionCausalFrontier(messages: ChatMessage[]): void {
   const candidates = [
     messages[0],
     findLatestHistoryMessage(messages, message => (
       typeof message.content === 'string' && isContextCompactionSummary(message.content)
     )),
+    findLatestHistoryMessage(messages, isAgenticProviderProgressMessage),
     findLatestHistoryMessage(messages, isProviderIntentFrontierMessage),
     findLatestHistoryMessage(messages, message => (
       typeof message.content === 'string'
@@ -114,7 +116,7 @@ export function isProviderCausalFrontierMessage(message: ChatMessage): boolean {
   if (typeof message.content !== 'string') return false;
   const content = message.content.trimStart();
   if (/^\[工具结果 Round\b/u.test(content)) return true;
-  return isProviderIntentFrontierMessage(message);
+  return isAgenticProviderProgressMessage(message) || isProviderIntentFrontierMessage(message);
 }
 
 function isProviderIntentFrontierMessage(message: ChatMessage): boolean {
@@ -265,7 +267,7 @@ function rewriteMessagesWithContextSummary(
   maxMessages: number,
 ): void {
   const taskPrompt = messages[0];
-  const protectedKeepCount = Math.max(0, Math.min(2, maxMessages - 2));
+  const protectedKeepCount = Math.max(0, Math.min(3, maxMessages - 2));
   const protectedMessages = options.isProtectedMessage && protectedKeepCount > 0
     ? messages
       .map((message, index) => ({ message, index }))

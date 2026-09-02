@@ -1469,11 +1469,14 @@ test('ModelLedUserSimulation: repeated action announcements rebuild the Provider
       }
       return { text: '我将立即读取关键文件来了解当前状态。', tools: [] };
     }
-    assert.equal(messages.length, 3);
+    assert.equal(messages.length, 4);
     assert.match(messages[0].content, new RegExp(prompt, 'u'));
     assert.match(messages[1].content, /已隔离 Provider 响应/u);
     assert.match(messages[1].content, /立即读取关键文件/u);
     assert.match(messages[1].content, /无事实或执行权/u);
+    assert.match(messages[2].content, /\[DevSeek Provider Recovery Progress\]/u);
+    assert.match(messages[2].content, /"currentSourceValidated":false/u);
+    assert.match(messages[2].content, /"writeEventCount":0/u);
     assert.match(messages.at(-1).content, /原始任务、最新工具结果和验证事实重建会话/u);
     const target = path.join(fakeWorkspace.workspaceFolders[0].uri.fsPath, 'recovered.txt');
     return {

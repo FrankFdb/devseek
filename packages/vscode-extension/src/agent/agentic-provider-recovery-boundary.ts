@@ -21,6 +21,7 @@ import {
   type AgentProviderFailure,
 } from './provider-response-recovery';
 import { buildTextToolEnvelopeRecoveryPrompt } from './tool-protocol-prompt';
+import { upsertAgenticProviderProgressMessage } from './agentic-provider-progress';
 
 export interface AgenticProviderRecoveryBoundaryInput {
   readonly failure: AgentProviderFailure | undefined;
@@ -34,6 +35,7 @@ export interface AgenticProviderRecoveryBoundaryInput {
   readonly writtenFiles: readonly WrittenFileEvidence[];
   readonly terminalEvidence: readonly TerminalEvidence[];
   readonly activeRepairContext?: string;
+  readonly progressProjection?: string;
   readonly textToolProtocol: TextToolProtocolSession;
   readonly messages: ChatMessage[];
   readonly totalChars: number;
@@ -388,6 +390,9 @@ export async function recoverAgenticProviderFailure(
     partialResponseLength: input.partialResponseLength,
   });
   applyProviderRecoveryHistory(input.messages, recoveryMessage, !resetProviderSession);
+  if (input.progressProjection) {
+    upsertAgenticProviderProgressMessage(input.messages, input.progressProjection);
+  }
   const totalChars = compactAgenticMessageHistory({
     messages: input.messages,
     session: input.contextCompaction,

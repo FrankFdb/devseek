@@ -1,5 +1,12 @@
+import type {
+  CodingToolCall,
+  CodingToolExecutionReceipt,
+  CodingVerificationReceipt,
+  CodingWorkspaceMutationReceipt,
+} from '@devseek-netai/shared';
 import type { ChatMessage } from '../llm/types';
 import type { AgentTaskAction } from './agent-task';
+import { AgenticCompletedActionReplayGuard } from './agentic-completed-action-replay';
 import { rebuildAgenticHistoryForFreshProviderSession } from './agentic-context-compaction';
 import type { AgenticLoopExecutionContext } from './agentic-execution-context';
 import {
@@ -8,7 +15,11 @@ import {
 } from './agentic-provider-recovery-boundary';
 import { settleProviderFailureFromCompletedEvidence } from './agentic-provider-settlement';
 import { applyProviderRecoveryHistory } from './agent-history-compaction';
-import type { TerminalEvidence, WrittenFileEvidence } from './completion-evidence';
+import {
+  describeBlockingTerminalFailure,
+  type TerminalEvidence,
+  type WrittenFileEvidence,
+} from './completion-evidence';
 import type { ContextInvestigationLedger } from './context-investigation-ledger';
 import type { TodoItem } from './evidence-recovery';
 import type { AgentRecoveryReason } from './events';
@@ -26,8 +37,11 @@ import {
   UnexecutedActionRecoveryLifecycle,
   type UnexecutedActionRecoveryScreen,
 } from './unexecuted-action-recovery';
+import {
+  AgenticProviderProgressService,
+  upsertAgenticProviderProgressMessage,
+} from './agentic-provider-progress';
 import type { WriteAuthority } from './write-authority';
-import { describeBlockingTerminalFailure } from './completion-evidence';
 
 const MAX_PROVIDER_RECOVERY_ATTEMPTS = 3;
 
@@ -40,6 +54,8 @@ interface AgenticProviderRecoveryState {
   round(): number;
   totalChars(): number;
   setTotalChars(value: number): void;
+  progressEpoch(): number;
+  missingEvidence(): readonly string[];
   completionBlockers(): readonly (string | undefined)[];
   complete(summary: string): void;
 }
@@ -61,6 +77,9 @@ export interface AgenticProviderRecoveryCoordinatorInput {
   readonly readEvidencePaths: ReadonlySet<string>;
   readonly writtenFiles: WrittenFileEvidence[];
   readonly terminalEvidence: TerminalEvidence[];
+  readonly toolExecutionReceipts: readonly CodingToolExecutionReceipt<unknown>[];
+  readonly changeReceipts: readonly CodingWorkspaceMutationReceipt<unknown>[];
+  readonly verificationReceipts: () => readonly CodingVerificationReceipt[];
   readonly appendUserFeedback: (content: string) => void;
   readonly state: AgenticProviderRecoveryState;
 }
@@ -72,8 +91,12 @@ export class AgenticProviderRecoveryCoordinator {
   private unexecutedActionScreen: UnexecutedActionRecoveryScreen | undefined;
   private recoveryAttempts = 0;
   private freshSessionRequested = false;
+  private readonly progress: AgenticProviderProgressService;
+  private readonly completedActionReplay: AgenticCompletedActionReplayGuard;
 
   constructor(private readonly input: AgenticProviderRecoveryCoordinatorInput) {
+    this.progress = new AgenticProviderProgressService(input.workspaceRoot);
+    this.completedActionReplay = new AgenticCompletedActionReplayGuard(input.workspaceRoot);
     this.lifecycle = new AgenticProviderRecoveryLifecycle(
       input.taskFile,
       input.taskAction,
@@ -114,6 +137,27 @@ export class AgenticProviderRecoveryCoordinator {
     screen.blockedToolIndexes.forEach(toolIndex => blockedToolIndexes.add(toolIndex));
     suppressedTools.push(...screen.suppressedTools);
     this.unexecutedActionScreen = screen;
+  }
+
+  screenCompletedActionReplays(
+    tools: readonly CodingToolCall[],
+    blockedToolIndexes: Set<number>,
+    suppressedTools: ToolSuppressionEvidence[],
+  ): readonly string[] {
+    const screen = this.completedActionReplay.screen({
+      tools,
+      alreadyBlockedToolIndexes: blockedToolIndexes,
+      toolExecutionReceipts: this.input.toolExecutionReceipts,
+      changeReceipts: this.input.changeReceipts,
+    });
+    for (const toolIndex of screen.blockedToolIndexes) {
+      blockedToolIndexes.add(toolIndex);
+      suppressedTools.push({
+        tool: tools[toolIndex]?.name ?? 'unknown',
+        reason: 'completed-action-replay',
+      });
+    }
+    return screen.warnings;
   }
 
   projectUnexecutedActionFeedback(result: ToolLoopResult): readonly string[] {
@@ -177,6 +221,7 @@ export class AgenticProviderRecoveryCoordinator {
     const { evidenceRefs, executionContext, messages, state } = this.input;
     this.requestFreshProviderSession();
     applyProviderRecoveryHistory(messages, { role: 'user', content: feedback }, true);
+    upsertAgenticProviderProgressMessage(messages, this.renderProgressProjection());
     state.setTotalChars(rebuildAgenticHistoryForFreshProviderSession({
       messages,
       session: executionContext.contextCompaction,
@@ -268,6 +313,7 @@ export class AgenticProviderRecoveryCoordinator {
       writtenFiles,
       terminalEvidence,
       activeRepairContext: requirementReview.recoveryContext(),
+      progressProjection: this.renderProgressProjection(),
       textToolProtocol: this.input.textToolProtocol,
       messages: this.input.messages,
       totalChars: state.totalChars(),
@@ -293,5 +339,22 @@ export class AgenticProviderRecoveryCoordinator {
     }
     await this.lifecycle.fail();
     return 'unrecoverable';
+  }
+
+  private renderProgressProjection(): string {
+    const { requirementReview, sourceValidation, state } = this.input;
+    return this.progress.render({
+      progressEpoch: state.progressEpoch(),
+      currentTodos: state.currentTodos(),
+      readEvidencePaths: [...this.input.readEvidencePaths],
+      writtenFiles: this.input.writtenFiles,
+      terminalEvidence: this.input.terminalEvidence,
+      toolExecutionReceipts: this.input.toolExecutionReceipts,
+      changeReceipts: this.input.changeReceipts,
+      verificationReceipts: this.input.verificationReceipts(),
+      currentSourceValidated: sourceValidation.currentSourceIsValidated(),
+      missingEvidence: state.missingEvidence(),
+      completionObligation: requirementReview.completionObligation(),
+    });
   }
 }

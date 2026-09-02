@@ -70,5 +70,6 @@ export interface ToolSuppressionEvidence {
     | 'context-batch-budget'
     | 'provider-recovery-action-budget'
     | 'unexecuted-action-recovery-budget'
+    | 'completed-action-replay'
     | 'terminal-failure-investigation-required';
 }
